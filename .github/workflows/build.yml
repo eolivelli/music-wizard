@@ -54,5 +54,10 @@ jobs:
           java-version: '25'
           distribution: temurin
           cache: maven
+      # The enforcer rules are bound to the build lifecycle, so they must be
+      # triggered through a phase; `enforcer:enforce` from the command line sees
+      # no rules at all and fails with "No rules are configured".
       - name: Verify dependency licensing rules
-        run: mvn -B --no-transfer-progress enforcer:enforce
+        run: mvn -B --no-transfer-progress validate
+      - name: Record the resolved dependency tree
+        run: mvn -B --no-transfer-progress dependency:tree -Dscope=compile
