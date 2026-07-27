@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Optional;
 
@@ -159,15 +160,22 @@ public record MusicWizardConfig(
     }
 
     // Convenience accessors, safe to call only on a resolved config.
+    //
+    // These are derived, not stored. They must be hidden from Jackson: it treats
+    // isXxx()/xxx() as bean getters and would otherwise write phantom keys into
+    // every persisted config file.
 
+    @JsonIgnore
     public Optional<String> lilypondPath() {
         return Optional.ofNullable(notation).map(NotationConfig::lilypondPath);
     }
 
+    @JsonIgnore
     public boolean isLlmEnabled() {
         return llm != null && Boolean.TRUE.equals(llm.enabled());
     }
 
+    @JsonIgnore
     public boolean isOffline() {
         return ml != null && Boolean.TRUE.equals(ml.offline());
     }

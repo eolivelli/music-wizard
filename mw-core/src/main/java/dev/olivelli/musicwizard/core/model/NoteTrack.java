@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -44,6 +45,7 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
         return new NoteTrack(role, name, List.of(), Confidence.UNKNOWN);
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return notes.isEmpty();
     }
@@ -53,6 +55,7 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
     }
 
     /** True when no two notes overlap in time, i.e. the part is a single line. */
+    @JsonIgnore
     public boolean isMonophonic() {
         for (int i = 1; i < notes.size(); i++) {
             if (notes.get(i).onsetSeconds() < notes.get(i - 1).offsetSeconds()) {
@@ -77,6 +80,7 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
     }
 
     /** True once every note carries quantized musical timing. */
+    @JsonIgnore
     public boolean isQuantized() {
         return notes.stream().allMatch(Note::isQuantized);
     }

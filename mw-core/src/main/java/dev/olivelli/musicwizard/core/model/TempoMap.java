@@ -94,6 +94,12 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         segments = List.copyOf(segments);
         meterChanges = List.copyOf(meterChanges);
 
+        if (segments.get(0).startBeat() != 0.0) {
+            throw new IllegalArgumentException(
+                    "the first tempo segment must start at beat 0 so that the map is anchored,"
+                            + " got beat " + segments.get(0).startBeat());
+        }
+
         for (int i = 1; i < segments.size(); i++) {
             TempoSegment previous = segments.get(i - 1);
             TempoSegment current = segments.get(i);
@@ -108,6 +114,21 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
                         "tempo segments must be strictly ordered in time; segment " + i
                                 + " starts at " + current.startSeconds() + "s"
                                 + " but the previous starts at " + previous.startSeconds() + "s");
+            }
+            // The stored tempo must actually carry us from this segment's start to
+            // the next one. Without this check a map can be internally inconsistent,
+            // and seconds-to-beats stops being a bijection: at a segment boundary
+            // the conversion jumps, and time can even appear to run backwards.
+            double impliedSeconds = previous.startSeconds()
+                    + (current.startBeat() - previous.startBeat()) * previous.secondsPerBeat();
+            double tolerance = 1e-6 * Math.max(1.0, Math.abs(current.startSeconds()));
+            if (Math.abs(impliedSeconds - current.startSeconds()) > tolerance) {
+                throw new IllegalArgumentException(
+                        "tempo segment " + (i - 1) + " is inconsistent with segment " + i + ": "
+                                + previous.beatsPerMinute() + " BPM over "
+                                + (current.startBeat() - previous.startBeat()) + " beats reaches "
+                                + impliedSeconds + "s, but segment " + i + " starts at "
+                                + current.startSeconds() + "s");
             }
         }
         for (int i = 1; i < meterChanges.size(); i++) {
@@ -147,17 +168,56 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             throw new IllegalArgumentException(
                     "need at least two beats to infer tempo, got " + beatSeconds.size());
         }
-        List<TempoSegment> built = new ArrayList<>(beatSeconds.size() - 1);
+        for (int i = 1; i < beatSeconds.size(); i++) {
+            if (!(beatSeconds.get(i) > beatSeconds.get(i - 1))) {
+                throw new IllegalArgumentException(
+                        "beat times must strictly increase; beat " + i + " does not follow beat " + (i - 1));
+            }
+        }
+
+        double firstBeat = beatSeconds.get(0);
+        double firstInterval = beatSeconds.get(1) - firstBeat;
+
+        // A beat tracker never reports a beat at exactly t=0, so the audio before
+        // the first tracked beat is a lead-in. Left unmodelled it would map to
+        // negative beats, and any note or chord estimated in the intro would then
+        // fail conversion. Instead the lead-in is measured in whole beats at the
+        // opening tempo, which keeps every tracked beat on an integer position and
+        // keeps the whole timeline non-negative.
+        int leadInBeats = (int) Math.round(firstBeat / firstInterval);
+        if (leadInBeats < 0) {
+            leadInBeats = 0;
+        }
+
+        List<TempoSegment> built = new ArrayList<>(beatSeconds.size());
+        if (leadInBeats > 0) {
+            // Stretch or squeeze the lead-in so it lands exactly on the first
+            // tracked beat rather than merely close to it.
+            built.add(new TempoSegment(0, 0.0, 60.0 * leadInBeats / firstBeat));
+        }
         for (int i = 0; i < beatSeconds.size() - 1; i++) {
             double start = beatSeconds.get(i);
             double interval = beatSeconds.get(i + 1) - start;
-            if (!(interval > 0)) {
-                throw new IllegalArgumentException(
-                        "beat times must strictly increase; beat " + (i + 1) + " does not follow beat " + i);
+            built.add(new TempoSegment(leadInBeats + i, start, 60.0 / interval));
+        }
+
+        if (leadInBeats == 0 && firstBeat > 0) {
+            // The first beat is closer to t=0 than half a beat; treat it as the
+            // origin so the map stays anchored at zero.
+            List<TempoSegment> shifted = new ArrayList<>(built.size());
+            for (TempoSegment segment : built) {
+                shifted.add(new TempoSegment(
+                        segment.startBeat(), segment.startSeconds() - firstBeat,
+                        segment.beatsPerMinute()));
             }
-            built.add(new TempoSegment(i, start, 60.0 / interval));
+            built = shifted;
         }
         return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /** How many beats of lead-in precede the first tracked beat, if any. */
+    public double leadInBeats(double firstTrackedBeatSeconds) {
+        return secondsToBeats(firstTrackedBeatSeconds);
     }
 
     /** Converts a musical position in quarter-note beats to wall-clock seconds. */
@@ -258,19 +318,52 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
-     * The average tempo across the piece, weighted by how long each segment
-     * lasts. Useful for a single tempo marking on a printed score.
+     * The average tempo over the span the map explicitly describes, weighted by
+     * how long each segment lasts.
+     *
+     * <p>The final segment is open-ended, so this figure necessarily excludes
+     * it. When the piece's duration is known, prefer
+     * {@link #averageTempo(double)}, which accounts for the whole piece; on a
+     * map built from tracked beats the final segment is one beat long and the
+     * difference is negligible, but on a two-segment map it is not.
      */
     public double averageTempo() {
         if (segments.size() == 1) {
             return segments.get(0).beatsPerMinute();
         }
+        return averageTempoUpTo(segments.get(segments.size() - 1).startSeconds());
+    }
+
+    /**
+     * The average tempo across the whole piece, weighted by duration.
+     *
+     * @param totalSeconds the piece's duration, which bounds the final segment
+     */
+    public double averageTempo(double totalSeconds) {
+        if (!Double.isFinite(totalSeconds) || totalSeconds <= 0) {
+            throw new IllegalArgumentException(
+                    "totalSeconds must be finite and positive, got: " + totalSeconds);
+        }
+        return averageTempoUpTo(totalSeconds);
+    }
+
+    private double averageTempoUpTo(double endSeconds) {
         double totalBeats = 0;
         double totalSeconds = 0;
-        for (int i = 0; i < segments.size() - 1; i++) {
-            double beats = segments.get(i + 1).startBeat() - segments.get(i).startBeat();
-            totalBeats += beats;
-            totalSeconds += beats * segments.get(i).secondsPerBeat();
+        for (int i = 0; i < segments.size(); i++) {
+            double segmentStart = segments.get(i).startSeconds();
+            if (segmentStart >= endSeconds) {
+                break;
+            }
+            double segmentEnd = (i + 1 < segments.size())
+                    ? Math.min(segments.get(i + 1).startSeconds(), endSeconds)
+                    : endSeconds;
+            double elapsed = segmentEnd - segmentStart;
+            if (elapsed <= 0) {
+                continue;
+            }
+            totalSeconds += elapsed;
+            totalBeats += elapsed / segments.get(i).secondsPerBeat();
         }
         return totalSeconds > 0 ? totalBeats / totalSeconds * 60.0 : initialTempo();
     }

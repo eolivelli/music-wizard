@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Objects;
 
 /**
@@ -55,6 +56,7 @@ public record MusicalTime(int bar, double beatInBar, TimeSignature timeSignature
     }
 
     /** True when this position falls exactly on the downbeat of its bar. */
+    @JsonIgnore
     public boolean isDownbeat() {
         return beatInBar == 0.0;
     }

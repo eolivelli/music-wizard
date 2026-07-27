@@ -1,0 +1,91 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.cli;
+
+import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.workspace.Workspace;
+import java.nio.file.Path;
+import java.util.concurrent.Callable;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
+import picocli.CommandLine.Parameters;
+
+/**
+ * Runs the analysis pipeline over a workspace.
+ *
+ * <p>The manual overrides here are the highest-value controls in the tool. Beat
+ * and meter estimation is the least reliable stage, and every later stage
+ * depends on it, so one corrected number from a user who can count bars fixes
+ * the entire output.
+ */
+@Command(name = "analyze", description = "Analyse the recording in a workspace.")
+final class AnalyzeCommand implements Callable<Integer> {
+
+    @Parameters(index = "0", paramLabel = "WORKSPACE", description = "The workspace directory.")
+    Path workspaceDirectory;
+
+    @Option(names = "--tempo", paramLabel = "BPM",
+            description = "Force a tempo instead of tracking it.")
+    Double tempo;
+
+    @Option(names = "--time-signature", paramLabel = "N/D",
+            description = "Force a time signature, e.g. 4/4 or 6/8.")
+    String timeSignature;
+
+    @Option(names = "--first-downbeat", paramLabel = "SECONDS",
+            description = "Force the time of the first downbeat.")
+    Double firstDownbeat;
+
+    @Option(names = "--skip-separation",
+            description = "Analyse the mix directly instead of separating stems.")
+    boolean skipSeparation;
+
+    @Option(names = "--no-llm", description = "Disable the Claude advisor layer for this run.")
+    boolean noLlm;
+
+    @Option(names = "--force", description = "Ignore cached stage results and recompute.")
+    boolean force;
+
+    @Override
+    public Integer call() {
+        Workspace workspace = Workspace.open(workspaceDirectory);
+        MusicWizardConfig config = workspace.effectiveConfig(overrides());
+
+        if (!workspace.sourceMatchesDigest()) {
+            System.err.println(
+                    "warning: the source recording has changed since this workspace was created;"
+                            + " cached results may not correspond to it. Re-run with --force to recompute.");
+        }
+
+        System.out.println("Workspace  " + workspace.root());
+        System.out.println("Source     " + workspace.sourceFile().getFileName());
+        System.out.println("Advisor    " + (config.isLlmEnabled() ? "enabled" : "disabled"));
+        System.out.println();
+        System.out.println("The analysis pipeline is not implemented yet.");
+        System.out.println("Milestone 1b brings beat tracking, chroma and chord estimation.");
+        return 0;
+    }
+
+    private MusicWizardConfig overrides() {
+        var analysis = new MusicWizardConfig.AnalysisConfig(
+                tempo, timeSignature, firstDownbeat, skipSeparation ? Boolean.TRUE : null);
+        var llm = noLlm
+                ? new MusicWizardConfig.LlmConfig(false, null, null, null, null, null, null, null)
+                : null;
+        return new MusicWizardConfig(null, analysis, null, null, null, llm);
+    }
+}

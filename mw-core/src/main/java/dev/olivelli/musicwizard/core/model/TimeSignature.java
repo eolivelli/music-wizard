@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 /**
  * A time signature, such as 4/4 or 6/8.
  *
@@ -36,6 +37,16 @@ public record TimeSignature(int numerator, int denominator) {
             throw new IllegalArgumentException(
                     "denominator must be a positive power of two, got: " + denominator);
         }
+        // Bounded so that bar-counting loops stay cheap and because nothing
+        // beyond a 64th note is musically meaningful as a beat unit.
+        if (denominator > 64) {
+            throw new IllegalArgumentException(
+                    "denominator must be at most 64, got: " + denominator);
+        }
+        if (numerator > 64) {
+            throw new IllegalArgumentException(
+                    "numerator must be at most 64, got: " + numerator);
+        }
     }
 
     /**
@@ -48,6 +59,7 @@ public record TimeSignature(int numerator, int denominator) {
     }
 
     /** True for signatures conventionally felt in compound time, such as 6/8 and 12/8. */
+    @JsonIgnore
     public boolean isCompound() {
         return denominator >= 8 && numerator % 3 == 0 && numerator > 3;
     }

@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -65,6 +66,22 @@ public record Note(
         Objects.requireNonNull(onsetBeat, "onsetBeat");
         Objects.requireNonNull(durationBeats, "durationBeats");
         Objects.requireNonNull(confidence, "confidence");
+        // Checked here rather than only in quantizedTo, because deserialization
+        // and direct construction both bypass the factory methods.
+        if (onsetBeat.isPresent() != durationBeats.isPresent()) {
+            throw new IllegalArgumentException(
+                    "a note must carry both onsetBeat and durationBeats or neither");
+        }
+        if (onsetBeat.isPresent()) {
+            double beat = onsetBeat.get();
+            double beats = durationBeats.get();
+            if (!Double.isFinite(beat) || beat < 0) {
+                throw new IllegalArgumentException("onsetBeat must be finite and non-negative, got: " + beat);
+            }
+            if (!Double.isFinite(beats) || beats <= 0) {
+                throw new IllegalArgumentException("durationBeats must be finite and positive, got: " + beats);
+            }
+        }
     }
 
     /** A note known only in wall-clock terms, as analysis first produces it. */
@@ -80,6 +97,7 @@ public record Note(
     }
 
     /** True once both quantized onset and duration are present. */
+    @JsonIgnore
     public boolean isQuantized() {
         return onsetBeat.isPresent() && durationBeats.isPresent();
     }

@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.Objects;
 
@@ -39,6 +40,7 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
         return new Lyrics(List.of(), "und", Confidence.UNKNOWN);
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return lines.isEmpty();
     }

@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -49,6 +50,7 @@ public record ChordProgression(List<Chord> chords, Confidence confidence) {
         return new ChordProgression(List.of(), Confidence.UNKNOWN);
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return chords.isEmpty();
     }

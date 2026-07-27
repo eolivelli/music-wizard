@@ -49,6 +49,12 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
             if (positionInBar < -1) {
                 throw new IllegalArgumentException("positionInBar must be -1 or non-negative, got: " + positionInBar);
             }
+            // A downbeat is by definition position 0 of its bar; letting the two
+            // disagree would give downstream stages two contradictory answers.
+            if (positionInBar >= 0 && downbeat != (positionInBar == 0)) {
+                throw new IllegalArgumentException(
+                        "downbeat=" + downbeat + " contradicts positionInBar=" + positionInBar);
+            }
         }
 
         /** A beat whose position within the bar has not been determined. */

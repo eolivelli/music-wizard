@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -61,6 +62,27 @@ public record Chord(
                     "endSeconds must be finite and after startSeconds; got start=" + startSeconds
                             + " end=" + endSeconds);
         }
+        if (startBeat.isPresent() != endBeat.isPresent()) {
+            throw new IllegalArgumentException(
+                    "a chord must carry both startBeat and endBeat or neither");
+        }
+        if (startBeat.isPresent()) {
+            double from = startBeat.get();
+            double to = endBeat.get();
+            if (!Double.isFinite(from) || from < 0) {
+                throw new IllegalArgumentException("startBeat must be finite and non-negative, got: " + from);
+            }
+            if (!Double.isFinite(to) || to <= from) {
+                throw new IllegalArgumentException(
+                        "endBeat must be finite and after startBeat; got start=" + from + " end=" + to);
+            }
+        }
+    }
+
+    /** True once this chord carries quantized musical timing. */
+    @JsonIgnore
+    public boolean isQuantized() {
+        return startBeat.isPresent() && endBeat.isPresent();
     }
 
     /** A chord known only in wall-clock terms, as estimation first produces it. */
@@ -80,11 +102,13 @@ public record Chord(
         return endSeconds - startSeconds;
     }
 
+    @JsonIgnore
     public boolean isNoChord() {
         return quality == ChordQuality.NONE;
     }
 
     /** True when the sounding bass is something other than the root. */
+    @JsonIgnore
     public boolean isSlashChord() {
         return bass.isPresent() && bass.get().pitchClass() != root.pitchClass();
     }

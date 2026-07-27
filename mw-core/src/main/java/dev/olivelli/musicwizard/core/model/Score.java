@@ -64,9 +64,32 @@ public record Score(
         Objects.requireNonNull(beatGrid, "beatGrid");
         Objects.requireNonNull(chords, "chords");
         Objects.requireNonNull(lyrics, "lyrics");
-        keys = List.copyOf(Objects.requireNonNull(keys, "keys"));
-        sections = List.copyOf(Objects.requireNonNull(sections, "sections"));
+        // Sorted so that keyAt/sectionAt answer by musical position rather than
+        // by the order stages happened to append in.
+        keys = Objects.requireNonNull(keys, "keys").stream()
+                .sorted(java.util.Comparator.comparingDouble(Key::startSeconds))
+                .toList();
+        sections = Objects.requireNonNull(sections, "sections").stream()
+                .sorted(java.util.Comparator.comparingDouble(Section::startSeconds))
+                .toList();
         tracks = List.copyOf(Objects.requireNonNull(tracks, "tracks"));
+
+        for (int i = 1; i < keys.size(); i++) {
+            if (keys.get(i).startSeconds() < keys.get(i - 1).endSeconds() - 1e-6) {
+                throw new IllegalArgumentException(
+                        "keys must not overlap; key " + i + " starts at "
+                                + keys.get(i).startSeconds() + "s but the previous ends at "
+                                + keys.get(i - 1).endSeconds() + "s");
+            }
+        }
+        for (int i = 1; i < sections.size(); i++) {
+            if (sections.get(i).startSeconds() < sections.get(i - 1).endSeconds() - 1e-6) {
+                throw new IllegalArgumentException(
+                        "sections must not overlap; section " + i + " starts at "
+                                + sections.get(i).startSeconds() + "s but the previous ends at "
+                                + sections.get(i - 1).endSeconds() + "s");
+            }
+        }
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0) {
             throw new IllegalArgumentException(
                     "durationSeconds must be finite and positive, got: " + durationSeconds);
@@ -113,9 +136,19 @@ public record Score(
     /** Returns a copy with an added or replaced track for its role. */
     public Score withTrack(NoteTrack track) {
         Objects.requireNonNull(track, "track");
-        List<NoteTrack> merged = new ArrayList<>(tracks);
-        merged.removeIf(existing -> existing.role() == track.role());
-        merged.add(track);
+        List<NoteTrack> merged = new ArrayList<>(tracks.size() + 1);
+        boolean replaced = false;
+        for (NoteTrack existing : tracks) {
+            if (existing.role() == track.role()) {
+                merged.add(track);
+                replaced = true;
+            } else {
+                merged.add(existing);
+            }
+        }
+        if (!replaced) {
+            merged.add(track);
+        }
         return new Score(title, artist, tempoMap, beatGrid, keys, sections, merged,
                 chords, lyrics, durationSeconds);
     }

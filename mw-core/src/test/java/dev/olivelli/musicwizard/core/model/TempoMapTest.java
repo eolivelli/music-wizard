@@ -232,9 +232,12 @@ class TempoMapTest {
         @Test
         @DisplayName("rejects out-of-order tempo segments")
         void rejectsOutOfOrderSegments() {
+            // Anchored at beat 0 so this exercises the ordering check specifically
+            // rather than tripping the anchor check first.
             assertThatThrownBy(() -> new TempoMap(
-                    List.of(new TempoMap.TempoSegment(4, 2.0, 120),
-                            new TempoMap.TempoSegment(0, 0.0, 60)),
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 120),
+                            new TempoMap.TempoSegment(8, 4.0, 120),
+                            new TempoMap.TempoSegment(4, 6.0, 120)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("ordered by start beat");

@@ -33,7 +33,11 @@ public record LyricLine(List<LyricWord> words, Confidence confidence) {
         if (words.isEmpty()) {
             throw new IllegalArgumentException("a lyric line needs at least one word");
         }
-        words = List.copyOf(words);
+        // Sorted so that startSeconds()/endSeconds(), which read the ends of the
+        // list, cannot report a line that finishes before it begins.
+        words = words.stream()
+                .sorted(java.util.Comparator.comparingDouble(LyricWord::startSeconds))
+                .toList();
     }
 
     public double startSeconds() {

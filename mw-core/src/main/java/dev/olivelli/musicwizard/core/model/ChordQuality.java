@@ -25,28 +25,30 @@ package dev.olivelli.musicwizard.core.model;
  * labels than the signal supports would be dishonest.
  */
 public enum ChordQuality {
-    MAJOR("", 0, 4, 7),
-    MINOR("m", 0, 3, 7),
-    DIMINISHED("dim", 0, 3, 6),
-    AUGMENTED("aug", 0, 4, 8),
-    SUSPENDED_SECOND("sus2", 0, 2, 7),
-    SUSPENDED_FOURTH("sus4", 0, 5, 7),
-    DOMINANT_SEVENTH("7", 0, 4, 7, 10),
-    MAJOR_SEVENTH("maj7", 0, 4, 7, 11),
-    MINOR_SEVENTH("m7", 0, 3, 7, 10),
-    MINOR_MAJOR_SEVENTH("mMaj7", 0, 3, 7, 11),
-    HALF_DIMINISHED_SEVENTH("m7b5", 0, 3, 6, 10),
-    DIMINISHED_SEVENTH("dim7", 0, 3, 6, 9),
-    SIXTH("6", 0, 4, 7, 9),
-    MINOR_SIXTH("m6", 0, 3, 7, 9),
+    MAJOR("", false, 0, 4, 7),
+    MINOR("m", false, 0, 3, 7),
+    DIMINISHED("dim", false, 0, 3, 6),
+    AUGMENTED("aug", false, 0, 4, 8),
+    SUSPENDED_SECOND("sus2", false, 0, 2, 7),
+    SUSPENDED_FOURTH("sus4", false, 0, 5, 7),
+    DOMINANT_SEVENTH("7", true, 0, 4, 7, 10),
+    MAJOR_SEVENTH("maj7", true, 0, 4, 7, 11),
+    MINOR_SEVENTH("m7", true, 0, 3, 7, 10),
+    MINOR_MAJOR_SEVENTH("mMaj7", true, 0, 3, 7, 11),
+    HALF_DIMINISHED_SEVENTH("m7b5", true, 0, 3, 6, 10),
+    DIMINISHED_SEVENTH("dim7", true, 0, 3, 6, 9),
+    SIXTH("6", false, 0, 4, 7, 9),
+    MINOR_SIXTH("m6", false, 0, 3, 7, 9),
     /** No chord sounding: silence, or a purely percussive passage. */
-    NONE("N.C.");
+    NONE("N.C.", false);
 
     private final String symbol;
+    private final boolean hasSeventh;
     private final int[] intervals;
 
-    ChordQuality(String symbol, int... intervals) {
+    ChordQuality(String symbol, boolean hasSeventh, int... intervals) {
         this.symbol = symbol;
+        this.hasSeventh = hasSeventh;
         this.intervals = intervals;
     }
 
@@ -70,14 +72,16 @@ public enum ChordQuality {
         return false;
     }
 
-    /** True when this quality carries a seventh. */
+    /**
+     * True when this quality carries a seventh.
+     *
+     * <p>Declared per constant rather than derived from the interval set,
+     * because interval 9 is ambiguous: it is the diminished seventh of dim7 and
+     * equally the major sixth of a 6 chord. Deriving it would mis-voice every
+     * sixth chord.
+     */
     public boolean hasSeventh() {
-        for (int interval : intervals) {
-            if (interval == 9 || interval == 10 || interval == 11) {
-                return true;
-            }
-        }
-        return false;
+        return hasSeventh;
     }
 
     /** The triad qualities, which are what a first-pass estimator should consider. */

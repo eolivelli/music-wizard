@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Objects;
 
 /**
@@ -67,6 +68,7 @@ public record Key(
     }
 
     /** True when the key signature is written with flats. */
+    @JsonIgnore
     public boolean isFlatKey() {
         return keySignatureAccidentals() < 0;
     }
