@@ -1,0 +1,291 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.core.model;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * The conversion between wall-clock seconds and musical beats.
+ *
+ * <p>This is the hinge of the whole pipeline. Analysis stages produce times in
+ * seconds because that is what the signal gives them; everything downstream of
+ * the beat grid works in beats, because quantization, chord alignment, lyric
+ * placement and arrangement are only mutually consistent when they share one
+ * musical timeline. This class is what lets a stage cross that boundary, and it
+ * is deliberately the only sanctioned way to do so.
+ *
+ * <p>A tempo map is a sequence of segments, each with a constant tempo. Within a
+ * segment the mapping is linear, so both directions are exact and cheap.
+ * Beats are counted in quarter notes throughout, regardless of time signature.
+ *
+ * @param segments       tempo segments, ordered by start beat, never empty
+ * @param meterChanges   time-signature changes, ordered by start bar, never empty
+ */
+public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChanges) {
+
+    /**
+     * A stretch of constant tempo.
+     *
+     * @param startBeat    quarter-note beat at which this segment begins
+     * @param startSeconds wall-clock time at which this segment begins
+     * @param beatsPerMinute quarter-note tempo within this segment
+     */
+    public record TempoSegment(double startBeat, double startSeconds, double beatsPerMinute) {
+        public TempoSegment {
+            if (!Double.isFinite(startBeat) || startBeat < 0) {
+                throw new IllegalArgumentException("startBeat must be finite and non-negative, got: " + startBeat);
+            }
+            if (!Double.isFinite(startSeconds) || startSeconds < 0) {
+                throw new IllegalArgumentException("startSeconds must be finite and non-negative, got: " + startSeconds);
+            }
+            if (!Double.isFinite(beatsPerMinute) || beatsPerMinute <= 0) {
+                throw new IllegalArgumentException("beatsPerMinute must be finite and positive, got: " + beatsPerMinute);
+            }
+        }
+
+        /** Seconds occupied by one quarter-note beat in this segment. */
+        public double secondsPerBeat() {
+            return 60.0 / beatsPerMinute;
+        }
+    }
+
+    /**
+     * A time-signature change.
+     *
+     * @param startBar      zero-based bar index at which this signature takes effect
+     * @param timeSignature the signature from that bar onwards
+     */
+    public record MeterChange(int startBar, TimeSignature timeSignature) {
+        public MeterChange {
+            if (startBar < 0) {
+                throw new IllegalArgumentException("startBar must be non-negative, got: " + startBar);
+            }
+            Objects.requireNonNull(timeSignature, "timeSignature");
+        }
+    }
+
+    public TempoMap {
+        Objects.requireNonNull(segments, "segments");
+        Objects.requireNonNull(meterChanges, "meterChanges");
+        if (segments.isEmpty()) {
+            throw new IllegalArgumentException("a tempo map needs at least one tempo segment");
+        }
+        if (meterChanges.isEmpty()) {
+            throw new IllegalArgumentException("a tempo map needs at least one meter change");
+        }
+
+        segments = List.copyOf(segments);
+        meterChanges = List.copyOf(meterChanges);
+
+        for (int i = 1; i < segments.size(); i++) {
+            TempoSegment previous = segments.get(i - 1);
+            TempoSegment current = segments.get(i);
+            if (current.startBeat() <= previous.startBeat()) {
+                throw new IllegalArgumentException(
+                        "tempo segments must be strictly ordered by start beat; segment " + i
+                                + " starts at beat " + current.startBeat()
+                                + " but the previous starts at " + previous.startBeat());
+            }
+            if (current.startSeconds() <= previous.startSeconds()) {
+                throw new IllegalArgumentException(
+                        "tempo segments must be strictly ordered in time; segment " + i
+                                + " starts at " + current.startSeconds() + "s"
+                                + " but the previous starts at " + previous.startSeconds() + "s");
+            }
+        }
+        for (int i = 1; i < meterChanges.size(); i++) {
+            if (meterChanges.get(i).startBar() <= meterChanges.get(i - 1).startBar()) {
+                throw new IllegalArgumentException(
+                        "meter changes must be strictly ordered by start bar");
+            }
+        }
+        if (meterChanges.get(0).startBar() != 0) {
+            throw new IllegalArgumentException(
+                    "the first meter change must be at bar 0, got bar " + meterChanges.get(0).startBar());
+        }
+    }
+
+    /** A map with one constant tempo and one time signature from the start. */
+    public static TempoMap constant(double beatsPerMinute, TimeSignature timeSignature) {
+        return new TempoMap(
+                List.of(new TempoSegment(0.0, 0.0, beatsPerMinute)),
+                List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /** A constant map in common time, the default assumption for popular music. */
+    public static TempoMap constant(double beatsPerMinute) {
+        return constant(beatsPerMinute, TimeSignature.FOUR_FOUR);
+    }
+
+    /**
+     * Builds a tempo map from a beat grid by fitting one tempo segment per beat
+     * interval, preserving the measured timing exactly.
+     *
+     * <p>This is the honest conversion when beats were tracked from audio: it
+     * does not pretend the performance had a constant tempo.
+     */
+    public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature) {
+        Objects.requireNonNull(beatSeconds, "beatSeconds");
+        if (beatSeconds.size() < 2) {
+            throw new IllegalArgumentException(
+                    "need at least two beats to infer tempo, got " + beatSeconds.size());
+        }
+        List<TempoSegment> built = new ArrayList<>(beatSeconds.size() - 1);
+        for (int i = 0; i < beatSeconds.size() - 1; i++) {
+            double start = beatSeconds.get(i);
+            double interval = beatSeconds.get(i + 1) - start;
+            if (!(interval > 0)) {
+                throw new IllegalArgumentException(
+                        "beat times must strictly increase; beat " + (i + 1) + " does not follow beat " + i);
+            }
+            built.add(new TempoSegment(i, start, 60.0 / interval));
+        }
+        return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /** Converts a musical position in quarter-note beats to wall-clock seconds. */
+    public double beatsToSeconds(double beat) {
+        TempoSegment segment = segmentAtBeat(beat);
+        return segment.startSeconds() + (beat - segment.startBeat()) * segment.secondsPerBeat();
+    }
+
+    /** Converts a wall-clock time to a musical position in quarter-note beats. */
+    public double secondsToBeats(double seconds) {
+        TempoSegment segment = segmentAtSeconds(seconds);
+        return segment.startBeat() + (seconds - segment.startSeconds()) / segment.secondsPerBeat();
+    }
+
+    /** The tempo segment governing a given beat. */
+    public TempoSegment segmentAtBeat(double beat) {
+        TempoSegment found = segments.get(0);
+        for (TempoSegment candidate : segments) {
+            if (candidate.startBeat() <= beat) {
+                found = candidate;
+            } else {
+                break;
+            }
+        }
+        return found;
+    }
+
+    /** The tempo segment governing a given wall-clock time. */
+    public TempoSegment segmentAtSeconds(double seconds) {
+        TempoSegment found = segments.get(0);
+        for (TempoSegment candidate : segments) {
+            if (candidate.startSeconds() <= seconds) {
+                found = candidate;
+            } else {
+                break;
+            }
+        }
+        return found;
+    }
+
+    /** Tempo in quarter-note beats per minute at a given beat position. */
+    public double tempoAtBeat(double beat) {
+        return segmentAtBeat(beat).beatsPerMinute();
+    }
+
+    /** The time signature in force at a given zero-based bar. */
+    public TimeSignature timeSignatureAtBar(int bar) {
+        TimeSignature found = meterChanges.get(0).timeSignature();
+        for (MeterChange change : meterChanges) {
+            if (change.startBar() <= bar) {
+                found = change.timeSignature();
+            } else {
+                break;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Converts a beat position into bar, beat and fractional position, honouring
+     * any time-signature changes along the way.
+     */
+    public MusicalTime toMusicalTime(double beat) {
+        if (beat < 0) {
+            throw new IllegalArgumentException("beat must be non-negative, got: " + beat);
+        }
+        int bar = 0;
+        double remaining = beat;
+        while (true) {
+            double barLength = timeSignatureAtBar(bar).quarterBeatsPerBar();
+            if (remaining < barLength || barLength <= 0) {
+                break;
+            }
+            remaining -= barLength;
+            bar++;
+        }
+        return new MusicalTime(bar, remaining, timeSignatureAtBar(bar));
+    }
+
+    /** Converts a bar-and-beat position back into an absolute beat position. */
+    public double toBeat(MusicalTime musicalTime) {
+        Objects.requireNonNull(musicalTime, "musicalTime");
+        double beat = 0;
+        for (int bar = 0; bar < musicalTime.bar(); bar++) {
+            beat += timeSignatureAtBar(bar).quarterBeatsPerBar();
+        }
+        return beat + musicalTime.beatInBar();
+    }
+
+    /** The time signature at the start of the piece. */
+    public TimeSignature initialTimeSignature() {
+        return meterChanges.get(0).timeSignature();
+    }
+
+    /** The tempo at the start of the piece. */
+    public double initialTempo() {
+        return segments.get(0).beatsPerMinute();
+    }
+
+    /**
+     * The average tempo across the piece, weighted by how long each segment
+     * lasts. Useful for a single tempo marking on a printed score.
+     */
+    public double averageTempo() {
+        if (segments.size() == 1) {
+            return segments.get(0).beatsPerMinute();
+        }
+        double totalBeats = 0;
+        double totalSeconds = 0;
+        for (int i = 0; i < segments.size() - 1; i++) {
+            double beats = segments.get(i + 1).startBeat() - segments.get(i).startBeat();
+            totalBeats += beats;
+            totalSeconds += beats * segments.get(i).secondsPerBeat();
+        }
+        return totalSeconds > 0 ? totalBeats / totalSeconds * 60.0 : initialTempo();
+    }
+
+    /** Returns a copy with the meter replaced from bar 0, keeping all tempi. */
+    public TempoMap withTimeSignature(TimeSignature timeSignature) {
+        return new TempoMap(segments, List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /** Returns a copy with an additional meter change spliced in. */
+    public TempoMap withMeterChange(int startBar, TimeSignature timeSignature) {
+        List<MeterChange> merged = new ArrayList<>(meterChanges);
+        merged.removeIf(change -> change.startBar() == startBar);
+        merged.add(new MeterChange(startBar, timeSignature));
+        merged.sort(Comparator.comparingInt(MeterChange::startBar));
+        return new TempoMap(segments, merged);
+    }
+}
