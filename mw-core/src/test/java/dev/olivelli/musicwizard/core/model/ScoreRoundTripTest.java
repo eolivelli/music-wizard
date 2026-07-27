@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.core.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
@@ -229,6 +230,44 @@ class ScoreRoundTripTest {
         }
 
         @Test
+        @DisplayName("a downbeat cannot have an unknown bar position")
+        void rejectsDownbeatWithUnknownPosition() {
+            assertThatThrownBy(() -> new BeatGrid.Beat(0.0, true, -1))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must not be unknown");
+        }
+
+        @Test
+        @DisplayName("a score may not hold two tracks with the same role")
+        void rejectsDuplicateRoles() {
+            // Duplicates make track(role) ambiguous, and previously made
+            // withTrack replace every match at once.
+            List<NoteTrack> twoBassParts = List.of(
+                    NoteTrack.empty(PartRole.BASS, "a"),
+                    NoteTrack.empty(PartRole.BASS, "b"));
+
+            assertThatThrownBy(() -> new Score(
+                    Optional.empty(), Optional.empty(), TempoMap.constant(120),
+                    Optional.empty(), List.of(), List.of(), twoBassParts,
+                    ChordProgression.empty(), Lyrics.empty(), 10))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at most one track per role");
+        }
+
+        @Test
+        @DisplayName("a lyric line ends when its last word ends, even if spans overlap")
+        void lyricLineEndsAtTheMaximum() {
+            // Recognition spans on sung speech overlap, so the word that starts
+            // last need not be the one that finishes last.
+            LyricLine line = new LyricLine(List.of(
+                    new LyricWord("looong", 1.0, 99.0, Optional.empty(), Confidence.CERTAIN),
+                    new LyricWord("short", 2.0, 3.0, Optional.empty(), Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            assertThat(line.endSeconds()).isEqualTo(99.0);
+        }
+
+        @Test
         @DisplayName("a lyric line reports a sane span even if words arrive unordered")
         void lyricLineOrdersWords() {
             LyricLine line = new LyricLine(List.of(
@@ -259,13 +298,65 @@ class ScoreRoundTripTest {
         }
 
         @Test
-        @DisplayName("requires the map to be anchored at beat 0")
+        @DisplayName("requires the map to be anchored on both axes")
         void requiresAnchor() {
             assertThatThrownBy(() -> new TempoMap(
                     List.of(new TempoMap.TempoSegment(8, 10.0, 120)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("anchored");
+
+            // Anchoring only the beat axis still lets secondsToBeats(0) go negative,
+            // which is the failure the anchor exists to prevent.
+            assertThatThrownBy(() -> new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 10.0, 120)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("anchored");
+        }
+
+        @Test
+        @DisplayName("accepts a map whose boundaries were stored at millisecond precision")
+        void acceptsMillisecondPrecision() {
+            // Rounding boundary times to milliseconds is normal for an imported
+            // map and must not be mistaken for an inconsistent tempo.
+            double secondsPerBeat = 60.0 / 137.0;
+            double boundary = Math.round(200 * secondsPerBeat * 1000.0) / 1000.0;
+
+            assertThatCode(() -> new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0, 137),
+                            new TempoMap.TempoSegment(200, boundary, 141.5)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("tracked beats stay on integer positions for any lead-in")
+        void leadInKeepsTrackedBeatsOnIntegers() {
+            // The regression this guards: rounding the lead-in to zero and then
+            // shifting the seconds axis puts every tracked beat up to half a beat
+            // off, and silently misaligns the whole map from the audio. It is also
+            // discontinuous -- one millisecond of difference in the tracker's first
+            // onset flipped the behaviour.
+            for (double firstBeat : new double[] {
+                    0.001, 0.01, 0.05, 0.2499, 0.25, 0.2501, 0.4, 0.5, 1.0, 7.3, 30.0}) {
+                List<Double> beats = new java.util.ArrayList<>();
+                for (int i = 0; i < 40; i++) {
+                    beats.add(firstBeat + i * 0.5);
+                }
+                TempoMap map = TempoMap.fromBeatTimes(beats, TimeSignature.FOUR_FOUR);
+
+                assertThat(map.beatsToSeconds(0.0))
+                        .as("map anchored at second 0 for firstBeat=%s", firstBeat)
+                        .isCloseTo(0.0, within(1e-9));
+
+                for (int i = 0; i < beats.size(); i++) {
+                    double beat = map.secondsToBeats(beats.get(i));
+                    assertThat(beat - Math.rint(beat))
+                            .as("tracked beat %d on an integer position for firstBeat=%s", i, firstBeat)
+                            .isCloseTo(0.0, within(1e-6));
+                }
+            }
         }
 
         @Test

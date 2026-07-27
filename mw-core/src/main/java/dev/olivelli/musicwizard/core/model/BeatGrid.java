@@ -51,6 +51,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
             }
             // A downbeat is by definition position 0 of its bar; letting the two
             // disagree would give downstream stages two contradictory answers.
+            if (downbeat && positionInBar < 0) {
+                throw new IllegalArgumentException(
+                        "a downbeat is by definition position 0 of its bar, so positionInBar"
+                                + " must not be unknown");
+            }
             if (positionInBar >= 0 && downbeat != (positionInBar == 0)) {
                 throw new IllegalArgumentException(
                         "downbeat=" + downbeat + " contradicts positionInBar=" + positionInBar);

@@ -44,13 +44,9 @@ import java.util.TreeMap;
  */
 public final class StageCache {
 
-    /**
-     * Delimiters used when building key material. Control characters are used
-     * deliberately: they cannot occur in a stage name or parameter value, so
-     * no combination of components can collide by concatenating differently.
-     */
-    private static final char FIELD_SEPARATOR = '\u0000';
-    private static final char VALUE_SEPARATOR = '\u0001';
+    /** Distinguishes an absent value from the four-character string "null". */
+    private static final String NULL_MARKER = "\u0000null";
+    private static final String VALUE_TAG = "=";
 
     private final Path directory;
 
@@ -74,9 +70,16 @@ public final class StageCache {
             return new Key(stage);
         }
 
-        /** Adds a named parameter to the key. */
+        /**
+         * Adds a named parameter to the key.
+         *
+         * <p>A null value is tagged distinctly rather than stringified, because
+         * {@code String.valueOf(null)} is literally {@code "null"} and would
+         * otherwise collide with a parameter whose value is that word.
+         */
         public Key with(String name, Object value) {
-            components.put(name, String.valueOf(value));
+            Objects.requireNonNull(name, "name");
+            components.put(name, value == null ? NULL_MARKER : VALUE_TAG + value);
             return this;
         }
 
@@ -93,10 +96,15 @@ public final class StageCache {
 
         /** The hex digest identifying this key. */
         public String digest() {
-            StringBuilder material = new StringBuilder(stage);
+            // Every part is length-prefixed. Delimiter characters alone are not
+            // enough: nothing stops a parameter value containing one, and a
+            // collision here means one stage's cached output is served for
+            // different inputs, which is a silently wrong transcription.
+            StringBuilder material = new StringBuilder();
+            appendLengthPrefixed(material, stage);
             for (Map.Entry<String, String> entry : components.entrySet()) {
-                material.append(FIELD_SEPARATOR).append(entry.getKey())
-                        .append(VALUE_SEPARATOR).append(entry.getValue());
+                appendLengthPrefixed(material, entry.getKey());
+                appendLengthPrefixed(material, entry.getValue());
             }
             try {
                 MessageDigest sha = MessageDigest.getInstance("SHA-256");
@@ -107,13 +115,34 @@ public final class StageCache {
             }
         }
 
+        private static void appendLengthPrefixed(StringBuilder target, String value) {
+            target.append(value.length()).append(':').append(value).append(';');
+        }
+
+        /**
+         * The stage name reduced to something safe to use as a single path
+         * component.
+         *
+         * <p>Applied to the directory as well as the file name. Used raw, a
+         * stage name of {@code ..} or an absolute path escapes the workspace
+         * entirely, which turns cache invalidation into an arbitrary recursive
+         * delete.
+         */
+        String safeStageName() {
+            String sanitized = stage.replaceAll("[^A-Za-z0-9._-]", "_");
+            // "." and ".." survive the character filter but are still traversal.
+            if (sanitized.isEmpty() || sanitized.equals(".") || sanitized.equals("..")) {
+                return "_";
+            }
+            return sanitized;
+        }
+
         /**
          * A readable file name: the stage name, then a short digest. Keeping the
          * stage name visible makes a workspace directory diagnosable by eye.
          */
         String fileName(String extension) {
-            String safeStage = stage.replaceAll("[^A-Za-z0-9._-]", "_");
-            return safeStage + "-" + digest().substring(0, 16) + extension;
+            return safeStageName() + "-" + digest().substring(0, 16) + extension;
         }
 
         @Override
@@ -124,7 +153,7 @@ public final class StageCache {
 
     /** Where an entry for this key would live. */
     public Path pathFor(Key key, String extension) {
-        return directory.resolve(key.stage()).resolve(key.fileName(extension));
+        return directory.resolve(key.safeStageName()).resolve(key.fileName(extension));
     }
 
     /** True when a result is already stored for this key. */
@@ -155,8 +184,13 @@ public final class StageCache {
         try {
             Files.createDirectories(target.getParent());
             Path temporary = Files.createTempFile(target.getParent(), ".partial-", extension);
-            Files.writeString(temporary, content);
-            moveIntoPlace(temporary, target);
+            try {
+                Files.writeString(temporary, content);
+                moveIntoPlace(temporary, target);
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(temporary);
+                throw e;
+            }
             return target;
         } catch (IOException e) {
             throw new UncheckedIOException("could not write cache entry " + target, e);
@@ -169,8 +203,13 @@ public final class StageCache {
         try {
             Files.createDirectories(target.getParent());
             Path temporary = Files.createTempFile(target.getParent(), ".partial-", extension);
-            Files.write(temporary, content);
-            moveIntoPlace(temporary, target);
+            try {
+                Files.write(temporary, content);
+                moveIntoPlace(temporary, target);
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(temporary);
+                throw e;
+            }
             return target;
         } catch (IOException e) {
             throw new UncheckedIOException("could not write cache entry " + target, e);
@@ -204,6 +243,40 @@ public final class StageCache {
         }
     }
 
+    /**
+     * Discards a staged artifact that will never be committed, so an abandoned
+     * stage does not leave hundreds of megabytes behind.
+     */
+    public void discard(Path staged) {
+        if (staged == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(staged);
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not discard staged file " + staged, e);
+        }
+    }
+
+    /** Removes any staging files left behind by an interrupted earlier run. */
+    public int sweepAbandonedStagingFiles() {
+        if (!Files.isDirectory(directory)) {
+            return 0;
+        }
+        int removed = 0;
+        try (var entries = Files.walk(directory)) {
+            for (Path path : entries.filter(Files::isRegularFile).toList()) {
+                if (path.getFileName().toString().startsWith(".partial-")) {
+                    Files.deleteIfExists(path);
+                    removed++;
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not sweep staging files in " + directory, e);
+        }
+        return removed;
+    }
+
     /** Moves a staged artifact into its final cache position. */
     public Path commit(Path staged, Key key, String extension) {
         Path target = pathFor(key, extension);
@@ -216,9 +289,23 @@ public final class StageCache {
         }
     }
 
-    /** Removes every entry for a stage, forcing it to recompute. */
+    /**
+     * Removes every entry for a stage, forcing it to recompute.
+     *
+     * <p>The stage name is sanitized and the resolved directory is checked to be
+     * inside the cache before anything is deleted. This method walks and deletes
+     * recursively, so an unchecked name would be an arbitrary delete primitive,
+     * and stage names can reach here from a command-line flag.
+     */
     public void invalidateStage(String stage) {
-        Path stageDirectory = directory.resolve(stage);
+        Objects.requireNonNull(stage, "stage");
+        Path stageDirectory = directory.resolve(Key.forStage(stage).safeStageName())
+                .normalize().toAbsolutePath();
+        Path cacheRoot = directory.normalize().toAbsolutePath();
+        if (!stageDirectory.startsWith(cacheRoot) || stageDirectory.equals(cacheRoot)) {
+            throw new IllegalArgumentException(
+                    "refusing to invalidate outside the cache directory: " + stage);
+        }
         if (!Files.isDirectory(stageDirectory)) {
             return;
         }

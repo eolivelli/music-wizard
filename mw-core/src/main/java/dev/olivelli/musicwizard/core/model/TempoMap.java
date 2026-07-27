@@ -94,10 +94,14 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         segments = List.copyOf(segments);
         meterChanges = List.copyOf(meterChanges);
 
-        if (segments.get(0).startBeat() != 0.0) {
+        // Both axes must be anchored. Anchoring only the beat axis still allows
+        // secondsToBeats(0) to return a negative beat, which is the very failure
+        // the anchor exists to prevent.
+        if (segments.get(0).startBeat() != 0.0 || segments.get(0).startSeconds() != 0.0) {
             throw new IllegalArgumentException(
-                    "the first tempo segment must start at beat 0 so that the map is anchored,"
-                            + " got beat " + segments.get(0).startBeat());
+                    "the first tempo segment must start at beat 0 and second 0 so that the map"
+                            + " is anchored, got beat " + segments.get(0).startBeat()
+                            + " at " + segments.get(0).startSeconds() + "s");
         }
 
         for (int i = 1; i < segments.size(); i++) {
@@ -121,7 +125,10 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             // the conversion jumps, and time can even appear to run backwards.
             double impliedSeconds = previous.startSeconds()
                     + (current.startBeat() - previous.startBeat()) * previous.secondsPerBeat();
-            double tolerance = 1e-6 * Math.max(1.0, Math.abs(current.startSeconds()));
+            // Loose enough to accept a map whose boundary times were stored at
+            // millisecond precision, tight enough to catch a genuinely wrong
+            // tempo, which is off by far more than a millisecond.
+            double tolerance = Math.max(1.5e-3, 1e-6 * Math.abs(current.startSeconds()));
             if (Math.abs(impliedSeconds - current.startSeconds()) > tolerance) {
                 throw new IllegalArgumentException(
                         "tempo segment " + (i - 1) + " is inconsistent with segment " + i + ": "
@@ -179,20 +186,30 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         double firstInterval = beatSeconds.get(1) - firstBeat;
 
         // A beat tracker never reports a beat at exactly t=0, so the audio before
-        // the first tracked beat is a lead-in. Left unmodelled it would map to
-        // negative beats, and any note or chord estimated in the intro would then
-        // fail conversion. Instead the lead-in is measured in whole beats at the
-        // opening tempo, which keeps every tracked beat on an integer position and
-        // keeps the whole timeline non-negative.
-        int leadInBeats = (int) Math.round(firstBeat / firstInterval);
-        if (leadInBeats < 0) {
-            leadInBeats = 0;
+        // the first tracked beat is a lead-in. Left unmodelled it maps to negative
+        // beats, and any note or chord estimated in the intro then fails to
+        // convert. The lead-in is therefore given a whole number of beats.
+        //
+        // It must be at least one whenever the first beat is after t=0. The
+        // alternative -- shifting the seconds axis so the first tracked beat
+        // becomes the origin -- silently misaligns the entire map from the audio
+        // by up to half a beat, which is worse than the problem it solves.
+        int leadInBeats = 0;
+        if (firstBeat > 0) {
+            double ratio = firstBeat / firstInterval;
+            // Guard the cast: a pathological interval (units confusion, say
+            // samples for seconds) would otherwise overflow silently into a
+            // nonsensical but structurally valid map.
+            long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
+            leadInBeats = (int) Math.max(1, rounded);
         }
 
-        List<TempoSegment> built = new ArrayList<>(beatSeconds.size());
+        List<TempoSegment> built = new ArrayList<>(beatSeconds.size() + 1);
         if (leadInBeats > 0) {
             // Stretch or squeeze the lead-in so it lands exactly on the first
-            // tracked beat rather than merely close to it.
+            // tracked beat rather than merely close to it. The map is then
+            // anchored at (beat 0, second 0) and every tracked beat sits on an
+            // integer beat position.
             built.add(new TempoSegment(0, 0.0, 60.0 * leadInBeats / firstBeat));
         }
         for (int i = 0; i < beatSeconds.size() - 1; i++) {
@@ -200,24 +217,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             double interval = beatSeconds.get(i + 1) - start;
             built.add(new TempoSegment(leadInBeats + i, start, 60.0 / interval));
         }
-
-        if (leadInBeats == 0 && firstBeat > 0) {
-            // The first beat is closer to t=0 than half a beat; treat it as the
-            // origin so the map stays anchored at zero.
-            List<TempoSegment> shifted = new ArrayList<>(built.size());
-            for (TempoSegment segment : built) {
-                shifted.add(new TempoSegment(
-                        segment.startBeat(), segment.startSeconds() - firstBeat,
-                        segment.beatsPerMinute()));
-            }
-            built = shifted;
-        }
         return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
-    }
-
-    /** How many beats of lead-in precede the first tracked beat, if any. */
-    public double leadInBeats(double firstTrackedBeatSeconds) {
-        return secondsToBeats(firstTrackedBeatSeconds);
     }
 
     /** Converts a musical position in quarter-note beats to wall-clock seconds. */

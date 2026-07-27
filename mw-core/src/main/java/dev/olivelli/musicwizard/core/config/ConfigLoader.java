@@ -46,6 +46,10 @@ public final class ConfigLoader {
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES);
         this.yamlMapper = new ObjectMapper(factory)
+                // Required for the model's Optional fields. Without it any type
+                // carrying an Optional fails to serialize through this mapper,
+                // which is the same defect already fixed on the JSON path.
+                .registerModule(new com.fasterxml.jackson.datatype.jdk8.Jdk8Module())
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
@@ -143,7 +147,15 @@ public final class ConfigLoader {
                 : Optional.empty();
         if (configured.isPresent() && !configured.get().isBlank()) {
             Path explicit = Path.of(configured.get());
-            return isExecutable(explicit) ? Optional.of(explicit) : Optional.empty();
+            if (!isExecutable(explicit)) {
+                // Silently falling back to a discovered binary would ignore an
+                // explicit instruction, which is exactly what this class says
+                // elsewhere it will not do.
+                throw new IllegalStateException(
+                        "notation.lilypondPath is set to " + explicit
+                                + " but that is not an executable file");
+            }
+            return Optional.of(explicit);
         }
 
         String pathVariable = System.getenv("PATH");

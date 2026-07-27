@@ -73,6 +73,15 @@ public record Score(
                 .sorted(java.util.Comparator.comparingDouble(Section::startSeconds))
                 .toList();
         tracks = List.copyOf(Objects.requireNonNull(tracks, "tracks"));
+        // One track per role. Duplicates make track(role) ambiguous and make
+        // withTrack replace every match at once.
+        java.util.Set<PartRole> seenRoles = java.util.EnumSet.noneOf(PartRole.class);
+        for (NoteTrack track : tracks) {
+            if (!seenRoles.add(track.role())) {
+                throw new IllegalArgumentException(
+                        "a score may hold at most one track per role, got two for " + track.role());
+            }
+        }
 
         for (int i = 1; i < keys.size(); i++) {
             if (keys.get(i).startSeconds() < keys.get(i - 1).endSeconds() - 1e-6) {

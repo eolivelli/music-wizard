@@ -133,8 +133,32 @@ public final class Workspace {
                     null,
                     MusicWizardConfig.empty()));
             return workspace;
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not create workspace at " + root, e);
+        } catch (IOException | RuntimeException e) {
+            // Otherwise a failure part-way through leaves a directory that cannot
+            // be opened (no descriptor) and cannot be recreated (already exists),
+            // leaving the user to delete it by hand.
+            deleteRecursivelyQuietly(workspace.root());
+            if (e instanceof IOException io) {
+                throw new UncheckedIOException("could not create workspace at " + root, io);
+            }
+            throw (RuntimeException) e;
+        }
+    }
+
+    private static void deleteRecursivelyQuietly(Path directory) {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try (var entries = Files.walk(directory)) {
+            entries.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignored) {
+                    // Best effort: the original failure is what matters.
+                }
+            });
+        } catch (IOException ignored) {
+            // Best effort.
         }
     }
 
@@ -150,6 +174,14 @@ public final class Workspace {
                     "not a workspace: no " + DESCRIPTOR_FILE + " in " + root);
         }
         Descriptor descriptor = workspace.readDescriptor();
+        if (descriptor.schemaVersion() < 1) {
+            // A descriptor with the field missing deserializes to 0, so without a
+            // lower bound a truncated or foreign YAML opens as a valid workspace.
+            throw new IllegalStateException(
+                    "workspace at " + root + " has an invalid schema version "
+                            + descriptor.schemaVersion() + "; the file may be truncated"
+                            + " or may not be a workspace descriptor at all");
+        }
         if (descriptor.schemaVersion() > CURRENT_SCHEMA_VERSION) {
             throw new IllegalStateException(
                     "workspace at " + root + " uses schema version " + descriptor.schemaVersion()
@@ -200,8 +232,31 @@ public final class Workspace {
 
     /** The imported source recording. */
     public Path sourceFile() {
-        Descriptor descriptor = readDescriptor();
-        return sourceDirectory().resolve(descriptor.sourceFileName());
+        return resolveSourceFile(readDescriptor());
+    }
+
+    /**
+     * Resolves the recording named by a descriptor, refusing anything that
+     * escapes the workspace.
+     *
+     * <p>A workspace is a directory people copy and share, so its descriptor is
+     * untrusted input. Resolved naively, a {@code sourceFileName} of
+     * {@code ../../secret} or an absolute path reads a file from anywhere on
+     * the machine.
+     */
+    private Path resolveSourceFile(Descriptor descriptor) {
+        String name = descriptor.sourceFileName();
+        if (name == null || name.isBlank()) {
+            throw new IllegalStateException(
+                    "workspace descriptor at " + descriptorFile() + " names no source file");
+        }
+        Path resolved = sourceDirectory().resolve(name).normalize().toAbsolutePath();
+        Path sourceRoot = sourceDirectory().normalize().toAbsolutePath();
+        if (!resolved.startsWith(sourceRoot) || resolved.equals(sourceRoot)) {
+            throw new IllegalStateException(
+                    "workspace descriptor names a source file outside the workspace: " + name);
+        }
+        return resolved;
     }
 
     public Descriptor readDescriptor() {
@@ -214,11 +269,27 @@ public final class Workspace {
     }
 
     public void writeDescriptor(Descriptor descriptor) {
+        // Written via a temporary file and moved into place. A crash midway
+        // through a plain write truncates the descriptor, and every accessor on
+        // this class then fails -- the workspace becomes unopenable.
+        Path target = descriptorFile();
         try {
-            Files.writeString(descriptorFile(),
-                    configLoader.yamlMapper().writeValueAsString(descriptor));
+            String content = configLoader.yamlMapper().writeValueAsString(descriptor);
+            Path temporary = Files.createTempFile(root, ".workspace-", ".yaml.tmp");
+            try {
+                Files.writeString(temporary, content);
+                try {
+                    Files.move(temporary, target,
+                            StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(temporary);
+                throw e;
+            }
         } catch (IOException e) {
-            throw new UncheckedIOException("could not write " + descriptorFile(), e);
+            throw new UncheckedIOException("could not write " + target, e);
         }
     }
 
@@ -250,8 +321,8 @@ public final class Workspace {
      */
     public boolean sourceMatchesDigest() {
         Descriptor descriptor = readDescriptor();
-        Path source = sourceDirectory().resolve(descriptor.sourceFileName());
-        if (!Files.isRegularFile(source)) {
+        Path source = resolveSourceFile(descriptor);
+        if (!Files.isRegularFile(source) || descriptor.sourceSha256() == null) {
             return false;
         }
         return sha256(source).equals(descriptor.sourceSha256());

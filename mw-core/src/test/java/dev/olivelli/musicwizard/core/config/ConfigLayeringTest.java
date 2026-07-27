@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.AccidentalPreference;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.LlmConfig;
@@ -195,13 +196,17 @@ class ConfigLayeringTest {
     class LilyPondDiscovery {
 
         @Test
-        @DisplayName("an explicit path that does not exist yields nothing")
+        @DisplayName("an explicit path that does not exist fails loudly")
         void rejectsBadExplicitPath() {
+            // Falling back to a discovered binary would silently ignore an
+            // explicit instruction, which is worse than refusing to run.
             MusicWizardConfig config = new MusicWizardConfig(null, null,
                     new NotationConfig("/definitely/not/here/lilypond", null, null, null, null),
                     null, null, null);
 
-            assertThat(ConfigLoader.findLilyPond(config)).isEmpty();
+            assertThatThrownBy(() -> ConfigLoader.findLilyPond(config))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("not an executable file");
         }
 
         @Test

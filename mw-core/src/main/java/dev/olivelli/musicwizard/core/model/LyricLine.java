@@ -45,7 +45,10 @@ public record LyricLine(List<LyricWord> words, Confidence confidence) {
     }
 
     public double endSeconds() {
-        return words.get(words.size() - 1).endSeconds();
+        // The maximum, not the last word's end: recognition spans on sung speech
+        // overlap, so the word that starts last need not be the one that finishes
+        // last.
+        return words.stream().mapToDouble(LyricWord::endSeconds).max().orElseThrow();
     }
 
     /** The line as plain text. */
