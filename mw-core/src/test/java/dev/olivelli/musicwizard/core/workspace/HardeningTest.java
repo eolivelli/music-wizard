@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -164,14 +167,7 @@ class HardeningTest {
             Files.createDirectories(victim.resolve("beats"));
             Files.writeString(victim.resolve("beats/keep.txt"), "keep me");
 
-            Path cacheDir = workspace.cacheDirectory();
-            try (var entries = Files.walk(cacheDir)) {
-                entries.sorted(java.util.Comparator.reverseOrder())
-                        .forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } });
-            }
-            try {
-                Files.createSymbolicLink(cacheDir, victim);
-            } catch (UnsupportedOperationException | IOException e) {
+            if (!replaceCacheWithSymlink(workspace, victim)) {
                 return;
             }
 
@@ -216,12 +212,395 @@ class HardeningTest {
             StageCache.Key key = StageCache.Key.forStage("stems");
 
             for (int i = 0; i < 3; i++) {
-                Files.writeString(cache.stagingPath(key, ".bin"), "orphan " + i);
+                Path orphan = cache.stagingPath(key, ".bin");
+                Files.writeString(orphan, "orphan " + i);
+                backdate(orphan, Duration.ofDays(2));
             }
             cache.writeText(key, ".json", "real entry");
 
             assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(3);
             assertThat(cache.readText(key, ".json")).contains("real entry");
+        }
+
+        @Test
+        @DisplayName("a sweep spares a staging file another run is still writing")
+        void sweepSparesInFlightStagingFiles() throws IOException {
+            // The whole reason the sweep has an age threshold. ".partial-" is
+            // also the name a LIVE separation writes its stem under, and a
+            // workspace can be open in two processes at once, so an
+            // unconditional sweep deletes hundreds of megabytes out from under a
+            // run that then fails at commit.
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path inFlight = cache.stagingPath(key, ".bin");
+            Files.writeString(inFlight, "half a stem");
+            Path abandoned = cache.stagingPath(key, ".bin");
+            Files.writeString(abandoned, "yesterday's stem");
+            backdate(abandoned, Duration.ofDays(2));
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
+            assertThat(inFlight).exists();
+            assertThat(abandoned).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("a staging file dated in the future is spared, not swept")
+        void sweepSparesFutureDatedStagingFiles() throws IOException {
+            // Clock skew between a workspace on shared storage and this machine
+            // must not be read as "very old indeed".
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path skewed = cache.stagingPath(key, ".bin");
+            Files.writeString(skewed, "written by a fast clock");
+            backdate(skewed, Duration.ofDays(-2));
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isZero();
+            assertThat(skewed).exists();
+        }
+
+        @Test
+        @DisplayName("a sweep does not delete through a symlinked cache directory")
+        void sweepRefusesSymlinkedCacheDirectory() throws IOException {
+            // Same trap as invalidateStage: the sweep deletes, and a workspace is
+            // a directory people copy and share.
+            Workspace workspace = newWorkspace();
+            Path victim = tempDirectory.resolve("sweep-victim");
+            Files.createDirectories(victim.resolve("stems"));
+            Path bait = victim.resolve("stems/.partial-precious.bin");
+            Files.writeString(bait, "not ours to delete");
+            backdate(bait, Duration.ofDays(2));
+
+            if (!replaceCacheWithSymlink(workspace, victim)) {
+                return;
+            }
+
+            assertThatThrownBy(() -> workspace.cache().sweepAbandonedStagingFiles())
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("cache directory is a symbolic link");
+            assertThat(bait).exists();
+        }
+
+        @Test
+        @DisplayName("a sweep does not follow a staging file that is a symlink")
+        void sweepDoesNotFollowStagingSymlinks() throws IOException {
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+            // Force the stage directory into existence.
+            cache.writeText(key, ".json", "real entry");
+
+            Path secret = tempDirectory.resolve("secret.txt");
+            Files.writeString(secret, "read me not");
+            backdate(secret, Duration.ofDays(2));
+            Path link = cache.pathFor(key, ".bin").getParent().resolve(".partial-link.bin");
+            try {
+                Files.createSymbolicLink(link, secret);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isZero();
+            assertThat(secret).exists();
+        }
+    }
+
+    @Nested
+    @DisplayName("a reserved staging file is always accounted for")
+    class StagingLifecycle {
+
+        @Test
+        @DisplayName("anything still uncommitted is discarded when the JVM exits")
+        void discardsOutstandingStagedFilesAtShutdown() throws IOException {
+            // Without this the sweep barely helps with the case #15 is about: a
+            // run that dies and is retried minutes later leaves an orphan that is
+            // not yet old enough to sweep, and the user never opens that
+            // workspace again a day later to collect it.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path abandoned = cache.stagingPath(key, ".wav");
+            Files.writeString(abandoned, "a stem nobody will commit");
+            Path committed = cache.stagingPath(key, ".wav");
+            Files.writeString(committed, "a stem that made it");
+            Path entry = cache.commit(committed, key, ".wav");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(abandoned).doesNotExist();
+            assertThat(entry).exists();
+        }
+
+        @Test
+        @DisplayName("a real JVM exit collects the staged file, not just a direct call")
+        void aRealShutdownCollectsTheStagedFile() throws Exception {
+            // The in-process tests can only call the cleanup method directly, so
+            // the registration itself -- the one line that makes any of this work
+            // for a real user -- can be deleted with the whole suite still green.
+            // Only a process that genuinely exits reaches it.
+            Path staged = runStagingProcess("crash", 1);
+
+            assertThat(staged).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("staging from inside somebody else's shutdown hook still succeeds")
+        void stagingDuringShutdownDoesNotFail() throws Exception {
+            // addShutdownHook throws IllegalStateException once shutdown has
+            // begun. Letting that escape would give stagingPath an exception type
+            // its contract never mentions AND strand the file createTempFile has
+            // already made -- a new leak from the code meant to remove them.
+            Path staged = runStagingProcess("stage-during-shutdown", 0);
+
+            // Deterministic only because this mode stages nothing before
+            // shutdown, so no cleanup hook was ever armed and there is no second
+            // hook to race. In general a reservation made during shutdown may or
+            // may not be collected; the age-based sweep is what accounts for it.
+            // What is being asserted here is only that the reservation succeeds.
+            assertThat(staged).exists();
+        }
+
+        /**
+         * Runs {@link StagingCleanupProcess} in a real JVM and returns the path it
+         * staged, checking it exited the way the mode intends.
+         */
+        private Path runStagingProcess(String mode, int expectedExitCode) throws Exception {
+            Path root = tempDirectory.resolve("forked-" + mode + ".mwz");
+            Process process = new ProcessBuilder(
+                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp", System.getProperty("java.class.path"),
+                    StagingCleanupProcess.class.getName(),
+                    mode, root.toString(), sourceFile.toString())
+                    .redirectErrorStream(true)
+                    .start();
+            String output;
+            boolean exited;
+            try {
+                // Drained to EOF before waiting, so the child cannot block on a
+                // full pipe while we block on the child.
+                output = new String(process.getInputStream().readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                exited = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                // The failure this test exists to catch is cleanup that never
+                // finishes, so an unbounded wait would turn a red test into a
+                // build that hangs with no diagnostic at all.
+                process.destroyForcibly();
+            }
+            assertThat(exited).as("child exited within 30s, output was:%n%s", output).isTrue();
+
+            // Reported rather than merely asserted, so a classpath or fork problem
+            // reads as one instead of as a cleanup failure.
+            assertThat(output).as("process output").contains("STAGED ").doesNotContain("FAILED");
+            assertThat(process.exitValue()).as("exit code, output was:%n%s", output)
+                    .isEqualTo(expectedExitCode);
+            return Path.of(output.lines()
+                    .filter(line -> line.startsWith("STAGED "))
+                    .findFirst().orElseThrow()
+                    .substring("STAGED ".length()).trim());
+        }
+
+        @Test
+        @DisplayName("a committed file is not deleted afterwards by the shutdown pass")
+        void committedFilesAreForgotten() throws IOException {
+            // commit() moves the staging file away, so a shutdown pass that still
+            // believed it outstanding would be deleting a path that by then
+            // belongs to a completely different reservation.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "committed");
+            cache.commit(staged, key, ".wav");
+            // Somebody else's later reservation lands on the freed name.
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("a discarded file is not deleted afterwards by the shutdown pass")
+        void discardedFilesAreForgotten() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "abandoned");
+            cache.discard(staged);
+            // A later reservation lands on the freed name.
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("a swept file is not deleted afterwards by the shutdown pass")
+        void sweptFilesAreForgotten() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "abandoned long ago");
+            backdate(staged, Duration.ofDays(2));
+            assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("one undeletable staging file does not abort the whole sweep")
+        void sweepSurvivesAnUndeletableFile() throws IOException {
+            // A workspace is copied and shared, so a stage directory arriving
+            // with somebody else's permissions is expected. Aborting the walk
+            // would silently strand every later staging file forever.
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+
+            Path locked = workspace.cacheDirectory().resolve("aaa-locked");
+            Files.createDirectories(locked);
+            Path stuck = locked.resolve(".partial-stuck.bin");
+            Files.writeString(stuck, "cannot be removed");
+            backdate(stuck, Duration.ofDays(2));
+
+            Path unlocked = workspace.cacheDirectory().resolve("zzz-open");
+            Files.createDirectories(unlocked);
+            Path free = unlocked.resolve(".partial-free.bin");
+            Files.writeString(free, "can be removed");
+            backdate(free, Duration.ofDays(2));
+
+            if (!makeUndeletable(locked)) {
+                return;
+            }
+            try {
+                assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
+                assertThat(free).doesNotExist();
+                assertThat(stuck).exists();
+            } finally {
+                Files.setPosixFilePermissions(locked,
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+            }
+        }
+
+        @Test
+        @DisplayName("an explicit threshold of zero sweeps even a file written just now")
+        void explicitZeroThresholdSweepsEverything() throws IOException {
+            // The hook a future "mw cache --sweep" would use, and the reason the
+            // no-arg default has to be the conservative one.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path fresh = cache.stagingPath(key, ".bin");
+            Files.writeString(fresh, "written just now");
+            // Stamped explicitly rather than trusting the filesystem clock, so
+            // the assertion cannot turn on timestamp granularity.
+            backdate(fresh, Duration.ZERO);
+
+            assertThat(cache.sweepAbandonedStagingFiles(Duration.ZERO)).isEqualTo(1);
+            assertThat(fresh).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("the threshold divides the two sides of the boundary")
+        void sweepsOnlyWhatIsOlderThanTheThreshold() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path older = cache.stagingPath(key, ".bin");
+            Files.writeString(older, "sixty-one minutes old");
+            backdate(older, Duration.ofMinutes(61));
+            Path younger = cache.stagingPath(key, ".bin");
+            Files.writeString(younger, "fifty-nine minutes old");
+            backdate(younger, Duration.ofMinutes(59));
+
+            assertThat(cache.sweepAbandonedStagingFiles(Duration.ofHours(1))).isEqualTo(1);
+            assertThat(older).doesNotExist();
+            assertThat(younger).exists();
+        }
+
+        @Test
+        @DisplayName("an unusable threshold is refused rather than guessed at")
+        void refusesAnUnusableThreshold() {
+            StageCache cache = newWorkspace().cache();
+
+            assertThatThrownBy(() -> cache.sweepAbandonedStagingFiles(null))
+                    .isInstanceOf(NullPointerException.class);
+            // Negative would mean "delete files modified in the future", which is
+            // exactly the clock-skew case the sweep deliberately spares.
+            assertThatThrownBy(() -> cache.sweepAbandonedStagingFiles(Duration.ofSeconds(-1)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must not be negative");
+        }
+
+        @Test
+        @DisplayName("a workspace with no cache directory sweeps nothing and does not fail")
+        void sweepsNothingWhenTheCacheIsAbsent() throws IOException {
+            Workspace workspace = newWorkspace();
+            Files.delete(workspace.cacheDirectory());
+
+            assertThat(workspace.cache().sweepAbandonedStagingFiles()).isZero();
+        }
+    }
+
+    /**
+     * Makes a directory's contents undeletable, returning false when the platform
+     * or the current user makes that impossible -- running as root, or a
+     * filesystem without POSIX permissions.
+     */
+    private static boolean makeUndeletable(Path directory) {
+        try {
+            Files.setPosixFilePermissions(directory,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x"));
+        } catch (UnsupportedOperationException | IOException e) {
+            return false;
+        }
+        Path probe = directory.resolve(".writable-probe");
+        try {
+            Files.writeString(probe, "root ignores permissions");
+            Files.deleteIfExists(probe);
+        } catch (IOException expected) {
+            return true;
+        }
+        // Writable after all -- undo, so the temp directory can still be cleaned up.
+        try {
+            Files.setPosixFilePermissions(directory,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        } catch (IOException ignored) {
+            // Nothing further to try.
+        }
+        return false;
+    }
+
+    /** Backdates a file so a sweep sees it as abandoned rather than in flight. */
+    private static void backdate(Path file, Duration age) throws IOException {
+        Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(age)));
+    }
+
+    /**
+     * Replaces a workspace's cache directory with a symlink to {@code target},
+     * returning false when the platform will not create symlinks at all.
+     */
+    private static boolean replaceCacheWithSymlink(Workspace workspace, Path target)
+            throws IOException {
+        Path cacheDir = workspace.cacheDirectory();
+        try (var entries = Files.walk(cacheDir)) {
+            entries.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } });
+        }
+        try {
+            Files.createSymbolicLink(cacheDir, target);
+            return true;
+        } catch (UnsupportedOperationException | IOException e) {
+            return false;
         }
     }
 

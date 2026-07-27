@@ -188,7 +188,32 @@ public final class Workspace {
                             + ", but this build understands at most " + CURRENT_SCHEMA_VERSION
                             + "; upgrade Music Wizard to open it");
         }
+        workspace.sweepAbandonedStagingFilesQuietly();
         return workspace;
+    }
+
+    /**
+     * Reclaims disk from staging files that an interrupted earlier run left in
+     * the cache.
+     *
+     * <p>Opening is the only moment the tool reliably reaches on every path, and
+     * a stem abandoned by a crashed separation is hundreds of megabytes that
+     * nothing else will ever delete. The sweep only removes files untouched for
+     * {@link StageCache#ABANDONED_STAGING_AGE}, so a run still writing its stem
+     * in another process -- opening a second command against a workspace mid-run
+     * is ordinary usage -- is not affected.
+     *
+     * <p>Failure is swallowed on purpose. Reclaiming disk is housekeeping, and a
+     * cache directory that is read-only, or is a symbolic link the sweep refuses
+     * to delete through, must not be the reason a workspace cannot be opened at
+     * all.
+     */
+    private void sweepAbandonedStagingFilesQuietly() {
+        try {
+            cache().sweepAbandonedStagingFiles();
+        } catch (RuntimeException ignored) {
+            // Best effort: an unopenable workspace is far worse than a stale file.
+        }
     }
 
     /** True when the directory looks like a workspace. */
