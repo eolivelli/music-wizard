@@ -27,6 +27,7 @@ import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,41 @@ class DownbeatEstimationTest {
                 double decay = Math.exp(-8.0 * i / clickLength);
                 out[start + i] += (float) (amplitude * decay
                         * Math.sin(2 * Math.PI * 1000 * i / RATE));
+            }
+        }
+        for (double frequency : SignalFactory.majorTriad(60)) {
+            for (int i = 0; i < length; i++) {
+                out[i] += (float) (0.5 / 3 * Math.sin(2 * Math.PI * frequency * i / RATE));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * A drum pattern over one unchanging chord: a low kick on beat 1, a noise
+     * snare on beat 3, and almost nothing on 2 and 4.
+     *
+     * <p>Unlike {@link #accentedOneChord} the beats differ in timbre as well as
+     * in level, which spreads the onset strengths far enough apart to catch a
+     * confidence model that scales with how loud the accent is.
+     */
+    private static float[] kickAndSnare(double seconds) {
+        int length = (int) Math.round(seconds * RATE);
+        float[] out = new float[length];
+        // Fixed seed: the snare needs a broadband spectrum, and a fixture whose
+        // answer changes from run to run is not a tier-0 fixture.
+        Random noise = new Random(7);
+        int beat = 0;
+        for (double t = 0; t < seconds; t += 0.5, beat++) {
+            int start = (int) Math.round(t * RATE);
+            int strike = Math.max(1, RATE / 20);
+            for (int i = 0; i < strike && start + i < length; i++) {
+                double decay = Math.exp(-8.0 * i / strike);
+                out[start + i] += (float) switch (beat % 4) {
+                    case 0 -> 0.9 * decay * Math.sin(2 * Math.PI * 60 * i / RATE);
+                    case 2 -> 0.6 * decay * (noise.nextDouble() * 2 - 1);
+                    default -> 0.05 * decay * Math.sin(2 * Math.PI * 1000 * i / RATE);
+                };
             }
         }
         for (double frequency : SignalFactory.majorTriad(60)) {
@@ -203,8 +239,13 @@ class DownbeatEstimationTest {
             // report a confidence that harmony-backed answers cannot beat -- a
             // consumer choosing between two grids on confidence alone would
             // otherwise prefer the weaker evidence.
-            for (float[] signal : new float[][] {
-                    accentedOneChord(24), chordsPerBar(32), SignalFactory.clickTrack(120, 20, RATE)}) {
+            // kickAndSnare is the fixture that matters: a kick, a noise snare and
+            // two near-silent beats make the phases differ by enough that the
+            // original confidence model reported 0.53 here, above what it gave
+            // some harmony-backed answers. The three cheap fixtures alongside it
+            // all stayed under the cap on their own.
+            for (float[] signal : new float[][] {kickAndSnare(24), accentedOneChord(24),
+                    chordsPerBar(32), SignalFactory.clickTrack(120, 20, RATE)}) {
                 Analysis analysis = Analysis.of(signal);
 
                 DownbeatEstimator.Estimate estimate = DownbeatEstimator.fromOnsets(
@@ -235,28 +276,26 @@ class DownbeatEstimationTest {
         }
 
         /**
-         * An envelope shaped like a real one: {@link OnsetEnvelope} is normalised
-         * to zero mean and unit variance, so most of it is *negative* and the
-         * peaks stand a few deviations above. Testing only with all-positive
-         * values would miss anything that treats the envelope as a magnitude.
+         * An envelope with a chosen strength at each phase's beats.
          *
-         * @param loud the strength at beats of the accented phase, in deviations
-         * @param soft the strength at every other beat
+         * <p>Shaped like a real one: {@link OnsetEnvelope} is normalised to zero
+         * mean and unit variance, so between the peaks it sits <em>below</em>
+         * zero, and the levels at the beats themselves are free to be negative
+         * too. Testing only with positive values would miss anything that treats
+         * the envelope as a magnitude, which is what let the first version of
+         * this scoring through.
+         *
+         * @param levelsPerPhase strength at the beats of each phase, in deviations
          */
-        private static OnsetEnvelope accentedEnvelope(List<Double> beatTimes, int phase,
-                                                      double loud, double soft) {
+        private static OnsetEnvelope envelopeOf(List<Double> beatTimes, double[] levelsPerPhase) {
             double[] strength = new double[(int) Math.round(
                     (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
             java.util.Arrays.fill(strength, -0.2);
             for (int beat = 0; beat < beatTimes.size(); beat++) {
                 strength[(int) Math.round(beatTimes.get(beat) * 100)] =
-                        Math.floorMod(beat, 4) == phase ? loud : soft;
+                        levelsPerPhase[Math.floorMod(beat, levelsPerPhase.length)];
             }
             return new OnsetEnvelope(strength, 100);
-        }
-
-        private static OnsetEnvelope accentedEnvelope(List<Double> beatTimes, int phase) {
-            return accentedEnvelope(beatTimes, phase, 10, 1);
         }
 
         private static List<Double> beatsEvery(double interval, int count) {
@@ -303,7 +342,7 @@ class DownbeatEstimationTest {
             Chroma chroma = stepwiseChroma(32, 4, 0);
 
             DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
-                    beats, chroma, accentedEnvelope(beats, 2), 4);
+                    beats, chroma, envelopeOf(beats, new double[] {1, 1, 10, 1}), 4);
 
             assertThat(estimate.phase()).isZero();
         }
@@ -345,14 +384,77 @@ class DownbeatEstimationTest {
             List<Double> beats = beatsEvery(0.5, 33);
             Chroma chroma = stepwiseChroma(32, 4, 0);
 
+            // The first row is the one that matters: a faint peak against the
+            // envelope's own negative floor, which is where dividing by the mean
+            // put the term at +3.95 against harmony's ceiling of 1.0. The rows
+            // after it walk the divisor through zero, where the old scaling was
+            // also discontinuous.
             for (double[] levels : new double[][] {
-                    {0.62, 0.59}, {0.01, -0.01}, {-0.5, -0.6}, {100, 1}}) {
+                    {0.62, -0.2}, {0.62, 0.59}, {0.01, -0.01}, {-0.5, -0.6}, {100, 1}}) {
+                double[] perPhase = {levels[1], levels[1], levels[0], levels[1]};
                 DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(beats, chroma,
-                        accentedEnvelope(beats, 2, levels[0], levels[1]), 4);
+                        envelopeOf(beats, perPhase), 4);
 
                 assertThat(estimate.phase()).as("accent %s", java.util.Arrays.toString(levels))
                         .isZero();
             }
+        }
+
+        @Test
+        @DisplayName("bounding the accent does not cost it its ranking")
+        void loudAccentsAreStillRanked() {
+            // Bounding the onset term by clamping it flattened every accent past
+            // the bound onto one score, and the resulting tie went to the earlier
+            // phase -- so a signal whose loudest beat is the second of the bar
+            // came back phased on the first, decided by arithmetic rather than by
+            // evidence. tanh bounds without ordering loss; these levels all
+            // saturate a clamp and must still rank the second beat highest.
+            List<Double> beats = beatsEvery(0.5, 33);
+
+            for (double[] levels : new double[][] {
+                    {6, 9, 2, 2}, {8, 10, 2, 2}, {5, 6, 1, 1}, {4, 5, 1, 1}}) {
+                DownbeatEstimator.Estimate estimate =
+                        DownbeatEstimator.fromOnsets(beats, envelopeOf(beats, levels), 4);
+
+                assertThat(estimate.phase())
+                        .as("levels %s", java.util.Arrays.toString(levels)).isEqualTo(1);
+            }
+        }
+
+        @Test
+        @DisplayName("harmony that changes at no consistent phase is not confident")
+        void unalignedHarmonyIsNotConfident() {
+            // A wide margin over the runner-up is easy to come by on material
+            // that changes chord often at no fixed phase: the margin is real and
+            // the phase is still a guess. Scoring confidence from the margin
+            // alone reported the ceiling on a quarter of these.
+            List<Double> beats = beatsEvery(0.5, 65);
+            double worst = 0;
+            for (int seed = 1; seed <= 8; seed++) {
+                Random random = new Random(seed);
+                for (int trial = 0; trial < 200; trial++) {
+                    double[][] spans = new double[64][12];
+                    int pitchClass = 0;
+                    for (int span = 0; span < spans.length; span++) {
+                        // A change every fourth span on average, landing wherever
+                        // it lands rather than on a bar line.
+                        if (random.nextInt(4) == 0) {
+                            pitchClass = random.nextInt(12);
+                        }
+                        spans[span][pitchClass] = 1;
+                    }
+                    worst = Math.max(worst, DownbeatEstimator
+                            .estimate(beats, new Chroma(spans, 0), flatEnvelope(40), 4)
+                            .confidence().value());
+                }
+            }
+
+            // Below what the same measure reports for harmony that does line up,
+            // asserted just below as the control.
+            assertThat(worst).isLessThan(0.8);
+            assertThat(DownbeatEstimator
+                    .estimate(beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4)
+                    .confidence().value()).isGreaterThanOrEqualTo(0.8);
         }
 
         @Test

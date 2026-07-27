@@ -50,47 +50,75 @@ import java.util.Objects;
  * distance and the accent always decides; on a chord change per bar they are
  * tenths and it never does.
  *
- * <p>Confidence follows the same ordering. It is driven by the harmonic margin,
- * not by the winning score, so a phase the accent broke a tie on cannot borrow
- * the authority of evidence that did not choose it, and a phase resting on
- * onsets alone is capped below anything harmony has backed.
+ * <p>Confidence follows the same ordering, and asks three separate questions of
+ * the harmony rather than one: did it decide the phase, does it prefer that
+ * phase over the alternatives, and was there enough of it to mean anything. A
+ * margin alone is not enough — material that changes chord often at no
+ * consistent phase produces a wide margin by luck — so the three are multiplied
+ * and any one of them failing brings the number down. A phase resting on onsets
+ * alone is capped below anything harmony has backed.
  *
  * <p>The meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
  */
 public final class DownbeatEstimator {
 
     /**
-     * The most the onset term can add to or take from a phase's score.
+     * The bound on what the onset term can add to or take from a phase's score.
      *
-     * <p>A hard bound rather than a scaling, which is what makes the balance
-     * between the two terms something that can be stated rather than tuned: the
-     * onset term moves a score by at most this much either way, so a phase whose
-     * mean harmonic novelty leads by more than {@code 2 * ONSET_WEIGHT} wins
-     * whatever the onsets say. Below that margin the harmony is not
-     * distinguishing the phases and the accent is allowed to decide.
+     * <p>A bound rather than a scaling, which is what makes the balance between
+     * the two terms something that can be stated rather than tuned: the onset
+     * term stays strictly inside this much either way, so a phase whose mean
+     * harmonic novelty leads by more than {@code 2 * ONSET_WEIGHT} wins whatever
+     * the onsets say. Below that margin the harmony is not distinguishing the
+     * phases and the accent is allowed to decide.
      */
     private static final double ONSET_WEIGHT = 0.05;
 
     /**
-     * The onset advantage, in standard deviations, that counts as a full accent.
+     * The onset advantage, in standard deviations, at which the term is about
+     * three quarters of the way to its bound.
      *
      * <p>Standard deviations because that is the unit {@link OnsetEnvelope}
      * reports in: it is normalised to zero mean and unit variance, so the
-     * difference between one phase's mean strength and the average phase's is
-     * directly interpretable without dividing by anything. Dividing would be
-     * unsafe here in any case — a mean-zero envelope makes the divisor's sign
-     * arbitrary and its magnitude unbounded.
+     * difference between one phase's mean strength and the average beat's needs
+     * no dividing to be interpretable. Dividing would be unsafe here in any case
+     * — a mean-zero envelope makes the divisor's sign arbitrary and its
+     * magnitude unbounded.
+     *
+     * <p>A soft knee rather than a cutoff, because the values being measured are
+     * strengths sampled <em>at beats</em>, which are peaks rather than a random
+     * sample of frames, and their per-phase spread runs from about 0.02 to 1.9
+     * deviations across the fixtures here. A hard clamp anywhere in that range
+     * would flatten two genuinely different accents onto the same score and
+     * hand the tie to whichever phase happens to come first; {@code tanh} is
+     * strictly monotone, so it bounds the term without ever losing the ordering.
      */
     private static final double ONSET_FULL_SCALE = 1.0;
 
     /**
-     * The harmonic margin over the runner-up that counts as a firm answer.
+     * The harmonic margin over the runner-up above which the answer was decided
+     * by harmony alone.
      *
      * <p>Not chosen: it is the margin above which the onset term provably cannot
-     * change the winner, since that term spans {@code ±ONSET_WEIGHT}. A phase
-     * that leads by this much was decided by harmony alone.
+     * change the winner, since that term stays strictly inside
+     * {@code ±ONSET_WEIGHT}.
+     *
+     * <p>This says <em>who</em> decided, not <em>how well</em>. It is used as one
+     * factor of the confidence and not as the whole of it, because a large margin
+     * is easy to come by on material that changes chord often at no consistent
+     * phase — the margin is then real and the phase is still a guess.
      */
     private static final double CONFIDENT_MARGIN = 2 * ONSET_WEIGHT;
+
+    /**
+     * Bars that must be observed before harmonic evidence is taken at full
+     * strength.
+     *
+     * <p>Two, because one bar cannot establish that anything recurs: a single
+     * chord change lands on some phase by necessity, and reading that as a
+     * preference would be reading the only datum as a pattern.
+     */
+    private static final int BARS_FOR_FULL_CONFIDENCE = 2;
 
     /**
      * Confidence in a phase nothing at all supports.
@@ -182,25 +210,82 @@ public final class DownbeatEstimator {
                             + (chroma.isBeatSynchronous() ? "" : " on a fixed time grid"));
         }
 
-        double[] harmony = meanPerPhase(harmonicNovelty(chroma), firstBeat, lastBeat, beatsPerBar);
+        // Zero for a phase with no beats in range, because no observed novelty is
+        // exactly what it says: nothing changed there that we saw.
+        double[] harmony = meanPerPhase(
+                harmonicNovelty(chroma), firstBeat, lastBeat, beatsPerBar, 0);
         double[] accent = onsetAdvantage(
                 onsetStrengthPerBeat(beatTimes, envelope), firstBeat, lastBeat, beatsPerBar);
 
         double[] score = new double[beatsPerBar];
         for (int phase = 0; phase < beatsPerBar; phase++) {
-            score[phase] = harmony[phase] + ONSET_WEIGHT * accent[phase];
+            score[phase] = harmony[phase] + onsetTerm(accent[phase]);
         }
 
         int phase = argMax(score);
-        // Confidence comes from the harmonic margin rather than from the score
-        // margin, so that a phase the onsets happened to break a tie on cannot
-        // borrow the authority of evidence that did not choose it. Negative when
-        // the accent overrode the harmony, which clamps to no credit at all.
-        double harmonicMargin = harmony[phase] - runnerUp(harmony, phase);
+        int scorableBeats = lastBeat - firstBeat + 1;
         double confidence = BASE_CONFIDENCE
-                + HARMONIC_CONFIDENCE * Math.clamp(harmonicMargin / CONFIDENT_MARGIN, 0, 1)
-                + ONSET_CONFIDENCE * Math.clamp(accent[phase], 0, 1);
+                + HARMONIC_CONFIDENCE * harmonicAgreement(harmony, phase, scorableBeats)
+                + ONSET_CONFIDENCE * Math.max(0, Math.tanh(accent[phase] / ONSET_FULL_SCALE));
         return new Estimate(phase, beatsPerBar, Confidence.clamped(confidence));
+    }
+
+    /**
+     * How far the harmony backs the chosen phase, in {@code [0, 1]}.
+     *
+     * <p>Three things all have to hold before harmonic evidence is worth much,
+     * and each of them fails on its own in a way the others do not catch:
+     *
+     * <ul>
+     * <li><b>Harmony decided it.</b> The margin over the runner-up has to clear
+     *     what an accent could have moved, or the phase was chosen by the onset
+     *     term and cannot borrow the authority of evidence that did not pick it.
+     *     Negative when the accent overrode the harmony, which is no credit.</li>
+     * <li><b>Harmony prefers it.</b> The winning phase has to carry a share of
+     *     all the harmonic change that beats what it would get by chance. Without
+     *     this, material that changes chord often at no consistent phase produces
+     *     a large margin by luck and reports full confidence in a guess — the
+     *     margin is real, the phase is not.</li>
+     * <li><b>There is enough of it.</b> One bar cannot establish that anything
+     *     recurs.</li>
+     * </ul>
+     *
+     * <p>Multiplied rather than averaged, so that any one of them failing takes
+     * the confidence down rather than being outvoted by the other two.
+     */
+    private static double harmonicAgreement(double[] harmony, int phase, int scorableBeats) {
+        int beatsPerBar = harmony.length;
+        double margin = harmony[phase] - runnerUp(harmony, phase);
+        double decided = Math.clamp(margin / CONFIDENT_MARGIN, 0, 1);
+
+        double total = 0;
+        for (double value : harmony) {
+            total += value;
+        }
+        // Uniform novelty gives every phase 1/beatsPerBar, which is the share a
+        // phase carries by chance and therefore worth nothing.
+        double chance = 1.0 / beatsPerBar;
+        double share = total > 0 ? harmony[phase] / total : chance;
+        double preferred = beatsPerBar > 1
+                ? Math.clamp((share - chance) / (1 - chance), 0, 1)
+                : 1;
+
+        double observed = Math.clamp(
+                scorableBeats / (double) (BARS_FOR_FULL_CONFIDENCE * beatsPerBar), 0, 1);
+        return decided * preferred * observed;
+    }
+
+    /**
+     * The onset term's contribution to a score, bounded by {@link #ONSET_WEIGHT}.
+     *
+     * <p>{@code tanh} rather than a clamp, so that the bound never costs the term
+     * its ordering: two accents that both exceed a hard cutoff would score
+     * identically and the tie would go to whichever phase came first, which on a
+     * signal with a genuine accent is a wrong answer arrived at by arithmetic
+     * rather than by evidence.
+     */
+    private static double onsetTerm(double advantage) {
+        return ONSET_WEIGHT * Math.tanh(advantage / ONSET_FULL_SCALE);
     }
 
     /**
@@ -222,7 +307,8 @@ public final class DownbeatEstimator {
         double[] accent = onsetAdvantage(onsetStrengthPerBeat(beatTimes, envelope),
                 0, beatTimes.size() - 1, beatsPerBar);
         int phase = argMax(accent);
-        double confidence = BASE_CONFIDENCE + ONSET_CONFIDENCE * Math.clamp(accent[phase], 0, 1);
+        double confidence = BASE_CONFIDENCE
+                + ONSET_CONFIDENCE * Math.max(0, Math.tanh(accent[phase] / ONSET_FULL_SCALE));
         return new Estimate(phase, beatsPerBar, Confidence.clamped(confidence));
     }
 
@@ -273,14 +359,15 @@ public final class DownbeatEstimator {
      * extra.
      *
      * <p>A phase with no beats in range — possible only on a recording shorter
-     * than a bar and a half — scores the overall mean rather than zero, so that
-     * having observed nothing about it reads as unremarkable rather than as
-     * evidence against it. Zero would not be neutral: the onset envelope is
-     * centred on zero, so zero is an average frame there and no strength at all
-     * in the harmonic term.
+     * than two bars — takes {@code unobserved}, because what counts as "nothing
+     * was seen here" differs between the two quantities. For novelty it is zero:
+     * no change was observed. For onset strength it is the overall mean, since
+     * the envelope is centred on zero and a zero there is an ordinary frame
+     * rather than an absence. Using the wrong one gives an unobserved phase
+     * either an edge or a handicap it did nothing to earn.
      */
     private static double[] meanPerPhase(double[] perBeat, int firstBeat, int lastBeat,
-                                         int beatsPerBar) {
+                                         int beatsPerBar, double unobserved) {
         double[] totals = new double[beatsPerBar];
         int[] counts = new int[beatsPerBar];
         for (int beat = firstBeat; beat <= lastBeat; beat++) {
@@ -288,9 +375,8 @@ public final class DownbeatEstimator {
             totals[phase] += perBeat[beat];
             counts[phase]++;
         }
-        double overall = mean(perBeat, firstBeat, lastBeat);
         for (int phase = 0; phase < beatsPerBar; phase++) {
-            totals[phase] = counts[phase] > 0 ? totals[phase] / counts[phase] : overall;
+            totals[phase] = counts[phase] > 0 ? totals[phase] / counts[phase] : unobserved;
         }
         return totals;
     }
@@ -306,16 +392,17 @@ public final class DownbeatEstimator {
      * turns a faint accent into an unbounded score and puts a discontinuity in
      * the middle of the scale.
      *
-     * @return one value per phase, clamped to {@code [-1, 1]}, so that the onset
-     *     term can move a score by at most {@code ONSET_WEIGHT} either way
+     * @return one value per phase, in deviations and unbounded; bounding happens
+     *     in {@link #onsetTerm}, so that ranking these against each other stays
+     *     possible however large they get
      */
     private static double[] onsetAdvantage(double[] perBeat, int firstBeat, int lastBeat,
                                            int beatsPerBar) {
-        double[] perPhase = meanPerPhase(perBeat, firstBeat, lastBeat, beatsPerBar);
         double overall = mean(perBeat, firstBeat, lastBeat);
+        double[] perPhase = meanPerPhase(perBeat, firstBeat, lastBeat, beatsPerBar, overall);
         double[] advantage = new double[beatsPerBar];
         for (int phase = 0; phase < beatsPerBar; phase++) {
-            advantage[phase] = Math.clamp((perPhase[phase] - overall) / ONSET_FULL_SCALE, -1, 1);
+            advantage[phase] = perPhase[phase] - overall;
         }
         return advantage;
     }
@@ -369,6 +456,11 @@ public final class DownbeatEstimator {
     }
 
     private static double cosine(double[] a, double[] b) {
+        if (a.length != b.length) {
+            // Chroma does not validate its row shapes, so a ragged one would
+            // otherwise index off the end of the shorter row.
+            return Double.NaN;
+        }
         double dot = 0;
         double normA = 0;
         double normB = 0;
