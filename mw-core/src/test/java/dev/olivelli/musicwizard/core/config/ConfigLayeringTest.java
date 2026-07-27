@@ -306,9 +306,39 @@ class ConfigLayeringTest {
                     .contains(executable);
         }
 
+        @Test
+        @DisplayName("a separator inside quotes does not split a Windows entry")
+        void doesNotSplitInsideQuotes() throws Exception {
+            // The only way to put a directory whose name contains the separator
+            // on PATH is to quote it; splitting first would turn one usable
+            // entry into two unusable fragments.
+            Path directory = Files.createDirectory(
+                    tempDirectory.resolve("bin" + java.io.File.pathSeparatorChar + "x"));
+            Path executable = fakeBinaryIn(directory, "lilypond.exe");
+
+            assertThat(ConfigLoader.discover("\"" + directory + "\"", true))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("an unbalanced quote does not swallow the rest of PATH")
+        void unbalancedQuoteDoesNotSwallowTheRest() throws Exception {
+            // Honouring an unterminated quote would make one malformed entry
+            // cost every entry after it. The malformed entry itself is skipped:
+            // a quote cannot be part of a Windows filename.
+            Path executable = fakeBinary("lilypond.exe");
+            String path = "\"C" + java.io.File.pathSeparator + tempDirectory;
+
+            assertThat(ConfigLoader.discover(path, true)).contains(executable);
+        }
+
         /** Stands in for the binary: any executable file with the right name. */
         private Path fakeBinary(String name) throws Exception {
-            Path binary = tempDirectory.resolve(name);
+            return fakeBinaryIn(tempDirectory, name);
+        }
+
+        private Path fakeBinaryIn(Path directory, String name) throws Exception {
+            Path binary = directory.resolve(name);
             Files.writeString(binary, "#!/bin/sh\necho fake\n");
             assertThat(binary.toFile().setExecutable(true)).isTrue();
             return binary;

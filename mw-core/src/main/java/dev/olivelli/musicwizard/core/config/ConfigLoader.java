@@ -48,8 +48,9 @@ public final class ConfigLoader {
      * executables, so a discovery that only ever looks for {@code lilypond}
      * cannot find an installation there at all.
      */
-    private static final String[] POSIX_EXECUTABLES = {"lilypond"};
-    private static final String[] WINDOWS_EXECUTABLES = {"lilypond.exe", "lilypond.bat", "lilypond.cmd"};
+    private static final List<String> POSIX_EXECUTABLES = List.of("lilypond");
+    private static final List<String> WINDOWS_EXECUTABLES =
+            List.of("lilypond.exe", "lilypond.bat", "lilypond.cmd");
 
     private final ObjectMapper yamlMapper;
 
@@ -178,17 +179,23 @@ public final class ConfigLoader {
     }
 
     /**
-     * The discovery half of {@link #findLilyPond}, with the environment passed
-     * in so that either platform's rules can be exercised from a test running
-     * on the other. {@code windows} selects the executable names, the search
-     * prefixes and the {@code PATH} separator; nothing else about the host
-     * changes with it.
+     * The discovery half of {@link #findLilyPond}, with {@code PATH} passed in
+     * so it can be driven from a test.
+     *
+     * <p>{@code windows} selects the executable names, the fallback prefixes
+     * and whether entries may be quoted — the conventions that live in the
+     * shell rather than in the filesystem. Everything path-shaped still comes
+     * from the host: {@link Path#of} decides what parses and what is absolute,
+     * and entries are separated by {@link java.io.File#pathSeparator}. So a
+     * test on POSIX can prove that {@code lilypond.exe} is the name looked for,
+     * but it must still hand in POSIX-shaped directories; it cannot prove
+     * anything about how {@code C:\...} is parsed.
      */
     static Optional<Path> discover(String pathVariable, boolean windows) {
-        String[] names = windows ? WINDOWS_EXECUTABLES : POSIX_EXECUTABLES;
+        List<String> names = windows ? WINDOWS_EXECUTABLES : POSIX_EXECUTABLES;
 
         if (pathVariable != null) {
-            for (String entry : pathVariable.split(windows ? ";" : ":")) {
+            for (String entry : splitPath(pathVariable, windows)) {
                 Path directory = pathEntryDirectory(entry, windows);
                 if (directory == null) {
                     continue;
@@ -210,6 +217,42 @@ public final class ConfigLoader {
     }
 
     /**
+     * Splits {@code PATH} into entries.
+     *
+     * <p>On Windows a separator inside quotes does not separate: a directory
+     * whose name contains {@code ;} is only expressible as a quoted entry, and
+     * splitting it blindly turns one usable entry into two unusable fragments.
+     * On POSIX a quote is an ordinary filename character and is left alone.
+     *
+     * <p>If the quotes do not balance, the whole variable is split blindly
+     * instead. Honouring an unterminated quote would let one malformed entry
+     * swallow every entry after it, which is a worse failure than ignoring the
+     * quoting of an entry that was already malformed.
+     */
+    private static List<String> splitPath(String pathVariable, boolean windows) {
+        List<String> entries = new ArrayList<>();
+        StringBuilder entry = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < pathVariable.length(); i++) {
+            char c = pathVariable.charAt(i);
+            if (windows && c == '"') {
+                quoted = !quoted;
+                entry.append(c);
+            } else if (c == java.io.File.pathSeparatorChar && !quoted) {
+                entries.add(entry.toString());
+                entry.setLength(0);
+            } else {
+                entry.append(c);
+            }
+        }
+        if (quoted) {
+            return List.of(pathVariable.split(java.io.File.pathSeparator, -1));
+        }
+        entries.add(entry.toString());
+        return entries;
+    }
+
+    /**
      * A {@code PATH} entry as a directory to search, or null if it is not one
      * we are willing to use.
      *
@@ -222,14 +265,21 @@ public final class ConfigLoader {
      * {@code notation.lilypondPath}.
      */
     private static Path pathEntryDirectory(String entry, boolean windows) {
-        if (entry.isBlank()) {
-            return null;
-        }
         String value = entry;
-        if (windows && value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+        if (windows) {
             // cmd.exe strips these; leaving them in makes the whole entry
             // unusable rather than merely unquoted.
-            value = value.substring(1, value.length() - 1);
+            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+            // An unbalanced quote cannot be part of a Windows filename, so an
+            // entry still carrying one is malformed however it is read.
+            if (value.indexOf('"') >= 0) {
+                return null;
+            }
+        }
+        if (value.isBlank()) {
+            return null;
         }
         Path directory;
         try {
@@ -241,7 +291,7 @@ public final class ConfigLoader {
         return directory.isAbsolute() ? directory : null;
     }
 
-    private static Optional<Path> firstExecutableIn(Path directory, String[] names) {
+    private static Optional<Path> firstExecutableIn(Path directory, List<String> names) {
         for (String name : names) {
             Path candidate = directory.resolve(name);
             if (isExecutable(candidate)) {
@@ -252,27 +302,25 @@ public final class ConfigLoader {
     }
 
     /**
-     * Where to look once {@code PATH} has come up empty. On Windows this is the
-     * layout the LilyPond installer uses; the POSIX list exists because
-     * Homebrew is not on a non-login shell's {@code PATH}.
+     * Where to look once {@code PATH} has come up empty.
+     *
+     * <p>The POSIX list exists because Homebrew is not on a non-login shell's
+     * {@code PATH}. Windows gets no such list: LilyPond has shipped no Windows
+     * installer since 2.24, only a zip the user extracts wherever they like, so
+     * there is no location to guess. The package managers that do install it —
+     * Chocolatey, Scoop — put their shims on {@code PATH}, which is the route
+     * this class now handles. Anyone else sets {@code notation.lilypondPath}.
      */
     private static List<String> searchPrefixes(boolean windows) {
-        if (!windows) {
-            return List.of(
-                    "/home/linuxbrew/.linuxbrew/bin",
-                    System.getProperty("user.home") + "/.linuxbrew/bin",
-                    "/opt/homebrew/bin",
-                    "/usr/local/bin",
-                    "/usr/bin");
+        if (windows) {
+            return List.of();
         }
-        List<String> prefixes = new ArrayList<>();
-        for (String variable : new String[] {"ProgramFiles", "ProgramFiles(x86)"}) {
-            String root = System.getenv(variable);
-            if (root != null && !root.isBlank()) {
-                prefixes.add(root + "\\LilyPond\\usr\\bin");
-            }
-        }
-        return prefixes;
+        return List.of(
+                "/home/linuxbrew/.linuxbrew/bin",
+                System.getProperty("user.home") + "/.linuxbrew/bin",
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin");
     }
 
     private static boolean isWindows() {
