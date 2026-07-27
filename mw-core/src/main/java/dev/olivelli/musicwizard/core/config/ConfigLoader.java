@@ -24,7 +24,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -38,6 +42,15 @@ public final class ConfigLoader {
 
     private static final String GLOBAL_CONFIG_FILE = "config.yaml";
     private static final String APP_DIRECTORY = "music-wizard";
+
+    /**
+     * What the binary is called, per platform. Windows has no extensionless
+     * executables, so a discovery that only ever looks for {@code lilypond}
+     * cannot find an installation there at all.
+     */
+    private static final List<String> POSIX_EXECUTABLES = List.of("lilypond");
+    private static final List<String> WINDOWS_EXECUTABLES =
+            List.of("lilypond.exe", "lilypond.bat", "lilypond.cmd");
 
     private final ObjectMapper yamlMapper;
 
@@ -140,6 +153,11 @@ public final class ConfigLoader {
      * Homebrew installs outside the default {@code PATH} of a non-login shell,
      * which is exactly how a user ends up with LilyPond installed and the tool
      * unable to find it.
+     *
+     * <p>An explicit path is used exactly as written, including its extension:
+     * a configured path that is not executable is an error rather than a hint,
+     * so a Windows user who omits {@code .exe} is told so instead of silently
+     * getting some other binary.
      */
     public static Optional<Path> findLilyPond(MusicWizardConfig config) {
         Optional<String> configured = config != null
@@ -157,32 +175,234 @@ public final class ConfigLoader {
             }
             return Optional.of(explicit);
         }
+        return discover(System.getenv("PATH"), isWindows());
+    }
 
-        String pathVariable = System.getenv("PATH");
+    /**
+     * The discovery half of {@link #findLilyPond}, with {@code PATH} passed in
+     * so it can be driven from a test.
+     *
+     * <p>{@code windows} selects the executable names, the fallback prefixes
+     * and whether entries may be quoted — the conventions that live in the
+     * shell rather than in the filesystem. Everything path-shaped still comes
+     * from the host: {@link Path#of} decides what parses and what is absolute,
+     * and entries are separated by {@link java.io.File#pathSeparator}. So a
+     * test on POSIX can prove that {@code lilypond.exe} is the name looked for,
+     * but it must still hand in POSIX-shaped directories; it cannot prove
+     * anything about how {@code C:\...} is parsed.
+     */
+    static Optional<Path> discover(String pathVariable, boolean windows) {
+        return discover(pathVariable, windows, searchPrefixes(windows));
+    }
+
+    /**
+     * As {@link #discover(String, boolean)}, with the fallback prefixes given
+     * explicitly so a test can plant a binary under one. The real list names
+     * directories no test may write to.
+     */
+    static Optional<Path> discover(String pathVariable, boolean windows, List<String> prefixes) {
+        List<String> names = windows ? WINDOWS_EXECUTABLES : POSIX_EXECUTABLES;
+
         if (pathVariable != null) {
-            for (String entry : pathVariable.split(java.io.File.pathSeparator)) {
-                if (entry.isBlank()) {
-                    continue;
+            for (String entry : splitPath(pathVariable, windows)) {
+                Optional<Path> found = searchEntry(entry, windows, names);
+                // An entry only spans a separator because a quote was read as
+                // quoting it, which happens only on the Windows branch. If that
+                // reading finds nothing, search what a blind split would have
+                // seen instead: discovery is a search, not a parse, and a
+                // misplaced quote must never cost a directory the user did
+                // list. The fragments at the two ends still carry the quote
+                // that delimited the entry; searchEntry drops it for them.
+                if (found.isEmpty()
+                        && entry.indexOf(java.io.File.pathSeparatorChar) >= 0) {
+                    for (String fragment : splitPath(entry, false)) {
+                        found = searchEntry(fragment, windows, names);
+                        if (found.isPresent()) {
+                            break;
+                        }
+                    }
                 }
-                Path candidate = Path.of(entry).resolve("lilypond");
-                if (isExecutable(candidate)) {
-                    return Optional.of(candidate);
+                if (found.isPresent()) {
+                    return found;
                 }
             }
         }
 
-        for (String prefix : new String[] {
-                "/home/linuxbrew/.linuxbrew/bin",
-                System.getProperty("user.home") + "/.linuxbrew/bin",
-                "/opt/homebrew/bin",
-                "/usr/local/bin",
-                "/usr/bin"}) {
-            Path candidate = Path.of(prefix, "lilypond");
+        for (String prefix : prefixes) {
+            Path directory = parseDirectory(prefix);
+            if (directory == null || !directory.isAbsolute()) {
+                continue;
+            }
+            Optional<Path> found = firstExecutableIn(directory, names);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Looks for the binary in the directory a single {@code PATH} entry names. */
+    private static Optional<Path> searchEntry(String entry, boolean windows, List<String> names) {
+        Path directory = pathEntryDirectory(entry, windows);
+        if (directory != null) {
+            return firstExecutableIn(directory, names);
+        }
+        if (windows && entry.indexOf('"') >= 0) {
+            // A quote cannot be part of a Windows filename, so an entry
+            // carrying one was quoted rather than named that way — whether
+            // properly, as "C:\Program Files\LilyPond\bin", or by a stray
+            // that never closed. Having failed to read it as written, read
+            // what is left when the quotes come out, which is what cmd.exe
+            // searches: a misplaced quote then costs a search, not a
+            // directory.
+            Path stripped = pathEntryDirectory(entry.replace("\"", ""), windows);
+            if (stripped != null) {
+                return firstExecutableIn(stripped, names);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Splits {@code PATH} into entries.
+     *
+     * <p>On Windows a separator inside quotes does not separate: a directory
+     * whose name contains {@code ;} is only expressible as a quoted entry, and
+     * splitting it blindly turns one usable entry into two unusable fragments.
+     * On POSIX a quote is an ordinary filename character and is left alone.
+     *
+     * <p>A quote only quotes when it opens an entry and the very next quote
+     * closes it, meaning the character after it ends the entry. Anything else
+     * is an ordinary character. Accepting a closer further away would let a
+     * stray quote reach the closing quote of a well-formed entry much later and
+     * merge everything between; tracking quotes as a running toggle would do
+     * the same between two strays. Both are the failure quoting support exists
+     * to prevent, only harder to see. Looking no further than the next quote
+     * also keeps the parse linear: no entry rescans the rest of the variable.
+     *
+     * <p>Reading a quote as quoting is still a guess — {@code discover} treats
+     * a merged entry that finds nothing as a blind split, so the guess can cost
+     * a search but never a directory.
+     *
+     * <p>The split is lossless: joining the entries with the separator
+     * reproduces the input, whatever the quoting.
+     */
+    static List<String> splitPath(String pathVariable, boolean windows) {
+        List<String> entries = new ArrayList<>();
+        int position = 0;
+        while (position <= pathVariable.length()) {
+            int end = -1;
+            if (windows && position < pathVariable.length()
+                    && pathVariable.charAt(position) == '"') {
+                end = closingQuote(pathVariable, position);
+            }
+            if (end < 0) {
+                // Unquoted, or opened by a quote that never closes: read it as
+                // an ordinary entry, so a malformed entry costs only itself.
+                int separator = pathVariable.indexOf(java.io.File.pathSeparatorChar, position);
+                end = separator >= 0 ? separator : pathVariable.length();
+            }
+            entries.add(pathVariable.substring(position, end));
+            position = end + 1;
+        }
+        return entries;
+    }
+
+    /**
+     * The index just past the quote closing the entry that opens at
+     * {@code start}, or -1 if the next quote does not close it. A quote closes
+     * only when the character after it ends the entry, and only the next quote
+     * is considered: a Windows filename cannot contain one, so anything else
+     * between belongs to a different entry.
+     */
+    private static int closingQuote(String pathVariable, int start) {
+        int quote = pathVariable.indexOf('"', start + 1);
+        if (quote < 0) {
+            return -1;
+        }
+        boolean closes = quote + 1 == pathVariable.length()
+                || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar;
+        return closes ? quote + 1 : -1;
+    }
+
+    /**
+     * A {@code PATH} entry as a directory to search, or null if it is not one
+     * we are willing to use.
+     *
+     * <p>Relative entries — including the empty entry, which a POSIX shell
+     * reads as the working directory — are skipped rather than resolved. A
+     * shell would run them, but what we find here is handed to
+     * {@code ProcessBuilder}, and executing whatever {@code ./lilypond} happens
+     * to be in the directory the user ran {@code mw} from is a footgun we get
+     * nothing for. Anyone who genuinely wants one sets
+     * {@code notation.lilypondPath}.
+     */
+    private static Path pathEntryDirectory(String entry, boolean windows) {
+        String value = entry;
+        if (windows) {
+            // A quote cannot be part of a Windows filename, so an entry still
+            // carrying one is malformed however it is read.
+            if (value.indexOf('"') >= 0) {
+                return null;
+            }
+        }
+        if (value.isBlank()) {
+            return null;
+        }
+        Path directory = parseDirectory(value);
+        return directory != null && directory.isAbsolute() ? directory : null;
+    }
+
+    /** A path, or null when it does not parse on this platform. */
+    private static Path parseDirectory(String value) {
+        try {
+            return Path.of(value);
+        } catch (InvalidPathException e) {
+            // One unusable entry must not cost us the rest of the search.
+            return null;
+        }
+    }
+
+    private static Optional<Path> firstExecutableIn(Path directory, List<String> names) {
+        for (String name : names) {
+            Path candidate = directory.resolve(name);
             if (isExecutable(candidate)) {
                 return Optional.of(candidate);
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Where to look once {@code PATH} has come up empty.
+     *
+     * <p>The POSIX list exists because Homebrew is not on a non-login shell's
+     * {@code PATH}. Windows gets no such list: LilyPond has shipped no Windows
+     * installer since 2.24, only a zip the user extracts wherever they like, so
+     * there is no location to guess. The package managers that do install it —
+     * Chocolatey, Scoop — put their shims on {@code PATH}, which is the route
+     * this class now handles. Anyone else sets {@code notation.lilypondPath}.
+     *
+     * <p>Package-private so a test can pin the POSIX list: it is the reason
+     * {@code mw doctor} finds a Homebrew install at all, and nothing else in
+     * the suite can tell you it has been deleted.
+     */
+    static List<String> searchPrefixes(boolean windows) {
+        if (windows) {
+            return List.of();
+        }
+        return List.of(
+                "/home/linuxbrew/.linuxbrew/bin",
+                System.getProperty("user.home") + "/.linuxbrew/bin",
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin");
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "")
+                .toLowerCase(Locale.ROOT)
+                .startsWith("windows");
     }
 
     private static boolean isExecutable(Path path) {
