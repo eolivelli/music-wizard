@@ -251,7 +251,50 @@ class ScoreRoundTripTest {
                     Optional.empty(), List.of(), List.of(), twoBassParts,
                     ChordProgression.empty(), Lyrics.empty(), 10))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("at most one track per role");
+                    .hasMessageContaining("at most one track in the BASS role");
+        }
+
+        @Test
+        @DisplayName("all four separated stems can coexist in one score")
+        void holdsEveryStem() {
+            // Source separation emits vocals, bass, drums and everything else. If
+            // only one unclassified track were allowed, two of those four could not
+            // be represented at all.
+            Score score = Score.empty(TempoMap.constant(120), 10)
+                    .withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Vocals"))
+                    .withTrack(NoteTrack.empty(PartRole.BASS, "Bass"))
+                    .withTrack(NoteTrack.empty(PartRole.DRUMS, "Drums"))
+                    .withTrack(NoteTrack.empty(PartRole.ACCOMPANIMENT, "Other"));
+
+            assertThat(score.tracks()).hasSize(4);
+            assertThat(score.track(PartRole.DRUMS)).isPresent();
+        }
+
+        @Test
+        @DisplayName("several unclassified tracks may coexist, distinguished by name")
+        void allowsSeveralOtherTracks() {
+            Score score = Score.empty(TempoMap.constant(120), 10)
+                    .withTrack(NoteTrack.empty(PartRole.OTHER, "Guitar"))
+                    .withTrack(NoteTrack.empty(PartRole.OTHER, "Strings"));
+
+            assertThat(score.tracks()).hasSize(2);
+            assertThat(score.tracks()).extracting(NoteTrack::name)
+                    .containsExactly("Guitar", "Strings");
+        }
+
+        @Test
+        @DisplayName("two unclassified tracks may not share a name")
+        void rejectsAmbiguousOtherTracks() {
+            List<NoteTrack> ambiguous = List.of(
+                    NoteTrack.empty(PartRole.OTHER, "Guitar"),
+                    NoteTrack.empty(PartRole.OTHER, "Guitar"));
+
+            assertThatThrownBy(() -> new Score(
+                    Optional.empty(), Optional.empty(), TempoMap.constant(120),
+                    Optional.empty(), List.of(), List.of(), ambiguous,
+                    ChordProgression.empty(), Lyrics.empty(), 10))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("distinct names");
         }
 
         @Test

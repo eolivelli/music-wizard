@@ -250,11 +250,38 @@ public final class Workspace {
             throw new IllegalStateException(
                     "workspace descriptor at " + descriptorFile() + " names no source file");
         }
-        Path resolved = sourceDirectory().resolve(name).normalize().toAbsolutePath();
-        Path sourceRoot = sourceDirectory().normalize().toAbsolutePath();
+        Path resolved;
+        Path sourceRoot;
+        try {
+            resolved = sourceDirectory().resolve(name).normalize().toAbsolutePath();
+            sourceRoot = sourceDirectory().normalize().toAbsolutePath();
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new IllegalStateException(
+                    "workspace descriptor names an unusable source file: " + name, e);
+        }
         if (!resolved.startsWith(sourceRoot) || resolved.equals(sourceRoot)) {
             throw new IllegalStateException(
                     "workspace descriptor names a source file outside the workspace: " + name);
+        }
+        // Lexical containment is not enough. A workspace is copied and shared,
+        // and both tar and zip preserve symlinks, so source/song.wav can be a
+        // link to anywhere on the machine. Checking only the normalized path
+        // confirms where the name points, not where the file is.
+        if (Files.exists(resolved, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            Path real;
+            Path realRoot;
+            try {
+                real = resolved.toRealPath();
+                realRoot = sourceRoot.toRealPath();
+            } catch (IOException e) {
+                throw new UncheckedIOException(
+                        "could not resolve the source file named by the workspace descriptor", e);
+            }
+            if (!real.startsWith(realRoot) || real.equals(realRoot)) {
+                throw new IllegalStateException(
+                        "workspace descriptor names a source file that resolves outside the"
+                                + " workspace (a symbolic link to " + real + "): " + name);
+            }
         }
         return resolved;
     }

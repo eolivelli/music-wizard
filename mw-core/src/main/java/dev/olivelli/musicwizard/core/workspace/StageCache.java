@@ -100,23 +100,63 @@ public final class StageCache {
             // enough: nothing stops a parameter value containing one, and a
             // collision here means one stage's cached output is served for
             // different inputs, which is a silently wrong transcription.
-            StringBuilder material = new StringBuilder();
-            appendLengthPrefixed(material, stage);
-            for (Map.Entry<String, String> entry : components.entrySet()) {
-                appendLengthPrefixed(material, entry.getKey());
-                appendLengthPrefixed(material, entry.getValue());
-            }
             try {
                 MessageDigest sha = MessageDigest.getInstance("SHA-256");
-                byte[] hash = sha.digest(material.toString().getBytes(StandardCharsets.UTF_8));
-                return HexFormat.of().formatHex(hash);
+                digestLengthPrefixed(sha, stage);
+                for (Map.Entry<String, String> entry : components.entrySet()) {
+                    digestLengthPrefixed(sha, entry.getKey());
+                    digestLengthPrefixed(sha, entry.getValue());
+                }
+                return HexFormat.of().formatHex(sha.digest());
             } catch (NoSuchAlgorithmException e) {
                 throw new IllegalStateException("SHA-256 is required but unavailable", e);
             }
         }
 
-        private static void appendLengthPrefixed(StringBuilder target, String value) {
-            target.append(value.length()).append(':').append(value).append(';');
+        /**
+         * Feeds one component to the digest, prefixed by its length in BYTES.
+         *
+         * <p>Counting characters instead would not disambiguate anything, because
+         * UTF-8 encoding folds every unpaired surrogate to {@code '?'}: five
+         * distinct values then produce identical bytes, and a character count
+         * cannot undo an encoding that already erased the difference. A collision
+         * here serves one stage's cached output for a different input, which is a
+         * silently wrong transcription.
+         */
+        private static void digestLengthPrefixed(MessageDigest digest, String value) {
+            byte[] encoded = encodeStrictly(value);
+            digest.update(Integer.toString(encoded.length).getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) ':');
+            digest.update(encoded);
+            digest.update((byte) ';');
+        }
+
+        /**
+         * Encodes a component to UTF-8, refusing anything that cannot be encoded
+         * faithfully.
+         *
+         * <p>A byte-length prefix alone does not make the digest injective,
+         * because the encoding is itself lossy: {@code String.getBytes(UTF_8)}
+         * silently replaces every unpaired surrogate with a single {@code '?'},
+         * so five distinct values collapse to identical bytes before the length
+         * is ever counted. Rejecting is the honest response -- a lone surrogate
+         * in a cache key means the value upstream is already corrupt, and the
+         * alternative is serving one stage's output for a different input.
+         */
+        private static byte[] encodeStrictly(String value) {
+            java.nio.charset.CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            try {
+                java.nio.ByteBuffer buffer = encoder.encode(java.nio.CharBuffer.wrap(value));
+                byte[] bytes = new byte[buffer.remaining()];
+                buffer.get(bytes);
+                return bytes;
+            } catch (java.nio.charset.CharacterCodingException e) {
+                throw new IllegalArgumentException(
+                        "cache key components must be valid text; this one contains an unpaired"
+                                + " surrogate or otherwise unencodable character", e);
+            }
         }
 
         /**

@@ -73,13 +73,21 @@ public record Score(
                 .sorted(java.util.Comparator.comparingDouble(Section::startSeconds))
                 .toList();
         tracks = List.copyOf(Objects.requireNonNull(tracks, "tracks"));
-        // One track per role. Duplicates make track(role) ambiguous and make
-        // withTrack replace every match at once.
+        // At most one track per named role, since two would make track(role)
+        // ambiguous. OTHER may repeat -- source separation produces several
+        // unclassified stems -- but its tracks must be distinguishable by name.
         java.util.Set<PartRole> seenRoles = java.util.EnumSet.noneOf(PartRole.class);
+        java.util.Set<String> seenOtherNames = new java.util.HashSet<>();
         for (NoteTrack track : tracks) {
-            if (!seenRoles.add(track.role())) {
+            if (track.role().allowsMultipleTracks()) {
+                if (!seenOtherNames.add(track.name())) {
+                    throw new IllegalArgumentException(
+                            "tracks in the " + track.role() + " role must have distinct names,"
+                                    + " got two called \"" + track.name() + "\"");
+                }
+            } else if (!seenRoles.add(track.role())) {
                 throw new IllegalArgumentException(
-                        "a score may hold at most one track per role, got two for " + track.role());
+                        "a score may hold at most one track in the " + track.role() + " role");
             }
         }
 
@@ -148,7 +156,12 @@ public record Score(
         List<NoteTrack> merged = new ArrayList<>(tracks.size() + 1);
         boolean replaced = false;
         for (NoteTrack existing : tracks) {
-            if (existing.role() == track.role()) {
+            // A repeatable role is matched by name as well, so adding a second
+            // unclassified stem appends rather than overwriting the first.
+            boolean sameTrack = track.role().allowsMultipleTracks()
+                    ? existing.role() == track.role() && existing.name().equals(track.name())
+                    : existing.role() == track.role();
+            if (sameTrack) {
                 merged.add(track);
                 replaced = true;
             } else {

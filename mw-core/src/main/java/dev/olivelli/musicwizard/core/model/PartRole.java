@@ -22,6 +22,10 @@ public enum PartRole {
     LEAD_VOCAL,
     /** The bass line. Bass clef, sounding an octave below written. */
     BASS,
+    /** The drum kit. Percussion staff; not pitched. */
+    DRUMS,
+    /** Everything left after vocals, bass and drums are removed. */
+    ACCOMPANIMENT,
     /** Right hand of the generated piano reduction. Treble clef. */
     PIANO_RIGHT_HAND,
     /** Left hand of the generated piano reduction. Bass clef. */
@@ -32,5 +36,17 @@ public enum PartRole {
     /** True when this part is conventionally written in bass clef. */
     public boolean prefersBassClef() {
         return this == BASS || this == PIANO_LEFT_HAND;
+    }
+
+    /**
+     * True when a score may hold more than one track in this role.
+     *
+     * <p>Only {@link #OTHER} may repeat. The named roles identify a specific
+     * part, so two of them would make {@code Score.track(role)} ambiguous;
+     * {@code OTHER} is by definition a bag of unclassified parts, and its
+     * tracks are distinguished by name instead.
+     */
+    public boolean allowsMultipleTracks() {
+        return this == OTHER;
     }
 }
