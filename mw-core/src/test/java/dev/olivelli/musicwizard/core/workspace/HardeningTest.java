@@ -155,6 +155,46 @@ class HardeningTest {
         }
 
         @Test
+        @DisplayName("a symlinked cache directory is not deleted through")
+        void refusesSymlinkedCacheDirectory() throws IOException {
+            // invalidateStage deletes recursively, so a cache/ that is itself a
+            // link would let it destroy whatever the link points at.
+            Workspace workspace = newWorkspace();
+            Path victim = tempDirectory.resolve("victim");
+            Files.createDirectories(victim.resolve("beats"));
+            Files.writeString(victim.resolve("beats/keep.txt"), "keep me");
+
+            Path cacheDir = workspace.cacheDirectory();
+            try (var entries = Files.walk(cacheDir)) {
+                entries.sorted(java.util.Comparator.reverseOrder())
+                        .forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } });
+            }
+            try {
+                Files.createSymbolicLink(cacheDir, victim);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+
+            assertThatThrownBy(() -> workspace.cache().invalidateStage("beats"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("cache directory is a symbolic link");
+            assertThat(victim.resolve("beats/keep.txt")).exists();
+        }
+
+        @Test
+        @DisplayName("an unencodable component fails at the call site, not in toString")
+        void rejectsUnencodableEagerly() {
+            // A toString() that throws breaks logging and debuggers, which is
+            // exactly where you least want a surprise.
+            assertThatThrownBy(() -> StageCache.Key.forStage("bad\uD800"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> StageCache.Key.forStage("ok").with("k", "bad\uD800"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatCode(() -> StageCache.Key.forStage("ok").with("k", "fine").toString())
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
         @DisplayName("a failed write leaves no partial file behind")
         void failedWriteLeavesNoPartial() throws IOException {
             Workspace workspace = newWorkspace();
@@ -251,6 +291,54 @@ class HardeningTest {
             assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("resolves outside the workspace");
+        }
+
+        @Test
+        @DisplayName("a symlinked source directory itself is refused")
+        void refusesSymlinkedSourceRoot() throws IOException {
+            // The anchor must not be attacker-controlled. Resolving the source
+            // directory with toRealPath() follows this link too, so containment
+            // would compare the target against itself and always pass.
+            Workspace workspace = newWorkspace();
+            Path outside = tempDirectory.resolve("elsewhere");
+            Files.createDirectories(outside);
+            Files.writeString(outside.resolve("shadow"), "leaked");
+
+            Path sourceDir = workspace.sourceDirectory();
+            Files.delete(workspace.sourceFile());
+            Files.delete(sourceDir);
+            try {
+                Files.createSymbolicLink(sourceDir, outside);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+            String yaml = Files.readString(workspace.descriptorFile());
+            Files.writeString(workspace.descriptorFile(),
+                    yaml.replaceFirst("sourceFileName: .*", "sourceFileName: shadow"));
+
+            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("source directory is a symbolic link");
+        }
+
+        @Test
+        @DisplayName("a workspace under a symlinked ancestor still works")
+        void acceptsWorkspaceUnderSymlinkedAncestor() throws IOException {
+            // The false positive to avoid: /tmp is /private/tmp on macOS, so a
+            // perfectly ordinary workspace lives under a symlinked ancestor.
+            Path realParent = tempDirectory.resolve("real");
+            Files.createDirectories(realParent);
+            Path linkedParent = tempDirectory.resolve("linked");
+            try {
+                Files.createSymbolicLink(linkedParent, realParent);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+
+            Workspace workspace = Workspace.create(linkedParent.resolve("s.mwz"), sourceFile);
+
+            assertThat(workspace.sourceFile()).isRegularFile();
+            assertThat(workspace.sourceMatchesDigest()).isTrue();
         }
 
         @Test

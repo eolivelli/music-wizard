@@ -283,6 +283,19 @@ class ScoreRoundTripTest {
         }
 
         @Test
+        @DisplayName("tracks(role) returns every unclassified track, not just the first")
+        void tracksByRoleReturnsAll() {
+            Score score = Score.empty(TempoMap.constant(120), 10)
+                    .withTrack(NoteTrack.empty(PartRole.OTHER, "Guitar"))
+                    .withTrack(NoteTrack.empty(PartRole.OTHER, "Strings"))
+                    .withTrack(NoteTrack.empty(PartRole.BASS, "Bass"));
+
+            assertThat(score.tracks(PartRole.OTHER)).hasSize(2);
+            assertThat(score.tracks(PartRole.BASS)).hasSize(1);
+            assertThat(score.tracks(PartRole.DRUMS)).isEmpty();
+        }
+
+        @Test
         @DisplayName("two unclassified tracks may not share a name")
         void rejectsAmbiguousOtherTracks() {
             List<NoteTrack> ambiguous = List.of(

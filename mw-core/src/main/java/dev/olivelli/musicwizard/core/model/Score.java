@@ -121,9 +121,26 @@ public record Score(
                 ChordProgression.empty(), Lyrics.empty(), durationSeconds);
     }
 
-    /** The first track matching a role, if the transcription produced one. */
+    /**
+     * The single track in a role.
+     *
+     * <p>For {@link PartRole#OTHER}, which may legitimately repeat, this returns
+     * only the first and is almost certainly not what you want; use
+     * {@link #tracks(PartRole)} there.
+     */
     public Optional<NoteTrack> track(PartRole role) {
         return tracks.stream().filter(t -> t.role() == role).findFirst();
+    }
+
+    /**
+     * Every track in a role, in staff order.
+     *
+     * <p>Needed because source separation produces several unclassified parts,
+     * so {@code OTHER} holds more than one and asking for "the" track would
+     * silently drop the rest.
+     */
+    public List<NoteTrack> tracks(PartRole role) {
+        return tracks.stream().filter(t -> t.role() == role).toList();
     }
 
     /** The key in force at a given time. */

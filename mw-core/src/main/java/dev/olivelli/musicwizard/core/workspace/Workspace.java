@@ -267,12 +267,21 @@ public final class Workspace {
         // and both tar and zip preserve symlinks, so source/song.wav can be a
         // link to anywhere on the machine. Checking only the normalized path
         // confirms where the name points, not where the file is.
+        // The anchor must not itself be attacker-controlled. Resolving
+        // sourceRoot with toRealPath() would follow a symlinked source/ too, so
+        // the comparison would be target-against-target and always succeed.
+        // Anchor on the workspace root instead, whose location the user chose.
+        if (Files.isSymbolicLink(sourceRoot)) {
+            throw new IllegalStateException(
+                    "the workspace's source directory is a symbolic link, which would place the"
+                            + " recording outside the workspace: " + sourceRoot);
+        }
         if (Files.exists(resolved, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             Path real;
             Path realRoot;
             try {
                 real = resolved.toRealPath();
-                realRoot = sourceRoot.toRealPath();
+                realRoot = root.toRealPath().resolve(SOURCE_DIRECTORY);
             } catch (IOException e) {
                 throw new UncheckedIOException(
                         "could not resolve the source file named by the workspace descriptor", e);

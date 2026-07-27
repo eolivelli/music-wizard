@@ -67,7 +67,9 @@ public final class StageCache {
         }
 
         public static Key forStage(String stage) {
-            return new Key(stage);
+            Key key = new Key(stage);
+            encodeStrictly(stage);
+            return key;
         }
 
         /**
@@ -79,7 +81,12 @@ public final class StageCache {
          */
         public Key with(String name, Object value) {
             Objects.requireNonNull(name, "name");
-            components.put(name, value == null ? NULL_MARKER : VALUE_TAG + value);
+            String encoded = value == null ? NULL_MARKER : VALUE_TAG + value;
+            // Fail at the call site rather than later inside digest() or, worse,
+            // inside toString() while someone is debugging.
+            encodeStrictly(name);
+            encodeStrictly(encoded);
+            components.put(name, encoded);
             return this;
         }
 
@@ -339,6 +346,14 @@ public final class StageCache {
      */
     public void invalidateStage(String stage) {
         Objects.requireNonNull(stage, "stage");
+        // Same trap as the workspace source check: a cache/ that is itself a
+        // symlink would make the containment test compare the link target
+        // against itself, and this method deletes recursively.
+        if (Files.isSymbolicLink(directory)) {
+            throw new IllegalStateException(
+                    "the workspace's cache directory is a symbolic link; refusing to delete"
+                            + " through it: " + directory);
+        }
         Path stageDirectory = directory.resolve(Key.forStage(stage).safeStageName())
                 .normalize().toAbsolutePath();
         Path cacheRoot = directory.normalize().toAbsolutePath();
