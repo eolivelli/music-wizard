@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.olivelli.musicwizard</groupId>
+    <artifactId>music-wizard</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>mw-cli</artifactId>
+  <name>Music Wizard :: CLI</name>
+  <description>picocli entry point. The only module that wires everything together.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-transcribe</artifactId>
+    </dependency>    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-arrange</artifactId>
+    </dependency>    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-notation</artifactId>
+    </dependency>    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-llm</artifactId>
+    </dependency>    <dependency>
+      <groupId>info.picocli</groupId>
+      <artifactId>picocli</artifactId>
+    </dependency>    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+    </dependency>  </dependencies>
+</project>

@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Music Wizard contributors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.olivelli.musicwizard</groupId>
+  <artifactId>music-wizard</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Music Wizard</name>
+  <description>
+    Generate sheet music (melody, bass line, chords, lyrics and a simplified
+    piano reduction) from a recording. JVM-native transcription pipeline with
+    LilyPond engraving.
+  </description>
+  <url>https://github.com/eolivelli/music-wizard</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>eolivelli</id>
+      <name>Enrico Olivelli</name>
+      <url>https://github.com/eolivelli</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/eolivelli/music-wizard.git</connection>
+    <developerConnection>scm:git:git@github.com:eolivelli/music-wizard.git</developerConnection>
+    <url>https://github.com/eolivelli/music-wizard</url>
+  </scm>
+
+  <modules>
+    <module>mw-core</module>
+    <module>mw-audio</module>
+    <module>mw-dsp</module>
+    <module>mw-ml</module>
+    <module>mw-transcribe</module>
+    <module>mw-arrange</module>
+    <module>mw-notation</module>
+    <module>mw-llm</module>
+    <module>mw-cli</module>
+    <module>mw-testkit</module>
+    <module>mw-it</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!--
+      Dependency versions. Every coordinate below was verified present on
+      Maven Central. Licensing policy: Apache/MIT/BSD preferred, LGPL permitted
+      as an unmodified library dependency, GPL/AGPL banned outright.
+      See CONTRIBUTING.md for the rationale.
+    -->
+    <jackson.version>2.22.1</jackson.version>
+    <picocli.version>4.7.7</picocli.version>
+    <slf4j.version>2.0.18</slf4j.version>
+    <logback.version>1.6.0</logback.version>
+
+    <jtransforms.version>3.2</jtransforms.version>           <!-- BSD-2 -->
+    <jipes.version>0.9.17</jipes.version>                     <!-- LGPL-2.1 -->
+    <ffsampledsp.version>0.9.56</ffsampledsp.version>         <!-- LGPL-2.1 -->
+    <onnxruntime.version>1.27.0</onnxruntime.version>         <!-- MIT -->
+    <proxymusic.version>4.0.3</proxymusic.version>            <!-- LGPL-3.0 -->
+    <whisperjni.version>1.7.1</whisperjni.version>            <!-- Apache-2.0 -->
+    <anthropic.version>2.52.0</anthropic.version>             <!-- MIT -->
+
+    <junit.version>6.1.2</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+
+    <surefire.version>3.5.6</surefire.version>
+    <failsafe.version>3.5.6</failsafe.version>
+    <compiler.plugin.version>3.15.0</compiler.plugin.version>
+    <enforcer.version>3.6.3</enforcer.version>
+    <jar.plugin.version>3.5.1</jar.plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Internal modules -->
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-audio</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-dsp</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-ml</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-transcribe</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-arrange</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-notation</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-llm</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>mw-testkit</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Serialization / config -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- CLI -->
+      <dependency>
+        <groupId>info.picocli</groupId>
+        <artifactId>picocli</artifactId>
+        <version>${picocli.version}</version>
+      </dependency>
+
+      <!-- Logging -->
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
+
+      <!-- DSP -->
+      <dependency>
+        <groupId>com.github.wendykierp</groupId>
+        <artifactId>JTransforms</artifactId>
+        <version>${jtransforms.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tagtraum</groupId>
+        <artifactId>jipes</artifactId>
+        <version>${jipes.version}</version>
+      </dependency>
+
+      <!-- Audio decoding -->
+      <dependency>
+        <groupId>com.tagtraum</groupId>
+        <artifactId>ffsampledsp-complete</artifactId>
+        <version>${ffsampledsp.version}</version>
+      </dependency>
+
+      <!-- Neural inference -->
+      <dependency>
+        <groupId>com.microsoft.onnxruntime</groupId>
+        <artifactId>onnxruntime</artifactId>
+        <version>${onnxruntime.version}</version>
+      </dependency>
+
+      <!-- MusicXML 4.0 bindings -->
+      <dependency>
+        <groupId>org.audiveris</groupId>
+        <artifactId>proxymusic</artifactId>
+        <version>${proxymusic.version}</version>
+      </dependency>
+
+      <!-- Speech recognition -->
+      <dependency>
+        <groupId>io.github.givimad</groupId>
+        <artifactId>whisper-jni</artifactId>
+        <version>${whisperjni.version}</version>
+      </dependency>
+
+      <!-- Claude advisor -->
+      <dependency>
+        <groupId>com.anthropic</groupId>
+        <artifactId>anthropic-java</artifactId>
+        <version>${anthropic.version}</version>
+      </dependency>
+
+      <!-- Test -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Every module gets logging and the test stack. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${compiler.plugin.version}</version>
+          <configuration>
+            <compilerArgs>
+              <arg>-Xlint:all,-serial,-processing</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${surefire.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>${failsafe.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${jar.plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>${enforcer.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-build-environment</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9,)</version>
+                </requireMavenVersion>
+                <!--
+                  Guard the licensing policy mechanically: GPL/AGPL artifacts
+                  must never enter the dependency graph.
+                -->
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>be.tarsos.dsp:*</exclude>
+                    <exclude>com.github.axet:TarsosDSP</exclude>
+                    <exclude>com.github.st-h:TarsosDSP</exclude>
+                    <exclude>com.itextpdf:*</exclude>
+                  </excludes>
+                  <message>
+                    GPL/AGPL dependencies are banned in this Apache-2.0 project.
+                    TarsosDSP is GPL-3.0 (and not on Maven Central); iText is
+                    AGPL-3.0. See CONTRIBUTING.md.
+                  </message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!--
+      Slow tests: model downloads, LilyPond invocation, MIDI->audio->Score
+      ground-truth loop. Off by default so `mvn verify` stays fast and offline.
+    -->
+    <profile>
+      <id>integration</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

@@ -1,0 +1,28 @@
+target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache and workspaces produced by local runs
+*.mwz/
+models/
+.mw-cache/
+
+# Logs
+*.log
+logs/

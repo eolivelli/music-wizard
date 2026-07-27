@@ -1,0 +1,51 @@
+Music Wizard
+Copyright 2026 Music Wizard contributors
+
+This product includes software developed at
+https://github.com/eolivelli/music-wizard
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+Third-party dependencies
+--------------------------------------------------------------------------------
+
+This project depends on the following third-party libraries. Each remains under
+its own license; none are modified or forked. GPL and AGPL licensed artifacts
+are deliberately excluded (see CONTRIBUTING.md).
+
+  com.github.wendykierp:JTransforms          BSD 2-Clause
+  com.microsoft.onnxruntime:onnxruntime      MIT
+  com.anthropic:anthropic-java               MIT
+  io.github.givimad:whisper-jni              Apache-2.0
+  info.picocli:picocli                       Apache-2.0
+  com.fasterxml.jackson.*                    Apache-2.0
+  org.slf4j:slf4j-api                        MIT
+  ch.qos.logback:logback-classic             EPL-1.0 / LGPL-2.1
+  com.tagtraum:jipes                         LGPL-2.1
+  com.tagtraum:ffsampledsp-complete          LGPL-2.1 (bundles FFmpeg natives, LGPL-2.1+)
+  org.audiveris:proxymusic                   LGPL-3.0
+
+--------------------------------------------------------------------------------
+Machine learning models
+--------------------------------------------------------------------------------
+
+No model weights are distributed with this software. Models are downloaded on
+first use into a local cache directory, and each remains under its own license:
+
+  htdemucs (source separation)     MIT     huggingface.co/StemSplitio/htdemucs-onnx
+  onnxcrepe (pitch tracking)       MIT     github.com/yqzhishen/onnxcrepe
+  basic-pitch (note transcription) Apache-2.0  github.com/spotify/basic-pitch
+  whisper.cpp GGML models          MIT     huggingface.co/ggerganov/whisper.cpp
+
+Models under non-commercial terms (CC BY-NC-SA), including the madmom
+pretrained models and the Open-Unmix "umxl" weights, are deliberately NOT used.
+
+--------------------------------------------------------------------------------
+External tools
+--------------------------------------------------------------------------------
+
+PDF engraving is performed by invoking LilyPond (GPL-3.0) as a separate
+process. LilyPond is not linked, bundled or redistributed with this software,
+and the program functions without it (emitting LilyPond, MusicXML and MIDI
+sources instead).
