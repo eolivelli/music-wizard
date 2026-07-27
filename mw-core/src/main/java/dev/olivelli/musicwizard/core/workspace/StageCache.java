@@ -417,17 +417,27 @@ public final class StageCache {
      * life of a file measured in kilobytes.
      */
     static void discardOutstandingStagedFiles() {
-        // Drained through toArray, which is a bounded traversal -- NOT a live
-        // iterator, and not a point-in-time snapshot either. Shutdown hooks run
-        // alongside the application's own threads, so a thread still calling
-        // stagingPath keeps feeding a live iterator; once it inserts faster than
-        // this unlinks, the traversal never ends and Shutdown.exit blocks
-        // joining this thread forever. That is a CLI that will not die on
-        // Ctrl-C with all its output already printed, which is far worse than
-        // the leak being cleaned up. toArray walks the table rather than
-        // chasing insertions, so it returns however fast the producer runs; a
-        // reservation made after shutdown began may or may not be in what it
-        // returns, and the age-based sweep is what actually accounts for those.
+        // Drained through toArray FIRST, and unlinked only afterwards. That
+        // ordering is the entire fix, and it is NOT a property of toArray:
+        // CollectionView.toArray is literally "for (E e : this)" over the same
+        // weakly consistent traverser an enhanced-for would use, so it can
+        // include entries inserted after it started and is not bounded by the
+        // size it saw at entry.
+        //
+        // What makes it finish is that it does one array store per element
+        // instead of one unlink. Shutdown hooks run alongside the application's
+        // own threads; an earlier version unlinked inside the traversal, a
+        // thread still calling stagingPath inserted faster than it could
+        // delete, the traversal never ended, and Shutdown.exit blocked forever
+        // joining this thread -- a CLI that will not die on Ctrl-C with all its
+        // output already printed.
+        //
+        // So the rule to preserve is: no blocking I/O while traversing the set.
+        // Do not "simplify" this into a forEach or a stream over
+        // OUTSTANDING_STAGED; that reinstates the bug with no visible change.
+        //
+        // A reservation made after shutdown began may or may not land in the
+        // array. The age-based sweep is what accounts for those.
         for (Path staged : OUTSTANDING_STAGED.toArray(new Path[0])) {
             OUTSTANDING_STAGED.remove(staged);
             try {
