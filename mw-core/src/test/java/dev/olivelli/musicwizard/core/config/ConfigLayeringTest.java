@@ -360,6 +360,35 @@ class ConfigLayeringTest {
         }
 
         @Test
+        @DisplayName("a stray opening quote does not cost the entries after it")
+        void strayOpeningQuoteDoesNotCostLaterEntries() throws Exception {
+            // The stray quote before /nowhere/lily can reach the closing quote
+            // of the well-formed entry at the end, merging the directory
+            // between them into an entry that names nothing.
+            Path executable = fakeBinary("lilypond.exe");
+            String separator = java.io.File.pathSeparator;
+            String path = "/usr/bin" + separator + "\"/nowhere/lily" + separator
+                    + tempDirectory + separator + "\"/nowhere/tools\"";
+
+            assertThat(ConfigLoader.discover(path, true, List.of())).contains(executable);
+        }
+
+        @Test
+        @DisplayName("a PATH wrapped in one pair of quotes still finds its entries")
+        void searchesInsideAWhollyQuotedPath() throws Exception {
+            // set PATH="%PATH%;C:\lily\bin" quotes the whole variable. Reading
+            // that as one directory is defensible, but finding nothing when the
+            // directory is right there is not: a guess about quoting must not
+            // cost a directory the user listed.
+            Path executable = fakeBinary("lilypond.exe");
+            String separator = java.io.File.pathSeparator;
+            String path = "\"/nowhere/a" + separator + tempDirectory
+                    + separator + "/nowhere/b\"";
+
+            assertThat(ConfigLoader.discover(path, true, List.of())).contains(executable);
+        }
+
+        @Test
         @DisplayName("splitting PATH loses nothing, however it is quoted")
         void splittingIsLossless() {
             // The split is the fiddliest code here and every entry rule is
@@ -461,12 +490,30 @@ class ConfigLayeringTest {
         }
 
         @Test
+        @DisplayName("a relative prefix is skipped, like a relative PATH entry")
+        void skipsRelativePrefix() throws Exception {
+            // The prefixes are constants today, but the rule that we never
+            // resolve a relative directory against the working directory should
+            // not depend on which list a directory arrived in.
+            Path executable = fakeBinary("lilypond");
+            Path base = Path.of("").toAbsolutePath();
+            assumeTrue(base.getRoot().equals(tempDirectory.getRoot()),
+                    "no relative path exists from the working directory to the temp directory");
+            String relative = base.relativize(tempDirectory.toAbsolutePath()).toString();
+
+            Optional<Path> found = ConfigLoader.discover(null, false, List.of(relative));
+
+            assertThat(found).isNotEqualTo(Optional.of(Path.of(relative).resolve("lilypond")));
+            assertThat(found).isNotEqualTo(Optional.of(executable));
+        }
+
+        @Test
         @DisplayName("an unparseable prefix does not end the search")
         void toleratesMalformedPrefix() throws Exception {
             Path executable = fakeBinary("lilypond");
 
             assertThat(ConfigLoader.discover(null, false,
-                    List.of("bad prefix", tempDirectory.toString())))
+                    List.of("bad\u0000prefix", tempDirectory.toString())))
                     .contains(executable);
         }
 

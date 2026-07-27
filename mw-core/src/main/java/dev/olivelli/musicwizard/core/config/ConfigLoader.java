@@ -205,11 +205,22 @@ public final class ConfigLoader {
 
         if (pathVariable != null) {
             for (String entry : splitPath(pathVariable, windows)) {
-                Path directory = pathEntryDirectory(entry, windows);
-                if (directory == null) {
-                    continue;
+                Optional<Path> found = searchEntry(entry, windows, names);
+                if (found.isEmpty()
+                        && entry.indexOf(java.io.File.pathSeparatorChar) >= 0) {
+                    // An entry only spans a separator because a quote was read
+                    // as quoting it, which happens only on the Windows branch.
+                    // If that reading finds nothing, search what a blind split
+                    // would have seen instead: discovery is a search, not a
+                    // parse, and a misplaced quote must never cost a directory
+                    // the user did list.
+                    for (String fragment : splitPath(entry, false)) {
+                        found = searchEntry(fragment, windows, names);
+                        if (found.isPresent()) {
+                            break;
+                        }
+                    }
                 }
-                Optional<Path> found = firstExecutableIn(directory, names);
                 if (found.isPresent()) {
                     return found;
                 }
@@ -218,7 +229,7 @@ public final class ConfigLoader {
 
         for (String prefix : prefixes) {
             Path directory = parseDirectory(prefix);
-            if (directory == null) {
+            if (directory == null || !directory.isAbsolute()) {
                 continue;
             }
             Optional<Path> found = firstExecutableIn(directory, names);
@@ -229,6 +240,12 @@ public final class ConfigLoader {
         return Optional.empty();
     }
 
+    /** Looks for the binary in the directory a single {@code PATH} entry names. */
+    private static Optional<Path> searchEntry(String entry, boolean windows, List<String> names) {
+        Path directory = pathEntryDirectory(entry, windows);
+        return directory == null ? Optional.empty() : firstExecutableIn(directory, names);
+    }
+
     /**
      * Splits {@code PATH} into entries.
      *
@@ -237,17 +254,18 @@ public final class ConfigLoader {
      * splitting it blindly turns one usable entry into two unusable fragments.
      * On POSIX a quote is an ordinary filename character and is left alone.
      *
-     * <p>A quote only quotes when it opens an entry and is matched by one that
-     * closes it. Anything else is an ordinary character, so a stray quote costs
-     * its own entry and nothing else. Tracking quotes as a running toggle
-     * instead would merge everything between two strays into a single unusable
-     * entry — which is the failure the quoting support exists to prevent, only
-     * harder to see.
+     * <p>A quote only quotes when it opens an entry and the very next quote
+     * closes it, meaning the character after it ends the entry. Anything else
+     * is an ordinary character. Accepting a closer further away would let a
+     * stray quote reach the closing quote of a well-formed entry much later and
+     * merge everything between; tracking quotes as a running toggle would do
+     * the same between two strays. Both are the failure quoting support exists
+     * to prevent, only harder to see. Looking no further than the next quote
+     * also keeps the parse linear: no entry rescans the rest of the variable.
      *
-     * <p>One shape is beyond saving: a whole {@code PATH} wrapped in quotes,
-     * as {@code set PATH="%PATH%;C:\lily\bin"} produces, is by this rule — and
-     * by {@code cmd.exe}'s — a single entry naming a directory that does not
-     * exist. Nothing is found, which is what every other Windows tool sees too.
+     * <p>Reading a quote as quoting is still a guess — {@code discover} treats
+     * a merged entry that finds nothing as a blind split, so the guess can cost
+     * a search but never a directory.
      *
      * <p>The split is lossless: joining the entries with the separator
      * reproduces the input, whatever the quoting.
@@ -255,20 +273,11 @@ public final class ConfigLoader {
     static List<String> splitPath(String pathVariable, boolean windows) {
         List<String> entries = new ArrayList<>();
         int position = 0;
-        boolean quotingPossible = windows;
         while (position <= pathVariable.length()) {
             int end = -1;
-            if (quotingPossible && position < pathVariable.length()
+            if (windows && position < pathVariable.length()
                     && pathVariable.charAt(position) == '"') {
                 end = closingQuote(pathVariable, position);
-                if (end < 0) {
-                    // A closing quote is a position, not a property of this
-                    // entry, so if none lies beyond here none lies beyond any
-                    // later entry either. Without the latch, a PATH of stray
-                    // quotes rescans to the end for each one, which is
-                    // quadratic — 50 seconds on a 300 kB PATH.
-                    quotingPossible = false;
-                }
             }
             if (end < 0) {
                 // Unquoted, or opened by a quote that never closes: read it as
@@ -284,18 +293,19 @@ public final class ConfigLoader {
 
     /**
      * The index just past the quote closing the entry that opens at
-     * {@code start}, or -1 if no quote closes it. A quote closes only when the
-     * next character ends the entry.
+     * {@code start}, or -1 if the next quote does not close it. A quote closes
+     * only when the character after it ends the entry, and only the next quote
+     * is considered: a Windows filename cannot contain one, so anything else
+     * between belongs to a different entry.
      */
     private static int closingQuote(String pathVariable, int start) {
-        for (int quote = pathVariable.indexOf('"', start + 1); quote >= 0;
-                quote = pathVariable.indexOf('"', quote + 1)) {
-            if (quote + 1 == pathVariable.length()
-                    || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar) {
-                return quote + 1;
-            }
+        int quote = pathVariable.indexOf('"', start + 1);
+        if (quote < 0) {
+            return -1;
         }
-        return -1;
+        boolean closes = quote + 1 == pathVariable.length()
+                || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar;
+        return closes ? quote + 1 : -1;
     }
 
     /**
