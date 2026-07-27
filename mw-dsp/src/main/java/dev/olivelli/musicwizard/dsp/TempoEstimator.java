@@ -126,11 +126,15 @@ public final class TempoEstimator {
          *
          * <ul>
          *   <li>A held note with ordinary vibrato reads as rhythmic — 50 cents
-         *       at 2 Hz scores 0.61 against a 60 BPM click track's 0.63 — and so
-         *       do sustained chords of pure sines, at 0.47. Periodic modulation
-         *       of one note produces a genuinely periodic train of accents, and
-         *       nothing measurable in an onset envelope distinguishes that from
-         *       a beat. Issue #43 has the measurements and two refuted fixes.
+         *       at 2 Hz scores 0.61 against a 60 BPM click track's 0.63, and at
+         *       7 Hz it scores 0.64 and <em>overtakes</em> that click track
+         *       outright, reporting 140 BPM, which is the vibrato rate rather
+         *       than any beat. Sustained chords of pure sines land at 0.47.
+         *       Periodic modulation of one note produces a genuinely periodic
+         *       train of accents, and nothing measurable in an onset envelope
+         *       distinguishes that from a beat. So the ordering is not merely
+         *       tight here, it inverts: no threshold separates this family.
+         *       Issue #43 has the measurements and two refuted fixes.
          *   <li>Tempo drift pushes the other way: a click track wandering by
          *       ±8% falls to 0.12, well below the tone it should outrank.
          * </ul>
@@ -197,8 +201,19 @@ public final class TempoEstimator {
         // sustained tone scores higher here than a metronome does, which is why
         // peakiness is measured alongside it.
         double normaliser = correlation[0] > 0 ? correlation[0] : 1;
-        double periodicity = Math.clamp(bestRawCorrelation / normaliser, 0, 1);
-        return new Estimate(bestTempo, periodicity, peakiness(envelope.strength()));
+        double periodicity = bestRawCorrelation / normaliser;
+        if (!Double.isFinite(periodicity)) {
+            // Autocorrelation squares the envelope, so samples above about 1e154
+            // overflow some lags to infinity while others stay finite, and the
+            // ratio comes out Infinity/Infinity. Math.clamp passes NaN straight
+            // through, so without this the record constructor throws on input
+            // that is merely absurd rather than malformed. Report no evidence,
+            // which is what the rest of this method does with input it cannot
+            // read.
+            periodicity = 0;
+        }
+        return new Estimate(bestTempo, Math.clamp(periodicity, 0, 1),
+                peakiness(envelope.strength()));
     }
 
     /**
@@ -256,13 +271,17 @@ public final class TempoEstimator {
         for (double value : signal) {
             largest = Math.max(largest, Math.abs(value - mean));
         }
-        if (!(largest > 0)) {
-            // Either constant, such as silence -- no events at all rather than
-            // sharp ones -- or malformed. One test covers both: any non-finite
-            // sample makes the mean non-finite, that makes some deviation NaN,
-            // and Math.max propagates NaN to `largest`, which then fails the
-            // comparison. Without this, a hand-built envelope carrying a NaN
-            // reached the record constructor and was reported as an
+        if (!(largest > 0) || !Double.isFinite(largest)) {
+            // Constant, such as silence -- no events at all rather than sharp
+            // ones -- or malformed. Both tests are needed, and the second is not
+            // the redundancy it looks like. A NaN sample poisons the mean, which
+            // makes every deviation NaN, and NaN fails the first test. But
+            // samples near Double.MAX_VALUE are all finite and still overflow
+            // the mean to infinity, leaving `largest` infinite rather than NaN;
+            // infinity passes the first test, and the scaled deviations then
+            // come out Infinity/Infinity = NaN one step later.
+            //
+            // Without this the record constructor rejected the result as an
             // out-of-range peakiness, blaming the measure for a malformed input.
             return 0;
         }

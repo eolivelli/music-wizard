@@ -383,6 +383,19 @@ class BeatTrackingTest {
 
             assertThat(modulated).isBetween(0.4, 0.8);
             assertThat(modulated).isGreaterThan(20 * unmodulated);
+
+            // The 2 Hz case above only ties the click track. Pinning the faster
+            // one too, because that is where the ordering actually *inverts* --
+            // and a partial fix that pulled 2 Hz below the line while leaving
+            // this one above it would otherwise leave the tripwire green.
+            TempoEstimator.Estimate fast =
+                    TempoEstimator.estimate(envelopeOf(vibrato(440, 50, 7.0, SECONDS)));
+            double slowestClicks = strengthOf(SignalFactory.clickTrack(60, SECONDS, RATE));
+
+            assertThat(fast.strength()).isGreaterThan(slowestClicks);
+            // 7 Hz is 420 modulations per minute; the reported tempo is the
+            // vibrato rate divided down, not a beat anyone could tap.
+            assertThat(fast.beatsPerMinute()).isCloseTo(140, within(5.0));
         }
 
         @Test
@@ -461,7 +474,7 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("a malformed envelope reports no evidence rather than throwing")
+        @DisplayName("an envelope carrying a non-finite sample reports no evidence")
         void nonFiniteEnvelopeIsRejectedQuietly() {
             // OnsetEnvelope's constructor is public and validates only the frame
             // rate, so a hand-built envelope can carry a NaN or an infinity.
@@ -482,6 +495,42 @@ class BeatTrackingTest {
                 assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
                 assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
             }
+        }
+
+        @Test
+        @DisplayName("an envelope of finite but enormous samples reports no evidence too")
+        void overflowingEnvelopeIsRejectedQuietly() {
+            // These cases are the reason the finiteness checks exist, and every
+            // one of them has only finite samples -- which is exactly why the
+            // test above does not reach them. The overflow happens inside the
+            // arithmetic rather than arriving in the input, and it does so in
+            // two different places that need separate guards.
+            double[] hugeMean = new double[64];
+            java.util.Arrays.fill(hugeMean, 1e308);        // the sum overflows
+
+            double[] hugeSpread = new double[64];
+            java.util.Arrays.fill(hugeSpread, -1.7e308);   // the deviation overflows,
+            hugeSpread[13] = 1.7e308;                      // though the sum does not
+
+            double[] hugeImpulses = new double[64];        // peakiness is fine; the
+            for (int i = 0; i < hugeImpulses.length; i += 8) {
+                hugeImpulses[i] = 1e200;                   // autocorrelation, which
+            }                                              // squares, is not
+
+            for (double[] values : List.of(hugeMean, hugeSpread, hugeImpulses)) {
+                OnsetEnvelope envelope = new OnsetEnvelope(values, 172.0);
+
+                assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
+                assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
+            }
+
+            assertThat(TempoEstimator.peakiness(hugeMean)).isZero();
+            assertThat(TempoEstimator.peakiness(hugeSpread)).isZero();
+            // Not zero: this one's moments are perfectly well behaved, which is
+            // the point -- it fails downstream of peakiness, in periodicity.
+            assertThat(TempoEstimator.peakiness(hugeImpulses)).isGreaterThan(0.4);
+            assertThat(TempoEstimator.estimate(new OnsetEnvelope(hugeImpulses, 172.0))
+                    .periodicity()).isZero();
         }
 
         @Test
