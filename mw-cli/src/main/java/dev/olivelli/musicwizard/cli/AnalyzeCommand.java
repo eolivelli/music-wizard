@@ -17,7 +17,10 @@
 package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
@@ -75,9 +78,51 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println("Source     " + workspace.sourceFile().getFileName());
         System.out.println("Advisor    " + (config.isLlmEnabled() ? "enabled" : "disabled"));
         System.out.println();
-        System.out.println("The analysis pipeline is not implemented yet.");
-        System.out.println("Milestone 1b brings beat tracking, chroma and chord estimation.");
+
+        AudioTranscriber transcriber = new AudioTranscriber(
+                message -> System.out.println("  " + message));
+        Score score = transcriber.transcribe(workspace.sourceFile(), options(config));
+
+        workspace.updateMetadata(
+                workspace.title().orElse(null), workspace.artist().orElse(null));
+        workspace.writeScore(score);
+
+        System.out.println();
+        System.out.printf("Tempo   %.1f BPM%n",
+                score.tempoMap().averageTempo(score.durationSeconds()));
+        System.out.println("Meter   " + score.tempoMap().initialTimeSignature());
+        System.out.println("Chords  " + score.chords().size() + " spans");
+        System.out.println("Saved   " + workspace.scoreFile());
+        System.out.println();
+        System.out.println("Next: mw render " + workspace.root().getFileName());
         return 0;
+    }
+
+    private AudioTranscriber.Options options(MusicWizardConfig config) {
+        var analysis = config.analysis();
+        TimeSignature meter = parseMeter(analysis != null ? analysis.timeSignatureOverride() : null);
+        return new AudioTranscriber.Options(
+                analysis != null ? analysis.tempoOverride() : null,
+                meter,
+                analysis != null ? analysis.firstDownbeatSecondsOverride() : null);
+    }
+
+    private static TimeSignature parseMeter(String text) {
+        if (text == null || text.isBlank()) {
+            return TimeSignature.FOUR_FOUR;
+        }
+        String[] parts = text.split("/");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException(
+                    "time signature must look like 4/4 or 6/8, got: " + text);
+        }
+        try {
+            return new TimeSignature(
+                    Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "time signature must look like 4/4 or 6/8, got: " + text, e);
+        }
     }
 
     private MusicWizardConfig overrides() {

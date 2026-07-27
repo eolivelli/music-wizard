@@ -18,7 +18,10 @@ package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.notation.ChordChart;
+import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -81,9 +84,44 @@ final class RenderCommand implements Callable<Integer> {
             }
         }
 
+        Score score = workspace.readScore().orElseThrow(() -> new IllegalStateException(
+                "no transcription yet; run: mw analyze " + workspaceDirectory));
+
+        java.nio.file.Path out = workspace.outputDirectory();
+        try {
+            java.nio.file.Files.createDirectories(out);
+            java.nio.file.Path txt = out.resolve("chords.txt");
+            java.nio.file.Files.writeString(txt, ChordChart.toText(score));
+            System.out.println();
+            System.out.println("Wrote " + txt);
+
+            java.nio.file.Path ly = out.resolve("chords.ly");
+            java.nio.file.Files.writeString(ly, ChordChart.toLilyPond(score));
+            System.out.println("Wrote " + ly);
+
+            if (!noPdf) {
+                java.util.Optional<java.nio.file.Path> binary = ConfigLoader.findLilyPond(config);
+                if (binary.isPresent()) {
+                    LilyPondRenderer.Result result =
+                            new LilyPondRenderer(binary.get()).render(ly);
+                    if (result.succeeded()) {
+                        System.out.println("Wrote " + result.pdf().orElseThrow());
+                    } else {
+                        // Reported, not thrown: the sources are still useful, and
+                        // losing them because the engraver failed would be worse.
+                        System.out.println();
+                        System.out.println("LilyPond could not engrave the chart:");
+                        result.output().lines().limit(10)
+                                .forEach(line -> System.out.println("  " + line));
+                    }
+                }
+            }
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("could not write output", e);
+        }
+
         System.out.println();
-        System.out.println("The notation pipeline is not implemented yet.");
-        System.out.println("Milestone 1a brings LilyPond, MusicXML and MIDI output.");
+        System.out.println(ChordChart.toText(score));
         return 0;
     }
 

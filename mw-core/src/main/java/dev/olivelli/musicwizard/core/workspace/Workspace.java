@@ -345,6 +345,26 @@ public final class Workspace {
         return effectiveConfig(null);
     }
 
+    /**
+     * Reads the persisted transcription, if one has been produced.
+     *
+     * <p>Absent rather than empty when analysis has not run, so a caller can
+     * tell "nothing computed yet" from "computed and found nothing".
+     */
+    public Optional<dev.olivelli.musicwizard.core.model.Score> readScore() {
+        Path file = scoreFile();
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(dev.olivelli.musicwizard.core.model.ScoreJson.read(file));
+    }
+
+    /** Persists the transcription. */
+    public void writeScore(dev.olivelli.musicwizard.core.model.Score score) {
+        Objects.requireNonNull(score, "score");
+        dev.olivelli.musicwizard.core.model.ScoreJson.write(scoreFile(), score);
+    }
+
     /** The stage cache for this workspace. */
     public StageCache cache() {
         return new StageCache(cacheDirectory());
