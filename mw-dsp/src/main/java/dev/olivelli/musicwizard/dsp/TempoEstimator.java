@@ -128,8 +128,11 @@ public final class TempoEstimator {
          *   <li>A held note with ordinary vibrato reads as rhythmic — 50 cents
          *       at 2 Hz scores 0.61 against a 60 BPM click track's 0.63, and at
          *       7 Hz it scores 0.64 and <em>overtakes</em> that click track
-         *       outright, reporting 140 BPM, which is the vibrato rate rather
-         *       than any beat. Sustained chords of pure sines land at 0.47.
+         *       outright, reporting 140 BPM — a third of the 420 BPM modulation
+         *       rate, which is above the 240 BPM top of the search range and so
+         *       cannot be reported at all, making the reading a subharmonic of a
+         *       wobble rather than any beat. Sustained chords of pure sines land
+         *       at 0.47.
          *       Periodic modulation of one note produces a genuinely periodic
          *       train of accents, and nothing measurable in an onset envelope
          *       distinguishes that from a beat. So the ordering is not merely

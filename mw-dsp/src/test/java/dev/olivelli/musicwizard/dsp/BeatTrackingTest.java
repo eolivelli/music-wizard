@@ -500,37 +500,72 @@ class BeatTrackingTest {
         @Test
         @DisplayName("an envelope of finite but enormous samples reports no evidence too")
         void overflowingEnvelopeIsRejectedQuietly() {
-            // These cases are the reason the finiteness checks exist, and every
-            // one of them has only finite samples -- which is exactly why the
-            // test above does not reach them. The overflow happens inside the
-            // arithmetic rather than arriving in the input, and it does so in
-            // two different places that need separate guards.
-            double[] hugeMean = new double[64];
-            java.util.Arrays.fill(hugeMean, 1e308);        // the sum overflows
+            // These are the cases the finiteness checks exist for, and every one
+            // of them has only finite samples -- which is exactly why the test
+            // above does not reach them. The overflow happens inside the
+            // arithmetic rather than arriving in the input, and it happens at
+            // two different layers that need separate guards.
+            //
+            // Both of the first two saturate the running sum, so the mean and
+            // then `largest` go infinite: the second is the same failure with
+            // the opposite sign, not a different one. Neither reaches the
+            // deviation arithmetic.
+            double[] hugeMeanPositive = new double[64];
+            java.util.Arrays.fill(hugeMeanPositive, 1e308);
 
-            double[] hugeSpread = new double[64];
-            java.util.Arrays.fill(hugeSpread, -1.7e308);   // the deviation overflows,
-            hugeSpread[13] = 1.7e308;                      // though the sum does not
+            double[] hugeMeanNegative = new double[64];
+            java.util.Arrays.fill(hugeMeanNegative, -1.7e308);
+            hugeMeanNegative[13] = 1.7e308;
 
-            double[] hugeImpulses = new double[64];        // peakiness is fine; the
+            // This one is different in kind: its mean and moments are perfectly
+            // well behaved, and it fails a layer later, in the autocorrelation,
+            // which squares the envelope.
+            double[] hugeImpulses = new double[64];
             for (int i = 0; i < hugeImpulses.length; i += 8) {
-                hugeImpulses[i] = 1e200;                   // autocorrelation, which
-            }                                              // squares, is not
+                hugeImpulses[i] = 1e200;
+            }
 
-            for (double[] values : List.of(hugeMean, hugeSpread, hugeImpulses)) {
+            for (double[] values : List.of(hugeMeanPositive, hugeMeanNegative, hugeImpulses)) {
                 OnsetEnvelope envelope = new OnsetEnvelope(values, 172.0);
 
                 assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
                 assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
             }
 
-            assertThat(TempoEstimator.peakiness(hugeMean)).isZero();
-            assertThat(TempoEstimator.peakiness(hugeSpread)).isZero();
-            // Not zero: this one's moments are perfectly well behaved, which is
-            // the point -- it fails downstream of peakiness, in periodicity.
+            assertThat(TempoEstimator.peakiness(hugeMeanPositive)).isZero();
+            assertThat(TempoEstimator.peakiness(hugeMeanNegative)).isZero();
             assertThat(TempoEstimator.peakiness(hugeImpulses)).isGreaterThan(0.4);
             assertThat(TempoEstimator.estimate(new OnsetEnvelope(hugeImpulses, 172.0))
                     .periodicity()).isZero();
+        }
+
+        @Test
+        @DisplayName("merely enormous input still gets a real answer, not a rejection")
+        void overflowGuardsDoNotFireOnLargeButUsableInput() {
+            // The other half of the previous test, and the one that stops these
+            // guards being tightened into a bug. Rejecting absurd input is only
+            // right if input that is merely large still reads correctly: both
+            // components are ratios, so amplitude must not enter the answer at
+            // all until the arithmetic actually overflows.
+            //
+            // 1e150 is the largest round decade that survives the
+            // autocorrelation, which squares.
+            double[] enormous = new double[64];
+            double[] ordinary = new double[64];
+            for (int i = 0; i < enormous.length; i += 8) {
+                enormous[i] = 1e150;
+                ordinary[i] = 1;
+            }
+
+            TempoEstimator.Estimate large =
+                    TempoEstimator.estimate(new OnsetEnvelope(enormous, 172.0));
+            TempoEstimator.Estimate small =
+                    TempoEstimator.estimate(new OnsetEnvelope(ordinary, 172.0));
+
+            assertThat(large.strength()).isGreaterThan(0.1);
+            assertThat(large.strength()).isCloseTo(small.strength(), within(1e-12));
+            assertThat(large.peakiness()).isCloseTo(small.peakiness(), within(1e-12));
+            assertThat(large.periodicity()).isCloseTo(small.periodicity(), within(1e-12));
         }
 
         @Test
