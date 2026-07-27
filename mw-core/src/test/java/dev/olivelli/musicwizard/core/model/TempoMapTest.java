@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.api.Assumptions.assumeThat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -573,6 +574,10 @@ class TempoMapTest {
             // load slows both sides together -- and the measured margin then
             // *grows* under contention rather than shrinking: 595x idle, 3322x
             // under heavy memory pressure, against a threshold of 20.
+            //
+            // The baseline is this class's own scan oracle, which is deliberate
+            // but couples the two: making scan faster would silently lower this
+            // threshold, so if you ever optimise it, re-measure here.
             TempoMap map = constantIntervalMap(256_000);
             List<TempoMap.TempoSegment> segments = map.segments();
 
@@ -601,6 +606,70 @@ class TempoMapTest {
                     .isGreaterThan(20 * Math.max(1, searchNanos));
         }
 
+        @Test
+        @DisplayName("lookup allocates nothing per call")
+        void lookupAllocatesNothingPerCall() {
+            // The timing test above cannot see a constant-factor regression: with
+            // a 20x threshold against a ~10 ms scan, a lookup could get twice as
+            // slow and still pass. Raising that threshold is not the answer -- the
+            // margin under an adversarial JIT configuration is only ~1.7x, so a
+            // higher one would put the flakiness straight back. Allocation is the
+            // part of the constant factor worth pinning, and it can be measured
+            // exactly instead of timed: the two axes share one search only because
+            // it takes a ToDoubleFunction, and the whole case for that shape is
+            // that the two method references are non-capturing singletons. If a
+            // future edit captures anything, boxes a key, or materialises a list
+            // of axis values, that assumption is gone and this fails.
+            com.sun.management.ThreadMXBean threads = allocationCountingThreadBean();
+            assumeThat(threads).isNotNull();
+
+            // Size is irrelevant here -- allocation per call does not depend on
+            // how many steps the search takes -- so keep the map small.
+            TempoMap map = constantIntervalMap(5_000);
+            long self = Thread.currentThread().threadId();
+
+            // Warm up: class loading, lambda linkage and JIT all allocate, and
+            // none of that is per-call cost.
+            double sink = 0;
+            for (int i = 0; i < 100_000; i++) {
+                sink += map.secondsToBeats(i % 5_000) + map.beatsToSeconds(i % 5_000);
+            }
+
+            int calls = 200_000;
+            long before = threads.getThreadAllocatedBytes(self);
+            for (int i = 0; i < calls; i++) {
+                sink += map.secondsToBeats(i % 5_000) + map.beatsToSeconds(i % 5_000);
+            }
+            long allocated = threads.getThreadAllocatedBytes(self) - before;
+
+            assertThat(sink).isGreaterThan(0.0);
+            // Measured at exactly 0 bytes; the allowance is 5 bytes per call, for
+            // TLAB accounting noise and anything the harness allocates on this
+            // thread. One boxed key per search step would be ~100 MB over this
+            // loop, so the bound is nowhere near tight enough to be delicate.
+            assertThat(allocated)
+                    .describedAs("%d lookups allocated %d bytes (%.3f per call);"
+                            + " the lookup is allocating again",
+                            calls, allocated, (double) allocated / calls)
+                    .isLessThan(1L << 20);
+        }
+
+        /**
+         * The allocation-counting bean, or null where it is unavailable -- the
+         * interface is HotSpot's rather than the JMX standard's, and a
+         * measurement this precise should skip rather than fail elsewhere.
+         */
+        private com.sun.management.ThreadMXBean allocationCountingThreadBean() {
+            if (!(java.lang.management.ManagementFactory.getThreadMXBean()
+                    instanceof com.sun.management.ThreadMXBean bean)) {
+                return null;
+            }
+            if (!bean.isThreadAllocatedMemorySupported() || !bean.isThreadAllocatedMemoryEnabled()) {
+                return null;
+            }
+            return bean;
+        }
+
         /** Beat i at second i, so a probe is trivially placed by index. */
         private TempoMap constantIntervalMap(int segmentCount) {
             List<TempoMap.TempoSegment> segments = new ArrayList<>(segmentCount);
@@ -610,11 +679,20 @@ class TempoMapTest {
             return new TempoMap(segments, List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
         }
 
+        /**
+         * Both axes, because they are only cheap together. The two directions
+         * share one private search today, so a regression on one alone has to be
+         * introduced deliberately -- but the differential tests cannot see it
+         * either, since the scan is their oracle rather than their subject, so
+         * timing only {@code secondsToBeats} would leave {@code beatsToSeconds}
+         * unguarded by anything at all. In this map beat i falls at second i, so
+         * one probe value serves both.
+         */
         private long timeSearch(TempoMap map, double[] probes) {
             long start = System.nanoTime();
             double sink = 0;
             for (double probe : probes) {
-                sink += map.secondsToBeats(probe);
+                sink += map.secondsToBeats(probe) + map.beatsToSeconds(probe);
             }
             long elapsed = System.nanoTime() - start;
             // An escaping, data-dependent use, so the loop cannot be elided.
@@ -626,7 +704,8 @@ class TempoMapTest {
             long start = System.nanoTime();
             double sink = 0;
             for (double probe : probes) {
-                sink += scan(segments, probe, TempoMap.TempoSegment::startSeconds).startBeat();
+                sink += scan(segments, probe, TempoMap.TempoSegment::startSeconds).startBeat()
+                        + scan(segments, probe, TempoMap.TempoSegment::startBeat).startSeconds();
             }
             long elapsed = System.nanoTime() - start;
             assertThat(sink).isGreaterThan(0.0);
