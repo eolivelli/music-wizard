@@ -237,46 +237,60 @@ public final class BeatTracker {
     }
 
     /**
-     * Assigns bar positions to tracked beats.
+     * Assigns bar positions to tracked beats, phasing the bars from onset
+     * energy alone.
      *
-     * <p>Downbeat detection is the weakest link in the whole pipeline, so this
-     * does the honest minimum: it picks the phase whose beats carry the most
-     * onset energy, which is right more often than not because bars tend to
-     * start with an accent. It does not attempt to infer the meter — 4/4 is
-     * assumed, since it covers the large majority of the material this tool
-     * targets and guessing wrong is far more damaging than not guessing.
+     * <p>Kept for callers that have no chroma to hand, and weak for the reasons
+     * {@link DownbeatEstimator} sets out: on a click track every beat carries the
+     * same accent, and on real music a backbeat can carry more energy than the
+     * downbeat. Prefer {@link #toBeatGrid(Result, DownbeatEstimator.Estimate)}
+     * with a chroma-based estimate.
+     *
+     * <p>The meter is not inferred here or anywhere else — 4/4 is assumed, since
+     * it covers the large majority of the material this tool targets and
+     * guessing wrong is far more damaging than not guessing.
      */
     public static BeatGrid toBeatGrid(Result result, OnsetEnvelope envelope, int beatsPerBar) {
         Objects.requireNonNull(result, "result");
+        Objects.requireNonNull(envelope, "envelope");
+        requireBeats(result);
+        return toBeatGrid(result,
+                DownbeatEstimator.fromOnsets(result.beatTimes(), envelope, beatsPerBar));
+    }
+
+    /**
+     * Assigns bar positions to tracked beats using a downbeat phase estimated
+     * elsewhere.
+     *
+     * <p>Separating the two is what lets the phase be chosen from harmony, which
+     * is a far better signal than onset energy but only exists after chroma has
+     * been extracted — and chroma is extracted over these very beats. Keeping
+     * the phase an input rather than something this method computes is what
+     * keeps that ordering acyclic.
+     */
+    public static BeatGrid toBeatGrid(Result result, DownbeatEstimator.Estimate downbeat) {
+        Objects.requireNonNull(result, "result");
+        Objects.requireNonNull(downbeat, "downbeat");
+        requireBeats(result);
+
+        List<Double> times = result.beatTimes();
+        int beatsPerBar = downbeat.beatsPerBar();
+        List<BeatGrid.Beat> beats = new ArrayList<>(times.size());
+        for (int i = 0; i < times.size(); i++) {
+            int position = Math.floorMod(i - downbeat.phase(), beatsPerBar);
+            beats.add(new BeatGrid.Beat(times.get(i), position == 0, position));
+        }
+        // Two independent doubts multiply: a phase is only as good as the beats
+        // it phases, so a confident phase over shaky beats is still shaky. This
+        // is also what keeps the downbeat claim from ever reading as stronger
+        // than the beat claim it rests on.
+        return new BeatGrid(beats, result.confidence(),
+                Confidence.clamped(result.confidence().value() * downbeat.confidence().value()));
+    }
+
+    private static void requireBeats(Result result) {
         if (result.isEmpty()) {
             throw new IllegalArgumentException("cannot build a beat grid with no beats");
         }
-        if (beatsPerBar < 1) {
-            throw new IllegalArgumentException("beatsPerBar must be positive, got: " + beatsPerBar);
-        }
-
-        List<Double> times = result.beatTimes();
-        int bestPhase = 0;
-        double bestEnergy = Double.NEGATIVE_INFINITY;
-        for (int phase = 0; phase < beatsPerBar; phase++) {
-            double energy = 0;
-            for (int i = phase; i < times.size(); i += beatsPerBar) {
-                energy += envelope.strength()[envelope.frameOf(times.get(i))];
-            }
-            if (energy > bestEnergy) {
-                bestEnergy = energy;
-                bestPhase = phase;
-            }
-        }
-
-        List<BeatGrid.Beat> beats = new ArrayList<>(times.size());
-        for (int i = 0; i < times.size(); i++) {
-            int position = Math.floorMod(i - bestPhase, beatsPerBar);
-            beats.add(new BeatGrid.Beat(times.get(i), position == 0, position));
-        }
-        // Downbeat phase is a weaker claim than the beats themselves, so it
-        // carries its own lower confidence rather than borrowing theirs.
-        return new BeatGrid(beats, result.confidence(),
-                Confidence.clamped(result.confidence().value() * 0.6));
     }
 }

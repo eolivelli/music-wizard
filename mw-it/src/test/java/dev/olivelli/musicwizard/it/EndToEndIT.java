@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
@@ -29,6 +30,7 @@ import dev.olivelli.musicwizard.testkit.SignalFactory;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +85,26 @@ class EndToEndIT {
 
         String chart = ChordChart.toText(reloaded);
         assertThat(chart).contains("| C").contains("| G").contains("| Am").contains("| F");
+    }
+
+    @Test
+    @DisplayName("the bar lines land where the chords change")
+    void downbeatsAgreeWithChords() {
+        // The stages agreeing with each other is the whole point of running them
+        // in one pipeline, and the seam this crosses is the one issue #27 found
+        // broken: beats and chords agreed, and the downbeats were half a bar out
+        // because they were phased from onset energy rather than from harmony.
+        // Only the transcriber exercises the ordering that makes the harmonic
+        // phase available, so it cannot be checked in mw-dsp alone.
+        Score score = new AudioTranscriber().transcribe(
+                writeFourChordSong(), AudioTranscriber.Options.defaults());
+
+        List<Double> downbeats = score.beatGrid().orElseThrow().downbeatTimes();
+        assertThat(downbeats).isNotEmpty();
+        for (Chord chord : score.chords().chords()) {
+            assertThat(downbeats).anySatisfy(downbeat ->
+                    assertThat(downbeat).isCloseTo(chord.startSeconds(), within(0.06)));
+        }
     }
 
     @Test
