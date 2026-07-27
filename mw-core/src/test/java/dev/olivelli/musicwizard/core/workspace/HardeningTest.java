@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -164,14 +167,7 @@ class HardeningTest {
             Files.createDirectories(victim.resolve("beats"));
             Files.writeString(victim.resolve("beats/keep.txt"), "keep me");
 
-            Path cacheDir = workspace.cacheDirectory();
-            try (var entries = Files.walk(cacheDir)) {
-                entries.sorted(java.util.Comparator.reverseOrder())
-                        .forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } });
-            }
-            try {
-                Files.createSymbolicLink(cacheDir, victim);
-            } catch (UnsupportedOperationException | IOException e) {
+            if (!replaceCacheWithSymlink(workspace, victim)) {
                 return;
             }
 
@@ -216,12 +212,123 @@ class HardeningTest {
             StageCache.Key key = StageCache.Key.forStage("stems");
 
             for (int i = 0; i < 3; i++) {
-                Files.writeString(cache.stagingPath(key, ".bin"), "orphan " + i);
+                Path orphan = cache.stagingPath(key, ".bin");
+                Files.writeString(orphan, "orphan " + i);
+                backdate(orphan, Duration.ofDays(2));
             }
             cache.writeText(key, ".json", "real entry");
 
             assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(3);
             assertThat(cache.readText(key, ".json")).contains("real entry");
+        }
+
+        @Test
+        @DisplayName("a sweep spares a staging file another run is still writing")
+        void sweepSparesInFlightStagingFiles() throws IOException {
+            // The whole reason the sweep has an age threshold. ".partial-" is
+            // also the name a LIVE separation writes its stem under, and a
+            // workspace can be open in two processes at once, so an
+            // unconditional sweep deletes hundreds of megabytes out from under a
+            // run that then fails at commit.
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path inFlight = cache.stagingPath(key, ".bin");
+            Files.writeString(inFlight, "half a stem");
+            Path abandoned = cache.stagingPath(key, ".bin");
+            Files.writeString(abandoned, "yesterday's stem");
+            backdate(abandoned, Duration.ofDays(2));
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
+            assertThat(inFlight).exists();
+            assertThat(abandoned).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("a staging file dated in the future is spared, not swept")
+        void sweepSparesFutureDatedStagingFiles() throws IOException {
+            // Clock skew between a workspace on shared storage and this machine
+            // must not be read as "very old indeed".
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path skewed = cache.stagingPath(key, ".bin");
+            Files.writeString(skewed, "written by a fast clock");
+            backdate(skewed, Duration.ofDays(-2));
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isZero();
+            assertThat(skewed).exists();
+        }
+
+        @Test
+        @DisplayName("a sweep does not delete through a symlinked cache directory")
+        void sweepRefusesSymlinkedCacheDirectory() throws IOException {
+            // Same trap as invalidateStage: the sweep deletes, and a workspace is
+            // a directory people copy and share.
+            Workspace workspace = newWorkspace();
+            Path victim = tempDirectory.resolve("sweep-victim");
+            Files.createDirectories(victim.resolve("stems"));
+            Path bait = victim.resolve("stems/.partial-precious.bin");
+            Files.writeString(bait, "not ours to delete");
+            backdate(bait, Duration.ofDays(2));
+
+            if (!replaceCacheWithSymlink(workspace, victim)) {
+                return;
+            }
+
+            assertThatThrownBy(() -> workspace.cache().sweepAbandonedStagingFiles())
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("cache directory is a symbolic link");
+            assertThat(bait).exists();
+        }
+
+        @Test
+        @DisplayName("a sweep does not follow a staging file that is a symlink")
+        void sweepDoesNotFollowStagingSymlinks() throws IOException {
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+            // Force the stage directory into existence.
+            cache.writeText(key, ".json", "real entry");
+
+            Path secret = tempDirectory.resolve("secret.txt");
+            Files.writeString(secret, "read me not");
+            backdate(secret, Duration.ofDays(2));
+            Path link = cache.pathFor(key, ".bin").getParent().resolve(".partial-link.bin");
+            try {
+                Files.createSymbolicLink(link, secret);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+
+            assertThat(cache.sweepAbandonedStagingFiles()).isZero();
+            assertThat(secret).exists();
+        }
+    }
+
+    /** Backdates a file so a sweep sees it as abandoned rather than in flight. */
+    private static void backdate(Path file, Duration age) throws IOException {
+        Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(age)));
+    }
+
+    /**
+     * Replaces a workspace's cache directory with a symlink to {@code target},
+     * returning false when the platform will not create symlinks at all.
+     */
+    private static boolean replaceCacheWithSymlink(Workspace workspace, Path target)
+            throws IOException {
+        Path cacheDir = workspace.cacheDirectory();
+        try (var entries = Files.walk(cacheDir)) {
+            entries.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> { try { Files.deleteIfExists(path); } catch (IOException ignored) { } });
+        }
+        try {
+            Files.createSymbolicLink(cacheDir, target);
+            return true;
+        } catch (UnsupportedOperationException | IOException e) {
+            return false;
         }
     }
 

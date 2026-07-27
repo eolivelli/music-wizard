@@ -20,10 +20,14 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
@@ -305,17 +309,88 @@ public final class StageCache {
         }
     }
 
-    /** Removes any staging files left behind by an interrupted earlier run. */
+    /**
+     * How long a staging file must have been untouched before a sweep is willing
+     * to treat it as abandoned.
+     *
+     * <p>Deliberately far longer than any stage takes. There is no portable way
+     * to ask whether another process still has a file open, so the sweep infers
+     * it from the modification time, and the cost of the two errors is wildly
+     * asymmetric: keeping a dead file for another day wastes disk, while
+     * deleting a live one destroys a separation run that may already be several
+     * minutes in.
+     */
+    public static final Duration ABANDONED_STAGING_AGE = Duration.ofHours(24);
+
+    /**
+     * Removes staging files left behind by an interrupted earlier run, using the
+     * default {@link #ABANDONED_STAGING_AGE} threshold.
+     */
     public int sweepAbandonedStagingFiles() {
+        return sweepAbandonedStagingFiles(ABANDONED_STAGING_AGE);
+    }
+
+    /**
+     * Removes staging files that have not been modified for at least
+     * {@code minimumAge}, and returns how many were removed.
+     *
+     * <p>The age threshold is the whole point. A workspace can be open in more
+     * than one process, and {@code .partial-} is also the name a <em>live</em>
+     * stage writes its stem under, so an unconditional sweep run at any
+     * plausible moment -- opening a second workspace command while the first is
+     * still separating -- deletes hundreds of megabytes out from under a run
+     * that then fails at {@link #commit}. A file whose last write was a day ago
+     * belongs to no such run.
+     *
+     * <p>Symbolic links are left alone and a symlinked cache directory is
+     * refused outright, for the same reason {@link #invalidateStage} refuses
+     * one: this method deletes, and a workspace is a directory people copy and
+     * share, so a {@code cache/} pointing at somebody's home directory would
+     * make the sweep delete there instead.
+     *
+     * @param minimumAge how long a staging file must have been idle; {@code ZERO}
+     *                   sweeps everything and is only safe when no other process
+     *                   can be using the workspace
+     */
+    public int sweepAbandonedStagingFiles(Duration minimumAge) {
+        Objects.requireNonNull(minimumAge, "minimumAge");
+        if (minimumAge.isNegative()) {
+            throw new IllegalArgumentException("minimumAge must not be negative: " + minimumAge);
+        }
+        if (Files.isSymbolicLink(directory)) {
+            throw new IllegalStateException(
+                    "the workspace's cache directory is a symbolic link; refusing to delete"
+                            + " through it: " + directory);
+        }
         if (!Files.isDirectory(directory)) {
             return 0;
         }
+        Instant cutoff = Instant.now().minus(minimumAge);
         int removed = 0;
+        // Files.walk does not follow links, so a symlinked stage directory is
+        // reported but never descended into.
         try (var entries = Files.walk(directory)) {
-            for (Path path : entries.filter(Files::isRegularFile).toList()) {
-                if (path.getFileName().toString().startsWith(".partial-")) {
+            for (Path path : entries.toList()) {
+                if (!path.getFileName().toString().startsWith(".partial-")) {
+                    continue;
+                }
+                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                try {
+                    Instant modified = Files.getLastModifiedTime(
+                            path, LinkOption.NOFOLLOW_LINKS).toInstant();
+                    // A modification time in the future -- clock skew on shared
+                    // storage -- reads as "not yet old enough", which is the
+                    // side to err on.
+                    if (modified.isAfter(cutoff)) {
+                        continue;
+                    }
                     Files.deleteIfExists(path);
                     removed++;
+                } catch (NoSuchFileException e) {
+                    // Another process committed or discarded it between the walk
+                    // and now. That is the outcome we wanted anyway.
                 }
             }
         } catch (IOException e) {

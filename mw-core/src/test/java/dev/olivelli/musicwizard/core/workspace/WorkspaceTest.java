@@ -23,6 +23,9 @@ import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -151,6 +154,59 @@ class WorkspaceTest {
             assertThat(Workspace.isWorkspace(root)).isTrue();
             assertThat(Workspace.isWorkspace(tempDirectory)).isFalse();
             assertThat(Workspace.isWorkspace(null)).isFalse();
+        }
+
+        @Test
+        @DisplayName("reclaims staging files a crashed earlier run abandoned")
+        void sweepsAbandonedStagingFilesOnOpen() throws IOException {
+            // Nothing else in the tool ever deletes these, and a stem abandoned
+            // between stagingPath and commit is hundreds of megabytes.
+            Workspace workspace = newWorkspace();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+            Path abandoned = workspace.cache().stagingPath(key, ".wav");
+            Files.writeString(abandoned, "half a stem from a crashed run");
+            Files.setLastModifiedTime(abandoned,
+                    FileTime.from(Instant.now().minus(Duration.ofDays(2))));
+
+            Workspace.open(workspace.root());
+
+            assertThat(abandoned).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("leaves alone a staging file another process is still writing")
+        void sparesInFlightStagingFilesOnOpen() throws IOException {
+            // Opening a second command against a workspace while the first is
+            // still separating is ordinary usage; it must not destroy the stem
+            // the first one is mid-write on.
+            Workspace workspace = newWorkspace();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+            Path inFlight = workspace.cache().stagingPath(key, ".wav");
+            Files.writeString(inFlight, "half a stem, still being written");
+
+            Workspace.open(workspace.root());
+
+            assertThat(inFlight).exists();
+        }
+
+        @Test
+        @DisplayName("still opens when the sweep cannot run")
+        void opensEvenWhenTheSweepFails() throws IOException {
+            // Housekeeping must never be the reason a workspace is unopenable, so
+            // the sweep's refusal to delete through a symlinked cache is
+            // swallowed rather than propagated.
+            Workspace workspace = newWorkspace();
+            Path elsewhere = tempDirectory.resolve("elsewhere");
+            Files.createDirectories(elsewhere);
+            Files.delete(workspace.cacheDirectory());
+            try {
+                Files.createSymbolicLink(workspace.cacheDirectory(), elsewhere);
+            } catch (UnsupportedOperationException | IOException e) {
+                return;
+            }
+
+            assertThat(Workspace.open(workspace.root()).readDescriptor().sourceFileName())
+                    .isEqualTo("song.mp3");
         }
     }
 
