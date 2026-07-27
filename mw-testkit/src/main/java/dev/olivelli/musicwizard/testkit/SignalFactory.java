@@ -105,8 +105,11 @@ public final class SignalFactory {
             int noteLength = (int) Math.round(interval * sampleRate);
             for (double frequency : frequencies) {
                 for (int i = 0; i < noteLength && start + i < out.length; i++) {
-                    double envelope = Math.exp(-2.0 * i / noteLength);
-                    out[start + i] += (float) (0.25 / frequencies.length * envelope
+                    // Sustains rather than decaying to nothing: a chord that has
+                    // faded out before the next beat gives the harmony stages a
+                    // frame of noise to analyse, which tests the wrong thing.
+                    double envelope = 0.7 + 0.3 * Math.exp(-3.0 * i / noteLength);
+                    out[start + i] += (float) (0.6 / frequencies.length * envelope
                             * Math.sin(2 * Math.PI * frequency * i / sampleRate));
                 }
             }
