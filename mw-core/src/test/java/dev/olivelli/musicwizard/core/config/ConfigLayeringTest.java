@@ -374,18 +374,53 @@ class ConfigLayeringTest {
         }
 
         @Test
-        @DisplayName("a PATH wrapped in one pair of quotes still finds its entries")
+        @DisplayName("a PATH wrapped in one pair of quotes finds any of its entries")
         void searchesInsideAWhollyQuotedPath() throws Exception {
-            // set PATH="%PATH%;C:\lily\bin" quotes the whole variable. Reading
-            // that as one directory is defensible, but finding nothing when the
-            // directory is right there is not: a guess about quoting must not
-            // cost a directory the user listed.
+            // set PATH="%PATH%;C:\lily\bin" quotes the whole variable, and puts
+            // the interesting directory last. Reading the lot as one directory
+            // is defensible; finding nothing when the directory is right there
+            // is not. Every position has to work: the quotes come off before
+            // the fallback splits, or the first and last entries keep one and
+            // are rejected for carrying it.
             Path executable = fakeBinary("lilypond.exe");
             String separator = java.io.File.pathSeparator;
-            String path = "\"/nowhere/a" + separator + tempDirectory
-                    + separator + "/nowhere/b\"";
+            String directory = tempDirectory.toString();
+            for (String path : List.of(
+                    "\"" + directory + separator + "/nowhere/a" + separator + "/nowhere/b\"",
+                    "\"/nowhere/a" + separator + directory + separator + "/nowhere/b\"",
+                    "\"/nowhere/a" + separator + "/nowhere/b" + separator + directory + "\"",
+                    "\"" + directory + separator + "/nowhere/a\"",
+                    "\"/nowhere/a" + separator + directory + "\"")) {
+                assertThat(ConfigLoader.discover(path, true, List.of()))
+                        .as("%s", path)
+                        .contains(executable);
+            }
+        }
 
-            assertThat(ConfigLoader.discover(path, true, List.of())).contains(executable);
+        @Test
+        @DisplayName("a mis-quoted Windows entry is read again without its quotes")
+        void readsAMisquotedEntryWithoutItsQuotes() throws Exception {
+            // `set PATH="C:\lily\bin;%PATH%` — one quote, no closer. Read as
+            // written the entry names nothing, and a quote cannot be part of a
+            // Windows filename, so the only reading left is the one without it.
+            Path executable = fakeBinary("lilypond.exe");
+
+            assertThat(ConfigLoader.discover("\"" + tempDirectory, true, List.of()))
+                    .contains(executable);
+            assertThat(ConfigLoader.discover(tempDirectory + "\"", true, List.of()))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("on POSIX quotes are never stripped to make an entry work")
+        void doesNotStripQuotesOnPosix() throws Exception {
+            // A quote is a legal POSIX filename character, so a"b names a"b and
+            // not ab. Stripping would search a directory nobody listed.
+            Path directory = Files.createDirectory(tempDirectory.resolve("ab"));
+            fakeBinaryIn(directory, "lilypond");
+            String entry = tempDirectory.resolve("a\"b").toString();
+
+            assertThat(ConfigLoader.discover(entry, false, List.of())).isEmpty();
         }
 
         @Test

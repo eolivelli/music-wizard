@@ -206,14 +206,15 @@ public final class ConfigLoader {
         if (pathVariable != null) {
             for (String entry : splitPath(pathVariable, windows)) {
                 Optional<Path> found = searchEntry(entry, windows, names);
+                // An entry only spans a separator because a quote was read as
+                // quoting it, which happens only on the Windows branch. If that
+                // reading finds nothing, search what a blind split would have
+                // seen instead: discovery is a search, not a parse, and a
+                // misplaced quote must never cost a directory the user did
+                // list. The fragments at the two ends still carry the quote
+                // that delimited the entry; searchEntry drops it for them.
                 if (found.isEmpty()
                         && entry.indexOf(java.io.File.pathSeparatorChar) >= 0) {
-                    // An entry only spans a separator because a quote was read
-                    // as quoting it, which happens only on the Windows branch.
-                    // If that reading finds nothing, search what a blind split
-                    // would have seen instead: discovery is a search, not a
-                    // parse, and a misplaced quote must never cost a directory
-                    // the user did list.
                     for (String fragment : splitPath(entry, false)) {
                         found = searchEntry(fragment, windows, names);
                         if (found.isPresent()) {
@@ -243,7 +244,21 @@ public final class ConfigLoader {
     /** Looks for the binary in the directory a single {@code PATH} entry names. */
     private static Optional<Path> searchEntry(String entry, boolean windows, List<String> names) {
         Path directory = pathEntryDirectory(entry, windows);
-        return directory == null ? Optional.empty() : firstExecutableIn(directory, names);
+        if (directory != null) {
+            return firstExecutableIn(directory, names);
+        }
+        if (windows && entry.indexOf('"') >= 0) {
+            // A quote cannot be part of a Windows filename, so an entry still
+            // carrying one after unquoting was mis-quoted rather than meant —
+            // `"C:\lily\bin` with no closer, say. Having failed to read it as
+            // written, read it as what is left when the quotes come out, so
+            // that a misplaced quote costs a search and not a directory.
+            Path stripped = pathEntryDirectory(entry.replace("\"", ""), windows);
+            if (stripped != null) {
+                return firstExecutableIn(stripped, names);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -321,13 +336,8 @@ public final class ConfigLoader {
      * {@code notation.lilypondPath}.
      */
     private static Path pathEntryDirectory(String entry, boolean windows) {
-        String value = entry;
+        String value = unquote(entry, windows);
         if (windows) {
-            // cmd.exe strips these; leaving them in makes the whole entry
-            // unusable rather than merely unquoted.
-            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                value = value.substring(1, value.length() - 1);
-            }
             // A quote cannot be part of a Windows filename, so an entry still
             // carrying one is malformed however it is read.
             if (value.indexOf('"') >= 0) {
@@ -339,6 +349,18 @@ public final class ConfigLoader {
         }
         Path directory = parseDirectory(value);
         return directory != null && directory.isAbsolute() ? directory : null;
+    }
+
+    /**
+     * A {@code PATH} entry with the quotes that delimit it removed, as
+     * {@code cmd.exe} does. Leaving them on makes the whole entry unusable
+     * rather than merely unquoted.
+     */
+    private static String unquote(String entry, boolean windows) {
+        if (windows && entry.length() >= 2 && entry.startsWith("\"") && entry.endsWith("\"")) {
+            return entry.substring(1, entry.length() - 1);
+        }
+        return entry;
     }
 
     /** A path, or null when it does not parse on this platform. */
