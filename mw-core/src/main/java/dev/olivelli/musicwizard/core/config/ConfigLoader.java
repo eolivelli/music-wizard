@@ -248,11 +248,13 @@ public final class ConfigLoader {
             return firstExecutableIn(directory, names);
         }
         if (windows && entry.indexOf('"') >= 0) {
-            // A quote cannot be part of a Windows filename, so an entry still
-            // carrying one after unquoting was mis-quoted rather than meant —
-            // `"C:\lily\bin` with no closer, say. Having failed to read it as
-            // written, read it as what is left when the quotes come out, so
-            // that a misplaced quote costs a search and not a directory.
+            // A quote cannot be part of a Windows filename, so an entry
+            // carrying one was quoted rather than named that way — whether
+            // properly, as "C:\Program Files\LilyPond\bin", or by a stray
+            // that never closed. Having failed to read it as written, read
+            // what is left when the quotes come out, which is what cmd.exe
+            // searches: a misplaced quote then costs a search, not a
+            // directory.
             Path stripped = pathEntryDirectory(entry.replace("\"", ""), windows);
             if (stripped != null) {
                 return firstExecutableIn(stripped, names);
@@ -336,7 +338,7 @@ public final class ConfigLoader {
      * {@code notation.lilypondPath}.
      */
     private static Path pathEntryDirectory(String entry, boolean windows) {
-        String value = unquote(entry, windows);
+        String value = entry;
         if (windows) {
             // A quote cannot be part of a Windows filename, so an entry still
             // carrying one is malformed however it is read.
@@ -349,18 +351,6 @@ public final class ConfigLoader {
         }
         Path directory = parseDirectory(value);
         return directory != null && directory.isAbsolute() ? directory : null;
-    }
-
-    /**
-     * A {@code PATH} entry with the quotes that delimit it removed, as
-     * {@code cmd.exe} does. Leaving them on makes the whole entry unusable
-     * rather than merely unquoted.
-     */
-    private static String unquote(String entry, boolean windows) {
-        if (windows && entry.length() >= 2 && entry.startsWith("\"") && entry.endsWith("\"")) {
-            return entry.substring(1, entry.length() - 1);
-        }
-        return entry;
     }
 
     /** A path, or null when it does not parse on this platform. */

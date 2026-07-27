@@ -421,6 +421,15 @@ class ConfigLayeringTest {
             String entry = tempDirectory.resolve("a\"b").toString();
 
             assertThat(ConfigLoader.discover(entry, false, List.of())).isEmpty();
+
+            // The other way in: a leading quote, as PATH="/opt/lily/bin:$PATH
+            // in a mis-escaped script produces. Here the literal reading fails
+            // — the entry is relative, since it starts with the quote — so
+            // without the platform guard the stripped reading would be tried
+            // and would find a directory the user did not list.
+            fakeBinary("lilypond");
+            assertThat(ConfigLoader.discover("\"" + tempDirectory, false, List.of()))
+                    .isEmpty();
         }
 
         @Test
