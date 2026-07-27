@@ -22,5 +22,14 @@
     <dependency>
       <groupId>com.tagtraum</groupId>
       <artifactId>ffsampledsp-complete</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.wendykierp</groupId>
+      <artifactId>JTransforms</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-testkit</artifactId>
+      <scope>test</scope>
     </dependency>  </dependencies>
 </project>
