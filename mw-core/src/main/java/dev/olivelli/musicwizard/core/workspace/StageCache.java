@@ -349,13 +349,43 @@ public final class StageCache {
     }
 
     private static void rememberOutstanding(Path staged) {
-        // Registered on first use rather than in a static initialiser: a process
-        // that never stages anything should not install a hook at all.
-        if (CLEANUP_HOOK_INSTALLED.compareAndSet(false, true)) {
-            Runtime.getRuntime().addShutdownHook(
-                    new Thread(StageCache::discardOutstandingStagedFiles, "mw-staging-cleanup"));
-        }
+        // Tracked before the hook is armed, never after: a hook installed by an
+        // earlier reservation is already able to collect this one, and a file
+        // that exists but is not tracked is exactly the leak being fixed.
         OUTSTANDING_STAGED.add(staged.toAbsolutePath().normalize());
+        installCleanupHook();
+    }
+
+    /**
+     * Arms the exit-time cleanup, once per process.
+     *
+     * <p>Installed on first use rather than from a static initialiser, so a
+     * process that never stages anything installs no hook at all.
+     */
+    private static void installCleanupHook() {
+        if (CLEANUP_HOOK_INSTALLED.get()) {
+            return;
+        }
+        synchronized (CLEANUP_HOOK_INSTALLED) {
+            if (CLEANUP_HOOK_INSTALLED.get()) {
+                return;
+            }
+            try {
+                Runtime.getRuntime().addShutdownHook(
+                        new Thread(StageCache::discardOutstandingStagedFiles, "mw-staging-cleanup"));
+            } catch (IllegalStateException alreadyShuttingDown) {
+                // A stage reached from somebody else's shutdown hook cannot arm
+                // one of its own. Refusing the reservation over that would be a
+                // worse answer than not arming it: the caller would get an
+                // exception type its contract never mentions, and the file
+                // createTempFile has already made would be left behind -- a new
+                // leak introduced by the code meant to remove them.
+            }
+            // Set even when the call failed. Shutdown does not un-begin, so
+            // there is nothing to retry, and the flag's meaning is "we have
+            // stopped trying" rather than "a hook is running".
+            CLEANUP_HOOK_INSTALLED.set(true);
+        }
     }
 
     private static void forgetOutstanding(Path staged) {
@@ -372,6 +402,13 @@ public final class StageCache {
      * for the cases that never get to run a hook at all -- and on its own it is
      * nearly useless here, because it cannot fire until a day after the crash
      * and only if somebody opens that same workspace again.
+     *
+     * <p>Only {@link #stagingPath} reservations are covered. The temporaries
+     * that {@link #writeText} and {@link #writeBytes} use are deliberately not
+     * tracked: they live for the duration of a single small write, both methods
+     * already delete their own on failure, and the sweep catches the remainder.
+     * Registering them would put set churn on every cache write to shorten the
+     * life of a file measured in kilobytes.
      */
     static void discardOutstandingStagedFiles() {
         for (Path staged : OUTSTANDING_STAGED) {
@@ -481,7 +518,17 @@ public final class StageCache {
         }
     }
 
-    /** Moves a staged artifact into its final cache position. */
+    /**
+     * Moves a staged artifact into its final cache position.
+     *
+     * <p>A commit that races exit-time cleanup loses: the hook may delete the
+     * staged file first and the move then fails. That is deliberate rather than
+     * merely tolerated -- the alternative is a lock held across a move of
+     * hundreds of megabytes, on a path whose only purpose is to run while the
+     * process is already going down. The cache is never left inconsistent by
+     * it: the entry simply does not appear, exactly as if the run had died a
+     * moment earlier.
+     */
     public Path commit(Path staged, Key key, String extension) {
         Path target = pathFor(key, extension);
         try {

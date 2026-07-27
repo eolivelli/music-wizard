@@ -335,6 +335,60 @@ class HardeningTest {
         }
 
         @Test
+        @DisplayName("a real JVM exit collects the staged file, not just a direct call")
+        void aRealShutdownCollectsTheStagedFile() throws Exception {
+            // The in-process tests can only call the cleanup method directly, so
+            // the registration itself -- the one line that makes any of this work
+            // for a real user -- can be deleted with the whole suite still green.
+            // Only a process that genuinely exits reaches it.
+            Path staged = runStagingProcess("crash", 1);
+
+            assertThat(staged).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("staging from inside somebody else's shutdown hook still succeeds")
+        void stagingDuringShutdownDoesNotFail() throws Exception {
+            // addShutdownHook throws IllegalStateException once shutdown has
+            // begun. Letting that escape would give stagingPath an exception type
+            // its contract never mentions AND strand the file createTempFile has
+            // already made -- a new leak from the code meant to remove them.
+            Path staged = runStagingProcess("stage-during-shutdown", 0);
+
+            // Nothing can collect it at that point, which is what the age-based
+            // sweep is still there for; the reservation must simply not fail.
+            assertThat(staged).exists();
+        }
+
+        /**
+         * Runs {@link StagingCleanupProcess} in a real JVM and returns the path it
+         * staged, checking it exited the way the mode intends.
+         */
+        private Path runStagingProcess(String mode, int expectedExitCode) throws Exception {
+            Path root = tempDirectory.resolve("forked-" + mode + ".mwz");
+            Process process = new ProcessBuilder(
+                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp", System.getProperty("java.class.path"),
+                    StagingCleanupProcess.class.getName(),
+                    mode, root.toString(), sourceFile.toString())
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            int exitCode = process.waitFor();
+
+            // Reported rather than merely asserted, so a classpath or fork problem
+            // reads as one instead of as a cleanup failure.
+            assertThat(output).as("process output").contains("STAGED ").doesNotContain("FAILED");
+            assertThat(exitCode).as("exit code, output was:%n%s", output)
+                    .isEqualTo(expectedExitCode);
+            return Path.of(output.lines()
+                    .filter(line -> line.startsWith("STAGED "))
+                    .findFirst().orElseThrow()
+                    .substring("STAGED ".length()).trim());
+        }
+
+        @Test
         @DisplayName("a committed file is not deleted afterwards by the shutdown pass")
         void committedFilesAreForgotten() throws IOException {
             // commit() moves the staging file away, so a shutdown pass that still
@@ -347,6 +401,40 @@ class HardeningTest {
             Files.writeString(staged, "committed");
             cache.commit(staged, key, ".wav");
             // Somebody else's later reservation lands on the freed name.
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("a discarded file is not deleted afterwards by the shutdown pass")
+        void discardedFilesAreForgotten() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "abandoned");
+            cache.discard(staged);
+            // A later reservation lands on the freed name.
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("a swept file is not deleted afterwards by the shutdown pass")
+        void sweptFilesAreForgotten() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "abandoned long ago");
+            backdate(staged, Duration.ofDays(2));
+            assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
             Files.writeString(staged, "a different run's stem");
 
             StageCache.discardOutstandingStagedFiles();
