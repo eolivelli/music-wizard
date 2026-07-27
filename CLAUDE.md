@@ -14,8 +14,9 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 mvn -pl mw-core test       # the module that matters most
 ```
 
-There is no `mw` launcher yet (issue #13) — running the CLI still needs a
-hand-built classpath.
+`./mw` is a developer wrapper that rebuilds when sources change; the real
+artifact is the shaded `mw-cli/target/mw.jar`. It is ~88 MB, almost entirely
+ONNX Runtime, FFmpeg natives and the Anthropic SDK.
 
 ## Rules that are not obvious
 

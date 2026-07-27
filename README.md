@@ -44,11 +44,18 @@ apt install lilypond       # Debian or Ubuntu
 ```
 
 Without LilyPond everything still runs — you get `.ly`, `.musicxml` and `.midi`
-files that you can engrave elsewhere. Check your setup with:
+files that you can engrave elsewhere.
+
+Build and check your setup:
 
 ```sh
-mw doctor
+mvn package -DskipTests    # produces mw-cli/target/mw.jar
+./mw doctor                # the wrapper rebuilds when sources change
 ```
+
+The jar is large (~88 MB) because it bundles ONNX Runtime, FFmpeg natives and
+the Anthropic SDK. Slimming it — most obviously by making the ML stack an
+optional download rather than a bundled dependency — is tracked separately.
 
 ## Using it
 

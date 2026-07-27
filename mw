@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# Copyright 2026 Music Wizard contributors
+# Licensed under the Apache License, Version 2.0.
+#
+# Developer convenience wrapper. Builds the CLI jar if it is missing or stale,
+# then runs it. For everyday use install the jar somewhere and call it directly.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+jar="$here/mw-cli/target/mw.jar"
+
+needs_build=false
+if [[ ! -f "$jar" ]]; then
+  needs_build=true
+else
+  # Rebuild when any source file is newer than the jar, so the wrapper does not
+  # quietly run yesterday's code.
+  while IFS= read -r -d '' src; do
+    if [[ "$src" -nt "$jar" ]]; then
+      needs_build=true
+      break
+    fi
+  done < <(find "$here" -name '*.java' -not -path '*/target/*' -print0)
+fi
+
+if [[ "$needs_build" == true ]]; then
+  echo "building mw..." >&2
+  (cd "$here" && mvn -q -B package -DskipTests) >&2
+fi
+
+exec java -jar "$jar" "$@"
