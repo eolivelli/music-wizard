@@ -14,17 +14,42 @@ why the change is what it is.
 
 ## The one rule that outranks the others
 
-**You do not decide when your own work is done.** A PR is ready to merge only
-when all three of these hold:
+**You may merge your own PR, but only when all three of these hold:**
 
-1. **Unit tests pass** — the full suite, not just the tests you added.
+1. **Unit tests pass** — the full suite, not just the tests you added, run
+   against the merged result rather than against your branch in isolation.
 2. **The pr-reviewer agent approves** — a verdict of `APPROVE`, from a review
    round in which it found nothing new.
 3. **The issue is actually solved** — the thing the issue asked for is true
    now, verified by running something, not by reading the diff.
 
-If any one of those is missing, the work is not done. Never merge, and never
-claim completion, on your own assessment alone.
+If any one is missing, do not merge. In particular, never merge on your own
+assessment that the code looks right: the reviewer's approval is not a formality
+you can substitute your own judgement for, and it is the check that has actually
+caught things on this project.
+
+If you cannot get to all three, leave the PR open with a comment saying exactly
+what is unresolved. An open PR with an honest status is a useful handover; a
+merged PR that quietly failed one of the criteria is a debugging session for
+somebody else.
+
+## Step 0 — Start from current `main`
+
+Before anything else:
+
+```sh
+git fetch origin
+git checkout main && git pull --ff-only origin main
+```
+
+Other agents and people are landing work continuously. Branching from a stale
+`main` produces conflicts at merge time, review findings that were already
+fixed, and worst of all a "fix" for a bug somebody else already removed.
+
+Re-sync before you merge, too — rebase or merge `origin/main` into your branch
+and **re-run the full suite against the combined result**. Your branch passing
+and `main` passing does not imply the merge passes; that is exactly where
+independently-correct changes break each other.
 
 ## Step 1 — Triage before you write any code
 
@@ -119,13 +144,15 @@ Loop until the reviewer returns `APPROVE` on a round where it found nothing new.
 A round that finds new problems always requires another round after it,
 regardless of how many you have run.
 
-## Step 5 — Report
+## Step 5 — Merge, or hand over
 
-Report back with: the issue, the triage verdict, the PR link, the review rounds
-and what each found, test results, and whether the three merge criteria are met.
+When all three criteria hold: re-sync with `origin/main`, re-run the full suite
+against the merged result, then merge and close the issue. Delete the branch.
 
-**Do not merge.** Opening the PR and getting it to a mergeable state is your
-job; deciding to merge is not.
+If any criterion fails, leave the PR open and say why.
+
+Either way, report: the issue, the triage verdict, the PR link, the review
+rounds and what each found, test results, and whether you merged.
 
 ## Reporting honestly
 
