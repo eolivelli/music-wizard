@@ -21,7 +21,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
@@ -32,7 +31,10 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Content-addressed storage for the output of a pipeline stage.
@@ -51,6 +53,33 @@ public final class StageCache {
     /** Distinguishes an absent value from the four-character string "null". */
     private static final String NULL_MARKER = "\u0000null";
     private static final String VALUE_TAG = "=";
+
+    /** The prefix every staging file carries, and the only thing a sweep touches. */
+    private static final String STAGING_PREFIX = ".partial-";
+
+    /**
+     * How long a staging file must have been untouched before a sweep is willing
+     * to treat it as abandoned.
+     *
+     * <p>Deliberately far longer than any stage takes. There is no portable way
+     * to ask whether another process still has a file open, so the sweep infers
+     * it from the modification time, and the cost of the two errors is wildly
+     * asymmetric: keeping a dead file for another day wastes disk, while
+     * deleting a live one destroys a separation run that may already be several
+     * minutes in.
+     */
+    public static final Duration ABANDONED_STAGING_AGE = Duration.ofHours(24);
+
+    /**
+     * Staging files this JVM reserved and has neither committed nor discarded.
+     *
+     * <p>Static because the ownership is the process's, not the instance's:
+     * {@link Workspace#cache()} hands out a fresh {@code StageCache} every call,
+     * so the object that reserved a path is routinely not the one that commits it.
+     */
+    private static final Set<Path> OUTSTANDING_STAGED = ConcurrentHashMap.newKeySet();
+
+    private static final AtomicBoolean CLEANUP_HOOK_INSTALLED = new AtomicBoolean();
 
     private final Path directory;
 
@@ -234,7 +263,7 @@ public final class StageCache {
         Path target = pathFor(key, extension);
         try {
             Files.createDirectories(target.getParent());
-            Path temporary = Files.createTempFile(target.getParent(), ".partial-", extension);
+            Path temporary = Files.createTempFile(target.getParent(), STAGING_PREFIX, extension);
             try {
                 Files.writeString(temporary, content);
                 moveIntoPlace(temporary, target);
@@ -253,7 +282,7 @@ public final class StageCache {
         Path target = pathFor(key, extension);
         try {
             Files.createDirectories(target.getParent());
-            Path temporary = Files.createTempFile(target.getParent(), ".partial-", extension);
+            Path temporary = Files.createTempFile(target.getParent(), STAGING_PREFIX, extension);
             try {
                 Files.write(temporary, content);
                 moveIntoPlace(temporary, target);
@@ -283,12 +312,21 @@ public final class StageCache {
      * separated stem. The caller writes to the returned temporary path and then
      * calls {@link #commit}, so a crashed run leaves no half-written entry that
      * a later run would mistake for a complete one.
+     *
+     * <p>The reservation is remembered until it is committed or discarded, and
+     * anything still outstanding is deleted when the JVM exits. Without that,
+     * the only thing collecting an abandoned stem would be the age-based sweep,
+     * which cannot fire until a day later and only if somebody opens that same
+     * workspace again -- so the ordinary case, a run that dies and is retried
+     * minutes later, would leak its stem for good.
      */
     public Path stagingPath(Key key, String extension) {
         Path target = pathFor(key, extension);
         try {
             Files.createDirectories(target.getParent());
-            return Files.createTempFile(target.getParent(), ".partial-", extension);
+            Path staged = Files.createTempFile(target.getParent(), STAGING_PREFIX, extension);
+            rememberOutstanding(staged);
+            return staged;
         } catch (IOException e) {
             throw new UncheckedIOException("could not stage cache entry for " + key, e);
         }
@@ -304,23 +342,47 @@ public final class StageCache {
         }
         try {
             Files.deleteIfExists(staged);
+            forgetOutstanding(staged);
         } catch (IOException e) {
             throw new UncheckedIOException("could not discard staged file " + staged, e);
         }
     }
 
+    private static void rememberOutstanding(Path staged) {
+        // Registered on first use rather than in a static initialiser: a process
+        // that never stages anything should not install a hook at all.
+        if (CLEANUP_HOOK_INSTALLED.compareAndSet(false, true)) {
+            Runtime.getRuntime().addShutdownHook(
+                    new Thread(StageCache::discardOutstandingStagedFiles, "mw-staging-cleanup"));
+        }
+        OUTSTANDING_STAGED.add(staged.toAbsolutePath().normalize());
+    }
+
+    private static void forgetOutstanding(Path staged) {
+        OUTSTANDING_STAGED.remove(staged.toAbsolutePath().normalize());
+    }
+
     /**
-     * How long a staging file must have been untouched before a sweep is willing
-     * to treat it as abandoned.
+     * Deletes every staging file this JVM still owns. Run from a shutdown hook,
+     * and package-private so a test can exercise it without ending the JVM.
      *
-     * <p>Deliberately far longer than any stage takes. There is no portable way
-     * to ask whether another process still has a file open, so the sweep infers
-     * it from the modification time, and the cost of the two errors is wildly
-     * asymmetric: keeping a dead file for another day wastes disk, while
-     * deleting a live one destroys a separation run that may already be several
-     * minutes in.
+     * <p>This is what collects an abandoned stem in every failure short of
+     * {@code kill -9} or the power going out: an exception propagating out of a
+     * stage, {@code System.exit}, or Ctrl-C. The age-based sweep is the backstop
+     * for the cases that never get to run a hook at all -- and on its own it is
+     * nearly useless here, because it cannot fire until a day after the crash
+     * and only if somebody opens that same workspace again.
      */
-    public static final Duration ABANDONED_STAGING_AGE = Duration.ofHours(24);
+    static void discardOutstandingStagedFiles() {
+        for (Path staged : OUTSTANDING_STAGED) {
+            OUTSTANDING_STAGED.remove(staged);
+            try {
+                Files.deleteIfExists(staged);
+            } catch (IOException | RuntimeException ignored) {
+                // Shutdown is no place to fail, and the sweep will get it later.
+            }
+        }
+    }
 
     /**
      * Removes staging files left behind by an interrupted earlier run, using the
@@ -368,29 +430,15 @@ public final class StageCache {
         Instant cutoff = Instant.now().minus(minimumAge);
         int removed = 0;
         // Files.walk does not follow links, so a symlinked stage directory is
-        // reported but never descended into.
+        // reported but never descended into. Filtering by name before collecting
+        // keeps a large cache from being materialised in full, on a path that now
+        // runs on every workspace open.
         try (var entries = Files.walk(directory)) {
-            for (Path path : entries.toList()) {
-                if (!path.getFileName().toString().startsWith(".partial-")) {
-                    continue;
-                }
-                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-                    continue;
-                }
-                try {
-                    Instant modified = Files.getLastModifiedTime(
-                            path, LinkOption.NOFOLLOW_LINKS).toInstant();
-                    // A modification time in the future -- clock skew on shared
-                    // storage -- reads as "not yet old enough", which is the
-                    // side to err on.
-                    if (modified.isAfter(cutoff)) {
-                        continue;
-                    }
-                    Files.deleteIfExists(path);
+            for (Path path : entries
+                    .filter(path -> path.getFileName().toString().startsWith(STAGING_PREFIX))
+                    .toList()) {
+                if (removeIfAbandoned(path, cutoff)) {
                     removed++;
-                } catch (NoSuchFileException e) {
-                    // Another process committed or discarded it between the walk
-                    // and now. That is the outcome we wanted anyway.
                 }
             }
         } catch (IOException e) {
@@ -399,12 +447,47 @@ public final class StageCache {
         return removed;
     }
 
+    /**
+     * Deletes one staging file if it is old enough, reporting whether it went.
+     *
+     * <p>Every failure is confined to this one file on purpose. A single
+     * undeletable entry -- a stage directory copied in with somebody else's
+     * permissions, or a handle an antivirus scanner is holding on Windows --
+     * would otherwise abort the walk and silently strand every staging file
+     * after it in walk order, permanently.
+     */
+    private static boolean removeIfAbandoned(Path path, Instant cutoff) {
+        try {
+            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                return false;
+            }
+            Instant modified =
+                    Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toInstant();
+            // A modification time in the future -- clock skew on shared storage --
+            // reads as "not yet old enough", which is the side to err on.
+            if (modified.isAfter(cutoff)) {
+                return false;
+            }
+            boolean deleted = Files.deleteIfExists(path);
+            if (deleted) {
+                forgetOutstanding(path);
+            }
+            return deleted;
+        } catch (IOException e) {
+            // Includes NoSuchFileException, when another process committed or
+            // discarded the file between the walk and now -- the outcome we
+            // wanted anyway -- and AccessDeniedException, which is not ours to fix.
+            return false;
+        }
+    }
+
     /** Moves a staged artifact into its final cache position. */
     public Path commit(Path staged, Key key, String extension) {
         Path target = pathFor(key, extension);
         try {
             Files.createDirectories(target.getParent());
             moveIntoPlace(staged, target);
+            forgetOutstanding(staged);
             return target;
         } catch (IOException e) {
             throw new UncheckedIOException("could not commit cache entry " + target, e);

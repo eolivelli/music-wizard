@@ -308,6 +308,175 @@ class HardeningTest {
         }
     }
 
+    @Nested
+    @DisplayName("a reserved staging file is always accounted for")
+    class StagingLifecycle {
+
+        @Test
+        @DisplayName("anything still uncommitted is discarded when the JVM exits")
+        void discardsOutstandingStagedFilesAtShutdown() throws IOException {
+            // Without this the sweep barely helps with the case #15 is about: a
+            // run that dies and is retried minutes later leaves an orphan that is
+            // not yet old enough to sweep, and the user never opens that
+            // workspace again a day later to collect it.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path abandoned = cache.stagingPath(key, ".wav");
+            Files.writeString(abandoned, "a stem nobody will commit");
+            Path committed = cache.stagingPath(key, ".wav");
+            Files.writeString(committed, "a stem that made it");
+            Path entry = cache.commit(committed, key, ".wav");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(abandoned).doesNotExist();
+            assertThat(entry).exists();
+        }
+
+        @Test
+        @DisplayName("a committed file is not deleted afterwards by the shutdown pass")
+        void committedFilesAreForgotten() throws IOException {
+            // commit() moves the staging file away, so a shutdown pass that still
+            // believed it outstanding would be deleting a path that by then
+            // belongs to a completely different reservation.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path staged = cache.stagingPath(key, ".wav");
+            Files.writeString(staged, "committed");
+            cache.commit(staged, key, ".wav");
+            // Somebody else's later reservation lands on the freed name.
+            Files.writeString(staged, "a different run's stem");
+
+            StageCache.discardOutstandingStagedFiles();
+
+            assertThat(staged).exists();
+        }
+
+        @Test
+        @DisplayName("one undeletable staging file does not abort the whole sweep")
+        void sweepSurvivesAnUndeletableFile() throws IOException {
+            // A workspace is copied and shared, so a stage directory arriving
+            // with somebody else's permissions is expected. Aborting the walk
+            // would silently strand every later staging file forever.
+            Workspace workspace = newWorkspace();
+            StageCache cache = workspace.cache();
+
+            Path locked = workspace.cacheDirectory().resolve("aaa-locked");
+            Files.createDirectories(locked);
+            Path stuck = locked.resolve(".partial-stuck.bin");
+            Files.writeString(stuck, "cannot be removed");
+            backdate(stuck, Duration.ofDays(2));
+
+            Path unlocked = workspace.cacheDirectory().resolve("zzz-open");
+            Files.createDirectories(unlocked);
+            Path free = unlocked.resolve(".partial-free.bin");
+            Files.writeString(free, "can be removed");
+            backdate(free, Duration.ofDays(2));
+
+            if (!makeUndeletable(locked)) {
+                return;
+            }
+            try {
+                assertThat(cache.sweepAbandonedStagingFiles()).isEqualTo(1);
+                assertThat(free).doesNotExist();
+                assertThat(stuck).exists();
+            } finally {
+                Files.setPosixFilePermissions(locked,
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+            }
+        }
+
+        @Test
+        @DisplayName("an explicit threshold of zero sweeps even a file written just now")
+        void explicitZeroThresholdSweepsEverything() throws IOException {
+            // The hook a future "mw cache --sweep" would use, and the reason the
+            // no-arg default has to be the conservative one.
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path fresh = cache.stagingPath(key, ".bin");
+            Files.writeString(fresh, "written just now");
+            // Stamped explicitly rather than trusting the filesystem clock, so
+            // the assertion cannot turn on timestamp granularity.
+            backdate(fresh, Duration.ZERO);
+
+            assertThat(cache.sweepAbandonedStagingFiles(Duration.ZERO)).isEqualTo(1);
+            assertThat(fresh).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("the threshold divides the two sides of the boundary")
+        void sweepsOnlyWhatIsOlderThanTheThreshold() throws IOException {
+            StageCache cache = newWorkspace().cache();
+            StageCache.Key key = StageCache.Key.forStage("stems");
+
+            Path older = cache.stagingPath(key, ".bin");
+            Files.writeString(older, "sixty-one minutes old");
+            backdate(older, Duration.ofMinutes(61));
+            Path younger = cache.stagingPath(key, ".bin");
+            Files.writeString(younger, "fifty-nine minutes old");
+            backdate(younger, Duration.ofMinutes(59));
+
+            assertThat(cache.sweepAbandonedStagingFiles(Duration.ofHours(1))).isEqualTo(1);
+            assertThat(older).doesNotExist();
+            assertThat(younger).exists();
+        }
+
+        @Test
+        @DisplayName("an unusable threshold is refused rather than guessed at")
+        void refusesAnUnusableThreshold() {
+            StageCache cache = newWorkspace().cache();
+
+            assertThatThrownBy(() -> cache.sweepAbandonedStagingFiles(null))
+                    .isInstanceOf(NullPointerException.class);
+            // Negative would mean "delete files modified in the future", which is
+            // exactly the clock-skew case the sweep deliberately spares.
+            assertThatThrownBy(() -> cache.sweepAbandonedStagingFiles(Duration.ofSeconds(-1)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must not be negative");
+        }
+
+        @Test
+        @DisplayName("a workspace with no cache directory sweeps nothing and does not fail")
+        void sweepsNothingWhenTheCacheIsAbsent() throws IOException {
+            Workspace workspace = newWorkspace();
+            Files.delete(workspace.cacheDirectory());
+
+            assertThat(workspace.cache().sweepAbandonedStagingFiles()).isZero();
+        }
+    }
+
+    /**
+     * Makes a directory's contents undeletable, returning false when the platform
+     * or the current user makes that impossible -- running as root, or a
+     * filesystem without POSIX permissions.
+     */
+    private static boolean makeUndeletable(Path directory) {
+        try {
+            Files.setPosixFilePermissions(directory,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x"));
+        } catch (UnsupportedOperationException | IOException e) {
+            return false;
+        }
+        Path probe = directory.resolve(".writable-probe");
+        try {
+            Files.writeString(probe, "root ignores permissions");
+            Files.deleteIfExists(probe);
+        } catch (IOException expected) {
+            return true;
+        }
+        // Writable after all -- undo, so the temp directory can still be cleaned up.
+        try {
+            Files.setPosixFilePermissions(directory,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        } catch (IOException ignored) {
+            // Nothing further to try.
+        }
+        return false;
+    }
+
     /** Backdates a file so a sweep sees it as abandoned rather than in flight. */
     private static void backdate(Path file, Duration age) throws IOException {
         Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(age)));

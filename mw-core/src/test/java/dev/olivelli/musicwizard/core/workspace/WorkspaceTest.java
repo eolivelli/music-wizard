@@ -183,10 +183,17 @@ class WorkspaceTest {
             StageCache.Key key = StageCache.Key.forStage("stems");
             Path inFlight = workspace.cache().stagingPath(key, ".wav");
             Files.writeString(inFlight, "half a stem, still being written");
+            // An aged sibling, so the test fails if the sweep stops running at
+            // all rather than only if it stops being selective.
+            Path abandoned = workspace.cache().stagingPath(key, ".wav");
+            Files.writeString(abandoned, "a stem from a crash last week");
+            Files.setLastModifiedTime(abandoned,
+                    FileTime.from(Instant.now().minus(Duration.ofDays(2))));
 
             Workspace.open(workspace.root());
 
             assertThat(inFlight).exists();
+            assertThat(abandoned).doesNotExist();
         }
 
         @Test
