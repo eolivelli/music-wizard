@@ -347,6 +347,57 @@ class ConfigLayeringTest {
         }
 
         @Test
+        @DisplayName("on POSIX a leading quote does not join entries")
+        void doesNotJoinEntriesOnPosix() throws Exception {
+            // The other half of the POSIX rule: a quote must not let an entry
+            // run past a separator either. Only reachable when the entry
+            // *begins* with one, which is why the a"b directory misses it.
+            Path executable = fakeBinary("lilypond");
+            String path = "\"/nowhere/a" + java.io.File.pathSeparator + tempDirectory
+                    + java.io.File.pathSeparator + "/nowhere/b\"";
+
+            assertThat(ConfigLoader.discover(path, false, List.of())).contains(executable);
+        }
+
+        @Test
+        @DisplayName("splitting PATH loses nothing, however it is quoted")
+        void splittingIsLossless() {
+            // The split is the fiddliest code here and every entry rule is
+            // downstream of it, so pin the invariant directly: the entries
+            // rejoined must be the input, byte for byte.
+            String separator = java.io.File.pathSeparator;
+            for (String path : List.of("", separator, separator + separator + separator,
+                    "a" + separator, separator + "a", "\"", "\"\"", "\"\"\"", "\"\"\"\"",
+                    "\"a\"" + separator + "b", "\"a" + separator + "b\"",
+                    "\"a" + separator + "b", "a\"" + separator + "\"b",
+                    "\"a\"b" + separator + "c", "a" + separator + "b\"")) {
+                for (boolean windows : List.of(true, false)) {
+                    assertThat(String.join(separator, ConfigLoader.splitPath(path, windows)))
+                            .as("%s, windows=%s", path, windows)
+                            .isEqualTo(path);
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("a PATH of stray quotes is parsed in linear time")
+        void doesNotRescanForEveryStrayQuote() {
+            // Each unterminated quote used to rescan to the end of the string,
+            // which is quadratic: 300 kB of them took the best part of a minute
+            // and RenderCommand calls discovery twice.
+            String separator = java.io.File.pathSeparator;
+            String path = ("\"/nowhere" + separator).repeat(60_000);
+
+            long start = System.nanoTime();
+            assertThat(ConfigLoader.splitPath(path, true)).hasSize(60_001);
+            long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+            // Generous enough not to be flaky; the quadratic version needs
+            // minutes for this input.
+            assertThat(elapsedMillis).isLessThan(5_000);
+        }
+
+        @Test
         @DisplayName("a stray quote costs its own Windows entry")
         void skipsWindowsEntryWithAStrayQuote() throws Exception {
             Path directory = quotedNameDirectory();
@@ -425,9 +476,12 @@ class ConfigLayeringTest {
             // Issue #17's whole reason for existing: Homebrew installs outside a
             // non-login shell's PATH, and `mw doctor` finds it only through this
             // list. Nothing else in the suite notices if it is emptied.
-            assertThat(ConfigLoader.searchPrefixes(false))
-                    .contains("/home/linuxbrew/.linuxbrew/bin", "/opt/homebrew/bin",
-                            "/usr/local/bin", "/usr/bin");
+            assertThat(ConfigLoader.searchPrefixes(false)).containsExactly(
+                    "/home/linuxbrew/.linuxbrew/bin",
+                    System.getProperty("user.home") + "/.linuxbrew/bin",
+                    "/opt/homebrew/bin",
+                    "/usr/local/bin",
+                    "/usr/bin");
             assertThat(ConfigLoader.searchPrefixes(true)).isEmpty();
         }
 

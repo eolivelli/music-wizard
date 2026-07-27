@@ -243,33 +243,59 @@ public final class ConfigLoader {
      * instead would merge everything between two strays into a single unusable
      * entry — which is the failure the quoting support exists to prevent, only
      * harder to see.
+     *
+     * <p>One shape is beyond saving: a whole {@code PATH} wrapped in quotes,
+     * as {@code set PATH="%PATH%;C:\lily\bin"} produces, is by this rule — and
+     * by {@code cmd.exe}'s — a single entry naming a directory that does not
+     * exist. Nothing is found, which is what every other Windows tool sees too.
+     *
+     * <p>The split is lossless: joining the entries with the separator
+     * reproduces the input, whatever the quoting.
      */
-    private static List<String> splitPath(String pathVariable, boolean windows) {
+    static List<String> splitPath(String pathVariable, boolean windows) {
         List<String> entries = new ArrayList<>();
         int position = 0;
+        boolean quotingPossible = windows;
         while (position <= pathVariable.length()) {
-            int end = entryEnd(pathVariable, position, windows);
+            int end = -1;
+            if (quotingPossible && position < pathVariable.length()
+                    && pathVariable.charAt(position) == '"') {
+                end = closingQuote(pathVariable, position);
+                if (end < 0) {
+                    // A closing quote is a position, not a property of this
+                    // entry, so if none lies beyond here none lies beyond any
+                    // later entry either. Without the latch, a PATH of stray
+                    // quotes rescans to the end for each one, which is
+                    // quadratic — 50 seconds on a 300 kB PATH.
+                    quotingPossible = false;
+                }
+            }
+            if (end < 0) {
+                // Unquoted, or opened by a quote that never closes: read it as
+                // an ordinary entry, so a malformed entry costs only itself.
+                int separator = pathVariable.indexOf(java.io.File.pathSeparatorChar, position);
+                end = separator >= 0 ? separator : pathVariable.length();
+            }
             entries.add(pathVariable.substring(position, end));
             position = end + 1;
         }
         return entries;
     }
 
-    /** The index just past the {@code PATH} entry beginning at {@code start}. */
-    private static int entryEnd(String pathVariable, int start, boolean windows) {
-        if (windows && start < pathVariable.length() && pathVariable.charAt(start) == '"') {
-            for (int quote = pathVariable.indexOf('"', start + 1); quote >= 0;
-                    quote = pathVariable.indexOf('"', quote + 1)) {
-                if (quote + 1 == pathVariable.length()
-                        || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar) {
-                    return quote + 1;
-                }
+    /**
+     * The index just past the quote closing the entry that opens at
+     * {@code start}, or -1 if no quote closes it. A quote closes only when the
+     * next character ends the entry.
+     */
+    private static int closingQuote(String pathVariable, int start) {
+        for (int quote = pathVariable.indexOf('"', start + 1); quote >= 0;
+                quote = pathVariable.indexOf('"', quote + 1)) {
+            if (quote + 1 == pathVariable.length()
+                    || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar) {
+                return quote + 1;
             }
-            // Never closed: fall through and read it as an ordinary entry, so
-            // that the malformed entry costs only itself.
         }
-        int separator = pathVariable.indexOf(java.io.File.pathSeparatorChar, start);
-        return separator >= 0 ? separator : pathVariable.length();
+        return -1;
     }
 
     /**
