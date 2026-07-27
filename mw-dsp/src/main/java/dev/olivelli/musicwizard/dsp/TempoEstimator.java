@@ -32,6 +32,10 @@ import java.util.Objects;
  * 120 BPM, which is roughly where listeners prefer to tap. Ellis (2007) uses a
  * width of about 1.4 octaves, wide enough not to force everything toward 120 and
  * narrow enough to reject the 60 and 240 aliases.
+ *
+ * <p>Confidence is reported as two numbers rather than one, because two
+ * independent things have to hold before a tempo reading is worth trusting and
+ * they fail separately. See {@link Estimate}.
  */
 public final class TempoEstimator {
 
@@ -44,27 +48,78 @@ public final class TempoEstimator {
     private static final double MIN_TEMPO = 40;
     private static final double MAX_TEMPO = 240;
 
+    /**
+     * The kurtosis of Gaussian noise, and so the reference point for "no
+     * impulsive structure at all".
+     *
+     * <p>This is the only constant in the peakiness formula, and it is a
+     * mathematical property of the reference distribution rather than a
+     * threshold chosen to make some particular signal pass.
+     */
+    private static final double NOISE_KURTOSIS = 3.0;
+
     private TempoEstimator() {
     }
 
     /**
      * The estimated tempo and how strongly the envelope supports it.
      *
+     * <p>Neither confidence component means anything on its own, which is why
+     * both are carried. Periodicity says the envelope repeats at the winning
+     * period; peakiness says the envelope is built from localised events rather
+     * than a continuous wash. A sustained tone has the first without the second,
+     * because a smooth envelope is self-similar at every lag — that is exactly
+     * how a 440 Hz sine used to out-score a metronome. A recording of unrelated
+     * bangs has the second without the first. Only material that is both is
+     * rhythmic, so {@link #strength()} is the product, and that is what callers
+     * should gate on.
+     *
      * @param beatsPerMinute the estimate
-     * @param strength       fraction of the envelope's energy at that period,
-     *                       0 to 1. Zero for silence, and comparable between two
-     *                       readings of the same recording. It is <em>not</em> yet
-     *                       a reliable rhythmic-versus-arrhythmic discriminator:
-     *                       a sustained tone can score as high as a click track,
-     *                       because a smooth envelope is self-similar at every
-     *                       lag. Do not gate behaviour on an absolute threshold.
+     * @param periodicity    fraction of the envelope's energy at the winning
+     *                       period, 0 to 1. Comparable between two readings of
+     *                       the same recording, and highly sensitive to tempo
+     *                       drift — a click track wandering by ±8% scores about
+     *                       0.12 where a rigid one scores 0.85.
+     * @param peakiness      how impulsive the envelope is, 0 to 1: 0 when it is
+     *                       no sparser than noise, approaching 1 for isolated
+     *                       attacks. A property of the material rather than of
+     *                       the reading, so it barely moves with tempo or clip
+     *                       length.
      */
-    public record Estimate(double beatsPerMinute, double strength) {
+    public record Estimate(double beatsPerMinute, double periodicity, double peakiness) {
         public Estimate {
             if (!(beatsPerMinute > 0)) {
                 throw new IllegalArgumentException(
                         "beatsPerMinute must be positive, got: " + beatsPerMinute);
             }
+            if (!(periodicity >= 0) || periodicity > 1) {
+                throw new IllegalArgumentException(
+                        "periodicity must be within 0..1, got: " + periodicity);
+            }
+            if (!(peakiness >= 0) || peakiness > 1) {
+                throw new IllegalArgumentException(
+                        "peakiness must be within 0..1, got: " + peakiness);
+            }
+        }
+
+        /**
+         * How much to trust this reading, 0 to 1, and the only one of the three
+         * numbers safe to compare against an absolute threshold.
+         *
+         * <p>The product rather than an average, because the two components are
+         * a conjunction: material that fails either one is not rhythmic, and an
+         * average would let a sustained tone's near-perfect self-similarity
+         * carry it. Zero for silence.
+         *
+         * <p>Measured on 20-second synthetic signals: click tracks from 60 to
+         * 200 BPM score 0.63 to 0.84, a sustained sine 0.004, a crescendo 0.011,
+         * white noise 0.02, and clicks at random intervals 0.03 to 0.09.
+         * Sustained chords of pure sines are the one soft case, landing near
+         * 0.47, because beating between partials is real periodic amplitude
+         * modulation and the estimator is not wrong to see a pulse in it.
+         */
+        public double strength() {
+            return periodicity * peakiness;
         }
 
         /** Seconds between beats at this tempo. */
@@ -79,14 +134,14 @@ public final class TempoEstimator {
         if (envelope.length() < 8 || envelope.isFlat()) {
             // Nothing periodic to find. Report the prior with no confidence
             // rather than a confident reading of noise.
-            return new Estimate(PREFERRED_TEMPO, 0);
+            return new Estimate(PREFERRED_TEMPO, 0, 0);
         }
 
         double frameRate = envelope.frameRate();
         int minLag = (int) Math.max(1, Math.floor(frameRate * 60.0 / MAX_TEMPO));
         int maxLag = (int) Math.min(envelope.length() - 1, Math.ceil(frameRate * 60.0 / MIN_TEMPO));
         if (maxLag <= minLag) {
-            return new Estimate(PREFERRED_TEMPO, 0);
+            return new Estimate(PREFERRED_TEMPO, 0, 0);
         }
 
         double[] correlation = autocorrelate(envelope.strength(), maxLag + 1);
@@ -116,11 +171,63 @@ public final class TempoEstimator {
         }
 
         // The fraction of the envelope's energy explained by the winning period.
-        // Zero for silence, and useful for ranking two readings of the same
-        // recording -- but see the caveat on Estimate.strength: it does not yet
-        // reliably separate rhythmic material from merely self-similar material.
+        // Necessary for a trustworthy reading but nowhere near sufficient: a
+        // sustained tone scores higher here than a metronome does, which is why
+        // peakiness is measured alongside it.
         double normaliser = correlation[0] > 0 ? correlation[0] : 1;
-        return new Estimate(bestTempo, Math.clamp(bestRawCorrelation / normaliser, 0, 1));
+        double periodicity = Math.clamp(bestRawCorrelation / normaliser, 0, 1);
+        return new Estimate(bestTempo, periodicity, peakiness(envelope.strength()));
+    }
+
+    /**
+     * How impulsive an envelope is, on 0 to 1.
+     *
+     * <p>Derived from kurtosis, read as an effective duty cycle. For a mean-zero
+     * signal the reciprocal of the kurtosis estimates the fraction of frames
+     * carrying its energy — it is exactly {@code p} for an impulse train active
+     * a fraction {@code p} of the time — and that fraction is what distinguishes
+     * attacks from a wash. Measured here, a 120 BPM click track has a kurtosis
+     * of about 85, a duty cycle of 1.2%, which is the two frames per beat the
+     * clicks physically occupy; a sustained sine measures 3.0, a duty cycle of a
+     * third, meaning its envelope is spread out exactly as noise would be.
+     *
+     * <p>Expressing that duty cycle relative to the noise value is what turns an
+     * open-ended moment into a fraction, and it puts the formula's only constant
+     * somewhere principled: {@link #NOISE_KURTOSIS} is a property of the Gaussian
+     * distribution, not a threshold picked to make a test pass.
+     *
+     * <p>Computed about the signal's own mean rather than assuming the unit
+     * variance {@link OnsetEnvelope} normalises to, because
+     * {@link #estimateWindow} passes a slice of an envelope normalised over the
+     * whole recording, and a slice of a mean-zero signal is not mean-zero.
+     */
+    static double peakiness(double[] signal) {
+        if (signal.length < 2) {
+            return 0;
+        }
+        double mean = 0;
+        for (double value : signal) {
+            mean += value;
+        }
+        mean /= signal.length;
+
+        double secondMoment = 0;
+        double fourthMoment = 0;
+        for (double value : signal) {
+            double squaredDeviation = (value - mean) * (value - mean);
+            secondMoment += squaredDeviation;
+            fourthMoment += squaredDeviation * squaredDeviation;
+        }
+        secondMoment /= signal.length;
+        fourthMoment /= signal.length;
+        if (secondMoment < 1e-12) {
+            // Constant, such as silence. No events at all rather than sharp
+            // ones, and dividing by it would turn rounding error into evidence.
+            return 0;
+        }
+
+        double kurtosis = fourthMoment / (secondMoment * secondMoment);
+        return Math.clamp(1 - NOISE_KURTOSIS / kurtosis, 0, 1);
     }
 
     /**
