@@ -84,6 +84,21 @@ class BeatTrackingTest {
         return out;
     }
 
+    /** A held note with vibrato: {@code cents} of frequency sweep at {@code rateHz}. */
+    private static float[] vibrato(double frequencyHz, double cents, double rateHz,
+                                   double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        double phase = 0;
+        for (int i = 0; i < out.length; i++) {
+            double t = i / (double) RATE;
+            double swept = frequencyHz
+                    * Math.pow(2, (cents / 1200.0) * Math.sin(2 * Math.PI * rateHz * t));
+            phase += 2 * Math.PI * swept / RATE;
+            out[i] = (float) (0.5 * Math.sin(phase));
+        }
+        return out;
+    }
+
     /** A tone that swells from quiet to loud: smooth, but not stationary. */
     private static float[] crescendo(double frequencyHz, double seconds) {
         float[] out = new float[(int) Math.round(seconds * RATE)];
@@ -336,7 +351,38 @@ class BeatTrackingTest {
             // Measured: 0.63 against 0.09, a factor of seven. Asserting three
             // leaves room for the sampling spread in the seeded fixtures without
             // letting the two classes touch.
+            //
+            // The claim is about these four fixtures and no wider. A modulated
+            // sustained tone would land inside the gap and is deliberately not
+            // in the set; modulatedToneIsNotSeparated covers that, and says so.
             assertThat(worstRhythmic).isGreaterThan(3 * bestNonRhythmic);
+        }
+
+        @Test
+        @DisplayName("a modulated sustained tone is NOT separated, and this pins how far it gets")
+        void modulatedToneIsNotSeparated() {
+            // A documented limitation rather than a passing grade. One held note
+            // with ordinary vibrato reads as rhythmic: 50 cents at 2 Hz measures
+            // 0.61, against a 60 BPM click track's 0.63. The dB flux sharpens
+            // smooth modulation into a periodic train of accents, at which point
+            // no statistic of the onset envelope can tell it from a beat.
+            //
+            // Two candidate fixes were measured and both refuted, so this is not
+            // a matter of trying harder: counting how many mel bands rise
+            // together does not separate them (vibrato lifts 32 of 40 against a
+            // click's 40, because frequency-modulating a tone drags its whole
+            // leakage skirt), and a SuperFlux-style maximum-filtered reference
+            // frame makes it worse, taking vibrato from 0.78 to 0.90 and a plain
+            // sine from 0.004 to 0.63. Issue #43 carries both measurements.
+            //
+            // Asserted as a range so that the day this improves, the test fails
+            // and the limitation gets revisited rather than quietly outliving
+            // its own fix.
+            double modulated = strengthOf(vibrato(440, 50, 2.0, SECONDS));
+            double unmodulated = strengthOf(SignalFactory.sine(440, SECONDS, RATE));
+
+            assertThat(modulated).isBetween(0.4, 0.8);
+            assertThat(modulated).isGreaterThan(20 * unmodulated);
         }
 
         @Test
@@ -383,13 +429,67 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("windowed estimates are measured against the window, not the recording")
-        void windowedPeakinessUsesTheWindowsOwnMean() {
-            // The envelope is normalised over the whole recording, so a slice of
-            // it is not mean-zero. Computing the moments about the recording's
-            // mean instead of the slice's would make a window's peakiness depend
-            // on what surrounds it; a click-track window must read as rhythmic
-            // whether it is the first window or the last.
+        @DisplayName("peakiness depends on the signal's shape, not its offset or its level")
+        void peakinessIsInvariantUnderOffsetAndScale() {
+            // Both properties matter because estimateWindow passes a *slice* of
+            // an envelope normalised over the whole recording: a window is
+            // neither mean-zero nor unit-variance, so measuring it about the
+            // recording's mean, or guarding on an absolute variance, would make
+            // a window's answer depend on what surrounds it.
+            //
+            // Pinned on arrays rather than on audio deliberately. The same claim
+            // asserted over two windows of a click track cannot fail -- measured,
+            // the difference between taking the moments about the window's own
+            // mean and about the recording's is 0.00002, against any tolerance
+            // loose enough to write -- so that test would have kept passing after
+            // the property was lost.
+            double[] impulses = new double[5_000];
+            for (int i = 0; i < impulses.length; i += 50) {
+                impulses[i] = 1;
+            }
+            double reference = TempoEstimator.peakiness(impulses);
+            assertThat(reference).isGreaterThan(0.9);
+
+            assertThat(TempoEstimator.peakiness(offsetBy(impulses, 7.5)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(offsetBy(impulses, -1e6)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(multipliedBy(impulses, 1e-9)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(multipliedBy(impulses, 1e9)))
+                    .isCloseTo(reference, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("a malformed envelope reports no evidence rather than throwing")
+        void nonFiniteEnvelopeIsRejectedQuietly() {
+            // OnsetEnvelope's constructor is public and validates only the frame
+            // rate, so a hand-built envelope can carry a NaN or an infinity.
+            // Neither can come from fromAudio, but the failure mode if one did
+            // was an IllegalArgumentException from Estimate's own validation
+            // blaming peakiness for a malformed input -- the least informative
+            // place for it to surface.
+            for (double poison : new double[] {Double.NaN, Double.POSITIVE_INFINITY,
+                    Double.NEGATIVE_INFINITY}) {
+                double[] values = new double[64];
+                for (int i = 0; i < values.length; i += 8) {
+                    values[i] = 1;
+                }
+                values[13] = poison;
+                OnsetEnvelope envelope = new OnsetEnvelope(values, 172.0);
+
+                assertThat(TempoEstimator.peakiness(values)).isZero();
+                assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
+                assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("windowed estimates of a click track stay rhythmic wherever the window sits")
+        void windowedEstimatesStayRhythmic() {
+            // A plain end-to-end guard on estimateWindow, making no claim about
+            // which mean the moments are taken about -- that is
+            // peakinessIsInvariantUnderOffsetAndScale's job.
             OnsetEnvelope envelope = envelopeOf(SignalFactory.clickTrack(120, 60, RATE));
             int windowFrames = envelope.frameOf(15);
 
@@ -401,6 +501,22 @@ class BeatTrackingTest {
             assertThat(first.strength()).isGreaterThan(0.5);
             assertThat(last.strength()).isGreaterThan(0.5);
             assertThat(first.peakiness()).isCloseTo(last.peakiness(), within(0.05));
+        }
+
+        private static double[] offsetBy(double[] values, double offset) {
+            double[] out = values.clone();
+            for (int i = 0; i < out.length; i++) {
+                out[i] += offset;
+            }
+            return out;
+        }
+
+        private static double[] multipliedBy(double[] values, double factor) {
+            double[] out = values.clone();
+            for (int i = 0; i < out.length; i++) {
+                out[i] *= factor;
+            }
+            return out;
         }
     }
 

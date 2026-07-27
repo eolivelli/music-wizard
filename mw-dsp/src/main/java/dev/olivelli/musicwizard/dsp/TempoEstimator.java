@@ -70,9 +70,10 @@ public final class TempoEstimator {
      * than a continuous wash. A sustained tone has the first without the second,
      * because a smooth envelope is self-similar at every lag — that is exactly
      * how a 440 Hz sine used to out-score a metronome. A recording of unrelated
-     * bangs has the second without the first. Only material that is both is
-     * rhythmic, so {@link #strength()} is the product, and that is what callers
-     * should gate on.
+     * bangs has the second without the first. Rhythmic material needs both, so
+     * {@link #strength()} is the product, and that is what callers should gate
+     * on. Needing both is not the same as both being enough: see the limits
+     * documented on {@code strength()}.
      *
      * @param beatsPerMinute the estimate
      * @param periodicity    fraction of the envelope's energy at the winning
@@ -80,11 +81,12 @@ public final class TempoEstimator {
      *                       the same recording, and highly sensitive to tempo
      *                       drift — a click track wandering by ±8% scores about
      *                       0.12 where a rigid one scores 0.85.
-     * @param peakiness      how impulsive the envelope is, 0 to 1: 0 when it is
-     *                       no sparser than noise, approaching 1 for isolated
-     *                       attacks. A property of the material rather than of
-     *                       the reading, so it barely moves with tempo or clip
-     *                       length.
+     * @param peakiness      how concentrated the envelope's departures from its
+     *                       own mean are, 0 to 1: 0 when they are spread no more
+     *                       thinly than noise spreads them, approaching 1 for
+     *                       isolated attacks. Nearly independent of tempo and of
+     *                       clip length, so it reads as a property of the
+     *                       material rather than of the reading.
      */
     public record Estimate(double beatsPerMinute, double periodicity, double peakiness) {
         public Estimate {
@@ -104,7 +106,7 @@ public final class TempoEstimator {
 
         /**
          * How much to trust this reading, 0 to 1, and the only one of the three
-         * numbers safe to compare against an absolute threshold.
+         * numbers worth comparing against an absolute threshold.
          *
          * <p>The product rather than an average, because the two components are
          * a conjunction: material that fails either one is not rhythmic, and an
@@ -113,10 +115,30 @@ public final class TempoEstimator {
          *
          * <p>Measured on 20-second synthetic signals: click tracks from 60 to
          * 200 BPM score 0.63 to 0.84, a sustained sine 0.004, a crescendo 0.011,
-         * white noise 0.02, and clicks at random intervals 0.03 to 0.09.
-         * Sustained chords of pure sines are the one soft case, landing near
-         * 0.47, because beating between partials is real periodic amplitude
-         * modulation and the estimator is not wrong to see a pulse in it.
+         * white noise 0.02, clicks at random intervals 0.03 to 0.09, silence 0.
+         *
+         * <p><strong>Use a low threshold, and only to reject degenerate
+         * material.</strong> This separates "there are rhythmic events here"
+         * from "there are not". It does not grade how metronomic material is,
+         * and a threshold in the middle of the range is wrong in both
+         * directions at once. Two families sit in that middle and neither is a
+         * bug that can be tuned away:
+         *
+         * <ul>
+         *   <li>A held note with ordinary vibrato reads as rhythmic — 50 cents
+         *       at 2 Hz scores 0.61 against a 60 BPM click track's 0.63 — and so
+         *       do sustained chords of pure sines, at 0.47. Periodic modulation
+         *       of one note produces a genuinely periodic train of accents, and
+         *       nothing measurable in an onset envelope distinguishes that from
+         *       a beat. Issue #43 has the measurements and two refuted fixes.
+         *   <li>Tempo drift pushes the other way: a click track wandering by
+         *       ±8% falls to 0.12, well below the tone it should outrank.
+         * </ul>
+         *
+         * <p>The first of those is what stops this from being the general
+         * rhythmic-versus-arrhythmic discriminator it might look like; the
+         * second means any threshold meant for real music has to be chosen
+         * against tier-2 audio rather than against the figures above.
          */
         public double strength() {
             return periodicity * peakiness;
@@ -180,21 +202,32 @@ public final class TempoEstimator {
     }
 
     /**
-     * How impulsive an envelope is, on 0 to 1.
+     * How concentrated an envelope's departures from its own mean are, on 0 to 1.
      *
-     * <p>Derived from kurtosis, read as an effective duty cycle. For a mean-zero
-     * signal the reciprocal of the kurtosis estimates the fraction of frames
-     * carrying its energy — it is exactly {@code p} for an impulse train active
-     * a fraction {@code p} of the time — and that fraction is what distinguishes
-     * attacks from a wash. Measured here, a 120 BPM click track has a kurtosis
-     * of about 85, a duty cycle of 1.2%, which is the two frames per beat the
-     * clicks physically occupy; a sustained sine measures 3.0, a duty cycle of a
-     * third, meaning its envelope is spread out exactly as noise would be.
+     * <p>Derived from kurtosis, read as an effective duty cycle. For a signal
+     * that is off most of the time and on for a fraction {@code p} of frames,
+     * the reciprocal of the kurtosis tends to {@code p} as {@code p} gets small
+     * — the exact value is {@code p(1-p) / ((1-p)³ + p³)} — and small is the
+     * regime that matters, since attacks are brief. Measured here, a 120 BPM
+     * click track has a kurtosis of about 85, a duty cycle of 1.2%, which is the
+     * two frames per beat the clicks physically occupy; a sustained sine measures
+     * 3.0, a duty cycle of a third, meaning its envelope is spread out exactly as
+     * noise would be.
      *
      * <p>Expressing that duty cycle relative to the noise value is what turns an
      * open-ended moment into a fraction, and it puts the formula's only constant
      * somewhere principled: {@link #NOISE_KURTOSIS} is a property of the Gaussian
      * distribution, not a threshold picked to make a test pass.
+     *
+     * <p>Two consequences of that framing worth knowing. It measures
+     * concentration, not sharpness in the everyday sense: a signal that is on
+     * almost always and briefly off scores identically to its inverse, because
+     * kurtosis cannot tell a spike from a hole. And it floors at zero once the
+     * duty cycle passes about 21%, so accents wider than roughly 140 ms at the
+     * onset frame rate read as no evidence at all rather than as weak evidence.
+     * Neither is reachable through {@link OnsetEnvelope}, whose moving-average
+     * subtraction and rectification leave attacks a few frames wide, but both
+     * bound what this may be reused for.
      *
      * <p>Computed about the signal's own mean rather than assuming the unit
      * variance {@link OnsetEnvelope} normalises to, because
@@ -211,21 +244,42 @@ public final class TempoEstimator {
         }
         mean /= signal.length;
 
-        double secondMoment = 0;
-        double fourthMoment = 0;
+        // Deviations are scaled by the largest of them before the moments are
+        // taken. Kurtosis is scale-invariant so this cannot change the answer,
+        // but it earns its keep three times over: the flat-signal test becomes
+        // exact rather than an absolute epsilon, which would have called a
+        // correctly-shaped but very quiet signal flat; a fourth power of an
+        // unbounded input cannot overflow; and a non-finite sample poisons
+        // `largest` and is rejected here, rather than propagating to the record
+        // constructor to be reported as an out-of-range peakiness.
+        double largest = 0;
         for (double value : signal) {
-            double squaredDeviation = (value - mean) * (value - mean);
-            secondMoment += squaredDeviation;
-            fourthMoment += squaredDeviation * squaredDeviation;
+            largest = Math.max(largest, Math.abs(value - mean));
         }
-        secondMoment /= signal.length;
-        fourthMoment /= signal.length;
-        if (secondMoment < 1e-12) {
-            // Constant, such as silence. No events at all rather than sharp
-            // ones, and dividing by it would turn rounding error into evidence.
+        if (!(largest > 0)) {
+            // Either constant, such as silence -- no events at all rather than
+            // sharp ones -- or malformed. One test covers both: any non-finite
+            // sample makes the mean non-finite, that makes some deviation NaN,
+            // and Math.max propagates NaN to `largest`, which then fails the
+            // comparison. Without this, a hand-built envelope carrying a NaN
+            // reached the record constructor and was reported as an
+            // out-of-range peakiness, blaming the measure for a malformed input.
             return 0;
         }
 
+        double secondMoment = 0;
+        double fourthMoment = 0;
+        for (double value : signal) {
+            double scaled = (value - mean) / largest;
+            double squared = scaled * scaled;
+            secondMoment += squared;
+            fourthMoment += squared * squared;
+        }
+        secondMoment /= signal.length;
+        fourthMoment /= signal.length;
+
+        // At least one scaled deviation is exactly 1, so the second moment is at
+        // least 1/length and the division below is safe.
         double kurtosis = fourthMoment / (secondMoment * secondMoment);
         return Math.clamp(1 - NOISE_KURTOSIS / kurtosis, 0, 1);
     }
