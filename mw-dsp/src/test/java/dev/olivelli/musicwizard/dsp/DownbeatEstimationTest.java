@@ -162,7 +162,11 @@ class DownbeatEstimationTest {
                     Analysis.of(accentedOneChord(24)).estimate(4).confidence();
 
             assertThat(withChordChanges.value()).isGreaterThan(0.8);
-            assertThat(withoutChordChanges.value()).isLessThan(0.6);
+            // Capped at 0.45 for a phase nothing but the accent supports, so it
+            // can never read as strongly as one harmony has backed. The weakest
+            // evidence reporting the highest confidence is how the original bug
+            // stayed invisible.
+            assertThat(withoutChordChanges.value()).isLessThanOrEqualTo(0.45);
         }
     }
 
@@ -191,6 +195,24 @@ class DownbeatEstimationTest {
 
             assertThat(grid.beats().get(0).downbeat()).isTrue();
         }
+
+        @Test
+        @DisplayName("never sounds sure of itself, however pronounced the accent")
+        void onsetsAreAlwaysHeldInDoubt() {
+            // This is the path that produced the bug, so it must not be able to
+            // report a confidence that harmony-backed answers cannot beat -- a
+            // consumer choosing between two grids on confidence alone would
+            // otherwise prefer the weaker evidence.
+            for (float[] signal : new float[][] {
+                    accentedOneChord(24), chordsPerBar(32), SignalFactory.clickTrack(120, 20, RATE)}) {
+                Analysis analysis = Analysis.of(signal);
+
+                DownbeatEstimator.Estimate estimate = DownbeatEstimator.fromOnsets(
+                        analysis.beats().beatTimes(), analysis.envelope(), 4);
+
+                assertThat(estimate.confidence().value()).isLessThanOrEqualTo(0.45);
+            }
+        }
     }
 
     @Nested
@@ -212,14 +234,29 @@ class DownbeatEstimationTest {
             return new OnsetEnvelope(new double[(int) Math.round(seconds * 100)], 100);
         }
 
-        private static OnsetEnvelope accentedEnvelope(List<Double> beatTimes, int phase) {
+        /**
+         * An envelope shaped like a real one: {@link OnsetEnvelope} is normalised
+         * to zero mean and unit variance, so most of it is *negative* and the
+         * peaks stand a few deviations above. Testing only with all-positive
+         * values would miss anything that treats the envelope as a magnitude.
+         *
+         * @param loud the strength at beats of the accented phase, in deviations
+         * @param soft the strength at every other beat
+         */
+        private static OnsetEnvelope accentedEnvelope(List<Double> beatTimes, int phase,
+                                                      double loud, double soft) {
             double[] strength = new double[(int) Math.round(
                     (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
+            java.util.Arrays.fill(strength, -0.2);
             for (int beat = 0; beat < beatTimes.size(); beat++) {
                 strength[(int) Math.round(beatTimes.get(beat) * 100)] =
-                        Math.floorMod(beat, 4) == phase ? 10 : 1;
+                        Math.floorMod(beat, 4) == phase ? loud : soft;
             }
             return new OnsetEnvelope(strength, 100);
+        }
+
+        private static OnsetEnvelope accentedEnvelope(List<Double> beatTimes, int phase) {
+            return accentedEnvelope(beatTimes, phase, 10, 1);
         }
 
         private static List<Double> beatsEvery(double interval, int count) {
@@ -280,6 +317,60 @@ class DownbeatEstimationTest {
             // One span means no beat has chroma on both sides.
             assertThat(DownbeatEstimator.estimate(beats, chroma, flatEnvelope(2), 4).phase())
                     .isZero();
+        }
+
+        @Test
+        @DisplayName("falls back rather than throwing when a single beat was tracked")
+        void oneBeatFallsBackInsteadOfThrowing() {
+            // Chroma.beatSynchronous cannot make a beat-synchronous chroma out of
+            // one beat, so it returns the fixed-grid chroma unchanged. Validating
+            // that before checking whether there is anything to score turned a
+            // very short recording -- which the pipeline transcribed happily --
+            // into an IllegalArgumentException.
+            List<Double> oneBeat = List.of(0.1);
+            Chroma fixedGrid = new Chroma(new double[8][12], 100);
+
+            assertThat(DownbeatEstimator.estimate(oneBeat, fixedGrid, flatEnvelope(1), 4).phase())
+                    .isZero();
+        }
+
+        @Test
+        @DisplayName("a faint accent cannot outvote harmony however the envelope is centred")
+        void aFaintAccentCannotOutvoteHarmony() {
+            // The envelope is zero-mean by construction, so a phase mean can sit
+            // anywhere around zero. Scoring the accent as a ratio to that mean
+            // made a faint accent unbounded -- and near enough to the mean
+            // crossing zero, discontinuous -- so it could overturn a cosine
+            // distance of 1.0. The accent is bounded now, so it cannot.
+            List<Double> beats = beatsEvery(0.5, 33);
+            Chroma chroma = stepwiseChroma(32, 4, 0);
+
+            for (double[] levels : new double[][] {
+                    {0.62, 0.59}, {0.01, -0.01}, {-0.5, -0.6}, {100, 1}}) {
+                DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(beats, chroma,
+                        accentedEnvelope(beats, 2, levels[0], levels[1]), 4);
+
+                assertThat(estimate.phase()).as("accent %s", java.util.Arrays.toString(levels))
+                        .isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("silence is not a chord change")
+        void silentSpansAreNotNovel() {
+            // Cosine against a zero vector has no answer. Reading it as zero --
+            // orthogonal -- made two silent spans score novelty 1.0, above any
+            // real chord change, so a silent passage would decide the phase.
+            double[][] spans = new double[8][12];
+            for (int span = 0; span < 4; span++) {
+                spans[span][0] = 1;
+            }
+
+            double[] novelty = DownbeatEstimator.harmonicNovelty(new Chroma(spans, 0));
+
+            for (double value : novelty) {
+                assertThat(value).isZero();
+            }
         }
     }
 

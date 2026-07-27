@@ -108,6 +108,28 @@ class EndToEndIT {
     }
 
     @Test
+    @DisplayName("a clip too short to hold a bar still transcribes")
+    void veryShortClipStillTranscribes() {
+        // A clip this short tracks exactly one beat, and one beat means no beat
+        // has chroma on both sides of it -- so there is nothing for the downbeat
+        // stage to score. It has to fall back rather than reject the input:
+        // Chroma.beatSynchronous cannot produce a beat-synchronous chroma from a
+        // single beat, so validating that before checking whether there is
+        // anything to score turned a transcribable recording into an error.
+        // Reachable only with a tempo override, since inferring a tempo from one
+        // beat fails earlier and for its own reasons.
+        float[] samples = SignalFactory.chord(
+                SignalFactory.majorTriad(60), 0.3, SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path source = tempDirectory.resolve("blip.wav");
+        SignalFactory.writeWav(source, samples, SignalFactory.DEFAULT_SAMPLE_RATE);
+
+        Score score = new AudioTranscriber().transcribe(
+                source, new AudioTranscriber.Options(120.0, null, null));
+
+        assertThat(score.beatGrid().orElseThrow().downbeatTimes()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("LilyPond engraves the generated chart to a PDF")
     void engravesToPdf() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
