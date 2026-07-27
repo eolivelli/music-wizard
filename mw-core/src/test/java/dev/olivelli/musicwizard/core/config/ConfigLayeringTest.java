@@ -18,12 +18,14 @@ package dev.olivelli.musicwizard.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.AccidentalPreference;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.LlmConfig;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.NotationConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -229,6 +231,87 @@ class ConfigLayeringTest {
         void toleratesNullConfig() {
             // Must not throw; whether a binary is present depends on the machine.
             assertThat(ConfigLoader.findLilyPond(null)).isNotNull();
+        }
+
+        @Test
+        @DisplayName("on Windows the executable is looked for as lilypond.exe")
+        void findsWindowsExecutable() throws Exception {
+            // Windows has no extensionless executables, so looking only for
+            // "lilypond" means discovery can never succeed there.
+            Path executable = fakeBinary("lilypond.exe");
+
+            assertThat(ConfigLoader.discover(tempDirectory.toString(), true))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("on POSIX the .exe name is not used")
+        void ignoresWindowsExecutableOnPosix() throws Exception {
+            Path executable = fakeBinary("lilypond.exe");
+
+            assertThat(ConfigLoader.discover(tempDirectory.toString(), false))
+                    .isNotEqualTo(Optional.of(executable));
+        }
+
+        @Test
+        @DisplayName("an absolute PATH entry is searched")
+        void findsPosixExecutableOnPath() throws Exception {
+            Path executable = fakeBinary("lilypond");
+
+            assertThat(ConfigLoader.discover(tempDirectory.toString(), false))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("a relative PATH entry is skipped rather than resolved")
+        void skipsRelativePathEntry() throws Exception {
+            // The control above proves this same file is discoverable through an
+            // absolute entry, so a miss here is about the entry being relative
+            // and nothing else.
+            Path executable = fakeBinary("lilypond");
+            Path base = Path.of("").toAbsolutePath();
+            assumeTrue(base.getRoot().equals(tempDirectory.getRoot()),
+                    "no relative path exists from the working directory to the temp directory");
+            String relative = base.relativize(tempDirectory.toAbsolutePath()).toString();
+            assertThat(Path.of(relative)).isRelative();
+
+            Optional<Path> found = ConfigLoader.discover(relative, false);
+
+            // What the old code returned: a path resolved against whatever
+            // directory the user happened to run the tool from, then executed.
+            assertThat(found).isNotEqualTo(Optional.of(Path.of(relative).resolve("lilypond")));
+            assertThat(found).isNotEqualTo(Optional.of(executable));
+        }
+
+        @Test
+        @DisplayName("one unparseable PATH entry does not lose the rest")
+        void toleratesMalformedPathEntry() throws Exception {
+            Path executable = fakeBinary("lilypond");
+            // A NUL is rejected by Path.of on every platform; on Windows a
+            // wildcard in PATH does the same. Either used to throw out of
+            // discovery entirely.
+            String path = "bad\u0000entry" + java.io.File.pathSeparator + tempDirectory;
+
+            assertThat(ConfigLoader.discover(path, false)).contains(executable);
+        }
+
+        @Test
+        @DisplayName("a quoted Windows PATH entry is unquoted before use")
+        void unquotesWindowsPathEntry() throws Exception {
+            // cmd.exe strips these, so a quoted entry is a working PATH entry
+            // for every other Windows tool.
+            Path executable = fakeBinary("lilypond.exe");
+
+            assertThat(ConfigLoader.discover("\"" + tempDirectory + "\"", true))
+                    .contains(executable);
+        }
+
+        /** Stands in for the binary: any executable file with the right name. */
+        private Path fakeBinary(String name) throws Exception {
+            Path binary = tempDirectory.resolve(name);
+            Files.writeString(binary, "#!/bin/sh\necho fake\n");
+            assertThat(binary.toFile().setExecutable(true)).isTrue();
+            return binary;
         }
     }
 }

@@ -24,7 +24,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -38,6 +42,14 @@ public final class ConfigLoader {
 
     private static final String GLOBAL_CONFIG_FILE = "config.yaml";
     private static final String APP_DIRECTORY = "music-wizard";
+
+    /**
+     * What the binary is called, per platform. Windows has no extensionless
+     * executables, so a discovery that only ever looks for {@code lilypond}
+     * cannot find an installation there at all.
+     */
+    private static final String[] POSIX_EXECUTABLES = {"lilypond"};
+    private static final String[] WINDOWS_EXECUTABLES = {"lilypond.exe", "lilypond.bat", "lilypond.cmd"};
 
     private final ObjectMapper yamlMapper;
 
@@ -140,6 +152,11 @@ public final class ConfigLoader {
      * Homebrew installs outside the default {@code PATH} of a non-login shell,
      * which is exactly how a user ends up with LilyPond installed and the tool
      * unable to find it.
+     *
+     * <p>An explicit path is used exactly as written, including its extension:
+     * a configured path that is not executable is an error rather than a hint,
+     * so a Windows user who omits {@code .exe} is told so instead of silently
+     * getting some other binary.
      */
     public static Optional<Path> findLilyPond(MusicWizardConfig config) {
         Optional<String> configured = config != null
@@ -157,32 +174,111 @@ public final class ConfigLoader {
             }
             return Optional.of(explicit);
         }
+        return discover(System.getenv("PATH"), isWindows());
+    }
 
-        String pathVariable = System.getenv("PATH");
+    /**
+     * The discovery half of {@link #findLilyPond}, with the environment passed
+     * in so that either platform's rules can be exercised from a test running
+     * on the other. {@code windows} selects the executable names, the search
+     * prefixes and the {@code PATH} separator; nothing else about the host
+     * changes with it.
+     */
+    static Optional<Path> discover(String pathVariable, boolean windows) {
+        String[] names = windows ? WINDOWS_EXECUTABLES : POSIX_EXECUTABLES;
+
         if (pathVariable != null) {
-            for (String entry : pathVariable.split(java.io.File.pathSeparator)) {
-                if (entry.isBlank()) {
+            for (String entry : pathVariable.split(windows ? ";" : ":")) {
+                Path directory = pathEntryDirectory(entry, windows);
+                if (directory == null) {
                     continue;
                 }
-                Path candidate = Path.of(entry).resolve("lilypond");
-                if (isExecutable(candidate)) {
-                    return Optional.of(candidate);
+                Optional<Path> found = firstExecutableIn(directory, names);
+                if (found.isPresent()) {
+                    return found;
                 }
             }
         }
 
-        for (String prefix : new String[] {
-                "/home/linuxbrew/.linuxbrew/bin",
-                System.getProperty("user.home") + "/.linuxbrew/bin",
-                "/opt/homebrew/bin",
-                "/usr/local/bin",
-                "/usr/bin"}) {
-            Path candidate = Path.of(prefix, "lilypond");
+        for (String prefix : searchPrefixes(windows)) {
+            Optional<Path> found = firstExecutableIn(Path.of(prefix), names);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * A {@code PATH} entry as a directory to search, or null if it is not one
+     * we are willing to use.
+     *
+     * <p>Relative entries — including the empty entry, which a POSIX shell
+     * reads as the working directory — are skipped rather than resolved. A
+     * shell would run them, but what we find here is handed to
+     * {@code ProcessBuilder}, and executing whatever {@code ./lilypond} happens
+     * to be in the directory the user ran {@code mw} from is a footgun we get
+     * nothing for. Anyone who genuinely wants one sets
+     * {@code notation.lilypondPath}.
+     */
+    private static Path pathEntryDirectory(String entry, boolean windows) {
+        if (entry.isBlank()) {
+            return null;
+        }
+        String value = entry;
+        if (windows && value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+            // cmd.exe strips these; leaving them in makes the whole entry
+            // unusable rather than merely unquoted.
+            value = value.substring(1, value.length() - 1);
+        }
+        Path directory;
+        try {
+            directory = Path.of(value);
+        } catch (InvalidPathException e) {
+            // One unparseable entry must not cost us the rest of PATH.
+            return null;
+        }
+        return directory.isAbsolute() ? directory : null;
+    }
+
+    private static Optional<Path> firstExecutableIn(Path directory, String[] names) {
+        for (String name : names) {
+            Path candidate = directory.resolve(name);
             if (isExecutable(candidate)) {
                 return Optional.of(candidate);
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Where to look once {@code PATH} has come up empty. On Windows this is the
+     * layout the LilyPond installer uses; the POSIX list exists because
+     * Homebrew is not on a non-login shell's {@code PATH}.
+     */
+    private static List<String> searchPrefixes(boolean windows) {
+        if (!windows) {
+            return List.of(
+                    "/home/linuxbrew/.linuxbrew/bin",
+                    System.getProperty("user.home") + "/.linuxbrew/bin",
+                    "/opt/homebrew/bin",
+                    "/usr/local/bin",
+                    "/usr/bin");
+        }
+        List<String> prefixes = new ArrayList<>();
+        for (String variable : new String[] {"ProgramFiles", "ProgramFiles(x86)"}) {
+            String root = System.getenv(variable);
+            if (root != null && !root.isBlank()) {
+                prefixes.add(root + "\\LilyPond\\usr\\bin");
+            }
+        }
+        return prefixes;
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "")
+                .toLowerCase(Locale.ROOT)
+                .startsWith("windows");
     }
 
     private static boolean isExecutable(Path path) {
