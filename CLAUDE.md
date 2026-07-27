@@ -141,6 +141,9 @@ execution and label them `CONFIRMED` or `PLAUSIBLE`.
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
+- **One git worktree per concurrent task**, never the shared checkout. A
+  `git checkout` moves HEAD for every process in that clone; a commit made
+  during the move lands on another branch, silently.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
