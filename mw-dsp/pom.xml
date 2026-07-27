@@ -25,5 +25,14 @@
     </dependency>    <dependency>
       <groupId>com.tagtraum</groupId>
       <artifactId>jipes</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-audio</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-testkit</artifactId>
+      <scope>test</scope>
     </dependency>  </dependencies>
 </project>
