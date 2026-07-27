@@ -162,9 +162,18 @@ Beat tracking is the least reliable stage and everything depends on it.
 
 ## State
 
-M0 done: reactor, domain model, workspace with content-addressed stage caching,
-layered config, CLI skeleton, CI. 136 tests. Three review rounds complete.
+**The pipeline runs end to end.** A real MP3 goes in; beats, tempo and chords
+come out; a chord chart is engraved to PDF via LilyPond. Verified on a
+synthesised I-V-vi-IV signal and on an actual MP3 encoded from it.
 
-Next: M1a (symbolic, issue #1) and M1b (audio, issue #2) in parallel worktrees.
-`mw-core` is not formally frozen — see the open `design-gap` issues, especially
-#4 (no beat unit, so compound meters mis-bar) and #5 (notation-facing gaps).
+Done: M0 (reactor, domain model, workspace with content-addressed caching,
+layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
+tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
+Four review rounds on `mw-core`.
+
+Still missing: key detection, NNLS chroma (#3), the whole symbolic/notation
+track (#1), separation and melody (#8), lyrics (#9), piano (#10), advisor (#11).
+
+`mw-core` passed round 4 once its three blockers landed, but see the open
+`design-gap` issues before treating it as frozen — especially #4 (no beat unit,
+so compound meters mis-bar) and #5 (notation-facing gaps).

@@ -6,9 +6,17 @@ part — plus a simplified two-hand piano arrangement.
 
 Java 25, Maven, Apache-2.0. Command line for now; a web UI later.
 
-> **Status: early.** The foundation is in place — domain model, workspace
-> format, configuration and CLI skeleton. The analysis and notation pipelines
-> are being built. See [Milestones](#milestones).
+> **Status: early, but it runs.** Give it an MP3 or WAV and it will find the
+> beats, estimate the chords, and engrave a chord chart as a PDF. Melody, bass,
+> lyrics and the piano reduction are not built yet — see
+> [Milestones](#milestones).
+
+```
+$ mw init song.mp3 && mw analyze song.mwz && mw render song.mwz
+
+| C           | G           | Am          | F           |
+| C           | G           | Am          | F           |
+```
 
 ## What to expect
 
@@ -126,9 +134,10 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 
 ## Milestones
 
-- **M0 — Foundation.** Reactor, domain model, workspace, config, CLI. *In progress.*
-- **M1a — Symbolic track.** MIDI → score → LilyPond, MusicXML, MIDI → PDF.
-- **M1b — Audio track.** Decode → beats → chroma → chords → key.
+- **M0 — Foundation.** Reactor, domain model, workspace, config, CLI. *Done.*
+- **M1b — Audio track.** Decode → beats → chroma → chords. *Chords and chart
+  working; key detection and NNLS chroma still to come.*
+- **M1a — Symbolic track.** MIDI in, MusicXML and MIDI out, staff notation.
 - **M2 — Separation, bass and melody.**
 - **M3 — Lyrics.**
 - **M4 — Piano reduction.**
