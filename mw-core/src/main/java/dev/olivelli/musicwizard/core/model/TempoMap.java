@@ -235,12 +235,12 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
 
     /** The tempo segment governing a given beat. */
     public TempoSegment segmentAtBeat(double beat) {
-        return segments.get(lastSegmentStartingAtOrBefore(beat, TempoSegment::startBeat));
+        return segments.get(indexOfLastSegmentStartingAtOrBefore(beat, TempoSegment::startBeat));
     }
 
     /** The tempo segment governing a given wall-clock time. */
     public TempoSegment segmentAtSeconds(double seconds) {
-        return segments.get(lastSegmentStartingAtOrBefore(seconds, TempoSegment::startSeconds));
+        return segments.get(indexOfLastSegmentStartingAtOrBefore(seconds, TempoSegment::startSeconds));
     }
 
     /**
@@ -250,15 +250,18 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * <p>A scan would be simpler, but {@code fromBeatTimes} emits one segment per
      * tracked beat, so a quarter-hour track has ~100,000 of them and every stage
      * converts per note, per chord or per frame. Linear lookup made that
-     * quadratic. The segments are validated as strictly increasing on both axes
-     * by the canonical constructor, which is what makes the search sound.
+     * quadratic. What makes the search sound is that each axis is sorted, and
+     * the canonical constructor guarantees more than that -- both axes are
+     * validated as <em>strictly</em> increasing -- so no new invariant is
+     * introduced here and none is leaned on more heavily than the scan leaned
+     * on it.
      *
      * <p>The result is identical to the scan this replaced for every key,
      * including the two cases that are easy to lose: a key before the map starts
      * falls back to segment 0, and so does {@code NaN}, because every comparison
      * against it is false and the search never moves off the low end.
      */
-    private int lastSegmentStartingAtOrBefore(double key, ToDoubleFunction<TempoSegment> axis) {
+    private int indexOfLastSegmentStartingAtOrBefore(double key, ToDoubleFunction<TempoSegment> axis) {
         int low = 0;
         int high = segments.size() - 1;
         while (low < high) {

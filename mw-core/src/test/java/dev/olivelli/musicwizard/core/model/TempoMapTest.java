@@ -298,20 +298,27 @@ class TempoMapTest {
             return found;
         }
 
-        /** Asserts binary search and scan agree on every interesting key. */
-        private void assertAgreesWithScan(TempoMap map, Random random) {
+        /**
+         * Asserts binary search and scan agree on every interesting key.
+         *
+         * @param origin names the generator and trial, because a failure here is
+         *               a needle in a corpus of 600 maps and the map that
+         *               produced it has to be identifiable from the message alone
+         */
+        private void assertAgreesWithScan(TempoMap map, String origin, Random random) {
             List<TempoMap.TempoSegment> segments = map.segments();
             for (double beat : probeKeys(segments, TempoMap.TempoSegment::startBeat, random)) {
                 TempoMap.TempoSegment expected =
                         scan(segments, beat, TempoMap.TempoSegment::startBeat);
                 assertThat(map.segmentAtBeat(beat))
-                        .describedAs("segmentAtBeat(%s) over %d segments", beat, segments.size())
+                        .describedAs("%s: segmentAtBeat(%s) over %d segments",
+                                origin, beat, segments.size())
                         .isSameAs(expected);
-                // The conversion is the point of the lookup, so check it too, and
-                // bit-exactly: the arithmetic is unchanged, so an identical
-                // segment must give an identical double, not merely a close one.
+                // Cheap, and it pins beatsToSeconds to segmentAtBeat: the only way
+                // this can fail while the assertion above passes is the conversion
+                // ceasing to route through the lookup at all.
                 assertThat(Double.doubleToLongBits(map.beatsToSeconds(beat)))
-                        .describedAs("beatsToSeconds(%s)", beat)
+                        .describedAs("%s: beatsToSeconds(%s)", origin, beat)
                         .isEqualTo(Double.doubleToLongBits(expected.startSeconds()
                                 + (beat - expected.startBeat()) * expected.secondsPerBeat()));
             }
@@ -319,10 +326,11 @@ class TempoMapTest {
                 TempoMap.TempoSegment expected =
                         scan(segments, seconds, TempoMap.TempoSegment::startSeconds);
                 assertThat(map.segmentAtSeconds(seconds))
-                        .describedAs("segmentAtSeconds(%s) over %d segments", seconds, segments.size())
+                        .describedAs("%s: segmentAtSeconds(%s) over %d segments",
+                                origin, seconds, segments.size())
                         .isSameAs(expected);
                 assertThat(Double.doubleToLongBits(map.secondsToBeats(seconds)))
-                        .describedAs("secondsToBeats(%s)", seconds)
+                        .describedAs("%s: secondsToBeats(%s)", origin, seconds)
                         .isEqualTo(Double.doubleToLongBits(expected.startBeat()
                                 + (seconds - expected.startSeconds()) / expected.secondsPerBeat()));
             }
@@ -406,6 +414,28 @@ class TempoMapTest {
             return new TempoMap(segments, List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
         }
 
+        /**
+         * A map whose boundaries are one representable double apart on both axes.
+         * The constructor permits this -- consecutive doubles are strictly
+         * increasing, and the implied seconds land exactly -- and it is the
+         * degenerate case for a search: any comparison carrying slack, or any
+         * assumption that boundaries are separated by something measurable,
+         * lands on the wrong segment here and nowhere else.
+         */
+        private TempoMap ulpAdjacentMap(int segmentCount) {
+            List<TempoMap.TempoSegment> segments = new ArrayList<>(segmentCount);
+            // Anchored at zero, then stepping from 1.0 so the boundaries are
+            // adjacent normals rather than adjacent subnormals. At 60 BPM one
+            // beat is one second, so both axes advance by the same ULP.
+            segments.add(new TempoMap.TempoSegment(0, 0, 60));
+            double at = 1.0;
+            for (int i = 1; i < segmentCount; i++) {
+                segments.add(new TempoMap.TempoSegment(at, at, 60));
+                at = Math.nextUp(at);
+            }
+            return new TempoMap(segments, List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        }
+
         /** A map built the way the beat tracker builds one, lead-in included. */
         private TempoMap trackedMap(int beatCount, Random random) {
             List<Double> beatTimes = new ArrayList<>(beatCount);
@@ -420,24 +450,73 @@ class TempoMapTest {
         @Test
         @DisplayName("agrees with the linear scan on every generated map")
         void agreesWithLinearScanEverywhere() {
+            // One Random drives both map generation and probe selection, so the
+            // corpus is reproducible from this seed alone -- java.util.Random's
+            // algorithm is specified, so it is the same corpus on every JDK and
+            // platform. The flip side is that adding or removing a single probe
+            // key reshuffles every map after it, so a failure quoted against an
+            // older revision is not reproducible against a newer one.
             Random random = new Random(20250727L);
 
             // Single-segment maps: the search must never move off index 0.
-            assertAgreesWithScan(TempoMap.constant(120), random);
-            assertAgreesWithScan(TempoMap.constant(37.4), random);
+            assertAgreesWithScan(TempoMap.constant(120), "constant(120)", random);
+            assertAgreesWithScan(TempoMap.constant(37.4), "constant(37.4)", random);
 
             for (int trial = 0; trial < 150; trial++) {
                 // Sizes 1..48 so both parities and both loop shapes are covered;
                 // an odd/even midpoint bug survives a single size.
                 int size = 1 + random.nextInt(48);
-                assertAgreesWithScan(exactMap(size, random), random);
-                assertAgreesWithScan(millisecondRoundedMap(size, random), random);
-                assertAgreesWithScan(trackedMap(1 + size, random), random);
+                assertAgreesWithScan(exactMap(size, random), "exactMap trial " + trial, random);
+                assertAgreesWithScan(millisecondRoundedMap(size, random),
+                        "millisecondRoundedMap trial " + trial, random);
+                assertAgreesWithScan(trackedMap(1 + size, random),
+                        "trackedMap trial " + trial, random);
             }
 
-            // And one map large enough that the search does real work.
-            assertAgreesWithScan(exactMap(4096, random), random);
-            assertAgreesWithScan(trackedMap(3000, random), random);
+            // ulpAdjacentMap takes no randomness, so every size is a distinct
+            // map and repeating one buys nothing.
+            for (int size = 1; size <= 16; size++) {
+                assertAgreesWithScan(ulpAdjacentMap(size), "ulpAdjacentMap size " + size, random);
+            }
+
+            // And maps large enough that the search does real work.
+            assertAgreesWithScan(exactMap(4096, random), "exactMap 4096", random);
+            assertAgreesWithScan(trackedMap(3000, random), "trackedMap 3000", random);
+        }
+
+        @Test
+        @DisplayName("agrees with the linear scan at the size the issue is about")
+        void agreesWithLinearScanOnATrackLengthMap() {
+            // The corpus above stops at a few thousand segments because the scan
+            // oracle costs O(segments) per probe and every boundary is probed.
+            // #20 is about ~100,000 segments -- a quarter-hour of tracked beats --
+            // so check that size too, on a sampled budget of boundaries rather
+            // than all of them.
+            Random random = new Random(99L);
+            TempoMap map = trackedMap(100_000, random);
+            List<TempoMap.TempoSegment> segments = map.segments();
+            // One segment per beat interval, plus a lead-in if the first beat is
+            // not at t=0, so 99,999 or 100,000. Asserted because a generator that
+            // quietly produced a short map would make this test meaningless.
+            assertThat(segments).hasSizeGreaterThan(99_000);
+
+            for (int probe = 0; probe < 150; probe++) {
+                TempoMap.TempoSegment at = segments.get(random.nextInt(segments.size()));
+                for (double beat : new double[] {
+                        Math.nextDown(at.startBeat()), at.startBeat(), Math.nextUp(at.startBeat())}) {
+                    assertThat(map.segmentAtBeat(beat))
+                            .describedAs("segmentAtBeat(%s) over %d segments", beat, segments.size())
+                            .isSameAs(scan(segments, beat, TempoMap.TempoSegment::startBeat));
+                }
+                for (double seconds : new double[] {
+                        Math.nextDown(at.startSeconds()), at.startSeconds(),
+                        Math.nextUp(at.startSeconds())}) {
+                    assertThat(map.segmentAtSeconds(seconds))
+                            .describedAs("segmentAtSeconds(%s) over %d segments",
+                                    seconds, segments.size())
+                            .isSameAs(scan(segments, seconds, TempoMap.TempoSegment::startSeconds));
+                }
+            }
         }
 
         @Test
@@ -481,41 +560,48 @@ class TempoMapTest {
         }
 
         @Test
-        @DisplayName("lookup cost barely grows with the number of segments")
-        void lookupCostIsSublinear() {
-            // The regression this guards is a scan reappearing, which costs 128x
-            // here; binary search costs about 1.6x plus cache effects. Asserting
-            // a ratio rather than a wall-clock budget keeps it meaningful on a
-            // slow or a loaded machine, and the margin either side is ~6x.
-            int small = 2_000;
-            int large = 256_000;
-            TempoMap smallMap = constantIntervalMap(small);
-            TempoMap largeMap = constantIntervalMap(large);
+        @DisplayName("lookup is far cheaper than the scan it replaced")
+        void lookupBeatsTheScanItReplaced() {
+            // Both sides of this comparison walk the *same* map. An earlier
+            // version timed one implementation over a small map and a large one
+            // and asserted the ratio, which conflated the algorithm with the
+            // cache hierarchy: the small map fits in L2 and the large one does
+            // not, so the ratio moved with whatever else on the machine was
+            // competing for memory bandwidth, and it was reproduced failing at
+            // 24.7x on correct code under memory contention. Comparing the two
+            // implementations over one map makes the test self-calibrating --
+            // load slows both sides together -- and the measured margin then
+            // *grows* under contention rather than shrinking: 595x idle, 3322x
+            // under heavy memory pressure, against a threshold of 20.
+            TempoMap map = constantIntervalMap(256_000);
+            List<TempoMap.TempoSegment> segments = map.segments();
 
-            double[] probes = new double[2_000];
+            // Spread across the map, so the scan's cost is its average rather
+            // than its best case, and few enough that the scan side stays cheap.
+            double[] probes = new double[64];
             for (int i = 0; i < probes.length; i++) {
-                probes[i] = (double) i / probes.length;
+                probes[i] = segments.size() * (i + 0.5) / probes.length;
             }
 
-            timeLookups(smallMap, probes, small);   // warm up and let the JIT settle
-            timeLookups(largeMap, probes, large);
+            timeSearch(map, probes);        // warm up and let the JIT settle
+            timeScan(segments, probes);
 
-            long smallNanos = Long.MAX_VALUE;
-            long largeNanos = Long.MAX_VALUE;
+            long searchNanos = Long.MAX_VALUE;
+            long scanNanos = Long.MAX_VALUE;
             for (int trial = 0; trial < 5; trial++) {
-                smallNanos = Math.min(smallNanos, timeLookups(smallMap, probes, small));
-                largeNanos = Math.min(largeNanos, timeLookups(largeMap, probes, large));
+                searchNanos = Math.min(searchNanos, timeSearch(map, probes));
+                scanNanos = Math.min(scanNanos, timeScan(segments, probes));
             }
 
-            double ratio = (double) largeNanos / smallNanos;
-            assertThat(ratio)
-                    .describedAs("%dx more segments cost %.1fx more time (%d ns vs %d ns);"
-                            + " lookup has gone linear again", large / small, ratio,
-                            largeNanos, smallNanos)
-                    .isLessThan(20.0);
+            assertThat(scanNanos)
+                    .describedAs("over %d segments the binary search took %d ns and the scan"
+                            + " it replaced took %d ns (%.1fx); lookup has gone linear again",
+                            segments.size(), searchNanos, scanNanos,
+                            (double) scanNanos / Math.max(1, searchNanos))
+                    .isGreaterThan(20 * Math.max(1, searchNanos));
         }
 
-        /** Beat i at second i, so a probe in [0,1] of the span is easy to place. */
+        /** Beat i at second i, so a probe is trivially placed by index. */
         private TempoMap constantIntervalMap(int segmentCount) {
             List<TempoMap.TempoSegment> segments = new ArrayList<>(segmentCount);
             for (int i = 0; i < segmentCount; i++) {
@@ -524,14 +610,25 @@ class TempoMapTest {
             return new TempoMap(segments, List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
         }
 
-        private long timeLookups(TempoMap map, double[] fractions, int span) {
+        private long timeSearch(TempoMap map, double[] probes) {
             long start = System.nanoTime();
             double sink = 0;
-            for (double fraction : fractions) {
-                sink += map.secondsToBeats(fraction * span);
+            for (double probe : probes) {
+                sink += map.secondsToBeats(probe);
             }
             long elapsed = System.nanoTime() - start;
-            // Keep the loop from being optimised away entirely.
+            // An escaping, data-dependent use, so the loop cannot be elided.
+            assertThat(sink).isGreaterThan(0.0);
+            return elapsed;
+        }
+
+        private long timeScan(List<TempoMap.TempoSegment> segments, double[] probes) {
+            long start = System.nanoTime();
+            double sink = 0;
+            for (double probe : probes) {
+                sink += scan(segments, probe, TempoMap.TempoSegment::startSeconds).startBeat();
+            }
+            long elapsed = System.nanoTime() - start;
             assertThat(sink).isGreaterThan(0.0);
             return elapsed;
         }
