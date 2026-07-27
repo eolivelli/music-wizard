@@ -355,8 +355,11 @@ class HardeningTest {
             // already made -- a new leak from the code meant to remove them.
             Path staged = runStagingProcess("stage-during-shutdown", 0);
 
-            // Nothing can collect it at that point, which is what the age-based
-            // sweep is still there for; the reservation must simply not fail.
+            // Deterministic only because this mode stages nothing before
+            // shutdown, so no cleanup hook was ever armed and there is no second
+            // hook to race. In general a reservation made during shutdown may or
+            // may not be collected; the age-based sweep is what accounts for it.
+            // What is being asserted here is only that the reservation succeeds.
             assertThat(staged).exists();
         }
 
