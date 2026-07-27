@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToDoubleFunction;
 
 /**
  * The conversion between wall-clock seconds and musical beats.
@@ -234,28 +235,43 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
 
     /** The tempo segment governing a given beat. */
     public TempoSegment segmentAtBeat(double beat) {
-        TempoSegment found = segments.get(0);
-        for (TempoSegment candidate : segments) {
-            if (candidate.startBeat() <= beat) {
-                found = candidate;
-            } else {
-                break;
-            }
-        }
-        return found;
+        return segments.get(lastSegmentStartingAtOrBefore(beat, TempoSegment::startBeat));
     }
 
     /** The tempo segment governing a given wall-clock time. */
     public TempoSegment segmentAtSeconds(double seconds) {
-        TempoSegment found = segments.get(0);
-        for (TempoSegment candidate : segments) {
-            if (candidate.startSeconds() <= seconds) {
-                found = candidate;
+        return segments.get(lastSegmentStartingAtOrBefore(seconds, TempoSegment::startSeconds));
+    }
+
+    /**
+     * The index of the last segment whose position on {@code axis} is at or
+     * before {@code key}, by binary search.
+     *
+     * <p>A scan would be simpler, but {@code fromBeatTimes} emits one segment per
+     * tracked beat, so a quarter-hour track has ~100,000 of them and every stage
+     * converts per note, per chord or per frame. Linear lookup made that
+     * quadratic. The segments are validated as strictly increasing on both axes
+     * by the canonical constructor, which is what makes the search sound.
+     *
+     * <p>The result is identical to the scan this replaced for every key,
+     * including the two cases that are easy to lose: a key before the map starts
+     * falls back to segment 0, and so does {@code NaN}, because every comparison
+     * against it is false and the search never moves off the low end.
+     */
+    private int lastSegmentStartingAtOrBefore(double key, ToDoubleFunction<TempoSegment> axis) {
+        int low = 0;
+        int high = segments.size() - 1;
+        while (low < high) {
+            // Bias the midpoint upwards so a two-element range makes progress,
+            // and compute it as an offset so a very long map cannot overflow.
+            int mid = low + ((high - low + 1) >>> 1);
+            if (axis.applyAsDouble(segments.get(mid)) <= key) {
+                low = mid;
             } else {
-                break;
+                high = mid - 1;
             }
         }
-        return found;
+        return low;
     }
 
     /** Tempo in quarter-note beats per minute at a given beat position. */
