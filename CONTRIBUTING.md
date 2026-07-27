@@ -121,6 +121,17 @@ Labels:
 | `design-gap` | A model or API gap to close before dependants hit it |
 | `module:*` | Which module owns it |
 
+## Working alongside other agents
+
+Use a dedicated `git worktree` per task rather than the shared checkout. A
+`git checkout` moves HEAD for every process using that clone, and a commit made
+while HEAD is moving lands on somebody else's branch — silently, with a clean
+test run either side of it.
+
+```sh
+git worktree add /tmp/wt-issue-42 -b issue-42-fix origin/main
+```
+
 ## Pushing
 
 Push to `origin/main` at every milestone, not at the end. The work is long

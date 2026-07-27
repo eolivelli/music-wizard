@@ -89,9 +89,21 @@ PDF. PDF requires the LilyPond binary; without it the tool still writes `.ly`,
 `.musicxml` and `.midi` and says so rather than failing.
 
 Discovery checks, in order: the `notation.lilypondPath` config key, `$PATH`,
-then Homebrew and `/usr/local` prefixes — because Homebrew installs outside a
-non-login shell's `PATH`, which is exactly how someone ends up with LilyPond
-installed and the tool unable to find it.
+then — **on POSIX only** — Homebrew and `/usr/local` prefixes, because Homebrew
+installs outside a non-login shell's `PATH`, which is exactly how someone ends
+up with LilyPond installed and the tool unable to find it.
+
+Three rules that are easy to get wrong:
+
+- An explicit `notation.lilypondPath` is used **exactly as written**, extension
+  included, and a non-executable one is an error rather than a hint. Silently
+  falling back would ignore an explicit instruction.
+- **Relative `PATH` entries are skipped.** A shell runs `./lilypond` because the
+  user typed the command; we would run it only because the user happened to `cd`
+  somewhere, which is not the same thing.
+- On Windows, discovery looks for `lilypond.exe` and friends and is `PATH`-only.
+  **Nothing has ever been run on Windows** (#33) — a user on an older installer
+  must set `notation.lilypondPath`.
 
 ## Testing
 
@@ -141,6 +153,9 @@ execution and label them `CONFIRMED` or `PLAUSIBLE`.
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
+- **One git worktree per concurrent task**, never the shared checkout. A
+  `git checkout` moves HEAD for every process in that clone; a commit made
+  during the move lands on another branch, silently.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.

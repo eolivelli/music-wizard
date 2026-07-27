@@ -33,18 +33,28 @@ what is unresolved. An open PR with an honest status is a useful handover; a
 merged PR that quietly failed one of the criteria is a debugging session for
 somebody else.
 
-## Step 0 — Start from current `main`
+## Step 0 — Get your own checkout, then start from current `main`
 
-Before anything else:
+**Work in a dedicated git worktree, never in the shared checkout.** Other agents
+are running against the same repository at the same time, and `git checkout`
+changes HEAD for all of them at once. This is not hypothetical: on this project
+one agent's commit landed on another agent's branch because HEAD moved under it
+mid-operation, and it was only caught because the agent noticed and restored the
+other branch by hand. Nothing about that is visible in a passing test run.
 
 ```sh
 git fetch origin
-git checkout main && git pull --ff-only origin main
+git worktree add /tmp/wt-issue-<number> -b issue-<number>-<slug> origin/main
+cd /tmp/wt-issue-<number>
 ```
 
-Other agents and people are landing work continuously. Branching from a stale
-`main` produces conflicts at merge time, review findings that were already
-fixed, and worst of all a "fix" for a bug somebody else already removed.
+Do all your work there, and remove the worktree when you are finished. Never run
+`git checkout` in the shared clone.
+
+Branching from a stale `main` produces conflicts at merge time, review findings
+that were already fixed, and worst of all a "fix" for a bug somebody else
+already removed — so fetch first, and branch from `origin/main` rather than from
+whatever the local `main` happens to point at.
 
 Re-sync before you merge, too — rebase or merge `origin/main` into your branch
 and **re-run the full suite against the combined result**. Your branch passing
