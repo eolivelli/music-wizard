@@ -314,11 +314,15 @@ public final class StageCache {
      * a later run would mistake for a complete one.
      *
      * <p>The reservation is remembered until it is committed or discarded, and
-     * anything still outstanding is deleted when the JVM exits. Without that,
+     * anything outstanding when the JVM starts exiting is deleted. Without that,
      * the only thing collecting an abandoned stem would be the age-based sweep,
      * which cannot fire until a day later and only if somebody opens that same
      * workspace again -- so the ordinary case, a run that dies and is retried
      * minutes later, would leak its stem for good.
+     *
+     * <p>A reservation made <em>after</em> shutdown has begun is still handed
+     * out, but nothing will collect it at exit; it is left to the sweep. See
+     * {@link #discardOutstandingStagedFiles()}.
      */
     public Path stagingPath(Key key, String extension) {
         Path target = pathFor(key, extension);
@@ -411,7 +415,16 @@ public final class StageCache {
      * life of a file measured in kilobytes.
      */
     static void discardOutstandingStagedFiles() {
-        for (Path staged : OUTSTANDING_STAGED) {
+        // A snapshot, not the live set. Shutdown hooks run alongside the
+        // application's own threads, so a thread still calling stagingPath keeps
+        // feeding a live iterator; once it inserts faster than this unlinks, the
+        // traversal never ends and Shutdown.exit blocks joining this thread
+        // forever. That is a CLI that will not die on Ctrl-C with all its output
+        // already printed, which is far worse than the leak being cleaned up.
+        // Draining a snapshot means a reservation made after shutdown began is
+        // not collected -- already true, already documented, and the age-based
+        // sweep is the backstop for exactly that.
+        for (Path staged : OUTSTANDING_STAGED.toArray(new Path[0])) {
             OUTSTANDING_STAGED.remove(staged);
             try {
                 Files.deleteIfExists(staged);

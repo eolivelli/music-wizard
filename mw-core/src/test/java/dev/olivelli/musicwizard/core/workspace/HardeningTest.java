@@ -373,14 +373,26 @@ class HardeningTest {
                     mode, root.toString(), sourceFile.toString())
                     .redirectErrorStream(true)
                     .start();
-            String output = new String(process.getInputStream().readAllBytes(),
-                    java.nio.charset.StandardCharsets.UTF_8);
-            int exitCode = process.waitFor();
+            String output;
+            boolean exited;
+            try {
+                // Drained to EOF before waiting, so the child cannot block on a
+                // full pipe while we block on the child.
+                output = new String(process.getInputStream().readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                exited = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                // The failure this test exists to catch is cleanup that never
+                // finishes, so an unbounded wait would turn a red test into a
+                // build that hangs with no diagnostic at all.
+                process.destroyForcibly();
+            }
+            assertThat(exited).as("child exited within 30s, output was:%n%s", output).isTrue();
 
             // Reported rather than merely asserted, so a classpath or fork problem
             // reads as one instead of as a cleanup failure.
             assertThat(output).as("process output").contains("STAGED ").doesNotContain("FAILED");
-            assertThat(exitCode).as("exit code, output was:%n%s", output)
+            assertThat(process.exitValue()).as("exit code, output was:%n%s", output)
                     .isEqualTo(expectedExitCode);
             return Path.of(output.lines()
                     .filter(line -> line.startsWith("STAGED "))
