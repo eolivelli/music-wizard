@@ -103,6 +103,30 @@ Reviewers should confirm suspected bugs by execution before reporting them as
 confirmed, and should say explicitly what they checked and found correct so the
 next round need not redo it.
 
+## Issue tracking
+
+Anything that is not being fixed right now goes in a GitHub issue rather than a
+`TODO` comment or somebody's memory. In particular, a review round that finds
+ten things should produce fixes for the serious ones and *issues* for the rest —
+findings that are neither fixed nor filed are simply lost.
+
+Labels:
+
+| Label | Meaning |
+|---|---|
+| `epic` + `milestone:MX` | A milestone's umbrella issue |
+| `priority:medium` | Should land before its milestone closes |
+| `priority:low` | Real, but not blocking anything |
+| `review-finding` | Raised by a review round |
+| `design-gap` | A model or API gap to close before dependants hit it |
+| `module:*` | Which module owns it |
+
+## Pushing
+
+Push to `origin/main` at every milestone, not at the end. The work is long
+running and the repository is the shared record of it; a week of unpushed
+commits is a week nobody else can see, review, or build on.
+
 ## Commit messages
 
 Explain *why*, not *what* — the diff already shows what changed. If a change
