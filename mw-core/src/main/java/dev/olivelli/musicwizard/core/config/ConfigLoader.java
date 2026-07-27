@@ -192,6 +192,15 @@ public final class ConfigLoader {
      * anything about how {@code C:\...} is parsed.
      */
     static Optional<Path> discover(String pathVariable, boolean windows) {
+        return discover(pathVariable, windows, searchPrefixes(windows));
+    }
+
+    /**
+     * As {@link #discover(String, boolean)}, with the fallback prefixes given
+     * explicitly so a test can plant a binary under one. The real list names
+     * directories no test may write to.
+     */
+    static Optional<Path> discover(String pathVariable, boolean windows, List<String> prefixes) {
         List<String> names = windows ? WINDOWS_EXECUTABLES : POSIX_EXECUTABLES;
 
         if (pathVariable != null) {
@@ -207,8 +216,12 @@ public final class ConfigLoader {
             }
         }
 
-        for (String prefix : searchPrefixes(windows)) {
-            Optional<Path> found = firstExecutableIn(Path.of(prefix), names);
+        for (String prefix : prefixes) {
+            Path directory = parseDirectory(prefix);
+            if (directory == null) {
+                continue;
+            }
+            Optional<Path> found = firstExecutableIn(directory, names);
             if (found.isPresent()) {
                 return found;
             }
@@ -224,32 +237,39 @@ public final class ConfigLoader {
      * splitting it blindly turns one usable entry into two unusable fragments.
      * On POSIX a quote is an ordinary filename character and is left alone.
      *
-     * <p>If the quotes do not balance, the whole variable is split blindly
-     * instead. Honouring an unterminated quote would let one malformed entry
-     * swallow every entry after it, which is a worse failure than ignoring the
-     * quoting of an entry that was already malformed.
+     * <p>A quote only quotes when it opens an entry and is matched by one that
+     * closes it. Anything else is an ordinary character, so a stray quote costs
+     * its own entry and nothing else. Tracking quotes as a running toggle
+     * instead would merge everything between two strays into a single unusable
+     * entry — which is the failure the quoting support exists to prevent, only
+     * harder to see.
      */
     private static List<String> splitPath(String pathVariable, boolean windows) {
         List<String> entries = new ArrayList<>();
-        StringBuilder entry = new StringBuilder();
-        boolean quoted = false;
-        for (int i = 0; i < pathVariable.length(); i++) {
-            char c = pathVariable.charAt(i);
-            if (windows && c == '"') {
-                quoted = !quoted;
-                entry.append(c);
-            } else if (c == java.io.File.pathSeparatorChar && !quoted) {
-                entries.add(entry.toString());
-                entry.setLength(0);
-            } else {
-                entry.append(c);
-            }
+        int position = 0;
+        while (position <= pathVariable.length()) {
+            int end = entryEnd(pathVariable, position, windows);
+            entries.add(pathVariable.substring(position, end));
+            position = end + 1;
         }
-        if (quoted) {
-            return List.of(pathVariable.split(java.io.File.pathSeparator, -1));
-        }
-        entries.add(entry.toString());
         return entries;
+    }
+
+    /** The index just past the {@code PATH} entry beginning at {@code start}. */
+    private static int entryEnd(String pathVariable, int start, boolean windows) {
+        if (windows && start < pathVariable.length() && pathVariable.charAt(start) == '"') {
+            for (int quote = pathVariable.indexOf('"', start + 1); quote >= 0;
+                    quote = pathVariable.indexOf('"', quote + 1)) {
+                if (quote + 1 == pathVariable.length()
+                        || pathVariable.charAt(quote + 1) == java.io.File.pathSeparatorChar) {
+                    return quote + 1;
+                }
+            }
+            // Never closed: fall through and read it as an ordinary entry, so
+            // that the malformed entry costs only itself.
+        }
+        int separator = pathVariable.indexOf(java.io.File.pathSeparatorChar, start);
+        return separator >= 0 ? separator : pathVariable.length();
     }
 
     /**
@@ -272,8 +292,8 @@ public final class ConfigLoader {
             if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
                 value = value.substring(1, value.length() - 1);
             }
-            // An unbalanced quote cannot be part of a Windows filename, so an
-            // entry still carrying one is malformed however it is read.
+            // A quote cannot be part of a Windows filename, so an entry still
+            // carrying one is malformed however it is read.
             if (value.indexOf('"') >= 0) {
                 return null;
             }
@@ -281,14 +301,18 @@ public final class ConfigLoader {
         if (value.isBlank()) {
             return null;
         }
-        Path directory;
+        Path directory = parseDirectory(value);
+        return directory != null && directory.isAbsolute() ? directory : null;
+    }
+
+    /** A path, or null when it does not parse on this platform. */
+    private static Path parseDirectory(String value) {
         try {
-            directory = Path.of(value);
+            return Path.of(value);
         } catch (InvalidPathException e) {
-            // One unparseable entry must not cost us the rest of PATH.
+            // One unusable entry must not cost us the rest of the search.
             return null;
         }
-        return directory.isAbsolute() ? directory : null;
     }
 
     private static Optional<Path> firstExecutableIn(Path directory, List<String> names) {
@@ -310,8 +334,12 @@ public final class ConfigLoader {
      * there is no location to guess. The package managers that do install it —
      * Chocolatey, Scoop — put their shims on {@code PATH}, which is the route
      * this class now handles. Anyone else sets {@code notation.lilypondPath}.
+     *
+     * <p>Package-private so a test can pin the POSIX list: it is the reason
+     * {@code mw doctor} finds a Homebrew install at all, and nothing else in
+     * the suite can tell you it has been deleted.
      */
-    private static List<String> searchPrefixes(boolean windows) {
+    static List<String> searchPrefixes(boolean windows) {
         if (windows) {
             return List.of();
         }

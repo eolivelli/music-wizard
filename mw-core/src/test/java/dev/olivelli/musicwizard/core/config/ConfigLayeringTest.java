@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.config.MusicWizardConfig.LlmConfig;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.NotationConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -330,6 +331,117 @@ class ConfigLayeringTest {
             String path = "\"C" + java.io.File.pathSeparator + tempDirectory;
 
             assertThat(ConfigLoader.discover(path, true)).contains(executable);
+        }
+
+        @Test
+        @DisplayName("two stray quotes do not merge the entries between them")
+        void strayQuotesDoNotMergeEntries() throws Exception {
+            // Tracking quotes as a running toggle makes an even number of
+            // strays look balanced, so everything between them becomes one
+            // unusable entry — the same swallowing failure, harder to see.
+            Path executable = fakeBinary("lilypond.exe");
+            String path = "/nowhere/a\"" + java.io.File.pathSeparator
+                    + tempDirectory + java.io.File.pathSeparator + "/nowhere/b\"";
+
+            assertThat(ConfigLoader.discover(path, true)).contains(executable);
+        }
+
+        @Test
+        @DisplayName("a stray quote costs its own Windows entry")
+        void skipsWindowsEntryWithAStrayQuote() throws Exception {
+            Path directory = quotedNameDirectory();
+            Path executable = fakeBinaryIn(directory, "lilypond.exe");
+            // The control: the same directory is searched when the quote is not
+            // being read as quoting.
+            assertThat(ConfigLoader.discover(directory.toString(), true, List.of()))
+                    .isEmpty();
+            assertThat(executable).exists();
+        }
+
+        @Test
+        @DisplayName("on POSIX a quote is an ordinary filename character")
+        void treatsQuoteAsOrdinaryOnPosix() throws Exception {
+            Path directory = quotedNameDirectory();
+            Path executable = fakeBinaryIn(directory, "lilypond");
+
+            assertThat(ConfigLoader.discover(directory.toString(), false, List.of()))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("a .bat or .cmd wrapper counts on Windows, with .exe first")
+        void findsWindowsWrapperScripts() throws Exception {
+            Path batOnly = Files.createDirectory(tempDirectory.resolve("bat"));
+            Path bat = fakeBinaryIn(batOnly, "lilypond.bat");
+            Path cmdOnly = Files.createDirectory(tempDirectory.resolve("cmd"));
+            Path cmd = fakeBinaryIn(cmdOnly, "lilypond.cmd");
+            Path both = Files.createDirectory(tempDirectory.resolve("both"));
+            fakeBinaryIn(both, "lilypond.cmd");
+            Path exe = fakeBinaryIn(both, "lilypond.exe");
+
+            assertThat(ConfigLoader.discover(batOnly.toString(), true)).contains(bat);
+            assertThat(ConfigLoader.discover(cmdOnly.toString(), true)).contains(cmd);
+            assertThat(ConfigLoader.discover(both.toString(), true)).contains(exe);
+        }
+
+        @Test
+        @DisplayName("the prefixes are searched when PATH yields nothing")
+        void fallsBackToThePrefixes() throws Exception {
+            // The mechanism behind blocker behaviour #2: Homebrew is not on a
+            // non-login shell's PATH, so a miss on PATH must not end the search.
+            Path executable = fakeBinary("lilypond");
+
+            assertThat(ConfigLoader.discover("/nowhere", false, List.of(tempDirectory.toString())))
+                    .contains(executable);
+            assertThat(ConfigLoader.discover(null, false, List.of(tempDirectory.toString())))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("PATH wins over the prefixes")
+        void pathBeatsThePrefixes() throws Exception {
+            Path onPath = Files.createDirectory(tempDirectory.resolve("path"));
+            Path preferred = fakeBinaryIn(onPath, "lilypond");
+            Path underPrefix = Files.createDirectory(tempDirectory.resolve("prefix"));
+            fakeBinaryIn(underPrefix, "lilypond");
+
+            assertThat(ConfigLoader.discover(onPath.toString(), false,
+                    List.of(underPrefix.toString()))).contains(preferred);
+        }
+
+        @Test
+        @DisplayName("an unparseable prefix does not end the search")
+        void toleratesMalformedPrefix() throws Exception {
+            Path executable = fakeBinary("lilypond");
+
+            assertThat(ConfigLoader.discover(null, false,
+                    List.of("bad prefix", tempDirectory.toString())))
+                    .contains(executable);
+        }
+
+        @Test
+        @DisplayName("the POSIX prefixes still name the Homebrew locations")
+        void posixPrefixesNameHomebrew() {
+            // Issue #17's whole reason for existing: Homebrew installs outside a
+            // non-login shell's PATH, and `mw doctor` finds it only through this
+            // list. Nothing else in the suite notices if it is emptied.
+            assertThat(ConfigLoader.searchPrefixes(false))
+                    .contains("/home/linuxbrew/.linuxbrew/bin", "/opt/homebrew/bin",
+                            "/usr/local/bin", "/usr/bin");
+            assertThat(ConfigLoader.searchPrefixes(true)).isEmpty();
+        }
+
+        /**
+         * A directory whose name contains a quote — legal on POSIX, impossible
+         * on Windows, which is the point of the two tests that use it.
+         */
+        private Path quotedNameDirectory() throws Exception {
+            try {
+                return Files.createDirectory(tempDirectory.resolve("a\"b"));
+            } catch (java.io.IOException e) {
+                assumeTrue(false, "this filesystem rejects a quote in a filename");
+                throw e;
+            }
         }
 
         /** Stands in for the binary: any executable file with the right name. */
