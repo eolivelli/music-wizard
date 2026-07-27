@@ -454,11 +454,21 @@ class TempoMapTest {
                     .isLessThan(20.0);
         }
 
+        /**
+         * Both directions, for the reason the segment-lookup timing test walks
+         * both axes: {@code toBeat} is the same bar walk backwards, and the
+         * differential test cannot see its cost because the walk is that test's
+         * oracle rather than its subject. Timing only {@code toMusicalTime}
+         * would leave the direction notation and arrangement actually drive --
+         * a quantized position back to beats, per note -- guarded by nothing.
+         * The result of one feeds the other, so one probe covers both.
+         */
         private long timeConversions(TempoMap map, int beat) {
             long start = System.nanoTime();
             double sink = 0;
             for (int i = 0; i < 5_000; i++) {
-                sink += map.toMusicalTime(beat + i).bar();
+                MusicalTime at = map.toMusicalTime(beat + i);
+                sink += at.bar() + map.toBeat(at);
             }
             long elapsed = System.nanoTime() - start;
             assertThat(sink).isGreaterThan(0.0);
