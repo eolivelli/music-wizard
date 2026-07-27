@@ -19,7 +19,7 @@ package dev.olivelli.musicwizard.core.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
-import static org.assertj.core.api.Assumptions.assumeThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -263,6 +263,231 @@ class TempoMapTest {
             assertThatThrownBy(() -> TempoMap.constant(0))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("positive");
+        }
+    }
+
+    /**
+     * Bar lookup got the same treatment as segment lookup, and for the same
+     * reason: it counted bars one at a time from zero, so it was O(position) per
+     * call and quadratic for any stage converting per note. It also never
+     * returned for a NaN beat. Bar length is not constant, so the walk over
+     * meter changes has to keep honouring them exactly.
+     */
+    @Nested
+    @DisplayName("musical time lookup")
+    class MusicalTimeLookup {
+
+        /** {@code toMusicalTime} exactly as it was, kept as the oracle. */
+        private MusicalTime walkBars(TempoMap map, double beat) {
+            int bar = 0;
+            double remaining = beat;
+            while (true) {
+                double barLength = map.timeSignatureAtBar(bar).quarterBeatsPerBar();
+                if (remaining < barLength || barLength <= 0) {
+                    break;
+                }
+                remaining -= barLength;
+                bar++;
+            }
+            return new MusicalTime(bar, remaining, map.timeSignatureAtBar(bar));
+        }
+
+        /** {@code toBeat} exactly as it was, kept as the oracle. */
+        private double sumBars(TempoMap map, MusicalTime musicalTime) {
+            double beat = 0;
+            for (int bar = 0; bar < musicalTime.bar(); bar++) {
+                beat += map.timeSignatureAtBar(bar).quarterBeatsPerBar();
+            }
+            return beat + musicalTime.beatInBar();
+        }
+
+        /** A map with a random but valid stack of meter changes. */
+        private TempoMap meterChangeMap(int changeCount, Random random) {
+            TimeSignature[] catalogue = {
+                    TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                    new TimeSignature(5, 8), new TimeSignature(7, 8), new TimeSignature(2, 2),
+                    new TimeSignature(9, 8), new TimeSignature(12, 8), new TimeSignature(1, 64),
+                    new TimeSignature(64, 1), new TimeSignature(3, 16), new TimeSignature(2, 4)};
+            List<TempoMap.MeterChange> changes = new ArrayList<>(changeCount);
+            int bar = 0;
+            for (int i = 0; i < changeCount; i++) {
+                changes.add(new TempoMap.MeterChange(bar, catalogue[random.nextInt(catalogue.length)]));
+                bar += 1 + random.nextInt(20);
+            }
+            return new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0, 60 + random.nextInt(120))), changes);
+        }
+
+        @Test
+        @DisplayName("agrees with the bar-by-bar walk it replaced, bit for bit")
+        void agreesWithTheBarWalk() {
+            Random random = new Random(31337L);
+
+            for (int trial = 0; trial < 400; trial++) {
+                TempoMap map = meterChangeMap(1 + random.nextInt(6), random);
+                int lastChange = map.meterChanges().get(map.meterChanges().size() - 1).startBar();
+
+                List<Double> beats = new ArrayList<>();
+                beats.add(0.0);
+                // Exactly on, just before and just after every bar line, since
+                // that is where a count computed by division rather than by
+                // subtraction goes wrong.
+                for (int bar = 0; bar <= lastChange + 6; bar++) {
+                    double at = map.toBeat(new MusicalTime(bar, 0, map.timeSignatureAtBar(bar)));
+                    beats.add(at);
+                    beats.add(Math.nextDown(at));
+                    beats.add(Math.nextUp(at));
+                }
+                for (int i = 0; i < 24; i++) {
+                    beats.add(random.nextDouble() * 400);
+                }
+
+                for (double beat : beats) {
+                    if (beat < 0) {
+                        continue;
+                    }
+                    String origin = "trial " + trial + " beat " + beat;
+                    MusicalTime expected = walkBars(map, beat);
+                    MusicalTime actual = map.toMusicalTime(beat);
+                    assertThat(actual.bar()).describedAs("%s: bar", origin).isEqualTo(expected.bar());
+                    assertThat(Double.doubleToLongBits(actual.beatInBar()))
+                            .describedAs("%s: beatInBar %s vs %s",
+                                    origin, actual.beatInBar(), expected.beatInBar())
+                            .isEqualTo(Double.doubleToLongBits(expected.beatInBar()));
+                    assertThat(actual.timeSignature())
+                            .describedAs("%s: signature", origin)
+                            .isEqualTo(expected.timeSignature());
+
+                    assertThat(Double.doubleToLongBits(map.toBeat(actual)))
+                            .describedAs("%s: toBeat", origin)
+                            .isEqualTo(Double.doubleToLongBits(sumBars(map, actual)));
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("rejects a non-finite beat instead of never returning")
+        void rejectsNonFiniteBeat() {
+            TempoMap map = TempoMap.constant(120);
+
+            // NaN got past the old "beat < 0" guard, and then "remaining <
+            // barLength" was false for it on every iteration, so the loop never
+            // ended. A negative is not a substitute for this case: it was always
+            // rejected, so a test using one passes without touching the fix.
+            assertThatThrownBy(() -> map.toMusicalTime(Double.NaN))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("finite");
+            assertThatThrownBy(() -> map.toMusicalTime(Double.POSITIVE_INFINITY))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("finite");
+            assertThatThrownBy(() -> map.toMusicalTime(Double.NEGATIVE_INFINITY))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("finite");
+            assertThatThrownBy(() -> map.toMusicalTime(-1))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("non-negative");
+        }
+
+        @Test
+        @DisplayName("a beat past the last representable bar is an error, not a wrong bar")
+        void rejectsABeatPastTheLastBar() {
+            // 1/64 bars are a sixteenth of a quarter beat, so a bar index runs
+            // out four billion bars in. The walk this replaced took the same
+            // input to an int overflow and a negative bar; failing outright is
+            // the only honest answer.
+            TempoMap map = TempoMap.constant(120, new TimeSignature(1, 64));
+
+            assertThatThrownBy(() -> map.toMusicalTime(1e9))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("past bar");
+            // Just inside is fine.
+            assertThat(map.toMusicalTime(1e8).bar()).isEqualTo(1_600_000_000);
+
+            // The largest double over the shortest bar divides to infinity, and
+            // a block before it has already advanced the bar index. Without the
+            // saturating count the two would add to a negative long, wrap to a
+            // plausible-looking bar, and the failure would surface as a
+            // complaint about the beat not fitting the bar -- which is true but
+            // says nothing about what went wrong.
+            TempoMap mixed = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(1000, new TimeSignature(1, 64));
+            assertThatThrownBy(() -> mixed.toMusicalTime(Double.MAX_VALUE))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("past bar");
+        }
+
+        @Test
+        @DisplayName("cost does not grow with how far into the piece the beat is")
+        void isNotLinearInBarPosition() {
+            // Late and early positions on the *same* map, which is two meter
+            // changes and fits in L1 either way, so the only thing varying is
+            // the argument. That matters: the segment-lookup equivalent of this
+            // test was flaky until it stopped comparing a small map against a
+            // large one, where the cache hierarchy varied along with the
+            // algorithm. Here there is no such asymmetry to conflate.
+            TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(1000, TimeSignature.THREE_FOUR);
+            // Beat 100 is bar 25; beat 800,000 is bar 266,333 -- 10,653x
+            // further in, and 10,653x the iterations for the walk this replaced.
+            // Measured 1.1-1.2x here and 400x once the walk is restored, so the
+            // threshold of 20 has an order of magnitude of margin on both sides;
+            // the earlier 1,053x spread only separated them 1.2x from 40x, which
+            // is the sort of margin that eventually goes red on a loaded runner.
+            assertThat(map.toMusicalTime(100).bar()).isEqualTo(25);
+            assertThat(map.toMusicalTime(800_000).bar()).isEqualTo(266_333);
+
+            timeConversions(map, 100);          // warm up and let the JIT settle
+            timeConversions(map, 800_000);
+
+            long earlyNanos = Long.MAX_VALUE;
+            long lateNanos = Long.MAX_VALUE;
+            for (int trial = 0; trial < 5; trial++) {
+                earlyNanos = Math.min(earlyNanos, timeConversions(map, 100));
+                lateNanos = Math.min(lateNanos, timeConversions(map, 800_000));
+            }
+
+            double ratio = (double) lateNanos / Math.max(1, earlyNanos);
+            assertThat(ratio)
+                    .describedAs("a beat 10653x further into the piece cost %.1fx more"
+                            + " (%d ns vs %d ns); toMusicalTime is walking bars again",
+                            ratio, lateNanos, earlyNanos)
+                    .isLessThan(20.0);
+        }
+
+        private long timeConversions(TempoMap map, int beat) {
+            long start = System.nanoTime();
+            double sink = 0;
+            for (int i = 0; i < 5_000; i++) {
+                sink += map.toMusicalTime(beat + i).bar();
+            }
+            long elapsed = System.nanoTime() - start;
+            assertThat(sink).isGreaterThan(0.0);
+            return elapsed;
+        }
+
+        @Test
+        @DisplayName("honours meter changes at the block boundaries")
+        void honoursMeterChangesAtBlockBoundaries() {
+            // 4/4 for bars 0-1, then 3/4 from bar 2, then 6/8 (three beats) from
+            // bar 5. Checked by hand: bar 2 starts at beat 8, bar 5 at beat 17.
+            TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(2, TimeSignature.THREE_FOUR)
+                    .withMeterChange(5, TimeSignature.SIX_EIGHT);
+
+            assertThat(map.toMusicalTime(7.5)).isEqualTo(
+                    new MusicalTime(1, 3.5, TimeSignature.FOUR_FOUR));
+            assertThat(map.toMusicalTime(8)).isEqualTo(
+                    new MusicalTime(2, 0, TimeSignature.THREE_FOUR));
+            assertThat(map.toMusicalTime(16.5)).isEqualTo(
+                    new MusicalTime(4, 2.5, TimeSignature.THREE_FOUR));
+            assertThat(map.toMusicalTime(17)).isEqualTo(
+                    new MusicalTime(5, 0, TimeSignature.SIX_EIGHT));
+            assertThat(map.toMusicalTime(20)).isEqualTo(
+                    new MusicalTime(6, 0, TimeSignature.SIX_EIGHT));
+
+            assertThat(map.toBeat(new MusicalTime(2, 0, TimeSignature.THREE_FOUR))).isEqualTo(8.0);
+            assertThat(map.toBeat(new MusicalTime(5, 0, TimeSignature.SIX_EIGHT))).isEqualTo(17.0);
+            assertThat(map.toBeat(new MusicalTime(6, 1.5, TimeSignature.SIX_EIGHT))).isEqualTo(21.5);
         }
     }
 
@@ -620,8 +845,12 @@ class TempoMapTest {
             // that the two method references are non-capturing singletons. If a
             // future edit captures anything, boxes a key, or materialises a list
             // of axis values, that assumption is gone and this fails.
+            // JUnit's own assumption, not AssertJ's: AssertJ implements
+            // assumptions with a generated proxy whose first use costs ~0.6 s,
+            // which is most of a second of `mvn verify` spent on a guard that
+            // never fires.
             com.sun.management.ThreadMXBean threads = allocationCountingThreadBean();
-            assumeThat(threads).isNotNull();
+            assumeTrue(threads != null, "thread allocation counting is unavailable");
 
             // Size is irrelevant here -- allocation per call does not depend on
             // how many steps the search takes -- so keep the map small.
@@ -637,6 +866,12 @@ class TempoMapTest {
 
             int calls = 200_000;
             long before = threads.getThreadAllocatedBytes(self);
+            // The capability checks above can both pass and the reading still be
+            // -1, on a virtual thread among others. Then before and after are
+            // both -1, the difference is 0, and the assertion below passes
+            // having measured nothing -- a test that keeps passing after the
+            // thing it guards is gone. Skip instead.
+            assumeTrue(before >= 0, "thread allocation counting returned no reading");
             for (int i = 0; i < calls; i++) {
                 sink += map.secondsToBeats(i % 5_000) + map.beatsToSeconds(i % 5_000);
             }
