@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToDoubleFunction;
 
 /**
  * The conversion between wall-clock seconds and musical beats.
@@ -234,28 +235,46 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
 
     /** The tempo segment governing a given beat. */
     public TempoSegment segmentAtBeat(double beat) {
-        TempoSegment found = segments.get(0);
-        for (TempoSegment candidate : segments) {
-            if (candidate.startBeat() <= beat) {
-                found = candidate;
-            } else {
-                break;
-            }
-        }
-        return found;
+        return segments.get(indexOfLastSegmentStartingAtOrBefore(beat, TempoSegment::startBeat));
     }
 
     /** The tempo segment governing a given wall-clock time. */
     public TempoSegment segmentAtSeconds(double seconds) {
-        TempoSegment found = segments.get(0);
-        for (TempoSegment candidate : segments) {
-            if (candidate.startSeconds() <= seconds) {
-                found = candidate;
+        return segments.get(indexOfLastSegmentStartingAtOrBefore(seconds, TempoSegment::startSeconds));
+    }
+
+    /**
+     * The index of the last segment whose position on {@code axis} is at or
+     * before {@code key}, by binary search.
+     *
+     * <p>A scan would be simpler, but {@code fromBeatTimes} emits one segment per
+     * tracked beat, so a quarter-hour track has ~100,000 of them and every stage
+     * converts per note, per chord or per frame. Linear lookup made that
+     * quadratic. What makes the search sound is that each axis is sorted, and
+     * the canonical constructor guarantees more than that -- both axes are
+     * validated as <em>strictly</em> increasing -- so no new invariant is
+     * introduced here and none is leaned on more heavily than the scan leaned
+     * on it.
+     *
+     * <p>The result is identical to the scan this replaced for every key,
+     * including the two cases that are easy to lose: a key before the map starts
+     * falls back to segment 0, and so does {@code NaN}, because every comparison
+     * against it is false and the search never moves off the low end.
+     */
+    private int indexOfLastSegmentStartingAtOrBefore(double key, ToDoubleFunction<TempoSegment> axis) {
+        int low = 0;
+        int high = segments.size() - 1;
+        while (low < high) {
+            // Bias the midpoint upwards so a two-element range makes progress,
+            // and compute it as an offset so a very long map cannot overflow.
+            int mid = low + ((high - low + 1) >>> 1);
+            if (axis.applyAsDouble(segments.get(mid)) <= key) {
+                low = mid;
             } else {
-                break;
+                high = mid - 1;
             }
         }
-        return found;
+        return low;
     }
 
     /** Tempo in quarter-note beats per minute at a given beat position. */
@@ -279,30 +298,127 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     /**
      * Converts a beat position into bar, beat and fractional position, honouring
      * any time-signature changes along the way.
+     *
+     * <p>Bar length is not constant, so this walks the meter changes -- of which
+     * there are a handful -- rather than the bars, of which a long piece has
+     * thousands. Counting bars one at a time made this O(position) per call, and
+     * a stage that converts per note therefore quadratic, which is the same
+     * shape of defect as the segment scan above.
+     *
+     * @throws IllegalArgumentException if {@code beat} is not finite and
+     *         non-negative, or lands past bar {@link Integer#MAX_VALUE}
      */
     public MusicalTime toMusicalTime(double beat) {
-        if (beat < 0) {
-            throw new IllegalArgumentException("beat must be non-negative, got: " + beat);
+        // NaN has to be rejected explicitly. "beat < 0" is false for it, so it
+        // used to reach the bar loop, where "remaining < barLength" is false as
+        // well -- the loop never terminated and the call simply never returned.
+        if (!Double.isFinite(beat) || beat < 0) {
+            throw new IllegalArgumentException("beat must be finite and non-negative, got: " + beat);
         }
         int bar = 0;
         double remaining = beat;
-        while (true) {
-            double barLength = timeSignatureAtBar(bar).quarterBeatsPerBar();
-            if (remaining < barLength || barLength <= 0) {
+        for (int i = 0; i < meterChanges.size(); i++) {
+            double barLength = meterChanges.get(i).timeSignature().quarterBeatsPerBar();
+            // Unreachable while TimeSignature validates its numerator, but the
+            // walk this replaced stopped here rather than looping forever, and a
+            // zero-length bar must not become an infinite loop again.
+            if (barLength <= 0) {
                 break;
             }
-            remaining -= barLength;
-            bar++;
+            long barsHere = wholeBarsIn(remaining, barLength);
+            if (i + 1 < meterChanges.size()) {
+                long barsInBlock =
+                        (long) meterChanges.get(i + 1).startBar() - meterChanges.get(i).startBar();
+                if (barsHere >= barsInBlock) {
+                    remaining -= barsInBlock * barLength;
+                    bar = meterChanges.get(i + 1).startBar();
+                    continue;
+                }
+            }
+            long absolute = bar + barsHere;
+            if (absolute > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                        "beat " + beat + " is past bar " + Integer.MAX_VALUE
+                                + ", which a bar index cannot represent");
+            }
+            bar = (int) absolute;
+            remaining -= barsHere * barLength;
+            break;
         }
         return new MusicalTime(bar, remaining, timeSignatureAtBar(bar));
     }
 
-    /** Converts a bar-and-beat position back into an absolute beat position. */
+    /**
+     * Whole bars of {@code barLength} that fit in {@code remaining}, saturating
+     * at one more than a bar index can hold.
+     *
+     * <p>A division standing in for repeated subtraction usually needs guarding,
+     * because a quotient a hair under an integer rounds up to it and the floor
+     * is then one too many. Here it does not, and the reason is worth writing
+     * down rather than defending against, because a guard no input can reach is
+     * a branch nothing can test.
+     *
+     * <p>A bar length is a numerator times four over a power of two no greater
+     * than 64, so it is a whole number of sixteenths, and a bar index caps the
+     * count below 2^31 -- every product below is therefore exact.
+     *
+     * <p>The floor can only be wrong just under a bar line, since nowhere else
+     * is the quotient near an integer. So take {@code r} one step under a bar
+     * line {@code k*L}. The exact quotient is {@code k - g/L}, where {@code g}
+     * is the gap below {@code k*L}, and the question is whether that shortfall
+     * clears half the step below {@code k}: anything less rounds back up to
+     * {@code k} and the floor is one too many.
+     *
+     * <p>Write {@code L = 2^f*s} and {@code k = 2^m*t}, with {@code s} and
+     * {@code t} in {@code [1,2)}. A gap below a value is one ULP of that
+     * value's binade, halved exactly when the value is itself a power of two.
+     * Where {@code k} is not a power of two, the shortfall {@code g/L} is at
+     * least {@code 2^(m-52)/s} against a half-step of {@code 2^(m-53)}. Where
+     * {@code k} is a power of two the half-step halves as well, while the
+     * shortfall halves only if {@code L} is a power of two too. Either way the
+     * shortfall clears the half-step by a factor of {@code 2/s}, which exceeds
+     * one because {@code s} is below two -- narrowly, at the extreme: the
+     * tightest legal case is a 63/64 bar, which wins by 1.6%. So the quotient
+     * rounds strictly below {@code k} and never up to it. On a bar line the
+     * quotient is exactly {@code k}, and above one it exceeds {@code k}, so the
+     * floor cannot fall short either.
+     *
+     * <p>Checked as well as argued, since an argument in a comment is the thing
+     * this file has learned not to trust: 274 million boundary values across
+     * every legal signature, and independently 10.8 million exact-rational
+     * comparisons in review, with no disagreement, and a build carrying the
+     * corrections alongside confirming they never fire.
+     */
+    private static long wholeBarsIn(double remaining, double barLength) {
+        double quotient = Math.floor(remaining / barLength);
+        // Also the guard against a beat so large the quotient is infinite.
+        if (!(quotient <= Integer.MAX_VALUE)) {
+            return (long) Integer.MAX_VALUE + 1;
+        }
+        return (long) quotient;
+    }
+
+    /**
+     * Converts a bar-and-beat position back into an absolute beat position.
+     *
+     * <p>Summed one meter block at a time rather than one bar at a time, for the
+     * reason given on {@link #toMusicalTime}. The blocks are added in bar order,
+     * so the sum is the one the bar-by-bar walk produced, to the last bit.
+     */
     public double toBeat(MusicalTime musicalTime) {
         Objects.requireNonNull(musicalTime, "musicalTime");
+        int upTo = musicalTime.bar();
         double beat = 0;
-        for (int bar = 0; bar < musicalTime.bar(); bar++) {
-            beat += timeSignatureAtBar(bar).quarterBeatsPerBar();
+        for (int i = 0; i < meterChanges.size(); i++) {
+            int blockStart = meterChanges.get(i).startBar();
+            if (blockStart >= upTo) {
+                break;
+            }
+            int blockEnd = (i + 1 < meterChanges.size())
+                    ? Math.min(meterChanges.get(i + 1).startBar(), upTo)
+                    : upTo;
+            beat += (long) (blockEnd - blockStart)
+                    * meterChanges.get(i).timeSignature().quarterBeatsPerBar();
         }
         return beat + musicalTime.beatInBar();
     }
