@@ -112,43 +112,48 @@ public final class TempoEstimator {
          * average would let a sustained tone's near-perfect self-similarity
          * carry it. Zero for silence.
          *
-         * <p><strong>This improves the ordering. It does not separate the two
-         * populations, and it is not safe against an absolute threshold.</strong>
-         * Issue #26 reported a sustained 440 Hz sine scoring 0.96 against a
-         * click track's 0.85. That inversion is gone — the sine now scores
-         * 0.004 — and the general case is much better: a held harmonic note
-         * out-scored 135 of the 141 integer click tempi from 60 to 200 BPM
-         * before this measure existed, and out-scores 11 now. But 11 is not
-         * zero, and what remains is not a tail:
+         * <p><strong>Do not gate on this. It is an improvement in the average
+         * case and it separates nothing reliably.</strong> Issue #26 reported a
+         * sustained 440 Hz sine scoring 0.96 against a click track's 0.85; that
+         * fixture now scores 0.004. But swept rather than sampled, sustained
+         * material still reaches deep into the click-track range of 0.48 to
+         * 0.95:
          *
          * <ul>
-         *   <li><b>Sustained notes with harmonics score 0.17 to 0.60</b>, against
-         *       a click-track range of 0.48 to 0.95. A held 110 Hz note with six
-         *       partials, constant amplitude, no attack and no modulation of any
-         *       kind, scores 0.60. Partials beat against each other at hundreds
-         *       of hertz and the envelope is sampled at 172 fps, so the beating
-         *       aliases down into the tempo band as a genuinely periodic accent
-         *       train. Pure single sinusoids are the exception that collapses,
-         *       and they are the least representative sound there is. See issue
-         *       #49; three candidate fixes are measured and refuted there.
-         *   <li><b>Held notes with vibrato score 0.61 to 0.64</b>, out-ranking 17
-         *       and 25 of those 141 tempi. Issue #43.
-         *   <li><b>Clicks at random intervals reach 0.12</b> over 200 seeds, and
-         *       a click track drifting ±8% — real music — also sits at 0.12.
-         *   <li><b>Material outside the 40 to 240 BPM search range scores exactly
-         *       zero</b>, indistinguishable from silence: a clean 30 BPM
-         *       metronome reads 0.000 with a peakiness of 0.992. So does any
-         *       clip too short to contain several periods — one second of a
-         *       120 BPM click track scores 0.003, below the sine above.
+         *   <li><b>A held note with harmonics scores anywhere from 0.00 to
+         *       0.75</b>, over a grid of fundamentals from C2 to C6 and 1 to 10
+         *       partials, at constant amplitude with no attack and no
+         *       modulation. The worst point — 440 Hz with 8 partials — out-scores
+         *       72 of the 141 integer click tempi from 60 to 200 BPM. On
+         *       {@code main} it out-scored 135, so this is a real improvement,
+         *       but the residue is half the range rather than a tail.
+         *   <li><b>A pure sine scores 0.00 to 0.47</b> depending only on pitch:
+         *       0.004 at 440 Hz, 0.47 at 87 Hz, 0.20 at 262 Hz, 0.18 at 3520 Hz.
+         *       A crescendo tracks it within 0.005 at every pitch. There is no
+         *       "featureless material collapses" rule — the 440 Hz collapse is a
+         *       coincidence of that pitch.
+         *   <li><b>Held notes with vibrato, 0.61 to 0.64</b> (issue #43);
+         *       <b>clicks at random intervals reach 0.12</b> over 200 seeds, as
+         *       does a click track drifting ±8%, which is real music.
+         *   <li><b>Material below 40 BPM scores exactly zero</b>, indistinguishable
+         *       from silence: a clean 30 BPM metronome reads 0.000 with a
+         *       peakiness of 0.992. So does any clip too short to hold several
+         *       periods. Above 240 BPM it does not go to zero — a 300 BPM click
+         *       track reads 0.82 via a subharmonic.
          * </ul>
          *
-         * <p>What is left that this can be used for: ranking two readings of the
-         * same recording, which is what it was originally for; and recognising
-         * genuinely featureless material, where silence, pure tones and smooth
-         * swells sit at 0.011 and below. Anything finer — "is this rhythmic",
-         * "is this arrhythmic", "should we warn the user" — is not supported by
-         * the measurements, in either direction, and a threshold chosen for one
-         * of the families above will be wrong for another.
+         * <p>The scatter is not noise and not tuning: partials beat at hundreds
+         * of hertz, the envelope is sampled at 172 fps with no low-pass before
+         * it, and the beating folds into the tempo band at a rate that depends
+         * on the exact frequencies present. Neighbouring inputs therefore score
+         * very differently — 440 Hz with 6 partials scores 0.57 and with 8
+         * scores 0.75. Issue #49 has the diagnosis and four refuted fixes.
+         *
+         * <p>So the only claims this supports are the two it started with:
+         * it is <b>zero for silence</b>, and it is <b>comparable between two
+         * readings of the same recording</b>. Any absolute threshold — "is this
+         * rhythmic", "is this arrhythmic", "warn the user" — is unsupported in
+         * both directions by the measurements above.
          *
          * <p>These figures are for {@link TempoEstimator#estimate} over a whole
          * clip. {@link BeatTracker} averages a per-window strength and reports

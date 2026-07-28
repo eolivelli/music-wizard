@@ -306,32 +306,54 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("a held harmonic note still out-scores some click tracks: the unfixed half")
+        @DisplayName("a held harmonic note still out-scores half the click tempi: the unfixed half")
         void sustainedHarmonicNoteIsNotSeparated() {
-            // The limitation that stops this PR from closing issue #26, pinned so
-            // it cannot be mistaken for solved. sustainedToneNoLongerBeatsClicks
-            // above uses a pure 440 Hz sine, which collapses to 0.004 -- but a
-            // pure mid-range sinusoid is the least representative sound there
-            // is, and it is the only one that collapses.
+            // The limitation that stops this PR from closing issue #26, pinned at
+            // its worst measured point rather than a convenient one.
+            // sustainedToneNoLongerBeatsClicks above uses a pure 440 Hz sine,
+            // which collapses to 0.004 -- but that collapse is a coincidence of
+            // that pitch, not a rule about smooth material.
             //
-            // This fixture is a held note: six harmonics at constant amplitude,
-            // no attack, no decay, no vibrato, no tremolo. Nothing about it is
-            // rhythmic. It scores about 0.60, inside the click-track range of
-            // 0.48 to 0.95, because partials beat against each other at hundreds
-            // of hertz and the 172 fps envelope aliases that into the tempo band.
+            // This fixture is a held note: eight harmonics at constant
+            // amplitude, no attack, no decay, no vibrato, no tremolo. Nothing
+            // about it is rhythmic. It scores about 0.75, above a click track at
+            // 78 BPM (0.53) and above 72 of the 141 integer tempi from 60 to
+            // 200 -- more than half. 440 Hz with six partials scores 0.57 and
+            // beats only 9, which is why the harmonic count has to be swept and
+            // the worst point pinned: neighbouring inputs differ hugely because
+            // partial beating folds into the tempo band at a rate set by the
+            // exact frequencies present.
             //
-            // The measure is still a large improvement: the same fixture beat
-            // 135 of the 141 integer click tempi before and beats 11 now. The
-            // assertions below pin both halves of that -- the gain, and the gap
-            // that remains. Issue #49. If someone closes it, this fails.
-            double held = strengthOf(heldNote(110, 6, SECONDS));
+            // Still a real improvement: the same fixture beat 135 of 141 on
+            // main and beats 72 now. Both halves are asserted. Issue #49.
+            double worst = strengthOf(heldNote(440, 8, SECONDS));
 
-            assertThat(held).isBetween(0.4, 0.8);
-            assertThat(held).isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
-            // But well below a click track at a tempo the estimator handles
-            // cleanly -- which is the improvement over scoring above nearly all
-            // of them.
-            assertThat(held).isLessThan(strengthOf(SignalFactory.clickTrack(120, SECONDS, RATE)));
+            assertThat(worst).isBetween(0.6, 0.9);
+            assertThat(worst).isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
+            // The improvement half: on main this fixture scored 0.947 and beat
+            // all but six tempi. It must stay below the tempi the estimator
+            // handles cleanly.
+            assertThat(worst).isLessThan(strengthOf(SignalFactory.clickTrack(136, SECONDS, RATE)));
+        }
+
+        @Test
+        @DisplayName("a pure sine's score depends on its pitch, so 440 Hz proves nothing alone")
+        void pureSineScoreDependsOnPitch() {
+            // crescendoScoresLow and sustainedToneNoLongerBeatsClicks both use
+            // 440 Hz, where the score is 0.004. That is not representative, and
+            // asserting only there would let the javadoc keep claiming that
+            // featureless material collapses.
+            double at440 = strengthOf(SignalFactory.sine(440, SECONDS, RATE));
+            double at87 = strengthOf(SignalFactory.sine(87.31, SECONDS, RATE));
+
+            assertThat(at440).isLessThan(0.05);
+            // Two orders of magnitude apart, from nothing but pitch.
+            assertThat(at87).isGreaterThan(0.3);
+            assertThat(at87).isGreaterThan(50 * at440);
+
+            // And a crescendo at the same pitch tracks it, so "not stationary"
+            // is not what rescues the 440 Hz case either.
+            assertThat(strengthOf(crescendo(87.31, SECONDS))).isCloseTo(at87, within(0.05));
         }
 
         @Test
@@ -350,6 +372,14 @@ class BeatTrackingTest {
             // Likewise a clip too short to hold several periods.
             assertThat(strengthOf(SignalFactory.clickTrack(120, 1, RATE)))
                     .isLessThan(strengthOf(SignalFactory.sine(440, SECONDS, RATE)));
+
+            // Only the bottom of the range does this. Above MAX_TEMPO the
+            // estimator finds a subharmonic instead of giving up, so a 300 BPM
+            // metronome reads high rather than zero -- the asymmetry is worth
+            // pinning because "outside the search range reads as nothing" is the
+            // natural and wrong assumption.
+            assertThat(strengthOf(SignalFactory.clickTrack(300, SECONDS, RATE)))
+                    .isGreaterThan(0.5);
         }
 
         @Test
