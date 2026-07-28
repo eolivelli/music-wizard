@@ -746,26 +746,35 @@ public final class Quantizer {
         /**
          * How tight that cluster has to be.
          *
-         * <p>Measured against the window this detector actually uses, over
-         * thirty re-seedings of a human performance at the 25 ms spread this
-         * project's fixtures use, and stated as the range each population
-         * covers rather than as a ratio between them -- a ratio moves with the
-         * fixture and has twice been quoted from one draw of it. Sixteenths
-         * spread 0.135 to 0.170. A shuffle spreads 0.034 to 0.084 across the
-         * same seeds at every phase from 0.58 to 0.75. So the threshold sits
+         * <p>Measured against the window this detector actually uses, at the
+         * 25 ms spread this project's fixtures play at, and stated as the range
+         * each population covers rather than as a ratio between them -- a ratio
+         * moves with the fixture and was twice quoted from one draw of it.
+         *
+         * <p>Played sixteenths spread <b>0.117 to 0.169</b>, over every played
+         * sixteenth fixture in the suite: two hundred re-seedings of the
+         * detector's own eight-bar fixture at 120 BPM, and the calibration
+         * suite's four-bar one at 60, 90 and 120. Both endpoints are from that
+         * whole set, which is worth saying because an earlier version of this
+         * sentence took its ceiling from one population and its floor from
+         * another and overstated the floor by fifteen per cent -- in the number
+         * a reader consults before raising this constant, which at 0.12 already
+         * fails the build.
+         *
+         * <p>A played shuffle spreads <b>0.034 to 0.084</b>, over thirty
+         * re-seedings at every phase from 0.58 to 0.75. So the threshold sits
          * between the two populations, with the shuffle side the tighter
          * margin -- and what loses a genuine shuffle in practice is
          * {@link #SWING_THRESHOLD} rather than this.
          *
-         * <p>Both figures are for a <em>played</em> cluster, and a constructed
-         * one is not evidence about the measurement -- four shuffle fixtures in
-         * the suite either play to the tick, spreading zero, or set their own
-         * spread alternately either side of the shuffle point. It can still be
-         * evidence about the <em>threshold</em>, and that is what holds this
-         * constant at both ends. The widest constructed fixture sits at 0.085,
-         * inside the gap between the populations and just under this value, and
-         * is what fails if it is lowered towards the shuffle side; a played
-         * bar of sixteenths is what fails if it is raised.
+         * <p>Neither figure takes evidence from a constructed cluster, and six
+         * of the suite's shuffle fixtures are constructed -- four play to the
+         * tick and spread zero, and two set their own spread either side of the
+         * shuffle point. A constructed cluster is still evidence about the
+         * <em>threshold</em>, and the widest of them is what holds its lower
+         * end: 0.085, inside the gap between the populations and just under this
+         * value. The upper end is held by played sixteenths, not by anything
+         * constructed.
          *
          * <p>An earlier comment said sixteenths spread about 0.19, which is
          * what they spread against a window starting at 0.25; the figure
