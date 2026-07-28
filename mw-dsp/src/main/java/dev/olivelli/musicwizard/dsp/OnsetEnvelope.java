@@ -65,14 +65,38 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     private static final double MAX_HZ = 8_000;
 
     /**
-     * Cutoff of the band-magnitude low-pass, as a fraction of the frame rate --
-     * the same 0.45 of the target rate {@link
-     * dev.olivelli.musicwizard.audio.Resampler} cuts at, and for the same
-     * reason. Expressed relative to the frame rate rather than in hertz so the
-     * filter follows {@link #ONSET_HOP} rather than having to be re-tuned with
-     * it.
+     * Pole of the band-magnitude low-pass, as a fraction of the frame rate.
+     *
+     * <p><strong>This is not the filter's corner frequency.</strong> It is the
+     * nominal frequency fed to the one-pole RC discretisation, which is only
+     * the corner while it is far below Nyquist -- and 0.45 is 90% of Nyquist,
+     * where it is nothing of the kind. Measured on the filter as built, two
+     * forward-backward passes are 3 dB down at <b>0.102 of the frame rate</b>,
+     * 6 dB down at 0.154, and 18.6 dB down at Nyquist. Model it as 0.45 and you
+     * will be wrong by a factor of four.
+     *
+     * <p>At {@link #ONSET_HOP} that corner is 17.5 Hz, which is worth knowing
+     * because of what it nearly equals: {@code sampleRate / ONSET_WINDOW} is
+     * 21.5 Hz, the fastest envelope change a 1024-sample window can express at
+     * all. Anything faster in the band series is interference between partials
+     * rather than the note doing something, so the filter turns out to pass
+     * approximately what the window can resolve and stop approximately where
+     * the artefacts begin. That is a coincidence of the arithmetic rather than
+     * a design, but it is why this value is defensible as something other than
+     * the number that scored best.
+     *
+     * <p>Expressed relative to the frame rate rather than in hertz, so the
+     * filter follows {@link #ONSET_HOP} instead of having to be re-tuned with
+     * it. Verified at 64, 128 and 256 samples of hop, and at 44.1 kHz as well
+     * as 22.05 kHz.
+     *
+     * <p>{@link dev.olivelli.musicwizard.audio.Resampler} uses 0.45 too, but
+     * the analogy is only in the spirit: it cuts at 0.45 of the rate it is
+     * about to decimate <em>to</em>, which against its source rate is a much
+     * gentler filter. There is no decimation here, so this 0.45 is of the
+     * current rate.
      */
-    private static final double ANTI_ALIAS_CUTOFF = 0.45;
+    private static final double ANTI_ALIAS_POLE = 0.45;
 
     /**
      * Forward-backward passes of the one-pole. At the frame rate's Nyquist,
@@ -205,7 +229,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * twenty-second clips:
      *
      * <pre>
-     *   passes  cutoff   click range    worst held   margin   out-scores
+     *   passes  pole     click range    worst held   margin   out-scores
      *   none        --   0.526..0.931        0.751   -0.225    72 of 141
      *   1        0.45f   0.728..0.922        0.713   +0.015     0 of 141
      *   2        0.45f   0.751..0.909        0.662   +0.089     0 of 141
@@ -232,14 +256,23 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * four times the hop rate and is no better at the worst point (0.718), for
      * four times the STFT cost. The ripple, not the fold, is what has to go.
      *
-     * <p>A band carrying a non-finite value is left unfiltered. Recursive
-     * filters spread one poisoned sample over the whole series, and the flux
-     * loop downstream drops a non-finite rise silently because {@code rise > 0}
-     * is false for NaN -- so before this filter existed, one bad sample cost
-     * eight frames of one band and nothing else. Filtering it would have cost
-     * the entire recording: measured, a single NaN in the input took a 120 BPM
-     * click track from 0.82 to a flat envelope. Skipping the band keeps the
-     * damage exactly where it was.
+     * <p>Non-finite samples are held over rather than filtered through.
+     * Recursive filters spread one poisoned value across the whole series, and
+     * the flux loop downstream drops a non-finite rise silently because
+     * {@code rise > 0} is false for NaN -- so filtering it costs the entire
+     * recording rather than the frames it arrived in. Measured: a single NaN
+     * sample took a 120 BPM click track from 0.865 to a flat envelope.
+     *
+     * <p>The blast radius is worth stating exactly, because it is larger than
+     * it looks. One bad audio sample lands in every FFT bin of the eight
+     * windows containing it, so it poisons all forty bands for those frames,
+     * not one -- which means skipping a poisoned <em>band</em> would have
+     * disabled this filter for the whole recording and quietly restored the
+     * behaviour of the bug it fixes, at 0.751 for the worst held note. So each
+     * non-finite sample instead takes the value of the last finite one before
+     * it, the filter runs normally, and the damage stays in the frames where it
+     * arrived: those frames read as no change, which is what they were already
+     * reported as.
      */
     static void antiAlias(double[][] melBands) {
         if (melBands.length < 2) {
@@ -247,18 +280,23 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         }
         // One-pole coefficient for a cutoff expressed as a fraction of the
         // sampling rate, so it does not depend on the frame rate at all.
-        double rc = 1.0 / (2 * Math.PI * ANTI_ALIAS_CUTOFF);
+        double rc = 1.0 / (2 * Math.PI * ANTI_ALIAS_POLE);
         double alpha = 1.0 / (rc + 1.0);
 
         double[] series = new double[melBands.length];
         for (int band = 0; band < MEL_BANDS; band++) {
-            boolean finite = true;
-            for (int frame = 0; frame < melBands.length; frame++) {
-                series[frame] = melBands[frame][band];
-                finite &= Double.isFinite(series[frame]);
-            }
-            if (!finite) {
+            int first = firstFiniteFrame(melBands, band);
+            if (first < 0) {
+                // Nothing to hold over, so nothing to filter either.
                 continue;
+            }
+            double held = melBands[first][band];
+            for (int frame = 0; frame < melBands.length; frame++) {
+                double value = melBands[frame][band];
+                if (Double.isFinite(value)) {
+                    held = value;
+                }
+                series[frame] = held;
             }
             for (int pass = 0; pass < ANTI_ALIAS_STAGES; pass++) {
                 double state = series[0];
@@ -276,6 +314,22 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
                 melBands[frame][band] = series[frame];
             }
         }
+    }
+
+    /**
+     * The first frame in which a band is finite, or -1 if it never is.
+     *
+     * <p>Needed so that a run of non-finite frames at the very start has
+     * something to take its value from: holding the previous sample has no
+     * previous sample to hold.
+     */
+    private static int firstFiniteFrame(double[][] melBands, int band) {
+        for (int frame = 0; frame < melBands.length; frame++) {
+            if (Double.isFinite(melBands[frame][band])) {
+                return frame;
+            }
+        }
+        return -1;
     }
 
     /**

@@ -169,13 +169,19 @@ class BeatTrackingTest {
         @Test
         @DisplayName("the band low-pass is zero phase, so it cannot move an onset")
         void antiAliasIsZeroPhase() {
-            // The property the whole of beat tracking rests on: this filter sits
-            // between the spectrogram and the first difference, so any group
-            // delay it has is a delay on every onset time the tracker reads.
-            // Asserted on an impulse, whose filtered response must come out
-            // symmetric about the frame it arrived in. A one-directional filter
-            // -- the obvious way to write this, and the cheaper one -- puts the
-            // entire response after the impulse and fails on the first sample.
+            // This filter sits between the spectrogram and the first
+            // difference, so any group delay it has is a delay on every onset
+            // time the tracker reads. Asserted on an impulse, whose filtered
+            // response must come out symmetric about the frame it arrived in.
+            // A one-directional filter -- the obvious way to write this, and
+            // the cheaper one -- puts the entire response after the impulse:
+            // 0.000 one frame before against 0.285 one frame after, so this
+            // fails on the first comparison.
+            //
+            // Narrower than it sounds, and worth saying so: symmetry is all it
+            // checks, and a filter that does nothing at all is perfectly
+            // symmetric. It is antiAliasAttenuatesNearNyquistRipple below that
+            // says the filter filters; this one says it does not shift.
             double[][] bands = new double[201][40];
             bands[100][0] = 1;
             OnsetEnvelope.antiAlias(bands);
@@ -245,15 +251,24 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("one non-finite sample does not cost the whole recording")
+        @DisplayName("one non-finite sample costs its own frames and not the filter")
         void oneBadSampleStaysLocal() {
-            // A recursive filter smears one poisoned value over the entire
+            // A recursive filter smears one poisoned value across the whole
             // series, and the flux loop drops a non-finite rise silently
-            // because `rise > 0` is false for NaN. Together that turns eight
-            // damaged frames into a flat envelope for the whole recording --
-            // measured at 0.82 before the filter and 0.000 after, on the same
-            // input. The filter skips a band it cannot filter for exactly this
-            // reason, and this is the test that says so.
+            // because `rise > 0` is false for NaN. Together those turn eight
+            // damaged frames into a flat envelope for the entire recording:
+            // measured, a 120 BPM click track goes from 0.865 to 0.000.
+            //
+            // The held note is the assertion that matters and the click track
+            // is not, which is the opposite of how this test was first
+            // written. One bad audio sample poisons every FFT bin of the eight
+            // windows containing it, so it reaches all forty bands at once --
+            // meaning the tempting fix, skipping a band that cannot be
+            // filtered, silently disables the filter for the whole recording
+            // and restores the bug. A click track cannot see that happen: it
+            // reads 0.865 filtered and 0.818 unfiltered, both of them healthy.
+            // A held note goes from 0.591 to 0.751 and straight back over the
+            // click floor, so it can.
             for (float poison : new float[] {Float.NaN, Float.POSITIVE_INFINITY,
                     Float.NEGATIVE_INFINITY}) {
                 float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
@@ -262,26 +277,65 @@ class BeatTrackingTest {
 
                 assertThat(estimate.beatsPerMinute()).as("%s", poison).isCloseTo(120, within(1.0));
                 assertThat(estimate.strength()).as("%s", poison).isGreaterThan(0.7);
+
+                float[] held = heldNote(440, 8, 20);
+                held[100_000] = poison;
+                assertThat(TempoEstimator.estimate(envelopeOf(held)).strength())
+                        .as("the filter still runs, %s", poison)
+                        .isLessThan(0.65);
             }
         }
 
         @Test
-        @DisplayName("a band the filter skipped is left exactly as it arrived")
-        void nonFiniteBandIsSkippedRatherThanSmeared() {
+        @DisplayName("a non-finite sample is held over, not smeared and not skipped")
+        void nonFiniteSampleIsHeldOver() {
             double[][] bands = new double[100][40];
             for (int frame = 0; frame < bands.length; frame++) {
                 bands[frame][0] = frame % 2 == 0 ? 1 : -1;
-                bands[frame][1] = frame % 2 == 0 ? 1 : -1;
+                bands[frame][1] = 5;
             }
             bands[50][0] = Double.NaN;
+            // A run at the very start, which has no previous sample to hold.
+            bands[0][1] = Double.NaN;
+            bands[1][1] = Double.NEGATIVE_INFINITY;
             OnsetEnvelope.antiAlias(bands);
 
-            // Band 0 carries the poison and comes back untouched, ripple and
-            // all; band 1 is identical apart from the poison and is filtered.
-            assertThat(bands[10][0]).isEqualTo(1);
-            assertThat(bands[11][0]).isEqualTo(-1);
-            assertThat(bands[50][0]).isNaN();
-            assertThat(Math.abs(bands[10][1])).isLessThan(0.15);
+            // Band 0 still gets filtered despite carrying the poison -- which
+            // is the whole point, since skipping it would leave the ripple at
+            // its full amplitude of 1.
+            for (int frame = 5; frame <= 40; frame++) {
+                assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
+            }
+            for (int frame = 62; frame <= 95; frame++) {
+                assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
+            }
+            // Holding a value across the poisoned frame breaks the alternation
+            // there, so the filter leaves a local excursion -- 0.67 at its
+            // worst, against band decibels whose attacks are tens of dB, so it
+            // cannot manufacture an onset. It stays local and it stays
+            // symmetric, which is what says the filter is still zero phase
+            // across a defect rather than only across clean data.
+            assertThat(bands[49][0]).isCloseTo(bands[51][0], within(1e-12));
+            assertThat(bands[48][0]).isCloseTo(bands[52][0], within(1e-12));
+            assertThat(Math.abs(bands[50][0])).isLessThan(1.0);
+            // And a leading run takes the first finite value rather than zero,
+            // which would have been a 5 dB step and so a manufactured onset.
+            assertThat(bands[0][1]).isCloseTo(5, within(1e-9));
+            assertThat(bands[1][1]).isCloseTo(5, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("a band that is never finite is left alone rather than throwing")
+        void entirelyNonFiniteBandIsLeftAlone() {
+            double[][] bands = new double[50][40];
+            for (int frame = 0; frame < bands.length; frame++) {
+                bands[frame][0] = Double.NaN;
+                bands[frame][1] = 3;
+            }
+            OnsetEnvelope.antiAlias(bands);
+
+            assertThat(bands[25][0]).isNaN();
+            assertThat(bands[25][1]).isCloseTo(3, within(1e-9));
         }
 
         private double maximumOf(double[][] bands, int band) {
@@ -408,11 +462,20 @@ class BeatTrackingTest {
             // The bound sits about 10% under the swept floor of 0.751. It was
             // 0.45 before, against a floor of 0.526.
             assertThat(estimate.strength()).isGreaterThan(0.68);
-            // Peakiness fell slightly at the fast end -- 0.862 at 200 BPM
-            // against 0.90 before -- because low-passing the band decibels
-            // widens each attack by about half a frame, and at 200 BPM the gap
-            // between attacks is only 52 frames. That is the cost of the filter
-            // and it is worth naming: the bound moved from 0.9 to 0.85.
+            // Peakiness fell because low-passing the band decibels widens each
+            // attack by about half a frame. The cost is uniform rather than
+            // confined to the fast end -- 0.983 to 0.960 at 60 BPM, 0.965 to
+            // 0.918 at 120, 0.940 to 0.862 at 200 -- but it only threatens a
+            // bound at the fast end, where the gap between attacks is 52 frames
+            // rather than 172.
+            //
+            // This is the tightest bound in the file and the one to look at
+            // first if it ever fails: the swept minimum over 60 to 200 is
+            // 0.8621, at 199 BPM, so there is 1.4% of headroom against 9.4% for
+            // the strength bound above. It is deterministic, so tight is not
+            // flaky -- but anything that widens attacks further will land here
+            // before it lands anywhere else, and that is the warning this bound
+            // is for rather than a number to relax.
             assertThat(estimate.peakiness()).isGreaterThan(0.85);
         }
 
@@ -473,8 +536,14 @@ class BeatTrackingTest {
             }
 
             // 0.662 against 0.751. Asserted as an ordering rather than as two
-            // thresholds, so that a change which lifts both stays honest.
+            // thresholds, so that a change which lifts both stays honest -- but
+            // with the margin pinned too, because the ordering alone survives a
+            // regression that shrinks 0.089 to 0.001, and a separation that
+            // narrow would not be one. 0.05 is a little over half of what the
+            // filter currently delivers; one forward-backward pass instead of
+            // two gives 0.015 and trips it.
             assertThat(worstHeld).isLessThan(weakestClick);
+            assertThat(weakestClick - worstHeld).isGreaterThan(0.05);
             // And the old worst point specifically, which is what the issue and
             // the strength() javadoc both quote.
             assertThat(strengthOf(heldNote(440, 8, SECONDS))).isLessThan(0.65);
