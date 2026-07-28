@@ -321,9 +321,12 @@ class BeatUnitTest {
             // The limit of the claim above, pinned so nobody reads more into it.
             // A constant map is anchored at (beat 0, second 0) and has no lead-in,
             // so a grid that starts part-way through a pulse keeps its rate and
-            // loses its phase. Not a compound-meter problem -- 4/4 does it too,
-            // and it predates the beat unit -- but it means a Score's tempo map
-            // and its own beat grid can disagree after --tempo. Filed as #65.
+            // loses its phase. Not a compound-meter problem -- 4/4 does it too --
+            // and it is still true of this factory, which is why the transcriber
+            // no longer builds a --tempo map from it alone: it anchors the
+            // constant tempo on the first tracked pulse instead, so that a
+            // Score's map and its own beat grid agree about where beat one is.
+            // See AudioTranscriber.constantPulseFrom and #65.
             List<Double> pulses = new ArrayList<>();
             for (int i = 0; i < 24; i++) {
                 pulses.add(0.3 + i * 0.5);
@@ -579,6 +582,57 @@ class BeatUnitTest {
                     .withBeatGrid(BeatGrid.ofTimes(List.of(0.05),
                             TimeSignature.FOUR_FOUR, Confidence.of(0.9)));
             assertThat(oneBeat.estimatedTempo()).isCloseTo(72.0, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("hears a tempo stated through a lead-in, and only through a lead-in")
+        void aStatedTempoSurvivesItsLeadIn() {
+            // A map that states one constant tempo is a correction, and has to win
+            // over the grid it corrects. It used to be recognised by having a
+            // single segment, which stopped being true when the transcriber began
+            // anchoring a forced tempo on the first tracked pulse: the anchor adds
+            // a lead-in segment, and --tempo 60 on a 120 BPM recording would have
+            // gone back to reporting 120.
+            List<Double> pulses = new ArrayList<>();
+            for (int i = 0; i < 24; i++) {
+                pulses.add(0.2 + i * 0.5);
+            }
+            BeatGrid grid = BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR, Confidence.of(0.9));
+            // 60 counted beats a minute over a grid tracked at 120, anchored so
+            // that the first tracked pulse lands on whole pulse 1: one second per
+            // beat, so beat 1 is at 1.0s and the lead-in has to cover 0.2s.
+            TempoMap anchored = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 60.0 / 0.2),
+                            new TempoMap.TempoSegment(1.0, 0.2, 60.0)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            Score corrected = Score.empty(anchored, 12.0).withBeatGrid(grid);
+
+            assertThat(corrected.tempoMap().segments()).hasSizeGreaterThan(1);
+            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR)).isCloseTo(120.0, within(1e-6));
+            assertThat(corrected.estimatedTempo()).isEqualTo(60.0);
+            // The lead-in's own 300 BPM is an artefact of where the pulse fell and
+            // must never be the answer.
+            assertThat(corrected.estimatedTempo()).isNotEqualTo(anchored.initialTempo());
+
+            // The exemption is for a segment that really is a lead-in, identified
+            // as the one before the segment starting at the grid's first beat.
+            // Skipping segment zero unconditionally would report 60 for this map,
+            // which states two tempi and no lead-in.
+            TempoMap twoTempi = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 120.0),
+                            new TempoMap.TempoSegment(4, 2.0, 60.0)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            Score changing = Score.empty(twoTempi, 12.0).withBeatGrid(
+                    BeatGrid.ofTimes(List.of(0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0),
+                            TimeSignature.FOUR_FOUR, Confidence.of(0.9)));
+            assertThat(changing.estimatedTempo())
+                    .isEqualTo(changing.beatGrid().orElseThrow()
+                            .medianTempo(TimeSignature.FOUR_FOUR));
+
+            // And with no grid there is nothing to identify the lead-in against,
+            // so the same anchored map falls back rather than guessing.
+            assertThat(Score.empty(anchored, 12.0).estimatedTempo())
+                    .isEqualTo(anchored.averageTempo(12.0));
         }
 
         @Test

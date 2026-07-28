@@ -52,8 +52,10 @@ final class AnalyzeCommand implements Callable<Integer> {
     String timeSignature;
 
     @Option(names = "--first-downbeat", paramLabel = "SECONDS",
-            description = "Force the time of the first downbeat. "
-                    + "Accepted but not yet honoured (issue #67).")
+            description = "Force where a bar begins, in seconds. Snapped to the "
+                    + "nearest tracked beat, which then begins every bar in the "
+                    + "saved score. Does not move the engraved chart's bar lines "
+                    + "yet (issue #83).")
     Double firstDownbeat;
 
     @Option(names = "--skip-separation",

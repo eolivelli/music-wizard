@@ -116,8 +116,13 @@ class EndToEndIT {
         // Chroma.beatSynchronous cannot produce a beat-synchronous chroma from a
         // single beat, so validating that before checking whether there is
         // anything to score turned a transcribable recording into an error.
-        // Reachable only with a tempo override, since inferring a tempo from one
-        // beat fails earlier and for its own reasons.
+        //
+        // A tempo override is no longer needed to reach this: inferring a tempo
+        // from one beat used to throw before the downbeat stage was asked
+        // anything (#75), and the transcriber now falls back rather than asking
+        // for a tempo that is not there. Kept on the override path, because that
+        // is the combination this test was written for and the one where a
+        // regression would be quietest.
         float[] samples = SignalFactory.chord(
                 SignalFactory.majorTriad(60), 0.3, SignalFactory.DEFAULT_SAMPLE_RATE);
         Path source = tempDirectory.resolve("blip.wav");
