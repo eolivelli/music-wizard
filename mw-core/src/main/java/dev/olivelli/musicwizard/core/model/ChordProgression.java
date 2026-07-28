@@ -59,6 +59,18 @@ public record ChordProgression(List<Chord> chords, Confidence confidence) {
         return chords.size();
     }
 
+    /**
+     * True once every chord carries quantized musical timing.
+     *
+     * <p>An empty progression counts as quantized, matching
+     * {@link NoteTrack#isQuantized()}: there is nothing left in seconds, so
+     * nothing blocks the notation stage.
+     */
+    @JsonIgnore
+    public boolean isQuantized() {
+        return chords.stream().allMatch(Chord::isQuantized);
+    }
+
     /** The chord sounding at a given time, if any. */
     public Optional<Chord> chordAt(double seconds) {
         for (Chord chord : chords) {

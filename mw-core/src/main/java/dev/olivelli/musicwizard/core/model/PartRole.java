@@ -39,6 +39,22 @@ public enum PartRole {
     }
 
     /**
+     * Semitones to add to a sounding pitch to obtain the pitch as written.
+     *
+     * <p>{@link #BASS} sounds an octave below written, so a bass note sounding
+     * at MIDI 40 is engraved at MIDI 52; everything else here is non-transposing
+     * and returns zero. This lives on the role rather than in the notation and
+     * MIDI writers because those two would otherwise each hard-code the octave,
+     * and the day one of them changed, a re-imported score would come back an
+     * octave out. The sign is chosen so that
+     * {@code note.transposedBy(role.writtenTranspositionSemitones())} turns a
+     * transcribed note into the note to print, and the inverse is a negation.
+     */
+    public int writtenTranspositionSemitones() {
+        return this == BASS ? 12 : 0;
+    }
+
+    /**
      * True when a score may hold more than one track in this role.
      *
      * <p>Only {@link #OTHER} may repeat. The named roles identify a specific
