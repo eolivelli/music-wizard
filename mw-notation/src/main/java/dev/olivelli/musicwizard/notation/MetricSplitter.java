@@ -38,13 +38,21 @@ import java.util.Objects;
  * then divides in three if the meter is compound and in two otherwise, and by
  * two from there down to a 64th.
  *
- * <p>A span is written as one value when its length is a length that unit
- * naturally takes: a whole number of the unit's children, or one and a half of
- * them, which is what a dot is. Otherwise it is cut at the unit's children and
- * each piece asked the same question. That single rule produces a dotted quarter
- * for the first four eighths of a 4/4 bar and a dotted quarter tied to an eighth
- * for the first four eighths of a 6/8 one, which is exactly the distinction
- * between the two meters.
+ * <p>A span is written as one value when two things hold. Its length must be a
+ * length that unit naturally takes — a whole number of the unit's children, or
+ * one and a half of them, which is what a dot is. And it must be allowed to
+ * <em>start</em> where it does: above a compound beat, or above anything longer
+ * than a beat, a symbol may only begin on a counted beat, or it lies across a
+ * beat and hides it. Otherwise the span is cut at the unit's children and each
+ * piece asked the same question.
+ *
+ * <p>Those two together are what separates the meters. The first four eighths of
+ * a 4/4 bar are a dotted quarter; the first four eighths of a 6/8 bar are a
+ * dotted quarter tied to an eighth, because four eighths is not a length the
+ * compound bar takes. The <em>second</em> to fourth eighths of a 6/8 bar are a
+ * quarter tied to an eighth rather than the dotted quarter their length would
+ * allow, because a dotted quarter starting there would cover the second beat.
+ * See {@link #mayStartHere}, which is where that half of the rule lives.
  *
  * <p><b>Limitation.</b> Tuplets are not represented. Every length here is a
  * whole number of 64th notes; a triplet is not, and the emitter snaps it away
@@ -102,7 +110,8 @@ final class MetricSplitter {
                             + " which holds " + barLength + " quarter beats");
         }
         List<String> values = new ArrayList<>();
-        emit(barTree(meter), fromInBar, toInBar, values);
+        emit(barTree(meter), fromInBar, toInBar,
+                meter.beatUnitQuarters(), meter.isCompound(), values);
         return values;
     }
 
@@ -116,7 +125,8 @@ final class MetricSplitter {
         }
     }
 
-    private static void emit(Unit unit, double from, double to, List<String> out) {
+    private static void emit(Unit unit, double from, double to,
+                             double beatUnit, boolean compound, List<String> out) {
         if (!(to > from)) {
             return;
         }
@@ -129,6 +139,7 @@ final class MetricSplitter {
         }
         double length = to - from;
         if (isNaturalLength(length, unit.childLength(), unit.children().size())
+                && mayStartHere(from, unit.childLength(), beatUnit, compound)
                 && LilyPondDuration.isSingleValue(length)) {
             out.add(LilyPondDuration.of(length).orElseThrow());
             return;
@@ -144,6 +155,9 @@ final class MetricSplitter {
                 continue;
             }
             if (childFrom == child.start() && childTo == child.end()) {
+                // A run starts on a child boundary, and above the beat every
+                // child boundary is a counted beat, so mayStartHere is satisfied
+                // by construction and is not re-asked here.
                 int last = longestRunFrom(children, index, to, child.start());
                 if (last >= 0) {
                     out.add(LilyPondDuration.of(children.get(last).end() - child.start())
@@ -152,7 +166,7 @@ final class MetricSplitter {
                     continue;
                 }
             }
-            emit(child, childFrom, childTo, out);
+            emit(child, childFrom, childTo, beatUnit, compound, out);
             index++;
         }
     }
@@ -196,6 +210,54 @@ final class MetricSplitter {
         }
         double children = length / childLength;
         return children == Math.rint(children) && children >= 1 && children <= childCount;
+    }
+
+    /**
+     * Whether a span of a natural length may be written as one symbol from this
+     * starting point, or whether starting here would hide a beat.
+     *
+     * <p>Length alone is not enough, and this is the half that was missing.
+     * A dotted quarter is a natural length in 6/8 — it is one whole counted beat
+     * — so a rule that asked only about length wrote the eighth-to-fourth-eighth
+     * span as {@code 4.}, a beat-long symbol lying across the bar of the second
+     * beat, hiding the very grouping the meter exists to show. The conventional
+     * writing ties: {@code 4~ 8}.
+     *
+     * <p>The rule that fixes it without breaking ordinary syncopation:
+     *
+     * <ul>
+     *   <li><b>Below the counted beat, anything goes.</b> Subdivisions within a
+     *       beat may be grouped freely, which is why a sixteenth-offset eighth
+     *       note in 4/4 is an eighth note and not two tied sixteenths.
+     *   <li><b>Across a simple beat, anything goes too.</b> A quarter on the
+     *       second eighth of a 4/4 bar is a quarter, and a dotted quarter there is
+     *       a dotted quarter. Both cross the next beat; both are how every
+     *       syncopated pop tune is printed, and refusing them would fill the page
+     *       with ties nobody writes.
+     *   <li><b>Across a compound beat, or across anything longer than a beat, the
+     *       span must begin on a counted beat.</b> This is the clause that ties
+     *       the 6/8 case, and it is also what stops a half note from starting a
+     *       sixteenth after beat one of a 4/4 bar and swallowing the middle of it.
+     * </ul>
+     *
+     * <p>The asymmetry between simple and compound time is real rather than an
+     * artefact: in simple meters the beat survives being crossed, because the
+     * subdivision is still audible underneath, whereas in compound time the
+     * three-grouping <em>is</em> the meter and a symbol laid across it removes the
+     * only thing distinguishing 6/8 from 3/4.
+     */
+    private static boolean mayStartHere(double from, double childLength,
+                                        double beatUnit, boolean compound) {
+        boolean crossesTheBeat = childLength > beatUnit
+                || (childLength == beatUnit && compound);
+        if (!crossesTheBeat) {
+            return true;
+        }
+        // Exact: a counted beat sits at a whole multiple of the beat unit from
+        // the bar line, and IEEE division of one exactly-representable value by
+        // another returns the whole number exactly when there is one.
+        double beats = from / beatUnit;
+        return beats == Math.rint(beats);
     }
 
     /** The metric tree of one bar. */

@@ -109,6 +109,57 @@ class MetricSplitterTest {
         assertThat(MetricSplitter.split(TimeSignature.SIX_EIGHT, 0, 2)).containsExactly("4.", "8");
     }
 
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            // Round 1 of review found all of these written as one symbol lying
+            // across a beat that then vanished from the page. Length alone said
+            // yes -- a dotted quarter IS one 6/8 beat -- and nothing asked where
+            // the symbol started.
+            "6/8  | 0.5  | 2    | 4,8",
+            "6/8  | 1    | 2.5  | 8,4",
+            "9/8  | 0.5  | 2    | 4,8",
+            "12/8 | 0.5  | 3.5  | 4,4.,8",
+            // The same defect above the beat in simple time: a half note starting
+            // a sixteenth after beat one swallowed the middle of the bar.
+            "4/4  | 0.25 | 2.25 | 8.,4,16",
+            "4/4  | 1.5  | 3.5  | 8,4.",
+    })
+    @DisplayName("a symbol may not begin off the beat and then lie across one")
+    void aSymbolMayNotHideABeatItStartsInsideOf(String meter, double from, double to,
+                                                String expected) {
+        String[] parts = meter.split("/");
+        TimeSignature signature =
+                new TimeSignature(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
+        assertThat(MetricSplitter.split(signature, from, to))
+                .containsExactly(expected.split(","));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            // Beginning on a counted beat, a symbol may cross the next one: this
+            // is a half note on beat two and a dotted half on beat one.
+            "4/4  | 1    | 3    | 2",
+            "4/4  | 0    | 3    | 2.",
+            "12/8 | 1.5  | 4.5  | 2.",
+            // Below the beat, subdivisions group freely -- an eighth note is an
+            // eighth note on a sixteenth offset.
+            "4/4  | 0.25 | 0.75 | 8",
+            "6/8  | 0.5  | 1.5  | 4",
+            // And across a *simple* beat, syncopation stays syncopation rather
+            // than turning into ties nobody writes.
+            "4/4  | 0.5  | 1.5  | 4",
+            "4/4  | 0.5  | 2    | 4.",
+            "2/2  | 0.5  | 3.5  | 2.",
+    })
+    @DisplayName("the beat rule does not turn ordinary syncopation into ties")
+    void syncopationSurvivesTheBeatRule(String meter, double from, double to, String expected) {
+        String[] parts = meter.split("/");
+        TimeSignature signature =
+                new TimeSignature(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
+        assertThat(MetricSplitter.split(signature, from, to))
+                .containsExactly(expected.split(","));
+    }
+
     @Test
     @DisplayName("a bar longer than a whole note ties rather than reaching for a breve")
     void irregularBars() {

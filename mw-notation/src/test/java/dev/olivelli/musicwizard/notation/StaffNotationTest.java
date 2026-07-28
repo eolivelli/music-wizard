@@ -315,6 +315,36 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a beat-long note starting off the beat in 6/8 is tied, not written as one symbol")
+    void aCompoundBeatIsNeverHiddenByASymbolLyingAcrossIt() {
+        // Round 1 of review found this reaching the page as "c'8 d'4. e'4": a
+        // dotted quarter is exactly one 6/8 beat, and starting it on the second
+        // eighth lays it across the bar of the second beat, which is the only
+        // thing distinguishing 6/8 from 3/4.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 0.5, "C4"), note(0.5, 1.5, "D4"), note(2, 1, "E4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.SIX_EIGHT, 180, voice), voice);
+
+        assertThat(source).contains("c'8 d'4~ d'8 e'4 |");
+        assertBarsFillTheirMeter("compound beat", source);
+    }
+
+    @Test
+    @DisplayName("a chord is written as long as its longest member, not its shortest")
+    void aChordIsWrittenToItsLongestMember() {
+        // One staff holds one rhythm, so a chord whose members stop at different
+        // times has to pick one. The long reading prints the short note still
+        // sounding; the short reading would open a rest inside a held harmony.
+        // Neither is true, so the choice is pinned here rather than left to drift.
+        NoteTrack piano = track(PartRole.PIANO_RIGHT_HAND, "Piano",
+                note(0, 4, "C4"), note(0, 4, "E4"), note(0, 2, "G4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, piano), piano);
+
+        assertThat(source).contains("<c' e' g'>1 |");
+        assertBarsFillTheirMeter("chord", source);
+    }
+
+    @Test
     @DisplayName("a note shorter than the shortest value is dropped, not stretched")
     void dropsNotesTooShortToWrite() {
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",

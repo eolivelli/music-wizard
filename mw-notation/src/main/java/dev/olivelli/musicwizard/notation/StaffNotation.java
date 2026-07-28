@@ -75,8 +75,14 @@ public final class StaffNotation {
     private static final double GRID = LilyPondDuration.SHORTEST_QUARTERS;
 
     /**
-     * A ceiling on how many bars are emitted, so that a corrupt score produces a
-     * complaint rather than a file that fills the disk.
+     * A ceiling on how many bars are emitted, so that a score whose beat axis is
+     * wrong produces a complaint rather than a file that fills the disk.
+     *
+     * <p>Generous enough that reaching it is unusual rather than impossible: a
+     * 4/4 piece at 120 BPM runs out at about three and a half hours, which a live
+     * set or a DJ mix can exceed. So the message says what was seen and offers
+     * the likely cause, rather than telling a user with a long recording that
+     * their data is corrupt.
      */
     private static final int MAX_BARS = 100_000;
 
@@ -161,10 +167,18 @@ public final class StaffNotation {
      * The track as a sequence of non-overlapping written events.
      *
      * <p>Notes sharing an onset become one chord, which is what a reduction of a
-     * polyphonic part looks like on one staff. A note that begins while another
-     * is still sounding truncates that one, because a staff can hold one rhythm
-     * and the alternative — dropping the later note — loses a pitch the listener
-     * heard. Proper voices are #93.
+     * polyphonic part looks like on one staff. One staff holds one rhythm, so
+     * two things are lost getting there and it is worth naming both.
+     *
+     * <p>A chord is written as long as its <em>longest</em> member, so a note
+     * that stopped early is printed still sounding. Taking the shortest instead
+     * would be the other error — it would cut the chord off and open a rest in
+     * the middle of a held harmony, which reads worse and is no more true.
+     *
+     * <p>A note that begins while another is still sounding truncates that one.
+     * The alternative, dropping the later note, loses a pitch the listener heard.
+     *
+     * <p>Both are what voices exist to avoid: #93.
      */
     private static List<Event> eventsOf(Score score, NoteTrack track) {
         boolean flatKey = score.primaryKey().map(Key::isFlatKey).orElse(false);
@@ -309,7 +323,9 @@ public final class StaffNotation {
             }
         }
         throw new IllegalStateException(
-                "score does not end within " + MAX_BARS + " bars; the beat axis is probably wrong");
+                "this part runs past " + MAX_BARS + " bars, which is more music than a staff is"
+                        + " engraved for; if the recording is not that long, the beat axis is"
+                        + " wrong -- a note quantized to a beat far past the end will do it");
     }
 
     /**
