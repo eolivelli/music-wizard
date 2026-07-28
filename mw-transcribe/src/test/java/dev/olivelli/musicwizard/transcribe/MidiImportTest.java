@@ -176,6 +176,17 @@ class MidiImportTest {
                 .tempo(120)
                 .part("Melody", 0).note(1, 1, 60).build();
         assertThat(TRANSCRIBER.transcribe(exact).tempoMap().initialTempo()).isEqualTo(120.0);
+        // And the figure a consumer actually reads is the stored one, not a
+        // re-derivation of it: estimatedTempo answers a declared map from the
+        // map, and a mean over a single segment has to come back bit-identical
+        // or the pipeline reports a tempo the file does not contain.
+        //
+        // An end-to-end pin, not a reproduction -- whether the round trip
+        // through beats and back loses a bit depends on the duration, and this
+        // fixture's does not. ProvenanceTest.aSingleSegmentWindowIsExact picks
+        // a duration where it does, and fails without the fix.
+        assertThat(TRANSCRIBER.transcribe(sequence).estimatedTempo())
+                .isEqualTo(MidiFixtures.storedTempo(140));
     }
 
     @Test

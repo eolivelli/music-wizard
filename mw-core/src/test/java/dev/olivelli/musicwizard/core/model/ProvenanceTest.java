@@ -270,15 +270,26 @@ class ProvenanceTest {
             // returning the first supplied segment -- would name a figure the
             // user never stated, and a rule with no test is a rule that changes
             // by accident.
+            //
+            // The map carries a lead-in, so the two averages differ and the
+            // assertion pins the method actually called. Without one, asserting
+            // against averageTempo would pass whichever of the two the code
+            // used, which is the shape of test that proves nothing.
             TempoMap twoCorrections = new TempoMap(
-                    List.of(new TempoMap.TempoSegment(0, 0.0, 120.0, Provenance.SUPPLIED),
-                            new TempoMap.TempoSegment(4.0, 2.0, 60.0, Provenance.SUPPLIED)),
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 300.0, Provenance.DERIVED),
+                            new TempoMap.TempoSegment(1.0, 0.2, 120.0, Provenance.SUPPLIED),
+                            new TempoMap.TempoSegment(5.0, 2.2, 60.0, Provenance.SUPPLIED)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
             Score score = Score.empty(twoCorrections, 10.0)
                     .withBeatGrid(gridOf(pulses(1.0, 0.75, 8)));
 
-            assertThat(score.estimatedTempo()).isEqualTo(twoCorrections.averageTempo(10.0));
-            assertThat(score.estimatedTempo()).isCloseTo(72.0, within(1e-9));
+            assertThat(twoCorrections.averageTempoIgnoringLeadIn(10.0))
+                    .as("the lead-in must actually move the figure, or this pins nothing")
+                    .isNotEqualTo(twoCorrections.averageTempo(10.0));
+            assertThat(score.estimatedTempo())
+                    .isEqualTo(twoCorrections.averageTempoIgnoringLeadIn(10.0));
+            // Neither the grid's 80 nor either supplied figure on its own.
+            assertThat(score.estimatedTempo()).isNotIn(80.0, 120.0, 60.0);
         }
 
         @Test
@@ -324,7 +335,14 @@ class ProvenanceTest {
     @DisplayName("an anchoring lead-in is not a tempo the music had")
     class LeadInIsNotATempo {
 
-        /** A lead-in of 0.2s at 300, then 60 for the rest: what --tempo 60 builds. */
+        /**
+         * A lead-in of 0.2s at 300, then 60 for the rest.
+         *
+         * <p>Shaped like the map {@code --tempo 60} builds, but labelled
+         * {@code MEASURED} rather than {@code SUPPLIED}: what is under test here
+         * is the averaging, and a supplied label would short-circuit
+         * {@code estimatedTempo} before it ever got there.
+         */
         private TempoMap anchored() {
             return new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 0.0, 300.0, Provenance.DERIVED),
@@ -389,6 +407,35 @@ class ProvenanceTest {
             // And the boundary itself: a window ending exactly where the lead-in
             // does is empty after the skip, so the whole map answers.
             assertThat(anchored().averageTempoIgnoringLeadIn(0.2)).isEqualTo(300.0);
+        }
+
+        @Test
+        @DisplayName("a window inside one segment answers with that segment's stored tempo")
+        void aSingleSegmentWindowIsExact() {
+            // "The tempo the file declared" is the one thing a DECLARED segment
+            // is for, and a mean over one value is that value -- but computing
+            // it as beats over seconds is not exact. A MIDI file meaning 140
+            // stores 140.00014000014, because a tempo event carries whole
+            // microseconds per quarter note, and averaging that over its own
+            // span used to answer 140.00014000013996: a number the file does
+            // not contain, reported as the number the file contains.
+            double stored = 60_000_000.0 / (long) Math.round(60_000_000.0 / 140.0);
+            TempoMap declared = TempoMap.constant(
+                    stored, TimeSignature.FOUR_FOUR, Provenance.DECLARED);
+
+            assertThat(stored).isNotEqualTo(140.0);
+            assertThat(declared.averageTempo(1234.567)).isEqualTo(stored);
+            assertThat(declared.averageTempoIgnoringLeadIn(1234.567)).isEqualTo(stored);
+            assertThat(Score.empty(declared, 1234.567).estimatedTempo()).isEqualTo(stored);
+
+            // And it holds for a window that lands inside one segment of a map
+            // that has several, not only for a map with one.
+            TempoMap changing = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0.0, stored, Provenance.DECLARED),
+                            new TempoMap.TempoSegment(8.0, 8.0 * 60.0 / stored, 60.0,
+                                    Provenance.DECLARED)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            assertThat(changing.averageTempo(1.0)).isEqualTo(stored);
         }
 
         @Test
@@ -499,6 +546,31 @@ class ProvenanceTest {
             // reload, which is the whole reason it is on the model rather than
             // in the transcriber's local variables.
             assertThat(reloaded.estimatedTempo()).isEqualTo(60.0);
+        }
+
+        @Test
+        @DisplayName("a label a later build invented reads as unknown, not as a broken file")
+        void anUnrecognisedLabelReadsAsUnknown() {
+            // The other direction of #22. This enum's javadoc promises new
+            // constants, so a score.json written once M5 adds one must still
+            // open on a build that does not have it -- and Jackson's default is
+            // to fail the whole document on an unknown enum name, not just the
+            // property. Confirmed by trying it: without the reader on
+            // Provenance this throws InvalidFormatException naming the six
+            // constants it does know.
+            String json = """
+                    {"segments":[{"startBeat":0.0,"startSeconds":0.0,\
+                    "beatsPerMinute":120.0,"provenance":"ADVISED"}],\
+                    "meterChanges":[{"startBar":0,\
+                    "timeSignature":{"numerator":4,"denominator":4}}]}""";
+
+            assertThatCode(() -> readMap(json)).doesNotThrowAnyException();
+            assertThat(provenances(readMap(json))).containsExactly(Provenance.UNKNOWN);
+            // And a whole score, not just a bare map, since that is the file
+            // that actually has to open.
+            assertThat(Provenance.fromJson("ADVISED")).isEqualTo(Provenance.UNKNOWN);
+            assertThat(Provenance.fromJson("SUPPLIED")).isEqualTo(Provenance.SUPPLIED);
+            assertThat(Provenance.fromJson(null)).isEqualTo(Provenance.UNKNOWN);
         }
 
         @Test

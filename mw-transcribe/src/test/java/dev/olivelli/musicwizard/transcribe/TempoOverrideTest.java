@@ -270,6 +270,42 @@ class TempoOverrideTest {
         }
     }
 
+    @Test
+    @DisplayName("no branch of the transcriber leaves a tempo unlabelled")
+    void everyBranchLabelsWhatItProduces() {
+        // The sweep, because the per-branch tests above each pin one branch and
+        // a forgotten argument is silent: an unlabelled segment re-enables the
+        // shape proxy Score.estimatedTempo keeps for old files, with nothing
+        // failing. The fixtures are chosen to reach all three tempo branches --
+        // no beats, one beat, many beats -- with and without an override.
+        List<AudioBuffer> clips = List.of(tone(0.1), tone(0.25), clickTrack(12.0, 0.5, 1.3));
+        List<Double> overrides = java.util.Arrays.asList(null, 90.0);
+        int checked = 0;
+        for (AudioBuffer audio : clips) {
+            for (Double override : overrides) {
+                Score score = new AudioTranscriber().transcribe(audio,
+                        new AudioTranscriber.Options(override, TimeSignature.FOUR_FOUR, null));
+                assertThat(provenances(score))
+                        .as("clip of %.2fs, --tempo %s", audio.durationSeconds(), override)
+                        .isNotEmpty()
+                        .doesNotContain(Provenance.UNKNOWN);
+                checked++;
+            }
+        }
+        // Guards the guard, and pins that the fixtures really do span the three
+        // branches rather than all landing in one.
+        assertThat(checked).isEqualTo(6);
+        assertThat(new AudioTranscriber().transcribe(clips.get(0),
+                        AudioTranscriber.Options.defaults()).beatGrid())
+                .as("the first clip must track no beats") .isEmpty();
+        assertThat(new AudioTranscriber().transcribe(clips.get(1),
+                        AudioTranscriber.Options.defaults()).beatGrid().orElseThrow().size())
+                .as("the second must track exactly one").isEqualTo(1);
+        assertThat(new AudioTranscriber().transcribe(clips.get(2),
+                        AudioTranscriber.Options.defaults()).beatGrid().orElseThrow().size())
+                .as("the third must track many").isGreaterThan(2);
+    }
+
     private static List<Provenance> provenances(Score score) {
         return score.tempoMap().segments().stream()
                 .map(TempoMap.TempoSegment::provenance).toList();

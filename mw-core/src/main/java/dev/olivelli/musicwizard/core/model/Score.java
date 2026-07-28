@@ -223,10 +223,11 @@ public record Score(
      *       because it says it is an artefact, not because it happens to sit
      *       before the grid's first beat.
      *       <p>Where several segments are supplied and disagree, no single
-     *       figure was supplied, and the map itself is the instruction: its
-     *       duration-weighted average answers instead. Falling through to the
-     *       beat grid there would answer a correction with the thing being
-     *       corrected.
+     *       figure was supplied, and the map itself is the instruction:
+     *       {@link TempoMap#averageTempoIgnoringLeadIn(double)} answers instead.
+     *       Falling through to the beat grid there would answer a correction
+     *       with the thing being corrected, and the plain average would fold in
+     *       an anchoring lead-in the user did not ask for.
      *   <li><b>Otherwise, for a map that records no provenance at all, the old
      *       shape proxy.</b> A map that states one tempo from the first tracked
      *       beat onwards is taken to be a correction. This is a guess, and it is

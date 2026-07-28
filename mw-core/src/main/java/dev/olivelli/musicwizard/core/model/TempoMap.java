@@ -656,6 +656,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     private double averageTempoBetween(double startSeconds, double endSeconds) {
         double totalBeats = 0;
         double totalSeconds = 0;
+        int contributing = 0;
+        double onlyTempo = 0;
         for (int i = 0; i < segments.size(); i++) {
             double segmentStart = Math.max(segments.get(i).startSeconds(), startSeconds);
             if (segmentStart >= endSeconds) {
@@ -668,8 +670,22 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             if (elapsed <= 0) {
                 continue;
             }
+            contributing++;
+            onlyTempo = segments.get(i).beatsPerMinute();
             totalSeconds += elapsed;
             totalBeats += elapsed / segments.get(i).secondsPerBeat();
+        }
+        // A mean over one value is that value, and saying so returns the stored
+        // double rather than a round trip through beats and back. The division
+        // is not exact: a MIDI file declaring 140 stores 140.00014000014, and
+        // averaging that over its own span answers 140.00014000013996 -- a
+        // number the file does not contain, reported as the number it does.
+        // Nothing downstream prints enough digits to see it, but "the tempo the
+        // file declared" is the one thing a DECLARED segment is for. The
+        // no-argument averageTempo() has always special-cased a single-segment
+        // map; this makes it hold for any window landing inside one segment.
+        if (contributing == 1) {
+            return onlyTempo;
         }
         return totalSeconds > 0 ? totalBeats / totalSeconds * 60.0 : initialTempo();
     }

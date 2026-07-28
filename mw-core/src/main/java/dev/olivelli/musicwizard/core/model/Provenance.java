@@ -16,6 +16,8 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+
 /**
  * How a value in a score came to be known.
  *
@@ -36,6 +38,17 @@ package dev.olivelli.musicwizard.core.model;
  * microseconds per quarter note as an integer, so a file that meant 140 BPM
  * declares 140.00014 -- it means somebody stated the value rather than the
  * pipeline inferring it.
+ *
+ * <p><b>An unrecognised name reads as {@link #UNKNOWN} rather than failing the
+ * whole file.</b> This enum's javadoc promises new constants, and without that a
+ * {@code score.json} written by a build that has one would be unreadable in its
+ * entirety by a build that does not -- #22 arriving from the other direction.
+ * The cost is that a misspelt label in a hand-edited file reads as "not
+ * recorded" instead of being rejected, which is the right trade for a field
+ * whose whole purpose is to be honest about not knowing. Other enums in this
+ * model are not forward-compatible in the same way and are not made so here;
+ * #142 covers them, because the remedy differs -- a null on a component that has
+ * no null reading is not an improvement.
  *
  * <p>Deliberately an enum rather than a boolean. The sources are already four
  * today and M2 (separated stems) and M5 (advisor-proposed values) add more; a
@@ -59,7 +72,10 @@ public enum Provenance {
 
     /**
      * Derived from the signal by an analysis stage: tracked beats, estimated
-     * chords, tracked pitch. An estimate, and the least trustworthy origin here.
+     * chords, tracked pitch. An estimate, and on this project usually the
+     * shakiest stage in the pipeline -- but not the weakest origin in this enum,
+     * which is {@link #ASSUMED}. A measurement is at least evidence about this
+     * recording; a default is evidence about nothing.
      */
     MEASURED,
 
@@ -110,5 +126,27 @@ public enum Provenance {
      */
     public boolean isStated() {
         return this == DECLARED || this == SUPPLIED;
+    }
+
+    /**
+     * Reads a stored label, answering {@link #UNKNOWN} for a name this build
+     * does not have and for an explicit JSON null.
+     *
+     * <p>Scoped to this enum on purpose. Turning unknown enum values into nulls
+     * globally on the mapper would also do it for {@code ChordQuality} and
+     * {@code PartRole}, where there is no "not recorded" reading and a null
+     * would fail a component's own validation several frames later. #142.
+     */
+    @JsonCreator
+    public static Provenance fromJson(String name) {
+        if (name == null) {
+            return UNKNOWN;
+        }
+        for (Provenance candidate : values()) {
+            if (candidate.name().equals(name)) {
+                return candidate;
+            }
+        }
+        return UNKNOWN;
     }
 }
