@@ -94,13 +94,14 @@ public final class Quantizer {
      * articulation allowance decides it must have been written longer.
      *
      * <p>Small because it is only there to recognise a note held <em>through</em>
-     * its written end rather than short of it. Simulated against three
-     * articulation distributions and note lengths from one to sixteen steps,
-     * measuring played length the way {@link #articulated} does: two per cent
-     * recovers as many durations as applying the allowance unconditionally does
-     * (0.722 against 0.724, where snapping with no allowance at all gives
-     * 0.655), and does not lengthen the notes the unconditional version got
-     * wrong.
+     * its written end rather than short of it. Two per cent was chosen so that
+     * the guard costs nothing: it recovers as many durations as applying the
+     * allowance unconditionally does, and does not lengthen the notes the
+     * unconditional version got wrong. {@code ArticulationAllowanceTest}
+     * measures that rather than asserting it, over three articulation
+     * distributions and note lengths from one to sixteen steps -- the figures
+     * are there, where they are re-derived on every build, rather than here,
+     * where an earlier set of them went stale without anything noticing.
      */
     private static final double OVERLAP_TOLERANCE = 0.02;
 
@@ -323,7 +324,11 @@ public final class Quantizer {
         if (endBeat <= bars.startBeat(last)) {
             last--;
         }
-        for (int bar = bars.barOf(onsetBeat); bar <= last && bar < sounds.length; bar++) {
+        // No upper bound on the loop beyond last: barOf clamps into the table,
+        // so last is already in range. A bound here would never fire, and if it
+        // ever did it would quietly drop the tail bars of a note rather than say
+        // so.
+        for (int bar = bars.barOf(onsetBeat); bar <= last; bar++) {
             sounds[bar] = true;
         }
     }
@@ -377,6 +382,13 @@ public final class Quantizer {
         // count walked from a later bar to an earlier one, reported uniformity
         // because it had walked nothing, and subtracted zero from a full bar's
         // worth of steps. It gets one step of the bar it prints in.
+        // This is also where a note too short to print ends up: a grace note or
+        // a staccato sixteenth on an eighth grid collapses onto its own onset.
+        // It is lengthened rather than dropped -- the pitch was played, and one
+        // step is the shortest thing this grid can say. Everything past this
+        // point has a strictly positive length, which is why no floor is applied
+        // to the duration below; one was, until a probe showed it could not
+        // fire.
         if (offsetBeat <= onsetBeat) {
             // One step of the bar it prints in, which is the onset's bar after
             // the carry -- not the offset's, which is the bar it was played in
@@ -404,11 +416,7 @@ public final class Quantizer {
                 : bars.startBeat(offsetBar) - bars.startBeat(onsetBar)
                         + offsetSteps * offsetStep - onsetSteps * onsetStep;
 
-        // A note shorter than half a grid step -- a grace note, or a staccato
-        // sixteenth on an eighth grid -- collapses onto its own onset. It is
-        // lengthened rather than dropped: the pitch was played, and one step is
-        // the shortest thing this grid can print.
-        return note.quantizedTo(onsetBeat, Math.max(duration, onsetStep));
+        return note.quantizedTo(onsetBeat, duration);
     }
 
     /**

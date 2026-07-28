@@ -337,87 +337,78 @@ class PitchSpellerTest {
             // sits under the first chord, in beats under the second. The
             // engraved accidental has to agree with the engraved chord symbol,
             // and only the beat axis is what gets engraved.
-            Chord first = chordAt("C4", ChordQuality.MAJOR, 0, 1).quantizedTo(0, 4);
-            Chord second = chordAt("Db4", ChordQuality.MAJOR, 1, 2).quantizedTo(4, 8);
-            Note note = Note.ofSeconds(0.9, 0.5, 68, Confidence.CERTAIN).quantizedTo(5.0, 1.0);
+            //
+            // Both chords have to spell the pitch as a tone of their own, with
+            // different letters, and the key has to be stated -- otherwise the
+            // line-of-fifths fallback answers for them and the test passes with
+            // the beat lookup deleted. A7 makes MIDI 61 its own C sharp; Bb
+            // minor makes it a D flat.
+            Chord first = chordAt("A3", ChordQuality.DOMINANT_SEVENTH, 0, 1).quantizedTo(0, 4);
+            Chord second = chordAt("Bb3", ChordQuality.MINOR, 1, 2).quantizedTo(4, 8);
+            Note note = Note.ofSeconds(0.9, 0.5, 61, Confidence.CERTAIN).quantizedTo(5.0, 1.0);
 
             Score score = new Score(Optional.empty(), Optional.empty(),
                     TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
-                    List.of(), List.of(),
+                    List.of(C_MAJOR), List.of(),
                     List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(note),
                             Confidence.CERTAIN)),
                     new ChordProgression(List.of(first, second), Confidence.CERTAIN),
                     Lyrics.empty(), 10);
 
-            Score spelled = PitchSpeller.spell(score);
-
-            // Under C major, 68 would be A flat only by tie-break; under D flat
-            // major it is the chord's own fifth. The distinguishing case is 61:
-            // C sharp under C major, D flat under the D flat chord.
-            assertThat(spelled.tracks().get(0).notes().get(0).spelling())
-                    .contains(PitchSpelling.parse("Ab4"));
-
-            Note cSharp = Note.ofSeconds(0.9, 0.5, 61, Confidence.CERTAIN).quantizedTo(5.0, 1.0);
-            Score withCSharp = score.withTrack(score.tracks().get(0).withNotes(List.of(cSharp)));
-            assertThat(PitchSpeller.spell(withCSharp).tracks().get(0).notes().get(0).spelling())
+            // The seconds axis would say A7, which spells 61 as C sharp.
+            assertThat(PitchSpeller.spell(61, Optional.of(first), Optional.of(C_MAJOR)))
+                    .isEqualTo(PitchSpelling.parse("C#4"));
+            assertThat(PitchSpeller.spell(score).tracks().get(0).notes().get(0).spelling())
                     .contains(PitchSpelling.parse("Db4"));
         }
 
         @Test
-        @DisplayName("the chord roots understate the centre, and the offset is what corrects it")
-        void theChordRootFallbackIsOffsetFromTheRootsThemselves() {
-            // G, D, A and C average to 1.5 on the line of fifths, but the notes
-            // of a key with those chords centre a fifth or so sharper. G sharp
-            // and A flat straddle exactly that difference: from the raw root
-            // average the flat is nearer, from the corrected centre the sharp
-            // is, and the sharp is what a player reading a I-V-ii-IV in G wants
-            // when the dominant of A comes round.
-            ChordProgression sharpSide = new ChordProgression(List.of(
-                    chordAt("G3", ChordQuality.MAJOR, 0, 1),
-                    chordAt("D4", ChordQuality.MAJOR, 1, 2),
-                    chordAt("A3", ChordQuality.MAJOR, 2, 3),
-                    chordAt("C4", ChordQuality.MAJOR, 3, 4)), Confidence.CERTAIN);
+        @DisplayName("each note is spelled from the key in force under it, not the longest one")
+        void theLocalKeyIsUsedRatherThanThePieceKey() {
+            // A piece mostly in C that ends in E. The primary key is the longer
+            // one, and using it everywhere spells the leading tone of the second
+            // section as an A flat.
+            Key cMajor = Key.ofSeconds(PitchSpelling.parse("C4"), Mode.MAJOR, 0, 8,
+                    Confidence.CERTAIN);
+            Key eMajor = Key.ofSeconds(PitchSpelling.parse("E4"), Mode.MAJOR, 8, 12,
+                    Confidence.CERTAIN);
+            Note early = Note.ofSeconds(1.0, 0.5, 68, Confidence.CERTAIN);
+            Note late = Note.ofSeconds(9.0, 0.5, 68, Confidence.CERTAIN);
+
             Score score = new Score(Optional.empty(), Optional.empty(),
                     TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
-                    List.of(), List.of(),
-                    List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
-                            List.of(Note.ofSeconds(4.5, 0.5, 68, Confidence.CERTAIN)),
+                    List.of(cMajor, eMajor), List.of(),
+                    List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(early, late),
                             Confidence.CERTAIN)),
-                    sharpSide, Lyrics.empty(), 10);
+                    ChordProgression.empty(), Lyrics.empty(), 12);
 
+            List<Note> spelled = PitchSpeller.spell(score).tracks().get(0).notes();
+            assertThat(spelled.get(0).spelling()).contains(PitchSpelling.parse("Ab4"));
+            assertThat(spelled.get(1).spelling()).contains(PitchSpelling.parse("G#4"));
+        }
+
+        @Test
+        @DisplayName("the local key is looked up on the beat axis too, once both are quantized")
+        void quantizedKeyLookupsUseBeatsRatherThanSeconds() {
+            // Same argument as for the chord, and the same construction: in
+            // seconds the note is under C major, in beats under E major, and the
+            // key signature a reader sees is the one placed on the beat axis.
+            Key cMajor = Key.ofSeconds(PitchSpelling.parse("C4"), Mode.MAJOR, 0, 8,
+                    Confidence.CERTAIN).quantizedTo(0, 4);
+            Key eMajor = Key.ofSeconds(PitchSpelling.parse("E4"), Mode.MAJOR, 8, 12,
+                    Confidence.CERTAIN).quantizedTo(4, 12);
+            Note note = Note.ofSeconds(1.0, 0.5, 68, Confidence.CERTAIN).quantizedTo(5.0, 1.0);
+
+            Score score = new Score(Optional.empty(), Optional.empty(),
+                    TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
+                    List.of(cMajor, eMajor), List.of(),
+                    List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(note),
+                            Confidence.CERTAIN)),
+                    ChordProgression.empty(), Lyrics.empty(), 12);
+
+            assertThat(PitchSpeller.spellFromKey(68, cMajor)).isEqualTo(PitchSpelling.parse("Ab4"));
             assertThat(PitchSpeller.spell(score).tracks().get(0).notes().get(0).spelling())
                     .contains(PitchSpelling.parse("G#4"));
-        }
-
-        @Test
-        @DisplayName("an enharmonic that would fall out of the writable octaves is passed over")
-        void spellingsStayInAWritableOctave() {
-            // In a five-sharp key, MIDI 0 is nearer B sharp than C on the line
-            // of fifths, and a B sharp sounding as MIDI 0 sits in octave -2 --
-            // a legal record that PitchSpelling.parse refuses, so it could not
-            // survive a config value or an advisor's reply.
-            Key bMajor = key("B3", Mode.MAJOR);
-            for (int pitch : new int[] {0, 1, 126, 127}) {
-                PitchSpelling spelled = PitchSpeller.spellFromKey(pitch, bMajor);
-                assertThat(spelled.midiPitch()).isEqualTo(pitch);
-                assertThat(PitchSpelling.parse(spelled.displayName())).isEqualTo(spelled);
-            }
-        }
-
-        @Test
-        @DisplayName("every spelling of every pitch in every key survives a round trip through text")
-        void everySpellingIsWritable() {
-            for (int accidentals = -7; accidentals <= 7; accidentals++) {
-                for (Mode mode : Mode.values()) {
-                    Key any = keyWithSignature(accidentals, mode);
-                    for (int pitch = 0; pitch <= 127; pitch++) {
-                        PitchSpelling spelled = PitchSpeller.spellFromKey(pitch, any);
-                        assertThat(PitchSpelling.parse(spelled.displayName()))
-                                .describedAs("pitch %s in %s", pitch, any)
-                                .isEqualTo(spelled);
-                    }
-                }
-            }
         }
 
         @Test

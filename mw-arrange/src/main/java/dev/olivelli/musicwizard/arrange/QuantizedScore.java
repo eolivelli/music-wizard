@@ -112,6 +112,20 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
         return score.tempoMap().timeSignatureAtBar(bar).isCompound() ? SwingFeel.STRAIGHT : swing;
     }
 
+    /**
+     * Returns a copy carrying a different score, for a stage that transforms the
+     * notes without moving them.
+     *
+     * <p>{@link PitchSpeller#spell(Score)} is the one that does: spelling
+     * changes how a pitch is written and nothing about when it sounds, so the
+     * grids and the feel still describe the result. Rebuilding the record by
+     * hand is legal and is one argument order away from pairing a score with
+     * somebody else's grids.
+     */
+    public QuantizedScore withScore(Score newScore) {
+        return new QuantizedScore(newScore, grids, swing);
+    }
+
     /** True when every track's notes carry musical timing. */
     public boolean isFullyQuantized() {
         return score.tracks().stream().allMatch(t -> t.isQuantized());

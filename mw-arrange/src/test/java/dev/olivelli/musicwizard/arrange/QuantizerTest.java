@@ -816,6 +816,33 @@ class QuantizerTest {
                     Score.empty(fourFour(), 10), List.of(first, second), SwingFeel.STRAIGHT))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("ordered by bar");
+            // Strictly ordered: two entries for one bar would make gridAtBar's
+            // binary search return whichever it landed on.
+            BarGrid duplicate = new BarGrid(1, 4.0, GridResolution.HALF_BEAT,
+                    TimeSignature.FOUR_FOUR);
+            assertThatThrownBy(() -> new QuantizedScore(
+                    Score.empty(fourFour(), 10), List.of(first, duplicate), SwingFeel.STRAIGHT))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("ordered by bar");
+        }
+
+        @Test
+        @DisplayName("a re-spelled score keeps the grids and the feel it was quantized with")
+        void withScoreKeepsTheDecisions() {
+            Performance performance = new Performance(fourFour(), 48);
+            performance.run(60, 0.5, Performance.evenly(2, 4.0, 8));
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+            QuantizedScore spelled = quantized.withScore(
+                    PitchSpeller.spell(quantized.score()));
+
+            assertThat(spelled.grids()).isEqualTo(quantized.grids());
+            assertThat(spelled.swing()).isEqualTo(quantized.swing());
+            assertThat(spelled.score().tracks().get(0).notes())
+                    .allSatisfy(n -> {
+                        assertThat(n.spelling()).isPresent();
+                        assertThat(n.onsetBeat()).isPresent();
+                    });
         }
     }
 
@@ -905,6 +932,11 @@ class QuantizerTest {
     }
 
     private static Score scoreOf(TempoMap tempoMap, List<Note> notes) {
+        return scoreOf(tempoMap, notes, List.of());
+    }
+
+    /** The same, for a sibling test that builds its own fixtures. */
+    static Score scoreOfForTest(TempoMap tempoMap, List<Note> notes) {
         return scoreOf(tempoMap, notes, List.of());
     }
 

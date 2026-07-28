@@ -398,8 +398,10 @@ public final class PitchSpeller {
     /** The accidental, as a semitone alteration, that makes a letter sound as a pitch class. */
     private static int alterationFor(NoteLetter letter, int pitchClass) {
         int raw = Math.floorMod(pitchClass - letter.naturalPitchClass(), 12);
-        // Fold into -6..5 so that a letter a semitone above the target reads as a
-        // flat rather than as eleven sharps.
+        // Fold into -5..6 so that a letter a semitone above the target reads as a
+        // flat rather than as eleven sharps. Which end keeps the tritone does not
+        // matter: six either way is outside the two accidentals anything can
+        // print, and the caller rejects it.
         return raw > 6 ? raw - 12 : raw;
     }
 
