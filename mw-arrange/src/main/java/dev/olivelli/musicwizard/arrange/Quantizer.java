@@ -226,8 +226,11 @@ public final class Quantizer {
      * subdivision inside a section.
      *
      * <p>Ties go to staying on the current grid, and failing that to the
-     * simplest one, so that the result does not turn on floating-point noise
-     * between two readings that are equally good.
+     * simplest one, so that the result does not turn on the order comparisons
+     * happen to be made in. Not because a tie is expected: an exact one needs a
+     * bar with no notes, whose cost is zero on every grid, and such a bar is
+     * never published. Both halves of the rule are therefore unreachable from
+     * any score, and a mutation of either survives the suite.
      */
     private static GridResolution[] decode(double[][] cost, GridResolution[] candidates,
                                            boolean[] sectionStart, double changePenalty) {
@@ -339,8 +342,20 @@ public final class Quantizer {
         double offsetStep = perBar[offsetBar].stepQuarters(offsetMeter);
         double offsetInBar = bars.beatInBar(writtenOffset, offsetBar);
         double offsetSteps = stepsWithin(
-                articulated(offsetInBar, writtenOffset - onsetBeat, offsetStep, settings),
+                articulated(offsetInBar, writtenOffset - writtenOnset, offsetStep, settings),
                 offsetStep, offsetMeter);
+        double offsetBeat = bars.startBeat(offsetBar) + offsetSteps * offsetStep;
+
+        // The onset may have been carried forward onto the next bar's line while
+        // the release stayed behind it -- a forty-millisecond blip fifty
+        // milliseconds before a bar line does exactly that. The note then has no
+        // length to measure, and measuring it anyway gave a whole bar: the step
+        // count walked from a later bar to an earlier one, reported uniformity
+        // because it had walked nothing, and subtracted zero from a full bar's
+        // worth of steps. It gets one step of the bar it prints in.
+        if (offsetBeat <= onsetBeat) {
+            return note.quantizedTo(onsetBeat, onsetStep);
+        }
 
         // Counted in whole grid steps and multiplied once, rather than
         // subtracting two snapped positions. On a triplet grid the step is not
@@ -359,8 +374,7 @@ public final class Quantizer {
                 uniformSteps(bars, perBar, onsetBar, offsetBar, onsetStep);
         double duration = uniform.isPresent()
                 ? (offsetSteps + uniform.getAsInt() - onsetSteps) * onsetStep
-                : bars.startBeat(offsetBar) - bars.startBeat(onsetBar)
-                        + offsetSteps * offsetStep - onsetSteps * onsetStep;
+                : offsetBeat - onsetBeat;
 
         // A note shorter than half a grid step -- a grace note, or a staccato
         // sixteenth on an eighth grid -- collapses onto its own onset. It is
@@ -377,6 +391,13 @@ public final class Quantizer {
      * <p>The count is a whole number even across a meter change, because a
      * bar's length is always a whole number of its own grid steps. That is what
      * lets the duration be one multiplication rather than a subtraction.
+     *
+     * <p>Never asked about an offset earlier than the onset, which
+     * {@link #snap} can produce by carrying a rushed onset onto the next bar
+     * line: both of this loop's guards are vacuous in that case and it would
+     * report a uniformity it never checked. {@code snap} returns before it gets
+     * here, and that is the only guard -- a second one here would mask it, and
+     * then neither could be shown to be doing anything.
      */
     private static java.util.OptionalInt uniformSteps(BarTable bars, GridResolution[] perBar,
                                                       int onsetBar, int offsetBar, double step) {
@@ -413,13 +434,21 @@ public final class Quantizer {
      * {@value #OVERLAP_TOLERANCE} of a whole number of steps is left alone --
      * a player may hold slightly through a note, and that reading needs no help.
      *
+     * <p>The tolerance is proportional, so past about twenty-five steps it
+     * covers the whole rounding cell and the allowance stops firing. That is
+     * moot rather than lucky: the one-step cap already bounds what it could
+     * recover on a note that long.
+     *
      * @param offsetInBar the released position within its bar, in quarter beats
-     * @param playedBeats how long the note actually sounded, in quarter beats
+     * @param playedBeats how long the note sounded, in quarter beats, measured
+     *                    between the two un-snapped written positions
      */
     private static double articulated(double offsetInBar, double playedBeats, double step,
                                       QuantizationSettings settings) {
         double lengthSteps = playedBeats / step;
         double plain = Math.rint(lengthSteps);
+        // Under half a step there is no whole-step reading for the tolerance to
+        // confirm, so the allowance runs and the one-step floor catches it.
         if (plain >= 1 && lengthSteps <= plain * (1 + OVERLAP_TOLERANCE)) {
             return offsetInBar;
         }
@@ -494,13 +523,18 @@ public final class Quantizer {
                                 + " wrong rather than the music that long");
             }
             int lastBar = tempoMap.toMusicalTime(lastBeat).bar();
-            // No spare bar past the last note. The table is sized from the
-            // furthest release rather than the furthest onset, so a note ending
-            // on a bar line already has that bar in it, and the articulation
-            // allowance is bounded by the end of the bar it starts in, so it
-            // cannot reach past one either. A spare bar was carried here until
-            // a mutation sweep showed nothing could tell whether it was there.
-            int count = lastBar + 1;
+            // One spare bar past the last release. Nothing can index past it --
+            // every index in this class goes through barOf, which clamps -- but
+            // without it a note rushed onto the final bar line has nowhere to be
+            // published: snap declines to carry the onset forward when there is
+            // no bar to carry it into, so the note is printed on a downbeat that
+            // no BarGrid covers, and "one entry per bar that holds a note" stops
+            // being true at the one place a consumer cannot work around.
+            //
+            // This was deleted once on the strength of a mutation sweep that
+            // found nothing to tell the difference. Nothing could: the sweep had
+            // no test for it either.
+            int count = lastBar + 2;
             double[] starts = new double[count];
             TimeSignature[] meters = new TimeSignature[count];
             for (int bar = 0; bar < count; bar++) {

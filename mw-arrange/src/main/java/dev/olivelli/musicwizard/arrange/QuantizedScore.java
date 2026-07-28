@@ -95,14 +95,19 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
      * tell a reader to shuffle music that is already literal, which is the same
      * defect as engraving it in duplets and only looks different.
      *
-     * <p>A bar with no published grid is one that holds no notes, and gets the
-     * score's feel because nothing contradicts it.
+     * <p>Asked of the tempo map rather than of the published grid. The question
+     * is what meter the bar is in, and the grid can only answer it for bars that
+     * hold notes -- so a rest bar in the middle of a 6/8 system came back swung,
+     * which is the same wrong direction printed over the same music, in the one
+     * bar the grid cannot see.
+     *
+     * @throws IllegalArgumentException if the bar index is negative
      */
     public SwingFeel swingIn(int bar) {
-        return gridAtBar(bar)
-                .filter(grid -> grid.timeSignature().isCompound())
-                .map(grid -> SwingFeel.STRAIGHT)
-                .orElse(swing);
+        if (bar < 0) {
+            throw new IllegalArgumentException("bar must be non-negative, got: " + bar);
+        }
+        return score.tempoMap().timeSignatureAtBar(bar).isCompound() ? SwingFeel.STRAIGHT : swing;
     }
 
     /** True when every track's notes carry musical timing. */

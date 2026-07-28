@@ -394,6 +394,63 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("a note rushed onto the final bar line is still published in a bar")
+        void aRushedOnsetAtTheEndOfThePieceStillHasAGrid() {
+            // The onset is carried onto the next bar's downbeat, so a bar table
+            // that stopped at the last release would leave that note printed
+            // where no BarGrid covers it -- and #90 would have a note with no
+            // resolution to engrave it at.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 44);
+            performance.exact(60, 0.0, 1.0);
+            performance.exact(60, 1.0, 1.0);
+            performance.exact(60, 4.0, 1.0);
+            List<Note> notes = new java.util.ArrayList<>(performance.notes());
+            // Released before the bar line as well as struck before it, so the
+            // bar table cannot learn about the next bar from this note's own
+            // offset. That is what makes the spare bar load-bearing.
+            notes.add(Note.ofSeconds(tempoMap.beatsToSeconds(8.0) - 0.020, 0.010, 67,
+                    Confidence.CERTAIN));
+
+            QuantizedScore quantized = Quantizer.quantize(scoreOf(tempoMap, notes));
+            Note rushed = quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 67)
+                    .findFirst().orElseThrow();
+
+            assertThat(rushed.onsetBeat()).contains(8.0);
+            assertThat(quantized.gridAtBeat(rushed.onsetBeat().orElseThrow())).isPresent();
+            assertThat(quantized.grids()).extracting(BarGrid::bar).contains(2);
+        }
+
+        @Test
+        @DisplayName("a blip just before a bar line does not become the whole next bar")
+        void anOnsetCarriedPastItsOwnReleaseIsOneStep() {
+            // Fifty milliseconds before the bar line, forty milliseconds long:
+            // the onset rounds up onto the line and the release stays behind it.
+            // Measured as if it still had a length, that came out as a whole
+            // bar's worth of sixteenths -- a forty-millisecond note engraved on
+            // top of the entire next bar.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 45);
+            for (int bar = 0; bar < 3; bar++) {
+                for (int i = 0; i < 16; i++) {
+                    performance.exact(60, bar * 4.0 + i * 0.25, 0.25);
+                }
+            }
+            List<Note> notes = new java.util.ArrayList<>(performance.notes());
+            notes.add(Note.ofSeconds(tempoMap.beatsToSeconds(8.0) - 0.050, 0.040, 67,
+                    Confidence.CERTAIN));
+
+            QuantizedScore quantized = Quantizer.quantize(scoreOf(tempoMap, notes));
+            Note blip = quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 67)
+                    .findFirst().orElseThrow();
+
+            assertThat(blip.onsetBeat()).contains(8.0);
+            assertThat(blip.durationBeats()).contains(0.25);
+        }
+
+        @Test
         @DisplayName("a note ending exactly on the final bar line still has somewhere to land")
         void anOffsetOnTheLastBarLine() {
             TempoMap tempoMap = fourFour();
@@ -626,10 +683,14 @@ class QuantizerTest {
         @Test
         @DisplayName("a tie between two readings is settled the same way every time")
         void tiesAreBrokenDeterministically() {
-            // Every grid fits a bar of plain beats equally, so the choice rests
-            // entirely on the tie rules: stay on the current grid, and failing
-            // that take the simplest. Without them the output would turn on
-            // whichever way the last floating-point comparison fell.
+            // Not a tie: a bar of plain beats deviates by nothing on every grid,
+            // and the complexity penalty then separates them strictly, so the
+            // beat grid wins by a margin. An exact tie needs a bar with no notes
+            // at all, which is never published, so the tie rules in decode are
+            // unreachable from any input this module can be handed -- they are
+            // there so that the result does not depend on the order comparisons
+            // happen to be made in, not because a tie is expected. What is
+            // asserted here is that: the same score quantizes the same way.
             Performance performance = new Performance(fourFour(), 42);
             performance.exact(60, 0.0, 1.0);
             performance.exact(60, 1.0, 1.0);
@@ -657,7 +718,15 @@ class QuantizerTest {
                 performance.note(60, beat, 2.0 / 3);
                 performance.note(60, beat + 2.0 / 3, 1.0 / 3);
             }
+            // Bar 5 is left silent on purpose: a bar with no notes has no
+            // published grid, so a swingIn that asked the grid rather than the
+            // meter reported the score's feel over one bar in the middle of a
+            // 6/8 system -- the same wrong direction over the same music, in the
+            // one bar its chosen source of truth could not see.
             for (int beat = 0; beat < 8; beat++) {
+                if (beat / 2 == 1) {
+                    continue;
+                }
                 performance.note(60, 16 + beat * 1.5, 1.0);
                 performance.note(60, 16 + beat * 1.5 + 1.0, 0.5);
             }
@@ -665,9 +734,14 @@ class QuantizerTest {
 
             assertThat(quantized.swing().swung()).isTrue();
             assertThat(quantized.swingIn(0)).isEqualTo(quantized.swing());
+            assertThat(quantized.swingIn(3)).isEqualTo(quantized.swing());
+            assertThat(quantized.gridAtBar(4)).isPresent();
             assertThat(quantized.swingIn(4)).isEqualTo(SwingFeel.STRAIGHT);
-            // A bar nothing sounds in has nothing to contradict the score's feel.
-            assertThat(quantized.swingIn(999)).isEqualTo(quantized.swing());
+            assertThat(quantized.gridAtBar(5)).isEmpty();
+            assertThat(quantized.swingIn(5)).isEqualTo(SwingFeel.STRAIGHT);
+            assertThat(quantized.swingIn(999)).isEqualTo(SwingFeel.STRAIGHT);
+            assertThatThrownBy(() -> quantized.swingIn(-1))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
