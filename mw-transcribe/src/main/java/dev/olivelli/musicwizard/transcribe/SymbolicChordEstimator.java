@@ -365,7 +365,9 @@ public final class SymbolicChordEstimator {
      * Estimates the chords of a symbolic score.
      *
      * @param tracks     every part in the piece; {@link PartRole#DRUMS} tracks
-     *                   are dropped and everything else is used
+     *                   are dropped and everything else is used, which on the
+     *                   MIDI path means channel-10 percussion is dropped and
+     *                   percussion routed elsewhere is not -- see #137
      * @param tempoMap   the score's tempo map, the only route from beats to seconds
      * @param totalBeats the length of the piece in quarter-note beats
      * @param keys       key signatures, used only to spell roots as flats where
@@ -498,6 +500,17 @@ public final class SymbolicChordEstimator {
      * numbers are instrument selectors -- 36 is a bass drum, 38 a snare, 42 a
      * closed hi-hat -- so reading them as pitches injects a C, a D and an F
      * sharp in whatever proportion the groove happens to use them.
+     *
+     * <p>Which is a claim about {@link PartRole#DRUMS} and therefore, today,
+     * about channel 10 and nothing else: {@code MidiTranscriber.inferRole}
+     * assigns that role from the channel alone, because a part named
+     * "Percussion" is as likely to be a marimba as a conga and guessing wrong
+     * picks the clef and the staff as well as the harmony. So percussion routed
+     * elsewhere -- channel 11 in GS and XG, which is where a second kit goes --
+     * still reaches this histogram as a pitched part, and if its notes are held
+     * rather than clipped it changes the chart. #137 has the measurements and
+     * the candidate fixes; none of them is a one-liner, which is why this says
+     * what it does rather than claiming an exclusion it does not have.
      *
      * <p>Notes without musical time are skipped rather than converted, for the
      * reason {@link NoteTrack#notesBetweenBeats} gives: they have no position on
