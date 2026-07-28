@@ -19,7 +19,12 @@ package dev.olivelli.musicwizard.audio;
 import java.util.Objects;
 
 /**
- * Decoded audio: mono samples in [-1, 1] at a known sample rate.
+ * Decoded audio: mono samples at a known sample rate.
+ *
+ * <p>Samples are nominally in [-1, 1] and that is <em>not</em> enforced, on
+ * purpose: a buffer can legitimately sit outside the range between a gain stage
+ * and a normalisation. Finiteness is a correctness invariant and is checked;
+ * range is a convention and is not.
  *
  * <p>Mono because every analysis stage in this project wants one signal, and
  * float because the alternative is 16-bit integers that every stage would have
@@ -64,11 +69,19 @@ public final class AudioBuffer {
      * hide the cause at once.
      *
      * <p>The scan is a full pass over every buffer, including ones the pipeline
-     * derives from other buffers, and that is affordable: 3.2 ms over five
-     * minutes of audio, against 531 ms for {@code Spectrogram.compute} and
-     * 1124 ms for {@code OnsetEnvelope.fromAudio} on the same samples. There is
-     * deliberately no cheaper unchecked constructor for internally derived
-     * buffers.
+     * derives from other buffers, and that is affordable. Measured single-shot
+     * in a fresh JVM -- which is the regime that matters, since a run builds one
+     * of these -- five minutes at 22.05 kHz costs <b>8 to 14 ms</b> across
+     * repeats, against <b>370 to 840 ms</b> for the {@code Spectrogram.compute}
+     * that immediately follows it. There is deliberately no cheaper unchecked
+     * constructor for internally derived buffers.
+     *
+     * <p>Take the range rather than a single figure, and do not compare it with
+     * a number measured any other way. An earlier draft of this paragraph
+     * quoted 3.2 ms, from a warmed loop rather than one call, and set it beside
+     * a spectrogram figure taken cold -- which made the scan look three times
+     * cheaper relative to its neighbour than it is. The conclusion survives
+     * either way, at 1% to 4%; the comparison did not.
      *
      * <p>What this does <em>not</em> give you is an invariant that holds for
      * the lifetime of the buffer. The array is shared rather than copied, so a

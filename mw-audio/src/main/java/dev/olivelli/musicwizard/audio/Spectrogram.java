@@ -65,11 +65,21 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * than a bug being caught. The structural clauses are the ones that will
      * ever fire, on a hand-built spectrogram.
      *
-     * <p>The scan is one pass over the magnitudes, and there are two of them
-     * per recording: measured over five minutes at 22.05 kHz, 4.5 ms against
-     * 338 ms to compute at the harmony resolution and 9.7 ms against 489 ms at
-     * the onset resolution. The 16.6 ms quoted on the issue is the default
-     * resolution, which no stage uses.
+     * <p>The scan is one pass over the magnitudes, and a run pays it twice.
+     * Measured single-shot in a fresh JVM over five minutes at 22.05 kHz, three
+     * repeats each: <b>5 to 7 ms against 370 to 479 ms</b> to compute at the
+     * harmony resolution, and <b>15 to 30 ms against 720 to 843 ms</b> at the
+     * onset resolution. One to four per cent, and the spread between repeats of
+     * one resolution is wider than the difference between resolutions.
+     *
+     * <p>Which is the point of quoting a range. The onset resolution scans
+     * twice the data (26.5 M values against 13.2 M) and that is a real
+     * difference; the default resolution scans 13.2 M, within 0.08% of the
+     * harmony one, so any gap between those two is measurement and not
+     * resolution. An earlier draft explained a 3.7x gap as a resolution
+     * difference between exactly that pair -- it was warm against cold, and the
+     * numbers were from different regimes with a causal story attached that
+     * they did not carry.
      *
      * <p>Like {@link AudioBuffer}, this validates at construction and shares
      * the array rather than copying it, so a caller that writes through
