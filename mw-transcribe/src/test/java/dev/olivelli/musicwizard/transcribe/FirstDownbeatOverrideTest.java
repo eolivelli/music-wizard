@@ -274,6 +274,67 @@ class FirstDownbeatOverrideTest {
     }
 
     @Test
+    @DisplayName("keeps its floor between what the estimator can and cannot claim")
+    void theSnapFloorSitsWhereTheEstimatorLeavesRoomForIt() {
+        // Deliberately measured across the seam rather than asserted from two
+        // files agreeing. SNAPPED_PHASE_FLOOR is chosen relative to numbers
+        // DownbeatEstimator owns, and #48 has since retuned that scale -- its
+        // harmonic ceiling went from 0.95 to 0.6 while this branch was open, and
+        // the ordering survived by luck. A test is what makes it survive by
+        // construction.
+        List<Double> pulses = grid(null, TimeSignature.FOUR_FOUR).beatTimes();
+        double beatConfidence = grid(null, TimeSignature.FOUR_FOUR).beatConfidence().value();
+
+        // The estimated phase on a click track: no harmony to go on, so this is
+        // the estimator claiming as little as it can claim.
+        double estimated = grid(null, TimeSignature.FOUR_FOUR).downbeatConfidence().value()
+                / beatConfidence;
+        // A request halfway between two pulses: this code claiming as little as
+        // it can claim.
+        double worstSnap = grid((pulses.get(2) + pulses.get(3)) / 2, TimeSignature.FOUR_FOUR)
+                .downbeatConfidence().value() / beatConfidence;
+
+        // A human aiming badly still says more than a phase nothing supports...
+        assertThat(worstSnap).isGreaterThan(estimated);
+        // ...and less than harmony that agrees with the beats, whose ceiling this
+        // must stay under. Read off DownbeatEstimator rather than hard-coded, so
+        // that retuning it moves this assertion rather than silently voiding it.
+        assertThat(worstSnap).isLessThan(harmonicCeiling());
+    }
+
+    /**
+     * The most {@link dev.olivelli.musicwizard.dsp.DownbeatEstimator} will claim
+     * for a phase harmony agrees with, measured rather than quoted.
+     *
+     * <p>A four-bar loop with one chord change per bar, which is the material the
+     * estimator is built for and the case that reaches its ceiling.
+     */
+    private static double harmonicCeiling() {
+        int bars = 8;
+        float[] samples = new float[(int) (bars * 2.0 * SAMPLE_RATE)];
+        int[][] chords = {{60, 64, 67}, {67, 71, 74}, {69, 72, 76}, {65, 69, 72}};
+        for (int bar = 0; bar < bars; bar++) {
+            int start = (int) (bar * 2.0 * SAMPLE_RATE);
+            for (int beat = 0; beat < 4; beat++) {
+                int at = start + (int) (beat * 0.5 * SAMPLE_RATE);
+                for (int i = 0; i < SAMPLE_RATE / 2 && at + i < samples.length; i++) {
+                    double decay = Math.exp(-i / (SAMPLE_RATE / 8.0));
+                    for (int note : chords[bar % chords.length]) {
+                        double hz = 440 * Math.pow(2, (note - 69) / 12.0);
+                        samples[at + i] += (float) (0.2 * decay
+                                * Math.sin(2 * Math.PI * hz * i / SAMPLE_RATE));
+                    }
+                }
+            }
+        }
+        BeatGrid harmonic = new AudioTranscriber().transcribe(
+                        new AudioBuffer(samples, SAMPLE_RATE),
+                        new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null))
+                .beatGrid().orElseThrow();
+        return harmonic.downbeatConfidence().value() / harmonic.beatConfidence().value();
+    }
+
+    @Test
     @DisplayName("does not rank a phase that cannot be wrong below one that can")
     void oneBeatToTheBarIsAlwaysCertain() {
         // At one beat to the bar every beat begins a bar, so there is no phase to

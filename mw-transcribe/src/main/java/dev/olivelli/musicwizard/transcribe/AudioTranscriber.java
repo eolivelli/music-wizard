@@ -70,11 +70,14 @@ public final class AudioTranscriber {
     /**
      * Confidence in a forced phase whose snap moved it as far as it can move.
      *
-     * <p>Above {@link DownbeatEstimator}'s floor for a phase nothing supports and
-     * above its ceiling for one resting on onsets alone, since a human aiming
-     * badly still says more than a guess -- and below what harmony agreeing with
-     * the beats can reach, since at half a pulse the phase reported is no longer
-     * the one that was asked for.
+     * <p>Above what {@link DownbeatEstimator} gives a phase nothing supports and
+     * a phase resting on onsets alone -- both of which land on its floor of
+     * 0.35 -- since a human aiming badly still says more than a guess. Below the
+     * 0.6 its harmonic ceiling reaches, since at half a pulse the phase reported
+     * is no longer the one that was asked for. That ordering is pinned by a test
+     * against the estimator's own output rather than left to these two files
+     * agreeing: it survived #48 retuning that scale from a 0.95 ceiling to 0.6
+     * by luck, not by construction.
      */
     private static final double SNAPPED_PHASE_FLOOR = 0.5;
 
@@ -398,11 +401,10 @@ public final class AudioTranscriber {
      * tracked range reaches the floor, which is the right answer for a time the
      * grid cannot express as a phase at all.
      *
-     * <p>The floor is deliberately above what an unsupported phase scores in
-     * {@link DownbeatEstimator} and above its onsets-only ceiling, and below what
-     * harmony that agrees with the beats can reach. A badly-aimed human downbeat
-     * still says more than a guess; it should not outrank evidence that actually
-     * lines up with the pulses it is phasing.
+     * <p>The floor sits above what {@link DownbeatEstimator} gives a phase
+     * nothing supports, and below what harmony agreeing with the beats can
+     * reach. A badly-aimed human downbeat still says more than a guess; it should
+     * not outrank evidence that actually lines up with the pulses it is phasing.
      *
      * <p>With fewer than two pulses there is no interval and no alternative pulse
      * to have meant, so the one that exists is the one the user named.
