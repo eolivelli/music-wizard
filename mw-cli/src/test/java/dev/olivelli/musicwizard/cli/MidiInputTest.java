@@ -98,14 +98,14 @@ class MidiInputTest {
         }
 
         @Test
-        @DisplayName("what the file states is reported as stated, and not as found")
+        @DisplayName("what the file declares is reported as declared, and not as found")
         void reportsProvenanceRatherThanDiscovery() {
             Path workspace = imported(MidiFixtures.fourChordSong(), "four");
 
             CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
 
             assertThat(analyze.out())
-                    .contains("Read from the file, not estimated:")
+                    .contains("From the file, or the MIDI default where it declares nothing:")
                     .contains("Tempo   120.0 BPM")
                     .contains("Meter   4/4")
                     .contains("Key     C major")
@@ -151,6 +151,68 @@ class MidiInputTest {
             assertThat(analyze.out())
                     .contains("Tempo   100.0 BPM at the start, changed 1 time later")
                     .contains("Meter   4/4 at the start, changed 1 time later");
+        }
+
+        @Test
+        @DisplayName("a tempo the file never declared is not reported as declared")
+        void aDefaultedTempoIsNotPresentedAsAStatement() {
+            // No tempo event and no time signature. MidiTranscriber substitutes
+            // 120 and 4/4 -- what the specification says such a file is played at
+            // -- and the TempoMap that comes back cannot be told apart from one
+            // built for a file that declared them (#119). So the heading must not
+            // claim it was read from the file, which the first version of this
+            // command did.
+            Sequence silentAboutTempo = MidiFixtures.sequence()
+                    .part("Melody", 0)
+                    .note(1, 1, 60).note(2, 1, 62)
+                    .build();
+            Path workspace = imported(silentAboutTempo, "silent");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.out())
+                    .contains("From the file, or the MIDI default where it declares nothing:")
+                    .contains("Tempo   120.0 BPM")
+                    .contains("Meter   4/4")
+                    .contains("Key     not declared by the file");
+            assertThat(analyze.out())
+                    .as("a default presented as something the file said")
+                    .doesNotContain("Read from the file");
+        }
+
+        @Test
+        @DisplayName("restating a value is not reported as changing it")
+        void aRestatedValueIsNotAChange() {
+            // Sequencer exports commonly rewrite the tempo and key signature at
+            // every section boundary. MidiTranscriber drops a restated *meter*
+            // and keeps restated tempi and keys (#118), so counting entries
+            // rather than transitions reported a change in two of the three lines
+            // and not the third -- three claims about one file that disagreed.
+            Sequence restated = MidiFixtures.sequence()
+                    .name("Restated")
+                    .tempo(120).tempoAt(4, 120)
+                    .timeSignature(4, 4).timeSignatureAt(4, 4, 4)
+                    .keySignature(0, dev.olivelli.musicwizard.core.model.Mode.MAJOR)
+                    .keySignatureAt(4, 0, dev.olivelli.musicwizard.core.model.Mode.MAJOR)
+                    .part("Melody", 0)
+                    .note(1, 1, 60).note(5, 1, 62)
+                    .build();
+            Path workspace = imported(restated, "restated");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+            Score score = Workspace.open(workspace).readScore().orElseThrow();
+
+            assertThat(score.tempoMap().segments())
+                    .as("the entries really are duplicated, so this fixture discriminates")
+                    .hasSize(2);
+            assertThat(score.keys()).hasSize(2);
+            assertThat(analyze.out())
+                    .as("a restatement reported as a change")
+                    .doesNotContain("changed");
+            assertThat(analyze.out())
+                    .contains("Tempo   120.0 BPM")
+                    .contains("Key     C major");
         }
 
         @Test

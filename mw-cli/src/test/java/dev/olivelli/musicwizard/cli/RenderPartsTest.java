@@ -23,15 +23,18 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
-import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -71,20 +74,9 @@ class RenderPartsTest {
                 from, to, Confidence.of(0.8));
     }
 
-    /** A workspace holding a MIDI file, with whatever score the test needs. */
-    private Path midiWorkspace(String name, ChordProgression chords) {
-        Path source = MidiFixtures.write(
-                MidiFixtures.fourChordSong(), directory.resolve(name + ".mid"));
-        return workspaceWith(name, source, chords);
-    }
-
     /** A workspace holding audio, with whatever score the test needs. */
     private Path audioWorkspace(String name, ChordProgression chords) {
-        Path source = directory.resolve(name + ".wav");
-        SignalFactory.writeWav(source, SignalFactory.chord(
-                SignalFactory.majorTriad(60), 0.2, SignalFactory.DEFAULT_SAMPLE_RATE),
-                SignalFactory.DEFAULT_SAMPLE_RATE);
-        return workspaceWith(name, source, chords);
+        return workspaceWith(name, chords, List.of());
     }
 
     /**
@@ -94,14 +86,36 @@ class RenderPartsTest {
      * is what {@code render} does with a score, and running a transcriber to
      * obtain one would make these tests depend on the accuracy of a stage they
      * are not about.
+     *
+     * <p>The source is always audio, and never varied to change what
+     * {@code render} says. That is the point of round 1's finding: what
+     * {@code render} can produce is a property of the score, and it used to
+     * re-sniff the file on disk to decide -- which failed when the file was gone
+     * and lied when it had been replaced.
      */
-    private Path workspaceWith(String name, Path source, ChordProgression chords) {
+    private Path workspaceWith(String name, ChordProgression chords, List<NoteTrack> tracks) {
+        Path source = directory.resolve(name + ".wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 0.2, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
         Path root = directory.resolve(name + ".mwz");
         CliRunner.Result init = CliRunner.run("init", source.toString(), "-w", root.toString());
         assertThat(init.exitCode()).as(init.all()).isZero();
         Workspace workspace = Workspace.open(root);
-        workspace.writeScore(Score.empty(TempoMap.constant(120), 8.0).withChords(chords));
+        Score score = Score.empty(TempoMap.constant(120), 8.0).withChords(chords);
+        for (NoteTrack track : tracks) {
+            score = score.withTrack(track);
+        }
+        workspace.writeScore(score);
         return root;
+    }
+
+    /** One part's worth of notes, so a score can hold notes and no harmony. */
+    private static NoteTrack aPart(String name) {
+        return new NoteTrack(PartRole.OTHER, name,
+                List.of(new Note(0.0, 1.0, 60, 80, Optional.empty(),
+                        Optional.of(0.0), Optional.of(1.0), Confidence.CERTAIN)),
+                Confidence.CERTAIN);
     }
 
     @Nested
@@ -180,16 +194,17 @@ class RenderPartsTest {
     class NoHarmony {
 
         @Test
-        @DisplayName("from MIDI is explained by where it came from")
-        void midiIsExplainedAsSymbolic() {
-            Path workspace = midiWorkspace("four", ChordProgression.empty());
+        @DisplayName("but with parts is a missing feature, and says which")
+        void notesWithoutHarmonyPointAtTheMissingStage() {
+            Path workspace = workspaceWith("four", ChordProgression.empty(),
+                    List.of(aPart("Piano"), aPart("Bass")));
 
             CliRunner.Result render = CliRunner.run(
                     "render", workspace.toString(), "--no-pdf");
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("a MIDI file states notes, not harmony")
+                    .contains("holds 2 part(s) but no chord progression")
                     .contains("(#115)");
             // The empty chart is not written at all: a file saying "(no chords
             // were found)" is a file a user has to open to learn nothing.
@@ -197,8 +212,8 @@ class RenderPartsTest {
         }
 
         @Test
-        @DisplayName("from audio is explained as a result, not as a missing feature")
-        void audioIsExplainedAsAnEmptyResult() {
+        @DisplayName("and no parts is an empty result, not a missing feature")
+        void nothingAtAllIsAnEmptyResult() {
             Path workspace = audioWorkspace("quiet", ChordProgression.empty());
 
             CliRunner.Result render = CliRunner.run(
@@ -206,8 +221,49 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("the analysis found no harmony in this recording")
+                    .contains("the analysis that produced it found no harmony")
                     .doesNotContain("#115");
+        }
+
+        @Test
+        @DisplayName("does not announce an output directory or an engraver")
+        void announcesNothingItWillNotUse() {
+            Path workspace = audioWorkspace("quiet", ChordProgression.empty());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString());
+
+            // Not --no-pdf: the engraver is looked up on this path in real use,
+            // and announcing it before discovering there is nothing to engrave is
+            // the same defect as the parts line.
+            assertThat(render.out())
+                    .doesNotContain("Output ")
+                    .doesNotContain("Engraver");
+            // The directory itself is created by init, so what must be true is
+            // that nothing was put in it.
+            assertThat(workspace.resolve("out")).isEmptyDirectory();
+        }
+    }
+
+    @Nested
+    @DisplayName("a workspace whose recording is gone")
+    class WithoutItsSource {
+
+        @Test
+        @DisplayName("still renders, because the score holds what an engraver needs")
+        void rendersFromTheScoreAlone() throws Exception {
+            Path workspace = audioWorkspace("song", fourChords());
+            // A workspace duplicates the recording, so deleting it to reclaim
+            // space -- or archiving one without it -- is ordinary. render used to
+            // re-sniff this file to word one message, and refused the whole run
+            // when it was missing.
+            Path source = Workspace.open(workspace).sourceFile();
+            java.nio.file.Files.delete(source);
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/chords.txt")).exists();
         }
     }
 

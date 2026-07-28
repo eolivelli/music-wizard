@@ -42,10 +42,11 @@ import picocli.CommandLine.Spec;
 /**
  * Produces sheet music from an analysed workspace.
  *
- * <p>LilyPond, MusicXML and MIDI are always written for a part that can be
- * produced; the PDF is produced only if a LilyPond binary can be found. A
- * missing binary degrades the output rather than failing the command, since the
- * sources are still useful on their own.
+ * <p>LilyPond source is written for every part that can be produced; the PDF is
+ * produced only if a LilyPond binary can be found. A missing binary degrades the
+ * output rather than failing the command, since the source is still useful on
+ * its own. MusicXML and MIDI export are named in the epic and are not written by
+ * anything yet, so this says so rather than listing them.
  *
  * <p>The same posture governs the parts themselves, which is what #82 was
  * about. This command used to announce {@code voice, piano, bass, chords} and
@@ -98,22 +99,33 @@ final class RenderCommand implements Callable<Integer> {
          * Why this part cannot be produced from this score, or {@code null} when
          * it can.
          *
-         * <p>The empty-harmony message depends on where the score came from,
-         * because the two causes are genuinely different and only one of them is
-         * a gap in the tool. An audio analysis that produced no chords looked and
-         * found nothing; a MIDI import did not look, because it reads notes and
-         * naming the harmony they spell is a stage that does not exist (#115).
+         * <p>Answered from the <em>score</em> and from nothing else. An earlier
+         * version worded the empty-harmony case differently depending on whether
+         * the workspace's source file was MIDI or audio, which it re-sniffed here
+         * -- and that was wrong twice. It made {@code render} fail outright on a
+         * workspace whose recording had been deleted, though the score alone
+         * holds everything an engraver needs; and after a source file was
+         * replaced it described a MIDI-derived score as audio-derived, which is
+         * the same quietly-wrong answer this change exists to remove, one layer
+         * down. Provenance re-derived by each reader is provenance that can
+         * disagree between readers; carrying it on the score is #120.
+         *
+         * <p>The two wordings are kept, because the two situations really are
+         * different and both are visible in the score itself. A score with parts
+         * but no harmony had its notes read and its chords never estimated, which
+         * is #115. A score with neither had nothing found in it at all.
          */
-        String unavailableReason(Score score, SourceKind kind) {
+        String unavailableReason(Score score) {
             if (notImplemented != null) {
                 return notImplemented;
             }
             if (this == CHORDS && score.chords().isEmpty()) {
-                return kind == SourceKind.MIDI
-                        ? "this score holds no chord progression; a MIDI file states notes,"
-                                + " not harmony, and nothing estimates one from the other yet (#115)"
-                        : "this score holds no chord progression; the analysis found no"
-                                + " harmony in this recording";
+                return score.tracks().isEmpty()
+                        ? "this score holds no chord progression; the analysis that produced"
+                                + " it found no harmony"
+                        : "this score holds " + score.tracks().size() + " part(s) but no chord"
+                                + " progression; naming the harmony a set of notes spells is"
+                                + " not implemented yet (#115)";
             }
             return null;
         }
@@ -161,29 +173,38 @@ final class RenderCommand implements Callable<Integer> {
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         List<Part> requested = requestedParts();
 
+        // The score is read before anything is announced, because what can be
+        // produced is a property of it. Announcing an output directory and an
+        // engraver and then writing nothing is the same defect #82 was filed
+        // for, one line further down the same command.
+        Score score = workspace.readScore().orElseThrow(() -> new IllegalStateException(
+                "no transcription yet; run: mw analyze " + workspaceDirectory));
+
+        List<Part> producible = new ArrayList<>();
+        List<String> notWritten = new ArrayList<>();
+        for (Part part : requested) {
+            String reason = part.unavailableReason(score);
+            if (reason != null) {
+                notWritten.add(String.format("  %-8s %s", part.partName(), reason));
+            } else {
+                producible.add(part);
+            }
+        }
+
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Parts      " + String.join(", ",
                 requested.stream().map(Part::partName).toList()));
-        System.out.println("Output     " + workspace.outputDirectory());
-
-        Optional<Path> lilypond = announceEngraver(config);
-
-        Score score = workspace.readScore().orElseThrow(() -> new IllegalStateException(
-                "no transcription yet; run: mw analyze " + workspaceDirectory));
-        SourceKind kind = SourceKind.detect(workspace.sourceFile());
 
         List<Path> written = new ArrayList<>();
-        List<String> notWritten = new ArrayList<>();
         boolean chartWritten = false;
-        for (Part part : requested) {
-            String reason = part.unavailableReason(score, kind);
-            if (reason != null) {
-                notWritten.add(String.format("  %-8s %s", part.partName(), reason));
-                continue;
-            }
-            if (part == Part.CHORDS) {
-                written.addAll(writeChordChart(workspace, score, lilypond));
-                chartWritten = true;
+        if (!producible.isEmpty()) {
+            System.out.println("Output     " + workspace.outputDirectory());
+            Optional<Path> lilypond = announceEngraver(config);
+            for (Part part : producible) {
+                if (part == Part.CHORDS) {
+                    written.addAll(writeChordChart(workspace, score, lilypond));
+                    chartWritten = true;
+                }
             }
         }
 

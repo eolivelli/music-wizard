@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -50,9 +51,9 @@ import picocli.CommandLine.Parameters;
  *   <li>The audio path <em>measures</em>. Its stage lines are verbs of discovery
  *       -- "tracking beats", "found 65 beats at 120.2 beats/min" -- because every
  *       figure in them is an estimate that could be wrong.
- *   <li>The MIDI path <em>reads</em>. A MIDI file states its tempo and its meter,
- *       so those figures are quoted under a heading that says where they came
- *       from, and the word "found" does not appear.
+ *   <li>The MIDI path <em>reads</em>. A MIDI file declares its tempo and its
+ *       meter, so those figures are quoted under a heading naming where they
+ *       came from, and the word "found" does not appear.
  * </ul>
  *
  * <p>Printing the same line for both would make a fact look like a guess and, in
@@ -68,6 +69,32 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     /** The stage whose output the transcription cache holds, per input kind. */
     private static final String STAGE_PREFIX = "transcribe-";
+
+    /**
+     * What the MIDI path's figures are, exactly.
+     *
+     * <p>Two sources, and the heading names both because the code cannot tell
+     * them apart. {@link MidiTranscriber} substitutes 120 BPM when a file carries
+     * no tempo event at tick 0, and 4/4 when it carries no time signature -- the
+     * values the MIDI specification says such a file is played at -- and the
+     * {@code TempoMap} that comes back records the substitution as though it were
+     * a declaration.
+     *
+     * <p>An earlier draft said "Read from the file, not estimated", which for
+     * such a file is untrue in the direction this whole change is about: it
+     * presents a default as a statement. The alternative -- asking the file
+     * whether it declared a tempo -- means a second reader of MIDI meta events in
+     * the CLI, and the rule it would have to reproduce ("at tick 0", not
+     * "anywhere") is precisely the kind of rule this project keeps teaching to
+     * one of two places. So the claim is narrowed to one that holds for every
+     * file, and #119 asks the importer to report which values it defaulted, after
+     * which this can be tightened per row.
+     *
+     * <p>What is <em>not</em> weakened is the distinction that matters: nothing
+     * under this heading was measured from audio.
+     */
+    private static final String DECLARED_HEADING =
+            "From the file, or the MIDI default where it declares nothing:";
 
     /** How many part names to print before summarising the rest. */
     private static final int MAX_LISTED_PARTS = 6;
@@ -213,12 +240,20 @@ final class AnalyzeCommand implements Callable<Integer> {
      * because before #114 the audio path really did read MIDI files, and it
      * answered plausibly and wrongly.
      *
-     * <p>The build is a component. The key can name every input but cannot name
-     * the code, and a score is the output of the whole DSP stack: on a released
-     * build, upgrading and re-running {@code analyze} would otherwise return the
-     * previous version's answer. A development build reports no implementation
-     * version, so its entries do survive a rebuild -- which is what
-     * {@code --force} is for, and why the reuse is announced rather than silent.
+     * <p>The build is a component, and what it buys is narrower than it looks.
+     * The key can name every input but cannot name the code, and a score is the
+     * output of the whole DSP stack, so upgrading and re-running {@code analyze}
+     * would otherwise return the previous version's answer. What the component
+     * carries is the jar's {@code Implementation-Version} -- which no jar this
+     * project shipped actually had until the manifest entry was added alongside
+     * this, so the first version of this javadoc described a protection that did
+     * not exist at all.
+     *
+     * <p>It still only invalidates when the <em>version string</em> changes. A
+     * rebuild at the same version does not, which covers every SNAPSHOT build
+     * and every run from {@code target/classes}, where there is no manifest and
+     * the component reads "development". That is why the reuse is announced on
+     * every hit rather than being silent, and why {@code --force} exists.
      *
      * <p>The audio overrides are components only on the audio path. On the MIDI
      * path they change nothing, because nothing reads them, so keying on them
@@ -272,20 +307,26 @@ final class AnalyzeCommand implements Callable<Integer> {
      * What the MIDI path reports.
      *
      * <p>Grouped under a heading rather than suffixed line by line, so the
-     * provenance is structural: everything indented under it is quoted from the
-     * file, and everything outside it is not. What the file does not say is
-     * reported as not said, rather than as a default that happens to be right
-     * most of the time -- "the writer did not name a key" and "the writer said C
-     * major" are different claims and only one of them belongs on a staff.
+     * provenance is structural: everything indented under it comes from the
+     * input, and everything outside it does not. What the file does not say is
+     * reported as not said wherever that is knowable -- "the writer did not name
+     * a key" and "the writer said C major" are different claims and only one of
+     * them belongs on a staff. Where it is not knowable, see
+     * {@link #DECLARED_HEADING}.
      */
     private static List<String> midiSummary(Score score) {
         List<String> lines = new ArrayList<>();
-        lines.add("Read from the file, not estimated:");
+        lines.add(DECLARED_HEADING);
         lines.add("  Tempo   " + statedTempo(score));
         lines.add("  Meter   " + statedMeter(score));
         lines.add("  Key     " + statedKey(score));
-        lines.add("  Parts   " + statedParts(score));
         lines.add("");
+        // Outside the block, because a part name is not a declaration in the way
+        // a tempo is. MidiTranscriber synthesises "Track 3" for an unnamed track,
+        // appends " ch 2" where one track carries two channels, and adds " (2)"
+        // to disambiguate a repeat -- so some of what is printed here was read
+        // and some was constructed, and the heading above must not cover both.
+        lines.add("Parts   " + partsLine(score));
         lines.add(score.chords().isEmpty()
                 // Not "0 spans", which reads as the result of looking. Nothing
                 // looked: a MIDI file states which notes sound, and naming the
@@ -296,49 +337,79 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The tempo the file states, with its changes counted.
+     * The tempo the file declares, with its changes counted.
      *
      * <p>Taken from the map's opening segment rather than from
      * {@link Score#estimatedTempo()}, which for a changing tempo falls back to a
      * duration-weighted average. That average is a perfectly good summary and an
-     * unacceptable thing to print under a heading that says it was read from the
-     * file: it is a number the file never contains.
+     * unacceptable thing to print under this heading: it is a number the file
+     * never contains.
      */
     private static String statedTempo(Score score) {
         TempoMap map = score.tempoMap();
         TimeSignature meter = map.initialTimeSignature();
         String opening = formatTempo(map.segments().get(0).beatsPerMinute(), meter);
-        int changes = map.segments().size() - 1;
+        int changes = countChanges(map.segments(), TempoMap.TempoSegment::beatsPerMinute);
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
     }
 
     private static String statedMeter(Score score) {
         TempoMap map = score.tempoMap();
-        int changes = map.meterChanges().size() - 1;
+        int changes = countChanges(map.meterChanges(), TempoMap.MeterChange::timeSignature);
         String opening = map.initialTimeSignature().toString();
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
+    }
+
+    private static String statedKey(Score score) {
+        if (score.keys().isEmpty()) {
+            return "not declared by the file";
+        }
+        String opening = score.keys().get(0).displayName();
+        int changes = countChanges(score.keys(), key -> key.tonic() + "/" + key.mode());
+        return changes == 0 ? opening : opening + " at the start, " + changed(changes);
+    }
+
+    /**
+     * How many times a value actually changes along a list.
+     *
+     * <p>Transitions, not entries. Counting {@code size() - 1} counts the
+     * <em>events</em> the file happens to contain, and a sequencer export that
+     * restates the same tempo or the same key signature at every section
+     * boundary contains a great many that change nothing. Reporting those as
+     * changes is a claim about the music that the file does not make -- and it
+     * disagreed with the meter line in the same block, since
+     * {@code MidiTranscriber} already drops a restated meter and drops neither of
+     * the other two (#118).
+     *
+     * <p>Compared with {@code equals}, which for the tempo means comparing two
+     * doubles exactly. That is right here rather than sloppy: a restated tempo is
+     * the same integer count of microseconds decoded by the same division, so it
+     * produces the identical double. Two tempi that differ in the last bit came
+     * from different microsecond counts and really are a change, however
+     * inaudible.
+     */
+    private static <T> int countChanges(
+            List<T> values, java.util.function.Function<T, Object> valueOf) {
+        int changes = 0;
+        for (int i = 1; i < values.size(); i++) {
+            if (!valueOf.apply(values.get(i)).equals(valueOf.apply(values.get(i - 1)))) {
+                changes++;
+            }
+        }
+        return changes;
     }
 
     private static String changed(int changes) {
         return "changed " + changes + (changes == 1 ? " time" : " times") + " later";
     }
 
-    private static String statedKey(Score score) {
-        if (score.keys().isEmpty()) {
-            return "not stated by the file";
-        }
-        String opening = score.keys().get(0).displayName();
-        int changes = score.keys().size() - 1;
-        return changes == 0 ? opening : opening + " at the start, " + changed(changes);
-    }
-
-    private static String statedParts(Score score) {
+    private static String partsLine(Score score) {
         if (score.tracks().isEmpty()) {
             return "none";
         }
         List<String> names = score.tracks().stream()
                 .limit(MAX_LISTED_PARTS)
-                .map(track -> track.name())
+                .map(NoteTrack::name)
                 .toList();
         int remaining = score.tracks().size() - names.size();
         return String.join(", ", names) + (remaining > 0 ? " and " + remaining + " more" : "");

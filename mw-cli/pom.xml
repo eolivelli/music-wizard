@@ -72,6 +72,21 @@
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>dev.olivelli.musicwizard.cli.MusicWizardCommand</mainClass>
+                  <manifestEntries>
+                    <!--
+                      Two things read this. `mw version` reported "(development
+                      build)" from every jar we have ever shipped, because
+                      nothing wrote the attribute; and the transcription cache
+                      keys on it, so without it a released build served the
+                      previous release's analysis for the same input. What it
+                      buys is bounded and worth stating: a version change
+                      invalidates the cache, so a rebuild at the same version,
+                      which is every SNAPSHOT build, still does not. Forcing a
+                      recompute is the answer there, and the reuse is announced
+                      on every cache hit rather than being silent.
+                    -->
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
                 </transformer>
                 <!-- Merge service files rather than letting one jar's win; the
                      audio SPI and Jackson both register services this way. -->
