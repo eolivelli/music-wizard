@@ -46,16 +46,32 @@ public final class Resampler {
      * {@link AudioBuffer}, so without this the buffer's own check would have
      * been the thing reporting a fault the resampler had just introduced.
      *
-     * <p>It moves ordinary output too, and by more than "a rounding difference"
-     * suggests if you count in ulps. Against the previous float arithmetic:
-     * 44.1k to 22.05k is bit-identical, but only because the ratio is exactly
-     * two so no interpolation happens at all; 44.1k to 16k differs on 12.9% of
-     * samples, 22.05k to 44.1k on 14.4%, and 44.1k to 48k on 25.5%, by up to
-     * <b>131,072 ulps</b>. The ulp figure is meaningless -- the differences
-     * cluster at zero crossings, where an ulp is tiny -- and the number that
-     * means something is the absolute one: <b>at most 3.0e-8</b>, about
-     * -150 dBFS, or half a 24-bit LSB. Double is the accurate side of that
-     * difference, and nothing in the suite is within six orders of it.
+     * <p>It moves ordinary output too. Against the previous float arithmetic,
+     * on uniform noise: 44.1k to 16k differs on 13.6% of samples, 22.05k to
+     * 44.1k on 14.3%, 44.1k to 48k on 24.5%. Tonal and music-like material
+     * differs on about 1%, so those are the conservative end. 44.1k to 22.05k
+     * is bit-identical, but only because the ratio is exactly two, so
+     * {@code fraction} is always zero and no interpolation happens at all --
+     * the same holds for 48k to 16k and any other integer ratio, and not
+     * because downsampling is inherently safe.
+     *
+     * <p>The size of the difference is <b>half an ulp of the signal's peak</b>,
+     * because it is a rounding of {@code b - a}. So it scales, and a single
+     * absolute figure is only true at one amplitude:
+     *
+     * <pre>
+     *   peak    worst difference
+     *   0.5     3.0e-8   (-150.5 dBFS)
+     *   1.0     6.0e-8   (-144.5 dBFS)   -- half a 24-bit LSB
+     *   2.0     1.2e-7   (-138.5 dBFS)
+     * </pre>
+     *
+     * <p>Six orders below the tightest tolerance anywhere downstream of this
+     * method, and double is the accurate side of the difference. Do not quote
+     * the ulp count: it runs to the hundreds of thousands, because the
+     * differences sit at zero crossings where an ulp is vanishingly small, and
+     * being a maximum over samples it grows with the length of the signal
+     * rather than converging on a bound.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {
