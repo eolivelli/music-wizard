@@ -79,6 +79,12 @@ import javax.sound.midi.Track;
  * rather than declared; running it over this output would round values that are
  * already exact.
  *
+ * <p>Harmony is estimated here rather than left out, by
+ * {@link SymbolicChordEstimator}. Until #115 it was not, and the consequence was
+ * that a score imported from MIDI carried tempo, meter, keys and notes but had
+ * nothing for {@code mw render} to engrave -- the strongest output the project
+ * has, unreachable from its most reliable input.
+ *
  * <p>What this deliberately does <em>not</em> do is spell pitches. A MIDI number
  * is not a written note -- 61 is both C sharp and D flat -- and choosing between
  * them needs the key and the sounding harmony. Notes therefore leave here with
@@ -268,6 +274,12 @@ public final class MidiTranscriber {
         List<Key> keys = readKeys(tracks, ticksPerQuarter, endTick, tempoMap);
         String title = readTitle(tracks);
 
+        ChordProgression chords = SymbolicChordEstimator.estimate(
+                noteTracks, tempoMap, endBeat, keys, progress);
+        progress.accept(chords.isEmpty()
+                ? "no harmony to chart: nothing here states a chord"
+                : "estimated " + chords.size() + " chord span(s)");
+
         return new Score(
                 Optional.ofNullable(title),
                 Optional.empty(),
@@ -276,7 +288,7 @@ public final class MidiTranscriber {
                 keys,
                 List.of(),
                 noteTracks,
-                ChordProgression.empty(),
+                chords,
                 Lyrics.empty(),
                 durationSeconds);
     }
