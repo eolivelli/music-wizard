@@ -122,7 +122,8 @@ public final class PitchSpeller {
      * and B sharp sounding as MIDI 0 sits in octave -2 -- a legal record that
      * {@code parse} refuses, so it would not survive a config value, a CLI
      * argument or an advisor's reply. A candidate that lands outside the band is
-     * passed over for the enharmonic that does not.
+     * passed over for the enharmonic that does not, and the check lives in
+     * {@code atOctave} so that every route to a spelling passes through it.
      */
     private static final int MIN_OCTAVE = -1;
     private static final int MAX_OCTAVE = 9;
@@ -227,8 +228,11 @@ public final class PitchSpeller {
         // A slash chord's bass is spelled on the symbol already, so honour it
         // before deriving anything.
         if (chord.bass().isPresent() && chord.bass().get().pitchClass() == pitchClass) {
-            return Optional.of(atOctave(chord.bass().get().letter(),
-                    chord.bass().get().accidental(), midiPitch));
+            Optional<PitchSpelling> bass = atOctave(chord.bass().get().letter(),
+                    chord.bass().get().accidental(), midiPitch);
+            if (bass.isPresent()) {
+                return bass;
+            }
         }
         int[] intervals = chord.quality().intervals();
         int[] steps = diatonicSteps(chord.quality());
@@ -245,11 +249,7 @@ public final class PitchSpeller {
                 // the line of fifths rather than emit an impossible accidental.
                 return Optional.empty();
             }
-            int octave = octaveFor(letter, alteration, midiPitch);
-            if (octave < MIN_OCTAVE || octave > MAX_OCTAVE) {
-                return Optional.empty();
-            }
-            return Optional.of(atOctave(letter, Accidental.ofAlteration(alteration), midiPitch));
+            return atOctave(letter, Accidental.ofAlteration(alteration), midiPitch);
         }
         return Optional.empty();
     }
@@ -333,7 +333,7 @@ public final class PitchSpeller {
             if (Math.floorMod(fifths * 7, 12) != pitchClass) {
                 continue;
             }
-            if (!fitsInAWritableOctave(fifths, midiPitch)) {
+            if (spellingOf(fifths, midiPitch).isEmpty()) {
                 continue;
             }
             double distance = Math.abs(fifths - centre);
@@ -352,17 +352,14 @@ public final class PitchSpeller {
             throw new IllegalStateException(
                     "no spelling within two accidentals for pitch class " + pitchClass);
         }
-        int alteration = Math.floorDiv(best + 1, 7);
-        NoteLetter letter = letterOfFifths(best - 7 * alteration);
-        return atOctave(letter, Accidental.ofAlteration(alteration), midiPitch);
+        return spellingOf(best, midiPitch).orElseThrow();
     }
 
-    /** True when this spelling of the pitch lands in a writable octave. */
-    private static boolean fitsInAWritableOctave(int fifths, int midiPitch) {
+    /** The spelling at a point on the line of fifths, if it is writable. */
+    private static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
         int alteration = Math.floorDiv(fifths + 1, 7);
-        NoteLetter letter = letterOfFifths(fifths - 7 * alteration);
-        int octave = octaveFor(letter, alteration, midiPitch);
-        return octave >= MIN_OCTAVE && octave <= MAX_OCTAVE;
+        return atOctave(letterOfFifths(fifths - 7 * alteration),
+                Accidental.ofAlteration(alteration), midiPitch);
     }
 
     /** Position of a written pitch on the line of fifths, C being zero. */
@@ -395,13 +392,18 @@ public final class PitchSpeller {
      * classes, and it is what puts C flat in the octave above the B it sounds
      * as: C flat 4 sounds as MIDI 59, which is B 3.
      */
-    private static PitchSpelling atOctave(NoteLetter letter, Accidental accidental, int midiPitch) {
-        return new PitchSpelling(letter, accidental,
-                octaveFor(letter, accidental.alteration(), midiPitch));
-    }
-
-    private static int octaveFor(NoteLetter letter, int alteration, int midiPitch) {
-        return Math.floorDiv(midiPitch - 12 - letter.naturalPitchClass() - alteration, 12);
+    private static Optional<PitchSpelling> atOctave(NoteLetter letter, Accidental accidental,
+                                                    int midiPitch) {
+        int octave = Math.floorDiv(
+                midiPitch - 12 - letter.naturalPitchClass() - accidental.alteration(), 12);
+        // The one gate, rather than one per caller. There are three routes to a
+        // spelling -- a chord tone, a slash chord's written bass, and the line
+        // of fifths -- and guarding two of them left the third printing B sharp
+        // in octave -2 through the public entry point. A check that has to be
+        // repeated is a check that will be forgotten.
+        return octave < MIN_OCTAVE || octave > MAX_OCTAVE
+                ? Optional.empty()
+                : Optional.of(new PitchSpelling(letter, accidental, octave));
     }
 
     // ---------------------------------------------------------------- lookups

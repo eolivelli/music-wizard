@@ -150,18 +150,89 @@ class SwingDetectionTest {
         }
 
         @Test
-        @DisplayName("a shuffle too hard to straighten is refused rather than clamped")
-        void anUnrepresentableRatioIsNotDeclaredASwing() {
-            // The off-beat window reaches further than the correction map can
-            // represent, so that a late cluster can be seen and measured at all.
-            // Reporting one as a hard swing while leaving the notes where they
-            // fell would engrave an already-shuffled figure under a shuffle
-            // direction, and a reader who obeyed it would swing it twice.
-            for (double phase : new double[] {0.82, 0.85, 0.875}) {
-                assertThat(Quantizer.quantize(pairs(phase, 4)).swing())
-                        .describedAs("off-beat at %s", phase)
-                        .isEqualTo(SwingFeel.STRAIGHT);
+        @DisplayName("a very hard shuffle is straightened, not left to collapse onto the beat")
+        void theWidestShuffleTheWindowSeesIsStillStraightened() {
+            // Everything the detector's window can see has to be something the
+            // correction map can straighten, because refusing one of these does
+            // not leave the notes alone -- it leaves them at 0.85 of the beat
+            // with nothing to move them, and the grid vote then puts every one
+            // on the next downbeat, in unison with the note already there.
+            for (double phase : new double[] {0.80, 0.82, 0.85}) {
+                QuantizedScore quantized = Quantizer.quantize(pairs(phase, 4));
+
+                assertThat(quantized.swing().swung())
+                        .describedAs("off-beat at %s", phase).isTrue();
+                // The collapse signature is every bar on the beat grid with the
+                // off-beats folded onto the downbeats. No bar may do that, and
+                // most come out as plain eighths; a shuffle this wide leaves
+                // enough spread that the odd bar reads as triplets instead,
+                // which is a reading rather than a collapse.
+                assertThat(quantized.grids()).describedAs("off-beat at %s", phase)
+                        .noneMatch(g -> g.resolution() == GridResolution.BEAT);
+                assertThat(quantized.grids().stream()
+                        .filter(g -> g.resolution() == GridResolution.HALF_BEAT).count())
+                        .describedAs("off-beat at %s: eighth-grid bars", phase)
+                        .isGreaterThanOrEqualTo(quantized.grids().size() - 1);
+
+                // Refusing this material instead put all sixty-four notes on
+                // thirty-three downbeats. A few of the widest off-beats still
+                // collide -- see #110 -- but the alternation survives.
+                List<Double> onsets = quantized.score().tracks().get(0).notes().stream()
+                        .map(n -> n.onsetBeat().orElseThrow())
+                        .toList();
+                assertThat(onsets.stream().distinct().count())
+                        .describedAs("off-beat at %s: distinct onsets", phase)
+                        .isGreaterThan((long) (onsets.size() * 0.9));
             }
+        }
+
+        @Test
+        @DisplayName("a swing found in the 4/4 bars is not then applied to the 6/8 ones")
+        void compoundBarsAreLeftAloneByASwingFoundElsewhere() {
+            // Excluding compound bars from the measurement is only half of it.
+            // One verdict is reached for the whole piece, so a score that swings
+            // its 4/4 verses and then goes to 6/8 will hand that verdict to the
+            // compound bars -- and de-swinging their plain eighths puts them on
+            // a duplet grid, which is the defect the exclusion was for.
+            TempoMap tempoMap = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(8, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(tempoMap, 30);
+            for (int beat = 0; beat < 32; beat++) {
+                performance.note(60, beat, SHUFFLE);
+                performance.note(60, beat + SHUFFLE, 1 - SHUFFLE);
+            }
+            for (int beat = 0; beat < 16; beat++) {
+                performance.note(60, 32 + beat * 1.5, 1.0);
+                performance.note(60, 32 + beat * 1.5 + 1.0, 0.5);
+            }
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.swing().swung()).isTrue();
+            assertThat(quantized.gridAtBar(0).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.HALF_BEAT);
+            assertThat(quantized.gridAtBar(8).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.THIRD_BEAT);
+            assertThat(quantized.gridAtBar(8).orElseThrow().tuplet()).isEmpty();
+            assertThat(quantized.score().tracks().get(0).notes().stream()
+                    .map(n -> n.onsetBeat().orElseThrow())
+                    .filter(b -> b >= 32 && b < 35)
+                    .distinct())
+                    .containsExactly(32.0, 33.0, 33.5, 34.5);
+        }
+
+        @Test
+        @DisplayName("off-beats with no on-beat cluster are not bimodal, so not a shuffle")
+        void aShuffleNeedsBothClusters() {
+            // Every onset late in its beat and nothing on the beat at all is a
+            // displaced pulse, not a swung one, and reading it as swing would
+            // move every note in the piece.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
+            Performance performance = new Performance(tempoMap, 31);
+            for (int beat = 0; beat < BARS * 4; beat++) {
+                performance.note(60, beat + SHUFFLE, 1 - SHUFFLE);
+            }
+            assertThat(Quantizer.quantize(performance.score()).swing())
+                    .isEqualTo(SwingFeel.STRAIGHT);
         }
 
         @Test

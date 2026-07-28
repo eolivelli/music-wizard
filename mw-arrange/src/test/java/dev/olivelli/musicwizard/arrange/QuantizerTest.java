@@ -237,6 +237,84 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("a rushed downbeat votes, and is measured, in the bar it reaches")
+        void aRushedDownbeatBelongsToTheBarItPrintsIn() {
+            // Ten milliseconds early is a downbeat, not a pickup. Counting it in
+            // the bar behind gives that bar an extra note it never shows -- with
+            // two others there, enough to make it look like a bar of whole notes
+            // -- and then hands the rushed note a quarter-note value from a bar
+            // it does not appear in, printed among sextuplets.
+            // Two sections so the two bars may genuinely differ: eighths, then
+            // sextuplets. The rushed note prints on the second bar's downbeat
+            // and has to take that bar's note value with it.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 37);
+            performance.section(0, 4).section(4, 8);
+            for (int i = 0; i < 8; i++) {
+                performance.exact(62, i * 0.5, 0.45);
+            }
+            for (int i = 0; i < 24; i++) {
+                performance.exact(60, 4.0 + i / 6.0, 1 / 6.0);
+            }
+            List<Note> notes = new java.util.ArrayList<>(performance.notes());
+            notes.add(Note.ofSeconds(tempoMap.beatsToSeconds(4.0) - 0.010, 0.1, 67,
+                    Confidence.CERTAIN));
+
+            QuantizedScore quantized = Quantizer.quantize(scoreOf(tempoMap, notes,
+                    performance.sections()));
+
+            assertThat(quantized.gridAtBar(0).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.HALF_BEAT);
+            assertThat(quantized.gridAtBar(1).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.SIXTH_BEAT);
+            Note rushed = quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 67)
+                    .findFirst().orElseThrow();
+            assertThat(rushed.onsetBeat()).contains(4.0);
+            assertThat(rushed.durationBeats().orElseThrow())
+                    .isCloseTo(1 / 6.0, within(1e-12));
+        }
+
+        @Test
+        @DisplayName("a note crossing two bar lines is canonical only while the division holds")
+        void durationsAcrossSeveralBars() {
+            // The uniform-step count walks every bar the note crosses, not just
+            // its two ends. A middle bar divided differently has to break the
+            // count, or the note is measured in steps two of its three bars do
+            // not use.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 38);
+            performance.section(0, 4).section(4, 8).section(8, 12);
+            for (int i = 0; i < 12; i++) {
+                performance.exact(60, i / 3.0, 1 / 3.0);
+            }
+            for (int i = 0; i < 16; i++) {
+                performance.exact(60, 4.0 + i * 0.25, 0.25);
+            }
+            for (int i = 0; i < 12; i++) {
+                performance.exact(60, 8.0 + i / 3.0, 1 / 3.0);
+            }
+            // Played to nine beats exactly: the articulation allowance may carry
+            // a release to the next grid position and no further, so a note
+            // already on one stays where it is.
+            performance.exact(72, 0.0, 9.0);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+            assertThat(List.of(
+                    quantized.gridAtBar(0).orElseThrow().resolution(),
+                    quantized.gridAtBar(1).orElseThrow().resolution(),
+                    quantized.gridAtBar(2).orElseThrow().resolution()))
+                    .containsExactly(GridResolution.THIRD_BEAT, GridResolution.QUARTER_BEAT,
+                            GridResolution.THIRD_BEAT);
+
+            Note held = quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 72)
+                    .findFirst().orElseThrow();
+            assertThat(held.onsetBeat()).contains(0.0);
+            assertThat(held.durationBeats().orElseThrow()).isCloseTo(9.0, within(1e-9));
+        }
+
+        @Test
         @DisplayName("a duration on a tuplet grid is one number, not five that nearly agree")
         void durationsAreCanonical() {
             // Positions on a triplet grid are not representable, so subtracting
@@ -587,9 +665,14 @@ class QuantizerTest {
     }
 
     private static Score scoreOf(TempoMap tempoMap, List<Note> notes) {
+        return scoreOf(tempoMap, notes, List.of());
+    }
+
+    private static Score scoreOf(TempoMap tempoMap, List<Note> notes,
+                                 List<dev.olivelli.musicwizard.core.model.Section> sections) {
         double duration = notes.stream().mapToDouble(Note::offsetSeconds).max().orElse(1) + 1;
         return new Score(Optional.empty(), Optional.empty(), tempoMap, Optional.empty(),
-                List.of(), List.of(),
+                List.of(), sections,
                 List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN)),
                 ChordProgression.empty(), Lyrics.empty(), duration);
     }

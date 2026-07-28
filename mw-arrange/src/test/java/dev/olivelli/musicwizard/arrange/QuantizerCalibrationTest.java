@@ -77,7 +77,7 @@ class QuantizerCalibrationTest {
         //   BPM        60   90  120  140  160  180  200
         //   quarters   50   50   50   50   50   50   50
         //   eighths    50   50   50   50   50   50   48
-        //   trip 8ths  50   50   50   50   50   49   45
+        //   trip 8ths  50   50   50   50   50   50   45
         //   16ths      50   50   50   48   42   29   21
         //   trip 16ths 50   50   49   46   41   38   32
         //

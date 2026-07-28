@@ -113,7 +113,7 @@ public final class Quantizer {
             return new QuantizedScore(score, List.of(), SwingFeel.STRAIGHT);
         }
 
-        BarTable bars = BarTable.spanning(tempoMap, allNotes, settings);
+        BarTable bars = BarTable.spanning(tempoMap, allNotes);
         SwingFeel swing = settings.detectSwing()
                 ? SwingDetector.detect(allNotes, bars)
                 : SwingFeel.STRAIGHT;
@@ -152,32 +152,68 @@ public final class Quantizer {
     private static GridResolution[] chooseGrids(List<Note> notes, Score score, BarTable bars,
                                                 SwingFeel swing, QuantizationSettings settings) {
         GridResolution[] candidates = GridResolution.values();
-        double[][] cost = new double[bars.barCount()][candidates.length];
+        boolean[] sectionStart = sectionStarts(score, bars);
+        double changePenalty = settings.gridChangePenalty();
 
+        // Decoded twice. A note played a hair early against a bar line is
+        // printed on that bar line, which belongs to the next bar, and it ought
+        // to vote where it prints -- one note's complexity on the wrong bar's
+        // tally is enough to flip a sparse bar from eighths to quarters. But
+        // whether a note reaches the line is a question about the grid, and
+        // answering it per grid is worse than not answering it at all: the six
+        // costs in a bar would then be sums over six different sets of notes,
+        // and comparing them stops meaning anything. Measured, that cost two
+        // seeds of the hardest calibration material.
+        //
+        // So the first pass attributes every note to the bar it sounded in,
+        // which is consistent if occasionally wrong, and the second re-attributes
+        // using the grid the first pass settled on. Within each pass every
+        // candidate sums the same notes.
+        GridResolution[] provisional = decode(
+                costs(notes, bars, swing, settings, candidates, null),
+                candidates, sectionStart, changePenalty);
+        return decode(
+                costs(notes, bars, swing, settings, candidates, provisional),
+                candidates, sectionStart, changePenalty);
+    }
+
+    /**
+     * The cost of every grid in every bar.
+     *
+     * <p>A bar with no onsets accumulates nothing at all, so it costs zero on
+     * every grid and inherits its neighbours' rather than voting for whole notes
+     * and charging the section two grid changes to get back around it.
+     *
+     * @param provisional the grids a previous pass chose, used only to decide
+     *                    which bar each note is printed in; null on the first
+     *                    pass, when every note votes where it sounded
+     */
+    private static double[][] costs(List<Note> notes, BarTable bars, SwingFeel swing,
+                                    QuantizationSettings settings, GridResolution[] candidates,
+                                    GridResolution[] provisional) {
+        double[][] cost = new double[bars.barCount()][candidates.length];
         for (Note note : notes) {
             double written = bars.writtenOnsetBeat(note, swing);
             int bar = bars.barOf(written);
             double beatInBar = bars.beatInBar(written, bar);
             TimeSignature meter = bars.meterOf(bar);
+            int votingBar = bar;
+            if (provisional != null && bar + 1 < cost.length
+                    && snapWithin(beatInBar, provisional[bar].stepQuarters(meter), meter)
+                            >= meter.quarterBeatsPerBar()) {
+                votingBar = bar + 1;
+            }
+            // Charged in the meter of the bar the note is printed in. Across a
+            // 4/4 to 6/8 change the two disagree about which divisions are
+            // tuplets, and the note is read under the new signature.
+            TimeSignature votingMeter = bars.meterOf(votingBar);
             for (int g = 0; g < candidates.length; g++) {
                 double step = candidates[g].stepQuarters(meter);
-                cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
-                        + complexity(candidates[g], meter, settings);
+                cost[votingBar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
+                        + complexity(candidates[g], votingMeter, settings);
             }
         }
-        // A bar with no onsets accumulates nothing at all, so it costs zero on
-        // every grid and inherits its neighbours' rather than voting for whole
-        // notes and charging the section two grid changes to get back around it.
-        //
-        // A note played a hair early against a bar line votes in the bar it
-        // sounded in, not the one it will be printed in. That is deliberately
-        // left alone: the bar line is a grid position on every candidate, so
-        // such a note deviates by the same amount whichever grid is asked, and
-        // all it carries into the tally is one note's complexity -- the same
-        // vector of costs it would have carried into the next bar. Where it is
-        // published, which is what a reader sees, is decided after snapping.
-
-        return decode(cost, candidates, sectionStarts(score, bars), settings.gridChangePenalty());
+        return cost;
     }
 
     /**
@@ -297,14 +333,37 @@ public final class Quantizer {
         TimeSignature onsetMeter = bars.meterOf(onsetBar);
         double onsetStep = perBar[onsetBar].stepQuarters(onsetMeter);
         double onsetSteps = stepsWithin(bars.beatInBar(writtenOnset, onsetBar), onsetStep, onsetMeter);
+        // A note rushed onto the next bar's line is printed there, so it takes
+        // that bar's grid with it. Leaving it on the bar it sounded in gives it
+        // a note value from a bar it does not appear in -- a downbeat ten
+        // milliseconds early, printed among sextuplets, coming out as a whole
+        // quarter because the bar behind it was counted in beats.
+        if (onsetSteps >= onsetMeter.quarterBeatsPerBar() / onsetStep
+                && onsetBar + 1 < bars.barCount()) {
+            onsetBar++;
+            onsetMeter = bars.meterOf(onsetBar);
+            onsetStep = perBar[onsetBar].stepQuarters(onsetMeter);
+            onsetSteps = 0;
+        }
         double onsetBeat = bars.startBeat(onsetBar) + onsetSteps * onsetStep;
 
-        double writtenOffset = bars.writtenOffsetBeat(note, swing, settings.articulationRatio());
+        double writtenOffset = bars.writtenOffsetBeat(note, swing);
         int offsetBar = bars.barOf(writtenOffset);
         TimeSignature offsetMeter = bars.meterOf(offsetBar);
         double offsetStep = perBar[offsetBar].stepQuarters(offsetMeter);
-        double offsetSteps =
-                stepsWithin(bars.beatInBar(writtenOffset, offsetBar), offsetStep, offsetMeter);
+        double offsetInBar = bars.beatInBar(writtenOffset, offsetBar);
+        // The articulation allowance, applied here rather than to the raw
+        // position because it needs the grid. It may carry a release up to the
+        // next grid position and no further: its whole job is to recover a note
+        // that rounded down, and a proportional stretch with nothing to stop it
+        // grows with the note. A half note held its full length on a sixteenth
+        // grid came out as a ninth sixteenth, and a nine-beat note as a ten.
+        double ceiling = Math.min(Math.ceil(offsetInBar / offsetStep) * offsetStep,
+                offsetMeter.quarterBeatsPerBar());
+        double stretched = Math.min(
+                offsetInBar + (writtenOffset - onsetBeat) * (1 / settings.articulationRatio() - 1),
+                ceiling);
+        double offsetSteps = stepsWithin(stretched, offsetStep, offsetMeter);
 
         // Counted in whole grid steps and multiplied once, rather than
         // subtracting two snapped positions. On a triplet grid the step is not
@@ -391,7 +450,11 @@ public final class Quantizer {
      */
     private static final class BarTable {
 
-        /** Spare bars past the last note, for an offset that lands on the end. */
+        /**
+         * Spare bars past the last note, so that an offset landing on the final
+         * bar line, or the articulation allowance carrying it there, still has
+         * somewhere to be.
+         */
         private static final int TRAILING_BARS = 2;
 
         private final TempoMap tempoMap;
@@ -405,14 +468,10 @@ public final class Quantizer {
         }
 
         /** A table long enough to hold every note's onset and stretched offset. */
-        static BarTable spanning(TempoMap tempoMap, List<Note> notes,
-                                 QuantizationSettings settings) {
+        static BarTable spanning(TempoMap tempoMap, List<Note> notes) {
             double lastBeat = 0;
             for (Note note : notes) {
-                double onset = rawBeat(tempoMap, note.onsetSeconds());
-                double end = rawBeat(tempoMap, note.offsetSeconds());
-                lastBeat = Math.max(lastBeat,
-                        onset + (end - onset) / settings.articulationRatio());
+                lastBeat = Math.max(lastBeat, rawBeat(tempoMap, note.offsetSeconds()));
             }
             // Bounded before converting, not after. TempoMap.toMusicalTime
             // rejects anything past bar Integer.MAX_VALUE with a message about
@@ -495,19 +554,14 @@ public final class Quantizer {
         }
 
         /**
-         * Where a note's release should be written.
+         * Where a note's release was played, on the written timeline.
          *
-         * <p>The played length is divided by the articulation allowance first.
-         * A player holds a quarter note for something like nine tenths of its
-         * written value, and snapping that release to the nearest grid position
-         * prints a dotted eighth followed by a rest on any grid finer than the
-         * eighth. Stretching first is what makes an ordinary detached
-         * performance come out as plain quarter notes.
+         * <p>The articulation allowance is not applied here: it needs to know
+         * the grid step in order to be bounded by it, and the grid is chosen
+         * later. See {@link Quantizer#snap}.
          */
-        double writtenOffsetBeat(Note note, SwingFeel swing, double articulationRatio) {
-            double onset = rawBeat(note.onsetSeconds());
-            double end = rawBeat(note.offsetSeconds());
-            return deswing(onset + (end - onset) / articulationRatio, swing);
+        double writtenOffsetBeat(Note note, SwingFeel swing) {
+            return deswing(rawBeat(note.offsetSeconds()), swing);
         }
 
         /**
@@ -523,6 +577,17 @@ public final class Quantizer {
                 return rawBeat;
             }
             int bar = barOf(rawBeat);
+            // Checked here and not only where the feel was measured. A score
+            // that swings its 4/4 verses and then goes to 6/8 gets one verdict
+            // for the whole piece, and applying it to the compound bars puts
+            // their plain eighths onto a duplet grid -- the very defect
+            // excluding compound bars from the measurement was meant to remove.
+            // The measurement and the correction are two readers of the same
+            // fact, and guarding only the one the bug was reported against is
+            // how a fix stops at the layer it was noticed on.
+            if (meter[bar].isCompound()) {
+                return rawBeat;
+            }
             double beatUnit = meter[bar].beatUnitQuarters();
             double position = beatInBar(rawBeat, bar) / beatUnit;
             double index = Math.floor(position);
@@ -574,9 +639,16 @@ public final class Quantizer {
         /** Onsets within this much of a beat count as being on the beat. */
         private static final double ON_BEAT_WINDOW = 0.12;
 
-        /** The part of the beat an off-beat eighth can occupy. */
+        /**
+         * The part of the beat an off-beat eighth can occupy.
+         *
+         * <p>The far edge is {@link SwingFeel#MAX_RATIO} rather than a number of
+         * its own, so that everything this window can see is something the
+         * correction map can straighten. The two drifting apart is what put
+         * sixty-four notes on thirty-three downbeats.
+         */
         private static final double OFF_BEAT_LOW = 0.30;
-        private static final double OFF_BEAT_HIGH = 0.88;
+        private static final double OFF_BEAT_HIGH = SwingFeel.MAX_RATIO;
 
         /** Below this many off-beat onsets there is nothing to average. */
         private static final int MIN_OFF_BEAT = 8;
@@ -624,15 +696,7 @@ public final class Quantizer {
                     .mapToDouble(p -> (p - mean) * (p - mean))
                     .sum() / offBeat.size();
             double spread = Math.sqrt(variance);
-            // The off-beat window is wider than the band the correction map can
-            // represent, on purpose: a cluster out at 0.85 has to be seen in
-            // order to be measured, and a wide window is what lets the spread
-            // test reject a run of sixteenths. But a mean outside the band is
-            // then a shuffle nothing here can straighten, and clamping it into
-            // range would report a feel the notes were never moved to match --
-            // a triplet figure engraved under a hard-swing direction, shuffled
-            // twice by any reader who obeys it. So it is refused instead.
-            if (mean < SWING_THRESHOLD || mean > SwingFeel.MAX_RATIO || spread > MAX_SPREAD) {
+            if (mean < SWING_THRESHOLD || spread > MAX_SPREAD) {
                 return SwingFeel.STRAIGHT;
             }
 

@@ -40,9 +40,24 @@ import java.util.Objects;
  */
 public record SwingFeel(boolean swung, double ratio, Confidence confidence) {
 
-    /** The narrowest and widest shuffle the de-swing map will accept. */
+    /**
+     * The narrowest and widest shuffle the de-swing map will accept.
+     *
+     * <p>The upper bound is also the far edge of the window the detector looks
+     * in, and the two are the same number on purpose. Letting the window reach
+     * past the band -- so that a late cluster can be measured, which is what
+     * lets the spread test reject a run of sixteenths -- and then refusing
+     * anything that lands out there does not leave the notes alone. It leaves
+     * them at 0.85 of the beat with nothing to straighten them, and the grid
+     * vote then puts every one of them on the next downbeat, in unison with the
+     * note already there. Measured: sixty-four notes, thirty-one collisions,
+     * every one printed as a quarter. A shuffle this hard is unusual and
+     * writing it as straight eighths under a "hard swing" direction is a
+     * stretch, but it keeps the note count, the alternation and the bar, which
+     * is what a reader needs.
+     */
     static final double MIN_RATIO = 0.5;
-    static final double MAX_RATIO = 0.8;
+    static final double MAX_RATIO = 0.88;
 
     /** No swing: off-beats sit halfway through the beat. */
     public static final SwingFeel STRAIGHT = new SwingFeel(false, 0.5, Confidence.UNKNOWN);

@@ -112,6 +112,24 @@ class PitchSpellerTest {
         }
 
         @Test
+        @DisplayName("a slash chord's bass is checked for a writable octave like everything else")
+        void slashChordBassIsOctaveChecked() {
+            // Three routes reach a spelling -- a chord tone, a slash chord's
+            // written bass, and the line of fifths. Guarding two of them left
+            // this one printing B sharp in octave -2, which PitchSpelling.parse
+            // refuses, straight out of the public entry point.
+            Chord overBSharp = chord("E4", ChordQuality.MINOR)
+                    .withBass(new PitchSpelling(
+                            dev.olivelli.musicwizard.core.model.NoteLetter.B,
+                            Accidental.SHARP, 4));
+            PitchSpelling spelled = PitchSpeller.spell(0, Optional.of(overBSharp),
+                    Optional.of(key("B3", Mode.MAJOR)));
+
+            assertThat(spelled.midiPitch()).isZero();
+            assertThat(PitchSpelling.parse(spelled.displayName())).isEqualTo(spelled);
+        }
+
+        @Test
         @DisplayName("a pitch outside the chord falls through to the key")
         void nonChordTonesUseTheKey() {
             Chord dFlat = chord("Db4", ChordQuality.MAJOR);

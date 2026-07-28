@@ -109,8 +109,11 @@ public enum GridResolution {
     }
 
     /**
-     * How many beams the note value at this grid carries: 0 for the counted
-     * beat, 1 for an eighth, 2 for a sixteenth, 3 for a thirty-second.
+     * How many beams the note value at this grid carries, counted down from
+     * the meter's own beat: 0 for the counted beat itself, then 1, 2 and 3 for
+     * each halving or thirding below it. In x/4 those are the quarter, eighth,
+     * sixteenth and thirty-second; in 7/16 the beat is already a sixteenth, and
+     * depth 1 is a thirty-second.
      *
      * <p>This is the quantity the complexity penalty is charged on, because it
      * is what a reader pays: shorter values are harder to read than longer ones,

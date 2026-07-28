@@ -136,6 +136,10 @@ final class Performance {
         return List.copyOf(notes);
     }
 
+    List<Section> sections() {
+        return List.copyOf(sections);
+    }
+
     Score score() {
         return score(ChordProgression.empty(), List.of());
     }
