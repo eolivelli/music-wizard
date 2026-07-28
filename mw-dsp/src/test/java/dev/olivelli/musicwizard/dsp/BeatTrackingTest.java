@@ -444,9 +444,16 @@ class BeatTrackingTest {
                 }
             }
 
-            // Against the click floor, which is the claim -- a hole must not
-            // make smooth material readable as a beat -- rather than against a
-            // number chosen after the fact.
+            // Two bounds, and it is the second that does the work -- the
+            // opposite of what this comment used to claim. Against the previous
+            // scheme these nine points give 0.7045, which is under the click
+            // floor, so the ordering assertion passes and only the 0.6 catches
+            // it. And 0.6 IS a number chosen after the fact: the nine-point
+            // worst is 0.4847, so it is the measured value plus about a quarter.
+            //
+            // The ordering is still worth asserting, because it is the claim a
+            // reader cares about and it cannot drift with the fixtures; but it
+            // is a statement of intent, not the tripwire.
             double weakestClick = TempoEstimator.estimate(
                     envelopeOf(SignalFactory.clickTrack(196, 20, RATE))).strength();
             assertThat(worst).isLessThan(weakestClick);

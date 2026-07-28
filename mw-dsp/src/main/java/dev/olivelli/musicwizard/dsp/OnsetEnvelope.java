@@ -80,14 +80,20 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * amplitude-modulating a tone at 10% depth and reading the band series back
      * at eight times the hop rate -- so the measurement cannot itself alias --
      * with a windowed transform at the modulation rate, the window's own
-     * envelope corner is <b>about 24 Hz</b>: 23.5 to 24.8 across carriers from
-     * 440 Hz to 2 kHz, and stable to 0.05 Hz against the choice of reference.
+     * envelope corner is <b>23 to 29 Hz</b> across carriers from 220 Hz to
+     * 3 kHz, read on the mel band the tone actually lands in: 28.4 at 440 Hz,
+     * 28.8 at 660, 24.2 at 1 kHz, 23.2 at 2 kHz.
+     *
+     * <p>Read on any other band it is not that at all -- the neighbours of
+     * those four give 20.6, 57.1, 21.8 and 23.4 -- so this is a loose quantity
+     * and quoting it to three figures, as two earlier versions of this comment
+     * did, claims a determinacy it does not have.
      *
      * <p>So the filter is slightly <em>tighter</em> than the window, not
      * matched to it. That is worth stating the right way round, because it
-     * names the cost: between 17.5 and 24 Hz there is genuine envelope
-     * detail being attenuated, which is why attacks come out about half a frame
-     * wider and why peakiness falls a little. What it buys is that the filter
+     * names the cost: between 17.5 Hz and the low twenties there is genuine
+     * envelope detail being attenuated, which is why attacks come out about
+     * half a frame wider and why peakiness falls a little. What it buys is that the filter
      * is well clear of the interference region -- on a held 440 Hz note with
      * eight partials, the bands carrying the note put their energy at the
      * partial differences, 440 Hz and up, with four to six orders of magnitude
@@ -314,9 +320,18 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * <p>It does not beat it everywhere, and that is worth stating rather than
      * rounding off: at 27% of those configurations this is still worse than not
      * filtering, by up to 0.188, and its worst point of 0.504 is above the 0.434
-     * that no filtering reaches. What changed is the distance to the click
-     * floor, from 0.008 to 0.247 -- from a margin that could be crossed to one
-     * that could not.
+     * that no filtering reaches.
+     *
+     * <p>And those 245 configurations are holes of 1 to 5 seconds beginning at
+     * 1 second or later, which is the shape of grid that has now twice been
+     * mistaken for a general result. It is not one. A hole that begins at
+     * {@code t = 0} and covers most of the clip -- leaving one short run at the
+     * end -- reaches <b>0.775, above the click floor</b>, at 9 of 36 lengths
+     * tried between 14 and 17.5 seconds of 20. Filtering per run neither causes
+     * that nor fixes it: a leading hole leaves exactly one run, so this and the
+     * scheme it replaced agree there to four decimal places. The honest summary
+     * is that per-run is the best of the three everywhere measured and that no
+     * variant is safe against an arbitrary hole.
      *
      * <p>None of this is reachable from a real recording -- a dropout is
      * digital silence, not NaN, and silence is filtered like anything else. It
