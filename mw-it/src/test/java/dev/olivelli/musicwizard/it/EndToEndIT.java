@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
@@ -29,6 +30,7 @@ import dev.olivelli.musicwizard.testkit.SignalFactory;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +85,48 @@ class EndToEndIT {
 
         String chart = ChordChart.toText(reloaded);
         assertThat(chart).contains("| C").contains("| G").contains("| Am").contains("| F");
+    }
+
+    @Test
+    @DisplayName("the bar lines land where the chords change")
+    void downbeatsAgreeWithChords() {
+        // The stages agreeing with each other is the whole point of running them
+        // in one pipeline, and the seam this crosses is the one issue #27 found
+        // broken: beats and chords agreed, and the downbeats were half a bar out
+        // because they were phased from onset energy rather than from harmony.
+        // Only the transcriber exercises the ordering that makes the harmonic
+        // phase available, so it cannot be checked in mw-dsp alone.
+        Score score = new AudioTranscriber().transcribe(
+                writeFourChordSong(), AudioTranscriber.Options.defaults());
+
+        List<Double> downbeats = score.beatGrid().orElseThrow().downbeatTimes();
+        assertThat(downbeats).isNotEmpty();
+        for (Chord chord : score.chords().chords()) {
+            assertThat(downbeats).anySatisfy(downbeat ->
+                    assertThat(downbeat).isCloseTo(chord.startSeconds(), within(0.06)));
+        }
+    }
+
+    @Test
+    @DisplayName("a clip too short to hold a bar still transcribes")
+    void veryShortClipStillTranscribes() {
+        // A clip this short tracks exactly one beat, and one beat means no beat
+        // has chroma on both sides of it -- so there is nothing for the downbeat
+        // stage to score. It has to fall back rather than reject the input:
+        // Chroma.beatSynchronous cannot produce a beat-synchronous chroma from a
+        // single beat, so validating that before checking whether there is
+        // anything to score turned a transcribable recording into an error.
+        // Reachable only with a tempo override, since inferring a tempo from one
+        // beat fails earlier and for its own reasons.
+        float[] samples = SignalFactory.chord(
+                SignalFactory.majorTriad(60), 0.3, SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path source = tempDirectory.resolve("blip.wav");
+        SignalFactory.writeWav(source, samples, SignalFactory.DEFAULT_SAMPLE_RATE);
+
+        Score score = new AudioTranscriber().transcribe(
+                source, new AudioTranscriber.Options(120.0, null, null));
+
+        assertThat(score.beatGrid().orElseThrow().downbeatTimes()).hasSize(1);
     }
 
     @Test
