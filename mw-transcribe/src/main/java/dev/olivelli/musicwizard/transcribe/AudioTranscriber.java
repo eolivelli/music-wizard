@@ -448,10 +448,12 @@ public final class AudioTranscriber {
      *
      * <p>The two counts meet at two beats to the bar, where being lost between
      * two candidates and being lost among every phase there is are the same
-     * predicament and both give a half. Below the boundary at one beat to the bar
-     * this method would still give a half, which is wrong -- there is no phase to
-     * be lost among -- and the caller supplies the certainty rather than this
-     * method agreeing with itself; that meter never reaches here.
+     * predicament and both give a half. At one beat to the bar the two branches
+     * part company instead: the out-of-range count reaches certainty, correctly,
+     * while the falloff still bottoms out at a half against a rival that cannot
+     * exist. So it is the caller that supplies the certainty for that meter,
+     * rather than this method agreeing with itself, and that meter never reaches
+     * here.
      *
      * <p>What this is <em>not</em> ordered against, though an earlier draft said
      * it was, is {@link DownbeatEstimator}'s floor. That floor is 0.35 at every

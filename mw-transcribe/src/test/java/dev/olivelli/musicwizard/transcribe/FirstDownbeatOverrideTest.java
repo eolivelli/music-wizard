@@ -36,9 +36,24 @@ import org.junit.jupiter.api.Test;
  * <p>It was carried from the command line through the config into
  * {@code Options} and then never read, so the tool accepted the correction
  * CLAUDE.md calls one of the two highest-value a user can make, persisted it,
- * and ignored it. The tests here are written so that they fail against that
- * code: each one asserts that a requested downbeat <em>changes</em> the grid,
- * which is precisely what the ignored option could not do.
+ * and ignored it.
+ *
+ * <p>Eleven of these fifteen tests fail against that code, by asserting that a
+ * requested downbeat <em>changes</em> the grid, which is precisely what the
+ * ignored option could not do. The four that do not are worth knowing apart,
+ * because a test that passes both ways is not a regression test for the bug it
+ * sits beside:
+ *
+ * <ul>
+ * <li>{@code doesNotDisturbTheTempoMap} and {@code rejectsNonsenseDownbeats}
+ *     guard against an interaction and an input this change could introduce,
+ *     rather than reproducing anything.</li>
+ * <li>{@code snapConfidenceBoundsAmbiguityInBothDirections} and
+ *     {@code oneBeatToTheBarIsAlwaysCertain} are regression tests for defects
+ *     found in review of the fix itself -- a confidence scale that over-reported
+ *     a coin-flip phase, and a phase that cannot be wrong ranked below one that
+ *     can. They gate this file's own invariants, not #67.</li>
+ * </ul>
  */
 class FirstDownbeatOverrideTest {
 
