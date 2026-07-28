@@ -138,6 +138,23 @@ class RenderPartsTest {
         }
 
         @Test
+        @DisplayName("a list of separators and nothing else is a usage error, not an empty run")
+        void rejectsAListOfSeparators() {
+            // picocli requires one *argument*, not one value: "," splits into
+            // none. Round 3 removed the guard for this on the strength of an
+            // argument rather than a run, and the command then printed an empty
+            // parts line and exited 1 -- the code it reserves for "the score had
+            // nothing to engrave" -- with no message at all.
+            Path workspace = audioWorkspace("song", fourChords());
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--parts", ",", "--no-pdf");
+
+            assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.USAGE);
+            assertThat(render.err()).contains("--parts was given no part names");
+        }
+
+        @Test
         @DisplayName("an unknown part is a usage error naming the ones that exist")
         void rejectsAnUnknownPart() {
             Path workspace = audioWorkspace("song", fourChords());
@@ -205,7 +222,7 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("no chord progression in this score: it holds 2 part(s)")
+                    .contains("no chord progression, though it holds 2 part(s)")
                     .contains("(#115)");
             // The empty chart is not written at all: a file saying "(no chords
             // were found)" is a file a user has to open to learn nothing.
@@ -222,7 +239,7 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("there are no parts in it either")
+                    .contains("no chord progression, and no parts either")
                     .doesNotContain("#115");
         }
 
@@ -252,12 +269,15 @@ class RenderPartsTest {
             CliRunner.Result render = CliRunner.run("render", root.toString(), "--no-pdf");
 
             assertThat(render.out())
-                    .contains("there are no parts in it either")
-                    // The round 1 wording, which named a source kind this
-                    // command cannot know. Pinned by name rather than only by
-                    // the absence of the word "audio", because the bug was a
-                    // specific wrong sentence and not a stray adjective.
+                    .contains("no chord progression, and no parts either")
+                    // Every wording this sentence has had that reached past what
+                    // it can know, pinned by name. Two of them named a source
+                    // kind; the third claimed a mechanism that is false on the
+                    // audio path. The bug each time was a specific wrong
+                    // sentence, not a stray adjective.
                     .doesNotContain("the analysis that produced it found no harmony")
+                    .doesNotContain("nothing for harmony to be derived from")
+                    .doesNotContain("nothing in it to engrave")
                     .doesNotContain("recording")
                     .doesNotContain("audio")
                     .doesNotContain("MIDI file");

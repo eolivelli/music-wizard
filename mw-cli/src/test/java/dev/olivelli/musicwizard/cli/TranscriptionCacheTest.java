@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.StageCache;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
+import dev.olivelli.musicwizard.testkit.SignalFactory;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -179,6 +180,42 @@ class TranscriptionCacheTest {
         assertThat(analyze.err()).contains("a cached analysis could not be read");
         assertThat(workspace().readScore().orElseThrow().durationSeconds())
                 .isCloseTo(18.0, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("--skip-separation reaches the key and the warning from a real audio run")
+    void skipSeparationIsWiredUpOnTheAudioPath() {
+        // Through the CLI on real audio, because the two halves of round 3's fix
+        // that a key-builder test cannot reach are the wiring: whether the flag
+        // is read out of the config into the key at all, and whether the warning
+        // fires on this path or only on the MIDI one. Round 4 found both mutants
+        // surviving a suite of 43.
+        //
+        // A short WAV, decoded by the JDK's own provider: no external binary and
+        // nothing downloaded, so the fast suite stays fast and offline.
+        Path source = directory.resolve("tone.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 1.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("tone.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                .isZero();
+
+        CliRunner.Result first = CliRunner.run("analyze", root.toString());
+        CliRunner.Result second = CliRunner.run("analyze", root.toString());
+        CliRunner.Result skipped = CliRunner.run(
+                "analyze", root.toString(), "--skip-separation");
+
+        assertThat(first.exitCode()).as(first.all()).isZero();
+        assertThat(second.out())
+                .as("the audio path must cache, or the third run proves nothing")
+                .contains("reusing the cached analysis");
+        assertThat(skipped.out())
+                .as("--skip-separation did not reach the cache key from a real run")
+                .doesNotContain("reusing the cached analysis");
+        assertThat(skipped.err())
+                .as("the audio path swallowed the option in silence")
+                .contains("--skip-separation has no effect yet on any input");
     }
 
     @Test

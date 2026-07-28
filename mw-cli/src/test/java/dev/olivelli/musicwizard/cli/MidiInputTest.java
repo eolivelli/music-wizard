@@ -142,7 +142,7 @@ class MidiInputTest {
 
             // "0 spans" would read as the result of looking, and nothing looked.
             assertThat(analyze.out())
-                    .contains("Chords  none: it holds 2 part(s), and naming the harmony"
+                    .contains("Chords  none, though it holds 2 part(s); naming the harmony"
                             + " a set of notes spells is not implemented yet (#115)")
                     .doesNotContain("0 spans");
         }
@@ -169,12 +169,12 @@ class MidiInputTest {
 
             assertThat(analyze.out())
                     .contains("Parts   none")
-                    .contains("there are no parts in it either")
+                    .contains("Chords  none, and no parts either")
                     .as("naming a stage that could not produce chords for a file with no notes")
                     .doesNotContain("(#115)");
             assertThat(render.out())
                     .as("the two commands disagree about the same score")
-                    .contains("there are no parts in it either");
+                    .contains("no chord progression, and no parts either");
         }
 
         @Test

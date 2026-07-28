@@ -50,25 +50,39 @@ final class MissingHarmony {
     }
 
     /**
-     * The explanation, as a clause a caller supplies the subject for.
+     * The explanation, as a clause a caller prefixes with a comma.
      *
-     * <p>A score with notes is one named stage short of a chart, and the stage is
-     * named. A score without them is not short of a stage: there is nothing in it
-     * that harmony could be derived from.
+     * <p>A score with note tracks is one named stage short of a chart, and the
+     * stage is named. A score without them gets a statement of that fact and
+     * nothing more, and the restraint is the point -- this sentence has now been
+     * wrong twice by reaching past what it can know:
      *
-     * <p>Deliberately not "so there is nothing to engrave", which an earlier
-     * draft said. That is a claim about the whole score from two of its ten
-     * fields, and it stops being true the moment lyrics arrive under #9 -- a
-     * chords-and-lyrics sheet is the project's strongest output and needs neither
-     * a chord progression nor a note track to be worth printing.
+     * <ul>
+     *   <li>"so there is nothing to engrave" was a claim about the whole score
+     *       from two of its ten fields, and #9 falsifies it: a chords-and-lyrics
+     *       sheet is this project's strongest output and needs neither a chord
+     *       progression nor a note track to be worth printing.
+     *   <li>"so there is nothing for harmony to be derived from" was a claim
+     *       about mechanism, true on the MIDI path and false on the audio one,
+     *       where chords are estimated from the mix and never from note tracks.
+     *       On a recording the estimator had genuinely run and found nothing,
+     *       and this told the user it had never had anything to run on -- while
+     *       {@code analyze} three lines earlier reported the spans it looked for.
+     *       It also pointed an audio user at a note-transcription issue that has
+     *       no bearing on why the chord estimator returned nothing.
+     * </ul>
+     *
+     * <p>Both were introduced by fixes for the sentence being too narrow, which
+     * is the standing lesson: what makes this line safe on two paths that share
+     * nothing but a {@link Score} is that it describes the score and asserts no
+     * cause.
      */
     static String explain(Score score) {
         Objects.requireNonNull(score, "score");
         int parts = score.tracks().size();
         return parts == 0
-                ? "there are no parts in it either, so there is nothing for harmony"
-                        + " to be derived from"
-                : "it holds " + parts + " part(s), and naming the harmony a set of notes"
-                        + " spells is not implemented yet (#115)";
+                ? "and no parts either"
+                : "though it holds " + parts + " part(s); naming the harmony a set of"
+                        + " notes spells is not implemented yet (#115)";
     }
 }

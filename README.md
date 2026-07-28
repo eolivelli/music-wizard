@@ -73,8 +73,8 @@ brew install lilypond      # macOS, or Homebrew on Linux
 apt install lilypond       # Debian or Ubuntu
 ```
 
-Without LilyPond everything still runs — you get `.ly`, `.musicxml` and `.midi`
-files that you can engrave elsewhere.
+Without LilyPond everything still runs — you get the `.ly` source, which you can
+engrave elsewhere. MusicXML and MIDI export are planned and not written yet.
 
 Build and check your setup:
 
@@ -92,8 +92,24 @@ optional download rather than a bundled dependency — is tracked separately.
 ```sh
 mw init song.mp3 --title "Song" --artist "Artist"   # create a workspace
 mw analyze song.mwz                                  # work out what is played
-mw render song.mwz --parts voice,piano,bass,chords   # engrave the parts
+mw render song.mwz                                   # engrave what can be engraved
 mw info song.mwz                                     # what has been computed
+```
+
+`render` defaults to the parts that are implemented, which today is the chord
+chart. Ask for one that is not — `--parts voice` — and it says so and why,
+rather than listing it and writing nothing.
+
+**`init` also takes a Standard MIDI File.** The input is identified by its
+header rather than its extension, and a MIDI file is read symbolically: its
+tempo, meter, key signatures and parts are taken from the file rather than
+estimated, and `analyze` says as much rather than reporting them in the language
+it uses for measurements. What a MIDI file does not carry is harmony — it states
+which notes sound, not what chord they spell — so a chord chart from one is not
+available yet.
+
+```sh
+mw init song.mid && mw analyze song.mwz
 ```
 
 A **workspace** is a directory holding the recording and everything derived
@@ -105,7 +121,7 @@ song.mwz/
   source/            the untouched recording
   cache/             per-stage results, keyed by their inputs
   score/score.json   the transcription
-  out/               .ly, .musicxml, .midi and .pdf per part
+  out/               .ly and .pdf per part
 ```
 
 Results are cached per stage and keyed by the stage's inputs and parameters, so

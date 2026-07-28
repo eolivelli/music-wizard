@@ -123,7 +123,7 @@ final class RenderCommand implements Callable<Integer> {
                 return notImplemented;
             }
             if (this == CHORDS && score.chords().isEmpty()) {
-                return "no chord progression in this score: " + MissingHarmony.explain(score);
+                return "this score holds no chord progression, " + MissingHarmony.explain(score);
             }
             return null;
         }
@@ -248,11 +248,21 @@ final class RenderCommand implements Callable<Integer> {
                     "unknown part '" + name + "'; expected one of: " + String.join(", ",
                             java.util.Arrays.stream(Part.values()).map(Part::partName).toList()))));
         }
-        // No empty-list branch: picocli requires at least one value for --parts,
-        // and an empty string among them is an unrecognised name rather than an
-        // absent one, so it is refused above. A guard here would be code no input
-        // can reach, which reads as a case that has been thought about and has
-        // not been.
+        if (resolved.isEmpty()) {
+            // Reachable, and round 3 removed this guard on the strength of an
+            // argument rather than a run. picocli requires at least one
+            // *argument* for --parts, not one value: with split=",", the argument
+            // "," splits into none. Without this the command printed an empty
+            // parts line and exited 1 -- the code it reserves for "the score had
+            // nothing to engrave" -- for what is a usage error, with no message.
+            //
+            // "--parts ''" and "chords,,voice" do not reach here, because an
+            // empty name among others is an unrecognised name and is refused
+            // above. Only the pure-separator forms do, which is exactly why the
+            // reasoning was believable and why it needed executing.
+            throw new CommandLine.ParameterException(
+                    spec.commandLine(), "--parts was given no part names");
+        }
         return List.copyOf(resolved);
     }
 

@@ -378,7 +378,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 // written here, because this line used to name #115
                 // unconditionally -- which is false for a file holding no notes,
                 // and contradicted what render said about the same score.
-                ? "Chords  none: " + MissingHarmony.explain(score)
+                ? "Chords  none, " + MissingHarmony.explain(score)
                 : "Chords  " + score.chords().size() + " spans");
         return lines;
     }
