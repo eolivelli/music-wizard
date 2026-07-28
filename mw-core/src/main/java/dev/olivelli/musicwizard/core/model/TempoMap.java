@@ -164,6 +164,23 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
+     * A map with one constant tempo given in the meter's <em>counted</em> beats
+     * per minute -- what a metronome shows and what a beat tracker reports --
+     * rather than in quarter notes per minute.
+     *
+     * <p>The two agree in every x/4 meter and differ everywhere else: 120 in 6/8
+     * is 120 dotted quarters, which is 180 quarter notes. This exists so that a
+     * tempo somebody typed and a tempo measured from tracked pulses describe the
+     * same music. Building the first with {@link #constant(double, TimeSignature)}
+     * and the second with {@link #fromBeatTimes(List, TimeSignature)} silently
+     * puts them 1.5x apart in compound time.
+     */
+    public static TempoMap constantPulse(double pulsesPerMinute, TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return constant(pulsesPerMinute * timeSignature.beatUnitQuarters(), timeSignature);
+    }
+
+    /**
      * Builds a tempo map from a beat grid by fitting one tempo segment per beat
      * interval, preserving the measured timing exactly.
      *
@@ -194,9 +211,17 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             List<Double> beatSeconds, TimeSignature timeSignature, double pulseQuarters) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
         Objects.requireNonNull(timeSignature, "timeSignature");
-        if (!Double.isFinite(pulseQuarters) || pulseQuarters <= 0) {
+        // Bounded, not merely positive. A pulse of 1e-320 or Double.MAX_VALUE is
+        // structurally legal here and then fails several frames later with a
+        // message about an inconsistent segment or an infinite tempo, which
+        // describes the symptom rather than the mistake. The bounds are far wider
+        // than any note value the model can name -- the longest counted beat it
+        // produces is a whole note, at 4.0.
+        if (!Double.isFinite(pulseQuarters) || pulseQuarters <= 0
+                || pulseQuarters < 1.0 / 1024 || pulseQuarters > 1024) {
             throw new IllegalArgumentException(
-                    "pulseQuarters must be finite and positive, got: " + pulseQuarters);
+                    "pulseQuarters must be finite and between 1/1024 and 1024 quarter notes,"
+                            + " got: " + pulseQuarters);
         }
         if (beatSeconds.size() < 2) {
             throw new IllegalArgumentException(

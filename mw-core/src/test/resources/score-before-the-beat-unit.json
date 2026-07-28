@@ -1,0 +1,126 @@
+{
+  "title" : null,
+  "artist" : null,
+  "tempoMap" : {
+    "segments" : [ {
+      "startBeat" : 0.0,
+      "startSeconds" : 0.0,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 1.0,
+      "startSeconds" : 0.5,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 2.0,
+      "startSeconds" : 1.0,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 3.0,
+      "startSeconds" : 1.5,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 4.0,
+      "startSeconds" : 2.0,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 5.0,
+      "startSeconds" : 2.5,
+      "beatsPerMinute" : 120.0
+    }, {
+      "startBeat" : 6.0,
+      "startSeconds" : 3.0,
+      "beatsPerMinute" : 120.0
+    } ],
+    "meterChanges" : [ {
+      "startBar" : 0,
+      "timeSignature" : {
+        "numerator" : 6,
+        "denominator" : 8
+      }
+    } ]
+  },
+  "beatGrid" : {
+    "beats" : [ {
+      "seconds" : 0.5,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 1.0,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 1.5,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 2.0,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 2.5,
+      "downbeat" : false,
+      "positionInBar" : 4
+    }, {
+      "seconds" : 3.0,
+      "downbeat" : false,
+      "positionInBar" : 5
+    }, {
+      "seconds" : 3.5,
+      "downbeat" : true,
+      "positionInBar" : 0
+    } ],
+    "beatConfidence" : {
+      "value" : 0.8
+    },
+    "downbeatConfidence" : {
+      "value" : 0.8
+    }
+  },
+  "keys" : [ ],
+  "sections" : [ ],
+  "tracks" : [ ],
+  "chords" : {
+    "chords" : [ {
+      "root" : {
+        "letter" : "C",
+        "accidental" : "NATURAL",
+        "octave" : 4
+      },
+      "quality" : "MAJOR",
+      "bass" : null,
+      "startSeconds" : 0.5,
+      "endSeconds" : 2.0,
+      "startBeat" : null,
+      "endBeat" : null,
+      "confidence" : {
+        "value" : 0.9
+      }
+    }, {
+      "root" : {
+        "letter" : "G",
+        "accidental" : "NATURAL",
+        "octave" : 4
+      },
+      "quality" : "MAJOR",
+      "bass" : null,
+      "startSeconds" : 2.0,
+      "endSeconds" : 3.5,
+      "startBeat" : null,
+      "endBeat" : null,
+      "confidence" : {
+        "value" : 0.9
+      }
+    } ],
+    "confidence" : {
+      "value" : 0.9
+    }
+  },
+  "lyrics" : {
+    "lines" : [ ],
+    "language" : "und",
+    "confidence" : {
+      "value" : 0.0
+    }
+  },
+  "durationSeconds" : 4.0
+}

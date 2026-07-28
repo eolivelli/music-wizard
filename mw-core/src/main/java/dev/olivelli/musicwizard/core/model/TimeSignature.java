@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Collections;
 import java.util.List;
+
 /**
  * A time signature, such as 4/4 or 6/8.
  *
@@ -112,9 +113,12 @@ public record TimeSignature(int numerator, int denominator) {
      * {@link #numerator}: {@code [1,1,1,1]} for 4/4, {@code [3,3]} for 6/8,
      * {@code [3,3,3,3]} for 12/8.
      *
-     * <p>This is the form a notation back end wants -- it is LilyPond's
-     * {@code beatStructure} verbatim -- and it is why a 6/8 bar beams as two
-     * groups of three eighths rather than as three quarters or six eighths.
+     * <p>This is the form a notation back end wants: it is what LilyPond's
+     * {@code beatStructure} takes, provided the emitter also sets
+     * {@code baseMoment} to one denominator unit, and it is why a 6/8 bar beams
+     * as two groups of three eighths rather than as three quarters or six
+     * eighths. Nothing emits it yet -- see #64, where the chord chart's LilyPond
+     * output does not so much as name the meter.
      *
      * <p>Irregular meters get one beat per denominator unit rather than a
      * conventional asymmetric grouping: 7/8 is {@code [1,1,1,1,1,1,1]}, not

@@ -134,8 +134,16 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         return beats.stream().filter(Beat::downbeat).map(Beat::seconds).toList();
     }
 
-    /** Median tempo implied by the beat intervals, in beats per minute. */
-    public double medianTempo() {
+    /**
+     * Median rate of the tracked pulses, in pulses per minute.
+     *
+     * <p>Deliberately not called a tempo. A grid holds pulses, and a pulse is a
+     * quarter note only in simple time, so this is 1.5x under the quarter-note
+     * tempo in 6/8 -- exactly the conflation that mis-barred compound meters in
+     * the first place. Use {@link #medianTempo(TimeSignature)} for a figure
+     * comparable with {@link TempoMap#tempoAtBeat(double)}.
+     */
+    public double medianPulseRate() {
         if (beats.size() < 2) {
             throw new IllegalStateException("cannot infer tempo from fewer than two beats");
         }
@@ -149,6 +157,15 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
                 ? intervals[middle]
                 : (intervals[middle - 1] + intervals[middle]) / 2.0;
         return 60.0 / median;
+    }
+
+    /**
+     * Median tempo in quarter notes per minute, the unit every other tempo in the
+     * model is in.
+     */
+    public double medianTempo(TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return medianPulseRate() * timeSignature.beatUnitQuarters();
     }
 
     /** Index of the beat nearest a given time. */

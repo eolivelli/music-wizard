@@ -276,10 +276,65 @@ class BeatUnitTest {
         }
 
         @Test
+        @DisplayName("a typed tempo and a tracked one describe the same bars")
+        void aTypedTempoAgreesWithATrackedOne() {
+            // The regression this guards was introduced by the fix above, not by
+            // the original bug: teaching fromBeatTimes about the counted beat and
+            // leaving the tempo-override path reading quarter notes put the two
+            // 1.5x apart in 6/8, so correcting a tempo silently moved every bar
+            // line. Before the beat unit existed the two agreed, and they have to
+            // go on agreeing.
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR,
+                    TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                    new TimeSignature(9, 8), new TimeSignature(12, 8),
+                    new TimeSignature(2, 2), new TimeSignature(7, 8))) {
+                // A grid tracked at exactly 120 pulses a minute, and the same 120
+                // typed in by hand.
+                List<Double> pulses = new ArrayList<>();
+                for (int i = 0; i < 24; i++) {
+                    pulses.add(i * 0.5);
+                }
+                TempoMap tracked = TempoMap.fromBeatTimes(pulses, meter);
+                TempoMap typed = TempoMap.constantPulse(120, meter);
+
+                assertThat(typed.initialTempo())
+                        .as("tempo in %s", meter)
+                        .isCloseTo(tracked.initialTempo(), within(1e-9));
+                for (int i = 0; i < pulses.size(); i++) {
+                    assertThat(typed.secondsToBeats(pulses.get(i)))
+                            .as("pulse %d of %s", i, meter)
+                            .isCloseTo(tracked.secondsToBeats(pulses.get(i)), within(1e-9));
+                    assertThat(typed.toMusicalTime(typed.secondsToBeats(pulses.get(i))))
+                            .as("bar of pulse %d of %s", i, meter)
+                            .isEqualTo(tracked.toMusicalTime(
+                                    tracked.secondsToBeats(pulses.get(i))));
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("reads a typed tempo as quarter notes only where the two coincide")
+        void constantPulseIsConstantOnlyInQuarterBeatMeters() {
+            assertThat(TempoMap.constantPulse(120, TimeSignature.FOUR_FOUR))
+                    .isEqualTo(TempoMap.constant(120, TimeSignature.FOUR_FOUR));
+            // 120 dotted quarters a minute is 180 quarter notes a minute, and the
+            // map stores quarter notes.
+            assertThat(TempoMap.constantPulse(120, TimeSignature.SIX_EIGHT).initialTempo())
+                    .isEqualTo(180.0);
+            // Cut time counts half notes, so 120 of them is 240 quarter notes.
+            assertThat(TempoMap.constantPulse(120, new TimeSignature(2, 2)).initialTempo())
+                    .isEqualTo(240.0);
+        }
+
+        @Test
         @DisplayName("rejects a pulse that is not a positive number of quarters")
         void rejectsBadPulse() {
             List<Double> pulses = List.of(0.0, 0.5, 1.0);
-            for (double bad : new double[] {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY}) {
+            // The extremes are rejected here rather than several frames later,
+            // where they surfaced as "inconsistent segment" or "beatsPerMinute
+            // must be finite" -- messages about the symptom, not the mistake.
+            for (double bad : new double[] {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY,
+                    Double.MIN_VALUE, 1e-320, Double.MAX_VALUE, 1e6}) {
                 assertThatThrownBy(() ->
                         TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, bad))
                         .isInstanceOf(IllegalArgumentException.class)
@@ -418,79 +473,64 @@ class BeatUnitTest {
                     .downbeatTimes()).containsExactly(0.0, 2.0);
         }
 
+        @Test
+        @DisplayName("reports a grid's rate in pulses, and its tempo in quarter notes")
+        void gridRateAndTempoAreDifferentNumbers() {
+            // These used to be one method called medianTempo returning pulses per
+            // minute, which is the same conflation this issue is about.
+            BeatGrid grid = BeatGrid.ofTimes(List.of(0.0, 0.5, 1.0, 1.5, 2.0, 2.5),
+                    TimeSignature.SIX_EIGHT, Confidence.of(0.9));
+
+            assertThat(grid.medianPulseRate()).isCloseTo(120.0, within(1e-9));
+            assertThat(grid.medianTempo(TimeSignature.SIX_EIGHT)).isCloseTo(180.0, within(1e-9));
+            // And it agrees with the map built from the same pulses.
+            assertThat(grid.medianTempo(TimeSignature.SIX_EIGHT)).isCloseTo(
+                    TempoMap.fromBeatTimes(grid.beatTimes(), TimeSignature.SIX_EIGHT)
+                            .initialTempo(), within(1e-9));
+            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
+                    .isEqualTo(grid.medianPulseRate());
+        }
+
         /**
-         * A {@code score.json} produced by the build before this change, captured
-         * verbatim. It is a 6/8 score whose tempo segments sit on quarter-beats
-         * 0, 1, 2, 3 -- the old, wrong pulse mapping.
+         * A {@code score.json} produced by the build before this change, byte for
+         * byte: generated by checking out {@code origin/main}, running the
+         * construction {@code AudioTranscriber} used there for a 6/8 analysis --
+         * {@code fromBeatTimes(times, meter)} and
+         * {@code ofTimes(times, meter.numerator(), ...)} -- and writing the file
+         * through {@code ScoreJson}. Its seven pulses therefore sit on quarter
+         * beats 0 through 6 and its grid bars every six pulses: both the old,
+         * wrong answers, which is the point.
          */
-        private static final String SCORE_BEFORE_THE_BEAT_UNIT = """
-                {
-                  "title" : null,
-                  "artist" : null,
-                  "tempoMap" : {
-                    "segments" : [ {
-                      "startBeat" : 0.0, "startSeconds" : 0.0, "beatsPerMinute" : 120.0
-                    }, {
-                      "startBeat" : 1.0, "startSeconds" : 0.5, "beatsPerMinute" : 120.0
-                    }, {
-                      "startBeat" : 2.0, "startSeconds" : 1.0, "beatsPerMinute" : 120.0
-                    }, {
-                      "startBeat" : 3.0, "startSeconds" : 1.5, "beatsPerMinute" : 120.0
-                    } ],
-                    "meterChanges" : [ {
-                      "startBar" : 0,
-                      "timeSignature" : { "numerator" : 6, "denominator" : 8 }
-                    } ]
-                  },
-                  "beatGrid" : {
-                    "beats" : [
-                      { "seconds" : 0.5, "downbeat" : true,  "positionInBar" : 0 },
-                      { "seconds" : 1.0, "downbeat" : false, "positionInBar" : 1 },
-                      { "seconds" : 1.5, "downbeat" : false, "positionInBar" : 2 },
-                      { "seconds" : 2.0, "downbeat" : true,  "positionInBar" : 0 } ],
-                    "beatConfidence" : { "value" : 0.8 },
-                    "downbeatConfidence" : { "value" : 0.8 }
-                  },
-                  "keys" : [ ],
-                  "sections" : [ ],
-                  "tracks" : [ ],
-                  "chords" : {
-                    "chords" : [ {
-                      "root" : { "letter" : "C", "accidental" : "NATURAL", "octave" : 4 },
-                      "quality" : "MAJOR",
-                      "bass" : null,
-                      "startSeconds" : 0.5,
-                      "endSeconds" : 2.0,
-                      "startBeat" : null,
-                      "endBeat" : null,
-                      "confidence" : { "value" : 0.9 }
-                    } ],
-                    "confidence" : { "value" : 0.9 }
-                  },
-                  "lyrics" : {
-                    "lines" : [ ], "language" : "und", "confidence" : { "value" : 0.0 }
-                  },
-                  "durationSeconds" : 3.0
-                }
-                """;
+        private String scoreBeforeTheBeatUnit() throws Exception {
+            try (var in = getClass().getResourceAsStream("/score-before-the-beat-unit.json")) {
+                assertThat(in).as("fixture on the test classpath").isNotNull();
+                return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        }
 
         @Test
         @DisplayName("still opens a score written before the beat unit existed")
-        void readsAPreChangeScoreFile() {
+        void readsAPreChangeScoreFile() throws Exception {
             // Nothing gained a serialized field, so this must load unchanged --
             // and keep the beat positions it was written with rather than being
             // reinterpreted under the new pulse. #22 records what happens when a
             // core change does silently invalidate old files.
-            assertThatCode(() -> ScoreJson.fromJson(SCORE_BEFORE_THE_BEAT_UNIT))
-                    .doesNotThrowAnyException();
-            Score score = ScoreJson.fromJson(SCORE_BEFORE_THE_BEAT_UNIT);
+            String json = scoreBeforeTheBeatUnit();
+            assertThatCode(() -> ScoreJson.fromJson(json)).doesNotThrowAnyException();
+            Score score = ScoreJson.fromJson(json);
 
             assertThat(score.tempoMap().initialTimeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
-            assertThat(score.tempoMap().segments()).hasSize(4);
+            assertThat(score.tempoMap().segments()).hasSize(7);
+            // The stored -- and by today's rules wrong -- mapping, unchanged. A
+            // file already on disk must not move its own bar lines.
             assertThat(score.tempoMap().secondsToBeats(1.5)).isEqualTo(3.0);
+            assertThat(score.tempoMap().toMusicalTime(3.0))
+                    .isEqualTo(new MusicalTime(1, 0.0, TimeSignature.SIX_EIGHT));
             assertThat(score.beatGrid()).isPresent();
-            assertThat(score.beatGrid().get().downbeatTimes()).containsExactly(0.5, 2.0);
-            assertThat(score.chords().size()).isEqualTo(1);
+            assertThat(score.beatGrid().get().downbeatTimes()).containsExactly(0.5, 3.5);
+            assertThat(score.chords().size()).isEqualTo(2);
+            // And it survives a write-read cycle on the new build.
+            assertThat(ScoreJson.fromJson(ScoreJson.toJson(score))).isEqualTo(score);
         }
 
         @Test

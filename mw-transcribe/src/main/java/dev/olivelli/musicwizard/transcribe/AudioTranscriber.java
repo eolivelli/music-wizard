@@ -97,19 +97,32 @@ public final class AudioTranscriber {
         BeatTracker.Result beats = BeatTracker.track(envelope);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
-            return Score.empty(TempoMap.constant(120, meter), audio.durationSeconds());
+            // 120 counted beats a minute, not 120 quarter notes: the default has
+            // to mean the same thing as a typed --tempo 120, or the fallback and
+            // the override disagree in compound time.
+            return Score.empty(TempoMap.constantPulse(120, meter), audio.durationSeconds());
         }
 
         List<Double> beatTimes = beats.beatTimes();
-        progress.accept(String.format("found %d beats at %.1f BPM",
+        // Named as beats per minute rather than as a tempo on purpose: the
+        // tracker counts pulses, and a pulse is a quarter note only in simple
+        // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
+        progress.accept(String.format("found %d beats at %.1f beats/min",
                 beatTimes.size(), beats.beatsPerMinute()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of
         // them, and a user correcting the tempo is usually correcting a
         // half-or-double reading rather than claiming the beats are misplaced.
+        //
+        // The override is read as counted beats per minute, which is what the
+        // user is looking at when they type it -- a metronome marking, or the
+        // rate this very run just reported. Passing it to TempoMap.constant
+        // instead would read it as quarter notes per minute, so in 6/8 the two
+        // branches below would describe bars 1.5x apart and correcting the tempo
+        // would silently move every bar line.
         TempoMap tempoMap = settings.tempoOverride() != null
-                ? TempoMap.constant(settings.tempoOverride(), meter)
+                ? TempoMap.constantPulse(settings.tempoOverride(), meter)
                 : TempoMap.fromBeatTimes(beatTimes, meter);
 
         // Pulses per bar, not the numerator: the tracker emits one pulse per

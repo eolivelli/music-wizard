@@ -42,7 +42,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--tempo", paramLabel = "BPM",
-            description = "Force a tempo instead of tracking it.")
+            description = "Force a tempo instead of tracking it, in counted beats "
+                    + "per minute (dotted quarters in 6/8, not quarters).")
     Double tempo;
 
     @Option(names = "--time-signature", paramLabel = "N/D",
@@ -88,14 +89,32 @@ final class AnalyzeCommand implements Callable<Integer> {
         workspace.writeScore(score);
 
         System.out.println();
-        System.out.printf("Tempo   %.1f BPM%n",
-                score.tempoMap().averageTempo(score.durationSeconds()));
+        printTempo(score);
         System.out.println("Meter   " + score.tempoMap().initialTimeSignature());
         System.out.println("Chords  " + score.chords().size() + " spans");
         System.out.println("Saved   " + workspace.scoreFile());
         System.out.println();
         System.out.println("Next: mw render " + workspace.root().getFileName());
         return 0;
+    }
+
+    /**
+     * Prints the tempo in the unit the user counts in.
+     *
+     * <p>The map stores quarter notes per minute, which is the same number in
+     * every x/4 meter and a different one in 6/8, where the counted beat is a
+     * dotted quarter. Printing the stored figure unqualified there would show a
+     * tempo the user cannot type back in via {@code --tempo}.
+     */
+    private static void printTempo(Score score) {
+        double quarterBpm = score.tempoMap().averageTempo(score.durationSeconds());
+        TimeSignature meter = score.tempoMap().initialTimeSignature();
+        if (meter.beatUnitQuarters() == 1.0) {
+            System.out.printf("Tempo   %.1f BPM%n", quarterBpm);
+        } else {
+            System.out.printf("Tempo   %.1f BPM (%.1f quarter notes/min)%n",
+                    quarterBpm / meter.beatUnitQuarters(), quarterBpm);
+        }
     }
 
     private AudioTranscriber.Options options(MusicWizardConfig config) {
