@@ -292,6 +292,15 @@ public final class DownbeatEstimator {
     private static double harmonicAgreement(double[] harmony, double[] novelty, int phase,
                                             int firstBeat, int lastBeat) {
         int beatsPerBar = harmony.length;
+        if (beatsPerBar == 1) {
+            // Every beat begins a bar, so there is one candidate phase and it is
+            // certainly the right one. None of the three questions below is being
+            // asked -- they are all about choosing between phases -- and reaching
+            // this answer through them rather than stating it means the answer
+            // depends on how much harmonic change a recording with no choice to
+            // make happened to contain.
+            return 1;
+        }
         double margin = harmony[phase] - runnerUp(harmony, phase);
         double decided = Math.clamp(margin / CONFIDENT_MARGIN, 0, 1);
 
@@ -308,9 +317,7 @@ public final class DownbeatEstimator {
         // would need a negative novelty somewhere, and a share below chance
         // means this phase is not the harmonic maximum -- which makes the margin
         // negative and `decided` zero, so the product is zero either way.
-        double preferred = beatsPerBar > 1
-                ? Math.clamp((share - chance) / (1 - chance), 0, 1)
-                : 1;
+        double preferred = Math.clamp((share - chance) / (1 - chance), 0, 1);
 
         double observed = Math.clamp(
                 changesOn(novelty, phase, beatsPerBar, firstBeat, lastBeat)
@@ -397,9 +404,14 @@ public final class DownbeatEstimator {
             // in the recording -- more persuasive than any real chord change,
             // which never reaches a full cosine distance of 1.
             // Floored at zero because a cosine can come back a hair above 1 for
-            // two identical spans, which would make an unchanged bar carry a
-            // novelty of -2e-16 -- enough to push a phase's share of the total
-            // above 1 and put a negative where the arithmetic below assumes none.
+            // two numerically parallel spans, and the arithmetic downstream
+            // assumes novelty is non-negative in three places: a share of the
+            // total cannot exceed one, the best score among the other phases
+            // cannot be below zero, and a sum of squares is zero only when every
+            // term is. None of the three is observable on its own — each of them
+            // needs a negative to reach — which is exactly why the floor belongs
+            // here, at the one point where the sign is decided, rather than as
+            // three defensive checks that each look unnecessary.
             double cosine = cosine(spans[beat - 1], spans[beat]);
             novelty[beat] = Double.isNaN(cosine) ? 0 : Math.max(0, 1 - cosine);
         }
@@ -516,8 +528,8 @@ public final class DownbeatEstimator {
     /**
      * The best score among the phases other than one.
      *
-     * <p>Negative infinity when there is no other phase, which makes a one-beat
-     * bar's margin infinite — correct, since there is no choice to get wrong.
+     * <p>Only ever called where there are at least two phases, a one-beat bar
+     * having been answered before any of this arithmetic runs.
      */
     private static double runnerUp(double[] score, int except) {
         double best = Double.NEGATIVE_INFINITY;

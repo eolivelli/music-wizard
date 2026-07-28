@@ -798,6 +798,28 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("a one-beat bar is certain whatever the harmony does")
+        void oneBeatBarsAreCertainOfTheirPhase() {
+            // The three confidence factors all ask how to choose between phases.
+            // At a one-beat bar there is nothing to choose: every beat begins a
+            // bar, phase 0 is the only phase there is, and it is right whatever
+            // the recording contains. Reaching that answer through the factors
+            // rather than stating it made it depend on how much harmonic change
+            // a recording with no choice to make happened to have -- an unchanging
+            // chord and silence came out a full 0.5 apart, on a question neither
+            // of them has any bearing on.
+            List<Double> beats = beatsEvery(0.5, 17);
+
+            for (Chroma chroma : new Chroma[] {
+                    chromaWithNovelty(new double[17], 16),   // one chord held
+                    new Chroma(new double[16][12], 0),       // silence
+                    stepwiseChroma(16, 4, 0)}) {             // chords every bar
+                assertThat(DownbeatEstimator.estimate(beats, chroma, flatEnvelope(10), 1)
+                        .confidence().value()).isCloseTo(0.85, within(1e-9));
+            }
+        }
+
+        @Test
         @DisplayName("harmony that disagrees with the answer is no credit, not a penalty")
         void harmonyAgainstTheAnswerIsNotNegative() {
             // When an accent overrides the harmony, the winning phase's harmonic
