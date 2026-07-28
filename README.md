@@ -101,12 +101,17 @@ chart. Ask for one that is not — `--parts voice` — and it says so and why,
 rather than listing it and writing nothing.
 
 **`init` also takes a Standard MIDI File.** The input is identified by its
-header rather than its extension, and a MIDI file is read symbolically: its
-tempo, meter, key signatures and parts are taken from the file rather than
-estimated, and `analyze` says as much rather than reporting them in the language
-it uses for measurements. What a MIDI file does not carry is harmony — it states
-which notes sound, not what chord they spell — so a chord chart from one is not
-available yet.
+header rather than its extension, and a MIDI file is read symbolically rather
+than measured: nothing about it is estimated from audio. `analyze` reports its
+tempo, meter and key under a heading saying where they came from — *from the
+file, or the MIDI default where it declares nothing*, because a file that
+declares no tempo is played at 120 in 4/4 by the specification and the import
+cannot tell the two apart ([#119][i119]). What a MIDI file does not carry at all
+is harmony: it states which notes sound, not what chord they spell, so a chord
+chart from one is not available yet ([#115][i115]).
+
+[i115]: https://github.com/eolivelli/music-wizard/issues/115
+[i119]: https://github.com/eolivelli/music-wizard/issues/119
 
 ```sh
 mw init song.mid && mw analyze song.mwz
@@ -121,7 +126,7 @@ song.mwz/
   source/            the untouched recording
   cache/             per-stage results, keyed by their inputs
   score/score.json   the transcription
-  out/               .ly and .pdf per part
+  out/               .txt, .ly and .pdf per part
 ```
 
 Results are cached per stage and keyed by the stage's inputs and parameters, so

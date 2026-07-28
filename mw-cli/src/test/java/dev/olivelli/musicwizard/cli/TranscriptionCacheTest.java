@@ -191,8 +191,11 @@ class TranscriptionCacheTest {
         // fires on this path or only on the MIDI one. Round 4 found both mutants
         // surviving a suite of 43.
         //
-        // A short WAV, decoded by the JDK's own provider: no external binary and
-        // nothing downloaded, so the fast suite stays fast and offline.
+        // A short synthesised WAV. It is decoded by the bundled ffsampledsp
+        // natives rather than by the JDK's own provider -- an earlier version of
+        // this comment said otherwise -- but they ship in the jar, so nothing is
+        // downloaded and no external binary is required: the fast suite stays
+        // fast and offline, which is the property that matters.
         Path source = directory.resolve("tone.wav");
         SignalFactory.writeWav(source, SignalFactory.chord(
                 SignalFactory.majorTriad(60), 1.0, SignalFactory.DEFAULT_SAMPLE_RATE),
@@ -210,9 +213,15 @@ class TranscriptionCacheTest {
         assertThat(second.out())
                 .as("the audio path must cache, or the third run proves nothing")
                 .contains("reusing the cached analysis");
+        // Positively, and not only by the absence of the reuse line. An absence
+        // has more than one cause: round 5 showed that a mutant crashing every
+        // --skip-separation run on audio passed this test, because a run that
+        // dies also fails to print that it reused anything.
+        assertThat(skipped.exitCode()).as(skipped.all()).isZero();
         assertThat(skipped.out())
                 .as("--skip-separation did not reach the cache key from a real run")
-                .doesNotContain("reusing the cached analysis");
+                .doesNotContain("reusing the cached analysis")
+                .contains("estimating chords");
         assertThat(skipped.err())
                 .as("the audio path swallowed the option in silence")
                 .contains("--skip-separation has no effect yet on any input");

@@ -40,9 +40,19 @@ import java.util.Objects;
  * this, and there is nowhere left for a fourth wording to appear.
  *
  * <p>What the answer may depend on is the <em>score</em>, and only the score.
- * Where the score came from is not knowable here and is not guessed at -- see
- * #120 -- and the two branches below hold whatever produced it, including an
- * audio analysis that separated stems and estimated no chords.
+ * Where the score came from is not knowable here and is not guessed at; see
+ * #120.
+ *
+ * <p>That has a cost, and it is stated rather than glossed. The branch for a
+ * score <em>with</em> note tracks names a cause, and the cause is right only
+ * because every such score is a MIDI import today. When #8 lands, an audio
+ * analysis with separated stems will take that branch, and the reason it has no
+ * chords will be that the estimator ran over the mix and found none -- not that
+ * symbolic harmony is unimplemented. An earlier draft of this paragraph claimed
+ * the opposite, that both branches hold "including an audio analysis that
+ * separated stems and estimated no chords", which is exactly the case that
+ * falsifies it. Tracked as #125, due with #8, and answerable properly only by
+ * #120.
  */
 final class MissingHarmony {
 
@@ -73,9 +83,15 @@ final class MissingHarmony {
      * </ul>
      *
      * <p>Both were introduced by fixes for the sentence being too narrow, which
-     * is the standing lesson: what makes this line safe on two paths that share
-     * nothing but a {@link Score} is that it describes the score and asserts no
-     * cause.
+     * is the standing lesson: what keeps this line safe on two paths that share
+     * nothing but a {@link Score} is describing the score rather than explaining
+     * it.
+     *
+     * <p>The {@code parts > 0} branch does still explain, and is therefore the
+     * one that will need this applied to it -- see the note on the class. It is
+     * not fixed here because the correct answer for that branch is to know what
+     * produced the score (#120) rather than to find a fourth wording that guesses
+     * better.
      */
     static String explain(Score score) {
         Objects.requireNonNull(score, "score");
