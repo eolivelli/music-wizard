@@ -55,16 +55,28 @@ public final class Resampler {
      * the same holds for 48k to 16k and any other integer ratio, and not
      * because downsampling is inherently safe.
      *
-     * <p>The size of the difference is <b>half an ulp of the signal's peak</b>,
-     * because it is a rounding of {@code b - a}. So it scales, and a single
-     * absolute figure is only true at one amplitude:
+     * <p>The difference is a rounding of {@code b - a}, so it is at most half
+     * an ulp of {@code |b - a|}, and {@code |b - a|} reaches twice the peak.
+     * The bound is therefore half an ulp of {@code 2 x peak} -- equivalently
+     * <b>one ulp of the peak</b> -- and it scales with amplitude, so no single
+     * absolute figure is a bound on its own:
      *
      * <pre>
-     *   peak    worst difference
-     *   0.5     3.0e-8   (-150.5 dBFS)
-     *   1.0     6.0e-8   (-144.5 dBFS)   -- half a 24-bit LSB
-     *   2.0     1.2e-7   (-138.5 dBFS)
+     *   peak   bound = ulp(peak)   worst measured
+     *   0.5    6.0e-8              3.0e-8   (-150.5 dBFS)
+     *   0.9    6.0e-8              6.0e-8   (-144.5 dBFS)
+     *   1.0    1.2e-7              6.0e-8   (-144.5 dBFS)  -- half a 24-bit LSB
+     *   2.0    2.4e-7              1.2e-7   (-138.5 dBFS)
      * </pre>
+     *
+     * <p>Read the bound column, not the measured one. An earlier draft of this
+     * paragraph gave "half an ulp of the peak" as the rule, having measured it
+     * at 0.5, 1.0 and 2.0 -- every one of them an exact power of two, where
+     * {@code 2 x peak} lands on a binade boundary and the two coincide. Off a
+     * power of two it is short by exactly 2x: a normalised master peaking at
+     * 0.9, which is the ordinary case, measures 6.0e-8 where that rule predicts
+     * 3.0e-8. Downsampling is looser again, because the low-pass shrinks the
+     * values before anything subtracts them.
      *
      * <p>Six orders below the tightest tolerance anywhere downstream of this
      * method, and double is the accurate side of the difference. Do not quote
