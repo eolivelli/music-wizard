@@ -58,6 +58,14 @@ import java.util.Objects;
  * and any one of them failing brings the number down. A phase resting on onsets
  * alone is capped below anything harmony has backed.
  *
+ * <p>What to rely on in that number is its <em>ordering</em>, not its value.
+ * The ordering is structural — onsets alone can never outrank harmony, and a
+ * phase nothing supports lands on the floor — but the constants that space it
+ * out were calibrated on synthetic fixtures, and synthetic audio is
+ * systematically easier than real audio. Two of the three factors are already
+ * known not to measure quite what they claim on material with a chroma novelty
+ * floor, which every real recording has: see #45.
+ *
  * <p>The known limit of the approach is that it measures agreement with
  * harmonic change, not with bar lines, and takes the two to be the same thing.
  * Where a style consistently anticipates the chord — the pushed change an
@@ -295,6 +303,10 @@ public final class DownbeatEstimator {
         // phase carries by chance and therefore worth nothing.
         double chance = 1.0 / beatsPerBar;
         double share = total > 0 ? harmony[phase] / total : chance;
+        // The clamp is belt and braces rather than load-bearing: neither bound
+        // can bind. A share above one is impossible, and a share below chance
+        // means this phase is not the harmonic maximum -- which makes the margin
+        // negative and `decided` zero, so the product is zero either way.
         double preferred = beatsPerBar > 1
                 ? Math.clamp((share - chance) / (1 - chance), 0, 1)
                 : 1;

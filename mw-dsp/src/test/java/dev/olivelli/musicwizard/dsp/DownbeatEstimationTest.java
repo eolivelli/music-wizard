@@ -120,6 +120,21 @@ class DownbeatEstimationTest {
         return out;
     }
 
+    /**
+     * The same I-V-vi-IV signal with its first two and a half seconds cut off,
+     * so that the bar lines no longer fall on the first tracked beat.
+     *
+     * <p>Every other fixture here starts on a downbeat, which makes phase 0 the
+     * right answer everywhere and hides anything that ignores the phase or gets
+     * its sign wrong. Trimming a whole number of beats leaves the beats where
+     * they were and moves only the bars: the chord changes land at 1.5s, 3.5s
+     * and so on, which is beat 3 of the tracked grid.
+     */
+    private static float[] chordsStartingMidBar(double seconds) {
+        float[] full = chordsPerBar(seconds + 2.5);
+        return java.util.Arrays.copyOfRange(full, (int) Math.round(2.5 * RATE), full.length);
+    }
+
     /** Everything the estimator needs, analysed from one signal. */
     private record Analysis(BeatTracker.Result beats, Chroma chroma, OnsetEnvelope envelope) {
         static Analysis of(float[] samples) {
@@ -284,6 +299,33 @@ class DownbeatEstimationTest {
             double[][] vectors = new double[spans][];
             for (int span = 0; span < spans; span++) {
                 vectors[span] = (Math.floorDiv(span, perBar) % 2 == 0 ? held : moved).clone();
+            }
+            return new Chroma(vectors, 0);
+        }
+
+        /**
+         * Chroma whose cosine distance across each beat is exactly what is
+         * asked for.
+         *
+         * <p>Every span is a unit vector in the plane of two pitch classes, at an
+         * angle chosen so that consecutive spans sit exactly {@code acos(1 - n)}
+         * apart. The direction of each step is whichever keeps the angle inside
+         * the quarter turn where both components stay non-negative, since a
+         * chroma vector with a negative bin is not a chroma vector.
+         *
+         * @param noveltyPerBeat the wanted novelty at each beat; index 0 and any
+         *     index past the last span are ignored, having a span on one side only
+         */
+        private static Chroma chromaWithNovelty(double[] noveltyPerBeat, int spans) {
+            double[][] vectors = new double[spans][12];
+            double angle = Math.PI / 4;
+            for (int span = 0; span < spans; span++) {
+                if (span > 0 && span < noveltyPerBeat.length && noveltyPerBeat[span] > 0) {
+                    double step = Math.acos(Math.clamp(1 - noveltyPerBeat[span], -1, 1));
+                    angle += angle + step <= Math.PI / 2 ? step : -step;
+                }
+                vectors[span][0] = Math.cos(angle);
+                vectors[span][5] = Math.sin(angle);
             }
             return new Chroma(vectors, 0);
         }
@@ -690,6 +732,113 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("a phase with no beats does not win on evidence it never gave")
+        void unobservedPhaseDoesNotWinOnOnsets() {
+            // Three beats at 4/4 leave phase 3 unobserved. The onset envelope is
+            // centred on zero, so scoring an unobserved phase at zero rather than
+            // at the average makes it look like the loudest phase in the bar
+            // whenever the observed beats happen to sit below zero -- and it then
+            // wins, on nothing.
+            double[] strength = new double[400];
+            java.util.Arrays.fill(strength, -0.5);
+
+            assertThat(DownbeatEstimator.fromOnsets(List.of(0.0, 0.5, 1.0),
+                    new OnsetEnvelope(strength, 100), 4).phase()).isZero();
+        }
+
+        @Test
+        @DisplayName("survives an envelope with no frames in it at all")
+        void emptyEnvelopeIsNotAnIndexError() {
+            // frameOf clamps to frame 0, which does not exist in an empty
+            // envelope, so sampling it reads off the end of the array.
+            assertThat(DownbeatEstimator.fromOnsets(List.of(0.0, 0.5, 1.0, 1.5),
+                    new OnsetEnvelope(new double[0], 100), 4).confidence().value())
+                    .isEqualTo(0.35);
+        }
+
+        @Test
+        @DisplayName("a silent recording is uncertain, not certainly wrong")
+        void silentChromaIsMerelyUncertain() {
+            // Every span empty means no novelty anywhere, so the effective change
+            // count divides zero by zero. Left as NaN it propagates through every
+            // clamp and comes out as a confidence of zero -- which claims
+            // certainty that the phase is wrong rather than admitting ignorance.
+            List<Double> beats = beatsEvery(0.5, 17);
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
+                    beats, new Chroma(new double[16][12], 0), flatEnvelope(10), 4);
+
+            assertThat(estimate.confidence().value()).isEqualTo(0.35);
+            assertThat(estimate.phase()).isZero();
+        }
+
+        @Test
+        @DisplayName("a one-beat bar has no phase to get wrong")
+        void oneBeatBars() {
+            // Degenerate but reachable through the meter, and the two places that
+            // special-case it -- the runner-up of a single phase, and a share
+            // measured against a chance of one -- would otherwise divide by zero
+            // or subtract one from one.
+            //
+            // The novelty is deliberately faint. Every beat starts a bar here, so
+            // the phase is certain no matter how weak the harmonic evidence for
+            // it is, and a runner-up of zero rather than "no runner-up at all"
+            // would quietly make the certainty proportional to the evidence.
+            List<Double> beats = beatsEvery(0.5, 17);
+            double[] novelty = new double[17];
+            for (int beat = 4; beat < 15; beat += 4) {
+                novelty[beat] = 0.1;
+            }
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
+                    beats, chromaWithNovelty(novelty, 16), flatEnvelope(10), 1);
+
+            assertThat(estimate.phase()).isZero();
+            assertThat(estimate.confidence().value()).isEqualTo(0.85);
+        }
+
+        @Test
+        @DisplayName("harmony that disagrees with the answer is no credit, not a penalty")
+        void harmonyAgainstTheAnswerIsNotNegative() {
+            // When an accent overrides the harmony, the winning phase's harmonic
+            // margin is negative. That is worth nothing, and nothing is where it
+            // stops: letting it count as a penalty would push a phase below the
+            // floor that says "this is a guess", claiming the answer is worse
+            // than a guess when what is true is that harmony did not pick it.
+            //
+            // Two fixtures whose harmony disagrees with the accent by different
+            // amounts -- both inside the margin an accent can move, or harmony
+            // would simply win. Both are decided by the accent, so both must
+            // report the same confidence; a penalty would scale with the
+            // disagreement and separate them.
+            List<Double> beats = beatsEvery(0.5, 33);
+            OnsetEnvelope accented = envelopeOf(beats, new double[] {0, 0, 8, 0});
+
+            DownbeatEstimator.Estimate nearMiss = DownbeatEstimator.estimate(
+                    beats, chromaWithNovelty(noveltyOn(0.24, 0.20), 32), accented, 4);
+            DownbeatEstimator.Estimate wideMiss = DownbeatEstimator.estimate(
+                    beats, chromaWithNovelty(noveltyOn(0.24, 0.16), 32), accented, 4);
+
+            assertThat(nearMiss.phase()).isEqualTo(2);
+            assertThat(wideMiss.phase()).isEqualTo(2);
+            assertThat(nearMiss.confidence().value())
+                    .isGreaterThanOrEqualTo(0.35)
+                    .isEqualTo(wideMiss.confidence().value());
+        }
+
+        /** Novelty of one size on phase 0's beats and another on phase 2's. */
+        private static double[] noveltyOn(double onPhaseZero, double onPhaseTwo) {
+            double[] novelty = new double[33];
+            for (int beat = 4; beat <= 28; beat += 4) {
+                novelty[beat] = onPhaseZero;
+            }
+            for (int beat = 2; beat <= 30; beat += 4) {
+                novelty[beat] = onPhaseTwo;
+            }
+            return novelty;
+        }
+
+        @Test
         @DisplayName("silence is not a chord change")
         void silentSpansAreNotNovel() {
             // Cosine against a zero vector has no answer. Reading it as zero --
@@ -768,6 +917,52 @@ class DownbeatEstimationTest {
                 // The model enforces this too, but it is the invariant the whole
                 // phase question exists to satisfy.
                 assertThat(beats.get(i).downbeat()).isEqualTo(expected == 0);
+            }
+        }
+
+        @Test
+        @DisplayName("marks the phase it was given, not the phase it would prefer")
+        void appliesANonZeroPhase() {
+            // The one line that turns an estimated phase into bar positions,
+            // tested where it can be seen. Every audio fixture that reaches a
+            // grid estimates phase 0, and at phase 0 floorMod(i - phase, 4)
+            // degenerates to i % 4 -- so discarding the phase, or getting its
+            // sign wrong, left every grid test passing. A wrong sign here is
+            // literally the symptom issue #27 reported.
+            //
+            // Phase 1 and phase 3 rather than 2: at phase 2 in 4/4 the sign
+            // cannot be seen either, since -2 and +2 agree modulo 4.
+            BeatTracker.Result result = new BeatTracker.Result(
+                    List.of(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5), 120, Confidence.CERTAIN);
+
+            BeatGrid phaseOne = BeatTracker.toBeatGrid(result,
+                    new DownbeatEstimator.Estimate(1, 4, Confidence.CERTAIN));
+            BeatGrid phaseThree = BeatTracker.toBeatGrid(result,
+                    new DownbeatEstimator.Estimate(3, 4, Confidence.CERTAIN));
+
+            assertThat(phaseOne.beats()).extracting(BeatGrid.Beat::positionInBar)
+                    .containsExactly(3, 0, 1, 2, 3, 0, 1, 2);
+            assertThat(phaseOne.downbeatTimes()).containsExactly(0.5, 2.5);
+            assertThat(phaseThree.beats()).extracting(BeatGrid.Beat::positionInBar)
+                    .containsExactly(1, 2, 3, 0, 1, 2, 3, 0);
+            assertThat(phaseThree.downbeatTimes()).containsExactly(1.5, 3.5);
+        }
+
+        @Test
+        @DisplayName("puts the bar lines mid-grid when that is where the chords change")
+        void barLinesNeedNotStartAtTheFirstBeat() {
+            // The same, reached through the whole stage rather than by handing
+            // toBeatGrid a phase. The chords change at 1.5s, 3.5s and so on here,
+            // which is beat 3, so a grid that ignores the phase cannot pass.
+            Analysis analysis = Analysis.of(chordsStartingMidBar(28));
+
+            BeatGrid grid = BeatTracker.toBeatGrid(analysis.beats(), analysis.estimate(4));
+
+            assertThat(grid.beats().get(3).downbeat()).isTrue();
+            assertThat(grid.beats().get(0).downbeat()).isFalse();
+            for (double downbeat : grid.downbeatTimes()) {
+                double nearestBarLine = 1.5 + Math.round((downbeat - 1.5) / 2.0) * 2.0;
+                assertThat(Math.abs(downbeat - nearestBarLine)).isLessThan(0.06);
             }
         }
 
