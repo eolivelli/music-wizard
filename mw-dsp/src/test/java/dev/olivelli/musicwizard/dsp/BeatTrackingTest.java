@@ -372,6 +372,32 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("a long hole in smooth material does not make it read as rhythmic")
+        void aLongHoleDoesNotInventRhythm() {
+            // The end of a poisoned run is where a manufactured accent would
+            // land, and a multi-second run is the worst case for it: the value
+            // being held is stale by seconds, so the recovery is large. The
+            // recovery frame's own rise is dropped -- it is a difference
+            // against a non-finite neighbour -- but the frames after it were
+            // filtered against the held value and ramp back over about ten of
+            // them, which is a real accent.
+            //
+            // A crescendo has nothing rhythmic in it at any point, so whatever
+            // this scores is entirely artefact. Measured: 0.163 with a 5 s
+            // hole, against 0.295 for the same input on main, and against a
+            // click floor of 0.751. Asserted against the floor rather than at a
+            // fixed value, because what matters is that it cannot be mistaken
+            // for a beat.
+            float[] swell = crescendo(440, 20);
+            int from = (int) (7.5 * RATE);
+            for (int i = from; i < from + 5 * RATE && i < swell.length; i++) {
+                swell[i] = Float.NaN;
+            }
+
+            assertThat(TempoEstimator.estimate(envelopeOf(swell)).strength()).isLessThan(0.4);
+        }
+
+        @Test
         @DisplayName("a band that is never finite is left alone rather than throwing")
         void entirelyNonFiniteBandIsLeftAlone() {
             double[][] bands = new double[50][40];
