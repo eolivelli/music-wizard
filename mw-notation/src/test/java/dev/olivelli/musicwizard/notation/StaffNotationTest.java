@@ -748,6 +748,78 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a note leaving a bracket is cut at it, exactly as one entering it is")
+    void aBracketIsClosedByTheNoteThatLeavesItAsWellAsByTheOneThatEntersIt() {
+        // Round 1 of review found that the cut rule was only tested from one
+        // side. Every fixture that crossed a bracket boundary crossed it *into* a
+        // printed bracket, so the half of the rule that closes a bracket behind a
+        // note leaving it could be deleted and the whole repository stayed green
+        // -- while ordinary music came out as "\tuplet 3/2 { c'8 d'8 e'2 }": a
+        // triplet bracket drawn round a half note. It sums to 4/4, so no bar
+        // check catches it either, and held one beat further it throws instead.
+        //
+        // This bar crosses a boundary in both directions. The E leaves a printed
+        // bracket into a plain beat; the F enters a printed one from a plain beat.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(1), thirds(1), "D4"),
+                note(thirds(2), thirds(1) + 1, "E4"),
+                note(2, 1 + thirds(1), "F4"),
+                note(3 + thirds(1), thirds(2), "G4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains(
+                "\\tuplet 3/2 { c'8 d'8 e'8~ } e'4 f'4~ \\tuplet 3/2 { f'8 g'4 } |");
+        assertBarsFillTheirMeter("cut on both sides", source);
+    }
+
+    @Test
+    @DisplayName("a note held out of a bracket across two plain beats is one symbol")
+    void aNoteLeavingABracketIsNotStretchedInsideIt() {
+        // The same defect one beat further on, where it is no longer silent: the
+        // fragment reaches four grid steps, which is longer than a bracket, and
+        // there is no note value for it. A bracket cannot hold a whole bracket's
+        // worth of anything, so this is the shape that turns the miss above into
+        // an exception rather than a wrong page.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(1), thirds(1), "D4"),
+                note(thirds(2), thirds(1) + 3, "E4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains("\\tuplet 3/2 { c'8 d'8 e'8~ } e'2. |");
+        assertBarsFillTheirMeter("held out of a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a pickup inside a bracket fills its short bar in an odd meter too")
+    void aPartialBracketInAPickupStillSumsExactly() {
+        // Round 1 of review found the bar-length helper rejecting this: a
+        // bracket holding fewer notes than its ratio sums a hair under its meter
+        // in floating point, and LilyPond engraves it without a word. 4/4 happens
+        // to round the same way, so the pickup test above did not show it; 3/2
+        // does not.
+        // 3/2, so a counted beat is a half note and a triplet step is two thirds
+        // of a quarter. The pickup enters one step into the bar's second step,
+        // which makes the first bracket a partial one, and the bar then holds a
+        // whole bracket and a bracketed pair -- three different roundings, which
+        // is what it takes to make the double sum miss.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(2 * 2 / 3.0, 2 / 3.0, "C4"),
+                note(2, 10 / 3.0, "D4"),
+                note(6, 6, "C5"));
+        Score score = score(new TimeSignature(3, 2), 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT, GridResolution.BEAT), voice);
+        assertThat(source).contains("\\partial 1*7/6")
+                .contains("\\tuplet 3/2 { c'4 } d'2~ \\tuplet 3/2 { d'2 r4 } |");
+        assertBarsFillTheirMeter("partial bracket in a pickup", source);
+    }
+
+    @Test
     @DisplayName("triplet sixteenths are two brackets to the beat, as they are written")
     void sixthOfABeatIsTwoTripletsRatherThanOneSextuplet() {
         // GridResolution says the ratio is 3/2 at every depth, because a
@@ -908,24 +980,33 @@ class StaffNotationTest {
      * each token from {@link LilyPondNotes}. This is the assertion that would
      * have caught a bar that is a sixteenth short, which LilyPond engraves
      * happily and no golden file would have questioned.
+     *
+     * <p>Compared as exact fractions rather than as doubles, and the difference
+     * is not academic: a tuplet bracket holding a partial group — which a pickup
+     * inside a bracket produces — sums a bit under its meter in floating point,
+     * and round 1 of review found that this helper therefore rejected output
+     * LilyPond engraves without a word. Loosening the comparison would have blunted
+     * the one check that survives a golden-file regeneration, so the arithmetic
+     * was made exact instead.
      */
     private static void assertBarsFillTheirMeter(String label, String source) {
-        double barLength = 0;
-        double expected = -1;
+        LilyPondNotes.Quarters barLength = LilyPondNotes.Quarters.ZERO;
+        LilyPondNotes.Quarters expected = null;
         int barNumber = 0;
         for (String rawLine : source.split("\n")) {
             String line = rawLine.trim();
             if (line.startsWith("\\time")) {
                 String meter = line.substring(line.lastIndexOf(' ') + 1);
                 String[] parts = meter.split("/");
-                barLength = Integer.parseInt(parts[0]) * 4.0 / Integer.parseInt(parts[1]);
+                barLength = new LilyPondNotes.Quarters(Integer.parseInt(parts[0]) * 4L,
+                        Integer.parseInt(parts[1]));
                 expected = barLength;
             } else if (line.startsWith("\\partial")) {
-                expected = LilyPondNotes.quartersOf(line.substring("\\partial ".length()));
+                expected = LilyPondNotes.exactQuartersOf(line.substring("\\partial ".length()));
             } else if (line.endsWith("|") && !line.startsWith("\\bar")) {
                 List<String> tokens = new ArrayList<>(LilyPondNotes.tokenize(line));
                 tokens.removeLast();
-                double sum = LilyPondNotes.quartersOfBar(tokens);
+                LilyPondNotes.Quarters sum = LilyPondNotes.quartersOfBar(tokens);
                 barNumber++;
                 assertThat(sum)
                         .as("%s: bar %d (%s)", label, barNumber, line)

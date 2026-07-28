@@ -65,6 +65,13 @@ This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
 
+There is one edge between non-core modules: **`mw-notation` depends on
+`mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. The notation
+layer needs the quantizer's tuplet decision and cannot re-derive it — three
+onsets a third of a beat apart and three a half beat apart are both legal on the
+sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
+modules are purely symbolic, so this pulls no audio and no models into notation.
+
 ## Licensing — enforced, not aspirational
 
 Apache-2.0. The `maven-enforcer-plugin` bans GPL/AGPL artifacts outright, and CI

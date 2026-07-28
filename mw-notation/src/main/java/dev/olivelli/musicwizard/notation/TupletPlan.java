@@ -26,7 +26,7 @@ import java.util.Optional;
  *
  * <p>One of these is threaded through {@link StaffNotation} so that the tuplet
  * decision is carried from the quantizer to the page instead of being
- * rediscovered there. {@link #NONE} is the answer for a plain {@link
+ * rediscovered there. {@link #none()} is the answer for a plain {@link
  * dev.olivelli.musicwizard.core.model.Score}, which is what the audio track
  * produces and what every caller before #92 passed: it says "no bar is a tuplet
  * bar" to every question, so the emitter takes exactly the path it took before.
@@ -39,9 +39,6 @@ import java.util.Optional;
  * quantizer and no opportunity to be more right.
  */
 final class TupletPlan {
-
-    /** The plan for a score that was never quantized, or whose grids are unknown. */
-    static final TupletPlan NONE = new TupletPlan(null);
 
     private final QuantizedScore quantized;
 
@@ -57,6 +54,20 @@ final class TupletPlan {
 
     static TupletPlan of(QuantizedScore quantized) {
         return new TupletPlan(quantized);
+    }
+
+    /**
+     * The plan for a score that was never quantized, or whose grids are unknown.
+     *
+     * <p>A new instance rather than a shared constant, which it was until round
+     * 1 of review pointed out that a constant carries this class's cache with
+     * it: a mutable {@link HashMap} reachable from every thread engraving every
+     * unquantized score, safe today only because the null check returns before
+     * touching it. An allocation of two fields per engraved part is not worth
+     * the invariant.
+     */
+    static TupletPlan none() {
+        return new TupletPlan(null);
     }
 
     /** The bar, when the quantizer divided it into tuplets. */

@@ -144,7 +144,7 @@ public final class StaffNotation {
     public static String toLilyPond(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
-        return document(score, track, TupletPlan.NONE);
+        return document(score, track, TupletPlan.none());
     }
 
     /**
@@ -192,7 +192,7 @@ public final class StaffNotation {
     static String staffBlock(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
-        return staffBlock(score, track, TupletPlan.NONE);
+        return staffBlock(score, track, TupletPlan.none());
     }
 
     /** The same, with the quantizer's per-bar grid honoured. */
@@ -626,10 +626,14 @@ public final class StaffNotation {
      */
     private static void appendTupletBar(List<String> tokens, TimeSignature meter, double barStart,
                                         TupletBar tuplets, List<Piece> pieces) {
+        // Starts only. The pieces cover the bar end to end -- each one begins
+        // where the last stopped, the first at the content start and the last at
+        // the bar line -- so every boundary in the bar is some piece's start,
+        // except the bar line itself, which is a bracket boundary and marks
+        // nothing. Marking the ends as well was byte-for-byte inert.
         boolean[] bracketed = new boolean[tuplets.brackets()];
         for (Piece piece : pieces) {
             markBracket(bracketed, tuplets, piece.from());
-            markBracket(bracketed, tuplets, piece.to());
         }
 
         int open = -1;

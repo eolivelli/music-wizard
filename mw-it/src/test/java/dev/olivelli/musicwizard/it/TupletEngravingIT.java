@@ -242,6 +242,50 @@ class TupletEngravingIT {
     }
 
     @Test
+    @DisplayName("every tuplet grid of every meter anyone writes engraves without complaint")
+    void everyTupletGridOfEveryUsableMeterEngraves() throws Exception {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+        LilyPondRenderer renderer = new LilyPondRenderer(lilypond);
+
+        // Not every meter the model admits -- there are 448 of those and the
+        // absurd ones are #131's business. These are the ones music is written
+        // in, crossed with every grid GridResolution calls a tuplet in them, and
+        // that is 29 combinations rather than the five shapes below.
+        List<TimeSignature> meters = List.of(
+                new TimeSignature(4, 4), new TimeSignature(3, 4), new TimeSignature(2, 4),
+                new TimeSignature(5, 4), new TimeSignature(7, 8), TimeSignature.SIX_EIGHT,
+                new TimeSignature(9, 8), new TimeSignature(12, 8), new TimeSignature(6, 16),
+                new TimeSignature(2, 2), new TimeSignature(3, 2), new TimeSignature(12, 16));
+
+        int engraved = 0;
+        for (TimeSignature meter : meters) {
+            for (GridResolution resolution : GridResolution.values()) {
+                // divisionsPerBeat 1 is #130: reported as a duplet in compound
+                // time, and there is nothing under the bracket to engrave.
+                if (!resolution.isTupletIn(meter) || resolution.divisionsPerBeat() == 1) {
+                    continue;
+                }
+                String name = meter.numerator() + "-" + meter.denominator() + "-" + resolution;
+                QuantizedScore quantized = everyPositionSounding(meter, resolution);
+                String source = StaffNotation.toLilyPond(
+                        quantized, quantized.score().tracks().getFirst());
+                assertThat(source).as("%s has no bracket at all", name).contains("\\tuplet");
+
+                LilyPondRenderer.Result result = renderer.renderSource(
+                        tempDirectory.resolve("meters/" + name + "/part.ly"), source);
+                assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+                assertThat(result.output())
+                        .as("%s engraved with complaints", name)
+                        .doesNotContainIgnoringCase("warning")
+                        .doesNotContainIgnoringCase("error");
+                engraved++;
+            }
+        }
+        assertThat(engraved).as("the sweep engraved nothing").isEqualTo(29);
+    }
+
+    @Test
     @DisplayName("every shape of bracket this emits is one LilyPond engraves without complaint")
     void everyBracketShapeEngraves() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
@@ -293,6 +337,17 @@ class TupletEngravingIT {
             startBeat += meter.quarterBeatsPerBar();
         }
         return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
+    /** One bar of the meter with a note on every position of the grid. */
+    private static QuantizedScore everyPositionSounding(TimeSignature meter,
+                                                        GridResolution resolution) {
+        double step = resolution.stepQuarters(meter);
+        List<Note> notes = new ArrayList<>();
+        for (int i = 0; i < resolution.divisionsPerBar(meter); i++) {
+            notes.add(note(i * step, step, 60 + i % 12));
+        }
+        return verdict(meter, 120, notes, resolution);
     }
 
     /** One 4/4 bar divided {@code perBeat} ways, with every position sounding. */
