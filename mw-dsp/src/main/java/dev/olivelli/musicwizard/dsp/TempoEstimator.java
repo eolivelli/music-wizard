@@ -71,9 +71,9 @@ public final class TempoEstimator {
      * because a smooth envelope is self-similar at every lag — that is exactly
      * how a 440 Hz sine used to out-score a metronome. A recording of unrelated
      * bangs has the second without the first. Rhythmic material needs both, so
-     * {@link #strength()} is the product, and that is what callers should gate
-     * on. Needing both is not the same as both being enough: see the limits
-     * documented on {@code strength()}.
+     * {@link #strength()} is the product. Needing both is not the same as both
+     * being enough, and in practice it is not enough: read the limits on
+     * {@code strength()} before gating anything on it.
      *
      * @param beatsPerMinute the estimate
      * @param periodicity    fraction of the envelope's energy at the winning
@@ -105,52 +105,50 @@ public final class TempoEstimator {
         }
 
         /**
-         * How much to trust this reading, 0 to 1, and the only one of the three
-         * numbers worth comparing against an absolute threshold.
+         * How much to trust this reading, 0 to 1.
          *
          * <p>The product rather than an average, because the two components are
          * a conjunction: material that fails either one is not rhythmic, and an
          * average would let a sustained tone's near-perfect self-similarity
          * carry it. Zero for silence.
          *
-         * <p><strong>What this reliably detects is the absence of onset
-         * structure, and only that.</strong> Smooth material collapses by two
-         * orders of magnitude and stays collapsed: a sustained sine 0.004, a
-         * crescendo 0.011, silence 0. That is the discrimination this measure
-         * exists for and it is robust. Everything above that floor overlaps
-         * pairwise, and the overlaps are not tuning problems:
+         * <p><strong>This improves the ordering. It does not separate the two
+         * populations, and it is not safe against an absolute threshold.</strong>
+         * Issue #26 reported a sustained 440 Hz sine scoring 0.96 against a
+         * click track's 0.85. That inversion is gone — the sine now scores
+         * 0.004 — and the general case is much better: a held harmonic note
+         * out-scored 135 of the 141 integer click tempi from 60 to 200 BPM
+         * before this measure existed, and out-scores 11 now. But 11 is not
+         * zero, and what remains is not a tail:
          *
          * <ul>
-         *   <li><b>Steady click tracks, 0.48 to 0.95.</b> Swept over every
-         *       integer tempo from 60 to 200 BPM at 20 s the span is 0.53 to
-         *       0.93, non-monotone in tempo — 105 BPM scores 0.59 against 110
-         *       BPM's 0.90. The floor also depends on clip length, and rises
-         *       with it: 0.48 at 10 s, 0.53 at 20 s, 0.56 at 40 s, with the
-         *       worst tempo itself moving from 64 to 78 BPM. So the floor is a
-         *       function of duration, not a constant.
-         *   <li><b>Clicks at random intervals, 0.04 to 0.12</b> over 200 seeds —
-         *       and a click track drifting by ±8%, which is real music, sits at
-         *       0.12 as well. There is no threshold between arrhythmic material
-         *       and rubato.
-         *   <li><b>A held note with ordinary vibrato, 0.61 to 0.64.</b> 50 cents
-         *       at 2 Hz scores 0.61 and outranks 17 of those 141 click tempi; at
-         *       7 Hz it scores 0.64 and outranks 25, reporting 140 BPM — a third
-         *       of the 420 BPM modulation rate, which is above the 240 BPM top
-         *       of the search range and so cannot be reported at all, making the
-         *       reading a subharmonic of a wobble rather than any beat.
-         *       Sustained chords of pure sines land at 0.47. Periodic modulation
-         *       of one note is a genuinely periodic train of accents, and nothing
-         *       measurable in an onset envelope distinguishes it from a beat.
-         *       Issue #43 has the measurements and two refuted fixes.
+         *   <li><b>Sustained notes with harmonics score 0.17 to 0.60</b>, against
+         *       a click-track range of 0.48 to 0.95. A held 110 Hz note with six
+         *       partials, constant amplitude, no attack and no modulation of any
+         *       kind, scores 0.60. Partials beat against each other at hundreds
+         *       of hertz and the envelope is sampled at 172 fps, so the beating
+         *       aliases down into the tempo band as a genuinely periodic accent
+         *       train. Pure single sinusoids are the exception that collapses,
+         *       and they are the least representative sound there is. See issue
+         *       #49; three candidate fixes are measured and refuted there.
+         *   <li><b>Held notes with vibrato score 0.61 to 0.64</b>, out-ranking 17
+         *       and 25 of those 141 tempi. Issue #43.
+         *   <li><b>Clicks at random intervals reach 0.12</b> over 200 seeds, and
+         *       a click track drifting ±8% — real music — also sits at 0.12.
+         *   <li><b>Material outside the 40 to 240 BPM search range scores exactly
+         *       zero</b>, indistinguishable from silence: a clean 30 BPM
+         *       metronome reads 0.000 with a peakiness of 0.992. So does any
+         *       clip too short to contain several periods — one second of a
+         *       120 BPM click track scores 0.003, below the sine above.
          * </ul>
          *
-         * <p>So: gate on it to ask "is there any onset structure at all", where
-         * the two populations are three decades apart. Do not gate on it to rank
-         * how rhythmic material is — there is no threshold that separates
-         * arrhythmic from rubato, or a vibrato pad from a metronome, and a
-         * mid-range cut is wrong in both directions at once. Any threshold meant
-         * for real music has to be chosen against tier-2 audio, not against
-         * synthetic figures.
+         * <p>What is left that this can be used for: ranking two readings of the
+         * same recording, which is what it was originally for; and recognising
+         * genuinely featureless material, where silence, pure tones and smooth
+         * swells sit at 0.011 and below. Anything finer — "is this rhythmic",
+         * "is this arrhythmic", "should we warn the user" — is not supported by
+         * the measurements, in either direction, and a threshold chosen for one
+         * of the families above will be wrong for another.
          *
          * <p>These figures are for {@link TempoEstimator#estimate} over a whole
          * clip. {@link BeatTracker} averages a per-window strength and reports

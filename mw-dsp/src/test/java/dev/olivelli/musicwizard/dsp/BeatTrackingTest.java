@@ -99,6 +99,18 @@ class BeatTrackingTest {
         return out;
     }
 
+    /** A held note with harmonics: constant amplitude, no attack, no modulation. */
+    private static float[] heldNote(double fundamentalHz, int harmonics, double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        for (int harmonic = 1; harmonic <= harmonics; harmonic++) {
+            for (int i = 0; i < out.length; i++) {
+                out[i] += (float) (0.4 / harmonic
+                        * Math.sin(2 * Math.PI * fundamentalHz * harmonic * i / RATE));
+            }
+        }
+        return out;
+    }
+
     /** A tone that swells from quiet to loud: smooth, but not stationary. */
     private static float[] crescendo(double frequencyHz, double seconds) {
         float[] out = new float[(int) Math.round(seconds * RATE)];
@@ -291,6 +303,53 @@ class BeatTrackingTest {
             assertThat(tone.peakiness()).isLessThan(0.05);
             assertThat(clicks.peakiness()).isGreaterThan(0.9);
             assertThat(tone.strength()).isLessThan(clicks.strength() / 20);
+        }
+
+        @Test
+        @DisplayName("a held harmonic note still out-scores some click tracks: the unfixed half")
+        void sustainedHarmonicNoteIsNotSeparated() {
+            // The limitation that stops this PR from closing issue #26, pinned so
+            // it cannot be mistaken for solved. sustainedToneNoLongerBeatsClicks
+            // above uses a pure 440 Hz sine, which collapses to 0.004 -- but a
+            // pure mid-range sinusoid is the least representative sound there
+            // is, and it is the only one that collapses.
+            //
+            // This fixture is a held note: six harmonics at constant amplitude,
+            // no attack, no decay, no vibrato, no tremolo. Nothing about it is
+            // rhythmic. It scores about 0.60, inside the click-track range of
+            // 0.48 to 0.95, because partials beat against each other at hundreds
+            // of hertz and the 172 fps envelope aliases that into the tempo band.
+            //
+            // The measure is still a large improvement: the same fixture beat
+            // 135 of the 141 integer click tempi before and beats 11 now. The
+            // assertions below pin both halves of that -- the gain, and the gap
+            // that remains. Issue #49. If someone closes it, this fails.
+            double held = strengthOf(heldNote(110, 6, SECONDS));
+
+            assertThat(held).isBetween(0.4, 0.8);
+            assertThat(held).isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
+            // But well below a click track at a tempo the estimator handles
+            // cleanly -- which is the improvement over scoring above nearly all
+            // of them.
+            assertThat(held).isLessThan(strengthOf(SignalFactory.clickTrack(120, SECONDS, RATE)));
+        }
+
+        @Test
+        @DisplayName("material outside the search range scores zero, like silence")
+        void tooSlowOrTooShortScoresZero() {
+            // Documented because it is a trap for anyone gating on a low
+            // threshold: these are not weak readings, they are no reading at
+            // all, and they are indistinguishable from silence.
+            TempoEstimator.Estimate slow =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(30, SECONDS, RATE)));
+
+            assertThat(slow.peakiness()).isGreaterThan(0.9);   // the onsets are there
+            assertThat(slow.periodicity()).isZero();           // 30 BPM is below MIN_TEMPO
+            assertThat(slow.strength()).isZero();              // and so this says "nothing"
+
+            // Likewise a clip too short to hold several periods.
+            assertThat(strengthOf(SignalFactory.clickTrack(120, 1, RATE)))
+                    .isLessThan(strengthOf(SignalFactory.sine(440, SECONDS, RATE)));
         }
 
         @Test
