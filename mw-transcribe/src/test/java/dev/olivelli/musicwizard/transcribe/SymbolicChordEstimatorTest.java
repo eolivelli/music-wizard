@@ -375,6 +375,36 @@ class SymbolicChordEstimatorTest {
     }
 
     @Test
+    @DisplayName("a bass on a note the chord does not contain gives no slash")
+    void aBassOutsideTheChordIsNotASlash() {
+        // A held D under a C triad. As a chart symbol that is C/D, a real and
+        // common voicing -- but nothing here can tell it from a bass sitting on
+        // a passing note, and `Chord.pitchClasses()` is computed from root and
+        // quality and would not sound the D that the symbol promises. So the
+        // estimator declines to write one, and this test is what says that is a
+        // decision rather than an oversight.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Bass", 0).note(0, 4, 38).note(4, 4, 38).end()
+                .part("Keys", 1).chord(0, 4, 60, 64, 67).chord(4, 4, 60, 64, 67)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("C");
+
+        // The same shape with the bass moved onto a chord tone does get one, so
+        // this is not passing because slashes never appear.
+        Sequence inversion = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Bass", 0).note(0, 4, 40).note(4, 4, 40).end()
+                .part("Keys", 1).chord(0, 4, 60, 64, 67).chord(4, 4, 60, 64, 67)
+                .build();
+
+        assertThat(symbolsOf(inversion)).containsExactly("C/E");
+    }
+
+    @Test
     @DisplayName("a bass alternating root and fifth within the beat is not an inversion")
     void anAlternatingBassIsNotAnInversion() {
         // The um-pah figure: F and C under an F chord, an eighth each. Neither

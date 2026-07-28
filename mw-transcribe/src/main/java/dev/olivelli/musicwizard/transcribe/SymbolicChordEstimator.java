@@ -514,6 +514,14 @@ public final class SymbolicChordEstimator {
      * note-span overlap rather than notes times spans. A whole-note pedal under
      * a moving line is the case that makes the difference, and it is also the
      * case this whole class has to get right.
+     *
+     * <p>Total overlap is not the same bound as linear, and on input that is
+     * adversarial rather than musical -- a hundred thousand sustained notes all
+     * sounding at once -- it degenerates back to notes times spans and takes
+     * minutes. {@link BassLine} answers the same shape in {@code O(n log n)} and
+     * the same treatment applies here; #135 records the measurements. Real
+     * arrangements are nowhere near it: a 256,000-note file whose notes are not
+     * all simultaneous goes through this in under a second.
      */
     private static Histogram[] histograms(List<Span> spans, List<Voiced> notes,
                                           BassReader bass) {
@@ -1006,6 +1014,21 @@ public final class SymbolicChordEstimator {
                                 Confidence.clamped(VOCABULARY_CEILING
                                         * fit(template, aggregate) * separation))
                         .quantizedTo(startBeat, endBeat);
+                // A slash only for a bass that is one of the chord's own notes,
+                // which is to say only for an inversion. Two reasons, and the
+                // second is the one that would bite:
+                //
+                // A bass on a note the chord does not contain is either a
+                // passing note the estimator should not enshrine, or a genuine
+                // C/D -- and nothing here can tell those apart, since both look
+                // like a held pitch under a triad.
+                //
+                // And a Chord's pitchClasses() are computed from root and
+                // quality and do not include the bass, so a C/D would print a D
+                // that every consumer of that method -- the arranger, the MIDI
+                // writer, the engraved chart's own loop-closure test -- would
+                // then fail to sound. Lifting this gate is a change to the
+                // model, not to this line; see #134.
                 if (bass >= 0 && bass != template.root() && isChordTone(template, bass)) {
                     chord = chord.withBass(spell(bass, flats));
                 }
