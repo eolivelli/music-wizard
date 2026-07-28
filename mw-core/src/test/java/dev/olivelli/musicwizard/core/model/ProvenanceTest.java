@@ -174,6 +174,10 @@ class ProvenanceTest {
         @Test
         @DisplayName("still hears a supplied tempo through a lead-in when there is a grid")
         void aSuppliedTempoSurvivesItsLeadInWithAGrid() {
+            // Passes against the unfixed code too, and is labelled as a guard
+            // rather than a reproduction: this is the one case the shape proxy
+            // got right, so the new rule has to keep getting it right. What it
+            // catches is a fix that answers the cases below by breaking this one.
             BeatGrid grid = gridOf(pulses(0.2, 0.5, 24));
             Score corrected = Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid);
 
@@ -283,7 +287,9 @@ class ProvenanceTest {
             // The fallback for values that predate the field. Same map as
             // aSuppliedTempoSurvivesItsLeadInWithAGrid, with every label
             // dropped: the proxy identifies the lead-in by position and still
-            // answers 60.
+            // answers 60. A guard, not a reproduction -- it passes against the
+            // unfixed code by construction, since it is asserting that the
+            // unfixed behaviour survives for exactly these values.
             TempoMap unlabelled = new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 0.0, 60.0 / 0.2),
                             new TempoMap.TempoSegment(1.0, 0.2, 60.0)),
@@ -408,6 +414,11 @@ class ProvenanceTest {
             // all the way to the map -- which is a lead-in plus the assumed 120.
             // Averaging the lead-in in reported 173 for a clip nothing was
             // measured on.
+            //
+            // This is a regression the labelling itself introduced, not one that
+            // predates it: the shape proxy answered 120 here, and TempoOverride-
+            // Test.oneTrackedBeatIsNotAnError went red the moment the proxy
+            // stopped running. It is a guard against reintroducing it.
             TempoMap assumed = new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 0.0, 300.0, Provenance.DERIVED),
                             new TempoMap.TempoSegment(1.0, 0.2, 120.0, Provenance.ASSUMED)),

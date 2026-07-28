@@ -252,8 +252,10 @@ public record Score(
      * deliberately does <em>not</em> short-circuit to its own opening tempo. A
      * file that changes tempo states no single figure, and the weighted average
      * is the honest summary of one that does. Since such a score carries no beat
-     * grid today (#98), the answer is the same either way; when #98 gives it a
-     * derived grid, the grid must not overrule the file, and #122 tracks that.
+     * grid today (#98), the answer is the same either way -- but when #98 gives
+     * it a derived grid, a grid derived from the file must not be allowed to
+     * overrule the file, and this rule will need revisiting there rather than
+     * in the importer.
      *
      * <p>In quarter notes per minute, like every other tempo in the model. For
      * the figure a musician counts, pass it through

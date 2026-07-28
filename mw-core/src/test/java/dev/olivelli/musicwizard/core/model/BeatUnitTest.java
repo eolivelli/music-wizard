@@ -446,7 +446,7 @@ class BeatUnitTest {
          * quarter-beat meter still produces the same doubles, bit for bit. So
          * the label is set aside here rather than copied into the oracle, which
          * would have made a mislabelling look like unchanged arithmetic. The
-         * labels themselves are asserted in {@code ProvenanceIsCarried}.
+         * labels themselves are asserted in {@code ProvenanceTest}.
          *
          * <p>Rebuilt through the constructor, so the doubles are the identical
          * values and not rounded copies of them.
