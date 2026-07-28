@@ -92,8 +92,9 @@ public final class StaffNotation {
      *   8,000 bars   380   s   19.3 GB
      * </pre>
      *
-     * <p>Roughly cubic in bars. The memory is what decides the number rather than
-     * the seconds: 19 GB is not a slow run on an ordinary laptop, it is a swap
+     * <p>Superlinear throughout and steeply so at the top: each doubling costs
+     * between two and four times the last, and the final one costs nine. The
+     * memory is what decides the number rather than the seconds: 19 GB is not a slow run on an ordinary laptop, it is a swap
      * storm or an OOM kill, which is worse than the hang the ceiling exists to
      * bound and does not get better on a faster machine. {@value} bars is about a
      * minute and five gigabytes.
