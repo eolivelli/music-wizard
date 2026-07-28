@@ -362,8 +362,6 @@ public final class ChordChart {
                 : symbol;
     }
 
-
-
     /**
      * The quality modifier, which follows the duration in chordmode.
      *

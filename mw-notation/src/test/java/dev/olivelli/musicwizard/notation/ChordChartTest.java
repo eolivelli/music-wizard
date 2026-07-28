@@ -350,8 +350,13 @@ class ChordChartTest {
 
     /** One bar of one chord, quantized, so a quality can be engraved on its own. */
     private static Score oneChord(ChordQuality quality, PitchSpelling bass) {
+        return oneChord(root(NoteLetter.C), quality, bass);
+    }
+
+    private static Score oneChord(PitchSpelling chordRoot, ChordQuality quality,
+                                  PitchSpelling bass) {
         TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
-        Chord chord = new Chord(root(NoteLetter.C), quality, Optional.ofNullable(bass),
+        Chord chord = new Chord(chordRoot, quality, Optional.ofNullable(bass),
                 0, 2, Optional.of(0.0), Optional.of(4.0), Confidence.of(0.9));
         return Score.empty(map, 2)
                 .withChords(new ChordProgression(List.of(chord), Confidence.of(0.9)));
@@ -408,6 +413,24 @@ class ChordChartTest {
         // and the table was not.
         assertThat(ChordQuality.values()).hasSize(15);
         assertThat(ChordChart.toLilyPond(oneChord(ChordQuality.NONE, null))).contains("r1 ");
+    }
+
+    @ParameterizedTest(name = "a chord rooted on {0} is engraved as {1}")
+    @CsvSource({"Eb4, ees1", "Bb4, bes1", "F#4, fis1", "C4, c1"})
+    @DisplayName("engraves an accidental in a chord root, not just in a bass")
+    void aRootKeepsItsAccidental(String spelling, String expected) {
+        // Dropping the accidental from a root is what a hand-rolled LilyPond
+        // note name does, and a chart in E flat then prints Eb and engraves E --
+        // three different chords on a four-bar page. The root and the bass are
+        // separate call sites, and until this test only the bass had one:
+        // everything else in this file is rooted on a natural C.
+        //
+        // The roots come from the file's own key signature by way of
+        // SymbolicChordEstimator, so any MIDI import in a flat or sharp key
+        // reaches this.
+        assertThat(ChordChart.toLilyPond(
+                        oneChord(PitchSpelling.parse(spelling), ChordQuality.MAJOR, null)))
+                .contains(expected + " ");
     }
 
     @Test
