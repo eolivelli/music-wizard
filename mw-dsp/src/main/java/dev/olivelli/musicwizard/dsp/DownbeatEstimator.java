@@ -76,9 +76,10 @@ import java.util.Objects;
  * a better guess than one chosen by nothing.
  *
  * <p>What to rely on in that number is its <em>ordering</em>, not its value.
- * The ordering is structural — onsets alone can never outrank harmony, and a
- * phase nothing supports lands on the floor — but the constants that space it
- * out were calibrated on synthetic fixtures, and synthetic audio is
+ * The ordering is structural — a phase nothing supports lands on the floor, a
+ * phase the accent alone chose lands there too, and only harmony lifts one off
+ * it — but the constants that space it out were calibrated on synthetic
+ * fixtures, and synthetic audio is
  * systematically easier than real audio. Two of the three factors are already
  * known not to measure quite what they claim on material with a chroma novelty
  * floor, which every real recording has: see #45.
@@ -323,8 +324,8 @@ public final class DownbeatEstimator {
         // equal — handing that to whichever came first would let an accent take a
         // decision the harmony had already made.
         int phase = argMax(score, harmony);
-        // The accent chose the phase, above, and is not asked again here. See
-        // ACCENT_IS_NOT_CORROBORATION.
+        // The accent chose the phase, above, and is not asked to vouch for the
+        // phase it chose. See "The accent is asked nothing" on the class.
         double confidence = BASE_CONFIDENCE
                 + HARMONIC_CONFIDENCE
                         * harmonicAgreement(harmony, novelty, phase, firstBeat, lastBeat);
@@ -442,12 +443,18 @@ public final class DownbeatEstimator {
      * Estimates the downbeat phase from onset energy alone.
      *
      * <p>For callers with no chroma to hand. This is the weak heuristic
-     * described above, and its answers report {@link #BASE_CONFIDENCE} — the
-     * floor — however pronounced the accent, because a pronounced accent on the
-     * wrong beat is exactly how this heuristic fails and the loudest phase this
-     * envelope reports is the backbeat (#70). It used to scale with the accent
-     * up to {@code 0.45}, which said a loud guess is a better guess than a faint
-     * one. Prefer {@link #estimate} wherever chroma is available.
+     * described above, and every phase it estimates reports
+     * {@link #BASE_CONFIDENCE} — the floor — however pronounced the accent,
+     * because a pronounced accent on the wrong beat is exactly how this
+     * heuristic fails and the loudest phase this envelope reports is the
+     * backbeat (#70). It used to scale with the accent up to {@code 0.45}, which
+     * said a loud guess is a better guess than a faint one.
+     *
+     * <p>A one-beat bar is the exception and is not an estimate: it answers
+     * {@link Confidence#CERTAIN}, above everything here, because there is no
+     * phase to be wrong about. See {@code everyBeatIsADownbeat}.
+     *
+     * <p>Prefer {@link #estimate} wherever chroma is available.
      */
     public static Estimate fromOnsets(List<Double> beatTimes, OnsetEnvelope envelope,
                                       int beatsPerBar) {
