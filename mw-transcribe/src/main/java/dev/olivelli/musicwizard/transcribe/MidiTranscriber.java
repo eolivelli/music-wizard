@@ -79,6 +79,12 @@ import javax.sound.midi.Track;
  * rather than declared; running it over this output would round values that are
  * already exact.
  *
+ * <p>Harmony is estimated here rather than left out, by
+ * {@link SymbolicChordEstimator}. Until #115 it was not, and the consequence was
+ * that a score imported from MIDI carried tempo, meter, keys and notes but had
+ * nothing for {@code mw render} to engrave -- the strongest output the project
+ * has, unreachable from its most reliable input.
+ *
  * <p>What this deliberately does <em>not</em> do is spell pitches. A MIDI number
  * is not a written note -- 61 is both C sharp and D flat -- and choosing between
  * them needs the key and the sounding harmony. Notes therefore leave here with
@@ -268,6 +274,12 @@ public final class MidiTranscriber {
         List<Key> keys = readKeys(tracks, ticksPerQuarter, endTick, tempoMap);
         String title = readTitle(tracks);
 
+        ChordProgression chords = SymbolicChordEstimator.estimate(
+                noteTracks, tempoMap, endBeat, keys, progress);
+        progress.accept(chords.isEmpty()
+                ? "no harmony to chart: nothing here states a chord"
+                : "estimated " + chords.size() + " chord span(s)");
+
         return new Score(
                 Optional.ofNullable(title),
                 Optional.empty(),
@@ -276,7 +288,7 @@ public final class MidiTranscriber {
                 keys,
                 List.of(),
                 noteTracks,
-                ChordProgression.empty(),
+                chords,
                 Lyrics.empty(),
                 durationSeconds);
     }
@@ -709,16 +721,42 @@ public final class MidiTranscriber {
      * <p>{@link Score} permits at most one track in each named role and requires
      * distinct names within {@link PartRole#OTHER}, so a file with two kits or
      * two parts both called "Bass" would otherwise be rejected outright at the
-     * end of a successful import. The first part to claim a role keeps it and the
-     * rest are demoted, which is reported: a demoted part is engraved on a
-     * different staff than the file implies, and that is worth a line of output.
+     * end of a successful import. A second part claiming a named role is
+     * therefore demoted to {@link PartRole#OTHER}, and it is reported, because a
+     * demoted part is engraved on a different staff than the file implies.
+     *
+     * <p>Percussion is the exception, and the exception matters more than the
+     * rule. Extra channel-10 parts are <em>merged</em> into the one kit rather
+     * than demoted, because in General MIDI they <em>are</em> one kit -- a file
+     * that splits drums from hand percussion onto two tracks, which every DAW
+     * exports, is describing two staves of a single instrument. Demoting the
+     * second to {@code OTHER} says the opposite: {@code OTHER} means an
+     * unclassified <em>pitched</em> part, and downstream stages act on that.
+     * {@code SymbolicChordEstimator} drops {@code DRUMS} and reads everything
+     * else as evidence about the harmony, so a demoted conga part put its note
+     * numbers into the chord histogram, and two kit tracks and nothing else came
+     * back charted as C major. Percussion note numbers are instrument selectors,
+     * so the pitches were a bass drum, an electric snare and a floor tom.
+     *
+     * <p>The role is where that has to be fixed. Every stage that asks "is this
+     * pitched?" asks {@link PartRole}, so an answer the model's uniqueness rule
+     * overwrites is an answer no amount of care downstream can recover.
      */
     private List<NoteTrack> toNoteTracks(List<ImportedPart> parts) {
         Set<PartRole> claimed = EnumSet.noneOf(PartRole.class);
         Set<String> usedNames = new HashSet<>();
         List<NoteTrack> built = new ArrayList<>(parts.size());
+        int kit = -1;
+        List<Note> kitNotes = null;
         for (ImportedPart part : parts) {
             PartRole role = part.role();
+            if (role == PartRole.DRUMS && kit >= 0) {
+                progress.accept("\"" + part.name() + "\" is more percussion on the same kit as \""
+                        + built.get(kit).name() + "\"; importing them as one part");
+                kitNotes.addAll(part.notes());
+                built.set(kit, built.get(kit).withNotes(kitNotes));
+                continue;
+            }
             if (role != PartRole.OTHER && !claimed.add(role)) {
                 progress.accept("\"" + part.name() + "\" also looks like the " + role
                         + " part, but the score already has one; importing it as "
@@ -730,6 +768,10 @@ public final class MidiTranscriber {
                 name = part.name() + " (" + suffix + ")";
             }
             built.add(new NoteTrack(role, name, part.notes(), Confidence.CERTAIN));
+            if (role == PartRole.DRUMS) {
+                kit = built.size() - 1;
+                kitNotes = new ArrayList<>(part.notes());
+            }
         }
         return built;
     }

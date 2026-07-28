@@ -253,22 +253,28 @@ class MidiImportEdgeCaseTest {
     // -------------------------------------------------------------------- roles
 
     @Test
-    @DisplayName("a second drum kit is demoted rather than rejected, and it is said out loud")
-    void aSecondKitIsDemoted() throws Exception {
+    @DisplayName("a second drum kit joins the first rather than becoming a pitched part")
+    void aSecondKitIsMergedIntoTheFirst() throws Exception {
         Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
         for (int i = 0; i < 2; i++) {
             Track track = sequence.createTrack();
             trackName(track, "Kit " + (i + 1));
-            noteOn(track, 0, 9, 42, 90);
-            noteOff(track, 480, 9, 42);
+            noteOn(track, 0, 9, 42 + i, 90);
+            noteOff(track, 480, 9, 42 + i);
         }
-        // A score holds at most one track per named role, so the alternative to
-        // demoting is throwing away a part or throwing away the import.
+        // A score holds at most one track per named role, and this used to
+        // demote the second kit to OTHER for that reason. OTHER means an
+        // unclassified *pitched* part, and every stage that asks whether a part
+        // is pitched asks the role -- so a demoted conga part fed its note
+        // numbers to chord estimation, and a file of nothing but two percussion
+        // tracks was charted as a major triad. In General MIDI both tracks are
+        // the same kit, so they are imported as the one part they describe.
         List<NoteTrack> tracks = transcriber.transcribe(sequence).tracks();
-        assertThat(tracks).extracting(NoteTrack::role)
-                .containsExactly(PartRole.DRUMS, PartRole.OTHER);
+        assertThat(tracks).extracting(NoteTrack::role).containsExactly(PartRole.DRUMS);
+        assertThat(tracks.getFirst().notes()).extracting(Note::midiPitch)
+                .containsExactly(42, 43);
         assertThat(messages).anyMatch(message -> message.contains("Kit 2")
-                && message.contains("DRUMS"));
+                && message.contains("same kit"));
     }
 
     @Test
