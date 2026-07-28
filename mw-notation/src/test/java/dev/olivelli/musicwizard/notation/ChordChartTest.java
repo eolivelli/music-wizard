@@ -151,6 +151,33 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("heads a 6/8 chart with the tempo the reader counts")
+    void headsCompoundChartWithTheCountedTempo() {
+        // The chart is the artefact a musician actually holds, and this line sits
+        // directly above "Meter  6/8", which makes it look authoritative. The map
+        // stores 180 quarter notes a minute; a reader setting a metronome from an
+        // unqualified "180 BPM" in 6/8 is 50% fast.
+        List<Double> pulses = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            pulses.add(i * 0.5);
+        }
+        Score compound = Score.empty(
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT), 4.0)
+                .withChords(new ChordProgression(List.of(
+                        Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
+                                0, 4.0, Confidence.of(0.9))), Confidence.of(0.9)));
+
+        assertThat(ChordChart.toText(compound))
+                .contains("Tempo  120 BPM (180 quarter notes/min)")
+                .contains("Meter  6/8");
+
+        // Unchanged in common time, where the two figures coincide.
+        assertThat(ChordChart.toText(fourChordSong(1)))
+                .contains("Tempo  120 BPM%n".formatted())
+                .doesNotContain("quarter notes/min");
+    }
+
+    @Test
     @DisplayName("escapes quotes in the title rather than producing broken source")
     void escapesTitle() {
         Score score = fourChordSong(1).withMetadata("A \"Quoted\" Title", null);

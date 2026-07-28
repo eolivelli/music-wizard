@@ -109,6 +109,19 @@ public record TimeSignature(int numerator, int denominator) {
     }
 
     /**
+     * Converts a tempo in quarter notes per minute into this meter's counted
+     * beats per minute -- the figure a metronome shows and the only one a reader
+     * can act on.
+     *
+     * <p>The inverse of what {@link TempoMap#constantPulse(double, TimeSignature)}
+     * does on the way in. Printing a stored tempo without it shows 180 for a 6/8
+     * piece a musician counts at 120, which is a metronome marking 50% fast.
+     */
+    public double countedTempo(double quarterBeatsPerMinute) {
+        return quarterBeatsPerMinute / beatUnitQuarters();
+    }
+
+    /**
      * How the bar divides into beats, counted in denominator units and summing to
      * {@link #numerator}: {@code [1,1,1,1]} for 4/4, {@code [3,3]} for 6/8,
      * {@code [3,3,3,3]} for 12/8.

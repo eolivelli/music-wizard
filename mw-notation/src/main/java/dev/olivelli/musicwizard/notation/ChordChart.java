@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -53,8 +54,7 @@ public final class ChordChart {
             out.append('\n');
         }
 
-        out.append(String.format("Tempo  %.0f BPM%n", score.tempoMap().averageTempo(
-                score.durationSeconds())));
+        out.append(tempoLine(score));
         out.append("Meter  ").append(score.tempoMap().initialTimeSignature()).append('\n');
         score.primaryKey().ifPresent(key -> out.append("Key    ")
                 .append(key.displayName()).append('\n'));
@@ -64,6 +64,24 @@ public final class ChordChart {
             out.append(line).append('\n');
         }
         return out.toString();
+    }
+
+    /**
+     * The tempo, in the beat the reader counts.
+     *
+     * <p>The map stores quarter notes per minute. Printed unqualified next to a
+     * {@code Meter 6/8} line that makes it look authoritative, that is a
+     * metronome marking 50% fast, because a 6/8 bar is counted in dotted
+     * quarters. Identical in every x/4 meter, where the two coincide.
+     */
+    private static String tempoLine(Score score) {
+        double quarterBpm = score.tempoMap().averageTempo(score.durationSeconds());
+        TimeSignature meter = score.tempoMap().initialTimeSignature();
+        if (meter.beatUnitQuarters() == 1.0) {
+            return String.format("Tempo  %.0f BPM%n", quarterBpm);
+        }
+        return String.format("Tempo  %.0f BPM (%.0f quarter notes/min)%n",
+                meter.countedTempo(quarterBpm), quarterBpm);
     }
 
     /**

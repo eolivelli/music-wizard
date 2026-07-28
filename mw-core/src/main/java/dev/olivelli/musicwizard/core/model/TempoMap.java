@@ -177,7 +177,20 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      */
     public static TempoMap constantPulse(double pulsesPerMinute, TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
-        return constant(pulsesPerMinute * timeSignature.beatUnitQuarters(), timeSignature);
+        // Validated before the conversion, not after. This number comes straight
+        // from --tempo, and reporting it back multiplied names a figure the user
+        // never typed: a rejected 6/8 tempo of -1 was complaining about -1.5.
+        if (!Double.isFinite(pulsesPerMinute) || pulsesPerMinute <= 0) {
+            throw new IllegalArgumentException(
+                    "pulsesPerMinute must be finite and positive, got: " + pulsesPerMinute);
+        }
+        double quarterBeatsPerMinute = pulsesPerMinute * timeSignature.beatUnitQuarters();
+        if (!Double.isFinite(quarterBeatsPerMinute)) {
+            throw new IllegalArgumentException(
+                    "pulsesPerMinute " + pulsesPerMinute + " is too large to express as a tempo"
+                            + " in " + timeSignature);
+        }
+        return constant(quarterBeatsPerMinute, timeSignature);
     }
 
     /**
@@ -217,7 +230,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // describes the symptom rather than the mistake. The bounds are far wider
         // than any note value the model can name -- the longest counted beat it
         // produces is a whole note, at 4.0.
-        if (!Double.isFinite(pulseQuarters) || pulseQuarters <= 0
+        if (!Double.isFinite(pulseQuarters)
                 || pulseQuarters < 1.0 / 1024 || pulseQuarters > 1024) {
             throw new IllegalArgumentException(
                     "pulseQuarters must be finite and between 1/1024 and 1024 quarter notes,"

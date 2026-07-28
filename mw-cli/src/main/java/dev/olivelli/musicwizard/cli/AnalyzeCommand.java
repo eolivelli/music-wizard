@@ -105,6 +105,11 @@ final class AnalyzeCommand implements Callable<Integer> {
      * every x/4 meter and a different one in 6/8, where the counted beat is a
      * dotted quarter. Printing the stored figure unqualified there would show a
      * tempo the user cannot type back in via {@code --tempo}.
+     *
+     * <p>The average is over the whole piece while the meter is the one it opens
+     * in, so a piece that changes meter part-way would be converted with the
+     * wrong beat unit for its later sections. Nothing emits a meter change today;
+     * see #66.
      */
     private static void printTempo(Score score) {
         double quarterBpm = score.tempoMap().averageTempo(score.durationSeconds());
@@ -113,7 +118,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             System.out.printf("Tempo   %.1f BPM%n", quarterBpm);
         } else {
             System.out.printf("Tempo   %.1f BPM (%.1f quarter notes/min)%n",
-                    quarterBpm / meter.beatUnitQuarters(), quarterBpm);
+                    meter.countedTempo(quarterBpm), quarterBpm);
         }
     }
 

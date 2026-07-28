@@ -42,7 +42,20 @@ import java.util.function.Consumer;
  */
 public final class AudioTranscriber {
 
-    /** Optional overrides for the stages that most often need correcting. */
+    /**
+     * Optional overrides for the stages that most often need correcting.
+     *
+     * @param tempoOverride       tempo in the meter's <em>counted</em> beats per
+     *                            minute -- dotted quarters in 6/8, not quarters.
+     *                            The same unit a metronome and this class's own
+     *                            progress output use, and the same one
+     *                            {@link TempoMap#constantPulse} takes. Reading it
+     *                            as quarter notes puts the bar grid 1.5x out in
+     *                            compound time. It corrects the rate but not the
+     *                            phase; see #65.
+     * @param timeSignature       the meter to assume, 4/4 when null
+     * @param firstDownbeatSeconds currently ignored; see #67
+     */
     public record Options(
             Double tempoOverride,
             TimeSignature timeSignature,
@@ -114,6 +127,10 @@ public final class AudioTranscriber {
         // the beats are measured evidence, whereas the tempo is a summary of
         // them, and a user correcting the tempo is usually correcting a
         // half-or-double reading rather than claiming the beats are misplaced.
+        // The beats do survive, in the grid below -- but only their rate reaches
+        // the map, because a constant map has no lead-in and so cannot carry
+        // their phase. The map and the grid can therefore disagree about where
+        // the beats are by up to half a pulse; see #65.
         //
         // The override is read as counted beats per minute, which is what the
         // user is looking at when they type it -- a metronome marking, or the

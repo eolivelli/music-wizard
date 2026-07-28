@@ -276,7 +276,7 @@ class BeatUnitTest {
         }
 
         @Test
-        @DisplayName("a typed tempo and a tracked one describe the same bars")
+        @DisplayName("a typed tempo and a tracked one agree, given a grid starting at t=0")
         void aTypedTempoAgreesWithATrackedOne() {
             // The regression this guards was introduced by the fix above, not by
             // the original bug: teaching fromBeatTimes about the counted beat and
@@ -300,6 +300,9 @@ class BeatUnitTest {
                 assertThat(typed.initialTempo())
                         .as("tempo in %s", meter)
                         .isCloseTo(tracked.initialTempo(), within(1e-9));
+                assertThat(typed.beatsToSeconds(meter.quarterBeatsPerBar()))
+                        .as("bar length in %s", meter)
+                        .isCloseTo(tracked.beatsToSeconds(meter.quarterBeatsPerBar()), within(1e-9));
                 for (int i = 0; i < pulses.size(); i++) {
                     assertThat(typed.secondsToBeats(pulses.get(i)))
                             .as("pulse %d of %s", i, meter)
@@ -309,6 +312,40 @@ class BeatUnitTest {
                             .isEqualTo(tracked.toMusicalTime(
                                     tracked.secondsToBeats(pulses.get(i))));
                 }
+            }
+        }
+
+        @Test
+        @DisplayName("a typed tempo corrects the rate but not the phase, in any meter")
+        void aTypedTempoDoesNotCarryTheLeadIn() {
+            // The limit of the claim above, pinned so nobody reads more into it.
+            // A constant map is anchored at (beat 0, second 0) and has no lead-in,
+            // so a grid that starts part-way through a pulse keeps its rate and
+            // loses its phase. Not a compound-meter problem -- 4/4 does it too,
+            // and it predates the beat unit -- but it means a Score's tempo map
+            // and its own beat grid can disagree after --tempo. Filed as #65.
+            List<Double> pulses = new ArrayList<>();
+            for (int i = 0; i < 24; i++) {
+                pulses.add(0.3 + i * 0.5);
+            }
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT)) {
+                TempoMap tracked = TempoMap.fromBeatTimes(pulses, meter);
+                TempoMap typed = TempoMap.constantPulse(120, meter);
+
+                // The rate is right...
+                assertThat(typed.tempoAtBeat(20))
+                        .as("rate in %s", meter)
+                        .isCloseTo(tracked.tempoAtBeat(20), within(1e-9));
+                // ...and the first tracked pulse is on a whole pulse under the
+                // tracked map and is not under the typed one.
+                double trackedPulse = tracked.secondsToBeats(pulses.get(0)) / meter.beatUnitQuarters();
+                double typedPulse = typed.secondsToBeats(pulses.get(0)) / meter.beatUnitQuarters();
+                assertThat(trackedPulse - Math.rint(trackedPulse))
+                        .as("tracked phase in %s", meter)
+                        .isCloseTo(0.0, within(1e-9));
+                assertThat(typedPulse - Math.rint(typedPulse))
+                        .as("typed phase in %s", meter)
+                        .isNotCloseTo(0.0, within(1e-6));
             }
         }
 
@@ -324,6 +361,29 @@ class BeatUnitTest {
             // Cut time counts half notes, so 120 of them is 240 quarter notes.
             assertThat(TempoMap.constantPulse(120, new TimeSignature(2, 2)).initialTempo())
                     .isEqualTo(240.0);
+            // And back again, which is what a chart header and the CLI both print.
+            assertThat(TimeSignature.SIX_EIGHT.countedTempo(180.0)).isEqualTo(120.0);
+            assertThat(TimeSignature.FOUR_FOUR.countedTempo(180.0)).isEqualTo(180.0);
+            assertThat(new TimeSignature(2, 2).countedTempo(240.0)).isEqualTo(120.0);
+        }
+
+        @Test
+        @DisplayName("rejects a typed tempo in the unit it was typed in")
+        void rejectsATypedTempoInTheTypedUnit() {
+            // --tempo feeds this directly, so the message has to name the number
+            // the user gave. Converting first reported a 6/8 tempo of -1 as -1.5.
+            for (double bad : new double[] {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY}) {
+                assertThatThrownBy(() -> TempoMap.constantPulse(bad, TimeSignature.SIX_EIGHT))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining("pulsesPerMinute")
+                        .hasMessageContaining(String.valueOf(bad));
+            }
+            // Large enough that the conversion overflows, which used to surface as
+            // "beatsPerMinute must be finite ... got: Infinity".
+            assertThatThrownBy(() ->
+                    TempoMap.constantPulse(Double.MAX_VALUE, new TimeSignature(1, 1)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("too large to express as a tempo");
         }
 
         @Test
