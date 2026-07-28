@@ -370,6 +370,40 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a note too short to write does not open a pickup bar for music that is not there")
+    void aDroppedNoteDoesNotCreateAPickup() {
+        // Round 4 of review found this emitting "\\partial 1*63/64" followed by
+        // seven rest symbols: the pickup was measured on the notes and the music
+        // on the events, and the two differ by exactly the notes the emitter
+        // decided it could not write. A stray sub-64th onset at the head of a
+        // transcription -- a click, a breath, a separation artefact -- is
+        // ordinary input, not a corrupt score.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0.0625, 0.001, "C4"), note(4, 4, "E4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).doesNotContain("\\partial").contains("R1 |").contains("e'1 |");
+        assertBarsFillTheirMeter("dropped pickup", source);
+    }
+
+    @Test
+    @DisplayName("an unquantized part elsewhere in the score does not block engraving a finished one")
+    void anUnquantizedSiblingTrackIsSkipped() {
+        // The pickup is read from every part so that separately engraved staves
+        // share a bar grid, and a score is built up in stages, so a part still in
+        // seconds while another is finished is a normal intermediate state rather
+        // than a reason to refuse.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(3, 1, "G4"), note(4, 4, "C5"));
+        NoteTrack raw = new NoteTrack(PartRole.ACCOMPANIMENT, "Keys",
+                List.of(Note.ofSeconds(0.1, 2.0, 60, Confidence.CERTAIN)), Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, raw);
+
+        String source = StaffNotation.toLilyPond(score, voice);
+        assertThat(source).contains("\\partial 4").contains("g'4 |");
+        assertBarsFillTheirMeter("unquantized sibling", source);
+    }
+
+    @Test
     @DisplayName("a note shorter than the shortest value is dropped, not stretched")
     void dropsNotesTooShortToWrite() {
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
@@ -434,6 +468,12 @@ class StaffNotationTest {
      * generated text that both fills its bars and equals its golden proves the
      * golden fills its bars too, running it here covers strictly more and depends
      * on nothing.
+     *
+     * <p>It is a check on bar <em>lengths</em>, and only that. A regeneration run
+     * that changes something else — a tie that stopped being emitted, a clef, a
+     * spelling — rewrites the golden and says nothing, because the comparison it
+     * would have failed is the one the flag suppressed. Which is why the update
+     * mode's contract is to read the diff, and why it is opt-in.
      */
     private static void assertGolden(String name, String actual) {
         assertBarsFillTheirMeter(name, actual);
@@ -460,9 +500,10 @@ class StaffNotationTest {
      * update mode a trap: the new text was written to {@code src/test/resources}
      * and then compared against the copy {@code process-test-resources} had
      * already put in {@code target}, so a regenerating run rewrote every file and
-     * failed anyway. Worse, {@link #everyBarFillsItsMeter} read the same stale
-     * copies, so the one check that survives regeneration was skipped on exactly
-     * the run where it mattered.
+     * failed anyway. Worse, the bar-length check was a separate test that read
+     * the same stale copies, so the one check that survives regeneration was
+     * skipped on exactly the run where it mattered; it now lives in
+     * {@link #assertGolden} and runs on generated text instead.
      *
      * <p>Falls back to the classpath when the source tree cannot be located,
      * which is what happens outside Maven. That path is read-only; the update

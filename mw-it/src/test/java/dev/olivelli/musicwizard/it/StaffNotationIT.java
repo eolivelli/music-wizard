@@ -99,6 +99,21 @@ class StaffNotationIT {
                         0, 60, Confidence.CERTAIN)));
     }
 
+    /**
+     * The meters whose beats do not come in a power-of-two count, where three
+     * rounds of review found the splitter hiding beats. The defects themselves
+     * were invisible here — a bar that hides a beat still sums, so LilyPond
+     * engraves it silently — but the tied output they now produce is the most
+     * heavily split this emitter writes, and that it engraves at all is worth
+     * knowing.
+     */
+    private static Score oddMeterSong(TimeSignature meter) {
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(0, 0.75, "C4"), note(0.75, 1.5, "D4"), note(2.25, 0.75, "E4"),
+                note(3, meter.quarterBeatsPerBar() - 3 + 0.0625, "F4")), Confidence.CERTAIN);
+        return Score.empty(TempoMap.constant(120, meter), 60).withTrack(voice);
+    }
+
     @Test
     @DisplayName("LilyPond engraves every kind of staff this emits, without a single warning")
     void engravesWithoutWarnings() throws Exception {
@@ -111,7 +126,10 @@ class StaffNotationIT {
         List<Case> cases = List.of(
                 new Case("melody", commonTimeSong(), PartRole.LEAD_VOCAL),
                 new Case("compound", compoundTimeSong(), PartRole.LEAD_VOCAL),
-                new Case("bass", bassSong(), PartRole.BASS));
+                new Case("bass", bassSong(), PartRole.BASS),
+                new Case("triple", oddMeterSong(TimeSignature.THREE_FOUR), PartRole.LEAD_VOCAL),
+                new Case("five", oddMeterSong(new TimeSignature(5, 4)), PartRole.LEAD_VOCAL),
+                new Case("seven", oddMeterSong(new TimeSignature(7, 8)), PartRole.LEAD_VOCAL));
 
         for (Case engraved : cases) {
             NoteTrack track = engraved.score().track(engraved.role()).orElseThrow();

@@ -130,7 +130,7 @@ public final class StaffNotation {
         requireQuantized(track);
 
         List<Event> events = eventsOf(score, track);
-        double pickupStart = pickupStart(score, track);
+        double pickupStart = pickupStart(score, track, events);
 
         StringBuilder out = new StringBuilder();
         out.append("  \\new Staff \\with { instrumentName = \"")
@@ -187,6 +187,15 @@ public final class StaffNotation {
         // resolves overlaps below runs in time order.
         Map<Double, List<Note>> byOnset = new TreeMap<>();
         for (Note note : track.notes()) {
+            if (!note.isQuantized()) {
+                // The track being engraved has already been rejected if it holds
+                // one of these. The other tracks reach here only through
+                // pickupStart, which asks where the score's music begins and can
+                // answer that from the tracks that have a position on the beat
+                // axis, rather than refusing to engrave a finished part because
+                // an unrelated one is still in seconds.
+                continue;
+            }
             double onset = snap(note.onsetBeat().orElseThrow());
             double offset = snap(note.offsetBeat().orElseThrow());
             if (offset <= onset) {
@@ -267,16 +276,25 @@ public final class StaffNotation {
      * that enters in bar four does not get its own pickup. The track being
      * engraved is included whether or not the score holds it, so that engraving
      * a track the caller built by hand does not silently lose its pickup.
+     *
+     * <p>Measured on the <em>events</em>, not on the notes. Those differ: a note
+     * shorter than a 64th disappears when its onset and offset snap to the same
+     * point, and reading the notes here let one of those open a pickup bar full
+     * of rests for music that was never written — {@code \partial 1*63/64}
+     * followed by seven rest symbols. A stray sub-64th onset at the head of a
+     * transcription is ordinary input, not a corrupt score, so this asks the
+     * question of the thing that actually reaches the page.
      */
-    private static double pickupStart(Score score, NoteTrack engraved) {
-        double earliest = Double.POSITIVE_INFINITY;
-        List<NoteTrack> considered = new ArrayList<>(score.tracks());
-        considered.add(engraved);
-        for (NoteTrack track : considered) {
-            for (Note note : track.notes()) {
-                if (note.isQuantized()) {
-                    earliest = Math.min(earliest, snap(note.onsetBeat().orElseThrow()));
-                }
+    private static double pickupStart(Score score, NoteTrack engraved, List<Event> events) {
+        double earliest = events.isEmpty()
+                ? Double.POSITIVE_INFINITY : events.getFirst().startBeat();
+        for (NoteTrack track : score.tracks()) {
+            if (track.equals(engraved)) {
+                continue;
+            }
+            List<Event> other = eventsOf(score, track);
+            if (!other.isEmpty()) {
+                earliest = Math.min(earliest, other.getFirst().startBeat());
             }
         }
         double firstBar = score.tempoMap().timeSignatureAtBar(0).quarterBeatsPerBar();

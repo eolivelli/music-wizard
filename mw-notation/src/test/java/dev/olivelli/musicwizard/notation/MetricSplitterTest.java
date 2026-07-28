@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -224,63 +223,81 @@ class MetricSplitterTest {
     void noSymbolSwallowsACountedBeat() {
         // Stated over the symbols that come out, in the terms a reader would use,
         // rather than by re-asking the predicate that produced them. That
-        // distinction is not pedantry: two rounds of review found this rule
-        // wrong, and both times the sweep that was supposed to catch it was
-        // written as the implementation's own length threshold negated, so it
+        // distinction is not pedantry: three rounds of review found this rule
+        // wrong, and the first two sweeps that were supposed to catch it were
+        // written as the implementation's own length threshold negated, so they
         // agreed with the code about which spans were even worth looking at.
-        // A beat with neither an onset nor an ending anywhere on the page is
-        // something a reader can see without knowing how the splitter works.
-        double step = 0.25;
-        int checked = 0;
+        //
+        // The arithmetic here is exact integers counted in the shortest value the
+        // emitter can write, so it shares no expression with the implementation
+        // either -- round 4 pointed out that copying its floating-point kernel
+        // leaves a change to that kernel marked only by its own duplicate. And it
+        // sweeps at that same resolution, because sweeping a sixteenth grid while
+        // MetricSplitter accepts a 64th one leaves three quarters of the legal
+        // starting positions untested: a rule relaxed to a tolerance of a tenth
+        // of a beat passed the whole suite at a sixteenth-note step.
+        long offBeatSymbols = 0;
         for (TimeSignature meter : meters()) {
-            double bar = meter.quarterBeatsPerBar();
-            double beatUnit = meter.beatUnitQuarters();
-            for (double from = 0; from < bar; from += step) {
-                for (double to = from + step; to <= bar; to += step) {
-                    double position = from;
-                    for (String value : MetricSplitter.split(meter, from, to)) {
-                        double length = LilyPondNotes.quartersOf(value);
-                        checked++;
-                        if (startsOnACountedBeat(position, beatUnit)) {
+            long bar = units(meter.quarterBeatsPerBar());
+            long beat = units(meter.beatUnitQuarters());
+            for (long from = 0; from < bar; from++) {
+                for (long to = from + 1; to <= bar; to++) {
+                    long position = from;
+                    List<String> values = MetricSplitter.split(
+                            meter, from * GRID, to * GRID);
+                    for (String value : values) {
+                        long length = units(LilyPondNotes.quartersOf(value));
+                        if (position % beat == 0) {
                             position += length;
                             continue;
                         }
-                        assertThat(swallowedBeat(position, position + length, beatUnit))
-                                .as("%s span %s..%s split as %s: the symbol %s at beat %s buries"
-                                                + " a whole counted beat",
-                                        meter, from, to, MetricSplitter.split(meter, from, to),
-                                        value, position)
-                                .isEmpty();
+                        offBeatSymbols++;
+                        // A counted beat that both starts and ends inside the
+                        // symbol has neither an onset nor an ending anywhere on
+                        // the page, and the reader has nothing to count against.
+                        long firstBeatAfter = (position / beat + 1) * beat;
+                        assertThat(firstBeatAfter + beat < position + length)
+                                .as("%s span %s..%s split as %s: %s at beat %s buries the beat"
+                                                + " at %s",
+                                        meter, from * GRID, to * GRID, values, value,
+                                        position * GRID, firstBeatAfter * GRID)
+                                .isFalse();
                         if (meter.isCompound()) {
                             assertThat(length)
-                                    .as("%s span %s..%s split as %s: the symbol %s at beat %s is a"
-                                                    + " whole compound beat lying across the join",
-                                            meter, from, to,
-                                            MetricSplitter.split(meter, from, to), value, position)
-                                    .isLessThan(beatUnit);
+                                    .as("%s span %s..%s split as %s: %s at beat %s is a whole"
+                                                    + " compound beat lying across the join",
+                                            meter, from * GRID, to * GRID, values, value,
+                                            position * GRID)
+                                    .isLessThan(beat);
                         }
                         position += length;
                     }
                 }
             }
         }
-        assertThat(checked).as("the sweep produced no symbols at all").isGreaterThan(10_000);
+        // Counted after the on-beat continue, so it measures the symbols the
+        // assertions actually saw rather than the ones they skipped.
+        assertThat(offBeatSymbols)
+                .as("the sweep never reached an off-beat symbol, so it asserted nothing")
+                .isGreaterThan(100_000);
     }
 
-    /** The first counted beat lying wholly inside a symbol, if any buries one. */
-    private static Optional<Double> swallowedBeat(double from, double to, double beatUnit) {
-        for (double beat = Math.floor(from / beatUnit + 1) * beatUnit;
-                beat + beatUnit <= to; beat += beatUnit) {
-            if (beat > from && beat + beatUnit < to) {
-                return Optional.of(beat);
-            }
-        }
-        return Optional.empty();
-    }
+    /** The shortest value the emitter can write, which is the grid everything lands on. */
+    private static final double GRID = LilyPondDuration.SHORTEST_QUARTERS;
 
-    private static boolean startsOnACountedBeat(double position, double beatUnit) {
-        double beats = position / beatUnit;
-        return beats == Math.rint(beats);
+    /**
+     * A length in quarter beats counted in shortest values.
+     *
+     * <p>Exact for every length either the model or the emitter produces: a beat
+     * unit is {@code (1 or 3) * 4 / denominator} with the denominator a power of
+     * two no greater than 64, and every note value is a whole number of 64ths.
+     */
+    private static long units(double quarters) {
+        double exact = quarters / GRID;
+        long rounded = Math.round(exact);
+        assertThat((double) rounded).as("%s is not a whole number of 1/64 notes", quarters)
+                .isEqualTo(exact);
+        return rounded;
     }
 
     /**
