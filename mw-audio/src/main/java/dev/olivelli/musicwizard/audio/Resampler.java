@@ -48,28 +48,34 @@ public final class Resampler {
      *
      * <p>It moves ordinary output too, and the size of that is the thing to
      * know: the difference between the two expressions is at most <b>one ulp of
-     * the signal's peak</b>. Attained but never exceeded over roughly 64 million
-     * constructed pairs, including denormals, binade edges and both signs. So
-     * 6.0e-8 for normalised audio -- about -144 dBFS, half a 24-bit LSB -- and
-     * it scales with amplitude, twice that for a buffer peaking at 2.0. Six
-     * orders below the tightest tolerance anywhere downstream, and double is
-     * the accurate side of the difference.
+     * the signal's peak</b> -- so 1.2e-7 for normalised audio, and it scales
+     * with amplitude. Attained but never exceeded over roughly 64 million
+     * constructed pairs, including denormals, binade edges and both signs. The
+     * worst actually measured on real conversions is half that, 6.0e-8, which
+     * is about -144 dBFS or half a 24-bit LSB.
+     *
+     * <p>For scale, the smallest threshold anywhere downstream that is in these
+     * same units is {@code isEffectivelySilent}'s peak of 1e-4, three orders
+     * above the bound. Double is the accurate side of the difference.
      *
      * <p>Two things worth knowing beyond the bound. The differences are common
-     * rather than rare -- 14% to 25% of samples on uniform noise, about 1% on
-     * tonal material -- so this is not a last-bit curiosity; and any integer
-     * ratio is bit-identical, because {@code fraction} is then always zero and
-     * no interpolation happens at all, which is why 44.1k to 22.05k shows no
-     * change and 44.1k to 48k shows the most.
+     * rather than rare -- between the rates this pipeline uses, 13% to 25% of
+     * samples on uniform noise and about 1% on tonal material -- so this is not
+     * a last-bit curiosity. And integer <em>decimation</em> is bit-identical,
+     * because {@code fraction} is then always zero and no interpolation
+     * happens: 44.1k to 22.05k and 96k to 8k show no change at all. Integer
+     * <em>upsampling</em> is not, and the distinction is easy to get backwards
+     * -- 22.05k to 44.1k is an exact 2:1 ratio and differs on 14% of samples,
+     * because there the step is 0.5 rather than 2.
      *
      * <p>Everything else about this difference -- how it distributes, how it
      * relates to the exactness of the subtraction, and why the obvious bound of
      * half an ulp of {@code |b - a|} is wrong by a factor of four -- is a
-     * side-question, and it was got wrong eight times over eleven review rounds
-     * on PR #78, always by stating a measurement more broadly than it was taken.
-     * That history is on the PR. Nothing downstream of this method is within
-     * six orders of the bound above, so the bound is all a caller needs, and
-     * anyone who needs more should measure it rather than inherit it.
+     * side-question, and it was got wrong eight times over eight review rounds
+     * on PR #78, always by stating a measurement more broadly than it was
+     * taken. Those drafts are in this file's history from that PR. The bound
+     * above is what a caller needs; anyone who needs more should measure it
+     * rather than inherit it.
      *
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
