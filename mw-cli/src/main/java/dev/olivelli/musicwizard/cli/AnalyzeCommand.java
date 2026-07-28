@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -148,7 +149,13 @@ final class AnalyzeCommand implements Callable<Integer> {
 
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Source     " + source.getFileName() + " (" + kind.description() + ")");
-        System.out.println("Advisor    " + (config.isLlmEnabled() ? "enabled" : "disabled"));
+        // Qualified, because the layer does not exist yet: #11. Announcing it
+        // as simply "enabled" is the defect #82 was filed for, in the command
+        // next door -- and it matters slightly more now that the flag is a cache
+        // key component, since invalidating an entry is currently its only
+        // effect.
+        System.out.println("Advisor    " + (config.isLlmEnabled()
+                ? "enabled, but advises nothing yet (#11)" : "disabled"));
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
@@ -436,9 +443,25 @@ final class AnalyzeCommand implements Callable<Integer> {
      * in the third row of the same block because that row's fixture, like every
      * key fixture in the repo, declared at beat 0.
      *
-     * <p>Judged on the beat axis when there is one, and on seconds otherwise. A
-     * key imported from MIDI always carries both; one deserialized from a score
-     * some other producer wrote need not.
+     * <p>Judged on the beat axis when there is one and on seconds otherwise, and
+     * the position is <em>labelled with the axis it was read from</em>. A key
+     * imported from MIDI always carries both; one deserialized from a score some
+     * other producer wrote need not, and an earlier draft printed that fallback's
+     * seconds under the word "beat" -- at 120 BPM, off by a factor of two against
+     * the axis it named, in the one unit CLAUDE.md makes load-bearing everywhere
+     * downstream of the grid.
+     *
+     * <p>Changes are counted on {@link Key#displayName()}, which is what the user
+     * reads. Counting on the tonic instead compared a {@link PitchSpelling}
+     * whose {@code toString} carries an octave -- a field {@code Key} documents
+     * as ignored and never prints -- so two spans of one key differing only there
+     * were reported as a change, which is the exact defect {@link #countChanges}
+     * was introduced to remove.
+     *
+     * <p>What this row cannot fix is the importer's own line four above it, which
+     * still says "opening in E minor" about the same file (#127). Same shape as
+     * #118, same reason: it is emitted by {@code mw-transcribe}. A test asserts
+     * that contradiction still exists, so fixing #127 trips a reminder.
      */
     private static String statedKey(Score score) {
         if (score.keys().isEmpty()) {
@@ -446,14 +469,24 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         Key first = score.keys().get(0);
         String opening = first.displayName();
-        int changes = countChanges(score.keys(), key -> key.tonic() + "/" + key.mode());
+        int changes = countChanges(score.keys(), Key::displayName);
         String tail = changes == 0 ? "" : ", " + changed(changes);
-        double start = first.startBeat().orElse(first.startSeconds());
-        if (start <= ORIGIN_TOLERANCE) {
+        // Whichever axis the key actually carries, labelled as that axis, and
+        // null when it begins at the origin and there is nothing to qualify.
+        String from;
+        if (first.startBeat().isPresent()) {
+            double beat = first.startBeat().get();
+            from = beat <= ORIGIN_TOLERANCE
+                    ? null : String.format(Locale.ROOT, "from beat %.3f", beat);
+        } else {
+            double seconds = first.startSeconds();
+            from = seconds <= ORIGIN_TOLERANCE
+                    ? null : String.format(Locale.ROOT, "from %.3fs", seconds);
+        }
+        if (from == null) {
             return changes == 0 ? opening : opening + " at the start" + tail;
         }
-        return String.format(Locale.ROOT, "not declared at the start; %s from beat %.3f%s",
-                opening, start, tail);
+        return "not declared at the start; " + opening + " " + from + tail;
     }
 
     /**

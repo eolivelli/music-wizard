@@ -19,13 +19,23 @@ package dev.olivelli.musicwizard.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.Accidental;
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Mode;
+import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 import javax.sound.midi.MidiEvent;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
@@ -238,8 +248,8 @@ class MidiInputTest {
                     .name("Restated")
                     .tempo(120).tempoAt(4, 120)
                     .timeSignature(4, 4).timeSignatureAt(4, 4, 4)
-                    .keySignature(0, dev.olivelli.musicwizard.core.model.Mode.MAJOR)
-                    .keySignatureAt(4, 0, dev.olivelli.musicwizard.core.model.Mode.MAJOR)
+                    .keySignature(0, Mode.MAJOR)
+                    .keySignatureAt(4, 0, Mode.MAJOR)
                     .part("Melody", 0)
                     .note(1, 1, 60).note(5, 1, 62)
                     .build();
@@ -291,7 +301,7 @@ class MidiInputTest {
                     .name("Late key")
                     .tempo(120)
                     .timeSignature(4, 4)
-                    .keySignatureAt(16, 1, dev.olivelli.musicwizard.core.model.Mode.MINOR)
+                    .keySignatureAt(16, 1, Mode.MINOR)
                     .part("Melody", 0)
                     .note(1, 1, 60).note(17, 1, 64)
                     .build();
@@ -306,6 +316,60 @@ class MidiInputTest {
                             .isEqualTo(16.0));
             assertThat(summaryBlock(analyze.out()))
                     .contains("Key     not declared at the start; E minor from beat 16.000");
+
+            // The contradiction this row cannot reach: MidiTranscriber's own
+            // stage line still says the piece opens in a key the file declares
+            // four bars in. Same shape as the #118 tripwire above, same reason --
+            // it is emitted by another module. Asserted rather than left for
+            // someone to notice, and this assertion is expected to fail when
+            // #127 lands, which is the point.
+            assertThat(analyze.out())
+                    .as("#127 is fixed; delete this assertion and the note beside it")
+                    .contains("read 1 key signature(s), opening in E minor");
+        }
+
+        @Test
+        @DisplayName("a key carrying no beat position is not quoted in beats")
+        void aKeyWithoutABeatAxisIsNotLabelledInBeats() {
+            // Not reachable through the CLI: MidiTranscriber sets both axes on
+            // every key. It is the branch written for a score some other
+            // producer wrote, and it was wrong in its own terms -- it printed
+            // the seconds under the word "beat", which at this score's 120 BPM
+            // is off by a factor of two against the axis it named.
+            Score score = Score.empty(TempoMap.constant(120), 30.0)
+                    .withKeys(List.of(new Key(
+                            new PitchSpelling(NoteLetter.E, Accidental.NATURAL, 4), Mode.MINOR,
+                            12.5, 30.0, Optional.empty(), Optional.empty(), Confidence.CERTAIN)));
+
+            assertThat(AnalyzeCommand.summary(SourceKind.MIDI, score))
+                    .contains("  Key     not declared at the start; E minor from 12.500s")
+                    .noneSatisfy(line -> assertThat(line).contains("from beat"));
+        }
+
+        @Test
+        @DisplayName("two spans of one key differing only in an unprinted field are not a change")
+        void anUnprintedFieldIsNotAChange() {
+            // PitchSpelling carries an octave; Key documents it as ignored and
+            // displayName never prints it. Counting changes on the tonic made
+            // two spans of E minor a change -- the exact defect countChanges was
+            // introduced to remove, surviving in its own discriminator.
+            Score score = Score.empty(TempoMap.constant(120), 30.0)
+                    .withKeys(List.of(
+                            eMinorAtOctave(3, 0.0, 15.0),
+                            eMinorAtOctave(5, 15.0, 30.0)));
+
+            assertThat(score.keys()).extracting(Key::displayName)
+                    .as("the two spans must print alike for this to discriminate")
+                    .containsExactly("E minor", "E minor");
+            assertThat(AnalyzeCommand.summary(SourceKind.MIDI, score))
+                    .contains("  Key     E minor")
+                    .noneSatisfy(line -> assertThat(line).contains("changed"));
+        }
+
+        private Key eMinorAtOctave(int octave, double from, double to) {
+            return new Key(new PitchSpelling(NoteLetter.E, Accidental.NATURAL, octave),
+                    Mode.MINOR, from, to,
+                    Optional.of(from), Optional.of(to), Confidence.CERTAIN);
         }
 
         @Test
@@ -440,6 +504,26 @@ class MidiInputTest {
             assertThat(analyze.out())
                     .contains("Tempo   120.0 BPM")
                     .contains("Meter   4/4");
+        }
+
+        @Test
+        @DisplayName("an enabled advisor is announced as advising nothing yet")
+        void anEnabledAdvisorSaysWhatItDoes() {
+            // The default is disabled, so this branch needs the workspace's own
+            // config layer to reach it. "Advisor enabled" on its own announces a
+            // layer that does not exist (#11) -- the defect #82 was filed for,
+            // one command over -- and it matters slightly more now that the flag
+            // is a cache key component, since invalidating an entry is currently
+            // the only thing it does.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null, null, null,
+                    null, new MusicWizardConfig.LlmConfig(
+                            true, null, null, null, null, null, null, null)));
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.out())
+                    .contains("Advisor    enabled, but advises nothing yet (#11)");
         }
 
         @Test
