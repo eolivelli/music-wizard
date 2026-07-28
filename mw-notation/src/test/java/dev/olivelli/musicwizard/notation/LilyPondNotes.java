@@ -66,6 +66,76 @@ final class LilyPondNotes {
     }
 
     /**
+     * The sounding length of a whole bar of tokens, tuplet brackets included.
+     *
+     * <p>{@code \tuplet a/b { ... }} scales what is inside it by {@code b/a},
+     * which is the definition rather than anything the emitter does, so a bar
+     * that adds up here adds up for LilyPond too. Reading the bracket back is
+     * the point: without it a triplet bar sums to half again its meter, and a
+     * test that simply skipped the bracket tokens would agree with a bar that
+     * had lost one.
+     *
+     * @throws IllegalArgumentException if a bracket is malformed or unclosed
+     */
+    static double quartersOfBar(List<String> tokens) {
+        double total = 0;
+        double bracket = 0;
+        int actual = 0;
+        int normal = 0;
+        int i = 0;
+        while (i < tokens.size()) {
+            String token = tokens.get(i);
+            if (token.equals("\\tuplet")) {
+                if (actual != 0) {
+                    throw new IllegalArgumentException(
+                            "nested tuplet at token " + i + ": " + tokens);
+                }
+                if (i + 2 >= tokens.size() || !tokens.get(i + 2).equals("{")) {
+                    throw new IllegalArgumentException(
+                            "malformed tuplet at token " + i + ": " + tokens);
+                }
+                String ratio = tokens.get(i + 1);
+                int slash = ratio.indexOf('/');
+                if (slash < 0) {
+                    throw new IllegalArgumentException("not a tuplet ratio: " + ratio);
+                }
+                actual = Integer.parseInt(ratio.substring(0, slash));
+                normal = Integer.parseInt(ratio.substring(slash + 1));
+                bracket = 0;
+                i += 3;
+                continue;
+            }
+            if (token.equals("}")) {
+                if (actual == 0) {
+                    throw new IllegalArgumentException(
+                            "closing brace with no tuplet open: " + tokens);
+                }
+                // Multiplied before dividing, so that three triplet eighths come
+                // to exactly one beat rather than to one beat less a bit. Summing
+                // scaled tokens instead leaves the bar a few ulps short, and the
+                // caller compares against the meter exactly -- which is the point
+                // of the check, and not something to loosen for arithmetic that
+                // does not need loosening.
+                total += bracket * normal / actual;
+                actual = 0;
+                i++;
+                continue;
+            }
+            double quarters = quartersOf(token);
+            if (actual == 0) {
+                total += quarters;
+            } else {
+                bracket += quarters;
+            }
+            i++;
+        }
+        if (actual != 0) {
+            throw new IllegalArgumentException("unclosed tuplet: " + tokens);
+        }
+        return total;
+    }
+
+    /**
      * The length in quarter-note beats of one token, e.g. {@code <c' e'>2.~} or
      * {@code R1*5/4}.
      *

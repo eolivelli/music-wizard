@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -61,10 +62,18 @@ import java.util.TreeMap;
  * of engraving a bar of the wrong length, which it will otherwise do without
  * complaint.
  *
- * <p>Known limitations, each with an issue: tuplets are snapped to the 64th-note
- * grid rather than represented (#92), overlapping notes are reduced to block
- * chords rather than split into voices (#93), a key change part-way through is
- * not engraved (#94), and percussion parts are refused (#95).
+ * <p><b>Tuplets are carried, not inferred.</b> {@link #toLilyPond(Score,
+ * NoteTrack)} engraves what a plain {@code Score} can say, and a {@code Score}
+ * cannot say that a bar is in triplets — three onsets a third of a beat apart
+ * and three a half beat apart are both legal on the sixth-of-a-beat grid.
+ * {@link #toLilyPond(QuantizedScore, NoteTrack)} takes the quantizer's own
+ * per-bar decision and brackets those bars; the {@code Score} overload snaps
+ * them onto the 64th-note grid as it always did, because guessing is worse. See
+ * #92 and {@link TupletBar}.
+ *
+ * <p>Known limitations, each with an issue: overlapping notes are reduced to
+ * block chords rather than split into voices (#93), a key change part-way
+ * through is not engraved (#94), and percussion parts are refused (#95).
  */
 public final class StaffNotation {
 
@@ -123,12 +132,41 @@ public final class StaffNotation {
     /**
      * A complete LilyPond document engraving one part.
      *
+     * <p>Tuplets are not represented: a plain {@link Score} does not carry the
+     * grid its notes were snapped to, so a triplet arrives here as three onsets
+     * a third of a beat apart and is written on the 64th-note grid, which fills
+     * the bar and is not the rhythm that was played. Pass the {@link
+     * QuantizedScore} instead where there is one.
+     *
      * @throws IllegalArgumentException if the track is percussion, or holds a
      *         note that has not been quantized
      */
     public static String toLilyPond(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
+        return document(score, track, TupletPlan.NONE);
+    }
+
+    /**
+     * The same, with the quantizer's per-bar grid honoured.
+     *
+     * <p>The one difference is the bars the quantizer put on a tuplet grid:
+     * those are engraved as {@code \tuplet} brackets rather than snapped onto
+     * the 64th-note grid. Everything else — bar lines, pickup, ties, spelling,
+     * the score-wide span — is decided exactly as the {@link #toLilyPond(Score,
+     * NoteTrack)} overload decides it, on the same {@link
+     * QuantizedScore#score()}.
+     *
+     * @throws IllegalArgumentException if the track is percussion, or holds a
+     *         note that has not been quantized
+     */
+    public static String toLilyPond(QuantizedScore quantized, NoteTrack track) {
+        Objects.requireNonNull(quantized, "quantized");
+        Objects.requireNonNull(track, "track");
+        return document(quantized.score(), track, TupletPlan.of(quantized));
+    }
+
+    private static String document(Score score, NoteTrack track, TupletPlan tuplets) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"").append(LILYPOND_VERSION).append("\"\n\n");
         out.append("\\header {\n");
@@ -138,7 +176,7 @@ public final class StaffNotation {
         out.append("  tagline = ##f\n");
         out.append("}\n\n");
         out.append("\\score {\n");
-        out.append(staffBlock(score, track));
+        out.append(staffBlock(score, track, tuplets));
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
@@ -154,19 +192,30 @@ public final class StaffNotation {
     static String staffBlock(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
+        return staffBlock(score, track, TupletPlan.NONE);
+    }
+
+    /** The same, with the quantizer's per-bar grid honoured. */
+    static String staffBlock(QuantizedScore quantized, NoteTrack track) {
+        Objects.requireNonNull(quantized, "quantized");
+        Objects.requireNonNull(track, "track");
+        return staffBlock(quantized.score(), track, TupletPlan.of(quantized));
+    }
+
+    private static String staffBlock(Score score, NoteTrack track, TupletPlan tuplets) {
         if (!canEngrave(track.role())) {
             throw new IllegalArgumentException(
                     "percussion parts need a DrumStaff, which this does not emit; see #95");
         }
-        List<Event> events = eventsOf(score, track);
-        Span music = musicSpan(score, track, events);
+        List<Event> events = eventsOf(score, track, tuplets);
+        Span music = musicSpan(score, track, events, tuplets);
 
         StringBuilder out = new StringBuilder();
         out.append("  \\new Staff \\with { instrumentName = \"")
                 .append(escape(track.name())).append("\" } {\n");
         out.append("    \\clef \"").append(clefOf(track.role())).append("\"\n");
         out.append("    \\key ").append(keyOf(score)).append('\n');
-        appendBars(out, score, track.name(), events, music);
+        appendBars(out, score, track.name(), events, music, tuplets);
         out.append("    \\bar \"|.\"\n");
         out.append("  }\n");
         return out.toString();
@@ -209,7 +258,7 @@ public final class StaffNotation {
      *
      * <p>Both are what voices exist to avoid: #93.
      */
-    private static List<Event> eventsOf(Score score, NoteTrack track) {
+    private static List<Event> eventsOf(Score score, NoteTrack track, TupletPlan tuplets) {
         // Validated here rather than at the call site so that the rule holds for
         // every caller: musicSpan reaches this for the score's other parts too,
         // and it filters them with isEngravable rather than relying on this.
@@ -220,8 +269,8 @@ public final class StaffNotation {
         // resolves overlaps below runs in time order.
         Map<Double, List<Note>> byOnset = new TreeMap<>();
         for (Note note : track.notes()) {
-            double onset = snap(note.onsetBeat().orElseThrow());
-            double offset = snap(note.offsetBeat().orElseThrow());
+            double onset = snap(tuplets, note.onsetBeat().orElseThrow());
+            double offset = snap(tuplets, note.offsetBeat().orElseThrow());
             if (offset <= onset) {
                 // Shorter than a 64th once snapped. Dropped rather than lengthened
                 // to the grid, which would push everything after it out of place.
@@ -243,7 +292,7 @@ public final class StaffNotation {
             // have resolved upstream rather than something to hide here.
             Map<String, PitchSpelling> pitches = new LinkedHashMap<>();
             for (Note note : entry.getValue()) {
-                end = Math.max(end, snap(note.offsetBeat().orElseThrow()));
+                end = Math.max(end, snap(tuplets, note.offsetBeat().orElseThrow()));
                 // Sounding pitch, not written pitch. An octave-transposing part
                 // is transposed by its clef -- see clefOf -- and moving the
                 // pitches as well would print it an octave high and, worse, make
@@ -364,7 +413,8 @@ public final class StaffNotation {
      * rather than each choosing its own grid, and it argues for engraving a score
      * once its stages have all finished rather than part by part as they land.
      */
-    private static Span musicSpan(Score score, NoteTrack engraved, List<Event> events) {
+    private static Span musicSpan(Score score, NoteTrack engraved, List<Event> events,
+                                  TupletPlan tuplets) {
         // The last event ends last: overlaps were resolved by truncating the
         // earlier of the pair, so ends increase with onsets.
         double earliest = events.isEmpty()
@@ -376,7 +426,7 @@ public final class StaffNotation {
             if (track.equals(engraved) || !isEngravable(track)) {
                 continue;
             }
-            List<Event> other = eventsOf(score, track);
+            List<Event> other = eventsOf(score, track, tuplets);
             if (!other.isEmpty()) {
                 earliest = Math.min(earliest, other.getFirst().startBeat());
                 if (other.getLast().endBeat() > latest) {
@@ -419,7 +469,7 @@ public final class StaffNotation {
     }
 
     private static void appendBars(StringBuilder out, Score score, String name,
-                                   List<Event> events, Span music) {
+                                   List<Event> events, Span music, TupletPlan tuplets) {
         double pickupStart = music.startBeat();
         double musicEnd = music.endBeat();
 
@@ -439,12 +489,22 @@ public final class StaffNotation {
                 appendTempo(out, score, meter);
                 tempoWritten = true;
             }
+            TupletBar tupletBar = tuplets.atBar(bar).orElse(null);
             double contentStart = Math.max(barStart, bar == 0 ? pickupStart : 0);
             if (bar == 0 && pickupStart > 0) {
+                // Through the grid when there is one. A pickup entering two
+                // triplet eighths before the bar line is two thirds of a quarter
+                // beat, which is not a whole number of 64ths and which the
+                // length-only form therefore refuses -- so the emitter would
+                // throw on exactly the bar it had just learned to write.
                 out.append("    \\partial ")
-                        .append(LilyPondDuration.scaled(barEnd - pickupStart)).append('\n');
+                        .append(tupletBar == null
+                                ? LilyPondDuration.scaled(barEnd - pickupStart)
+                                : tupletBar.scaledLengthToBarLine(tupletBar.stepAt(pickupStart)))
+                        .append('\n');
             }
-            eventIndex = appendBar(out, meter, barStart, barEnd, contentStart, events, eventIndex);
+            eventIndex = appendBar(out, meter, barStart, barEnd, contentStart, events, eventIndex,
+                    tupletBar);
             barStart = barEnd;
             bar++;
             // One bar minimum, so an empty part still engraves as a staff rather
@@ -468,16 +528,33 @@ public final class StaffNotation {
     }
 
     /**
+     * A stretch of one bar carrying one thing: a chord, a note, or a rest when
+     * {@code pitches} is empty.
+     *
+     * <p>An {@link Event} cut to the bar. The two differ in exactly one way and
+     * it is the reason this exists: an event may run past the bar line, and
+     * {@code tiedOut} is what remembers that after the cut, so a piece can be
+     * cut again — at a tuplet bracket — without losing the fact that the note
+     * continues.
+     */
+    private record Piece(double from, double to, List<String> pitches, boolean tiedOut) {
+    }
+
+    /**
      * Fills one bar and returns the index of the first event it did not finish.
      *
      * <p>The bar is filled from {@code contentStart} to {@code barEnd} with no
      * gaps by construction: every step either writes an event or writes the rest
      * that precedes it.
+     *
+     * @param tuplets the bar's tuplet grid, or {@code null} when it has none,
+     *                which is every bar of a score engraved from a plain
+     *                {@link Score}
      */
     private static int appendBar(StringBuilder out, TimeSignature meter, double barStart,
                                  double barEnd, double contentStart, List<Event> events,
-                                 int firstEvent) {
-        List<String> tokens = new ArrayList<>();
+                                 int firstEvent, TupletBar tuplets) {
+        List<Piece> pieces = new ArrayList<>();
         double position = contentStart;
         int index = firstEvent;
         while (index < events.size() && events.get(index).startBeat() < barEnd) {
@@ -488,29 +565,151 @@ public final class StaffNotation {
             }
             double from = Math.max(event.startBeat(), position);
             if (from > position) {
-                appendValues(tokens, meter, barStart, position, from, List.of(), false);
+                pieces.add(new Piece(position, from, List.of(), false));
             }
             double to = Math.min(event.endBeat(), barEnd);
-            appendValues(tokens, meter, barStart, from, to, event.pitches(),
-                    event.endBeat() > barEnd);
+            pieces.add(new Piece(from, to, event.pitches(), event.endBeat() > barEnd));
             position = to;
             if (event.endBeat() > barEnd) {
                 break;
             }
             index++;
         }
+
+        List<String> tokens = new ArrayList<>();
         if (position < barEnd) {
-            if (tokens.isEmpty() && contentStart == barStart) {
+            if (pieces.isEmpty() && contentStart == barStart) {
                 // A bar nobody plays in shows one rest covering it, whatever the
                 // meter. That is what a whole rest means, and a 3/4 bar of silence
-                // is not a dotted half rest.
-                tokens.add("R" + LilyPondDuration.scaled(barEnd - barStart));
-            } else {
-                appendValues(tokens, meter, barStart, position, barEnd, List.of(), false);
+                // is not a dotted half rest. No bracket either: a bar of silence
+                // has no rhythm to bracket, and the quantizer does not publish a
+                // grid for one.
+                out.append("    ").append("R")
+                        .append(LilyPondDuration.scaled(barEnd - barStart)).append(" |\n");
+                return index;
             }
+            pieces.add(new Piece(position, barEnd, List.of(), false));
+        }
+
+        if (tuplets == null) {
+            for (Piece piece : pieces) {
+                appendValues(tokens, meter, barStart, piece.from(), piece.to(), piece.pitches(),
+                        piece.tiedOut());
+            }
+        } else {
+            appendTupletBar(tokens, meter, barStart, tuplets, pieces);
         }
         out.append("    ").append(String.join(" ", tokens)).append(" |\n");
         return index;
+    }
+
+    // ---------------------------------------------------------------- tuplets
+
+    /**
+     * Fills a bar the quantizer divided into tuplets.
+     *
+     * <p><b>A bracket is written only where something is happening inside it.</b>
+     * A triplet bracket exists to say that a beat was divided in three, so a beat
+     * held by one note is a plain quarter and two such beats are a plain half —
+     * not {@code \tuplet 3/2 { c4. } \tuplet 3/2 { c4.~ }}, which is the same
+     * music, correct arithmetic, and unreadable. So a bracket whose span carries
+     * no boundary of its own is left off, and the run of bar it belongs to goes
+     * to {@link MetricSplitter} exactly as an untuplet-ed bar would. This is
+     * what keeps a mostly-held triplet bar looking like the music rather than
+     * like the grid it was measured against.
+     *
+     * <p>Everything is decided in whole grid steps. That is not tidiness: a
+     * third of a beat is not a representable double and the positions arriving
+     * here were built by adding lengths to onsets, so comparing them against
+     * bracket boundaries computed by multiplication would miss by an ulp exactly
+     * where it matters most. See {@link TupletBar}.
+     */
+    private static void appendTupletBar(List<String> tokens, TimeSignature meter, double barStart,
+                                        TupletBar tuplets, List<Piece> pieces) {
+        boolean[] bracketed = new boolean[tuplets.brackets()];
+        for (Piece piece : pieces) {
+            markBracket(bracketed, tuplets, piece.from());
+            markBracket(bracketed, tuplets, piece.to());
+        }
+
+        int open = -1;
+        for (Piece piece : pieces) {
+            List<int[]> fragments = fragmentsOf(tuplets, bracketed,
+                    tuplets.stepAt(piece.from()), tuplets.stepAt(piece.to()));
+            for (int i = 0; i < fragments.size(); i++) {
+                int[] fragment = fragments.get(i);
+                // Every fragment but the last continues into the next one, and
+                // the last continues if the piece itself did.
+                boolean tie = i + 1 < fragments.size() || piece.tiedOut();
+                int bracket = tuplets.bracketOf(fragment[0]);
+                if (bracketed[bracket]) {
+                    if (open != bracket) {
+                        closeBracket(tokens, open);
+                        tokens.add("\\tuplet " + tuplets.ratio() + " {");
+                        open = bracket;
+                    }
+                    tokens.add(head(piece.pitches())
+                            + value(tuplets.writtenLength(fragment[1] - fragment[0]))
+                            + (!piece.pitches().isEmpty() && tie ? "~" : ""));
+                } else {
+                    closeBracket(tokens, open);
+                    open = -1;
+                    appendValues(tokens, meter, barStart, tuplets.beatOfStep(fragment[0]),
+                            tuplets.beatOfStep(fragment[1]), piece.pitches(), tie);
+                }
+            }
+        }
+        closeBracket(tokens, open);
+    }
+
+    /**
+     * Marks the bracket a position falls strictly inside, which is what makes it
+     * a bracket worth printing.
+     *
+     * <p>A position on a bracket boundary marks nothing: it is where a bracket
+     * would begin or end anyway, so it is no evidence that the bracket is
+     * subdivided.
+     */
+    private static void markBracket(boolean[] bracketed, TupletBar tuplets, double beat) {
+        int step = tuplets.stepAt(beat);
+        if (step % tuplets.stepsPerBracket() != 0) {
+            bracketed[tuplets.bracketOf(step)] = true;
+        }
+    }
+
+    /**
+     * A span of grid steps cut where a printed bracket begins or ends, as
+     * {@code [from, to)} step pairs.
+     *
+     * <p>Cut at a bracket boundary only when a bracket is actually printed on
+     * one side of it. A note held across two plain beats of a triplet bar is
+     * therefore one fragment and comes out as a half note; cutting it at every
+     * boundary would give two tied quarters and say nothing extra.
+     */
+    private static List<int[]> fragmentsOf(TupletBar tuplets, boolean[] bracketed,
+                                           int fromStep, int toStep) {
+        List<int[]> fragments = new ArrayList<>();
+        int start = fromStep;
+        for (int step = fromStep + 1; step < toStep; step++) {
+            if (step % tuplets.stepsPerBracket() != 0) {
+                continue;
+            }
+            // A boundary strictly inside the span, so there is a bracket on both
+            // sides of it and neither index needs bounding.
+            int after = tuplets.bracketOf(step);
+            if (bracketed[after - 1] || bracketed[after]) {
+                fragments.add(new int[] {start, step});
+                start = step;
+            }
+        }
+        fragments.add(new int[] {start, toStep});
+        return fragments;
+    }
+
+    private static void closeBracket(List<String> tokens, int open) {
+        if (open >= 0) {
+            tokens.add("}");
+        }
     }
 
     /**
@@ -519,20 +718,37 @@ public final class StaffNotation {
      * <p>The tie between pieces is not a musical decision — it is one note the
      * meter forced into several symbols — so it is added here rather than left to
      * the caller. {@code tieOut} adds the further tie that carries the note over
-     * the bar line.
+     * the bar line, or on to the next tuplet bracket.
      */
     private static void appendValues(List<String> tokens, TimeSignature meter, double barStart,
                                      double from, double to, List<String> pitches,
                                      boolean tieOut) {
         List<String> values = MetricSplitter.split(meter, from - barStart, to - barStart);
-        String head = pitches.isEmpty() ? "r"
-                : pitches.size() == 1 ? pitches.get(0)
-                : "<" + String.join(" ", pitches) + ">";
+        String head = head(pitches);
         for (int i = 0; i < values.size(); i++) {
             boolean last = i == values.size() - 1;
             boolean tie = !pitches.isEmpty() && (!last || tieOut);
             tokens.add(head + values.get(i) + (tie ? "~" : ""));
         }
+    }
+
+    /** What a token is written on: a rest, a pitch, or a chord. */
+    private static String head(List<String> pitches) {
+        return pitches.isEmpty() ? "r"
+                : pitches.size() == 1 ? pitches.get(0)
+                : "<" + String.join(" ", pitches) + ">";
+    }
+
+    /**
+     * The note value of a written length inside a bracket.
+     *
+     * <p>There is always one — see {@link TupletBar#writtenLength}. The throw is
+     * a claim about that arithmetic rather than a case to handle, and
+     * {@code TupletBarTest} checks the claim over every meter and grid.
+     */
+    private static String value(double writtenQuarters) {
+        return LilyPondDuration.of(writtenQuarters).orElseThrow(() -> new IllegalStateException(
+                "no note value for " + writtenQuarters + " quarter beats inside a tuplet"));
     }
 
     // ------------------------------------------------------------ preamble
@@ -639,8 +855,22 @@ public final class StaffNotation {
                 .orElse("c \\major");
     }
 
-    /** Rounds onto the shortest value named, which is what makes every span writable. */
-    private static double snap(double beats) {
+    /**
+     * Rounds onto the grid the bar is written on, which is what makes every span
+     * writable.
+     *
+     * <p>The 64th-note grid everywhere except in a bar the quantizer divided
+     * into tuplets, where a third of a beat is not a whole number of 64ths and
+     * rounding it onto them is the whole of #92. There the bar's own grid is
+     * used, which is idempotent on the positions the quantizer produced and puts
+     * a position built by addition back onto the position the same grid would
+     * have reached by multiplication — see {@link TupletBar}.
+     */
+    private static double snap(TupletPlan tuplets, double beats) {
+        Optional<TupletBar> bar = tuplets.covering(beats);
+        if (bar.isPresent()) {
+            return bar.get().beatOfStep(bar.get().stepAt(beats));
+        }
         return Math.round(beats / GRID) * GRID;
     }
 

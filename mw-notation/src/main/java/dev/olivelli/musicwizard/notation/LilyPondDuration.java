@@ -127,15 +127,38 @@ final class LilyPondDuration {
                     "length " + quarters + " quarter beats is not a whole number of 1/"
                             + SHORTEST_DENOMINATOR + " notes and cannot be written as a duration");
         }
+        return scaled(wholeUnits, SHORTEST_DENOMINATOR);
+    }
+
+    /**
+     * The same, from an exact fraction of a whole note.
+     *
+     * <p>The way in for a length that is not a whole number of 64ths, which is
+     * what a pickup bar entering inside a triplet is: two thirds of a quarter is
+     * {@code 1*1/6} and is nothing else. A double cannot be asked that question
+     * — a third of a beat is not representable and the fraction that produced it
+     * is not recoverable from it — so the caller passes the fraction it already
+     * has. See {@link TupletBar#scaledLengthToBarLine}.
+     *
+     * @param numerator   whole notes, as a fraction's numerator
+     * @param denominator that fraction's denominator, positive
+     */
+    static String scaled(long numerator, long denominator) {
+        if (numerator <= 0 || denominator <= 0) {
+            throw new IllegalArgumentException(
+                    "a length must be a positive fraction, got: " + numerator + "/" + denominator);
+        }
+        Optional<String> single = of(QUARTERS_PER_WHOLE * numerator / denominator);
+        if (single.isPresent()) {
+            return single.get();
+        }
         // Reduced so the common cases read the way an engraver writes them:
         // 5/4 rather than 80/64. Both are accepted by LilyPond; only one is
         // readable in a golden file.
-        long numerator = wholeUnits;
-        long denominator = SHORTEST_DENOMINATOR;
         long divisor = gcd(numerator, denominator);
-        numerator /= divisor;
-        denominator /= divisor;
-        return denominator == 1 ? "1*" + numerator : "1*" + numerator + "/" + denominator;
+        long reduced = numerator / divisor;
+        long over = denominator / divisor;
+        return over == 1 ? "1*" + reduced : "1*" + reduced + "/" + over;
     }
 
     private static long gcd(long a, long b) {

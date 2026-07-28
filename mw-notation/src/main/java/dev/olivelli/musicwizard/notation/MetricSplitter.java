@@ -53,9 +53,12 @@ import java.util.Objects;
  * allow, because a dotted quarter starting there would cover the second beat.
  * See {@link #mayStartHere}, which is where that half of the rule lives.
  *
- * <p><b>Limitation.</b> Tuplets are not represented. Every length here is a
- * whole number of 64th notes; a triplet is not, and the emitter snaps it away
- * before this is reached. See #92.
+ * <p><b>Every length here is a whole number of 64th notes</b>, and a tuplet is
+ * not, so tuplets never reach this. {@link StaffNotation} writes a bracketed
+ * span itself, from the grid the quantizer chose, and hands this only the
+ * stretches of a bar that fall between brackets — which begin and end on
+ * bracket boundaries, and those are whole numbers of 64ths. See {@link
+ * TupletBar}.
  */
 final class MetricSplitter {
 

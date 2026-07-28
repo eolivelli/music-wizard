@@ -19,6 +19,18 @@
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-core</artifactId>
     </dependency>
+    <!--
+      The quantizer's per-bar grid decision, which cannot be recovered from the
+      positions it produced: three notes a third of a beat apart and three a
+      half beat apart are both legal on the sixth-of-a-beat grid, and only one
+      of them is a triplet. Symbolic only, and mw-arrange depends on nothing but
+      mw-core, so this does not pull audio or models into the notation layer.
+      See #92.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-arrange</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.audiveris</groupId>
       <artifactId>proxymusic</artifactId>
