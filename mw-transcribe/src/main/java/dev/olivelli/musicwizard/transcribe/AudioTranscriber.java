@@ -417,8 +417,12 @@ public final class AudioTranscriber {
      * tracked pulses, which is every request inside the tracked range. Two
      * candidates, the nearer one taken, and confidence falling to a half as they
      * become equally good. It does not distinguish a user who meant one of those
-     * two pulses from one who meant a beat the tracker dropped between them --
-     * nothing here can, which is what the warning above is for.
+     * two pulses from one who meant a beat the tracker dropped between them.
+     * A rival gap at about twice the median is that signature, and it is
+     * deliberately spent on the scale rather than on the answer: the same
+     * evidence cannot both bound the ambiguity and be read as a separate claim
+     * about a missing pulse, and bounding it is what stops the over-reporting
+     * round two found. The warning above is what tells the user.
      *
      * <p>Outside the range there is no second candidate. A request before the
      * first pulse or after the last is not between anything, and past half a
@@ -442,10 +446,26 @@ public final class AudioTranscriber {
      * honest shape: it is where "just before the first beat" stops meaning the
      * first beat.
      *
-     * <p>The counts agree wherever they must. At two beats to the bar, being lost
-     * between two candidates and being lost among every phase there is are the
-     * same predicament, and both give a half; at one, both give certainty, which
-     * is why the caller can short-circuit that meter without contradicting this.
+     * <p>The two counts meet at two beats to the bar, where being lost between
+     * two candidates and being lost among every phase there is are the same
+     * predicament and both give a half. Below the boundary at one beat to the bar
+     * this method would still give a half, which is wrong -- there is no phase to
+     * be lost among -- and the caller supplies the certainty rather than this
+     * method agreeing with itself; that meter never reaches here.
+     *
+     * <p>What this is <em>not</em> ordered against, though an earlier draft said
+     * it was, is {@link DownbeatEstimator}'s floor. That floor is 0.35 at every
+     * meter by a deliberate choice its own file records -- the count behind it is
+     * one phase in four, stated for the common meter and applied flat, on the
+     * grounds that neither number is calibrated well enough to make it depend on
+     * the meter. So the two are only comparable where the flat figure happens to
+     * sit above the honest count, which is from three counted beats to the bar
+     * upward. At one or two, a request outside the tracked range reports more
+     * than a phase the estimator could not choose: 0.5 against 0.35 in 6/8 and
+     * 2/4. The count here is the accurate one of the pair -- a blind phase in a
+     * two-beat bar really is right half the time -- but a caller comparing the
+     * two numbers across meters is comparing things that were not built to be
+     * compared. Making them commensurate is #88.
      *
      * <p>With fewer than two pulses there is no interval and no alternative pulse
      * to have meant, so the one that exists is the one the user named.

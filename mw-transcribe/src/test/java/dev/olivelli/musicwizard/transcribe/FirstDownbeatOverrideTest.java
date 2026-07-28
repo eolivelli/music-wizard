@@ -282,6 +282,14 @@ class FirstDownbeatOverrideTest {
         // One pulse: no interval, and no other pulse they could have meant.
         assertThat(AudioTranscriber.snappedPhaseConfidence(List.of(3.0), 0, 90.0, 4))
                 .isEqualTo(Confidence.CERTAIN);
+
+        // A grid with no time between its pulses cannot say how far out anything
+        // is, so a request outside it is as blind as any other. Unreachable
+        // through a BeatGrid, which rejects non-increasing beats -- but this
+        // method takes a bare list, and the branch that treats an unmeasurable
+        // distance as infinite rather than as one pulse is only visible here.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(List.of(1.0, 1.0), 0, 0.5, 4).value())
+                .isCloseTo(0.25, within(1e-9));
     }
 
     @Test
@@ -324,6 +332,45 @@ class FirstDownbeatOverrideTest {
         // for the bars having to start somewhere.
         assertThat(worstSnap).isCloseTo(0.5, within(1e-9));
         assertThat(estimated).isCloseTo(0.35, within(1e-9));
+
+        // A request outside the tracked range rests on nothing at all, and in
+        // this meter it ranks below the estimator's own least-supported answer.
+        double blind = grid(600.0, TimeSignature.FOUR_FOUR).downbeatConfidence().value()
+                / beatConfidence;
+        assertThat(blind).isCloseTo(0.25, within(1e-9)).isLessThan(estimated);
+    }
+
+    @Test
+    @DisplayName("stops ranking below the estimator once the bar holds two beats")
+    void theBlindPhaseOnlyOutranksNothingInWiderBars() {
+        // Recorded rather than fixed, and #88 is why. The estimator's floor is a
+        // flat 0.35 whatever the meter, by a choice its own file argues for; this
+        // counts one phase in beatsPerBar. The two therefore cross between three
+        // beats to the bar and two, and in 6/8 or 2/4 a downbeat typed ten
+        // minutes past the end of the recording reads as *more* trustworthy than
+        // a harmony-informed estimate on the same audio.
+        //
+        // Pinned so that the limit is a known one rather than something the next
+        // round rediscovers -- and so that fixing #88 fails here rather than
+        // silently changing what a saved score means.
+        for (TimeSignature meter : List.of(TimeSignature.SIX_EIGHT, new TimeSignature(2, 4))) {
+            BeatGrid estimatedGrid = grid(null, meter);
+            double beatConfidence = estimatedGrid.beatConfidence().value();
+            double estimated = estimatedGrid.downbeatConfidence().value() / beatConfidence;
+            double blind = grid(600.0, meter).downbeatConfidence().value() / beatConfidence;
+
+            assertThat(meter.beatsPerBar()).as("%s", meter).isEqualTo(2);
+            assertThat(blind).as("blind phase in %s", meter).isCloseTo(0.5, within(1e-9));
+            // The inversion, asserted rather than tolerated in silence.
+            assertThat(blind).as("still above the estimator in %s", meter)
+                    .isGreaterThan(estimated);
+        }
+
+        // From three beats to the bar the count falls below the flat floor and
+        // the intended ordering holds again.
+        BeatGrid threeFour = grid(null, TimeSignature.THREE_FOUR);
+        assertThat(grid(600.0, TimeSignature.THREE_FOUR).downbeatConfidence().value())
+                .isLessThan(threeFour.downbeatConfidence().value());
     }
 
     @Test
