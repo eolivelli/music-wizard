@@ -43,7 +43,11 @@ import picocli.CommandLine.Option;
         })
 public final class MusicWizardCommand implements Runnable {
 
-    @Option(names = {"-v", "--verbose"}, description = "Log what each stage is doing.")
+    // What it actually does, which is not what it said. Each stage already
+    // reports itself on stdout whether or not this is set; the flag's only
+    // effect is the stack trace in the handler below.
+    @Option(names = {"-v", "--verbose"},
+            description = "Print a stack trace when a command fails.")
     boolean verbose;
 
     @Override

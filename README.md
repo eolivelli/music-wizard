@@ -149,7 +149,16 @@ llm:
   enabled: true
 ```
 
-## The Claude advisor (optional)
+## The Claude advisor (optional, and not built yet)
+
+**None of this section is implemented.** `mw-llm` holds no code; the config keys
+below are read and layered but reach nothing, and `analyze` and `doctor` both say
+so. It is recorded here as the design ([#11][i11]) rather than as behaviour — in
+particular the safety property below, that a suggestion is re-scored against the
+audio before being applied, is a guarantee about a mechanism that does not exist.
+
+[i11]: https://github.com/eolivelli/music-wizard/issues/11
+
 
 The pipeline is fully functional offline with no API key. If one is present and
 you enable it, Claude post-processes the *symbolic* results — it never sees

@@ -170,6 +170,58 @@ class RenderPartsTest {
     }
 
     @Nested
+    @DisplayName("options nothing reads")
+    class InertOptions {
+
+        @Test
+        @DisplayName("--transpose and --paper are named rather than silently discarded")
+        void areReported() {
+            // The worst variant of #82 and the one it did not name: --parts voice
+            // writes nothing and says why, while --transpose -2 wrote every file,
+            // exited 0, and handed a singer a chart in the wrong key. Nothing
+            // reads either value (#129).
+            Path workspace = audioWorkspace("song", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--transpose", "-2", "--paper", "letter", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err())
+                    .contains("--transpose, --paper")
+                    .contains("no effect yet")
+                    .contains("#129");
+        }
+
+        @Test
+        @DisplayName("are not mentioned when neither was typed")
+        void areSilentWhenAbsent() {
+            Path workspace = audioWorkspace("song", fourChords());
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.err()).doesNotContain("no effect yet");
+        }
+
+        @Test
+        @DisplayName("and the chart really is unchanged by them, which is why they warn")
+        void reallyDoNothing() throws Exception {
+            // The warning is only honest if the claim behind it is true. If
+            // #129 lands and this starts failing, the warning is what to delete.
+            Path plain = audioWorkspace("plain", fourChords());
+            Path shifted = audioWorkspace("shifted", fourChords());
+
+            CliRunner.run("render", plain.toString(), "--no-pdf");
+            CliRunner.run("render", shifted.toString(),
+                    "--transpose", "5", "--paper", "letter", "--no-pdf");
+
+            assertThat(java.nio.file.Files.readString(shifted.resolve("out/chords.ly")))
+                    .as("#129 has landed; delete the warning and this test")
+                    .isEqualTo(java.nio.file.Files.readString(plain.resolve("out/chords.ly")));
+        }
+    }
+
+    @Nested
     @DisplayName("a part that cannot be produced")
     class Unavailable {
 

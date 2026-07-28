@@ -73,26 +73,51 @@ final class RenderCommand implements Callable<Integer> {
      * a name this command does not recognise at all is a typo, and deserves a
      * different answer from a name it recognises and cannot yet honour.
      */
+    /** How one part is produced, once it is known that it can be. */
+    @FunctionalInterface
+    private interface Emitter {
+        List<Path> emit(Workspace workspace, Score score, Optional<Path> lilypond);
+    }
+
     private enum Part {
-        CHORDS("chords", null),
-        VOICE("voice", "melody transcription is not implemented yet (#8)"),
-        BASS("bass", "bass transcription is not implemented yet (#8)"),
-        PIANO("piano", "the piano reduction is not implemented yet (#10)");
+        CHORDS("chords", null, RenderCommand::writeChordChart),
+        VOICE("voice", "melody transcription is not implemented yet (#8)", null),
+        BASS("bass", "bass transcription is not implemented yet (#8)", null),
+        PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
 
         private final String partName;
         private final String notImplemented;
+        private final Emitter emitter;
 
-        Part(String partName, String notImplemented) {
+        Part(String partName, String notImplemented, Emitter emitter) {
             this.partName = partName;
             this.notImplemented = notImplemented;
+            this.emitter = emitter;
         }
 
         String partName() {
             return partName;
         }
 
+        /**
+         * Whether anything can produce this part.
+         *
+         * <p>Answered by the emitter's presence rather than by a second field,
+         * so that "implemented" and "there is code to run" cannot disagree. They
+         * were two separate places -- a {@code notImplemented} string and a
+         * {@code switch} on the constant -- and a part marked implemented with no
+         * branch to match would have been selected, produced nothing, and ended
+         * the run with "Nothing could be written." and no reason: #82's defect
+         * reached from the inside. Unreachable while chords are the only
+         * implemented part, and reachable the moment #8 or #10 lands, which is
+         * when nobody will be looking for it.
+         */
         boolean isImplemented() {
-            return notImplemented == null;
+            return emitter != null;
+        }
+
+        List<Path> emit(Workspace workspace, Score score, Optional<Path> lilypond) {
+            return emitter.emit(workspace, score, lilypond);
         }
 
         /**
@@ -156,10 +181,13 @@ final class RenderCommand implements Callable<Integer> {
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
-            description = "Transpose every part by this many semitones.")
+            description = "Transpose every part by this many semitones. Has no effect "
+                    + "yet: nothing reads it (#129).")
     Integer transpose;
 
-    @Option(names = "--paper", paramLabel = "SIZE", description = "Paper size, e.g. a4 or letter.")
+    @Option(names = "--paper", paramLabel = "SIZE",
+            description = "Paper size, e.g. a4 or letter. Has no effect yet: nothing "
+                    + "reads it (#129).")
     String paperSize;
 
     @Option(names = "--no-pdf", description = "Write sources only; do not invoke LilyPond.")
@@ -170,6 +198,7 @@ final class RenderCommand implements Callable<Integer> {
         Workspace workspace = Workspace.open(workspaceDirectory);
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         List<Part> requested = requestedParts();
+        warnAboutOptionsThatDoNothing();
 
         // The score is read before anything is announced, because what can be
         // produced is a property of it. Announcing an output directory and an
@@ -199,10 +228,8 @@ final class RenderCommand implements Callable<Integer> {
             System.out.println("Output     " + workspace.outputDirectory());
             Optional<Path> lilypond = announceEngraver(config);
             for (Part part : producible) {
-                if (part == Part.CHORDS) {
-                    written.addAll(writeChordChart(workspace, score, lilypond));
-                    chartWritten = true;
-                }
+                written.addAll(part.emit(workspace, score, lilypond));
+                chartWritten |= part == Part.CHORDS;
             }
         }
 
@@ -295,7 +322,7 @@ final class RenderCommand implements Callable<Integer> {
     }
 
     /** Writes the chord chart's sources, and its PDF where there is an engraver. */
-    private List<Path> writeChordChart(
+    private static List<Path> writeChordChart(
             Workspace workspace, Score score, Optional<Path> lilypond) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
@@ -326,6 +353,34 @@ final class RenderCommand implements Callable<Integer> {
             throw new UncheckedIOException("could not write output", e);
         }
         return written;
+    }
+
+    /**
+     * Says which typed options this command will not act on.
+     *
+     * <p>The same treatment {@code analyze} gives {@code --skip-separation}, and
+     * for the reason its javadoc records: silently ignoring a typed instruction
+     * is the failure this project keeps finding. It is worse here than there.
+     * {@code --parts voice} names a reason and writes nothing; {@code --transpose
+     * -2} writes every file, exits 0, and hands a singer a chart in the wrong
+     * key -- a confident wrong answer rather than a missing one, which is the
+     * category this whole change exists to remove. Nothing reads either value
+     * (#129).
+     */
+    private void warnAboutOptionsThatDoNothing() {
+        List<String> ignored = new ArrayList<>();
+        if (transpose != null) {
+            ignored.add("--transpose");
+        }
+        if (paperSize != null) {
+            ignored.add("--paper");
+        }
+        if (!ignored.isEmpty()) {
+            System.err.println("warning: " + String.join(", ", ignored)
+                    + (ignored.size() == 1 ? " has" : " have")
+                    + " no effect yet; nothing reads either value, so the chart is"
+                    + " engraved untransposed at the default paper size (#129)");
+        }
     }
 
     private MusicWizardConfig overrides() {

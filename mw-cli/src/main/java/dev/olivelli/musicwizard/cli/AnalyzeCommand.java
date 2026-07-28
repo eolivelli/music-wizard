@@ -127,7 +127,10 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "effect yet: nothing separates stems until #8 lands.")
     boolean skipSeparation;
 
-    @Option(names = "--no-llm", description = "Disable the Claude advisor layer for this run.")
+    @Option(names = "--no-llm",
+            description = "Disable the Claude advisor layer for this run. The layer does "
+                    + "not exist yet (#11), so today this only changes the cache key and "
+                    + "forces a recompute.")
     boolean noLlm;
 
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
@@ -141,9 +144,14 @@ final class AnalyzeCommand implements Callable<Integer> {
         SourceKind kind = SourceKind.detect(source);
 
         if (!workspace.sourceMatchesDigest()) {
+            // No longer "re-run with --force to recompute". The transcription
+            // cache this command added is keyed on the file's own digest, so a
+            // changed source misses it and recomputes without being asked. What
+            // is genuinely stale is anything already written from the old file.
             System.err.println(
-                    "warning: the source recording has changed since this workspace was created;"
-                            + " cached results may not correspond to it. Re-run with --force to recompute.");
+                    "warning: the source recording has changed since this workspace was"
+                            + " created; this analysis is of the file as it is now, and"
+                            + " anything already rendered from the old one is out of date.");
         }
         warnAboutOptionsThatDoNothing(kind);
 
