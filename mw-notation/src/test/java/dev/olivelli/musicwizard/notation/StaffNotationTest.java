@@ -426,7 +426,30 @@ class StaffNotationTest {
         assertThatThrownBy(() -> StaffNotation.toLilyPond(score, voice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("engraving \"Voice\"")
-                .hasMessageContaining("because \"Keys\" runs that far");
+                .hasMessageContaining("\"Keys\" runs that far, so look there rather than here");
+
+        // And when the long part IS the one being engraved, the message must not
+        // send the reader to another part. A single-part score is what the
+        // pipeline produces today, so this is the common shape, not the exotic one.
+        Score alone = score(TimeSignature.FOUR_FOUR, 120, strays);
+        assertThatThrownBy(() -> StaffNotation.toLilyPond(alone, strays))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"Keys\" itself runs that far")
+                .hasMessageNotContaining("look there rather than here");
+    }
+
+    @Test
+    @DisplayName("the bar ceiling is the length its javadoc claims it is")
+    void theBarCeilingIsTheLengthItClaims() {
+        // Round 10 of review found the javadoc's figure wrong by a factor of
+        // sixteen, having survived nine rounds. It is the argument for the
+        // number, so it is checked rather than asserted: one bar of 4/4 at 120
+        // quarter-note BPM lasts two seconds.
+        double hours = StaffNotation.MAX_BARS * 4 / 120.0 / 60.0;
+        assertThat(hours)
+                .as("the ceiling is %d bars, which is %.1f hours of 4/4 at 120 BPM",
+                        StaffNotation.MAX_BARS, hours)
+                .isBetween(4.0, 5.0);
     }
 
     @Test

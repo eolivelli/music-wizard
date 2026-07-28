@@ -76,15 +76,28 @@ public final class StaffNotation {
 
     /**
      * A ceiling on how many bars are emitted, so that a score whose beat axis is
-     * wrong produces a complaint rather than a file that fills the disk.
+     * wrong produces a complaint rather than a file nobody can use.
      *
-     * <p>Generous enough that reaching it is unusual rather than impossible: a
-     * 4/4 piece at 120 BPM runs out at about three and a half hours, which a live
-     * set or a DJ mix can exceed. So the message says what was seen and offers
-     * the likely cause, rather than telling a user with a long recording that
-     * their data is corrupt.
+     * <p>Set by what can be <em>engraved</em> rather than by what can be
+     * recorded, because that is the smaller number by a long way. Emitting is
+     * cheap — a hundred thousand bars is 35 ms and under a megabyte of text — but
+     * LilyPond takes about ten seconds on two thousand bars, so the same file is
+     * a run that reads as a hang. This bound is roughly a minute of engraving.
+     *
+     * <p>In musical terms: {@value} bars of 4/4 at 120 BPM is about four and a
+     * half hours, longer than any recording this tool is aimed at and longer than
+     * most live sets. {@code theBarCeilingIsTheLengthItClaims} checks that
+     * arithmetic, because the figure this javadoc used to give was wrong by a
+     * factor of sixteen and survived nine rounds of review — and it is the
+     * argument for the number, so an unchecked claim here is a number nobody can
+     * evaluate.
+     *
+     * <p>It is deliberately not a defence against the outlier of #113: a note
+     * quantized a hundred bars late is nowhere near this, and clamping the score
+     * to catch it was tried twice and was wrong both times — see
+     * {@link #musicSpan}.
      */
-    private static final int MAX_BARS = 100_000;
+    static final int MAX_BARS = 8_000;
 
     private StaffNotation() {
     }
@@ -415,11 +428,18 @@ public final class StaffNotation {
                 return;
             }
         }
+        // Named rather than diagnosed: which part runs that far is a fact, and
+        // where to look for the cause follows from it only when that part is not
+        // this one. Saying "it is in that part rather than this one" of a
+        // single-part score, which is what the pipeline produces today, sent the
+        // reader somewhere else entirely.
+        String culprit = music.endedBy().equals(name)
+                ? "\"" + name + "\" itself runs that far"
+                : "\"" + music.endedBy() + "\" runs that far, so look there rather than here";
         throw new IllegalStateException(
-                "engraving \"" + name + "\" needs more than " + MAX_BARS + " bars, because \""
-                        + music.endedBy() + "\" runs that far; if the recording is not that long,"
-                        + " the beat axis is wrong -- one note quantized to a beat far past the"
-                        + " end will do it, and it is in that part rather than this one");
+                "engraving \"" + name + "\" needs more than " + MAX_BARS + " bars, because "
+                        + culprit + "; if the recording is not that long, the beat axis is"
+                        + " wrong -- one note quantized to a beat far past the end will do it");
     }
 
     /**
