@@ -432,22 +432,34 @@ class QuantizerTest {
             // top of the entire next bar.
             TempoMap tempoMap = fourFour();
             Performance performance = new Performance(tempoMap, 45);
-            for (int bar = 0; bar < 3; bar++) {
+            for (int bar = 0; bar < 2; bar++) {
                 for (int i = 0; i < 16; i++) {
                     performance.exact(60, bar * 4.0 + i * 0.25, 0.25);
                 }
             }
+            // Bar 2 is triplets, so the step the blip ends up with says which
+            // bar it was measured in: a third if it took the bar it prints in,
+            // a sixteenth if it kept the bar it was played in.
+            for (int i = 0; i < 12; i++) {
+                performance.exact(62, 8.0 + i / 3.0, 1 / 3.0);
+            }
+            performance.section(0, 8).section(8, 12);
             List<Note> notes = new java.util.ArrayList<>(performance.notes());
             notes.add(Note.ofSeconds(tempoMap.beatsToSeconds(8.0) - 0.050, 0.040, 67,
                     Confidence.CERTAIN));
 
-            QuantizedScore quantized = Quantizer.quantize(scoreOf(tempoMap, notes));
+            QuantizedScore quantized = Quantizer.quantize(
+                    scoreOf(tempoMap, notes, performance.sections()));
             Note blip = quantized.score().tracks().get(0).notes().stream()
                     .filter(n -> n.midiPitch() == 67)
                     .findFirst().orElseThrow();
 
+            assertThat(quantized.gridAtBar(1).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.QUARTER_BEAT);
+            assertThat(quantized.gridAtBar(2).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.THIRD_BEAT);
             assertThat(blip.onsetBeat()).contains(8.0);
-            assertThat(blip.durationBeats()).contains(0.25);
+            assertThat(blip.durationBeats().orElseThrow()).isCloseTo(1 / 3.0, within(1e-12));
         }
 
         @Test
@@ -588,6 +600,45 @@ class QuantizerTest {
             assertThat(quantized.grids()).extracting(BarGrid::bar).containsExactly(0, 2);
             assertThat(quantized.gridAtBar(1)).isEmpty();
             assertThat(quantized.gridAtBar(99)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a bar a tie only passes through still gets a grid")
+        void aBarCoveredOnlyByAHeldNoteIsPublished() {
+            // The tail of a tied note has to be engraved somewhere, on the grid
+            // the quantizer chose for the bar it falls in -- which it did
+            // choose, and used to snap this very note. Publishing only the bars
+            // notes start in threw that away and left #90 with a tuplet tail and
+            // no resolution to print it at.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 46);
+            for (int i = 0; i < 12; i++) {
+                performance.exact(60, i / 3.0, 1 / 3.0);
+            }
+            performance.exact(67, 4.0, 4 + 1 / 3.0);
+            for (int i = 0; i < 12; i++) {
+                performance.exact(60, 12.0 + i / 3.0, 1 / 3.0);
+            }
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.grids()).extracting(BarGrid::bar).containsExactly(0, 1, 2, 3);
+            assertThat(quantized.gridAtBeat(8.0)).isPresent();
+            assertThat(quantized.gridAtBar(2).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.THIRD_BEAT);
+        }
+
+        @Test
+        @DisplayName("a note ending on a bar line does not claim the bar it ends on")
+        void aTieStoppingOnABarLineDoesNotClaimTheNextBar() {
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 47);
+            performance.exact(60, 0.0, 4.0);
+            performance.exact(60, 8.0, 4.0);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.grids()).extracting(BarGrid::bar).containsExactly(0, 2);
         }
 
         @Test

@@ -94,11 +94,13 @@ public final class Quantizer {
      * articulation allowance decides it must have been written longer.
      *
      * <p>Small because it is only there to recognise a note held <em>through</em>
-     * its written end rather than short of it. Measured against three
+     * its written end rather than short of it. Simulated against three
      * articulation distributions and note lengths from one to sixteen steps,
-     * two per cent recovers as many durations as applying the allowance
-     * unconditionally does, and does not lengthen the notes that unconditional
-     * version got wrong.
+     * measuring played length the way {@link #articulated} does: two per cent
+     * recovers as many durations as applying the allowance unconditionally does
+     * (0.722 against 0.724, where snapping with no allowance at all gives
+     * 0.655), and does not lengthen the notes the unconditional version got
+     * wrong.
      */
     private static final double OVERLAP_TOLERANCE = 0.02;
 
@@ -144,7 +146,14 @@ public final class Quantizer {
                 // milliseconds sounds in the previous bar and is printed in this
                 // one, and publishing by the played position would announce a
                 // grid for a bar with nothing in it.
-                sounds[bars.barOf(snapped.onsetBeat().orElseThrow())] = true;
+                //
+                // Every bar the note sounds through, not only the one it starts
+                // in. A note held across a bar that has no onset of its own
+                // still has to be engraved there -- tied, and its tail on that
+                // bar's grid, which the quantizer chose and then used to snap
+                // this very note. Publishing only onsets threw that decision
+                // away and left the tail with no resolution to print it at.
+                markSounding(sounds, bars, snapped);
                 notes.add(snapped);
             }
             quantizedTracks.add(track.withNotes(notes));
@@ -304,6 +313,21 @@ public final class Quantizer {
         return published;
     }
 
+    /** Marks every bar a quantized note sounds in, ties included. */
+    private static void markSounding(boolean[] sounds, BarTable bars, Note note) {
+        double onsetBeat = note.onsetBeat().orElseThrow();
+        double endBeat = note.offsetBeat().orElseThrow();
+        int last = bars.barOf(endBeat);
+        // A note ending exactly on a bar line does not sound in the bar it ends
+        // on; that bar line is where the tie stops, not where the note begins.
+        if (endBeat <= bars.startBeat(last)) {
+            last--;
+        }
+        for (int bar = bars.barOf(onsetBeat); bar <= last && bar < sounds.length; bar++) {
+            sounds[bar] = true;
+        }
+    }
+
     // ---------------------------------------------------------------- snapping
 
     /**
@@ -354,6 +378,9 @@ public final class Quantizer {
         // because it had walked nothing, and subtracted zero from a full bar's
         // worth of steps. It gets one step of the bar it prints in.
         if (offsetBeat <= onsetBeat) {
+            // One step of the bar it prints in, which is the onset's bar after
+            // the carry -- not the offset's, which is the bar it was played in
+            // and may be divided differently.
             return note.quantizedTo(onsetBeat, onsetStep);
         }
 
@@ -374,7 +401,8 @@ public final class Quantizer {
                 uniformSteps(bars, perBar, onsetBar, offsetBar, onsetStep);
         double duration = uniform.isPresent()
                 ? (offsetSteps + uniform.getAsInt() - onsetSteps) * onsetStep
-                : offsetBeat - onsetBeat;
+                : bars.startBeat(offsetBar) - bars.startBeat(onsetBar)
+                        + offsetSteps * offsetStep - onsetSteps * onsetStep;
 
         // A note shorter than half a grid step -- a grace note, or a staccato
         // sixteenth on an eighth grid -- collapses onto its own onset. It is

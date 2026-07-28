@@ -33,7 +33,9 @@ import java.util.Optional;
  *
  * @param score the score, with {@code onsetBeat} and {@code durationBeats}
  *              filled in on every note and the seconds left exactly as they were
- * @param grids one entry per bar that holds a note, ordered by bar
+ * @param grids one entry per bar in which a note sounds, ordered by bar --
+ *              including a bar a held note only passes through, whose tied tail
+ *              still has to be engraved on that bar's grid
  * @param swing the shuffle that was taken out before snapping, or
  *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
  *              it does not apply to compound bars -- use {@link #swingIn(int)}
@@ -54,7 +56,7 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
         }
     }
 
-    /** The grid chosen for a bar, or empty when that bar holds no notes. */
+    /** The grid chosen for a bar, or empty when nothing sounds in that bar. */
     public Optional<BarGrid> gridAtBar(int bar) {
         // Binary search: a long piece has thousands of bars and the notation
         // layer asks this once per note.
@@ -76,8 +78,8 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
     }
 
     /**
-     * The grid covering a position on the beat axis, or empty when the bar it
-     * falls in holds no notes.
+     * The grid covering a position on the beat axis, or empty when nothing
+     * sounds in the bar it falls in.
      *
      * @throws IllegalArgumentException if the beat is not finite and non-negative
      */
