@@ -137,6 +137,23 @@ class SwingDetectionTest {
         }
 
         @Test
+        @DisplayName("the tightness threshold leaves room for a shuffle that is only fairly tight")
+        void aLooseButRealShuffleIsStillFound() {
+            // MAX_SPREAD sits between two populations and the gap on the shuffle
+            // side is the narrow one -- a played shuffle reaches 0.084 against a
+            // threshold of 0.09. Nothing was holding that end: lowering the
+            // threshold to 0.07 left the whole suite green. This does, and the
+            // fixture is constructed rather than played so the spread it
+            // exercises is exactly the number in the name.
+            SwingFeel swing = Quantizer.quantize(wobbled(8, 0.085)).swing();
+
+            assertThat(swing.swung())
+                    .describedAs("a shuffle spread 0.085 wide is still a shuffle")
+                    .isTrue();
+            assertThat(swing.ratio()).isCloseTo(SHUFFLE, within(1e-9));
+        }
+
+        @Test
         @DisplayName("an onset early in the beat is not part of the off-beat cluster")
         void theWindowStartsLateEnoughToExcludeASixteenth() {
             // A shuffle whose long note is subdivided -- a very ordinary jazz

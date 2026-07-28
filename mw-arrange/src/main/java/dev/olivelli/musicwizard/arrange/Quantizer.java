@@ -757,10 +757,13 @@ public final class Quantizer {
          * margin -- and what loses a genuine shuffle in practice is
          * {@link #SWING_THRESHOLD} rather than this.
          *
-         * <p>Both figures are for a <em>played</em> cluster. A fixture that
-         * fixes its own spread by construction, or plays to the tick, sits
-         * below the shuffle floor by definition rather than by measurement, and
-         * several in the test suite do.
+         * <p>Both figures are for a <em>played</em> cluster, and a constructed
+         * one says nothing about them either way -- two shuffle fixtures in the
+         * suite play to the tick and spread exactly zero, and two more set their
+         * own spread alternately either side of the shuffle point. A constructed
+         * fixture can still be evidence about the threshold, though, and one is:
+         * the widest of them sits at 0.060, between the two populations, and is
+         * what fails if this constant is lowered towards the shuffle side.
          *
          * <p>An earlier comment said sixteenths spread about 0.19, which is
          * what they spread against a window starting at 0.25; the figure
