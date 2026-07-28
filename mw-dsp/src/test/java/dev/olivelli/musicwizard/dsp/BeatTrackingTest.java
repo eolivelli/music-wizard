@@ -309,19 +309,66 @@ class BeatTrackingTest {
             for (int frame = 62; frame <= 95; frame++) {
                 assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
             }
-            // Holding a value across the poisoned frame breaks the alternation
-            // there, so the filter leaves a local excursion -- 0.67 at its
-            // worst, against band decibels whose attacks are tens of dB, so it
-            // cannot manufacture an onset. It stays local and it stays
-            // symmetric, which is what says the filter is still zero phase
-            // across a defect rather than only across clean data.
+            // The poisoned frame itself comes back as it went in. Holding is
+            // for the recursion's benefit only: put the held value back and the
+            // far edge of a poisoned run becomes a step, which differences into
+            // an onset that is not in the recording. Left non-finite, the flux
+            // loop drops the difference across that edge instead.
+            assertThat(bands[50][0]).isNaN();
+            // Still symmetric either side of the defect, so the filter is zero
+            // phase across a hole and not only across clean data.
             assertThat(bands[49][0]).isCloseTo(bands[51][0], within(1e-12));
             assertThat(bands[48][0]).isCloseTo(bands[52][0], within(1e-12));
-            assertThat(Math.abs(bands[50][0])).isLessThan(1.0);
-            // And a leading run takes the first finite value rather than zero,
-            // which would have been a 5 dB step and so a manufactured onset.
-            assertThat(bands[0][1]).isCloseTo(5, within(1e-9));
-            assertThat(bands[1][1]).isCloseTo(5, within(1e-9));
+            // A leading run has no earlier finite sample to hold, so it takes
+            // the first later one. That only shows up inside the filter -- the
+            // frames themselves come back non-finite like any other -- but it
+            // matters: holding zero instead would push a 5 dB step through the
+            // recursion and ring for a dozen frames after the run ended, where
+            // band 1 is constant and must come back constant.
+            assertThat(bands[0][1]).isNaN();
+            assertThat(bands[1][1]).isNegative().isInfinite();
+            for (int frame = 2; frame < bands.length; frame++) {
+                assertThat(bands[frame][1]).as("frame %d", frame).isCloseTo(5, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("a hole in the audio does not become an onset where it ends")
+        void poisonedRunDoesNotManufactureAnOnset() {
+            // The failure mode of holding a value across a gap: the far edge is
+            // a step in the band decibels, and a step is exactly what the flux
+            // is built to report. Measured before this was fixed, a half-second
+            // hole produced an accent 53% as tall as a real click, at a moment
+            // when nothing happened in the recording. Unfiltered code produced
+            // nothing there, and neither must this.
+            for (double holeSeconds : new double[] {0.05, 0.5, 2.0}) {
+                float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+                int from = 10 * RATE;
+                int to = from + (int) (holeSeconds * RATE);
+                for (int i = from; i < to && i < clicks.length; i++) {
+                    clicks[i] = Float.NaN;
+                }
+                OnsetEnvelope envelope = envelopeOf(clicks);
+
+                double overall = 0;
+                for (double value : envelope.strength()) {
+                    overall = Math.max(overall, value);
+                }
+                double resume = to / (double) RATE;
+                double atResumption = 0;
+                for (int frame = envelope.frameOf(resume);
+                        frame <= envelope.frameOf(resume + 0.1); frame++) {
+                    atResumption = Math.max(atResumption, envelope.strength()[frame]);
+                }
+
+                // A click every 0.5 s, so a hole of 0.5 s or more swallows one
+                // and the 100 ms after it must be silent. The 0.05 s hole sits
+                // inside one beat and the next real click is 0.4 s away, so the
+                // same window is silent for that too.
+                assertThat(atResumption)
+                        .as("hole of %.2f s, overall peak %.2f", holeSeconds, overall)
+                        .isZero();
+            }
         }
 
         @Test

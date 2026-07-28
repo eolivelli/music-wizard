@@ -268,11 +268,18 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * windows containing it, so it poisons all forty bands for those frames,
      * not one -- which means skipping a poisoned <em>band</em> would have
      * disabled this filter for the whole recording and quietly restored the
-     * behaviour of the bug it fixes, at 0.751 for the worst held note. So each
-     * non-finite sample instead takes the value of the last finite one before
-     * it, the filter runs normally, and the damage stays in the frames where it
-     * arrived: those frames read as no change, which is what they were already
-     * reported as.
+     * behaviour of the bug it fixes, at 0.751 for the worst held note.
+     *
+     * <p>So each non-finite sample takes the value of the last finite one
+     * before it for the duration of the filtering -- which keeps the recursion
+     * clean -- and is then put back as it was. Both halves are needed. Holding
+     * alone leaves a step at the far edge of a poisoned run, and differencing a
+     * step manufactures an onset that is not in the recording: measured on a
+     * click track with a half-second hole, an accent at 53% of the height of a
+     * real click, where the unfiltered code produced nothing at all. Restoring
+     * the original makes that difference non-finite again, so the flux loop
+     * drops it exactly as it always did, and the damage really does stay in the
+     * frames where it arrived.
      */
     static void antiAlias(double[][] melBands) {
         if (melBands.length < 2) {
@@ -311,7 +318,15 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
                 }
             }
             for (int frame = 0; frame < melBands.length; frame++) {
-                melBands[frame][band] = series[frame];
+                // Only where the input was finite. Putting the held value back
+                // would hand the flux a step at the far edge of a poisoned run
+                // and so an onset that is not in the recording; leaving the
+                // original there means the difference across that edge is
+                // non-finite and gets dropped, which is what happened before
+                // this filter existed.
+                if (Double.isFinite(melBands[frame][band])) {
+                    melBands[frame][band] = series[frame];
+                }
             }
         }
     }
