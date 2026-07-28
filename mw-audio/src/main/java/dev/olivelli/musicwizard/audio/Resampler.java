@@ -55,18 +55,28 @@ public final class Resampler {
      * the same holds for 48k to 16k and any other integer ratio, and not
      * because downsampling is inherently safe.
      *
-     * <p>Two roundings produce the difference, not one: {@code b - a} is
-     * rounded, and then so is the result. So it is not bounded by half an ulp
-     * of either operand -- that form is exceeded fourfold by ordinary
-     * material, because Sterbenz makes {@code b - a} exact unless the operands
-     * differ by more than a factor of two, which leaves only the cases where
-     * the result's ulp is much the larger. Both quantities live below twice the
-     * peak, and the bound that does hold is half an ulp of {@code 2 x peak} --
-     * equivalently <b>one ulp of the peak</b>, since doubling a normal float
-     * doubles its ulp. Attained but never exceeded over roughly 64 million
-     * constructed pairs, including denormals, binade edges and both signs. It
-     * scales with amplitude, so no single absolute figure is a bound on its
-     * own:
+     * <p>The two expressions differ exactly when the float subtraction
+     * {@code b - a} is inexact -- if it is exact, both evaluate the same
+     * {@code double} and cast to the same {@code float}. Measured: of 20
+     * million random pairs, 5.9 million differ and <em>none</em> of them had an
+     * exact subtraction.
+     *
+     * <p>That does not make half an ulp of {@code |b - a|} the bound, and it is
+     * worth saying why, because that is the form this paragraph has twice been
+     * tempted back into. The subtraction is perturbed by up to half an ulp of
+     * {@code |b - a|}, but the result is then rounded on its own scale, and
+     * {@code ulp(result)} runs up to <b>twice</b> {@code ulp(|b - a|)} -- never
+     * more, and smaller in 88% of differing samples. A perturbation that
+     * straddles a rounding boundary therefore moves the answer by a whole
+     * {@code ulp(result)}, which is four times half an ulp of {@code |b - a|}.
+     * That factor of four is attained, on ordinary material.
+     *
+     * <p>Both quantities live below twice the peak, so the bound that does hold
+     * is half an ulp of {@code 2 x peak} -- equivalently <b>one ulp of the
+     * peak</b>, since doubling a normal float doubles its ulp. Attained but
+     * never exceeded over roughly 64 million constructed pairs, including
+     * denormals, binade edges and both signs. It scales with amplitude, so no
+     * single absolute figure is a bound on its own:
      *
      * <pre>
      *   peak   bound = ulp(peak)   worst measured
