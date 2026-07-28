@@ -108,6 +108,12 @@ unfixed code. Two specific traps:
 - **Asserting on a value the test itself initialised** passes for a reason that
   has nothing to do with the code under review.
 
+**A mutant that fails to compile is not a killed mutant.** A reactor build
+against a stale `~/.m2` copy of an upstream module reports a build failure that
+looks exactly like a test failure in the summary; on this project that silently
+turned 10 of 25 mutants into false kills. Build dependent modules with `-am`,
+and check that each claimed kill names the test that failed.
+
 Where a change is meant to shift a *statistic*, a single fixture is not evidence.
 Ask for the swept population and the count of cases that invert — a headline
 number taken from sampled fixtures was 6.5x optimistic here, and the same
