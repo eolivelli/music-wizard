@@ -36,6 +36,50 @@ public final class Resampler {
      * <p>Interpolation is linear. It is not the best kernel available, but the
      * error it leaves is broadband and small relative to the spectral resolution
      * every stage downstream actually uses, whereas aliasing is neither.
+     *
+     * <p>Finite input gives finite output. That is worth stating because it did
+     * not used to be true: the interpolation subtracted two floats before
+     * widening, so upsampling a signal near {@code Float.MAX_VALUE} overflowed
+     * to infinity -- 1998 of 2000 output samples, from input that was entirely
+     * finite. Downsampling hid it, because the low-pass runs first and shrinks
+     * the values. {@link AudioDecoder} resamples before it constructs the
+     * {@link AudioBuffer}, so without this the buffer's own check would have
+     * been the thing reporting a fault the resampler had just introduced.
+     *
+     * <p>It moves ordinary output too, and the size of that is the thing to
+     * know: the difference between the two expressions is at most <b>one ulp of
+     * the signal's peak</b> -- so 1.2e-7 for normalised audio, and it scales
+     * with amplitude. Attained but never exceeded over roughly 64 million
+     * constructed pairs, including denormals, binade edges and both signs. The
+     * worst actually measured on real conversions is half that, 6.0e-8, which
+     * is about -144 dBFS or half a 24-bit LSB.
+     *
+     * <p>For scale, the smallest threshold anywhere downstream that is in these
+     * same units is {@code isEffectivelySilent}'s peak of 1e-4, three orders
+     * above the bound. Double is the accurate side of the difference.
+     *
+     * <p>One thing worth knowing beyond the bound: the differences are common
+     * rather than rare, so this is not a last-bit curiosity. On the two
+     * conversions a real recording actually takes into the analysis rate,
+     * measured: <b>44.1k to 22.05k is bit-identical</b> -- the step is exactly
+     * 2, so {@code fraction} is always zero and no interpolation happens, which
+     * holds for any integer decimation -- and <b>48k to 22.05k differs on 15%
+     * of samples</b> on uniform noise, 0.9% on a triad.
+     *
+     * <p>Do not read a range off those two. Divergence varies from about 3% to
+     * 25% over the source rates a file might declare, it is not ordered by how
+     * steep the conversion is, and three successive attempts to state it as a
+     * swept range were each wrong at the floor. If you need the figure for some
+     * other pair, measure that pair.
+     *
+     * <p>Everything else about this difference -- how it distributes, how it
+     * relates to the exactness of the subtraction, and why the obvious bound of
+     * half an ulp of {@code |b - a|} is wrong by a factor of four -- is a
+     * side-question, and it was got wrong eight times over eight review rounds
+     * on PR #78, always by stating a measurement more broadly than it was
+     * taken. Those drafts are in this file's history from that PR. The bound
+     * above is what a caller needs; anyone who needs more should measure it
+     * rather than inherit it.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {
@@ -65,8 +109,8 @@ public final class Resampler {
             double position = i * step;
             int index = (int) position;
             double fraction = position - index;
-            float a = source[Math.min(index, source.length - 1)];
-            float b = source[Math.min(index + 1, source.length - 1)];
+            double a = source[Math.min(index, source.length - 1)];
+            double b = source[Math.min(index + 1, source.length - 1)];
             out[i] = (float) (a + (b - a) * fraction);
         }
         return out;

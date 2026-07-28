@@ -347,10 +347,15 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * variant is safe against an arbitrary hole.
      *
      * <p>None of this is reachable from a real recording -- a dropout is
-     * digital silence, not NaN, and silence is filtered like anything else. It
-     * matters because {@code AudioBuffer} does not reject non-finite samples
-     * (issue #61); if it ever does, this whole branch becomes dead code and
-     * should go.
+     * digital silence, not NaN, and silence is filtered like anything else.
+     * Since issue #61 it is not reachable through the pipeline at all:
+     * {@code AudioBuffer} and {@code Spectrogram} both reject non-finite
+     * values, and {@link #toMelDecibels} floors the band sum before the
+     * logarithm, so a spectrogram that gets this far has finite bands by
+     * contract. This branch survives because {@code antiAlias} is called
+     * directly with hand-built bands, which is where its behaviour is pinned;
+     * whether that is worth keeping is issue #76, not a question this file
+     * answers on its own.
      */
     static void antiAlias(double[][] melBands) {
         if (melBands.length < 2) {

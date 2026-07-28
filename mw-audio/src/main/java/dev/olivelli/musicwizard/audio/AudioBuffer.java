@@ -19,7 +19,13 @@ package dev.olivelli.musicwizard.audio;
 import java.util.Objects;
 
 /**
- * Decoded audio: mono samples in [-1, 1] at a known sample rate.
+ * Decoded audio: mono samples at a known sample rate.
+ *
+ * <p>Samples are nominally in [-1, 1] and that is <em>not</em> enforced, on
+ * purpose: a buffer can legitimately sit outside the range between a gain stage
+ * and a normalisation. Finiteness is a correctness invariant and is checked at
+ * construction -- see the constructor for why it is checked there and not
+ * somewhere cheaper; range is a convention and is not checked at all.
  *
  * <p>Mono because every analysis stage in this project wants one signal, and
  * float because the alternative is 16-bit integers that every stage would have
@@ -35,15 +41,72 @@ public final class AudioBuffer {
     private final float[] samples;
     private final int sampleRate;
 
+    /**
+     * Wraps a sample array, rejecting any sample that is not finite.
+     *
+     * <p>A single non-finite sample does not stay where it lands. It reaches
+     * every FFT bin of every window containing it, and any stage that then
+     * aggregates over frames inherits it as a whole: one NaN in a 32-second
+     * I-V-vi-IV click track pins {@code Chroma.estimateTuning} at -0.4875
+     * semitones -- because a NaN deviation histograms into slot 0 and
+     * {@code >} against NaN is false, so the mode can never move off it -- and
+     * turns a chart of {@code C G Am F} at 0.91 confidence into a single
+     * {@code N.C.} at 0.44. Beat tracking is untouched, so the failure does not
+     * look like the bad sample it is.
+     *
+     * <p>Rejected rather than replaced with zero, and rejected here rather than
+     * at the decode boundary, for one reason: no decodable file can produce a
+     * non-finite sample. {@link AudioDecoder} never reads a float out of the
+     * stream at all -- {@code frameToMono} reassembles two bytes into an
+     * {@code int} and divides -- so even a provider that ignored the 16-bit
+     * format it is asked for would yield finite garbage rather than a NaN. A
+     * float WAV carrying NaN, both infinities and 1e30 decodes to zeros, as
+     * {@code AudioPipelineTest} asserts. So this cannot turn a readable
+     * recording into a hard error; the only thing it can catch is a caller with
+     * a bug, and quietly substituting zero for that would alter the audio and
+     * hide the cause at once.
+     *
+     * <p>The scan is a full pass over every buffer, including ones the pipeline
+     * derives from other buffers, and that is affordable. Measured single-shot
+     * in a fresh JVM -- which is the regime that matters, since a run builds one
+     * of these -- five minutes at 22.05 kHz costs <b>8 to 14 ms</b> across
+     * repeats, against <b>370 to 843 ms</b> for the {@code Spectrogram.compute}
+     * that immediately follows it. There is deliberately no cheaper unchecked
+     * constructor for internally derived buffers.
+     *
+     * <p>Take the range rather than a single figure, and do not compare it with
+     * a number measured any other way. An earlier draft of this paragraph
+     * quoted 3.2 ms, from a warmed loop rather than one call, and set it beside
+     * a spectrogram figure taken cold -- which made the scan look three times
+     * cheaper relative to its neighbour than it is. The conclusion survives
+     * either way, at 1% to 4%; the comparison did not.
+     *
+     * <p>What this does <em>not</em> give you is an invariant that holds for
+     * the lifetime of the buffer. The array is shared rather than copied, so a
+     * caller that writes through {@link #samples()} -- a gain stage working in
+     * place, say, which is exactly what the no-copy design invites -- can make
+     * a validated buffer non-finite afterwards and nothing will notice. The
+     * check is on construction; after that the read-only convention is what
+     * holds, as it does for every other property of the array. See issue #79.
+     *
+     * @throws IllegalArgumentException if {@code sampleRate} is not positive or
+     *     any sample is NaN or infinite
+     */
     public AudioBuffer(float[] samples, int sampleRate) {
         this.samples = Objects.requireNonNull(samples, "samples");
         if (sampleRate <= 0) {
             throw new IllegalArgumentException("sampleRate must be positive, got: " + sampleRate);
         }
+        for (int i = 0; i < samples.length; i++) {
+            if (!Float.isFinite(samples[i])) {
+                throw new IllegalArgumentException(
+                        "samples must be finite, but samples[" + i + "] is " + samples[i]);
+            }
+        }
         this.sampleRate = sampleRate;
     }
 
-    /** The samples, shared rather than copied. Do not modify. */
+    /** The samples, shared rather than copied. Do not modify; see #79. */
     public float[] samples() {
         return samples;
     }
