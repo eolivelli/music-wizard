@@ -439,6 +439,24 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("the ceiling blames the right part even when two parts share a name")
+    void theBarCeilingIsNotConfusedByTwoPartsOfTheSameName() {
+        // A score may hold two tracks with the same name in different roles, and
+        // a piano's two hands routinely do. Round 11 found the message deciding
+        // whether the culprit was another part by comparing names, which makes
+        // the two hands indistinguishable and sends the reader to the part being
+        // engraved when the cause is in the other one.
+        NoteTrack right = track(PartRole.PIANO_RIGHT_HAND, "Piano", note(0, 4, "C5"));
+        NoteTrack left = track(PartRole.PIANO_LEFT_HAND, "Piano", note(4_000_000, 4, "C3"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, right, left);
+
+        assertThatThrownBy(() -> StaffNotation.toLilyPond(score, right))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("look there rather than here")
+                .hasMessageNotContaining("itself runs that far");
+    }
+
+    @Test
     @DisplayName("the bar ceiling is the length its javadoc claims it is")
     void theBarCeilingIsTheLengthItClaims() {
         // Round 10 of review found the javadoc's figure wrong by a factor of
@@ -449,7 +467,7 @@ class StaffNotationTest {
         assertThat(hours)
                 .as("the ceiling is %d bars, which is %.1f hours of 4/4 at 120 BPM",
                         StaffNotation.MAX_BARS, hours)
-                .isBetween(4.0, 5.0);
+                .isBetween(2.0, 2.5);
     }
 
     @Test

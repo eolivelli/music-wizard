@@ -80,24 +80,41 @@ public final class StaffNotation {
      *
      * <p>Set by what can be <em>engraved</em> rather than by what can be
      * recorded, because that is the smaller number by a long way. Emitting is
-     * cheap — a hundred thousand bars is 35 ms and under a megabyte of text — but
-     * LilyPond takes about ten seconds on two thousand bars, so the same file is
-     * a run that reads as a hang. This bound is roughly a minute of engraving.
+     * cheap; engraving is not, and it is not linear either. Measured with
+     * LilyPond 2.26 on a 16-core machine, on a four-minute song plus one note
+     * quantized to the far end — the shape of #113, which is the case that
+     * actually reaches this ceiling:
      *
-     * <p>In musical terms: {@value} bars of 4/4 at 120 BPM is about four and a
-     * half hours, longer than any recording this tool is aimed at and longer than
-     * most live sets. {@code theBarCeilingIsTheLengthItClaims} checks that
-     * arithmetic, because the figure this javadoc used to give was wrong by a
-     * factor of sixteen and survived nine rounds of review — and it is the
-     * argument for the number, so an unchecked claim here is a number nobody can
-     * evaluate.
+     * <pre>
+     *   1,000 bars     3.4 s    0.4 GB
+     *   2,000 bars    10.2 s    1.4 GB
+     *   4,000 bars  37-43   s    5.0 GB
+     *   8,000 bars   380   s   19.3 GB
+     * </pre>
+     *
+     * <p>Roughly cubic in bars. The memory is what decides the number rather than
+     * the seconds: 19 GB is not a slow run on an ordinary laptop, it is a swap
+     * storm or an OOM kill, which is worse than the hang the ceiling exists to
+     * bound and does not get better on a faster machine. {@value} bars is about a
+     * minute and five gigabytes.
+     *
+     * <p>These are measurements rather than an extrapolation, which is worth
+     * saying because the figure here was an extrapolation twice: once wrong by
+     * sixteen times and once by six, each written as though it had been run.
+     *
+     * <p>In musical terms: {@value} bars of 4/4 at 120 BPM is about two and a
+     * quarter hours, far past anything this tool is aimed at.
+     * {@code theBarCeilingIsTheLengthItClaims} checks that arithmetic — the
+     * engraving table above needs LilyPond and so cannot be checked by a unit
+     * test, but the musical figure can be, and an unchecked figure that is the
+     * argument for a number is a number nobody can evaluate.
      *
      * <p>It is deliberately not a defence against the outlier of #113: a note
      * quantized a hundred bars late is nowhere near this, and clamping the score
      * to catch it was tried twice and was wrong both times — see
      * {@link #musicSpan}.
      */
-    static final int MAX_BARS = 8_000;
+    static final int MAX_BARS = 4_000;
 
     private StaffNotation() {
     }
@@ -280,8 +297,13 @@ public final class StaffNotation {
      * @param endBeat   where the last engravable part stops sounding
      * @param endedBy   the part that stops last, named so that a complaint about
      *                  the length points at the part responsible for it
+     * @param endedByAnotherPart whether that part is one other than the one being
+     *                  engraved — carried rather than re-derived by comparing
+     *                  names, because two tracks in different roles may share a
+     *                  name and a piano's two hands routinely do
      */
-    private record Span(double startBeat, double endBeat, String endedBy) {
+    private record Span(double startBeat, double endBeat, String endedBy,
+                        boolean endedByAnotherPart) {
     }
 
     /**
@@ -348,6 +370,7 @@ public final class StaffNotation {
                 ? Double.POSITIVE_INFINITY : events.getFirst().startBeat();
         double latest = events.isEmpty() ? 0 : events.getLast().endBeat();
         String endedBy = engraved.name();
+        boolean endedByAnotherPart = false;
         for (NoteTrack track : score.tracks()) {
             if (track.equals(engraved) || !isEngravable(track)) {
                 continue;
@@ -358,6 +381,7 @@ public final class StaffNotation {
                 if (other.getLast().endBeat() > latest) {
                     latest = other.getLast().endBeat();
                     endedBy = track.name();
+                    endedByAnotherPart = true;
                 }
             }
         }
@@ -366,7 +390,7 @@ public final class StaffNotation {
         // two starts after a bar of rest, and saying otherwise would move every
         // bar line in the piece.
         boolean pickup = Double.isFinite(earliest) && earliest > 0 && earliest < firstBar;
-        return new Span(pickup ? earliest : 0, latest, endedBy);
+        return new Span(pickup ? earliest : 0, latest, endedBy, endedByAnotherPart);
     }
 
     /**
@@ -433,9 +457,9 @@ public final class StaffNotation {
         // this one. Saying "it is in that part rather than this one" of a
         // single-part score, which is what the pipeline produces today, sent the
         // reader somewhere else entirely.
-        String culprit = music.endedBy().equals(name)
-                ? "\"" + name + "\" itself runs that far"
-                : "\"" + music.endedBy() + "\" runs that far, so look there rather than here";
+        String culprit = music.endedByAnotherPart()
+                ? "\"" + music.endedBy() + "\" runs that far, so look there rather than here"
+                : "\"" + music.endedBy() + "\" itself runs that far";
         throw new IllegalStateException(
                 "engraving \"" + name + "\" needs more than " + MAX_BARS + " bars, because "
                         + culprit + "; if the recording is not that long, the beat axis is"
