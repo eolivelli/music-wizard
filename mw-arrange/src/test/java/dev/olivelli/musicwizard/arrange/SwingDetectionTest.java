@@ -111,6 +111,54 @@ class SwingDetectionTest {
         }
 
         @Test
+        @DisplayName("confidence falls with a thinner sample and with a looser cluster")
+        void confidenceReflectsSupportAndTightness() {
+            // Three factors decide it and only one of them was pinned. Isolating
+            // the other two needs the cluster held still while the sample size
+            // changes and vice versa, so the wobble here is a fixed alternating
+            // pattern rather than noise: the spread is identical whatever the
+            // length, and only the count differs.
+            SwingFeel plenty = Quantizer.quantize(wobbled(8, 0.02)).swing();
+            SwingFeel few = Quantizer.quantize(wobbled(2, 0.02)).swing();
+            SwingFeel loose = Quantizer.quantize(wobbled(8, 0.06)).swing();
+
+            assertThat(plenty.swung()).isTrue();
+            assertThat(few.swung()).isTrue();
+            assertThat(loose.swung()).isTrue();
+            // Eight off-beats of the twenty-four that count as full support, so
+            // exactly a third of the same reading seen four times over.
+            assertThat(few.confidence().value())
+                    .describedAs("thin sample %s against full %s", few, plenty)
+                    .isCloseTo(plenty.confidence().value() / 3, within(1e-9));
+            assertThat(loose.confidence().value())
+                    .describedAs("loose cluster %s against tight %s", loose, plenty)
+                    .isLessThan(plenty.confidence().value() * 0.75);
+        }
+
+        @Test
+        @DisplayName("an onset early in the beat is not part of the off-beat cluster")
+        void theWindowStartsLateEnoughToExcludeASixteenth() {
+            // A shuffle whose long note is subdivided -- a very ordinary jazz
+            // figure -- puts extra onsets a quarter of the way through the beat.
+            // Those are not off-beat eighths, and counting them drags the mean
+            // below the threshold and loses the feel for the whole piece.
+            // Played to the tick: what is under test is where the window's
+            // lower edge sits, and human spread would blur the very onsets the
+            // edge is there to exclude.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
+            Performance performance = new Performance(tempoMap, 22);
+            for (int beat = 0; beat < BARS * 4; beat++) {
+                performance.exact(60, beat, 0.25);
+                performance.exact(60, beat + 0.25, SHUFFLE - 0.25);
+                performance.exact(60, beat + SHUFFLE, 1 - SHUFFLE);
+            }
+            SwingFeel swing = Quantizer.quantize(performance.score()).swing();
+
+            assertThat(swing.swung()).isTrue();
+            assertThat(swing.ratio()).isCloseTo(SHUFFLE, within(0.04));
+        }
+
+        @Test
         @DisplayName("too little off-beat material to be sure means straight")
         void tooFewOffBeatsToDecide() {
             TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
@@ -395,6 +443,22 @@ class SwingDetectionTest {
     }
 
     // ---------------------------------------------------------------- fixtures
+
+    /**
+     * Shuffled pairs whose off-beats alternate a fixed distance either side of
+     * the shuffle point, so the cluster's spread is exactly {@code wobble}
+     * however many bars are played.
+     */
+    private static Score wobbled(int bars, double wobble) {
+        TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
+        Performance performance = new Performance(tempoMap, 20);
+        for (int beat = 0; beat < bars * 4; beat++) {
+            double offBeat = SHUFFLE + (beat % 2 == 0 ? wobble : -wobble);
+            performance.exact(60, beat, offBeat);
+            performance.exact(60, beat + offBeat, 1 - offBeat);
+        }
+        return performance.score();
+    }
 
     /** Eight bars of two notes per beat, the second at {@code phase} of the beat. */
     private static Score pairs(double phase, long seed) {
