@@ -57,11 +57,17 @@ final class DoctorCommand implements Callable<Integer> {
             allWell = false;
         }
 
+        // Neither branch may claim the layer is available or would become
+        // available, because there is no layer: mw-llm holds no source at all
+        // and #11 is the issue to build it. Saying "present (advisor layer
+        // available)" is this command's version of the defect #82 was filed for,
+        // and round 7 fixed the same claim in analyze and stopped there --
+        // grepping isLlmEnabled finds only that command, grepping "advisor"
+        // finds both.
         boolean hasKey = System.getenv("ANTHROPIC_API_KEY") != null
                 || System.getenv("ANTHROPIC_AUTH_TOKEN") != null;
-        System.out.println("Claude key  " + (hasKey
-                ? "present (advisor layer available)"
-                : "absent (advisor layer will stay off; everything else works)"));
+        System.out.println("Claude key  " + (hasKey ? "present" : "absent")
+                + " (nothing uses it yet; the advisor layer is #11)");
 
         System.out.println();
         System.out.println(allWell

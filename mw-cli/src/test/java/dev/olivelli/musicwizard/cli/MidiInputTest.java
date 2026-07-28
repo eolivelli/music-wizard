@@ -286,6 +286,27 @@ class MidiInputTest {
         }
 
         @Test
+        @DisplayName("an enabled advisor is announced as advising nothing yet")
+        void anEnabledAdvisorSaysWhatItDoes() {
+            // The default is disabled, so this branch needs the workspace's own
+            // config layer to reach it. "Advisor enabled" on its own announces a
+            // layer that does not exist (#11) -- the defect #82 was filed for,
+            // one command over -- and it matters slightly more now that the flag
+            // is a cache key component, since invalidating an entry is currently
+            // the only thing it does.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null, null, null,
+                    null, new MusicWizardConfig.LlmConfig(
+                            true, null, null, null, null, null, null, null)));
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.out())
+                    .contains("Advisor    enabled, but advises nothing yet (#11)");
+        }
+
+        @Test
         @DisplayName("a key declared part-way through is not reported as the key at the start")
         void aLateKeySignatureIsNotReportedAsTheOpeningKey() {
             // Unlike the tempo and meter rows, this one has no origin guarantee
@@ -504,26 +525,6 @@ class MidiInputTest {
             assertThat(analyze.out())
                     .contains("Tempo   120.0 BPM")
                     .contains("Meter   4/4");
-        }
-
-        @Test
-        @DisplayName("an enabled advisor is announced as advising nothing yet")
-        void anEnabledAdvisorSaysWhatItDoes() {
-            // The default is disabled, so this branch needs the workspace's own
-            // config layer to reach it. "Advisor enabled" on its own announces a
-            // layer that does not exist (#11) -- the defect #82 was filed for,
-            // one command over -- and it matters slightly more now that the flag
-            // is a cache key component, since invalidating an entry is currently
-            // the only thing it does.
-            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
-            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null, null, null,
-                    null, new MusicWizardConfig.LlmConfig(
-                            true, null, null, null, null, null, null, null)));
-
-            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
-
-            assertThat(analyze.out())
-                    .contains("Advisor    enabled, but advises nothing yet (#11)");
         }
 
         @Test
