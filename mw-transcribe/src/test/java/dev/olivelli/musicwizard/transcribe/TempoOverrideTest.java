@@ -273,11 +273,18 @@ class TempoOverrideTest {
     @Test
     @DisplayName("no branch of the transcriber leaves a tempo unlabelled")
     void everyBranchLabelsWhatItProduces() {
-        // The sweep, because the per-branch tests above each pin one branch and
-        // a forgotten argument is silent: an unlabelled segment re-enables the
-        // shape proxy Score.estimatedTempo keeps for old files, with nothing
-        // failing. The fixtures are chosen to reach all three tempo branches --
-        // no beats, one beat, many beats -- with and without an override.
+        // A property, stated once over every tempo branch: nothing this class
+        // produces leaves a segment unlabelled, because an unlabelled one
+        // silently re-enables the shape proxy Score.estimatedTempo keeps for
+        // old files.
+        //
+        // Worth being honest about what this is and is not. It kills no mutant
+        // the per-branch tests above do not already kill -- measured, on all
+        // three labels -- because it runs the same three fixtures they do. What
+        // it adds is the statement of the property itself, so a fourth branch
+        // added here has an assertion to fail rather than needing its author to
+        // remember to write one. It does not cover a producer added in another
+        // class; #143 records that gap rather than pretending this closes it.
         List<AudioBuffer> clips = List.of(tone(0.1), tone(0.25), clickTrack(12.0, 0.5, 1.3));
         List<Double> overrides = java.util.Arrays.asList(null, 90.0);
         int checked = 0;

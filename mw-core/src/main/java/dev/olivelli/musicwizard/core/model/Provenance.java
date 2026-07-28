@@ -129,13 +129,32 @@ public enum Provenance {
     }
 
     /**
-     * Reads a stored label, answering {@link #UNKNOWN} for a name this build
-     * does not have and for an explicit JSON null.
+     * Reads a stored label, answering {@link #UNKNOWN} for any name this build
+     * does not have.
      *
      * <p>Scoped to this enum on purpose. Turning unknown enum values into nulls
      * globally on the mapper would also do it for {@code ChordQuality} and
      * {@code PartRole}, where there is no "not recorded" reading and a null
      * would fail a component's own validation several frames later. #142.
+     *
+     * <p>It swallows a misspelt label as well as a future one, and the cost of
+     * that is worth stating plainly: a segment whose label is mistyped is not
+     * merely "not recorded". If every segment in a map is mistyped the map
+     * records no provenance at all, and {@link Score#estimatedTempo()} falls
+     * back to the shape proxy -- so a typo re-enables exactly the heuristic this
+     * field exists to retire, quietly. Nothing this tool writes can produce one;
+     * a hand-edited file can.
+     *
+     * <p>It also declines an ordinal, which Jackson would otherwise accept: a
+     * bare {@code 2} used to read as {@code DECLARED} and now reads as
+     * {@code UNKNOWN}. Positional labels are not something a file should be able
+     * to rely on for an enum whose javadoc promises new constants.
+     *
+     * <p>The null branch is for direct callers only. Jackson resolves a null
+     * token before it reaches a delegating creator, so an explicit
+     * {@code "provenance": null} in a file is handled by
+     * {@link TempoMap.TempoSegment}'s compact constructor instead, and always
+     * was.
      */
     @JsonCreator
     public static Provenance fromJson(String name) {

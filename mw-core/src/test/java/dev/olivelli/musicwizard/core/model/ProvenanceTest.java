@@ -566,11 +566,17 @@ class ProvenanceTest {
 
             assertThatCode(() -> readMap(json)).doesNotThrowAnyException();
             assertThat(provenances(readMap(json))).containsExactly(Provenance.UNKNOWN);
-            // And a whole score, not just a bare map, since that is the file
-            // that actually has to open.
             assertThat(Provenance.fromJson("ADVISED")).isEqualTo(Provenance.UNKNOWN);
             assertThat(Provenance.fromJson("SUPPLIED")).isEqualTo(Provenance.SUPPLIED);
+            // Reachable only by a direct call: Jackson resolves a null token
+            // before a delegating creator sees it, so a null in a file is
+            // TempoSegment's business and is covered by the test below.
             assertThat(Provenance.fromJson(null)).isEqualTo(Provenance.UNKNOWN);
+            // Writing is untouched by the reader, which is what stops a
+            // forgiving read turning into a lossy write.
+            assertThat(ScoreJson.toJson(Score.empty(
+                    TempoMap.constant(120, TimeSignature.FOUR_FOUR, Provenance.SUPPLIED), 4.0)))
+                    .contains("\"provenance\" : \"SUPPLIED\"");
         }
 
         @Test

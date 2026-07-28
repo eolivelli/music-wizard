@@ -202,9 +202,10 @@ public final class AudioTranscriber {
             // Counted beats a minute, not quarter notes: the default has to mean
             // the same thing as a typed --tempo 120, or the fallback and the
             // override disagree in compound time.
+            FallbackTempo fallback = FallbackTempo.forOptions(settings);
             return Score.empty(
                     TempoMap.constantPulse(
-                            pulsesPerMinute(settings), meter, tempoProvenance(settings)),
+                            fallback.pulsesPerMinute(), meter, fallback.provenance()),
                     audio.durationSeconds());
         }
 
@@ -237,20 +238,28 @@ public final class AudioTranscriber {
         // pulse itself is still worth keeping and the chords over it are still
         // worth estimating.
         TempoMap tempoMap;
-        if (settings.tempoOverride() != null) {
-            tempoMap = constantPulseFrom(
-                    settings.tempoOverride(), meter, beatTimes.get(0), Provenance.SUPPLIED);
-        } else if (beatTimes.size() >= 2) {
+        if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
             tempoMap = TempoMap.fromBeatTimes(beatTimes, meter);
         } else {
-            progress.accept("only one beat was tracked, which carries no tempo; assuming "
-                    + (int) DEFAULT_PULSES_PER_MINUTE + " beats/min");
-            // ASSUMED, not MEASURED: one pulse carries no interval, so nothing
-            // here was measured. Labelling it MEASURED would let a later stage
-            // treat this default as evidence, and labelling it SUPPLIED would
-            // credit the user with a figure they never typed.
-            tempoMap = constantPulseFrom(
-                    DEFAULT_PULSES_PER_MINUTE, meter, beatTimes.get(0), Provenance.ASSUMED);
+            // Everything else is the fallback -- a typed tempo, or a clip with
+            // no interval to infer one from -- and both take the figure and its
+            // origin from the same place, so a tempo cannot arrive here wearing
+            // the other branch's label. ASSUMED rather than MEASURED for the
+            // lone pulse: one pulse carries no interval, so nothing here was
+            // measured, and labelling it MEASURED would let a later stage treat
+            // a hard-coded 120 as evidence.
+            //
+            // Same four outcomes as the three-way branch this replaces, case by
+            // case: a typed tempo wins whether one beat was tracked or many and
+            // says nothing on the way past, and only an untyped lone pulse
+            // announces the assumption.
+            FallbackTempo fallback = FallbackTempo.forOptions(settings);
+            if (settings.tempoOverride() == null) {
+                progress.accept("only one beat was tracked, which carries no tempo; assuming "
+                        + (int) fallback.pulsesPerMinute() + " beats/min");
+            }
+            tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
+                    beatTimes.get(0), fallback.provenance());
         }
 
         // Chroma before the beat grid, because the downbeat phase is chosen from
@@ -280,22 +289,25 @@ public final class AudioTranscriber {
                 .withChords(chords);
     }
 
-    /** The tempo to assume when there is nothing to infer one from. */
-    private static double pulsesPerMinute(Options settings) {
-        return settings.tempoOverride() != null
-                ? settings.tempoOverride()
-                : DEFAULT_PULSES_PER_MINUTE;
-    }
-
     /**
-     * Where the tempo {@link #pulsesPerMinute} returns came from.
+     * The tempo to use when there is nothing to infer one from, together with
+     * where it came from.
      *
-     * <p>Derived from the same condition, in the same place, so that the figure
-     * and its origin cannot drift apart: the two-readers failure this project
-     * keeps paying for starts with a second method deciding the same thing.
+     * <p>One value carrying both, rather than two methods testing the same
+     * condition a dozen lines apart. Two methods is how a figure and its label
+     * drift: the day this grows a third source -- a configured default, an
+     * advised tempo -- whichever one was not updated keeps answering for the two
+     * it knows, and a number acquires an origin that is not its own. That is the
+     * two-readers failure this project keeps paying for, in miniature, and the
+     * fix is to leave one reader rather than to remember to update both.
      */
-    private static Provenance tempoProvenance(Options settings) {
-        return settings.tempoOverride() != null ? Provenance.SUPPLIED : Provenance.ASSUMED;
+    private record FallbackTempo(double pulsesPerMinute, Provenance provenance) {
+
+        static FallbackTempo forOptions(Options settings) {
+            return settings.tempoOverride() != null
+                    ? new FallbackTempo(settings.tempoOverride(), Provenance.SUPPLIED)
+                    : new FallbackTempo(DEFAULT_PULSES_PER_MINUTE, Provenance.ASSUMED);
+        }
     }
 
     /**
