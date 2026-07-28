@@ -26,6 +26,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
+import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
 import java.util.List;
@@ -143,12 +144,21 @@ public final class AudioTranscriber {
                 ? TempoMap.constantPulse(settings.tempoOverride(), meter)
                 : TempoMap.fromBeatTimes(beatTimes, meter);
 
+        // Chroma before the beat grid, because the downbeat phase is chosen from
+        // harmonic change rather than from onset energy. The order stays acyclic:
+        // chroma needs the beats, the downbeat phase needs the chroma, and chord
+        // estimation needs neither the phase nor the grid.
+        progress.accept("extracting chroma");
+        Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
+
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.
-        BeatGrid grid = BeatTracker.toBeatGrid(beats, envelope, meter.beatsPerBar());
+        // DownbeatEstimator asks for "the assumed bar length in beats", and the
+        // beats it means are the tracked ones it is phasing.
+        BeatGrid grid = BeatTracker.toBeatGrid(beats,
+                DownbeatEstimator.estimate(beatTimes, chroma, envelope, meter.beatsPerBar()));
 
         progress.accept("estimating chords");
-        Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
         ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 

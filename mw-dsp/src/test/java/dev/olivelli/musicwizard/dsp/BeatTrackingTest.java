@@ -167,13 +167,425 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("the band low-pass is zero phase, so it cannot move an onset")
+        void antiAliasIsZeroPhase() {
+            // This filter sits between the spectrogram and the first
+            // difference, so any group delay it has is a delay on every onset
+            // time the tracker reads. Asserted on an impulse, whose filtered
+            // response must come out symmetric about the frame it arrived in.
+            // A one-directional filter -- the obvious way to write this, and
+            // the cheaper one -- puts the entire response after the impulse:
+            // 0.000 one frame before against 0.285 one frame after, so this
+            // fails on the first comparison.
+            //
+            // Narrower than it sounds, and worth saying so: symmetry is all it
+            // checks, and a filter that does nothing at all is perfectly
+            // symmetric. It is antiAliasAttenuatesNearNyquistRipple below that
+            // says the filter filters; this one says it does not shift.
+            double[][] bands = new double[201][40];
+            bands[100][0] = 1;
+            OnsetEnvelope.antiAlias(bands);
+
+            assertThat(bands[100][0]).isEqualTo(maximumOf(bands, 0));
+            for (int offset = 1; offset <= 20; offset++) {
+                assertThat(bands[100 - offset][0])
+                        .as("frame %d against %d", 100 - offset, 100 + offset)
+                        .isCloseTo(bands[100 + offset][0], within(1e-12));
+            }
+        }
+
+        @Test
+        @DisplayName("the band low-pass attenuates the ripple it exists to remove")
+        void antiAliasAttenuatesNearNyquistRipple() {
+            // Frame-alternating ripple is the Nyquist of this signal, and it is
+            // where the partial beating lands once it has folded. Two
+            // forward-backward passes leave 0.118 of it, 18.6 dB down; one pass
+            // leaves 0.343, 9.3 dB down, which separates the populations by
+            // 0.015 instead of 0.089. The bound is set between the two so that
+            // dropping a pass fails here rather than surviving in the swept
+            // test above on a margin too thin to mean anything.
+            double[][] ripple = new double[400][40];
+            for (int frame = 0; frame < ripple.length; frame++) {
+                ripple[frame][0] = frame % 2 == 0 ? 1 : -1;
+            }
+            OnsetEnvelope.antiAlias(ripple);
+
+            // Away from the edges, where the filter has settled.
+            double worst = 0;
+            for (int frame = 50; frame < 350; frame++) {
+                worst = Math.max(worst, Math.abs(ripple[frame][0]));
+            }
+            assertThat(worst).isLessThan(0.15);
+
+            // And it must leave a constant level exactly alone: a filter that
+            // shifted the level would shift every band's decibels and so every
+            // difference taken from them.
+            double[][] flat = new double[200][40];
+            for (double[] frame : flat) {
+                java.util.Arrays.fill(frame, -12.5);
+            }
+            OnsetEnvelope.antiAlias(flat);
+            for (double[] frame : flat) {
+                assertThat(frame[0]).isCloseTo(-12.5, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("the band low-pass copes with envelopes too short to filter")
+        void antiAliasHandlesDegenerateInput() {
+            // compute() returns early below two frames, but the filter is
+            // reachable on its own and an IIR pass over an empty or
+            // single-element series is exactly where an off-by-one lives.
+            OnsetEnvelope.antiAlias(new double[0][]);
+            double[][] single = new double[1][40];
+            single[0][0] = 7;
+            OnsetEnvelope.antiAlias(single);
+            assertThat(single[0][0]).isEqualTo(7);
+
+            double[][] pair = new double[2][40];
+            pair[0][0] = 1;
+            pair[1][0] = 1;
+            OnsetEnvelope.antiAlias(pair);
+            assertThat(pair[0][0]).isCloseTo(1, within(1e-9));
+            assertThat(pair[1][0]).isCloseTo(1, within(1e-9));
+
+            // Two frames is the shortest run the filter does something to, and
+            // the constant pair above cannot tell whether it did: asserted on a
+            // pair that differs, which must be pulled together. This is the case
+            // the run scanner's `length < 2` guard decides, and the differential
+            // test below cannot check it -- its reference filters each run by
+            // calling this same method, so an off-by-one in that guard moves
+            // both sides together and survives.
+            double[][] step = new double[2][40];
+            step[1][0] = 10;
+            OnsetEnvelope.antiAlias(step);
+            assertThat(step[0][0]).isGreaterThan(0.5);
+            assertThat(step[1][0]).isLessThan(9.5);
+        }
+
+        @Test
+        @DisplayName("one non-finite sample costs its own frames and not the filter")
+        void oneBadSampleStaysLocal() {
+            // A recursive filter smears one poisoned value across the whole
+            // series, and the flux loop drops a non-finite rise silently
+            // because `rise > 0` is false for NaN. Together those turn eight
+            // damaged frames into a flat envelope for the entire recording:
+            // measured, a 120 BPM click track goes from 0.865 to 0.000.
+            //
+            // The held note is the assertion that matters and the click track
+            // is not, which is the opposite of how this test was first
+            // written. One bad audio sample poisons every FFT bin of the eight
+            // windows containing it, so it reaches all forty bands at once --
+            // meaning the tempting fix, skipping a band that cannot be
+            // filtered, silently disables the filter for the whole recording
+            // and restores the bug. A click track cannot see that happen: it
+            // reads 0.865 filtered and 0.818 unfiltered, both of them healthy.
+            // A held note goes from 0.591 to 0.751 and straight back over the
+            // click floor, so it can.
+            for (float poison : new float[] {Float.NaN, Float.POSITIVE_INFINITY,
+                    Float.NEGATIVE_INFINITY}) {
+                float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+                clicks[100_000] = poison;
+                TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelopeOf(clicks));
+
+                assertThat(estimate.beatsPerMinute()).as("%s", poison).isCloseTo(120, within(1.0));
+                assertThat(estimate.strength()).as("%s", poison).isGreaterThan(0.7);
+
+                float[] held = heldNote(440, 8, 20);
+                held[100_000] = poison;
+                assertThat(TempoEstimator.estimate(envelopeOf(held)).strength())
+                        .as("the filter still runs, %s", poison)
+                        .isLessThan(0.65);
+            }
+        }
+
+        @Test
+        @DisplayName("a non-finite sample is left alone, not smeared and not skipped")
+        void nonFiniteSampleIsLeftAlone() {
+            double[][] bands = new double[100][40];
+            for (int frame = 0; frame < bands.length; frame++) {
+                bands[frame][0] = frame % 2 == 0 ? 1 : -1;
+                bands[frame][1] = 5;
+            }
+            bands[50][0] = Double.NaN;
+            // A run at the very start, which has no earlier frame at all.
+            bands[0][1] = Double.NaN;
+            bands[1][1] = Double.NEGATIVE_INFINITY;
+            OnsetEnvelope.antiAlias(bands);
+
+            // Band 0 is filtered on both sides of the poison, which is the
+            // point: skipping the band would leave the ripple at its full
+            // amplitude of 1, and that is how the filter was once disabled for
+            // a whole recording by a single bad sample.
+            for (int frame = 5; frame <= 45; frame++) {
+                assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
+            }
+            for (int frame = 56; frame <= 95; frame++) {
+                assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
+            }
+            // The poisoned frame comes back as it went in, so the flux loop
+            // drops the differences across it rather than reading the run's
+            // recovery as an onset.
+            assertThat(bands[50][0]).isNaN();
+
+            // Each side is filtered as a series in its own right, so neither
+            // can be contaminated by the other. Checked by filtering the two
+            // halves separately and requiring the same answer.
+            double[][] before = new double[50][40];
+            double[][] after = new double[49][40];
+            for (int frame = 0; frame < 50; frame++) {
+                before[frame][0] = frame % 2 == 0 ? 1 : -1;
+            }
+            for (int frame = 0; frame < 49; frame++) {
+                after[frame][0] = (frame + 51) % 2 == 0 ? 1 : -1;
+            }
+            OnsetEnvelope.antiAlias(before);
+            OnsetEnvelope.antiAlias(after);
+            for (int frame = 0; frame < 50; frame++) {
+                assertThat(bands[frame][0]).as("frame %d", frame)
+                        .isCloseTo(before[frame][0], within(1e-12));
+            }
+            for (int frame = 0; frame < 49; frame++) {
+                assertThat(bands[frame + 51][0]).as("frame %d", frame + 51)
+                        .isCloseTo(after[frame][0], within(1e-12));
+            }
+
+            // A leading run has no earlier frame to filter with, so the run
+            // simply starts after it. The frames themselves come back
+            // non-finite, and what follows must be untouched by them: band 1 is
+            // constant and has to come back constant rather than ringing from
+            // an invented starting value.
+            assertThat(bands[0][1]).isNaN();
+            assertThat(bands[1][1]).isNegative().isInfinite();
+            for (int frame = 2; frame < bands.length; frame++) {
+                assertThat(bands[frame][1]).as("frame %d", frame).isCloseTo(5, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("a hole in the audio does not become an onset where it ends")
+        void poisonedRunDoesNotManufactureAnOnset() {
+            // The failure mode of holding a value across a gap: the far edge is
+            // a step in the band decibels, and a step is exactly what the flux
+            // is built to report. Measured before this was fixed, a half-second
+            // hole produced an accent 53% as tall as a real click, at a moment
+            // when nothing happened in the recording. Unfiltered code produced
+            // nothing there, and neither must this.
+            for (double holeSeconds : new double[] {0.05, 0.5, 2.0}) {
+                float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+                int from = 10 * RATE;
+                int to = from + (int) (holeSeconds * RATE);
+                for (int i = from; i < to && i < clicks.length; i++) {
+                    clicks[i] = Float.NaN;
+                }
+                OnsetEnvelope envelope = envelopeOf(clicks);
+
+                double overall = 0;
+                for (double value : envelope.strength()) {
+                    overall = Math.max(overall, value);
+                }
+                double resume = to / (double) RATE;
+                double atResumption = Double.NEGATIVE_INFINITY;
+                for (int frame = envelope.frameOf(resume);
+                        frame <= envelope.frameOf(resume + 0.1); frame++) {
+                    atResumption = Math.max(atResumption, envelope.strength()[frame]);
+                }
+                // The envelope is mean-subtracted, so its quiet floor is
+                // NEGATIVE, around -0.21. Seeding the running maximum at 0
+                // rather than at -inf therefore made this assertion pass on its
+                // own initialiser, and it would have tolerated an accent of up
+                // to 3% of a click's height without noticing.
+                assertThat(atResumption).isNotEqualTo(Double.NEGATIVE_INFINITY);
+
+                // A click every 0.5 s, so a hole of 0.5 s or more swallows one
+                // and the 100 ms after it must be quiet. The 0.05 s hole sits
+                // inside one beat and the next real click is 0.4 s away, so the
+                // same window is quiet for that too. Compared against a clean
+                // stretch of the same envelope rather than against zero, so
+                // "quiet" means what it does everywhere else in this signal.
+                double quietFloor = envelope.strength()[envelope.frameOf(3.25)];
+                assertThat(atResumption)
+                        .as("hole of %.2f s, overall peak %.2f", holeSeconds, overall)
+                        .isCloseTo(quietFloor, within(0.01));
+            }
+        }
+
+        @Test
+        @DisplayName("a long hole in smooth material does not make it read as rhythmic")
+        void aLongHoleDoesNotInventRhythm() {
+            // The end of a poisoned run is where a manufactured accent would
+            // land, and a crescendo has nothing rhythmic in it at any point, so
+            // whatever this scores is entirely artefact.
+            //
+            // Swept rather than sampled, and that is the whole point of this
+            // test. The version of this fixture that pinned a single hole at
+            // 7.5 s asserted a bound of 0.4 against a measured 0.163 -- and
+            // moving the same hole to 1 s and lengthening it to 8 gave 0.4005,
+            // which would have failed its own assertion. A one-point
+            // measurement of a residue is not a measurement of the residue,
+            // which is the mistake issue #49 itself was corrected for.
+            //
+            // Nine configurations here, over carriers 220 Hz to 3 kHz, hole
+            // starts 1 to 11 s and lengths 1 to 5 s. The offline sweep behind
+            // them gave a worst point of 0.504 on an even grid and 0.52 to 0.54
+            // when the same family is drawn from at random -- see antiAlias's
+            // javadoc, which records the grid figure as the flattering one.
+            // Against a click floor of 0.751, and against 0.743 before the
+            // filter was changed to run per unbroken stretch of finite frames.
+            double worst = 0;
+            for (double start : new double[] {1.0, 4.0, 7.5}) {
+                for (double length : new double[] {2.0, 5.0, 8.0}) {
+                    float[] swell = crescendo(1750, 20);
+                    int from = (int) (start * RATE);
+                    int to = (int) ((start + length) * RATE);
+                    for (int i = from; i < to && i < swell.length; i++) {
+                        swell[i] = Float.NaN;
+                    }
+                    worst = Math.max(worst,
+                            TempoEstimator.estimate(envelopeOf(swell)).strength());
+                }
+            }
+
+            // Two bounds, and it is the second that does the work -- the
+            // opposite of what this comment used to claim. Against the previous
+            // scheme these nine points give 0.7045, which is under the click
+            // floor, so the ordering assertion passes and only the 0.6 catches
+            // it. And 0.6 IS a number chosen after the fact: the nine-point
+            // worst is 0.4847, so it is the measured value plus about a quarter.
+            //
+            // The ordering is still worth asserting, because it is the claim a
+            // reader cares about and it cannot drift with the fixtures; but it
+            // is a statement of intent, not the tripwire.
+            double weakestClick = TempoEstimator.estimate(
+                    envelopeOf(SignalFactory.clickTrack(196, 20, RATE))).strength();
+            assertThat(worst).isLessThan(weakestClick);
+            assertThat(worst).isLessThan(0.6);
+        }
+
+        @Test
+        @DisplayName("the run scanner decomposes any pattern of poison the same way")
+        void runScanningMatchesAnExplicitDecomposition() {
+            // The loop that finds maximal runs of finite frames is hand-rolled
+            // and nested, and it is the fourth version of this code -- the three
+            // before it were each worse than what they replaced. So rather than
+            // pick cases, compare it against an explicit decomposition on random
+            // patterns: filter each run standalone and require the same answer,
+            // frame for frame.
+            //
+            // This checks the decomposition, not the filter arithmetic, since
+            // both sides call the same filter. antiAliasIsZeroPhase and
+            // antiAliasAttenuatesNearNyquistRipple cover the arithmetic.
+            Random random = new Random(49);
+            for (int trial = 0; trial < 500; trial++) {
+                int frames = 2 + random.nextInt(30);
+                double[] original = new double[frames];
+                for (int frame = 0; frame < frames; frame++) {
+                    original[frame] = random.nextDouble() < 0.25
+                            ? switch (random.nextInt(3)) {
+                                case 0 -> Double.NaN;
+                                case 1 -> Double.POSITIVE_INFINITY;
+                                default -> Double.NEGATIVE_INFINITY;
+                            }
+                            : random.nextGaussian() * 10;
+                }
+
+                double[][] actual = new double[frames][40];
+                for (int frame = 0; frame < frames; frame++) {
+                    actual[frame][0] = original[frame];
+                }
+                OnsetEnvelope.antiAlias(actual);
+
+                double[] expected = expectedByRun(original);
+                for (int frame = 0; frame < frames; frame++) {
+                    // NaN has to be compared as NaN: assertThat(double) uses ==,
+                    // under which NaN does not equal itself.
+                    if (Double.isNaN(expected[frame])) {
+                        assertThat(actual[frame][0])
+                                .as("trial %d, frame %d of %d", trial, frame, frames)
+                                .isNaN();
+                    } else {
+                        assertThat(actual[frame][0])
+                                .as("trial %d, frame %d of %d", trial, frame, frames)
+                                .isEqualTo(expected[frame]);
+                    }
+                }
+                // A poisoned frame must come back bit for bit, and the bands
+                // that were never written must stay untouched -- the scratch
+                // array is reused across runs and across bands.
+                for (int frame = 0; frame < frames; frame++) {
+                    if (!Double.isFinite(original[frame])) {
+                        assertThat(Double.doubleToRawLongBits(actual[frame][0]))
+                                .isEqualTo(Double.doubleToRawLongBits(original[frame]));
+                    }
+                    for (int band = 1; band < 40; band++) {
+                        assertThat(actual[frame][band]).isZero();
+                    }
+                }
+            }
+        }
+
+        /** Each maximal run of finite frames, filtered on its own. */
+        private double[] expectedByRun(double[] original) {
+            double[] expected = original.clone();
+            int frame = 0;
+            while (frame < original.length) {
+                while (frame < original.length && !Double.isFinite(original[frame])) {
+                    frame++;
+                }
+                int start = frame;
+                while (frame < original.length && Double.isFinite(original[frame])) {
+                    frame++;
+                }
+                int length = frame - start;
+                if (length >= 2) {
+                    double[][] solo = new double[length][40];
+                    for (int i = 0; i < length; i++) {
+                        solo[i][0] = original[start + i];
+                    }
+                    OnsetEnvelope.antiAlias(solo);
+                    for (int i = 0; i < length; i++) {
+                        expected[start + i] = solo[i][0];
+                    }
+                }
+            }
+            return expected;
+        }
+
+        @Test
+        @DisplayName("a band that is never finite is left alone rather than throwing")
+        void entirelyNonFiniteBandIsLeftAlone() {
+            double[][] bands = new double[50][40];
+            for (int frame = 0; frame < bands.length; frame++) {
+                bands[frame][0] = Double.NaN;
+                bands[frame][1] = 3;
+            }
+            OnsetEnvelope.antiAlias(bands);
+
+            assertThat(bands[25][0]).isNaN();
+            assertThat(bands[25][1]).isCloseTo(3, within(1e-9));
+        }
+
+        private double maximumOf(double[][] bands, int band) {
+            double peak = Double.NEGATIVE_INFINITY;
+            for (double[] frame : bands) {
+                peak = Math.max(peak, frame[band]);
+            }
+            return peak;
+        }
+
+        @Test
         @DisplayName("a sustained tone gives a far less peaky envelope than a click track")
         void steadyToneIsNotPeaky() {
             // The envelope is normalised to unit variance, so what separates
             // rhythmic material is not how often it exceeds a threshold -- the
             // tone actually exceeds 2.0 more often -- but how far its attacks
-            // stand out. Clicks reach about 10 standard deviations; a sustained
-            // sine reaches under 3.
+            // stand out. A 120 BPM click track peaks at about 7.7 standard
+            // deviations and the weakest tempo in 60..200 at 5.9; a sustained
+            // sine reaches 2.2. Those were 10.1 and 2.7 before the band
+            // low-pass of issue #49, which lowers every peak by roughly a
+            // quarter -- it widens each attack by about half a frame, so the
+            // same energy is spread over more of them. The ratio, which is what
+            // this test is about, is barely touched.
             //
             // This is the property Estimate.peakiness turns into a number; the
             // assertions on that live in TempoConfidence.
@@ -264,24 +676,39 @@ class BeatTrackingTest {
             return TempoEstimator.estimate(envelopeOf(samples)).strength();
         }
 
-        // 78 and 105 are the floor and a second trough, 136 the ceiling, found
-        // by sweeping every integer tempo from 60 to 200 offline. The round
-        // tempi alone gave 0.63 to 0.82 and made the spread look like a narrow
-        // band; it is not one, and it is not monotone -- 105 scores 0.59 against
-        // 110's 0.90. The extremes are pinned here rather than the sweep being
-        // run in the suite, which costs 30 s for a claim that does not change.
+        // 196 is the floor and 136 the ceiling, found by sweeping every integer
+        // tempo from 60 to 200 offline. Before the band low-pass of issue #49
+        // the spread was 0.526 to 0.931 and was not monotone -- 105 scored 0.59
+        // against 110's 0.90 -- because the trough came from frame-grid jitter
+        // rather than from anything about the tempo. It is now 0.751 to 0.909
+        // and much flatter, which is the same effect seen from the other side:
+        // the ripple the filter removes was what made the troughs. 78 and 105,
+        // the old troughs, are kept in the list so a regression that brings
+        // them back is caught where it was found.
         @ParameterizedTest(name = "a {0} BPM click track reads as confidently rhythmic")
-        @ValueSource(doubles = {60, 78, 100, 105, 120, 136, 160, 180, 200})
+        @ValueSource(doubles = {60, 78, 100, 105, 120, 136, 160, 180, 196, 200})
         void clickTracksScoreHigh(double bpm) {
             TempoEstimator.Estimate estimate =
                     TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
 
-            // Swept floor is 0.526 at 78 BPM, ceiling 0.931 at 136. The bound
-            // sits about 15% under the floor: close enough that a real
-            // regression trips it, far enough that the frame-grid jitter which
-            // produces the trough in the first place does not.
-            assertThat(estimate.strength()).isGreaterThan(0.45);
-            assertThat(estimate.peakiness()).isGreaterThan(0.9);
+            // The bound sits about 10% under the swept floor of 0.751. It was
+            // 0.45 before, against a floor of 0.526.
+            assertThat(estimate.strength()).isGreaterThan(0.68);
+            // Peakiness fell because low-passing the band decibels widens each
+            // attack by about half a frame. The cost is uniform rather than
+            // confined to the fast end -- 0.983 to 0.960 at 60 BPM, 0.965 to
+            // 0.918 at 120, 0.940 to 0.862 at 200 -- but it only threatens a
+            // bound at the fast end, where the gap between attacks is 52 frames
+            // rather than 172.
+            //
+            // This is the tightest bound in the file and the one to look at
+            // first if it ever fails: the swept minimum over 60 to 200 is
+            // 0.8621, at 199 BPM, so there is 1.4% of headroom against 9.4% for
+            // the strength bound above. It is deterministic, so tight is not
+            // flaky -- but anything that widens attacks further will land here
+            // before it lands anywhere else, and that is the warning this bound
+            // is for rather than a number to relax.
+            assertThat(estimate.peakiness()).isGreaterThan(0.85);
         }
 
         @Test
@@ -306,34 +733,52 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("a held harmonic note still out-scores half the click tempi: the unfixed half")
-        void sustainedHarmonicNoteIsNotSeparated() {
-            // The limitation that stops this PR from closing issue #26, pinned at
-            // its worst measured point rather than a convenient one.
-            // sustainedToneNoLongerBeatsClicks above uses a pure 440 Hz sine,
-            // which collapses to 0.004 -- but that collapse is a coincidence of
-            // that pitch, not a rule about smooth material.
+        @DisplayName("no held harmonic note out-scores any click tempo")
+        void heldHarmonicNotesDoNotOutScoreClicks() {
+            // Issue #49, and the claim the band low-pass exists to support. It
+            // has to be a sweep rather than a fixture, because the failure it
+            // replaces scattered violently between neighbouring inputs: on main
+            // a held 440 Hz note scored 0.57 with six partials and 0.75 with
+            // eight. Any single fixture is a coincidence of its own
+            // frequencies, and the issue's first headline number was 6.5 times
+            // optimistic for exactly that reason.
             //
-            // This fixture is a held note: eight harmonics at constant
-            // amplitude, no attack, no decay, no vibrato, no tremolo. Nothing
-            // about it is rhythmic. It scores about 0.75, above a click track at
-            // 78 BPM (0.53) and above 72 of the 141 integer tempi from 60 to
-            // 200 -- more than half. 440 Hz with six partials scores 0.57 and
-            // beats only 9, which is why the harmonic count has to be swept and
-            // the worst point pinned: neighbouring inputs differ hugely because
-            // partial beating folds into the tempo band at a rate set by the
-            // exact frequencies present.
+            // Sixty held notes -- ten fundamentals from C2 to C6, six harmonic
+            // counts -- against ten click tempi including 196, the floor of the
+            // full 60-to-200 sweep. Constant amplitude, no attack, no decay, no
+            // vibrato, no tremolo: nothing about any of them is rhythmic.
             //
-            // Still a real improvement: the same fixture beat 135 of 141 on
-            // main and beats 72 now. Both halves are asserted. Issue #49.
-            double worst = strengthOf(heldNote(440, 8, SECONDS));
+            // Swept offline over the full grid the issue specifies, 170 held
+            // notes against all 141 integer tempi: the worst held note scored
+            // 0.751 on main and out-scored 72 tempi; it scores 0.662 now and
+            // out-scores none, and no held note anywhere on the grid out-scores
+            // any tempo. This is the affordable sixtieth of that, and it lands
+            // on the same worst point.
+            double worstHeld = 0;
+            for (int midi : new int[] {36, 39, 45, 48, 57, 60, 63, 69, 72, 84}) {
+                for (int harmonics : new int[] {1, 2, 3, 6, 8, 10}) {
+                    worstHeld = Math.max(worstHeld, strengthOf(
+                            heldNote(SignalFactory.midiToHz(midi), harmonics, SECONDS)));
+                }
+            }
+            double weakestClick = Double.MAX_VALUE;
+            for (double bpm : new double[] {60, 66, 78, 90, 105, 120, 136, 160, 196, 200}) {
+                weakestClick = Math.min(weakestClick,
+                        strengthOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
+            }
 
-            assertThat(worst).isBetween(0.6, 0.9);
-            assertThat(worst).isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
-            // The improvement half: on main this fixture scored 0.947 and beat
-            // all but six tempi. It must stay below the tempi the estimator
-            // handles cleanly.
-            assertThat(worst).isLessThan(strengthOf(SignalFactory.clickTrack(136, SECONDS, RATE)));
+            // 0.662 against 0.751. Asserted as an ordering rather than as two
+            // thresholds, so that a change which lifts both stays honest -- but
+            // with the margin pinned too, because the ordering alone survives a
+            // regression that shrinks 0.089 to 0.001, and a separation that
+            // narrow would not be one. 0.05 is a little over half of what the
+            // filter currently delivers; one forward-backward pass instead of
+            // two gives 0.015 and trips it.
+            assertThat(worstHeld).isLessThan(weakestClick);
+            assertThat(weakestClick - worstHeld).isGreaterThan(0.05);
+            // And the old worst point specifically, which is what the issue and
+            // the strength() javadoc both quote.
+            assertThat(strengthOf(heldNote(440, 8, SECONDS))).isLessThan(0.65);
         }
 
         @Test
@@ -369,9 +814,13 @@ class BeatTrackingTest {
             assertThat(slow.periodicity()).isZero();           // 30 BPM is below MIN_TEMPO
             assertThat(slow.strength()).isZero();              // and so this says "nothing"
 
-            // Likewise a clip too short to hold several periods.
+            // Likewise a clip too short to hold several periods: 0.011, which
+            // is a hundredth of what the same click track reads over twenty
+            // seconds. This used to be asserted against a 440 Hz sine, which
+            // now reads 0.000 exactly and so cannot bound anything from above.
             assertThat(strengthOf(SignalFactory.clickTrack(120, 1, RATE)))
-                    .isLessThan(strengthOf(SignalFactory.sine(440, SECONDS, RATE)));
+                    .isLessThan(0.05)
+                    .isLessThan(strengthOf(SignalFactory.clickTrack(120, SECONDS, RATE)) / 20);
 
             // Only the bottom of the range does this. Above MAX_TEMPO the
             // estimator finds a subharmonic instead of giving up, so a 300 BPM
@@ -458,44 +907,49 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("a modulated sustained tone is NOT separated, and this pins how far it gets")
+        @DisplayName("a modulated sustained tone is still NOT separated, and this pins how close")
         void modulatedToneIsNotSeparated() {
-            // A documented limitation rather than a passing grade. One held note
-            // with ordinary vibrato reads as rhythmic: 50 cents at 2 Hz measures
-            // 0.61, against a 60 BPM click track's 0.63. The dB flux sharpens
-            // smooth modulation into a periodic train of accents, at which point
-            // no statistic of the onset envelope can tell it from a beat.
+            // A documented limitation rather than a passing grade, and it
+            // survives the band low-pass of issue #49 even though the
+            // unmodulated held notes do not. A held note that is genuinely
+            // modulated at a few hertz has real energy in the tempo band; no
+            // filter can remove that, because it is the signal.
+            //
+            // What the filter did change is which vibrato is worst. The fixture
+            // this test used to pin -- 440 Hz, 50 cents, 2 Hz -- fell from 0.61
+            // to 0.37, comfortably under every click tempo, and pinning that
+            // one alone would now claim a separation that does not exist. Swept
+            // over 252 points instead (pitch A3 to C6, 20 to 100 cents, 1 to
+            // 7 Hz), the worst vibrato scores 0.745 against a click floor of
+            // 0.751: an ordering, but by 0.006, which is not a separation any
+            // threshold could use. Unmodulated held notes clear the same floor
+            // by 0.089.
             //
             // Two candidate fixes were measured and both refuted, so this is not
             // a matter of trying harder: counting how many mel bands rise
             // together does not separate them (vibrato lifts 32 of 40 against a
             // click's 40, because frequency-modulating a tone drags its whole
             // leakage skirt), and a SuperFlux-style maximum-filtered reference
-            // frame makes it worse, taking vibrato from 0.78 to 0.90 and a plain
-            // sine from 0.004 to 0.63. Issue #43 carries both measurements.
-            //
-            // Asserted as a range so that the day this improves, the test fails
-            // and the limitation gets revisited rather than quietly outliving
-            // its own fix.
-            double modulated = strengthOf(vibrato(440, 50, 2.0, SECONDS));
-            double unmodulated = strengthOf(SignalFactory.sine(440, SECONDS, RATE));
+            // frame makes it worse. Issue #43 carries both measurements and
+            // stays open.
+            double worstVibrato = strengthOf(vibrato(SignalFactory.midiToHz(84), 20, 1.0, SECONDS));
+            double weakestClick = strengthOf(SignalFactory.clickTrack(196, SECONDS, RATE));
+            double worstHeldNote = strengthOf(heldNote(SignalFactory.midiToHz(39), 3, SECONDS));
 
-            assertThat(modulated).isBetween(0.4, 0.8);
-            assertThat(modulated).isGreaterThan(20 * unmodulated);
+            // The limitation itself: vibrato reaches the click floor, and the
+            // day it stops doing so this test fails and #43 gets revisited
+            // rather than quietly outliving its own fix.
+            assertThat(worstVibrato).isCloseTo(weakestClick, within(0.05));
+            // And it is materially worse than an unmodulated held note, which
+            // is what says the remaining problem is modulation rather than the
+            // sampling artefact #49 removed.
+            assertThat(worstVibrato).isGreaterThan(worstHeldNote);
 
-            // The 2 Hz case above only ties the click track. Pinning the faster
-            // one too, because that is where the ordering actually *inverts* --
-            // and a partial fix that pulled 2 Hz below the line while leaving
-            // this one above it would otherwise leave the tripwire green.
+            // The old fixtures, kept because they show which way each moved.
+            assertThat(strengthOf(vibrato(440, 50, 2.0, SECONDS))).isLessThan(weakestClick);
             TempoEstimator.Estimate fast =
                     TempoEstimator.estimate(envelopeOf(vibrato(440, 50, 7.0, SECONDS)));
-            double slowestClicks = strengthOf(SignalFactory.clickTrack(60, SECONDS, RATE));
-
-            assertThat(fast.strength()).isGreaterThan(slowestClicks);
-            // And it beats the weakest click tempo in the whole sweep by a
-            // margin no threshold could split: 0.64 against 0.53.
-            assertThat(fast.strength())
-                    .isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
+            assertThat(fast.strength()).isLessThan(weakestClick);
             // 7 Hz is 420 modulations per minute; the reported tempo is the
             // vibrato rate divided down, not a beat anyone could tap.
             assertThat(fast.beatsPerMinute()).isCloseTo(140, within(5.0));
