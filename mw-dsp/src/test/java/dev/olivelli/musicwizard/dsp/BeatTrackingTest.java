@@ -194,9 +194,10 @@ class BeatTrackingTest {
             // Frame-alternating ripple is the Nyquist of this signal, and it is
             // where the partial beating lands once it has folded. Two
             // forward-backward passes leave 0.118 of it, 18.6 dB down; one pass
-            // leaves 0.343, 9.3 dB down, which measurably did not separate the
-            // populations. The bound is set between the two so that dropping a
-            // pass fails here rather than only in the swept test above.
+            // leaves 0.343, 9.3 dB down, which separates the populations by
+            // 0.015 instead of 0.089. The bound is set between the two so that
+            // dropping a pass fails here rather than surviving in the swept
+            // test above on a margin too thin to mean anything.
             double[][] ripple = new double[400][40];
             for (int frame = 0; frame < ripple.length; frame++) {
                 ripple[frame][0] = frame % 2 == 0 ? 1 : -1;
@@ -241,6 +242,46 @@ class BeatTrackingTest {
             OnsetEnvelope.antiAlias(pair);
             assertThat(pair[0][0]).isCloseTo(1, within(1e-9));
             assertThat(pair[1][0]).isCloseTo(1, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("one non-finite sample does not cost the whole recording")
+        void oneBadSampleStaysLocal() {
+            // A recursive filter smears one poisoned value over the entire
+            // series, and the flux loop drops a non-finite rise silently
+            // because `rise > 0` is false for NaN. Together that turns eight
+            // damaged frames into a flat envelope for the whole recording --
+            // measured at 0.82 before the filter and 0.000 after, on the same
+            // input. The filter skips a band it cannot filter for exactly this
+            // reason, and this is the test that says so.
+            for (float poison : new float[] {Float.NaN, Float.POSITIVE_INFINITY,
+                    Float.NEGATIVE_INFINITY}) {
+                float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+                clicks[100_000] = poison;
+                TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelopeOf(clicks));
+
+                assertThat(estimate.beatsPerMinute()).as("%s", poison).isCloseTo(120, within(1.0));
+                assertThat(estimate.strength()).as("%s", poison).isGreaterThan(0.7);
+            }
+        }
+
+        @Test
+        @DisplayName("a band the filter skipped is left exactly as it arrived")
+        void nonFiniteBandIsSkippedRatherThanSmeared() {
+            double[][] bands = new double[100][40];
+            for (int frame = 0; frame < bands.length; frame++) {
+                bands[frame][0] = frame % 2 == 0 ? 1 : -1;
+                bands[frame][1] = frame % 2 == 0 ? 1 : -1;
+            }
+            bands[50][0] = Double.NaN;
+            OnsetEnvelope.antiAlias(bands);
+
+            // Band 0 carries the poison and comes back untouched, ripple and
+            // all; band 1 is identical apart from the poison and is filtered.
+            assertThat(bands[10][0]).isEqualTo(1);
+            assertThat(bands[11][0]).isEqualTo(-1);
+            assertThat(bands[50][0]).isNaN();
+            assertThat(Math.abs(bands[10][1])).isLessThan(0.15);
         }
 
         private double maximumOf(double[][] bands, int band) {

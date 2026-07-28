@@ -77,9 +77,12 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     /**
      * Forward-backward passes of the one-pole. At the frame rate's Nyquist,
      * which is where the folded ripple lands, one pass leaves 0.343 of it and
-     * two leave 0.118 -- 9.3 dB against 18.6. One pass measurably does not
-     * separate the populations and three starts eating the attacks; see {@link
-     * #antiAlias} for the numbers either side of this choice.
+     * two leave 0.118 -- 9.3 dB against 18.6.
+     *
+     * <p>One pass does separate the populations, so this is a choice about
+     * margin rather than about correctness: it leaves the worst held note 0.015
+     * under the click floor, where two leave it 0.089 under. Three is no better
+     * than two and starts costing attacks. See {@link #antiAlias}.
      */
     private static final int ANTI_ALIAS_STAGES = 2;
 
@@ -202,18 +205,23 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * twenty-second clips:
      *
      * <pre>
-     *   passes  cutoff   click range    worst held  click tempi it out-scores
-     *   none        --   0.526..0.931        0.751        72 of 141
-     *   1        0.45f   0.731..0.909        0.713         0 of 141
-     *   2        0.45f   0.751..0.909        0.662         0 of 141
-     *   2        0.30f   0.737..0.895        0.680         0 of 141
-     *   3        0.30f   0.688..0.875        0.708        10 of 141
+     *   passes  cutoff   click range    worst held   margin   out-scores
+     *   none        --   0.526..0.931        0.751   -0.225    72 of 141
+     *   1        0.45f   0.728..0.922        0.713   +0.015     0 of 141
+     *   2        0.45f   0.751..0.909        0.662   +0.089     0 of 141
+     *   3        0.45f   0.732..0.893        0.679   +0.053     0 of 141
+     *   4        0.45f   0.700..0.880        0.689   +0.011     0 of 141
+     *   2        0.30f   0.737..0.895        0.680   +0.057     0 of 141
+     *   2        0.20f   0.696..0.877        0.684   +0.012     0 of 141
+     *   3        0.30f   0.688..0.875        0.708   -0.020    10 of 141
      * </pre>
      *
-     * <p>Two passes at 0.45 of the frame rate is the best of them and the
-     * gentlest that separates the populations outright. Filtering harder is not
-     * better: it eats into the attacks, the click floor falls faster than the
-     * held-note ceiling, and the two populations meet again.
+     * <p>Everything from one pass upwards separates the populations, so the
+     * choice is about margin, and two passes at 0.45 of the frame rate has the
+     * widest of them by a factor of two. Filtering harder is not better: it
+     * eats into the attacks, so the click floor falls faster than the held-note
+     * ceiling and the two populations converge again -- three passes at 0.30
+     * has them crossing.
      *
      * <p>Filtering the linear magnitude instead of the decibels was tried and
      * is much worse — clicks at 200 BPM collapse to 0.0, because between clicks
@@ -223,6 +231,15 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * folded components rather than the ripple that carries them — was tried at
      * four times the hop rate and is no better at the worst point (0.718), for
      * four times the STFT cost. The ripple, not the fold, is what has to go.
+     *
+     * <p>A band carrying a non-finite value is left unfiltered. Recursive
+     * filters spread one poisoned sample over the whole series, and the flux
+     * loop downstream drops a non-finite rise silently because {@code rise > 0}
+     * is false for NaN -- so before this filter existed, one bad sample cost
+     * eight frames of one band and nothing else. Filtering it would have cost
+     * the entire recording: measured, a single NaN in the input took a 120 BPM
+     * click track from 0.82 to a flat envelope. Skipping the band keeps the
+     * damage exactly where it was.
      */
     static void antiAlias(double[][] melBands) {
         if (melBands.length < 2) {
@@ -235,8 +252,13 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
 
         double[] series = new double[melBands.length];
         for (int band = 0; band < MEL_BANDS; band++) {
+            boolean finite = true;
             for (int frame = 0; frame < melBands.length; frame++) {
                 series[frame] = melBands[frame][band];
+                finite &= Double.isFinite(series[frame]);
+            }
+            if (!finite) {
+                continue;
             }
             for (int pass = 0; pass < ANTI_ALIAS_STAGES; pass++) {
                 double state = series[0];
