@@ -768,9 +768,11 @@ public final class Quantizer {
          * {@link #SWING_THRESHOLD} rather than this.
          *
          * <p>Neither figure takes evidence from a constructed cluster, and six
-         * of the suite's shuffle fixtures are constructed -- four play to the
-         * tick and spread zero, and two set their own spread either side of the
-         * shuffle point. A constructed cluster is still evidence about the
+         * of the suite's shuffle fixtures are constructed -- two play to the
+         * tick and spread zero, and four set their own spread either side of
+         * the shuffle point. A seventh is constructed past the window
+         * altogether, so its cluster is empty rather than tight and it is not
+         * one of the six. A constructed cluster is still evidence about the
          * <em>threshold</em>, and the widest of them is what holds its lower
          * end: 0.085, inside the gap between the populations and just under this
          * value. The upper end is held by played sixteenths, not by anything
