@@ -68,7 +68,12 @@ public final class Resampler {
      * output identical, and at an integer ratio all of them do -- 44.1k to
      * 22.05k is bit-identical while a third of its subtractions are inexact.
      * Read the other way round, the inexact rate would over-predict the
-     * divergence rate quoted above by two to three times.
+     * divergence rate quoted above by two to three and a half times -- 2.3x
+     * into 16k, 2.0x into 48k, and 3.4x for 22.05k to 44.1k, which is the
+     * outlier for a structural reason: its step is 0.5, so half its output
+     * samples have a zero fraction and are exact copies whatever the
+     * subtraction did. Restricted to the genuinely interpolated samples that
+     * path is 1.7x.
      *
      * <p>That does not make half an ulp of {@code |b - a|} the bound, and it is
      * worth saying why, because that is the form this paragraph has twice been
