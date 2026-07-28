@@ -70,14 +70,23 @@ public final class AudioTranscriber {
     /**
      * Confidence in a forced phase whose snap moved it as far as it can move.
      *
-     * <p>Above what {@link DownbeatEstimator} gives a phase nothing supports and
-     * a phase resting on onsets alone -- both of which land on its floor of
-     * 0.35 -- since a human aiming badly still says more than a guess. Below the
-     * 0.6 its harmonic ceiling reaches, since at half a pulse the phase reported
-     * is no longer the one that was asked for. That ordering is pinned by a test
-     * against the estimator's own output rather than left to these two files
-     * agreeing: it survived #48 retuning that scale from a 0.95 ceiling to 0.6
-     * by luck, not by construction.
+     * <p>Counted rather than chosen, the way {@link DownbeatEstimator} counts its
+     * own floor. A snap at maximum ambiguity is equidistant from exactly two
+     * pulses, one of which the user meant, and which of them comes out is a
+     * tie-break; so the phase reported is right half the time. Half is therefore
+     * what it is worth. That it lands above the estimator's floor is a
+     * consequence rather than a constraint, and by the same argument: a phase
+     * nothing supports is one guess in {@code beatsPerBar}, and two candidates
+     * beat four.
+     *
+     * <p>It is deliberately <em>not</em> placed below what a harmony-backed phase
+     * scores, which an earlier draft claimed. Since #48 that band runs from 0.35
+     * to a 0.6 ceiling, and measured on this project's own four-chord fixtures a
+     * unanimous harmonic phase reaches 0.49 to 0.59 -- so there is no value above
+     * a blind guess and below typical agreeing harmony left to pick. The two
+     * numbers are answering different questions anyway: how often a tie-break is
+     * right, and how far harmonic novelty backs a phase. Ordering them was the
+     * mistake, not the value.
      */
     private static final double SNAPPED_PHASE_FLOOR = 0.5;
 
@@ -401,10 +410,11 @@ public final class AudioTranscriber {
      * tracked range reaches the floor, which is the right answer for a time the
      * grid cannot express as a phase at all.
      *
-     * <p>The floor sits above what {@link DownbeatEstimator} gives a phase
-     * nothing supports, and below what harmony agreeing with the beats can
-     * reach. A badly-aimed human downbeat still says more than a guess; it should
-     * not outrank evidence that actually lines up with the pulses it is phasing.
+     * <p>The floor is the chance of the tie-break being right, and so sits above
+     * what {@link DownbeatEstimator} gives a phase nothing supports: choosing
+     * between two candidates beats choosing between {@code beatsPerBar} of them.
+     * See {@link #SNAPPED_PHASE_FLOOR} for why it is not also ordered against a
+     * harmony-backed phase.
      *
      * <p>With fewer than two pulses there is no interval and no alternative pulse
      * to have meant, so the one that exists is the one the user named.

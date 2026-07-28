@@ -274,64 +274,38 @@ class FirstDownbeatOverrideTest {
     }
 
     @Test
-    @DisplayName("keeps its floor between what the estimator can and cannot claim")
-    void theSnapFloorSitsWhereTheEstimatorLeavesRoomForIt() {
-        // Deliberately measured across the seam rather than asserted from two
-        // files agreeing. SNAPPED_PHASE_FLOOR is chosen relative to numbers
-        // DownbeatEstimator owns, and #48 has since retuned that scale -- its
-        // harmonic ceiling went from 0.95 to 0.6 while this branch was open, and
-        // the ordering survived by luck. A test is what makes it survive by
-        // construction.
-        List<Double> pulses = grid(null, TimeSignature.FOUR_FOUR).beatTimes();
-        double beatConfidence = grid(null, TimeSignature.FOUR_FOUR).beatConfidence().value();
+    @DisplayName("beats a blind guess by as much as two candidates beat four")
+    void theSnapFloorOutranksAPhaseNothingSupports() {
+        // Measured across the seam rather than asserted from two files agreeing,
+        // because SNAPPED_PHASE_FLOOR is only meaningful next to what
+        // DownbeatEstimator gives a phase it could not choose -- and #48 retuned
+        // that scale while this branch was open.
+        //
+        // This is the *only* ordering pinned here. An earlier draft also asserted
+        // the floor stays under what harmony reaches, measuring that ceiling from
+        // a synthesised four-chord loop. It was wrong twice over: the loop scored
+        // 0.539 against a nominal ceiling of 0.6, so it measured its own fixture
+        // rather than the ceiling and would have passed with the ceiling retuned
+        // to 0.55; and shortening it to four bars dropped it to 0.493, failing a
+        // test about the snap floor for a reason in another module. The claim it
+        // defended is not true either -- see SNAPPED_PHASE_FLOOR.
+        BeatGrid estimatedGrid = grid(null, TimeSignature.FOUR_FOUR);
+        double beatConfidence = estimatedGrid.beatConfidence().value();
 
-        // The estimated phase on a click track: no harmony to go on, so this is
-        // the estimator claiming as little as it can claim.
-        double estimated = grid(null, TimeSignature.FOUR_FOUR).downbeatConfidence().value()
-                / beatConfidence;
-        // A request halfway between two pulses: this code claiming as little as
-        // it can claim.
+        // A click track gives the estimator no harmony at all, so this is it
+        // claiming as little as it can claim: one phase in four.
+        double estimated = estimatedGrid.downbeatConfidence().value() / beatConfidence;
+        // A request exactly halfway between two pulses: this code claiming as
+        // little as it can claim, which is one candidate of two.
+        List<Double> pulses = estimatedGrid.beatTimes();
         double worstSnap = grid((pulses.get(2) + pulses.get(3)) / 2, TimeSignature.FOUR_FOUR)
                 .downbeatConfidence().value() / beatConfidence;
 
-        // A human aiming badly still says more than a phase nothing supports...
         assertThat(worstSnap).isGreaterThan(estimated);
-        // ...and less than harmony that agrees with the beats, whose ceiling this
-        // must stay under. Read off DownbeatEstimator rather than hard-coded, so
-        // that retuning it moves this assertion rather than silently voiding it.
-        assertThat(worstSnap).isLessThan(harmonicCeiling());
-    }
-
-    /**
-     * The most {@link dev.olivelli.musicwizard.dsp.DownbeatEstimator} will claim
-     * for a phase harmony agrees with, measured rather than quoted.
-     *
-     * <p>A four-bar loop with one chord change per bar, which is the material the
-     * estimator is built for and the case that reaches its ceiling.
-     */
-    private static double harmonicCeiling() {
-        int bars = 8;
-        float[] samples = new float[(int) (bars * 2.0 * SAMPLE_RATE)];
-        int[][] chords = {{60, 64, 67}, {67, 71, 74}, {69, 72, 76}, {65, 69, 72}};
-        for (int bar = 0; bar < bars; bar++) {
-            int start = (int) (bar * 2.0 * SAMPLE_RATE);
-            for (int beat = 0; beat < 4; beat++) {
-                int at = start + (int) (beat * 0.5 * SAMPLE_RATE);
-                for (int i = 0; i < SAMPLE_RATE / 2 && at + i < samples.length; i++) {
-                    double decay = Math.exp(-i / (SAMPLE_RATE / 8.0));
-                    for (int note : chords[bar % chords.length]) {
-                        double hz = 440 * Math.pow(2, (note - 69) / 12.0);
-                        samples[at + i] += (float) (0.2 * decay
-                                * Math.sin(2 * Math.PI * hz * i / SAMPLE_RATE));
-                    }
-                }
-            }
-        }
-        BeatGrid harmonic = new AudioTranscriber().transcribe(
-                        new AudioBuffer(samples, SAMPLE_RATE),
-                        new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null))
-                .beatGrid().orElseThrow();
-        return harmonic.downbeatConfidence().value() / harmonic.beatConfidence().value();
+        // Pinned as values too, so that either side drifting is visible here
+        // rather than only in the ordering, which has slack in it.
+        assertThat(worstSnap).isCloseTo(0.5, within(1e-9));
+        assertThat(estimated).isCloseTo(0.35, within(1e-9));
     }
 
     @Test
