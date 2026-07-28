@@ -89,6 +89,19 @@ public final class Quantizer {
      */
     private static final int MAX_BARS = 400_000;
 
+    /**
+     * How far past a whole number of grid steps a note may sound before the
+     * articulation allowance decides it must have been written longer.
+     *
+     * <p>Small because it is only there to recognise a note held <em>through</em>
+     * its written end rather than short of it. Measured against three
+     * articulation distributions and note lengths from one to sixteen steps,
+     * two per cent recovers as many durations as applying the allowance
+     * unconditionally does, and does not lengthen the notes that unconditional
+     * version got wrong.
+     */
+    private static final double OVERLAP_TOLERANCE = 0.02;
+
     private Quantizer() {
     }
 
@@ -152,29 +165,8 @@ public final class Quantizer {
     private static GridResolution[] chooseGrids(List<Note> notes, Score score, BarTable bars,
                                                 SwingFeel swing, QuantizationSettings settings) {
         GridResolution[] candidates = GridResolution.values();
-        boolean[] sectionStart = sectionStarts(score, bars);
-        double changePenalty = settings.gridChangePenalty();
-
-        // Decoded twice. A note played a hair early against a bar line is
-        // printed on that bar line, which belongs to the next bar, and it ought
-        // to vote where it prints -- one note's complexity on the wrong bar's
-        // tally is enough to flip a sparse bar from eighths to quarters. But
-        // whether a note reaches the line is a question about the grid, and
-        // answering it per grid is worse than not answering it at all: the six
-        // costs in a bar would then be sums over six different sets of notes,
-        // and comparing them stops meaning anything. Measured, that cost two
-        // seeds of the hardest calibration material.
-        //
-        // So the first pass attributes every note to the bar it sounded in,
-        // which is consistent if occasionally wrong, and the second re-attributes
-        // using the grid the first pass settled on. Within each pass every
-        // candidate sums the same notes.
-        GridResolution[] provisional = decode(
-                costs(notes, bars, swing, settings, candidates, null),
-                candidates, sectionStart, changePenalty);
-        return decode(
-                costs(notes, bars, swing, settings, candidates, provisional),
-                candidates, sectionStart, changePenalty);
+        return decode(costs(notes, bars, swing, settings, candidates), candidates,
+                sectionStarts(score, bars), settings.gridChangePenalty());
     }
 
     /**
@@ -184,33 +176,27 @@ public final class Quantizer {
      * every grid and inherits its neighbours' rather than voting for whole notes
      * and charging the section two grid changes to get back around it.
      *
-     * @param provisional the grids a previous pass chose, used only to decide
-     *                    which bar each note is printed in; null on the first
-     *                    pass, when every note votes where it sounded
+     * <p>Every note votes in the bar it sounded in, including one played a hair
+     * early against a bar line, which will be printed in the next. Two attempts
+     * to charge such a note where it prints have now been withdrawn: deciding it
+     * per candidate makes the six costs in a bar sums over six different sets of
+     * notes, and deciding it from a provisional decode does not converge -- it
+     * oscillates with period two, and changes nothing any measurement could see.
+     * What such a note actually needed was its note value taken from the bar it
+     * reaches, and {@link #snap} does that directly.
      */
     private static double[][] costs(List<Note> notes, BarTable bars, SwingFeel swing,
-                                    QuantizationSettings settings, GridResolution[] candidates,
-                                    GridResolution[] provisional) {
+                                    QuantizationSettings settings, GridResolution[] candidates) {
         double[][] cost = new double[bars.barCount()][candidates.length];
         for (Note note : notes) {
             double written = bars.writtenOnsetBeat(note, swing);
             int bar = bars.barOf(written);
             double beatInBar = bars.beatInBar(written, bar);
             TimeSignature meter = bars.meterOf(bar);
-            int votingBar = bar;
-            if (provisional != null && bar + 1 < cost.length
-                    && snapWithin(beatInBar, provisional[bar].stepQuarters(meter), meter)
-                            >= meter.quarterBeatsPerBar()) {
-                votingBar = bar + 1;
-            }
-            // Charged in the meter of the bar the note is printed in. Across a
-            // 4/4 to 6/8 change the two disagree about which divisions are
-            // tuplets, and the note is read under the new signature.
-            TimeSignature votingMeter = bars.meterOf(votingBar);
             for (int g = 0; g < candidates.length; g++) {
                 double step = candidates[g].stepQuarters(meter);
-                cost[votingBar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
-                        + complexity(candidates[g], votingMeter, settings);
+                cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
+                        + complexity(candidates[g], meter, settings);
             }
         }
         return cost;
@@ -291,12 +277,12 @@ public final class Quantizer {
      * The bars at which a section begins, where the grid may change for free.
      *
      * <p>A section boundary is the one place a reader expects the feel to
-     * change, so it is the one place the prior should not resist. Bar 0 counts,
-     * which costs nothing since there is no previous bar to leave.
+     * change, so it is the one place the prior should not resist. Bar 0 is not
+     * marked: there is no previous bar to leave, and {@link #decode} never
+     * charges it.
      */
     private static boolean[] sectionStarts(Score score, BarTable bars) {
         boolean[] starts = new boolean[bars.barCount()];
-        starts[0] = true;
         for (Section section : score.sections()) {
             starts[bars.barOf(bars.rawBeat(section.startSeconds()))] = true;
         }
@@ -352,18 +338,9 @@ public final class Quantizer {
         TimeSignature offsetMeter = bars.meterOf(offsetBar);
         double offsetStep = perBar[offsetBar].stepQuarters(offsetMeter);
         double offsetInBar = bars.beatInBar(writtenOffset, offsetBar);
-        // The articulation allowance, applied here rather than to the raw
-        // position because it needs the grid. It may carry a release up to the
-        // next grid position and no further: its whole job is to recover a note
-        // that rounded down, and a proportional stretch with nothing to stop it
-        // grows with the note. A half note held its full length on a sixteenth
-        // grid came out as a ninth sixteenth, and a nine-beat note as a ten.
-        double ceiling = Math.min(Math.ceil(offsetInBar / offsetStep) * offsetStep,
-                offsetMeter.quarterBeatsPerBar());
-        double stretched = Math.min(
-                offsetInBar + (writtenOffset - onsetBeat) * (1 / settings.articulationRatio() - 1),
-                ceiling);
-        double offsetSteps = stepsWithin(stretched, offsetStep, offsetMeter);
+        double offsetSteps = stepsWithin(
+                articulated(offsetInBar, writtenOffset - onsetBeat, offsetStep, settings),
+                offsetStep, offsetMeter);
 
         // Counted in whole grid steps and multiplied once, rather than
         // subtracting two snapped positions. On a triplet grid the step is not
@@ -418,6 +395,40 @@ public final class Quantizer {
     }
 
     /**
+     * A release position moved to where the note was probably written to end.
+     *
+     * <p>Players let go early, so a note snapped straight to the nearest grid
+     * position loses a step: a quarter released after 85% of it, on a sixteenth
+     * grid, prints as a dotted eighth and a rest. The allowance divides the
+     * played length by {@link QuantizationSettings#articulationRatio()} to undo
+     * that, bounded so it can carry a release to the next grid position and no
+     * further -- an unbounded proportional stretch grows with the note, and made
+     * a nine-beat note into a ten.
+     *
+     * <p>It fires only when the plain rounding cannot already explain the length.
+     * Bounding how far it reaches is not the same as knowing when to reach at
+     * all: applied unconditionally it also lengthens notes that were never
+     * shortened, and a half note held two milliseconds past its written end came
+     * out a sixteenth long. So a length already within
+     * {@value #OVERLAP_TOLERANCE} of a whole number of steps is left alone --
+     * a player may hold slightly through a note, and that reading needs no help.
+     *
+     * @param offsetInBar the released position within its bar, in quarter beats
+     * @param playedBeats how long the note actually sounded, in quarter beats
+     */
+    private static double articulated(double offsetInBar, double playedBeats, double step,
+                                      QuantizationSettings settings) {
+        double lengthSteps = playedBeats / step;
+        double plain = Math.rint(lengthSteps);
+        if (plain >= 1 && lengthSteps <= plain * (1 + OVERLAP_TOLERANCE)) {
+            return offsetInBar;
+        }
+        return Math.min(
+                offsetInBar + playedBeats * (1 / settings.articulationRatio() - 1),
+                Math.ceil(offsetInBar / step) * step);
+    }
+
+    /**
      * Snaps a position within a bar to the nearest grid step, clamped to the
      * bar.
      *
@@ -449,13 +460,6 @@ public final class Quantizer {
      * layer places a bar line at whichever of the two it happens to ask.
      */
     private static final class BarTable {
-
-        /**
-         * Spare bars past the last note, so that an offset landing on the final
-         * bar line, or the articulation allowance carrying it there, still has
-         * somewhere to be.
-         */
-        private static final int TRAILING_BARS = 2;
 
         private final TempoMap tempoMap;
         private final double[] startBeat;
@@ -490,7 +494,13 @@ public final class Quantizer {
                                 + " wrong rather than the music that long");
             }
             int lastBar = tempoMap.toMusicalTime(lastBeat).bar();
-            int count = lastBar + 1 + TRAILING_BARS;
+            // No spare bar past the last note. The table is sized from the
+            // furthest release rather than the furthest onset, so a note ending
+            // on a bar line already has that bar in it, and the articulation
+            // allowance is bounded by the end of the bar it starts in, so it
+            // cannot reach past one either. A spare bar was carried here until
+            // a mutation sweep showed nothing could tell whether it was there.
+            int count = lastBar + 1;
             double[] starts = new double[count];
             TimeSignature[] meters = new TimeSignature[count];
             for (int bar = 0; bar < count; bar++) {

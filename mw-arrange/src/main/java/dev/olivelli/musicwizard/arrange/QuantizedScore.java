@@ -35,7 +35,9 @@ import java.util.Optional;
  *              filled in on every note and the seconds left exactly as they were
  * @param grids one entry per bar that holds a note, ordered by bar
  * @param swing the shuffle that was taken out before snapping, or
- *              {@link SwingFeel#STRAIGHT}
+ *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
+ *              it does not apply to compound bars -- use {@link #swingIn(int)}
+ *              rather than printing this over every system
  */
 public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) {
 
@@ -81,6 +83,26 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
      */
     public Optional<BarGrid> gridAtBeat(double beat) {
         return gridAtBar(score.tempoMap().toMusicalTime(beat).bar());
+    }
+
+    /**
+     * The feel in force in one bar.
+     *
+     * <p>{@link #swing()} is one verdict for the whole score, but the quantizer
+     * deliberately leaves compound bars un-straightened: a shuffle is compound
+     * time written in a simple meter, so there is nothing to take out of a bar
+     * that is already compound. Printing the score's feel over such a bar would
+     * tell a reader to shuffle music that is already literal, which is the same
+     * defect as engraving it in duplets and only looks different.
+     *
+     * <p>A bar with no published grid is one that holds no notes, and gets the
+     * score's feel because nothing contradicts it.
+     */
+    public SwingFeel swingIn(int bar) {
+        return gridAtBar(bar)
+                .filter(grid -> grid.timeSignature().isCompound())
+                .map(grid -> SwingFeel.STRAIGHT)
+                .orElse(swing);
     }
 
     /** True when every track's notes carry musical timing. */

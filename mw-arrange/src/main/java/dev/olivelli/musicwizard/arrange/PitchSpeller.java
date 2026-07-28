@@ -187,6 +187,7 @@ public final class PitchSpeller {
     public static PitchSpelling spell(int midiPitch, Optional<Chord> soundingChord,
                                       Optional<Key> localKey) {
         Objects.requireNonNull(localKey, "localKey");
+        requireMidiPitch(midiPitch);
         return spell(midiPitch, soundingChord,
                 localKey.map(PitchSpeller::centreOf).orElse(DEFAULT_CENTRE));
     }
@@ -194,7 +195,25 @@ public final class PitchSpeller {
     /** Spells one pitch from a key alone, ignoring any harmony. */
     public static PitchSpelling spellFromKey(int midiPitch, Key key) {
         Objects.requireNonNull(key, "key");
+        requireMidiPitch(midiPitch);
         return onLineOfFifths(midiPitch, centreOf(key));
+    }
+
+    /**
+     * Rejects a pitch outside MIDI range.
+     *
+     * <p>Checked at the public entry points rather than left to fail later. A
+     * pitch of 200 has spellings on the line of fifths like any other, but every
+     * one of them lands outside a writable octave, so the octave filter empties
+     * the candidate list and {@link #onLineOfFifths} complains that a pitch
+     * class has no spelling -- which is the wrong cause, and sends whoever reads
+     * it looking at the wrong table.
+     */
+    private static void requireMidiPitch(int midiPitch) {
+        if (midiPitch < 0 || midiPitch > 127) {
+            throw new IllegalArgumentException(
+                    "midiPitch must be within 0..127, got: " + midiPitch);
+        }
     }
 
     private static PitchSpelling spell(int midiPitch, Optional<Chord> soundingChord,

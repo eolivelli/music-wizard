@@ -236,6 +236,29 @@ class SwingDetectionTest {
         }
 
         @Test
+        @DisplayName("an off-beat past the window collapses onto the downbeat, and that is known")
+        void pastTheWindowTheFeelIsLostAndTheOffBeatsFold() {
+            // Pinned, not endorsed -- see #111. Outside the window no feel is
+            // found, and nothing then straightens the material: each off-beat
+            // goes to the next downbeat, in unison with the note already there.
+            // It takes machine-exact input to reach, because a human shuffle
+            // spreads enough to keep part of the cluster inside the window.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
+            Performance performance = new Performance(tempoMap, 12);
+            for (int beat = 0; beat < BARS * 4; beat++) {
+                performance.exact(60, beat, 0.90);
+                performance.exact(60, beat + 0.90, 0.10);
+            }
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.swing()).isEqualTo(SwingFeel.STRAIGHT);
+            List<Double> onsets = quantized.score().tracks().get(0).notes().stream()
+                    .map(n -> n.onsetBeat().orElseThrow())
+                    .toList();
+            assertThat(onsets.stream().distinct().count()).isLessThan(onsets.size());
+        }
+
+        @Test
         @DisplayName("a dotted eighth and sixteenth is read as a hard shuffle, and written straight")
         void threeToOneIsReadAsAHardShuffle() {
             // Pinned rather than endorsed. 3:1 is a notatable figure that the

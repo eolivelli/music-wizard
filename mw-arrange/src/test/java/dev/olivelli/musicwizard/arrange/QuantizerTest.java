@@ -341,6 +341,74 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("a note held through its written end is not lengthened by the allowance")
+        void theAllowanceDoesNotLengthenWhatWasNeverShortened() {
+            // Bounding how far the allowance reaches is not the same as knowing
+            // when to reach at all. Applied unconditionally it stretches every
+            // note, so one held two milliseconds past its written end came out a
+            // sixteenth long -- and the fixtures never caught it, because they
+            // only ever release early.
+            TempoMap tempoMap = fourFour();
+            for (double heldBeats : new double[] {2.0, 2.005, 2.02, 1.02, 4.02}) {
+                Performance performance = new Performance(tempoMap, 39);
+                for (int bar = 0; bar < 2; bar++) {
+                    for (int i = 0; i < 16; i++) {
+                        performance.exact(60, bar * 4.0 + i * 0.25, 0.25);
+                    }
+                }
+                performance.exact(64, 0.0, heldBeats);
+
+                QuantizedScore quantized = Quantizer.quantize(performance.score());
+                assertThat(quantized.gridAtBar(0).orElseThrow().resolution())
+                        .isEqualTo(GridResolution.QUARTER_BEAT);
+                Note held = quantized.score().tracks().get(0).notes().stream()
+                        .filter(n -> n.midiPitch() == 64)
+                        .findFirst().orElseThrow();
+                assertThat(held.durationBeats().orElseThrow())
+                        .describedAs("held for %s beats", heldBeats)
+                        .isCloseTo(Math.rint(heldBeats * 4) / 4, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("the allowance cannot carry a long note past the next grid position")
+        void theAllowanceIsBoundedByOneStep() {
+            // The stretch is proportional, so on a long note it is worth several
+            // steps. A sixteen-and-a-bit-step note released short would otherwise
+            // gain two of them.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 40);
+            for (int bar = 0; bar < 6; bar++) {
+                for (int i = 0; i < 16; i++) {
+                    performance.exact(60, bar * 4.0 + i * 0.25, 0.25);
+                }
+            }
+            performance.exact(64, 0.0, 4.1);
+
+            Note held = Quantizer.quantize(performance.score()).score()
+                    .tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 64)
+                    .findFirst().orElseThrow();
+
+            assertThat(held.durationBeats().orElseThrow()).isCloseTo(4.25, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("a note ending exactly on the final bar line still has somewhere to land")
+        void anOffsetOnTheLastBarLine() {
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 41);
+            performance.exact(60, 0.0, 4.0);
+            performance.exact(62, 4.0, 4.0);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.score().tracks().get(0).notes())
+                    .allSatisfy(n -> assertThat(n.durationBeats()).contains(4.0));
+            assertThat(quantized.grids()).extracting(BarGrid::bar).containsExactly(0, 1);
+        }
+
+        @Test
         @DisplayName("a note played a hair early against a bar line lands on the bar line")
         void anEarlyDownbeatIsNotPulledBackIntoThePreviousBar() {
             TempoMap tempoMap = fourFour();
@@ -553,6 +621,53 @@ class QuantizerTest {
             assertThat(quantized.gridAtBeat(3.99).orElseThrow().bar()).isZero();
             assertThat(quantized.gridAtBeat(4.0).orElseThrow().bar()).isEqualTo(1);
             assertThat(quantized.gridAtBeat(7.5).orElseThrow().bar()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("a tie between two readings is settled the same way every time")
+        void tiesAreBrokenDeterministically() {
+            // Every grid fits a bar of plain beats equally, so the choice rests
+            // entirely on the tie rules: stay on the current grid, and failing
+            // that take the simplest. Without them the output would turn on
+            // whichever way the last floating-point comparison fell.
+            Performance performance = new Performance(fourFour(), 42);
+            performance.exact(60, 0.0, 1.0);
+            performance.exact(60, 1.0, 1.0);
+            performance.exact(60, 4.0, 1.0);
+            performance.exact(60, 5.0, 1.0);
+            Score score = performance.score();
+
+            QuantizedScore first = Quantizer.quantize(score);
+            for (int i = 0; i < 5; i++) {
+                QuantizedScore again = Quantizer.quantize(score);
+                assertThat(again.grids()).isEqualTo(first.grids());
+                assertThat(again.score().tracks()).isEqualTo(first.score().tracks());
+            }
+            assertThat(first.grids())
+                    .allSatisfy(g -> assertThat(g.resolution()).isEqualTo(GridResolution.BEAT));
+        }
+
+        @Test
+        @DisplayName("the feel is not offered for a bar the quantizer left alone")
+        void swingIsNotClaimedOverCompoundBars() {
+            TempoMap tempoMap = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(4, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(tempoMap, 43);
+            for (int beat = 0; beat < 16; beat++) {
+                performance.note(60, beat, 2.0 / 3);
+                performance.note(60, beat + 2.0 / 3, 1.0 / 3);
+            }
+            for (int beat = 0; beat < 8; beat++) {
+                performance.note(60, 16 + beat * 1.5, 1.0);
+                performance.note(60, 16 + beat * 1.5 + 1.0, 0.5);
+            }
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.swing().swung()).isTrue();
+            assertThat(quantized.swingIn(0)).isEqualTo(quantized.swing());
+            assertThat(quantized.swingIn(4)).isEqualTo(SwingFeel.STRAIGHT);
+            // A bar nothing sounds in has nothing to contradict the score's feel.
+            assertThat(quantized.swingIn(999)).isEqualTo(quantized.swing());
         }
 
         @Test

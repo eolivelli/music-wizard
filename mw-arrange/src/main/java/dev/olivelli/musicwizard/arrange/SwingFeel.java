@@ -55,6 +55,14 @@ public record SwingFeel(boolean swung, double ratio, Confidence confidence) {
      * writing it as straight eighths under a "hard swing" direction is a
      * stretch, but it keeps the note count, the alternation and the bar, which
      * is what a reader needs.
+     *
+     * <p>What is above the bound is a different question and is not solved here.
+     * An off-beat later than {@value #MAX_RATIO} of the beat is outside the
+     * window, so no feel is found, and the grid vote then does exactly what the
+     * paragraph above describes -- folds each off-beat onto the next downbeat.
+     * It takes machine-exact input to reach: a human shuffle spreads enough to
+     * keep part of the cluster inside the window even at 0.92, so it is a
+     * programmed or step-sequenced part that gets there. See #111.
      */
     static final double MIN_RATIO = 0.5;
     static final double MAX_RATIO = 0.88;

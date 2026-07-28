@@ -234,6 +234,23 @@ class PitchSpellerTest {
         }
 
         @Test
+        @DisplayName("a pitch outside MIDI range is rejected where it enters")
+        void rejectsAPitchOutsideMidiRange() {
+            // Left to fail later it complains that a pitch class has no
+            // spelling, which is the wrong cause and sends a reader to the
+            // wrong table.
+            for (int pitch : new int[] {-1, 128, 200, Integer.MIN_VALUE}) {
+                assertThatThrownBy(() -> PitchSpeller.spellFromKey(pitch, C_MAJOR))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining("midiPitch");
+                assertThatThrownBy(() -> PitchSpeller.spell(pitch, Optional.empty(),
+                        Optional.of(C_MAJOR)))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining("midiPitch");
+            }
+        }
+
+        @Test
         void rejectsNulls() {
             assertThatThrownBy(() -> PitchSpeller.spellFromKey(60, null))
                     .isInstanceOf(NullPointerException.class);
