@@ -63,6 +63,13 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
      * spans on sung speech overlap: a line that starts later can hold a word
      * that starts before the end of the line before it, so concatenating
      * already-ordered lines is not enough to make the words ordered.
+     *
+     * <p>Time order is therefore not syllable order. Where two lines overlap, a
+     * hyphen chain can come out split — {@code Hal, le, oooh, lu, jah} — because
+     * {@code hyphenatedToNext} joins a word to the next word <em>in its own
+     * line</em>. Engrave from {@link LyricLine#words()}, which keeps a line's
+     * syllables contiguous; use this for anything that wants the song in the
+     * order it is sung.
      */
     public List<LyricWord> allWords() {
         return lines.stream()

@@ -166,6 +166,12 @@ public record LyricWord(
      * <p>Takes both ends rather than just the start: a syllable's extent is what
      * tells the notation stage how many notes a melisma covers, and the aligner
      * that snaps the start is the only stage that still knows it.
+     *
+     * <p>The beat span must be non-empty even though the seconds span may be, so
+     * a word whose own {@code startSeconds} and {@code endSeconds} are equal
+     * cannot simply have both ends converted: snap it to the note it is sung on.
+     * A syllable always occupies at least one note, whatever the recognizer's
+     * timing says.
      */
     public LyricWord snappedTo(double newStartBeat, double newEndBeat) {
         if (!Double.isFinite(newStartBeat) || newStartBeat < 0) {
