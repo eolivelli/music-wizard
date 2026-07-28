@@ -141,8 +141,10 @@ class PitchSpellerTest {
         @ParameterizedTest
         @CsvSource({
                 // A triple flat: the first alteration nothing can print, and the
-                // one the guard exists for. Reachable from 106 chord and pitch
-                // pairs across the vocabulary; this is one of them.
+                // one the guard exists for. Counted over the whole vocabulary --
+                // every root spelling, every quality, every pitch class -- a
+                // chord tone wants one in 53 cases and a quadruple flat in two,
+                // so this is the boundary, and the case below is the rarity.
                 "Abb4, DIMINISHED_SEVENTH, 61, -3",
                 // Four flats. Further out, and the case the test used to cover
                 // on its own -- which left the boundary itself untouched, so
@@ -449,6 +451,28 @@ class PitchSpellerTest {
         }
 
         @Test
+        @DisplayName("a key far enough round the circle needs double accidentals, and gets them")
+        void theLineOfFifthsReachesDoubleAccidentals() {
+            // The line is searched from F double flat to B double sharp, and the
+            // far ends are not decoration: in C flat major the note a whole tone
+            // above the tonic is E double flat, and printing a plain D there
+            // would be a note outside the key with no accidental to explain it.
+            // Every assertion here fails if the search is narrowed to single
+            // accidentals.
+            Key cFlatMajor = keyWithSignature(-7, Mode.MAJOR);
+            assertThat(PitchSpeller.spellFromKey(2, cFlatMajor))
+                    .isEqualTo(PitchSpelling.parse("Ebb-1"));
+            assertThat(PitchSpeller.spellFromKey(9, cFlatMajor))
+                    .isEqualTo(PitchSpelling.parse("Bbb-1"));
+
+            Key aSharpMinor = keyWithSignature(7, Mode.MINOR);
+            assertThat(PitchSpeller.spellFromKey(60, aSharpMinor))
+                    .isEqualTo(PitchSpelling.parse("B#3"));
+            assertThat(PitchSpeller.spellFromKey(67, aSharpMinor))
+                    .isEqualTo(PitchSpelling.parse("F##4"));
+        }
+
+        @Test
         @DisplayName("an enharmonic that would fall out of the writable octaves is passed over")
         void spellingsStayInAWritableOctave() {
             // In a five-sharp key, MIDI 0 is nearer B sharp than C on the line
@@ -477,6 +501,34 @@ class PitchSpellerTest {
                     }
                 }
             }
+        }
+
+        @Test
+        @DisplayName("a part spelled against another score is spelled in that score's key")
+        void aTrackSpelledElsewhereStillUsesTheKey() {
+            // The note falls outside every detected key span, which is ordinary
+            // -- key detection covers what it is sure of, not the whole piece --
+            // so the key reaches this note only through the fallback centre.
+            // The chord roots of a I-IV in D average flatter than the key's own
+            // notes do, so without the short-circuit the centre lands the other
+            // side of the D sharp against E flat boundary. E flat is not a note
+            // of D major at all, where D sharp is the leading tone of its own
+            // supertonic.
+            Key dMajor = Key.ofSeconds(PitchSpelling.parse("D4"), Mode.MAJOR, 0, 2,
+                    Confidence.CERTAIN);
+            ChordProgression roots = new ChordProgression(List.of(
+                    chordAt("D4", ChordQuality.MAJOR, 0, 1),
+                    chordAt("G3", ChordQuality.MAJOR, 1, 2)), Confidence.CERTAIN);
+            Score harmony = new Score(Optional.empty(), Optional.empty(),
+                    TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
+                    List.of(dMajor), List.of(), List.of(), roots, Lyrics.empty(), 1000);
+            NoteTrack piano = new NoteTrack(PartRole.PIANO_RIGHT_HAND, "Piano",
+                    // At 4.5 s no chord covers the note, so only the centre answers.
+                    List.of(Note.ofSeconds(4.5, 0.5, 63, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            assertThat(PitchSpeller.spell(piano, harmony).notes().get(0).spelling())
+                    .contains(PitchSpelling.parse("D#4"));
         }
 
         @Test

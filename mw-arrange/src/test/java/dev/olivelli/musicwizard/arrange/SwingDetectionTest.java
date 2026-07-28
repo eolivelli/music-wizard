@@ -289,8 +289,13 @@ class SwingDetectionTest {
             // Pinned, not endorsed -- see #111. Outside the window no feel is
             // found, and nothing then straightens the material: each off-beat
             // goes to the next downbeat, in unison with the note already there.
-            // It takes machine-exact input to reach, because a human shuffle
-            // spreads enough to keep part of the cluster inside the window.
+            //
+            // Played to the tick here so the collapse is exact and the assertion
+            // can be sharp, not because a human cannot reach it. A human can,
+            // and often: at 0.92 of the beat this project's own 25 ms fixture
+            // loses the feel in 46 seeds of 50 at 90 BPM. What binds is the
+            // eight-onset minimum rather than the spread, and the figures are on
+            // SwingFeel.
             TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
             Performance performance = new Performance(tempoMap, 12);
             for (int beat = 0; beat < BARS * 4; beat++) {
