@@ -68,12 +68,25 @@ public final class Resampler {
      * output identical, and at an integer ratio all of them do -- 44.1k to
      * 22.05k is bit-identical while a third of its subtractions are inexact.
      * Read the other way round, the inexact rate would over-predict the
-     * divergence rate quoted above by two to three and a half times -- 2.3x
-     * into 16k, 2.0x into 48k, and 3.4x for 22.05k to 44.1k, which is the
-     * outlier for a structural reason: its step is 0.5, so half its output
-     * samples have a zero fraction and are exact copies whatever the
-     * subtraction did. Restricted to the genuinely interpolated samples that
-     * path is 1.7x.
+     * divergence rate. <b>On uniform noise</b> that factor is two to three and
+     * a half -- 2.3x into 16k, 2.0x into 48k, and 3.4x for 22.05k to 44.1k.
+     *
+     * <p>That range is closed rather than sampled, for noise. With the rates in
+     * lowest terms as {@code p:q}, {@code fraction} is zero exactly when
+     * {@code q} divides the output index, so the copied share is {@code 1/q}
+     * and the factor is about {@code 2 / (1 - 1/q)}. The smallest interpolated
+     * share available is {@code q = 2} -- an exact 2x upsample, which is what
+     * 22.05k to 44.1k is -- so 3.4x is the worst case, and it is the same 3.4x
+     * on 11.025k to 22.05k, 44.1k to 88.2k and 8k to 16k. Restricted to the
+     * genuinely interpolated samples that path is 1.7x, like the others.
+     *
+     * <p>The range does <em>not</em> carry to tonal material, and that is the
+     * qualifier to keep: measured on a 440 Hz sine, a triad and a twelve-
+     * harmonic sawtooth, 22.05k to 44.1k runs <b>4.8x to 7.5x</b>. Divergence
+     * there is the ~1% quoted above while the inexact rate falls further still,
+     * so the ratio widens. The error is at least in the safe direction -- a
+     * factor quoted too low makes divergence inferred from inexactness too
+     * high -- but do not invert these numbers on anything but noise.
      *
      * <p>That does not make half an ulp of {@code |b - a|} the bound, and it is
      * worth saying why, because that is the form this paragraph has twice been
