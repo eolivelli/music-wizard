@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -43,7 +44,20 @@ import java.util.function.Consumer;
  */
 public final class AudioTranscriber {
 
-    /** Optional overrides for the stages that most often need correcting. */
+    /**
+     * Optional overrides for the stages that most often need correcting.
+     *
+     * @param tempoOverride       tempo in the meter's <em>counted</em> beats per
+     *                            minute -- dotted quarters in 6/8, not quarters.
+     *                            The same unit a metronome and this class's own
+     *                            progress output use, and the same one
+     *                            {@link TempoMap#constantPulse} takes. Reading it
+     *                            as quarter notes puts the bar grid 1.5x out in
+     *                            compound time. It corrects the rate but not the
+     *                            phase; see #65.
+     * @param timeSignature       the meter to assume, 4/4 when null
+     * @param firstDownbeatSeconds currently ignored; see #67
+     */
     public record Options(
             Double tempoOverride,
             TimeSignature timeSignature,
@@ -79,7 +93,7 @@ public final class AudioTranscriber {
             throw new IllegalArgumentException(
                     "the recording is silent, so there is nothing to transcribe: " + file);
         }
-        progress.accept(String.format("decoded %.1fs at %d Hz",
+        progress.accept(String.format(Locale.ROOT, "decoded %.1fs at %d Hz",
                 audio.durationSeconds(), audio.sampleRate()));
 
         return transcribe(audio, settings);
@@ -98,19 +112,36 @@ public final class AudioTranscriber {
         BeatTracker.Result beats = BeatTracker.track(envelope);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
-            return Score.empty(TempoMap.constant(120, meter), audio.durationSeconds());
+            // 120 counted beats a minute, not 120 quarter notes: the default has
+            // to mean the same thing as a typed --tempo 120, or the fallback and
+            // the override disagree in compound time.
+            return Score.empty(TempoMap.constantPulse(120, meter), audio.durationSeconds());
         }
 
         List<Double> beatTimes = beats.beatTimes();
-        progress.accept(String.format("found %d beats at %.1f BPM",
+        // Named as beats per minute rather than as a tempo on purpose: the
+        // tracker counts pulses, and a pulse is a quarter note only in simple
+        // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
+        progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
                 beatTimes.size(), beats.beatsPerMinute()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of
         // them, and a user correcting the tempo is usually correcting a
         // half-or-double reading rather than claiming the beats are misplaced.
+        // The beats do survive, in the grid below -- but only their rate reaches
+        // the map, because a constant map has no lead-in and so cannot carry
+        // their phase. The map and the grid can therefore disagree about where
+        // the beats are by up to half a pulse; see #65.
+        //
+        // The override is read as counted beats per minute, which is what the
+        // user is looking at when they type it -- a metronome marking, or the
+        // rate this very run just reported. Passing it to TempoMap.constant
+        // instead would read it as quarter notes per minute, so in 6/8 the two
+        // branches below would describe bars 1.5x apart and correcting the tempo
+        // would silently move every bar line.
         TempoMap tempoMap = settings.tempoOverride() != null
-                ? TempoMap.constant(settings.tempoOverride(), meter)
+                ? TempoMap.constantPulse(settings.tempoOverride(), meter)
                 : TempoMap.fromBeatTimes(beatTimes, meter);
 
         // Chroma before the beat grid, because the downbeat phase is chosen from
@@ -120,12 +151,16 @@ public final class AudioTranscriber {
         progress.accept("extracting chroma");
         Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
 
+        // Pulses per bar, not the numerator: the tracker emits one pulse per
+        // counted beat, and 6/8 counts two of them to a bar rather than six.
+        // DownbeatEstimator asks for "the assumed bar length in beats", and the
+        // beats it means are the tracked ones it is phasing.
         BeatGrid grid = BeatTracker.toBeatGrid(beats,
-                DownbeatEstimator.estimate(beatTimes, chroma, envelope, meter.numerator()));
+                DownbeatEstimator.estimate(beatTimes, chroma, envelope, meter.beatsPerBar()));
 
         progress.accept("estimating chords");
         ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);
-        progress.accept(String.format("found %d chord spans", chords.size()));
+        progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
         return Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
