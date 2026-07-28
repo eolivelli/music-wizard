@@ -123,6 +123,15 @@ class MetricSplitterTest {
             // a sixteenth after beat one swallowed the middle of the bar.
             "4/4  | 0.25 | 2.25 | 8.,4,16",
             "4/4  | 1.5  | 3.5  | 8,4.",
+            // Round 2 found the first fix testing the *unit's* size rather than
+            // the *symbol's*, so it never fired in a meter whose beats do not
+            // come in a power-of-two count: there the bar divides straight into
+            // beats, no unit is ever longer than one, and a whole note could
+            // still swallow four beats of a 5/4 bar from a sixteenth offset.
+            "3/4  | 0.25 | 2.25 | 8.,4,16",
+            "5/4  | 0.5  | 3.5  | 8,2,8",
+            "6/4  | 0.5  | 4.5  | 8,2.,8",
+            "7/8  | 0.25 | 1.75 | 16,4,16",
     })
     @DisplayName("a symbol may not begin off the beat and then lie across one")
     void aSymbolMayNotHideABeatItStartsInsideOf(String meter, double from, double to,
@@ -150,6 +159,12 @@ class MetricSplitterTest {
             "4/4  | 0.5  | 1.5  | 4",
             "4/4  | 0.5  | 2    | 4.",
             "2/2  | 0.5  | 3.5  | 2.",
+            // The same in the meters round 2 found unguarded: beginning on a
+            // beat is still enough, and a symbol shorter than a dotted beat
+            // still floats.
+            "3/4  | 1    | 3    | 2",
+            "5/4  | 1    | 4    | 2.",
+            "7/8  | 0.5  | 1.5  | 4",
     })
     @DisplayName("the beat rule does not turn ordinary syncopation into ties")
     void syncopationSurvivesTheBeatRule(String meter, double from, double to, String expected) {

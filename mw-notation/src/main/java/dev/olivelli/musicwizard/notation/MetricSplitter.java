@@ -41,10 +41,9 @@ import java.util.Objects;
  * <p>A span is written as one value when two things hold. Its length must be a
  * length that unit naturally takes — a whole number of the unit's children, or
  * one and a half of them, which is what a dot is. And it must be allowed to
- * <em>start</em> where it does: above a compound beat, or above anything longer
- * than a beat, a symbol may only begin on a counted beat, or it lies across a
- * beat and hides it. Otherwise the span is cut at the unit's children and each
- * piece asked the same question.
+ * <em>start</em> where it does: a symbol long enough to swallow a beat may only
+ * begin on one. Otherwise the span is cut at the unit's children and each piece
+ * asked the same question.
  *
  * <p>Those two together are what separates the meters. The first four eighths of
  * a 4/4 bar are a dotted quarter; the first four eighths of a 6/8 bar are a
@@ -139,7 +138,7 @@ final class MetricSplitter {
         }
         double length = to - from;
         if (isNaturalLength(length, unit.childLength(), unit.children().size())
-                && mayStartHere(from, unit.childLength(), beatUnit, compound)
+                && mayStartHere(from, length, unit.childLength(), beatUnit, compound)
                 && LilyPondDuration.isSingleValue(length)) {
             out.add(LilyPondDuration.of(length).orElseThrow());
             return;
@@ -216,41 +215,41 @@ final class MetricSplitter {
      * Whether a span of a natural length may be written as one symbol from this
      * starting point, or whether starting here would hide a beat.
      *
-     * <p>Length alone is not enough, and this is the half that was missing.
-     * A dotted quarter is a natural length in 6/8 — it is one whole counted beat
-     * — so a rule that asked only about length wrote the eighth-to-fourth-eighth
-     * span as {@code 4.}, a beat-long symbol lying across the bar of the second
-     * beat, hiding the very grouping the meter exists to show. The conventional
-     * writing ties: {@code 4~ 8}.
+     * <p>Length alone is not enough. A dotted quarter is a natural length in 6/8
+     * — it is one whole counted beat — so a rule that asked only about length
+     * wrote the second-to-fourth-eighth span as {@code 4.}, a beat-long symbol
+     * lying across the bar of the second beat, hiding the very grouping the meter
+     * exists to show. The conventional writing ties: {@code 4~ 8}.
      *
-     * <p>The rule that fixes it without breaking ordinary syncopation:
-     *
-     * <ul>
-     *   <li><b>Below the counted beat, anything goes.</b> Subdivisions within a
-     *       beat may be grouped freely, which is why a sixteenth-offset eighth
-     *       note in 4/4 is an eighth note and not two tied sixteenths.
-     *   <li><b>Across a simple beat, anything goes too.</b> A quarter on the
-     *       second eighth of a 4/4 bar is a quarter, and a dotted quarter there is
-     *       a dotted quarter. Both cross the next beat; both are how every
-     *       syncopated pop tune is printed, and refusing them would fill the page
-     *       with ties nobody writes.
-     *   <li><b>Across a compound beat, or across anything longer than a beat, the
-     *       span must begin on a counted beat.</b> This is the clause that ties
-     *       the 6/8 case, and it is also what stops a half note from starting a
-     *       sixteenth after beat one of a 4/4 bar and swallowing the middle of it.
-     * </ul>
-     *
-     * <p>The asymmetry between simple and compound time is real rather than an
-     * artefact: in simple meters the beat survives being crossed, because the
-     * subdivision is still audible underneath, whereas in compound time the
+     * <p>One sentence: <b>a symbol has to begin on a counted beat once it is long
+     * enough to swallow one.</b> Long enough means either longer than a dotted
+     * beat, or — in compound time only — as long as a beat, because there the
      * three-grouping <em>is</em> the meter and a symbol laid across it removes the
-     * only thing distinguishing 6/8 from 3/4.
+     * only thing distinguishing 6/8 from 3/4. Anything shorter may start
+     * anywhere.
+     *
+     * <p>That threshold is where it is so that ordinary syncopation survives.
+     * A quarter on the second eighth of a 4/4 bar is a quarter and a dotted
+     * quarter there is a dotted quarter; both cross the next beat, both are how
+     * every syncopated pop chart is printed, and refusing them would fill the
+     * page with ties nobody writes. One beat further and the symbol stops being a
+     * syncopation and starts being a hole in the bar: a half note beginning a
+     * sixteenth after beat one of 4/4 swallows the middle of it.
+     *
+     * <p>Round 1 of review caught the length half of this missing entirely, and
+     * round 2 caught the first fix testing the <em>unit's</em> size rather than
+     * the <em>symbol's</em>. Those differ in exactly the meters whose beats do not
+     * come in a power-of-two count — 3/4, 5/4, 6/4, 7/8 — where the bar divides
+     * straight into beats, so no unit is ever longer than one and the first fix
+     * never fired. A whole note swallowing four beats of a 5/4 bar from a
+     * sixteenth-note offset passed every test in the suite, because the bar still
+     * summed and LilyPond still engraved it without a word.
      */
-    private static boolean mayStartHere(double from, double childLength,
+    private static boolean mayStartHere(double from, double length, double childLength,
                                         double beatUnit, boolean compound) {
-        boolean crossesTheBeat = childLength > beatUnit
+        boolean couldSwallowABeat = length > DOT_FACTOR * beatUnit
                 || (childLength == beatUnit && compound);
-        if (!crossesTheBeat) {
+        if (!couldSwallowABeat) {
             return true;
         }
         // Exact: a counted beat sits at a whole multiple of the beat unit from

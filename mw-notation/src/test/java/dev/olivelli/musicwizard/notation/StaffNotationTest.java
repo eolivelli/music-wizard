@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -330,6 +331,22 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a long note off the beat in 5/4 is tied rather than swallowing four beats")
+    void aBeatIsNeverHiddenInAMeterWhoseBeatsAreNotAPowerOfTwo() {
+        // Round 2 of review found this reaching the page as "c'16 d'1 e'8.":
+        // a whole note starting a sixteenth after the downbeat, with beats two
+        // to five nowhere on the staff. 5/4 divides straight into five beats, so
+        // no unit in its tree is longer than a beat, which is why the round 1
+        // fix -- which asked about the unit's size -- never fired here.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 0.25, "C4"), note(0.25, 4, "D4"), note(4.25, 0.75, "E4"));
+        String source = StaffNotation.toLilyPond(score(new TimeSignature(5, 4), 120, voice), voice);
+
+        assertThat(source).contains("c'16 d'8.~ d'2.~ d'16 e'8. |");
+        assertBarsFillTheirMeter("five four", source);
+    }
+
+    @Test
     @DisplayName("a chord is written as long as its longest member, not its shortest")
     void aChordIsWrittenToItsLongestMember() {
         // One staff holds one rhythm, so a chord whose members stop at different
@@ -398,19 +415,47 @@ class StaffNotationTest {
 
     private static void assertGolden(String name, String actual) {
         if (Boolean.getBoolean(UPDATE_PROPERTY)) {
-            Path target = Path.of("src", "test", "resources", "golden", name + ".ly");
+            Path target = goldenDirectory()
+                    .orElseThrow(() -> new AssertionError(UPDATE_PROPERTY
+                            + " needs the module directory, which Maven passes as -Dbasedir;"
+                            + " run it under Maven rather than from an IDE working directory"))
+                    .resolve(name + ".ly");
             try {
-                Files.createDirectories(target.getParent());
                 Files.writeString(target, actual);
             } catch (IOException e) {
                 throw new UncheckedIOException("could not update golden " + name, e);
             }
-            System.err.println("updated golden file " + target.toAbsolutePath());
+            System.err.println("updated golden file " + target);
         }
         assertThat(actual).isEqualTo(readGolden(name));
     }
 
+    /**
+     * The golden files as they are on disk, not as they were on the classpath.
+     *
+     * <p>Those differ during an update run, and the difference used to make the
+     * update mode a trap: the new text was written to {@code src/test/resources}
+     * and then compared against the copy {@code process-test-resources} had
+     * already put in {@code target}, so a regenerating run rewrote every file and
+     * failed anyway. Worse, {@link #everyBarFillsItsMeter} read the same stale
+     * copies, so the one check that survives regeneration was skipped on exactly
+     * the run where it mattered.
+     *
+     * <p>Falls back to the classpath when the source tree cannot be located,
+     * which is what happens outside Maven. That path is read-only; the update
+     * mode refuses rather than guessing a directory, because guessing wrongly
+     * creates a second golden tree somewhere nobody looks.
+     */
     private static String readGolden(String name) {
+        Optional<Path> onDisk = goldenDirectory().map(dir -> dir.resolve(name + ".ly"))
+                .filter(Files::isRegularFile);
+        if (onDisk.isPresent()) {
+            try {
+                return Files.readString(onDisk.get());
+            } catch (IOException e) {
+                throw new UncheckedIOException("could not read golden " + name, e);
+            }
+        }
         String resource = "/golden/" + name + ".ly";
         try (var stream = StaffNotationTest.class.getResourceAsStream(resource)) {
             if (stream == null) {
@@ -420,5 +465,15 @@ class StaffNotationTest {
         } catch (IOException e) {
             throw new UncheckedIOException("could not read golden " + name, e);
         }
+    }
+
+    /** Where the golden files live in the source tree, when that can be known. */
+    private static Optional<Path> goldenDirectory() {
+        String basedir = System.getProperty("basedir", System.getProperty("user.dir"));
+        if (basedir == null) {
+            return Optional.empty();
+        }
+        Path directory = Path.of(basedir, "src", "test", "resources", "golden");
+        return Files.isDirectory(directory) ? Optional.of(directory) : Optional.empty();
     }
 }
