@@ -127,8 +127,6 @@ public final class StaffNotation {
             throw new IllegalArgumentException(
                     "percussion parts need a DrumStaff, which this does not emit; see #95");
         }
-        requireQuantized(track);
-
         List<Event> events = eventsOf(score, track);
         Span music = musicSpan(score, track, events);
 
@@ -181,21 +179,16 @@ public final class StaffNotation {
      * <p>Both are what voices exist to avoid: #93.
      */
     private static List<Event> eventsOf(Score score, NoteTrack track) {
+        // Validated here rather than at the call site so that the rule holds for
+        // every caller: musicSpan reaches this for the score's other parts too,
+        // and it filters them with isEngravable rather than relying on this.
+        requireQuantized(track);
         boolean flatKey = score.primaryKey().map(Key::isFlatKey).orElse(false);
 
         // Keyed by onset so simultaneous notes gather, ordered so the sweep that
         // resolves overlaps below runs in time order.
         Map<Double, List<Note>> byOnset = new TreeMap<>();
         for (Note note : track.notes()) {
-            if (!note.isQuantized()) {
-                // The track being engraved has already been rejected if it holds
-                // one of these. The other tracks reach here only through
-                // musicSpan, which asks where the score's music begins and ends
-                // and can answer that from the parts with a position on the beat
-                // axis, rather than refusing to engrave a finished part because
-                // an unrelated one is still in seconds.
-                continue;
-            }
             double onset = snap(note.onsetBeat().orElseThrow());
             double offset = snap(note.offsetBeat().orElseThrow());
             if (offset <= onset) {
@@ -272,8 +265,10 @@ public final class StaffNotation {
      * @param startBeat where the music begins, which is a pickup when it falls
      *                  inside the opening bar and zero otherwise
      * @param endBeat   where the last engravable part stops sounding
+     * @param endedBy   the part that stops last, named so that a complaint about
+     *                  the length points at the part responsible for it
      */
-    private record Span(double startBeat, double endBeat) {
+    private record Span(double startBeat, double endBeat, String endedBy) {
     }
 
     /**
@@ -292,21 +287,31 @@ public final class StaffNotation {
      * is included whether or not the score holds it, so that engraving a track
      * the caller built by hand does not silently lose either end.
      *
-     * <p><b>Both ends are also bounded, and for the same reason.</b> A pickup is
-     * only a gap inside the opening bar; music that starts in bar two starts
-     * after a bar of rest, and saying otherwise would move every bar line in the
-     * piece. Symmetrically, another part may extend this staff only as far as the
-     * recording goes: a note quantized a hundred bars past the end of the audio
-     * is a beat-axis error, and unbounded it appended a hundred bars of rest to
-     * <em>every</em> staff in the score, or made a healthy one-bar part fail the
-     * bar ceiling and blame itself. The engraved track's own end is never
-     * clamped — its notes have to be written, and if the outlier is in this part
-     * then this part really is that long and the complaint names the right one.
+     * <p><b>This is a function of the score and not of which part is being
+     * engraved</b>, and that is the property to preserve if it is ever changed.
+     * Round 7 found the start score-wide and the end track-local, so a part that
+     * dropped out early ended its staff mid-system. Round 8 clamped other parts'
+     * ends to the length of the recording, to stop one badly quantized note
+     * padding every staff — and round 9 found that clamp both inert at ordinary
+     * song lengths, where a stray note at bar 101 is still inside a four-minute
+     * recording, and harmful, because clamping other parts while never clamping
+     * this one made the answer depend on which part you asked, which is round 7's
+     * defect again. The clamp is gone.
+     *
+     * <p>So a note quantized a hundred bars late does lengthen every staff in the
+     * score, and that is deliberate: the score says the piece is a hundred bars
+     * long, every part agrees about it, and the page shows plainly that something
+     * is wrong. Deciding that such a note is spurious needs the evidence that it
+     * is a lone event separated from its own part's music — which is a
+     * quantization judgement, made where the note is placed rather than where it
+     * is drawn. See #113.
      *
      * <p>Parts this emitter cannot engrave do not get a vote. A drum count-in
      * before beat one is the most ordinary thing a percussion track contains, and
      * it gave every visible staff a pickup that nothing on the page justified.
-     * When #95 makes percussion engravable the filter goes with it.
+     * Nor does a part that is only half quantized: {@link #staffBlock} refuses to
+     * engrave one, and a part that cannot be on the page must not move the bar
+     * lines of the parts that are.
      *
      * <p>Measured on the <em>events</em>, not on the notes. Those differ: a note
      * shorter than a 64th disappears when its onset and offset snap to the same
@@ -329,22 +334,39 @@ public final class StaffNotation {
         double earliest = events.isEmpty()
                 ? Double.POSITIVE_INFINITY : events.getFirst().startBeat();
         double latest = events.isEmpty() ? 0 : events.getLast().endBeat();
-        // Where the recording stops, which is the only evidence in the model that
-        // is independent of the quantizer that placed the notes.
-        double recordingEnd = score.tempoMap().secondsToBeats(score.durationSeconds());
+        String endedBy = engraved.name();
         for (NoteTrack track : score.tracks()) {
-            if (track.equals(engraved) || !canEngrave(track.role())) {
+            if (track.equals(engraved) || !isEngravable(track)) {
                 continue;
             }
             List<Event> other = eventsOf(score, track);
             if (!other.isEmpty()) {
                 earliest = Math.min(earliest, other.getFirst().startBeat());
-                latest = Math.max(latest, Math.min(other.getLast().endBeat(), recordingEnd));
+                if (other.getLast().endBeat() > latest) {
+                    latest = other.getLast().endBeat();
+                    endedBy = track.name();
+                }
             }
         }
         double firstBar = score.tempoMap().timeSignatureAtBar(0).quarterBeatsPerBar();
+        // Only a gap inside the opening bar is a pickup. Music that starts in bar
+        // two starts after a bar of rest, and saying otherwise would move every
+        // bar line in the piece.
         boolean pickup = Double.isFinite(earliest) && earliest > 0 && earliest < firstBar;
-        return new Span(pickup ? earliest : 0, latest);
+        return new Span(pickup ? earliest : 0, latest, endedBy);
+    }
+
+    /**
+     * Whether a part of the score may set the bar grid.
+     *
+     * <p>Exactly the parts {@link #staffBlock} will engrave, which is the point:
+     * it refuses on two grounds and only the role half was shared at first, so a
+     * half-quantized track it would have rejected outright was still voting on
+     * where the bar lines fall, with whichever of its notes happened to carry a
+     * position.
+     */
+    private static boolean isEngravable(NoteTrack track) {
+        return canEngrave(track.role()) && track.isQuantized();
     }
 
     /**
@@ -394,10 +416,10 @@ public final class StaffNotation {
             }
         }
         throw new IllegalStateException(
-                "\"" + name + "\" runs past " + MAX_BARS + " bars, which is more music than a"
-                        + " staff is engraved for; if the recording is not that long, the beat"
-                        + " axis is wrong -- a note in this part quantized to a beat far past the"
-                        + " end will do it");
+                "engraving \"" + name + "\" needs more than " + MAX_BARS + " bars, because \""
+                        + music.endedBy() + "\" runs that far; if the recording is not that long,"
+                        + " the beat axis is wrong -- one note quantized to a beat far past the"
+                        + " end will do it, and it is in that part rather than this one");
     }
 
     /**

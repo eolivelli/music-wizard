@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
@@ -393,28 +394,58 @@ class StaffNotationTest {
     }
 
     @Test
-    @DisplayName("a part elsewhere in the score cannot extend a staff past the recording")
-    void anOutlyingNoteCannotPadEveryStaff() {
-        // Round 8 of review found the round 7 fix carrying the scope of the bar
-        // grid across without the bound that makes it safe. One accompaniment
-        // note quantized a hundred bars late -- one bad conversion on the stage
-        // this project calls its least reliable -- appended a hundred bars of
-        // rest to every staff in the score, and past the bar ceiling it made a
-        // healthy one-bar part fail and blame itself.
+    @DisplayName("every staff of a score agrees on how long the score is, outlier or not")
+    void everyStaffAgreesOnTheLengthOfTheScore() {
+        // The invariant rounds 7, 8 and 9 converged on: the bar grid is a
+        // function of the score, not of which part is being engraved. Round 8
+        // broke it by clamping other parts' ends while never clamping this one,
+        // which put the two staves of one score at 8 bars and 101.
+        //
+        // A note quantized a hundred bars late therefore does lengthen every
+        // staff. That is the score saying the piece is a hundred bars long, and
+        // every part agreeing about it beats two staves disagreeing silently.
+        // Deciding the note is spurious is a quantization judgement -- #113.
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"), note(4, 4, "D5"));
         NoteTrack strays = track(PartRole.ACCOMPANIMENT, "Keys", note(400, 4, "E4"));
-        // Sixteen seconds of audio at 120 BPM is eight bars of 4/4, so the stray
-        // note sits far outside a recording that is itself longer than the music.
-        Score score = new Score(Optional.empty(), Optional.empty(),
-                TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
-                List.of(), List.of(), List.of(voice, strays),
-                dev.olivelli.musicwizard.core.model.ChordProgression.empty(),
-                dev.olivelli.musicwizard.core.model.Lyrics.empty(), 16);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, strays);
 
-        assertThat(barCount(StaffNotation.toLilyPond(score, voice))).isEqualTo(8);
-        // The part actually holding the outlier is still written in full: its
-        // notes have to appear, and the complaint then names the right part.
-        assertThat(barCount(StaffNotation.toLilyPond(score, strays))).isEqualTo(101);
+        assertThat(barCount(StaffNotation.toLilyPond(score, voice)))
+                .isEqualTo(barCount(StaffNotation.toLilyPond(score, strays)))
+                .isEqualTo(101);
+    }
+
+    @Test
+    @DisplayName("a score too long to engrave blames the part that made it long")
+    void theBarCeilingNamesThePartResponsible() {
+        // The message used to say "this part", which is the part being engraved
+        // and, when the length comes from a sibling, the wrong one to look at.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
+        NoteTrack strays = track(PartRole.ACCOMPANIMENT, "Keys", note(4_000_000, 4, "E4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, strays);
+
+        assertThatThrownBy(() -> StaffNotation.toLilyPond(score, voice))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("engraving \"Voice\"")
+                .hasMessageContaining("because \"Keys\" runs that far");
+    }
+
+    @Test
+    @DisplayName("a part that is only half quantized does not move the bar lines either")
+    void aHalfQuantizedPartDoesNotDriveTheBarGrid() {
+        // staffBlock refuses to engrave such a part outright, and round 9 found
+        // it still voting on the grid with whichever of its notes happened to
+        // carry a position -- a part that can never be on the page moving the bar
+        // lines of the part that is.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
+        NoteTrack half = new NoteTrack(PartRole.ACCOMPANIMENT, "Keys",
+                List.of(note(0, 4, "E4"), note(40, 4, "G4"),
+                        Note.ofSeconds(50, 1, 60, Confidence.CERTAIN)), Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, half);
+
+        assertThat(barCount(StaffNotation.toLilyPond(score, voice))).isEqualTo(1);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> StaffNotation.toLilyPond(score, half))
+                .withMessageContaining("no musical timing");
     }
 
     @Test
