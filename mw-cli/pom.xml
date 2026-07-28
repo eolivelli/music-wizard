@@ -37,7 +37,18 @@
     </dependency>    <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-    </dependency>  </dependencies>
+    </dependency>
+    <!--
+      Test only. The CLI's MIDI entry point is tested against real Standard MIDI
+      Files rather than mocks, because the entry point's whole job is deciding
+      what a file is and handing it to the right reader.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
