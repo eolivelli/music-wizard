@@ -239,60 +239,121 @@ class MetricSplitterTest {
         long offBeatSymbols = 0;
         for (TimeSignature meter : meters()) {
             long bar = units(meter.quarterBeatsPerBar());
-            long beat = units(meter.beatUnitQuarters());
             for (long from = 0; from < bar; from++) {
                 for (long to = from + 1; to <= bar; to++) {
-                    long position = from;
-                    List<String> values = MetricSplitter.split(
-                            meter, from * GRID, to * GRID);
-                    // Checked here as well as in everySplitSumsToTheSpan, because
-                    // that one samples a sixteenth grid and this is the only
-                    // sweep that reaches a 64th-note offset. A bar that does not
-                    // fill its meter is the failure this whole class exists to
-                    // prevent, and LilyPond engraves one without complaint.
-                    long total = 0;
-                    for (String value : values) {
-                        total += units(LilyPondNotes.quartersOf(value));
-                    }
-                    assertThat(total)
-                            .as("%s span %s..%s split as %s does not add back up",
-                                    meter, from * GRID, to * GRID, values)
-                            .isEqualTo(to - from);
-                    for (String value : values) {
-                        long length = units(LilyPondNotes.quartersOf(value));
-                        if (position % beat == 0) {
-                            position += length;
-                            continue;
-                        }
-                        offBeatSymbols++;
-                        // A counted beat that both starts and ends inside the
-                        // symbol has neither an onset nor an ending anywhere on
-                        // the page, and the reader has nothing to count against.
-                        long firstBeatAfter = (position / beat + 1) * beat;
-                        assertThat(firstBeatAfter + beat < position + length)
-                                .as("%s span %s..%s split as %s: %s at beat %s buries the beat"
-                                                + " at %s",
-                                        meter, from * GRID, to * GRID, values, value,
-                                        position * GRID, firstBeatAfter * GRID)
-                                .isFalse();
-                        if (meter.isCompound()) {
-                            assertThat(length)
-                                    .as("%s span %s..%s split as %s: %s at beat %s is a whole"
-                                                    + " compound beat lying across the join",
-                                            meter, from * GRID, to * GRID, values, value,
-                                            position * GRID)
-                                    .isLessThan(beat);
-                        }
-                        position += length;
-                    }
+                    offBeatSymbols += checkSpan(meter, from, to);
                 }
             }
         }
-        // Counted after the on-beat continue, so it measures the symbols the
+        // Counted after the on-beat skip, so it measures the symbols the
         // assertions actually saw rather than the ones they skipped.
         assertThat(offBeatSymbols)
                 .as("the sweep never reached an off-beat symbol, so it asserted nothing")
                 .isGreaterThan(100_000);
+    }
+
+    @Test
+    @DisplayName("a bar too long to sweep exhaustively is split correctly too")
+    void longBarsAreSplitCorrectlyToo() {
+        // The other 258 meters: everything past the bound the exhaustive sweep
+        // stops at, up to the 256-quarter bar of 64/1. Sampled rather than swept,
+        // because sweeping the longest at a 64th is tens of millions of spans of
+        // a meter nobody writes and "mvn verify must stay fast" is a rule of this
+        // project rather than a preference.
+        //
+        // The positions are chosen rather than stepped. A step is what round 6
+        // found wrong here: scaled to the bar, it came out a whole multiple of
+        // the beat unit in the three longest meters, so every span began on a
+        // counted beat -- and an off-beat start is the one position class that
+        // produced every defect this file has found.
+        long offBeatSymbols = 0;
+        int meters = 0;
+        for (TimeSignature meter : longBarMeters()) {
+            meters++;
+            long bar = units(meter.quarterBeatsPerBar());
+            long beat = units(meter.beatUnitQuarters());
+            for (long from : samplePositions(bar, beat)) {
+                for (long span : samplePositions(bar, beat)) {
+                    long to = from + span;
+                    if (span > 0 && to <= bar) {
+                        offBeatSymbols += checkSpan(meter, from, to);
+                    }
+                }
+            }
+        }
+        assertThat(meters).as("no long-bar meter was sampled").isGreaterThan(200);
+        assertThat(offBeatSymbols)
+                .as("every sampled span began on a counted beat, so the case that has produced"
+                        + " every defect in this file was never reached")
+                .isGreaterThan(10_000);
+    }
+
+    /**
+     * Positions worth trying in a bar, in shortest-value units.
+     *
+     * <p>Deliberately built around the beat rather than by stepping: the bar
+     * line, one unit either side of the first two beats, the middle of the bar
+     * and one unit either side of it, and the last unit. Half of them are off the
+     * beat by construction, whatever the meter, which is what a scaled step
+     * cannot promise.
+     */
+    private static java.util.SortedSet<Long> samplePositions(long bar, long beat) {
+        java.util.SortedSet<Long> positions = new java.util.TreeSet<>(List.of(
+                0L, 1L, beat - 1, beat, beat + 1, 2 * beat, 2 * beat + 1,
+                bar / 2, bar / 2 + 1, bar - beat, bar - 1, bar));
+        positions.removeIf(position -> position < 0 || position > bar);
+        return positions;
+    }
+
+    /**
+     * Splits one span and checks everything that must be true of the result,
+     * returning how many of its symbols began off a counted beat.
+     *
+     * <p>Shared by the exhaustive sweep and the sampled one so that the two
+     * cannot drift into checking different things, which is how the sum property
+     * and the beat property came to cover different meters in the first place.
+     */
+    private static long checkSpan(TimeSignature meter, long from, long to) {
+        long beat = units(meter.beatUnitQuarters());
+        List<String> values = MetricSplitter.split(meter, from * GRID, to * GRID);
+
+        // A bar that does not fill its meter is the failure this whole class
+        // exists to prevent, and LilyPond engraves one without complaint.
+        long total = 0;
+        for (String value : values) {
+            total += units(LilyPondNotes.quartersOf(value));
+        }
+        assertThat(total)
+                .as("%s span %s..%s split as %s does not add back up",
+                        meter, from * GRID, to * GRID, values)
+                .isEqualTo(to - from);
+
+        long offBeatSymbols = 0;
+        long position = from;
+        for (String value : values) {
+            long length = units(LilyPondNotes.quartersOf(value));
+            if (position % beat != 0) {
+                offBeatSymbols++;
+                // A counted beat that both starts and ends inside the symbol has
+                // neither an onset nor an ending anywhere on the page, and the
+                // reader has nothing to count against.
+                long firstBeatAfter = (position / beat + 1) * beat;
+                assertThat(firstBeatAfter + beat < position + length)
+                        .as("%s span %s..%s split as %s: %s at beat %s buries the beat at %s",
+                                meter, from * GRID, to * GRID, values, value,
+                                position * GRID, firstBeatAfter * GRID)
+                        .isFalse();
+                if (meter.isCompound()) {
+                    assertThat(length)
+                            .as("%s span %s..%s split as %s: %s at beat %s is a whole compound"
+                                            + " beat lying across the join",
+                                    meter, from * GRID, to * GRID, values, value, position * GRID)
+                            .isLessThan(beat);
+                }
+            }
+            position += length;
+        }
+        return offBeatSymbols;
     }
 
     /** The shortest value the emitter can write, which is the grid everything lands on. */
@@ -316,6 +377,10 @@ class MetricSplitterTest {
     /** The longest bar the exhaustive sweep covers, in quarter beats. */
     private static final double LONGEST_SWEPT_BAR = 8;
 
+    /** {@link TimeSignature}'s own caps, asserted by {@link #theSweepsCoverTheWholeModel}. */
+    private static final int MAX_NUMERATOR = 64;
+    private static final int MAX_DENOMINATOR = 64;
+
     /**
      * Every meter the model admits whose bar is short enough to sweep
      * exhaustively at the emitter's own resolution — 190 of the 448.
@@ -328,16 +393,26 @@ class MetricSplitterTest {
      * wrong, the stated coverage is most of the test's value, and the excluded
      * meters turned out to cost about a second.
      *
-     * <p>Longer bars are covered by {@link #everySplitSumsToTheSpan} at a coarser
-     * step, which is the trade: this sweep is exhaustive and bounded, that one is
-     * sampled and unbounded.
+     * <p>Longer bars are covered by {@link #longBarsAreSplitCorrectlyToo}, which
+     * derives its set the same way and samples rather than sweeps. Between them
+     * they name every meter the model admits, and
+     * {@link #theSweepsCoverTheWholeModel} checks that they still do.
      */
     private static List<TimeSignature> meters() {
+        return admissibleMeters(true);
+    }
+
+    /** Every meter the model admits whose bar is longer than that, which is the rest. */
+    private static List<TimeSignature> longBarMeters() {
+        return admissibleMeters(false);
+    }
+
+    private static List<TimeSignature> admissibleMeters(boolean shortBars) {
         List<TimeSignature> all = new ArrayList<>();
-        for (int denominator = 1; denominator <= 64; denominator *= 2) {
-            for (int numerator = 1; numerator <= 64; numerator++) {
+        for (int denominator = 1; denominator <= MAX_DENOMINATOR; denominator *= 2) {
+            for (int numerator = 1; numerator <= MAX_NUMERATOR; numerator++) {
                 TimeSignature meter = new TimeSignature(numerator, denominator);
-                if (meter.quarterBeatsPerBar() <= LONGEST_SWEPT_BAR) {
+                if (meter.quarterBeatsPerBar() <= LONGEST_SWEPT_BAR == shortBars) {
                     all.add(meter);
                 }
             }
@@ -346,36 +421,20 @@ class MetricSplitterTest {
     }
 
     @Test
-    @DisplayName("a bar too long to sweep exhaustively still adds back up")
-    void everySplitSumsToTheSpan() {
-        // The complement of noSymbolSwallowsACountedBeat, which is exhaustive but
-        // stops at an eight-quarter bar. These are the meters past that bound,
-        // sampled rather than swept, up to the longest bar the model admits.
-        List<TimeSignature> meters = List.of(
-                new TimeSignature(12, 4), new TimeSignature(16, 4), new TimeSignature(9, 2),
-                new TimeSignature(4, 1), new TimeSignature(64, 8), new TimeSignature(24, 8),
-                new TimeSignature(64, 4), new TimeSignature(17, 4), new TimeSignature(64, 1));
-        for (TimeSignature meter : meters) {
-            double bar = meter.quarterBeatsPerBar();
-            // Sampled at a step that keeps every bar to about the same number of
-            // positions, whether it holds twelve quarter beats or two hundred and
-            // fifty-six. Sweeping the longest at a sixteenth would be a quarter
-            // of a million spans of a bar nobody writes, and "mvn verify must
-            // stay fast" is a rule of this project rather than a preference.
-            double step = Math.max(0.25, Math.pow(2, Math.ceil(
-                    Math.log(bar / 48) / Math.log(2))));
-            for (double from = 0; from < bar; from += step) {
-                for (double to = from + step; to <= bar; to += step) {
-                    List<String> values = MetricSplitter.split(meter, from, to);
-                    double sum = 0;
-                    for (String value : values) {
-                        sum += LilyPondNotes.quartersOf(value);
-                    }
-                    assertThat(sum)
-                            .as("%s span %s..%s split as %s", meter, from, to, values)
-                            .isEqualTo(to - from);
-                }
-            }
-        }
+    @DisplayName("the meter sweeps still cover everything the model admits")
+    void theSweepsCoverTheWholeModel() {
+        // The bounds above are copied from TimeSignature, which exposes no
+        // accessor for them. Copying is fine; copying silently is not -- round 5
+        // found a typed meter list that had gone stale against limits that never
+        // moved, and a list that goes stale against limits that DO move is the
+        // same failure with a slower fuse. So the copy is asserted: widen the
+        // model and this fails rather than the sweep quietly shrinking.
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new TimeSignature(1, MAX_DENOMINATOR * 2));
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new TimeSignature(MAX_NUMERATOR + 1, 4));
+        assertThat(meters().size() + longBarMeters().size())
+                .isEqualTo(MAX_NUMERATOR * (Integer.numberOfTrailingZeros(MAX_DENOMINATOR) + 1));
     }
+
 }
