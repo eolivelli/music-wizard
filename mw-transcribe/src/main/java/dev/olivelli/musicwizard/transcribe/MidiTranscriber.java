@@ -816,13 +816,28 @@ public final class MidiTranscriber {
             // One condition, on seconds, because the beat axis cannot add
             // anything. Ticks ascend, so endBeat is never below startBeat, and
             // where the two are equal the seconds are equal too -- they come
-            // from the same pure function of the same argument. The seconds test
-            // is also the stricter of the pair, since beatsToSeconds is not
-            // guaranteed monotone across a segment boundary (#23), so a span
-            // that advances in beats can fail to advance in seconds. A second
-            // condition on beats therefore never decides; measured over four
-            // million random spans against real tempo maps, it decided in none
-            // of them.
+            // from the same pure function of the same argument. That is the
+            // whole proof, and measured over four million random spans against
+            // real tempo maps the beat condition decided in none of them.
+            //
+            // Explicitly *not* justified by beatsToSeconds being non-monotone
+            // across a segment boundary (#23), which an earlier draft of this
+            // comment claimed and which is wrong twice over. It cannot happen to
+            // a map built here: readTempoSegments accumulates each boundary's
+            // seconds with exactly the expression beatsToSeconds evaluates, so
+            // the map is continuous to the last bit rather than merely within
+            // the constructor's tolerance -- 300,000 maps built through this
+            // class, none non-monotone. And where non-monotonicity is present,
+            // dropping the beat condition is the *unsafe* direction, not the
+            // safe one: a span could then advance in seconds while going
+            // backwards in beats, and reach Key carrying the very argument this
+            // guard exists to keep out.
+            //
+            // A span really can advance in beats and not in seconds, but the
+            // mechanism is duller and is within a single segment: some
+            // thousands of years into a piece, one tick is narrower than an ulp
+            // of the elapsed seconds. Seconds-only rejects those, which is what
+            // a score wants.
             if (!(endSeconds > startSeconds)) {
                 continue;
             }
