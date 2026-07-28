@@ -28,5 +28,16 @@
     </dependency>    <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-ml</artifactId>
-    </dependency>  </dependencies>
+    </dependency>
+    <!--
+      Fixture MIDI for the import tests. Test scope only: mw-testkit depends on
+      mw-core alone, so this cannot pull anything into the shipped graph, and the
+      fixtures are the same ones mw-notation and mw-arrange build against.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>
