@@ -26,8 +26,8 @@ import java.util.Objects;
  *
  * <p>This is the input to tempo estimation and beat tracking, and its quality
  * bounds theirs. The construction follows Ellis (2007): mel-band magnitudes in
- * decibels, first difference, half-wave rectified, summed across bands, then
- * high-passed and normalised.
+ * decibels, low-passed along time, first difference, half-wave rectified,
+ * summed across bands, then high-passed and normalised.
  *
  * <p>Each step earns its place. Working in decibels makes a quiet passage
  * contribute as much as a loud one, because perceived accent tracks relative
@@ -35,7 +35,8 @@ import java.util.Objects;
  * energy, since a note ending is not an onset. Mel bands rather than raw FFT
  * bins stop a single strong partial from dominating. Subtracting a moving
  * average removes the slow swell of an arrangement, leaving the sharp local
- * changes that mark note attacks.
+ * changes that mark note attacks. The low-pass is the least obvious of them and
+ * is documented on {@link #antiAlias}.
  *
  * @param strength   one value per frame, mean-zero and unit-variance
  * @param frameRate  frames per second
@@ -63,6 +64,25 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     private static final double MIN_HZ = 30;
     private static final double MAX_HZ = 8_000;
 
+    /**
+     * Cutoff of the band-magnitude low-pass, as a fraction of the frame rate --
+     * the same 0.45 of the target rate {@link
+     * dev.olivelli.musicwizard.audio.Resampler} cuts at, and for the same
+     * reason. Expressed relative to the frame rate rather than in hertz so the
+     * filter follows {@link #ONSET_HOP} rather than having to be re-tuned with
+     * it.
+     */
+    private static final double ANTI_ALIAS_CUTOFF = 0.45;
+
+    /**
+     * Forward-backward passes of the one-pole. At the frame rate's Nyquist,
+     * which is where the folded ripple lands, one pass leaves 0.343 of it and
+     * two leave 0.118 -- 9.3 dB against 18.6. One pass measurably does not
+     * separate the populations and three starts eating the attacks; see {@link
+     * #antiAlias} for the numbers either side of this choice.
+     */
+    private static final int ANTI_ALIAS_STAGES = 2;
+
     public OnsetEnvelope {
         Objects.requireNonNull(strength, "strength");
         if (!(frameRate > 0)) {
@@ -89,6 +109,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         }
 
         double[][] melBands = toMelDecibels(spectrogram);
+        antiAlias(melBands);
 
         // First difference, half-wave rectified, summed across bands. Only
         // increases count: a note ending is not an onset.
@@ -146,6 +167,93 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
             }
         }
         return out;
+    }
+
+    /**
+     * Low-passes each band's decibel series along time, before anything
+     * differences it.
+     *
+     * <p>Without this a held note reads as rhythmic. A band's magnitude is not
+     * the smooth amplitude envelope it is taken for: two partials that both
+     * leak into the same FFT bin beat there at their difference frequency,
+     * which for a harmonic note is hundreds of hertz. The analysis window sets
+     * how loud that ripple is, not how fast it runs, so the band series carries
+     * modulation far above the {@value #ONSET_HOP}-sample hop's 86 Hz Nyquist —
+     * and it was sampled at that hop with no filter in front of it. What lands
+     * in the sampled series is the folded remainder, and half-wave
+     * rectification of the first difference then demodulates it into a slow,
+     * genuinely periodic accent train. Measured on a held 440 Hz note with
+     * eight partials, the tempo band holds about a hundred times more energy
+     * sampled at 172 fps than at 1378 fps: it is an artefact of the sampling,
+     * not a property of the sound.
+     *
+     * <p>This is the same failure {@link
+     * dev.olivelli.musicwizard.audio.Resampler} already low-passes to avoid
+     * when it downsamples audio. The band-magnitude envelope simply never got
+     * the same treatment.
+     *
+     * <p>Zero phase, by filtering forwards and then backwards, for the reason
+     * {@code Resampler} does it: beat tracking reads onset <em>times</em> off
+     * this signal, and a one-directional filter would push every one of them
+     * later by a frequency-dependent amount.
+     *
+     * <p>Measured over 170 held notes (C2 to C6 by minor thirds, 1 to 10
+     * partials) against the 141 integer click tempi from 60 to 200 BPM, on
+     * twenty-second clips:
+     *
+     * <pre>
+     *   passes  cutoff   click range    worst held  click tempi it out-scores
+     *   none        --   0.526..0.931        0.751        72 of 141
+     *   1        0.45f   0.731..0.909        0.713         0 of 141
+     *   2        0.45f   0.751..0.909        0.662         0 of 141
+     *   2        0.30f   0.737..0.895        0.680         0 of 141
+     *   3        0.30f   0.688..0.875        0.708        10 of 141
+     * </pre>
+     *
+     * <p>Two passes at 0.45 of the frame rate is the best of them and the
+     * gentlest that separates the populations outright. Filtering harder is not
+     * better: it eats into the attacks, the click floor falls faster than the
+     * held-note ceiling, and the two populations meet again.
+     *
+     * <p>Filtering the linear magnitude instead of the decibels was tried and
+     * is much worse — clicks at 200 BPM collapse to 0.0, because between clicks
+     * the magnitude sits on the decibel floor and smearing the impulse across
+     * that floor destroys the attack. Oversampling the spectrogram and
+     * decimating after the filter — the textbook anti-alias, which removes the
+     * folded components rather than the ripple that carries them — was tried at
+     * four times the hop rate and is no better at the worst point (0.718), for
+     * four times the STFT cost. The ripple, not the fold, is what has to go.
+     */
+    static void antiAlias(double[][] melBands) {
+        if (melBands.length < 2) {
+            return;
+        }
+        // One-pole coefficient for a cutoff expressed as a fraction of the
+        // sampling rate, so it does not depend on the frame rate at all.
+        double rc = 1.0 / (2 * Math.PI * ANTI_ALIAS_CUTOFF);
+        double alpha = 1.0 / (rc + 1.0);
+
+        double[] series = new double[melBands.length];
+        for (int band = 0; band < MEL_BANDS; band++) {
+            for (int frame = 0; frame < melBands.length; frame++) {
+                series[frame] = melBands[frame][band];
+            }
+            for (int pass = 0; pass < ANTI_ALIAS_STAGES; pass++) {
+                double state = series[0];
+                for (int frame = 0; frame < series.length; frame++) {
+                    state += alpha * (series[frame] - state);
+                    series[frame] = state;
+                }
+                state = series[series.length - 1];
+                for (int frame = series.length - 1; frame >= 0; frame--) {
+                    state += alpha * (series[frame] - state);
+                    series[frame] = state;
+                }
+            }
+            for (int frame = 0; frame < melBands.length; frame++) {
+                melBands[frame][band] = series[frame];
+            }
+        }
     }
 
     /**
