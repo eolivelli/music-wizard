@@ -56,7 +56,9 @@ import java.util.Objects;
  * margin alone is not enough — material that changes chord often at no
  * consistent phase produces a wide margin by luck — so the three are multiplied
  * and any one of them failing brings the number down. A phase resting on onsets
- * alone is capped below anything harmony has backed.
+ * alone is capped below the ceiling harmony reaches, and harmony's own ceiling
+ * is the reliability of what it assumes rather than the weight of what it
+ * measured — see {@link #HARMONIC_ONLY_CEILING}.
  *
  * <p>What to rely on in that number is its <em>ordering</em>, not its value.
  * The ordering is structural — onsets alone can never outrank harmony, and a
@@ -67,12 +69,17 @@ import java.util.Objects;
  * floor, which every real recording has: see #45.
  *
  * <p>The known limit of the approach is that it measures agreement with
- * harmonic change, not with bar lines, and takes the two to be the same thing.
- * Where a style consistently anticipates the chord — the pushed change an
- * eighth or a beat before the bar, ordinary in pop and near-universal in some
- * Latin idioms — this reports the anticipation as the downbeat, confidently,
- * because by its own measure it is right. Nothing here can detect that;
- * separating them needs evidence the estimator does not have. See #48.
+ * harmonic change, not with bar lines, and the step from one to the other is an
+ * assumption. Where a style consistently anticipates the chord — the pushed
+ * change an eighth or a beat before the bar, ordinary in pop and near-universal
+ * in some Latin idioms — the harmony moves a beat early and this agrees with the
+ * anticipation, unanimously, because by its own measure it is right. Nothing in
+ * the chroma separates the two readings: the same recording is a pushed bar and
+ * a bar that starts a beat later, and no further harmonic evidence tells them
+ * apart. So the phase is still the anticipation, and what changed for #48 is
+ * that it is no longer reported as settled — see {@link #HARMONIC_ONLY_CEILING}.
+ * Moving it needs evidence this stage does not have; the bass keeps landing on
+ * the bar line when the upper voices are pushed, which is #42.
  *
  * <p>The meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
  */
@@ -156,16 +163,56 @@ public final class DownbeatEstimator {
      */
     private static final double BASE_CONFIDENCE = 0.35;
 
-    /** What harmony agreeing with the chosen phase is worth on top of that. */
-    private static final double HARMONIC_CONFIDENCE = 0.5;
+    /**
+     * The most a phase may report when harmonic change is all that chose it.
+     *
+     * <p>The harmonic scoring measures agreement with harmonic change, and takes
+     * a bar line to be where the harmony moves. That is a good assumption and a
+     * wrong one often enough to matter. A chord pushed ahead of the bar puts
+     * every change one beat early, and the scoring then agrees with the
+     * anticipation rather than with the bar — unanimously, because by its own
+     * measure it is right. The chroma cannot tell the two apart: the same audio
+     * is a pushed bar and a bar that starts a beat later, which is what #48
+     * reported and what {@code anAnticipationLooksExactlyLikeAMidBarStart} pins.
+     *
+     * <p>So this ceiling is the reliability of that assumption, not the strength
+     * of the evidence for it, and no amount of harmonic agreement may pass it.
+     * It is set the way {@link #BASE_CONFIDENCE} is — by counting what is left
+     * open. Unanimous harmonic agreement narrows the phase from every beat of
+     * the bar to two: the beat the harmony moves on, or the beat after it, since
+     * a push arrives early and never late. A one-in-two choice sits here for the
+     * same reason a one-in-four choice sits at {@code BASE_CONFIDENCE}.
+     *
+     * <p>Deliberately in the band that reads as "probably, but check it". A
+     * confidently wrong phase costs a user more than an uncertain right one:
+     * correcting the first downbeat by hand is the highest-value action the tool
+     * asks of them, and a number that says not to bother is what stops them.
+     */
+    private static final double HARMONIC_ONLY_CEILING = 0.6;
+
+    /**
+     * What harmony agreeing with the chosen phase is worth on top of the floor.
+     *
+     * <p>Derived rather than chosen, so that the ceiling stays the thing that is
+     * stated and this stays the arithmetic that reaches it.
+     */
+    private static final double HARMONIC_CONFIDENCE = HARMONIC_ONLY_CEILING - BASE_CONFIDENCE;
 
     /**
      * What an onset accent on the chosen phase is worth on top of that.
      *
-     * <p>A fifth of what harmony is worth, so that a phase resting on onsets
-     * alone can never report more than {@code 0.45} — below anything harmony has
-     * backed. That ordering is the point: the onset heuristic is the one that
-     * produced the bug, and it must not be able to sound sure of itself.
+     * <p>Small enough that a phase resting on onsets alone can never report more
+     * than {@code 0.45}, well below the {@code 0.6} harmony reaches. That
+     * ordering is the point: the onset heuristic is the one that produced the
+     * bug, and it must not be able to sound sure of itself.
+     *
+     * <p>It is a bonus on top of the harmonic ceiling rather than a route past
+     * the doubt that ceiling encodes, and it is worth less than it looks:
+     * {@link OnsetEnvelope} sums flux over forty mel bands, so a broadband snare
+     * excites all of them and a sixty-hertz kick about one. The backbeat is
+     * therefore the loudest phase it reports on ordinary drum material, and an
+     * accent agreeing with the harmony is weaker corroboration than it sounds.
+     * See #70.
      */
     private static final double ONSET_CONFIDENCE = 0.1;
 
