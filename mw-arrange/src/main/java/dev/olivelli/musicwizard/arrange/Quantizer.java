@@ -497,19 +497,25 @@ public final class Quantizer {
      * Snaps a position within a bar to the nearest grid step, clamped to the
      * bar.
      *
-     * <p>The upper clamp is the next bar's downbeat rather than the last step
-     * inside this bar, because a note played a hair early against a bar line
-     * belongs on the bar line.
+     * <p>The limit is the next bar's downbeat rather than the last step inside
+     * this bar, because a note played a hair early against a bar line belongs on
+     * the bar line. There is no lower one; see {@link #stepsWithin}.
      */
     private static double snapWithin(double beatInBar, double step, TimeSignature meter) {
         return stepsWithin(beatInBar, step, meter) * step;
     }
 
-    /** The same, left as a whole number of steps for the caller to scale once. */
+    /**
+     * The same, left as a whole number of steps for the caller to scale once.
+     *
+     * <p>Only the upper limit is applied. The lower one would be inert:
+     * {@link BarTable#beatInBar} has already floored the position at the bar's
+     * own start, and a second floor here would mask it -- which on this change
+     * has repeatedly meant neither could be shown to be doing anything.
+     */
     private static double stepsWithin(double beatInBar, double step, TimeSignature meter) {
-        double steps = Math.rint(beatInBar / step);
-        double limit = Math.rint(meter.quarterBeatsPerBar() / step);
-        return Math.clamp(steps, 0, limit);
+        return Math.min(Math.rint(beatInBar / step),
+                Math.rint(meter.quarterBeatsPerBar() / step));
     }
 
     // ---------------------------------------------------------------- bar table

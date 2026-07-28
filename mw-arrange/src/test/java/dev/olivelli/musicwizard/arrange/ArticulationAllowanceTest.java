@@ -42,6 +42,12 @@ import org.junit.jupiter.api.Test;
  * grid at 120 BPM, released according to three articulation distributions, and
  * a duration counts only when it comes back exactly right.
  *
+ * <p>The count is of notes longer than one step, because the fixture separates
+ * the note under test from its neighbours by played length and a one-step note
+ * is not separable that way -- under a detached articulation none of them are
+ * counted at all. Excluding that case moves the figures below by about a point
+ * and the difference between them not at all.
+ *
  * <p>What it says, at the time of writing: 0.643 with the allowance against
  * 0.561 without, averaged over the three styles. The gain is all in detached
  * playing, 0.661 against 0.454; a player who holds through instead pays about

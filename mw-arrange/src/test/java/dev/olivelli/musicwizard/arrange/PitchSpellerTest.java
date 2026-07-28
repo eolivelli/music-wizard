@@ -412,6 +412,63 @@ class PitchSpellerTest {
         }
 
         @Test
+        @DisplayName("the chord roots understate the centre, and the offset is what corrects it")
+        void theChordRootFallbackIsOffsetFromTheRootsThemselves() {
+            // G, D, A and C average to 1.5 on the line of fifths, but the notes
+            // of a key with those chords centre a fifth or so sharper. G sharp
+            // and A flat straddle exactly that difference: from the raw root
+            // average the flat is nearer, from the corrected centre the sharp
+            // is, and the sharp is what a player reading a I-V-ii-IV in G wants
+            // when the dominant of A comes round.
+            ChordProgression sharpSide = new ChordProgression(List.of(
+                    chordAt("G3", ChordQuality.MAJOR, 0, 1),
+                    chordAt("D4", ChordQuality.MAJOR, 1, 2),
+                    chordAt("A3", ChordQuality.MAJOR, 2, 3),
+                    chordAt("C4", ChordQuality.MAJOR, 3, 4)), Confidence.CERTAIN);
+            Score score = new Score(Optional.empty(), Optional.empty(),
+                    TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
+                    List.of(), List.of(),
+                    List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
+                            List.of(Note.ofSeconds(4.5, 0.5, 68, Confidence.CERTAIN)),
+                            Confidence.CERTAIN)),
+                    sharpSide, Lyrics.empty(), 10);
+
+            assertThat(PitchSpeller.spell(score).tracks().get(0).notes().get(0).spelling())
+                    .contains(PitchSpelling.parse("G#4"));
+        }
+
+        @Test
+        @DisplayName("an enharmonic that would fall out of the writable octaves is passed over")
+        void spellingsStayInAWritableOctave() {
+            // In a five-sharp key, MIDI 0 is nearer B sharp than C on the line
+            // of fifths, and a B sharp sounding as MIDI 0 sits in octave -2 --
+            // a legal record that PitchSpelling.parse refuses, so it could not
+            // survive a config value or an advisor's reply.
+            Key bMajor = key("B3", Mode.MAJOR);
+            for (int pitch : new int[] {0, 1, 126, 127}) {
+                PitchSpelling spelled = PitchSpeller.spellFromKey(pitch, bMajor);
+                assertThat(spelled.midiPitch()).isEqualTo(pitch);
+                assertThat(PitchSpelling.parse(spelled.displayName())).isEqualTo(spelled);
+            }
+        }
+
+        @Test
+        @DisplayName("every spelling of every pitch in every key survives a round trip through text")
+        void everySpellingIsWritable() {
+            for (int accidentals = -7; accidentals <= 7; accidentals++) {
+                for (Mode mode : Mode.values()) {
+                    Key any = keyWithSignature(accidentals, mode);
+                    for (int pitch = 0; pitch <= 127; pitch++) {
+                        PitchSpelling spelled = PitchSpeller.spellFromKey(pitch, any);
+                        assertThat(PitchSpelling.parse(spelled.displayName()))
+                                .describedAs("pitch %s in %s", pitch, any)
+                                .isEqualTo(spelled);
+                    }
+                }
+            }
+        }
+
+        @Test
         @DisplayName("a part built elsewhere can be spelled against the score's harmony")
         void spellsATrackAgainstAnotherScore() {
             Score harmony = scoreOf(List.of(60), progression(), List.of(D_FLAT_MAJOR));
