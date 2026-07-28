@@ -311,6 +311,40 @@ class ChordChartTest {
         assertThat(source).contains("c1 g1 a1:m f1 ");
     }
 
+    /** Five chords over four bars of 4/4, so two of them share a bar. */
+    private static Score twoChordsInABar() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.A, NoteLetter.F, NoteLetter.G, NoteLetter.C};
+        ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MINOR, ChordQuality.MAJOR,
+                ChordQuality.MAJOR, ChordQuality.MAJOR};
+        double[] starts = {0, 2, 4, 6, 8};
+        double[] ends = {2, 4, 6, 8, 16};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < starts.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), qualities[i],
+                            map.beatsToSeconds(starts[i]), map.beatsToSeconds(ends[i]),
+                            Confidence.of(0.9))
+                    .quantizedTo(starts[i], ends[i]));
+        }
+        return Score.empty(map, map.beatsToSeconds(16))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    @Test
+    @DisplayName("engraves a chord that is half a bar as half a bar, not as a whole one")
+    void aChordShorterThanABarKeepsItsLength() {
+        Score score = twoChordsInABar();
+
+        // Two chords to the first two bars, one to the last two.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C Am        | F G         | C           | %           |");
+        // Four half notes and two whole notes: sixteen quarter beats, which is
+        // the four bars the chart shows. Written as five whole notes -- which is
+        // what a fixed duration gives -- LilyPond engraves six bars, and every
+        // symbol from bar 2 on sits against the wrong bar of the recording.
+        assertThat(ChordChart.toLilyPond(score)).contains("c2 a2:m f2 g2 c1*2 ");
+    }
+
     @Test
     @DisplayName("prints a tempo the user can type back in, in any locale")
     void tempoLineIsLocaleIndependent() {

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Renders a score's harmony as a chord chart.
@@ -133,7 +134,8 @@ public final class ChordChart {
             for (int i = 0; i < chords.size(); i++) {
                 Chord chord = chords.get(i);
                 double startBeat = chord.startBeat().orElseThrow();
-                double lastBeat = Math.max(startBeat, chord.endBeat().orElseThrow() - BAR_END_NUDGE);
+                double lastBeat =
+                        Math.max(startBeat, chord.endBeat().orElseThrow() - BAR_END_NUDGE);
                 barOfChord[i] = map.toMusicalTime(startBeat).bar() - origin;
                 lastBar = Math.max(lastBar, map.toMusicalTime(lastBeat).bar() - origin);
             }
@@ -265,33 +267,60 @@ public final class ChordChart {
         out.append("    \\chordmode {\n      ");
 
         double barDuration = barDurationSeconds(score);
-        List<Chord> chords = score.chords().chords();
-        // From the beat axis where there is one, for the reason on barGrid: a
-        // tempo change otherwise gives one chord two bars and the next none, and
-        // this is the source LilyPond actually engraves.
-        BarGrid grid = chords.isEmpty() ? null : barGrid(score, barDuration);
-        for (int index = 0; index < chords.size(); index++) {
-            Chord chord = chords.get(index);
+        for (Chord chord : score.chords().chords()) {
             // chordmode wants pitch, then duration, then modifier -- a1:m, not
             // a:m1, which LilyPond rejects.
-            int bars = score.chords().isQuantized()
-                    ? Math.max(1, (index + 1 < chords.size()
-                            ? grid.barOfChord()[index + 1] : grid.barCount())
-                            - grid.barOfChord()[index])
-                    : Math.max(1, (int) Math.round(chord.durationSeconds() / barDuration));
+            String duration = quantizedDuration(chord);
+            if (duration != null) {
+                out.append(chordMode(chord, duration)).append(' ');
+                continue;
+            }
+            // Unquantized, which is the audio path: nothing states how long a
+            // chord is in musical terms, so it is rounded to whole bars as
+            // before. This is where the audio chart's own bar counting lives and
+            // it is not this change's to move.
+            int bars = Math.max(1, (int) Math.round(chord.durationSeconds() / barDuration));
             for (int i = 0; i < bars; i++) {
-                if (chord.isNoChord()) {
-                    out.append("r1 ");
-                } else {
-                    out.append(lilyPondRoot(chord)).append('1')
-                            .append(lilyPondQuality(chord)).append(' ');
-                }
+                out.append(chordMode(chord, "1")).append(' ');
             }
         }
         out.append("\n    }\n  }\n");
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
+    }
+
+    /**
+     * A chord's own length as a LilyPond duration, or null when it has none.
+     *
+     * <p>Whole notes regardless of length is what this used to write, and it is
+     * wrong as soon as a bar holds more than one chord -- which the symbolic
+     * estimator produces routinely, since it decides per counted beat. Five
+     * chords over four bars of 4/4 came out as five whole notes plus a repeat,
+     * six bars of engraved music for four bars of harmony, with every symbol
+     * after the first in the wrong bar. Measured from the engraver's own MIDI
+     * output rather than inferred: 9216 ticks against the 6144 the music has.
+     *
+     * <p>Lengths that no duration can name are rounded to the nearest 64th
+     * rather than refused. A chord span is a whole number of counted beats and
+     * so is nameable, except for the last one in a piece that stops mid-beat,
+     * where the residue is a MIDI tick or two; turning that into an exception
+     * would make a readable file unengravable over a rounding error.
+     */
+    private static String quantizedDuration(Chord chord) {
+        Optional<Double> beats = chord.durationBeats();
+        if (beats.isEmpty()) {
+            return null;
+        }
+        double units = Math.max(1, Math.round(beats.get() / LilyPondDuration.SHORTEST_QUARTERS));
+        return LilyPondDuration.scaled(units * LilyPondDuration.SHORTEST_QUARTERS);
+    }
+
+    /** One chordmode event: a rest for no-chord, otherwise root, duration, quality. */
+    private static String chordMode(Chord chord, String duration) {
+        return chord.isNoChord()
+                ? "r" + duration
+                : lilyPondRoot(chord) + duration + lilyPondQuality(chord);
     }
 
     /** The root in LilyPond note-name form, e.g. {@code c} or {@code bes}. */

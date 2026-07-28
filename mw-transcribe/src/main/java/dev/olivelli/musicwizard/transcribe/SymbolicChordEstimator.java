@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -202,13 +203,16 @@ public final class SymbolicChordEstimator {
     /**
      * The margin over the runner-up at which a label stops being a guess.
      *
-     * <p>Measured rather than chosen. Over the aggregate of a whole run:
+     * <p>Measured rather than chosen, over the aggregate of a whole run. The
+     * fixture is named for each row because the scores depend on the voicing and
+     * on whether a bass note doubles a pitch class, so rows from different
+     * fixtures are not one experiment:
      *
      * <pre>
-     *   stated C major triad, C bass  1.183 vs C7   at 0.917  margin 0.183
-     *   C-E-G-A over an A bass        1.000 vs Am   at 0.967  margin 0.033
-     *   C-E-G-A over a C bass         0.967 vs Am7  at 0.900  margin 0.067
-     *   stated Cm7                    1.000 vs Cm   at 0.933  margin 0.067
+     *   every bar of fourChordSong    C     1.100 vs C7   0.917  margin 0.183
+     *   C-E-G-A over an A bass        Am7   1.000 vs Am   0.967  margin 0.033
+     *   C-E-G-A over a C bass         C     0.967 vs Am7  0.900  margin 0.067
+     *   C-E flat-G-B flat, keys alone Cm7   1.000 vs Cm   0.933  margin 0.067
      * </pre>
      *
      * <p>The first is a chord nobody would argue about and the second is the
@@ -216,6 +220,9 @@ public final class SymbolicChordEstimator {
      * and the second at a fifth of it. The two seventh rows sit between, which is
      * right: whether to write Cm or Cm7 for a sustained C-E flat-G-B flat is a
      * question charts genuinely disagree on.
+     *
+     * <p>Four points is enough to show the quantity discriminates and not enough
+     * to fix the threshold, which is part of what #124 is for.
      */
     private static final double DECISIVE_MARGIN = 0.15;
 
@@ -256,12 +263,22 @@ public final class SymbolicChordEstimator {
     private record Template(int root, ChordQuality quality, int[] pitchClasses, double prior) {
     }
 
-    /** A counted beat: the unit one chord decision is taken over. */
-    private record Span(double startBeat, double endBeat, boolean downbeat) {
+    /**
+     * A counted beat: the unit one chord decision is taken over.
+     *
+     * <p>Package-private, along with {@link Voiced}, {@link BassLine} and
+     * {@link BassReader}, so the bass sweep can be checked against a
+     * brute-force reference directly. It is the part of this class that has
+     * already been wrong once -- an early draft never enqueued a started note,
+     * so every bar reported the lowest pitch of the whole piece -- and a
+     * property test over random input is worth more than the fixtures that
+     * happened to catch it.
+     */
+    record Span(double startBeat, double endBeat, boolean downbeat) {
     }
 
     /** A pitched note reduced to what chord estimation needs. */
-    private record Voiced(double startBeat, double endBeat, int midiPitch, boolean bassPart) {
+    record Voiced(double startBeat, double endBeat, int midiPitch, boolean bassPart) {
     }
 
     private static final List<Template> TEMPLATES = buildTemplates();
@@ -391,7 +408,7 @@ public final class SymbolicChordEstimator {
             return ChordProgression.empty();
         }
 
-        Histogram[] histograms = histograms(spans, notes, BassLine.of(notes));
+        Histogram[] histograms = histograms(spans, notes, BassReader.of(notes));
         int[] path = decode(spans, histograms);
         List<Run> runs = mergeRuns(path, histograms);
         return toProgression(runs, spans, histograms, tempoMap, keys);
@@ -498,7 +515,8 @@ public final class SymbolicChordEstimator {
      * a moving line is the case that makes the difference, and it is also the
      * case this whole class has to get right.
      */
-    private static Histogram[] histograms(List<Span> spans, List<Voiced> notes, BassLine bass) {
+    private static Histogram[] histograms(List<Span> spans, List<Voiced> notes,
+                                          BassReader bass) {
         Histogram[] out = new Histogram[spans.size()];
         PriorityQueue<Voiced> sounding =
                 new PriorityQueue<>(Comparator.comparingDouble(Voiced::endBeat));
@@ -557,14 +575,11 @@ public final class SymbolicChordEstimator {
      * {@code MidiTranscriber}'s four-megabyte import cap, the per-span form took
      * 39.6 seconds and this one takes under a second.
      *
-     * <p>Whether a declared {@link PartRole#BASS} part supplies the answer is
-     * decided once, for the same reason. A score either has a part that says it
-     * is the bass or it does not; switching definition bar by bar, depending on
-     * whether that part happened to be resting, would read the bottom of the
-     * texture in some bars and the bass line in others and call both the bass.
-     * Where a declared bass rests, there is no bass, which is the honest answer.
+     * <p>Which notes go into one is {@link BassReader}'s question, not this
+     * class's: it builds one of these over the declared bass part and one over
+     * the whole texture, and reads whichever is sounding.
      */
-    private static final class BassLine {
+    static final class BassLine {
 
         /** Nothing sounding. */
         private static final int SILENT = -1;
@@ -581,8 +596,11 @@ public final class SymbolicChordEstimator {
          * Where the last query left off.
          *
          * <p>Spans are asked for in order, so a cursor makes the whole walk
-         * linear in segments plus spans. Safe because one of these belongs to a
-         * single {@code estimate} call and never escapes it.
+         * linear in segments plus spans rather than segments times spans. A
+         * query that goes backwards resets it, so this is an optimisation and
+         * not a contract the caller has to keep -- one that answered differently
+         * depending on what was asked before it would be a trap, however
+         * carefully the one caller today avoids it.
          */
         private int cursor;
 
@@ -599,12 +617,7 @@ public final class SymbolicChordEstimator {
          * onset, which is how they arrive, and the sounding ones by offset, which
          * is what the queue keeps -- so nothing is sorted a second time.
          */
-        static BassLine of(List<Voiced> notes) {
-            boolean hasBassPart = notes.stream().anyMatch(Voiced::bassPart);
-            List<Voiced> candidates = hasBassPart
-                    ? notes.stream().filter(Voiced::bassPart).toList()
-                    : notes;
-
+        static BassLine of(List<Voiced> candidates) {
             double[] from = new double[2 * candidates.size() + 1];
             int[] pitch = new int[from.length];
             int count = 0;
@@ -625,7 +638,10 @@ public final class SymbolicChordEstimator {
                 }
                 // Every event at this position is applied before the segment is
                 // recorded, so a note handed over exactly at an edge never shows
-                // as a momentary gap.
+                // as a momentary gap. Both conditions are "<=" rather than "<"
+                // for a second reason as well: "at" is the earliest pending
+                // event, so leaving an event of that position unconsumed would
+                // compute the same "at" again and the loop would never finish.
                 while (!active.isEmpty() && active.peek().endBeat() <= at) {
                     int stopped = active.poll().midiPitch();
                     if (--sounding[stopped] == 0 && stopped == lowest) {
@@ -656,18 +672,25 @@ public final class SymbolicChordEstimator {
         }
 
         /**
-         * The pitch class at the bottom of a span, or -1 when there is no single
-         * one.
+         * Adds how long each pitch class spends at the bottom of a span, and
+         * answers with the total.
          *
-         * <p>{@link #BASS_DOMINANCE} is what stops a walking bass from becoming
-         * an inversion: a span the line walks through reports no bass rather
-         * than whichever step it happened to start on.
+         * <p>Zero means nothing sounded here at all, which is a different answer
+         * from "several things did and none of them dominated" -- and telling
+         * the two apart is what lets a resting bass part hand over to the
+         * texture instead of reporting no bass.
          */
-        int pitchClassOver(Span span) {
+        double weighOver(Span span, double[] weight) {
+            // Spans arrive in order, so the cursor normally only moves forward.
+            // The rewind is not dead code guarding an impossible call: it is what
+            // makes the method a function of its argument rather than of the call
+            // history, which is the property a reader will assume it has.
+            if (cursor > 0 && from[cursor] > span.startBeat()) {
+                cursor = 0;
+            }
             while (cursor + 1 < count && from[cursor + 1] <= span.startBeat()) {
                 cursor++;
             }
-            double[] weight = new double[12];
             double total = 0;
             for (int i = cursor; i < count; i++) {
                 if (from[i] >= span.endBeat()) {
@@ -683,6 +706,62 @@ public final class SymbolicChordEstimator {
                     weight[Math.floorMod(pitch[i], 12)] += sounds;
                     total += sounds;
                 }
+            }
+            return total;
+        }
+    }
+
+    /**
+     * Where the bass of a span comes from.
+     *
+     * <p>A declared {@link PartRole#BASS} part where it is sounding, and the
+     * bottom of the texture where it is not. Round 1 of the review on #115
+     * replaced that fallback with a single decision for the whole score, on the
+     * argument that switching definition bar by bar reads two different things
+     * and calls both the bass. Round 2 showed the cure was worse: with no
+     * fallback, a bass part resting for a break makes the bass <em>silent</em>,
+     * the root bonus vanishes with it, and an unchanged four-bar C over held keys
+     * splits into {@code C} then {@code Am7} at the bar the bassist stopped
+     * playing. Declaring a bass part was strictly worse than not declaring one.
+     *
+     * <p>So the fallback is back, and the reason the round-1 change was made --
+     * that rebuilding this per span was quadratic -- is answered by building both
+     * lines once instead. Two sweeps, and the choice per span is which of two
+     * answers to read.
+     */
+    static final class BassReader {
+
+        /** The declared bass part, or null when the score names none. */
+        private final BassLine declared;
+
+        /** Every pitched part, which is what the bottom of the texture means. */
+        private final BassLine texture;
+
+        private BassReader(BassLine declared, BassLine texture) {
+            this.declared = declared;
+            this.texture = texture;
+        }
+
+        static BassReader of(List<Voiced> notes) {
+            List<Voiced> bassPart = notes.stream().filter(Voiced::bassPart).toList();
+            return new BassReader(bassPart.isEmpty() ? null : BassLine.of(bassPart),
+                    BassLine.of(notes));
+        }
+
+        /**
+         * The pitch class at the bottom of a span, or -1 when there is no single
+         * one.
+         *
+         * <p>{@link #BASS_DOMINANCE} is what stops a walking bass from becoming
+         * an inversion: a span the line walks through reports no bass rather
+         * than whichever step it happened to start on.
+         */
+        int pitchClassOver(Span span) {
+            double[] weight = new double[12];
+            double total = declared != null ? declared.weighOver(span, weight) : 0;
+            if (total <= 0) {
+                Arrays.fill(weight, 0);
+                total = texture.weighOver(span, weight);
             }
             if (total <= 0) {
                 return -1;

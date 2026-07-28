@@ -452,6 +452,50 @@ class SymbolicChordEstimatorTest {
     }
 
     @Test
+    @DisplayName("a bass part taking a break does not change the chord")
+    void aRestingBassPartIsNotAChordChange() {
+        // Keys hold C-E-G-A for four bars; the bass plays C for two of them and
+        // then stops, which is what a bassist does at a break. Nothing about the
+        // harmony changes, and the chart must not say it did.
+        //
+        // These four pitch classes are the C6-versus-Am7 pair of #122, so the
+        // root bonus from the bass is the only thing holding C over Am7. Read
+        // the bass from the declared part alone and it goes silent at bar 3,
+        // taking the bonus with it and splitting a held chord in two.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Bass", 0).note(0, 8, 36).end()
+                .part("Keys", 1)
+                .chord(0, 8, 60, 64, 67, 69).chord(8, 8, 60, 64, 67, 69)
+                .build();
+
+        Score score = TRANSCRIBER.transcribe(sequence);
+        assertThat(score.chords().chords()).extracting(
+                        Chord::symbol, c -> c.startBeat().orElseThrow(),
+                        c -> c.endBeat().orElseThrow())
+                .containsExactly(org.assertj.core.api.Assertions.tuple("C", 0.0, 16.0));
+    }
+
+    @Test
+    @DisplayName("where a bass part rests, the bottom of the texture is the bass")
+    void aRestingBassPartHandsOverToTheTexture() {
+        // The same handover seen from the other side. The bass plays the root of
+        // the first chord and then stops, and the second chord is voiced with its
+        // third at the bottom. That inversion is only visible if the texture
+        // takes over; read the declared part alone and the second chord has no
+        // bass at all and prints in root position.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Bass", 0).note(0, 8, 36).end()
+                .part("Keys", 1).chord(0, 8, 60, 64, 67).chord(8, 8, 57, 60, 65)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("C", "F/A");
+    }
+
+    @Test
     @DisplayName("a meter change re-bars the decision grid from the bar it starts on")
     void meterChangesMoveTheGrid() {
         // Two bars of 4/4, then 6/8 -- three quarter beats to the bar and two
