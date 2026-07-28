@@ -259,6 +259,58 @@ class ChordChartTest {
                 .contains("F").contains("D").contains("E");
     }
 
+    /**
+     * A quantized progression over a tempo that halves half-way through.
+     *
+     * <p>One chord to the bar throughout, which is what a reader should see. In
+     * seconds those bars are 2, 2, 8 and 8 seconds long against an average bar
+     * of 5, so a grid built from a single averaged bar length can neither place
+     * them nor count them.
+     */
+    private static Score quantizedAcrossATempoChange() {
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120),
+                        new TempoMap.TempoSegment(8, 4, 30)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MAJOR,
+                ChordQuality.MINOR, ChordQuality.MAJOR};
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 4; bar++) {
+            double from = bar * 4.0;
+            double to = from + 4.0;
+            chords.add(Chord.ofSeconds(root(roots[bar]), qualities[bar],
+                            map.beatsToSeconds(from), map.beatsToSeconds(to), Confidence.of(0.9))
+                    .quantizedTo(from, to));
+        }
+        return Score.empty(map, map.beatsToSeconds(16))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    @Test
+    @DisplayName("bars a quantized chart by its beats, so a tempo change does not crush it")
+    void barsAQuantizedChartByItsBeats() {
+        Score score = quantizedAcrossATempoChange();
+        assertThat(score.chords().isQuantized()).isTrue();
+
+        // Four bars, one chord each. Placing them by seconds against a single
+        // averaged bar length put C and G in bar 1, left bar 2 empty and pushed
+        // Am into bar 3 -- a chart that cannot be played against the recording.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | G           | Am          | F           |");
+    }
+
+    @Test
+    @DisplayName("gives each chord of a quantized chart the bars it actually holds")
+    void quantizedLilyPondSpansTheRightBars() {
+        String source = ChordChart.toLilyPond(quantizedAcrossATempoChange());
+
+        // One whole note each. By duration in seconds the last two chords run to
+        // more than a bar and a half of the averaged bar and are each written
+        // twice, giving a six-bar score for four bars of music.
+        assertThat(source).contains("c1 g1 a1:m f1 ");
+    }
+
     @Test
     @DisplayName("prints a tempo the user can type back in, in any locale")
     void tempoLineIsLocaleIndependent() {

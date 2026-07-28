@@ -17,7 +17,9 @@
 package dev.olivelli.musicwizard.notation;
 
 import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,19 +90,54 @@ public final class ChordChart {
     }
 
     /**
-     * Groups chords into bars and bars into lines.
+     * Which bar each chord starts in, counted from the first chord's bar, and
+     * how many bars the chart runs to.
      *
-     * <p>A chord is placed in the bar its start time falls in. Where a bar holds
-     * several chords they are printed together, and where it holds none the
-     * previous chord is understood to continue, which is how a chart is normally
-     * read.
+     * <p>Taken from the beat axis whenever the progression carries one, and from
+     * seconds only when it does not. The two agree at a constant tempo and
+     * disagree everywhere else, because the seconds route divides by a
+     * <em>single</em> bar length derived from {@link Score#estimatedTempo()}: on
+     * a piece that changes tempo the grid drifts, and chords pile into one bar
+     * while later bars come out empty. A MIDI import states its rhythm exactly
+     * and has done since #115, so on that path the question has an answer and
+     * estimating it would be a step backwards.
+     *
+     * <p>Seconds remain the route for the audio path, whose chords are not
+     * quantized -- which is exactly what {@link ChordProgression#isQuantized()}
+     * is for.
+     *
+     * @param barOfChord bar index per chord, parallel to the progression
+     * @param barCount   bars in the chart, including those a chord holds through
      */
-    static List<String> barLines(Score score) {
+    private record BarGrid(int[] barOfChord, int barCount) {
+    }
+
+    /**
+     * Nudge back off a chord's end before asking which bar it lies in.
+     *
+     * <p>A chord ending exactly on a bar line ends at the first instant of the
+     * next bar, and does not occupy it. Small enough not to move a boundary that
+     * is genuinely inside a bar, since the shortest span anything here produces
+     * is a sixty-fourth of a quarter beat.
+     */
+    private static final double BAR_END_NUDGE = 1e-9;
+
+    private static BarGrid barGrid(Score score, double barDuration) {
         List<Chord> chords = score.chords().chords();
-        double barDuration = barDurationSeconds(score);
-        if (!(barDuration > 0)) {
-            return List.of(chords.stream().map(Chord::symbol)
-                    .reduce((a, b) -> a + " | " + b).orElse(""));
+        int[] barOfChord = new int[chords.size()];
+        int lastBar = 0;
+
+        if (score.chords().isQuantized()) {
+            TempoMap map = score.tempoMap();
+            int origin = map.toMusicalTime(chords.get(0).startBeat().orElseThrow()).bar();
+            for (int i = 0; i < chords.size(); i++) {
+                Chord chord = chords.get(i);
+                double startBeat = chord.startBeat().orElseThrow();
+                double lastBeat = Math.max(startBeat, chord.endBeat().orElseThrow() - BAR_END_NUDGE);
+                barOfChord[i] = map.toMusicalTime(startBeat).bar() - origin;
+                lastBar = Math.max(lastBar, map.toMusicalTime(lastBeat).bar() - origin);
+            }
+            return new BarGrid(barOfChord, Math.max(1, lastBar + 1));
         }
 
         double origin = firstBarStart(score);
@@ -108,18 +145,39 @@ public final class ChordChart {
         // trailing silence would otherwise print as empty bars, and sizing from
         // chord starts alone would drop the bars a sustained chord holds through.
         double lastEnd = chords.stream().mapToDouble(Chord::endSeconds).max().orElse(origin);
-        int barCount = Math.max(1,
-                (int) Math.round((lastEnd - origin) / barDuration));
-        List<List<String>> bars = new ArrayList<>();
-        for (int i = 0; i < barCount; i++) {
-            bars.add(new ArrayList<>());
-        }
-        for (Chord chord : chords) {
+        for (int i = 0; i < chords.size(); i++) {
             // Rounded, not floored: a chord detected a few milliseconds before
             // its downbeat belongs to the bar it starts, not the one before.
-            int bar = (int) Math.round((chord.startSeconds() - origin) / barDuration);
+            barOfChord[i] = (int) Math.round((chords.get(i).startSeconds() - origin) / barDuration);
+        }
+        return new BarGrid(barOfChord,
+                Math.max(1, (int) Math.round((lastEnd - origin) / barDuration)));
+    }
+
+    /**
+     * Groups chords into bars and bars into lines.
+     *
+     * <p>Where a bar holds several chords they are printed together, and where
+     * it holds none the previous chord is understood to continue, which is how a
+     * chart is normally read.
+     */
+    static List<String> barLines(Score score) {
+        List<Chord> chords = score.chords().chords();
+        double barDuration = barDurationSeconds(score);
+        if (!(barDuration > 0) && !score.chords().isQuantized()) {
+            return List.of(chords.stream().map(Chord::symbol)
+                    .reduce((a, b) -> a + " | " + b).orElse(""));
+        }
+
+        BarGrid grid = barGrid(score, barDuration);
+        List<List<String>> bars = new ArrayList<>();
+        for (int i = 0; i < grid.barCount(); i++) {
+            bars.add(new ArrayList<>());
+        }
+        for (int i = 0; i < chords.size(); i++) {
+            int bar = grid.barOfChord()[i];
             if (bar >= 0 && bar < bars.size()) {
-                bars.get(bar).add(chord.symbol());
+                bars.get(bar).add(chords.get(i).symbol());
             }
         }
 
@@ -207,10 +265,20 @@ public final class ChordChart {
         out.append("    \\chordmode {\n      ");
 
         double barDuration = barDurationSeconds(score);
-        for (Chord chord : score.chords().chords()) {
+        List<Chord> chords = score.chords().chords();
+        // From the beat axis where there is one, for the reason on barGrid: a
+        // tempo change otherwise gives one chord two bars and the next none, and
+        // this is the source LilyPond actually engraves.
+        BarGrid grid = chords.isEmpty() ? null : barGrid(score, barDuration);
+        for (int index = 0; index < chords.size(); index++) {
+            Chord chord = chords.get(index);
             // chordmode wants pitch, then duration, then modifier -- a1:m, not
             // a:m1, which LilyPond rejects.
-            int bars = Math.max(1, (int) Math.round(chord.durationSeconds() / barDuration));
+            int bars = score.chords().isQuantized()
+                    ? Math.max(1, (index + 1 < chords.size()
+                            ? grid.barOfChord()[index + 1] : grid.barCount())
+                            - grid.barOfChord()[index])
+                    : Math.max(1, (int) Math.round(chord.durationSeconds() / barDuration));
             for (int i = 0; i < bars; i++) {
                 if (chord.isNoChord()) {
                     out.append("r1 ");

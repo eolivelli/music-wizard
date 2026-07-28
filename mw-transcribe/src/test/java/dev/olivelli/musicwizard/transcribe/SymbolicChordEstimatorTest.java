@@ -278,8 +278,12 @@ class SymbolicChordEstimatorTest {
                 .tempo(120)
                 .timeSignature(4, 4)
                 .part("Bass", 0)
-                .note(0, 1, 36).note(1, 1, 40).note(2, 1, 43).note(3, 1, 40)
-                .note(4, 1, 36).note(5, 1, 40).note(6, 1, 43).note(7, 1, 40).end()
+                // Starting on the third, not the root: a walk that begins on the
+                // root agrees with it in the first span and would come back
+                // without a slash even if the rule that every span must agree
+                // were deleted.
+                .note(0, 1, 40).note(1, 1, 43).note(2, 1, 36).note(3, 1, 43)
+                .note(4, 1, 40).note(5, 1, 43).note(6, 1, 36).note(7, 1, 43).end()
                 .part("Keys", 1).chord(0, 4, 60, 64, 67).chord(4, 4, 60, 64, 67)
                 .build();
 
@@ -427,6 +431,151 @@ class SymbolicChordEstimatorTest {
         }
 
         assertThat(symbolsOf(builder.build())).containsExactly("C");
+    }
+
+    @Test
+    @DisplayName("a declared bass part is the bass even when it is not the lowest note")
+    void aDeclaredBassOutranksTheTexture() {
+        // The keys reach down to C2, below the bass part's E3. Reading the
+        // bottom of the texture calls this a root-position C; reading the part
+        // that says it is the bass calls it the inversion it is. This is the
+        // third of the three things the class javadoc claims a chroma cannot
+        // carry, and the only test that depends on it.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Bass", 0).note(0, 4, 52).note(4, 4, 52).end()
+                .part("Keys", 1).chord(0, 4, 36, 60, 64, 67).chord(4, 4, 36, 60, 64, 67)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("C/E");
+    }
+
+    @Test
+    @DisplayName("a meter change re-bars the decision grid from the bar it starts on")
+    void meterChangesMoveTheGrid() {
+        // Two bars of 4/4, then 6/8 -- three quarter beats to the bar and two
+        // counted beats of a dotted quarter. The chord changes at quarter beat
+        // 9.5, which is the second counted beat of the first 6/8 bar and lands
+        // on no boundary the opening meter has. Reading the meter once bars the
+        // whole piece in four, and puts this change at 10.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .timeSignatureAt(8, 6, 8)
+                .part("Keys", 0)
+                .chord(0, 8, 60, 64, 67)
+                .chord(8, 1.5, 62, 65, 69)
+                .chord(9.5, 4.5, 60, 64, 67)
+                .build();
+
+        Score score = TRANSCRIBER.transcribe(sequence);
+        assertThat(score.chords().chords()).extracting(
+                        Chord::symbol, c -> c.startBeat().orElseThrow())
+                .containsExactly(
+                        org.assertj.core.api.Assertions.tuple("C", 0.0),
+                        org.assertj.core.api.Assertions.tuple("Dm", 8.0),
+                        org.assertj.core.api.Assertions.tuple("C", 9.5));
+    }
+
+    @Test
+    @DisplayName("a piece ending mid-bar keeps its last chord rather than overrunning")
+    void aRaggedEndIsClippedToThePiece() {
+        // Six and a half beats of 4/4: the last bar is short. The final span has
+        // to be cut to the piece, or the last chord claims time the music does
+        // not occupy and the seconds axis runs past the score's own duration.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Keys", 0).chord(0, 4, 60, 64, 67).chord(4, 2.5, 62, 65, 69)
+                .build();
+
+        Score score = TRANSCRIBER.transcribe(sequence);
+        assertThat(score.chords().chords()).extracting(
+                        Chord::symbol, c -> c.endBeat().orElseThrow())
+                .containsExactly(
+                        org.assertj.core.api.Assertions.tuple("C", 4.0),
+                        org.assertj.core.api.Assertions.tuple("Dm", 6.5));
+        assertThat(score.chords().chords().getLast().endSeconds())
+                .isEqualTo(score.durationSeconds());
+    }
+
+    @Test
+    @DisplayName("two stretches that state nothing become one gap, not two")
+    void adjacentGapsAreOneGap() {
+        // Between two chords, two bars of two-note writing: a bare fifth, then a
+        // bare third a step away. Each is discarded for stating no chord, and
+        // they are different discards -- so without merging them the chart would
+        // print N.C. twice in a row and imply a boundary that is not there.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Keys", 0)
+                .chord(0, 4, 60, 64, 67)
+                .chord(4, 4, 62, 69)
+                .chord(8, 4, 64, 71)
+                .chord(12, 4, 55, 59, 62)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("C", "N.C.", "G");
+    }
+
+    @Test
+    @DisplayName("a chord before the first key signature is spelled by that signature")
+    void chordsBeforeTheFirstKeySignatureStillFollowIt() {
+        // A key signature declared part-way in is still the only statement the
+        // file makes about how to spell, so a chord before it follows the same
+        // one. Two flats is B flat major; A sharp would be arithmetically right
+        // and wrong on the page.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .keySignatureAt(8, -2, Mode.MAJOR)
+                .part("Keys", 0)
+                .chord(0, 4, 58, 62, 65).chord(4, 4, 58, 62, 65)
+                .chord(8, 4, 58, 62, 65).chord(12, 4, 58, 62, 65)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("Bb");
+    }
+
+    @Test
+    @DisplayName("confidence separates a chord nobody would argue about from one they would")
+    void confidenceReflectsTheMarginNotJustTheFit() {
+        Score plain = TRANSCRIBER.transcribe(MidiFixtures.fourChordSong());
+        List<Chord> chords = plain.chords().chords();
+        // The silent lead-in is read from the file rather than inferred, so it
+        // alone is allowed to be certain.
+        assertThat(chords.getFirst().isNoChord()).isTrue();
+        assertThat(chords.getFirst().confidence().value()).isEqualTo(1.0);
+        // Every chord label is an inference over a vocabulary that is missing
+        // qualities, so none of them may be.
+        assertThat(chords.stream().filter(c -> !c.isNoChord()))
+                .allSatisfy(c -> assertThat(c.confidence().value()).isBetween(0.85, 0.9));
+
+        // The same four pitch classes that #122 is about. Nothing separates C6
+        // from Am7 but the bass, and the number says so.
+        Chord ambiguous = TRANSCRIBER.transcribe(fourNotesOver(33)).chords().chords().getFirst();
+        assertThat(ambiguous.symbol()).isEqualTo("Am7");
+        assertThat(ambiguous.confidence().value()).isLessThan(0.4);
+    }
+
+    @Test
+    @DisplayName("one stray far-out event does not cost a song its harmony")
+    void aStrayFarOutEventDoesNotDiscardTheChords() {
+        // Eight beats of music and a tempo event a quarter of a million beats
+        // later, which is a real shape: a file's declared length is where its
+        // last event sits, sounding or not. Deciding a chord for every beat in
+        // between is refused, but refusing on the declared length rather than
+        // the sounding one would throw away harmony that is plainly there.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .tempoAt(250_000, 100)
+                .timeSignature(4, 4)
+                .part("Keys", 0).chord(0, 4, 60, 64, 67).chord(4, 4, 62, 65, 69)
+                .build();
+
+        assertThat(symbolsOf(sequence)).containsExactly("C", "Dm");
     }
 
     @Test

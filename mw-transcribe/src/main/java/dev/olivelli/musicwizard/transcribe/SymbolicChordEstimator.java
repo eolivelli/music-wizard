@@ -28,7 +28,6 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -94,21 +93,30 @@ import java.util.function.Consumer;
  */
 public final class SymbolicChordEstimator {
 
-    /** Relative importance of explaining the span's weight. */
-    private static final double COVERAGE_WEIGHT = 1.0;
-
     /**
-     * Relative importance of the chord's own notes actually sounding.
+     * What the chord's own notes actually sounding is worth, against explaining
+     * the span's weight at 1.
      *
      * <p>Coverage alone cannot tell C major from C minor over a span holding
      * only a C: both explain all of it. Completeness breaks that tie towards the
      * chord that has more of itself present, and is what keeps a lone pitch
      * class from scoring as highly as a stated triad.
+     *
+     * <p>One constant rather than two, because only the ratio does anything --
+     * {@link #FIT_SCALE} divides the pair back out. Two would look like two
+     * degrees of freedom and be one, and a mutation of the numerator would then
+     * be indistinguishable from a mutation of this.
+     *
+     * <p>What the tests pin is that the term is <em>there</em>: removing it
+     * changes an answer. They do not pin the size, and it is worth saying so --
+     * halving this to 0.25 leaves every fixture's chords identical. It is
+     * calibrated only against {@link #NO_CHORD_FIT}, which is stated in terms
+     * of it.
      */
     private static final double COMPLETENESS_WEIGHT = 0.5;
 
-    /** Sum of the two, so that a fit lands in 0..1 and the constants below read as fractions. */
-    private static final double FIT_SCALE = COVERAGE_WEIGHT + COMPLETENESS_WEIGHT;
+    /** So that a fit lands in 0..1 and the constants below read as fractions. */
+    private static final double FIT_SCALE = 1 + COMPLETENESS_WEIGHT;
 
     /**
      * Share of a span's weight a chord tone must carry to count as sounding.
@@ -172,6 +180,45 @@ public final class SymbolicChordEstimator {
      */
     private static final double ROOT_BASS_BONUS = 0.10;
 
+    /**
+     * The most confidence a chord label from this vocabulary can be given.
+     *
+     * <p>Not 1.0. {@link Confidence#CERTAIN} is documented as a value read
+     * directly from the file, and a template match is inferred from one. Nor is
+     * a perfect fit even a guarantee of the right <em>label</em>: C6 and Am7 are
+     * the same four pitch classes and only one of them is offered (#122), so a
+     * span can state its chord exactly and still be given the other name.
+     *
+     * <p>A "no chord" over silence is exempt, because that one <em>is</em> read
+     * from the file: nothing sounds, and nothing sounding is not an inference.
+     *
+     * <p>A judgement rather than a measurement, and deliberately the smaller half
+     * of the story: how far the winner beat the runner-up is measured, and lives
+     * in {@link #DECISIVE_MARGIN}. This one covers what a margin cannot see,
+     * which is a rival that was never offered.
+     */
+    private static final double VOCABULARY_CEILING = 0.9;
+
+    /**
+     * The margin over the runner-up at which a label stops being a guess.
+     *
+     * <p>Measured rather than chosen. Over the aggregate of a whole run:
+     *
+     * <pre>
+     *   stated C major triad, C bass  1.183 vs C7   at 0.917  margin 0.183
+     *   C-E-G-A over an A bass        1.000 vs Am   at 0.967  margin 0.033
+     *   C-E-G-A over a C bass         0.967 vs Am7  at 0.900  margin 0.067
+     *   stated Cm7                    1.000 vs Cm   at 0.933  margin 0.067
+     * </pre>
+     *
+     * <p>The first is a chord nobody would argue about and the second is the
+     * C6-versus-Am7 ambiguity of #122, so 0.15 puts the first at full confidence
+     * and the second at a fifth of it. The two seventh rows sit between, which is
+     * right: whether to write Cm or Cm7 for a sustained C-E flat-G-B flat is a
+     * question charts genuinely disagree on.
+     */
+    private static final double DECISIVE_MARGIN = 0.15;
+
     /** Share of the time a pitch class must be the bottom of the texture to be the bass. */
     private static final double BASS_DOMINANCE = 0.6;
 
@@ -233,11 +280,18 @@ public final class SymbolicChordEstimator {
      * weight as the triad inside it, so with no cost attached every major chord
      * would be reported as a major seventh.
      *
-     * <p>Sixths are absent on purpose. C6 and Am7 are the same four pitch
-     * classes and differ only in which one is the root, so offering both would
-     * put two states in permanent competition to be settled by the bass alone. A
-     * C6 therefore comes back as {@code Am7/C}, which is not wrong, only
-     * unidiomatic -- see #122.
+     * <p>Three of {@link ChordQuality}'s constants are absent. Sixths, because
+     * C6 and Am7 are the same four pitch classes and differ only in which one is
+     * the root, so offering both would put two states in permanent competition
+     * to be settled by the bass alone. What a C6 voicing actually comes back as
+     * therefore depends on its bass: over a C it is {@code C}, the sixth simply
+     * unnamed, and over an A it is {@code Am7} -- neither wrong, both
+     * unidiomatic. See #122.
+     *
+     * <p>The minor-major seventh for a different reason: it is rare enough that
+     * the passing major seventh over a minor triad -- a suspension, or a line
+     * descending from the octave -- is a likelier explanation of the same four
+     * pitch classes than the chord is. C-E flat-G-B comes back as {@code Cm}.
      */
     private static List<Template> buildTemplates() {
         // Prior per quality, in fit units. Zero for the two qualities a chart is
@@ -312,19 +366,32 @@ public final class SymbolicChordEstimator {
             return ChordProgression.empty();
         }
 
-        List<Span> spans = beatSpans(tempoMap, totalBeats);
+        // Decided over the sounding length rather than the declared one. They
+        // differ when a file's last event carries an enormous delta time, and an
+        // ordinary song with one stray far-out event would otherwise trip the
+        // cap below and lose the harmony it does have.
+        double soundingBeats = 0;
+        for (Voiced note : notes) {
+            soundingBeats = Math.max(soundingBeats, note.endBeat());
+        }
+        double decidedBeats = Math.min(totalBeats, soundingBeats);
+        if (!(decidedBeats > 0)) {
+            return ChordProgression.empty();
+        }
+
+        List<Span> spans = beatSpans(tempoMap, decidedBeats);
         if (spans.isEmpty()) {
             return ChordProgression.empty();
         }
         if (spans.size() > MAX_SPANS) {
             log.accept(String.format(Locale.ROOT,
-                    "this file spans %.0f beats, which is %d chord decisions and more than the"
-                            + " %d this will take on; leaving it without chords",
-                    totalBeats, spans.size(), MAX_SPANS));
+                    "this file sounds over %.0f beats, which is %d chord decisions and more than"
+                            + " the %d this will take on; leaving it without chords",
+                    decidedBeats, spans.size(), MAX_SPANS));
             return ChordProgression.empty();
         }
 
-        Histogram[] histograms = histograms(spans, notes);
+        Histogram[] histograms = histograms(spans, notes, BassLine.of(notes));
         int[] path = decode(spans, histograms);
         List<Run> runs = mergeRuns(path, histograms);
         return toProgression(runs, spans, histograms, tempoMap, keys);
@@ -431,11 +498,10 @@ public final class SymbolicChordEstimator {
      * a moving line is the case that makes the difference, and it is also the
      * case this whole class has to get right.
      */
-    private static Histogram[] histograms(List<Span> spans, List<Voiced> notes) {
+    private static Histogram[] histograms(List<Span> spans, List<Voiced> notes, BassLine bass) {
         Histogram[] out = new Histogram[spans.size()];
         PriorityQueue<Voiced> sounding =
                 new PriorityQueue<>(Comparator.comparingDouble(Voiced::endBeat));
-        List<Voiced> overlapping = new ArrayList<>();
         int next = 0;
 
         for (int s = 0; s < spans.size(); s++) {
@@ -449,7 +515,6 @@ public final class SymbolicChordEstimator {
 
             double[] weight = new double[12];
             double total = 0;
-            overlapping.clear();
             for (Voiced note : sounding) {
                 double overlap = Math.min(note.endBeat(), span.endBeat())
                         - Math.max(note.startBeat(), span.startBeat());
@@ -458,9 +523,8 @@ public final class SymbolicChordEstimator {
                 }
                 weight[Math.floorMod(note.midiPitch(), 12)] += overlap;
                 total += overlap;
-                overlapping.add(note);
             }
-            out[s] = new Histogram(weight, total, bassPitchClass(overlapping, span),
+            out[s] = new Histogram(weight, total, bass.pitchClassOver(span),
                     distinctTones(weight, total));
         }
         return out;
@@ -481,71 +545,156 @@ public final class SymbolicChordEstimator {
     }
 
     /**
-     * The pitch class at the bottom of the texture during a span, or -1 when
-     * there is no single one.
+     * The lowest sounding pitch across the whole piece, as a piecewise-constant
+     * function of position in quarter-note beats.
      *
-     * <p>A declared bass part wins outright over reading the texture, which is
-     * the whole point of knowing which track a note came from. Failing that the
-     * lowest sounding pitch is the bass, and it is integrated over the span
-     * instant by instant rather than approximated by a register window: a window
-     * has to be wide enough for a bass line that moves, which then swallows the
-     * third of a close left-hand voicing and leaves no pitch class dominant, so
-     * a first-inversion chord loses its slash. The sub-intervals are cut at
-     * every note edge, so the set of sounding notes -- and therefore the lowest
-     * of them -- is constant across each one.
+     * <p>Built once and integrated per span, rather than worked out inside each
+     * span. It is a property of the music, not of a decision window, and
+     * treating it as the latter cost more than tidiness: rebuilding it per span
+     * re-read every note still sounding, which is quadratic in the notes
+     * sounding at once and is not a shape {@link #MAX_SPANS} bounds -- that
+     * bounds spans. Measured on a 256,000-note file well inside
+     * {@code MidiTranscriber}'s four-megabyte import cap, the per-span form took
+     * 39.6 seconds and this one takes under a second.
      *
-     * <p>{@link #BASS_DOMINANCE} is what stops a walking bass from becoming an
-     * inversion: a span the line walks through reports no bass rather than
-     * whichever step it happened to start on.
+     * <p>Whether a declared {@link PartRole#BASS} part supplies the answer is
+     * decided once, for the same reason. A score either has a part that says it
+     * is the bass or it does not; switching definition bar by bar, depending on
+     * whether that part happened to be resting, would read the bottom of the
+     * texture in some bars and the bass line in others and call both the bass.
+     * Where a declared bass rests, there is no bass, which is the honest answer.
      */
-    private static int bassPitchClass(List<Voiced> overlapping, Span span) {
-        if (overlapping.isEmpty()) {
-            return -1;
-        }
-        boolean hasBassPart = overlapping.stream().anyMatch(Voiced::bassPart);
-        List<Voiced> candidates = hasBassPart
-                ? overlapping.stream().filter(Voiced::bassPart).toList()
-                : overlapping;
+    private static final class BassLine {
 
-        double[] edges = new double[candidates.size() * 2 + 2];
-        int count = 0;
-        edges[count++] = span.startBeat();
-        edges[count++] = span.endBeat();
-        for (Voiced note : candidates) {
-            edges[count++] = Math.clamp(note.startBeat(), span.startBeat(), span.endBeat());
-            edges[count++] = Math.clamp(note.endBeat(), span.startBeat(), span.endBeat());
-        }
-        Arrays.sort(edges, 0, count);
+        /** Nothing sounding. */
+        private static final int SILENT = -1;
 
-        double[] weight = new double[12];
-        double total = 0;
-        for (int i = 1; i < count; i++) {
-            double from = edges[i - 1];
-            double to = edges[i];
-            if (!(to > from)) {
-                continue;
-            }
-            int lowest = Integer.MAX_VALUE;
-            for (Voiced note : candidates) {
-                if (note.startBeat() <= from && note.endBeat() >= to) {
-                    lowest = Math.min(lowest, note.midiPitch());
+        /** Segment starts, ascending; the last runs to the end of the piece. */
+        private final double[] from;
+
+        /** The lowest pitch sounding in each segment, or {@link #SILENT}. */
+        private final int[] pitch;
+
+        private final int count;
+
+        /**
+         * Where the last query left off.
+         *
+         * <p>Spans are asked for in order, so a cursor makes the whole walk
+         * linear in segments plus spans. Safe because one of these belongs to a
+         * single {@code estimate} call and never escapes it.
+         */
+        private int cursor;
+
+        private BassLine(double[] from, int[] pitch, int count) {
+            this.from = from;
+            this.pitch = pitch;
+            this.count = count;
+        }
+
+        /**
+         * Sweeps the notes once, recording where the bottom of the texture moves.
+         *
+         * <p>The merge is between two already-ordered sequences -- the notes by
+         * onset, which is how they arrive, and the sounding ones by offset, which
+         * is what the queue keeps -- so nothing is sorted a second time.
+         */
+        static BassLine of(List<Voiced> notes) {
+            boolean hasBassPart = notes.stream().anyMatch(Voiced::bassPart);
+            List<Voiced> candidates = hasBassPart
+                    ? notes.stream().filter(Voiced::bassPart).toList()
+                    : notes;
+
+            double[] from = new double[2 * candidates.size() + 1];
+            int[] pitch = new int[from.length];
+            int count = 0;
+            PriorityQueue<Voiced> active =
+                    new PriorityQueue<>(Comparator.comparingDouble(Voiced::endBeat));
+            int[] sounding = new int[128];
+            int lowest = SILENT;
+            int next = 0;
+
+            while (next < candidates.size() || !active.isEmpty()) {
+                double at;
+                if (active.isEmpty()) {
+                    at = candidates.get(next).startBeat();
+                } else if (next < candidates.size()) {
+                    at = Math.min(candidates.get(next).startBeat(), active.peek().endBeat());
+                } else {
+                    at = active.peek().endBeat();
+                }
+                // Every event at this position is applied before the segment is
+                // recorded, so a note handed over exactly at an edge never shows
+                // as a momentary gap.
+                while (!active.isEmpty() && active.peek().endBeat() <= at) {
+                    int stopped = active.poll().midiPitch();
+                    if (--sounding[stopped] == 0 && stopped == lowest) {
+                        lowest = SILENT;
+                        for (int p = stopped + 1; p < sounding.length; p++) {
+                            if (sounding[p] > 0) {
+                                lowest = p;
+                                break;
+                            }
+                        }
+                    }
+                }
+                while (next < candidates.size() && candidates.get(next).startBeat() <= at) {
+                    Voiced started = candidates.get(next++);
+                    active.add(started);
+                    sounding[started.midiPitch()]++;
+                    if (lowest == SILENT || started.midiPitch() < lowest) {
+                        lowest = started.midiPitch();
+                    }
+                }
+                if (count == 0 || pitch[count - 1] != lowest) {
+                    from[count] = at;
+                    pitch[count] = lowest;
+                    count++;
                 }
             }
-            if (lowest != Integer.MAX_VALUE) {
-                weight[Math.floorMod(lowest, 12)] += to - from;
-                total += to - from;
+            return new BassLine(from, pitch, count);
+        }
+
+        /**
+         * The pitch class at the bottom of a span, or -1 when there is no single
+         * one.
+         *
+         * <p>{@link #BASS_DOMINANCE} is what stops a walking bass from becoming
+         * an inversion: a span the line walks through reports no bass rather
+         * than whichever step it happened to start on.
+         */
+        int pitchClassOver(Span span) {
+            while (cursor + 1 < count && from[cursor + 1] <= span.startBeat()) {
+                cursor++;
             }
-        }
-        if (total <= 0) {
-            return -1;
-        }
-        int best = 0;
-        for (int pc = 1; pc < 12; pc++) {
-            if (weight[pc] > weight[best]) {
-                best = pc;
+            double[] weight = new double[12];
+            double total = 0;
+            for (int i = cursor; i < count; i++) {
+                if (from[i] >= span.endBeat()) {
+                    break;
+                }
+                if (pitch[i] == SILENT) {
+                    continue;
+                }
+                double segmentEnd = i + 1 < count ? from[i + 1] : Double.POSITIVE_INFINITY;
+                double sounds = Math.min(segmentEnd, span.endBeat())
+                        - Math.max(from[i], span.startBeat());
+                if (sounds > 0) {
+                    weight[Math.floorMod(pitch[i], 12)] += sounds;
+                    total += sounds;
+                }
             }
+            if (total <= 0) {
+                return -1;
+            }
+            int best = 0;
+            for (int pc = 1; pc < 12; pc++) {
+                if (weight[pc] > weight[best]) {
+                    best = pc;
+                }
+            }
+            return weight[best] >= BASS_DOMINANCE * total ? best : -1;
         }
-        return weight[best] >= BASS_DOMINANCE * total ? best : -1;
     }
 
     // ------------------------------------------------------------- the decode
@@ -573,7 +722,7 @@ public final class SymbolicChordEstimator {
         }
         double coverage = covered / histogram.total();
         double completeness = present / (double) template.pitchClasses().length;
-        return (COVERAGE_WEIGHT * coverage + COMPLETENESS_WEIGHT * completeness) / FIT_SCALE;
+        return (coverage + COMPLETENESS_WEIGHT * completeness) / FIT_SCALE;
     }
 
     /** The score a state gets in a span, which is its fit less what it has to justify. */
@@ -748,13 +897,26 @@ public final class SymbolicChordEstimator {
                 continue;
             }
             Histogram aggregate = aggregate(histograms, run.fromSpan(), run.toSpan());
+            int bass = runBassPitchClass(histograms, run);
+            // How far the winner beat whatever came second, which is a different
+            // question from how well it fitted. A perfectly stated triad clears
+            // its nearest rival by 0.18 on the fixtures; the C6-versus-Am7
+            // ambiguity clears its own by 0.03.
+            double winner = run.state() == NO_CHORD_STATE
+                    ? NO_CHORD_FIT
+                    : scoreOver(TEMPLATES.get(run.state()), aggregate, bass);
+            double separation = Math.clamp(
+                    (winner - runnerUpScore(run.state(), aggregate, bass)) / DECISIVE_MARGIN, 0, 1);
+
             Chord chord;
             if (run.state() == NO_CHORD_STATE) {
                 // How sure we are that there is nothing here is how badly the
                 // best chord fitted: silence scores every chord at zero and is
                 // therefore certain, a passage that nearly stated a chord is not.
-                double confidence = 1 - bestFit(aggregate);
-                chord = Chord.noChord(startSeconds, endSeconds, Confidence.clamped(confidence))
+                // No ceiling, because silence is read from the file rather than
+                // inferred from it.
+                chord = Chord.noChord(startSeconds, endSeconds,
+                                Confidence.clamped((1 - bestFit(aggregate)) * separation))
                         .quantizedTo(startBeat, endBeat);
             } else {
                 anyChord = true;
@@ -762,9 +924,9 @@ public final class SymbolicChordEstimator {
                 boolean flats = spellWithFlats(keys, startSeconds);
                 chord = Chord.ofSeconds(spell(template.root(), flats), template.quality(),
                                 startSeconds, endSeconds,
-                                Confidence.clamped(fit(template, aggregate)))
+                                Confidence.clamped(VOCABULARY_CEILING
+                                        * fit(template, aggregate) * separation))
                         .quantizedTo(startBeat, endBeat);
-                int bass = runBassPitchClass(histograms, run);
                 if (bass >= 0 && bass != template.root() && isChordTone(template, bass)) {
                     chord = chord.withBass(spell(bass, flats));
                 }
@@ -780,6 +942,34 @@ public final class SymbolicChordEstimator {
         }
         return new ChordProgression(chords,
                 Confidence.clamped(chords.isEmpty() ? 0 : confidenceTotal / chords.size()));
+    }
+
+
+    /**
+     * A template's score over a whole run, which is {@link #emission} with the
+     * run's bass rather than a span's.
+     */
+    private static double scoreOver(Template template, Histogram aggregate, int bass) {
+        double score = fit(template, aggregate) - template.prior();
+        return aggregate.distinctTones() >= MIN_CHORD_TONES && bass == template.root()
+                ? score + ROOT_BASS_BONUS : score;
+    }
+
+    /**
+     * The best any state other than the winner manages over a run.
+     *
+     * <p>"No chord" counts as a rival to a chord, so a label that barely beats
+     * silence is reported as the guess it is. It has no rival of its own beyond
+     * the chords, which is why the seed differs.
+     */
+    private static double runnerUpScore(int winner, Histogram aggregate, int bass) {
+        double best = winner == NO_CHORD_STATE ? Double.NEGATIVE_INFINITY : NO_CHORD_FIT;
+        for (int state = 0; state < TEMPLATES.size(); state++) {
+            if (state != winner) {
+                best = Math.max(best, scoreOver(TEMPLATES.get(state), aggregate, bass));
+            }
+        }
+        return best;
     }
 
     /** The best fit any chord manages over an aggregate, used to score no-chord spans. */
