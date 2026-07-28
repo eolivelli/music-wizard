@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
@@ -206,6 +207,69 @@ class FirstDownbeatOverrideTest {
         // going negative or wrapping.
         assertThat(grid(600.0, TimeSignature.FOUR_FOUR).downbeatConfidence().value())
                 .isCloseTo(0.5 * exact.beatConfidence().value(), within(1e-9));
+    }
+
+    @Test
+    @DisplayName("measures ambiguity against the nearer rival, not against the tempo")
+    void snapConfidenceBoundsAmbiguityInBothDirections() {
+        // Driven directly, because a recording cannot be made to hold a grid with
+        // one gap twice the median and another well under it -- and a fixture
+        // whose intervals differ only by hop rounding would let either scale pass.
+        //
+        // 0.5s pulses with beat 4 dropped (a 1.0s gap) and beats 8-9 crowded
+        // (a 0.2s gap): a grid that has both faults a real tracker has one of.
+        List<Double> ragged = List.of(
+                0.0, 0.5, 1.0, 1.5, /* 2.0 dropped */ 2.5, 3.0, 3.5, 4.0, 4.2, 4.7);
+
+        // Landing on a pulse is the user's instruction whatever the neighbours do.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 1.5))
+                .isEqualTo(Confidence.CERTAIN);
+
+        // In the dropped-beat gap: half a beat out is most likely a request for a
+        // beat the grid does not contain, so the phase is probably off by one.
+        // Scaling by the 1.0s rival gap would call this a third of the way to
+        // ambiguity and report 0.83.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 2.0).value())
+                .isCloseTo(0.5, within(1e-9));
+
+        // In the crowded gap: equidistant from beats 7 and 8 is a genuine coin
+        // flip, whatever the median says. Scaling by the 0.5s median would report
+        // 0.8 for a phase chosen by a tie-break.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.1).value())
+                .isCloseTo(0.5, within(1e-9));
+        // And a quarter of the way across that short gap is a quarter of the way
+        // to ambiguity, not a twentieth.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.05).value())
+                .isCloseTo(0.75, within(1e-9));
+
+        // Outside the tracked range there is no rival on that side at all, so the
+        // median stands in and the answer is the floor rather than certainty.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0).value())
+                .isCloseTo(0.5, within(1e-9));
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 0, 0.0))
+                .isEqualTo(Confidence.CERTAIN);
+
+        // One pulse: no interval, and no other pulse they could have meant.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(List.of(3.0), 0, 90.0))
+                .isEqualTo(Confidence.CERTAIN);
+    }
+
+    @Test
+    @DisplayName("does not rank a phase that cannot be wrong below one that can")
+    void oneBeatToTheBarIsAlwaysCertain() {
+        // At one beat to the bar every beat begins a bar, so there is no phase to
+        // choose and no snap can have chosen it wrongly. DownbeatEstimator answers
+        // this meter with CERTAIN before looking at anything; a forced phase that
+        // reported less would invert the one ordering these numbers guarantee --
+        // and would halve the saved confidence for a byte-identical grid.
+        TimeSignature oneFour = new TimeSignature(1, 4);
+        BeatGrid estimated = grid(null, oneFour);
+        List<Double> pulses = estimated.beatTimes();
+        BeatGrid forced = grid((pulses.get(2) + pulses.get(3)) / 2, oneFour);
+
+        assertThat(forced.beats()).allSatisfy(beat -> assertThat(beat.downbeat()).isTrue());
+        assertThat(forced.downbeatConfidence()).isEqualTo(estimated.downbeatConfidence());
+        assertThat(forced.downbeatConfidence()).isEqualTo(forced.beatConfidence());
     }
 
     @Test

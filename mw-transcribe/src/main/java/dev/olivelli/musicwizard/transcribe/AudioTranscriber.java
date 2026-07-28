@@ -359,18 +359,43 @@ public final class AudioTranscriber {
         }
         return new DownbeatEstimator.Estimate(
                 Math.floorMod(index, beatsPerBar), beatsPerBar,
-                snappedPhaseConfidence(beatTimes, distance));
+                beatsPerBar == 1
+                        // Every beat begins a bar, so phase 0 is the only phase
+                        // there is and no snap can have chosen the wrong one.
+                        // DownbeatEstimator answers this meter with CERTAIN
+                        // before gathering any evidence, and a forced phase that
+                        // reported less would put a claim that cannot be wrong
+                        // below one that can -- which is the one thing these
+                        // numbers are supposed to guarantee.
+                        ? Confidence.CERTAIN
+                        : snappedPhaseConfidence(beatTimes, index, downbeatSeconds));
     }
 
     /**
      * How far to trust a phase the user chose but the grid had to move.
      *
-     * <p>Measured against half a pulse, which is the furthest a snap can ever
-     * travel while still landing on the nearer of two neighbours: at zero the
-     * user named a tracked pulse and the phase is theirs, at half a pulse the two
-     * neighbours are equally close and which one comes out is arithmetic rather
-     * than instruction. Linear between, since there is no reason to think the
+     * <p>Measured against half the distance to the pulse the request would have
+     * snapped to instead: at zero the user named a tracked pulse and the phase is
+     * theirs, at the midpoint between two pulses the two are equally close and
+     * which one comes out is {@link #nearestBeatIndex}'s tie-break rather than an
+     * instruction. Linear between, since there is no reason to think the
      * confidence falls any particular other way.
+     *
+     * <p>The scale is the <em>smaller</em> of that rival gap and the median
+     * interval, and it needs both. Taking the local gap alone over-reports where
+     * the tracker dropped a beat: the rival pulse is then two beats away, so a
+     * snap of a whole beat looks like a third of the way to ambiguity, when in
+     * truth the user was probably pointing at a beat that is not in the grid at
+     * all and the phase is off by one. Taking the median alone over-reports the
+     * mirror case, a passage that speeds up: where the local gap is 70% of the
+     * median, a request exactly equidistant from two pulses -- a coin flip --
+     * scored 0.65. Neither scale bounds the ambiguity on its own; the minimum
+     * bounds it in both directions.
+     *
+     * <p>Where the request falls past the last pulse or before the first there is
+     * no rival on that side, and the median stands in: a time outside the tracked
+     * range is not a phase the grid can express, and the floor is the right
+     * answer for it.
      *
      * <p>The floor is deliberately above what an unsupported phase scores in
      * {@link DownbeatEstimator} and above its onsets-only ceiling, and below what
@@ -378,18 +403,28 @@ public final class AudioTranscriber {
      * still says more than a guess; it should not outrank evidence that actually
      * lines up with the pulses it is phasing.
      *
-     * <p>The median interval is the scale, not the interval either side of the
-     * chosen pulse: a request can land in a gap where the tracker dropped a beat,
-     * and normalising by that gap would call a snap of a whole beat a small one.
-     * With fewer than two pulses there is no interval and no alternative pulse to
-     * have meant, so the one that exists is the one the user named.
+     * <p>With fewer than two pulses there is no interval and no alternative pulse
+     * to have meant, so the one that exists is the one the user named.
+     *
+     * <p>Package-private so the grids that make the two scales disagree can be
+     * driven directly rather than approximated with a fixture.
      */
-    private static Confidence snappedPhaseConfidence(List<Double> beatTimes, double distance) {
+    static Confidence snappedPhaseConfidence(
+            List<Double> beatTimes, int index, double downbeatSeconds) {
         if (beatTimes.size() < 2) {
             return Confidence.CERTAIN;
         }
-        double halfPulse = medianInterval(beatTimes) / 2;
-        double missed = halfPulse > 0 ? Math.clamp(distance / halfPulse, 0, 1) : 1;
+        double chosen = beatTimes.get(index);
+        // The pulse the snap would have picked had the request fallen a little
+        // further the same way -- which is the one it is being confused with.
+        int rival = downbeatSeconds >= chosen ? index + 1 : index - 1;
+        double rivalGap = rival >= 0 && rival < beatTimes.size()
+                ? Math.abs(beatTimes.get(rival) - chosen)
+                : Double.POSITIVE_INFINITY;
+        double halfPulse = Math.min(medianInterval(beatTimes), rivalGap) / 2;
+        double missed = halfPulse > 0
+                ? Math.clamp(Math.abs(chosen - downbeatSeconds) / halfPulse, 0, 1)
+                : 1;
         return Confidence.clamped(1.0 - (1.0 - SNAPPED_PHASE_FLOOR) * missed);
     }
 
