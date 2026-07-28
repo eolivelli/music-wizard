@@ -117,20 +117,20 @@ public enum GridResolution {
      * independently of whether they are tuplets. A triplet eighth and a plain
      * eighth are both depth 1 and are separated by the tuplet surcharge instead.
      *
-     * <p>Compound time counts down its own ladder -- dotted quarter, eighth,
-     * sixteenth -- so {@link #THIRD_BEAT} is depth 1 there rather than the
-     * depth 1 tuplet it is in simple time.
+     * <p>The meter is taken and checked but does not change the answer, and it
+     * is worth saying why rather than dropping the parameter, because the
+     * arithmetic that makes it so is not obvious and would stop being true if
+     * the set of resolutions grew. Compound time counts down its own ladder --
+     * dotted quarter, eighth, sixteenth -- and every rung of it happens to carry
+     * the same number of beams as the rung reached by the same number of
+     * divisions in simple time. A third of a 6/8 beat is a plain eighth, one
+     * beam, exactly as half of a 4/4 beat is; half of a 6/8 beat is a
+     * <em>dotted</em> eighth, still one beam. What differs between the meters is
+     * which of those is a tuplet, and that is {@link #isTupletIn} rather than
+     * this.
      */
     public int depthIn(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
-        if (timeSignature.isCompound()) {
-            return switch (this) {
-                case BEAT -> 0;
-                case THIRD_BEAT, HALF_BEAT -> 1;
-                case SIXTH_BEAT, QUARTER_BEAT -> 2;
-                case EIGHTH_BEAT -> 3;
-            };
-        }
         return switch (this) {
             case BEAT -> 0;
             case HALF_BEAT, THIRD_BEAT -> 1;

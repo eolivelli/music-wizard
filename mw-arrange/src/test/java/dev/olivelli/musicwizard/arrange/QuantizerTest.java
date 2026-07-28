@@ -205,6 +205,64 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("a note is released on its own bar's grid, not on the one it started in")
+        void theOffsetIsSnappedWhereItLands() {
+            // Bar 0 is triplets, bar 1 is sixteenths, and a note tied across the
+            // bar line has to end where bar 1's reader expects a note to end.
+            // Snapping it on bar 0's grid instead prints a triplet-length tail
+            // in a bar that holds no triplets.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 35);
+            performance.section(0, 4).section(4, 8);
+            for (int i = 0; i < 12; i++) {
+                performance.note(60, i / 3.0, 1 / 3.0);
+            }
+            for (int i = 0; i < 16; i++) {
+                performance.note(60, 4.0 + i * 0.25, 0.25);
+            }
+            // Held from the last triplet of bar 0 to three sixteenths into bar 1.
+            performance.exact(72, 11 / 3.0, 4.75 - 11 / 3.0);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+            assertThat(quantized.gridAtBar(0).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.THIRD_BEAT);
+            assertThat(quantized.gridAtBar(1).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.QUARTER_BEAT);
+
+            Note tied = quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 72)
+                    .findFirst().orElseThrow();
+            double end = tied.onsetBeat().orElseThrow() + tied.durationBeats().orElseThrow();
+            assertThat(end).isCloseTo(4.75, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("a duration on a tuplet grid is one number, not five that nearly agree")
+        void durationsAreCanonical() {
+            // Positions on a triplet grid are not representable, so subtracting
+            // two of them lands a few ulps out and drifts with the bar. The
+            // notation layer has to match a duration against a note value, and
+            // "one third, nearly" is not a note value.
+            Performance performance = new Performance(fourFour(), 36);
+            performance.run(60, 1 / 3.0, Performance.evenly(4, 4.0, 12));
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+            double step = quantized.gridAtBar(0).orElseThrow().stepQuarters();
+
+            List<Double> durations = quantized.score().tracks().get(0).notes().stream()
+                    .map(n -> n.durationBeats().orElseThrow())
+                    .distinct()
+                    .toList();
+
+            // Every duration is bit-identical to a whole number of steps, so a
+            // one-third note is one double and not four that nearly agree.
+            assertThat(durations).allSatisfy(d ->
+                    assertThat(d).isEqualTo(Math.rint(d / step) * step));
+            assertThat(durations).allSatisfy(d -> assertThat(d).isGreaterThanOrEqualTo(step));
+            assertThat(durations).contains(step);
+        }
+
+        @Test
         @DisplayName("a note played a hair early against a bar line lands on the bar line")
         void anEarlyDownbeatIsNotPulledBackIntoThePreviousBar() {
             TempoMap tempoMap = fourFour();
@@ -330,20 +388,80 @@ class QuantizerTest {
         }
 
         @Test
-        @DisplayName("a silent bar inherits its neighbours' grid rather than resetting the section")
-        void silentBarsDoNotResetTheSection() {
+        @DisplayName("a sparse bar keeps the section's grid rather than falling back to the beat")
+        void aSparseBarInheritsRatherThanResets() {
+            // Bar 2 holds one note. On its own that is a whole bar's rest and a
+            // note, which every grid fits equally, so the cheapest reading is
+            // the beat -- and printing one bar of a passage of eighths in a
+            // different subdivision is exactly what the prior exists to stop.
             Performance performance = new Performance(fourFour(), 31);
-            performance.run(60, 0.5, Performance.evenly(1, 4.0, 8));
-            double[] later = Performance.evenly(1, 4.0, 8);
-            for (int i = 0; i < later.length; i++) {
-                later[i] += 8.0;
+            for (int bar = 0; bar < 5; bar++) {
+                if (bar == 2) {
+                    performance.note(60, bar * 4.0 + 1.5, 0.5);
+                    continue;
+                }
+                for (int i = 0; i < 8; i++) {
+                    performance.note(60, bar * 4.0 + i * 0.5, 0.5);
+                }
             }
-            performance.run(60, 0.5, later);
 
             QuantizedScore quantized = Quantizer.quantize(performance.score());
 
-            assertThat(quantized.grids())
-                    .allSatisfy(g -> assertThat(g.resolution()).isEqualTo(GridResolution.HALF_BEAT));
+            assertThat(quantized.gridAtBar(2).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.HALF_BEAT);
+            assertThat(quantized.score().tracks().get(0).notes())
+                    .anySatisfy(n -> assertThat(n.onsetBeat()).contains(9.5));
+        }
+
+        @Test
+        @DisplayName("a section boundary is where the grid may change, and the only place it may")
+        void theGridChangesFreelyAtASectionBoundary() {
+            // The change penalty is set far above anything the evidence can pay,
+            // so the only route from one subdivision to another is the waiver at
+            // a section start. Four bars of eighths then four of triplets, with
+            // and without the boundary declared.
+            QuantizationSettings immovable =
+                    QuantizationSettings.DEFAULT.withGridChangePenalty(1000);
+
+            QuantizedScore withBoundary = Quantizer.quantize(
+                    twoHalves(true).score(), immovable);
+            QuantizedScore withoutBoundary = Quantizer.quantize(
+                    twoHalves(false).score(), immovable);
+
+            assertThat(withBoundary.gridAtBar(0).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.HALF_BEAT);
+            assertThat(withBoundary.gridAtBar(4).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.THIRD_BEAT);
+            assertThat(withoutBoundary.grids().stream().map(BarGrid::resolution).distinct())
+                    .hasSize(1);
+        }
+
+        private Performance twoHalves(boolean declareSections) {
+            Performance performance = new Performance(fourFour(), 33);
+            if (declareSections) {
+                performance.section(0, 16).section(16, 32);
+            }
+            for (int bar = 0; bar < 4; bar++) {
+                for (int i = 0; i < 8; i++) {
+                    performance.note(60, bar * 4.0 + i * 0.5, 0.5);
+                }
+            }
+            for (int bar = 4; bar < 8; bar++) {
+                for (int i = 0; i < 12; i++) {
+                    performance.note(60, bar * 4.0 + i / 3.0, 1 / 3.0);
+                }
+            }
+            return performance;
+        }
+
+        @Test
+        @DisplayName("a section declared past the end of the music is ignored, not an index error")
+        void aSectionBeyondTheMusicIsHarmless() {
+            Performance performance = new Performance(fourFour(), 34);
+            performance.run(60, 1.0, 0, 1, 2, 3);
+            performance.section(0, 4).section(400, 440);
+
+            assertThat(Quantizer.quantize(performance.score()).grids()).hasSize(1);
         }
 
         @Test

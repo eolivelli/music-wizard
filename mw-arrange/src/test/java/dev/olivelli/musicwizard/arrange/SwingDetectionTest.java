@@ -126,6 +126,74 @@ class SwingDetectionTest {
         }
 
         @Test
+        @DisplayName("compound time is never asked, because a shuffle is compound time already")
+        void compoundMetersAreNotLookedAt() {
+            // The commonest rhythm in 6/8 -- a quarter and an eighth to the
+            // dotted-quarter beat -- puts its off-beat at exactly two thirds,
+            // which is the shuffle signature, with a tighter cluster than any
+            // human shuffle. Measured against a straight-time expectation it
+            // reads as a 66% swing, and the bar then comes out as duplets under
+            // a swing direction. Both are wrong; the meter already says it.
+            TempoMap tempoMap = TempoMap.constantPulse(80, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(tempoMap, 20);
+            for (int beat = 0; beat < BARS * 2; beat++) {
+                performance.note(60, beat * 1.5, 1.0);
+                performance.note(60, beat * 1.5 + 1.0, 0.5);
+            }
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.swing()).isEqualTo(SwingFeel.STRAIGHT);
+            assertThat(quantized.grids()).allSatisfy(g -> {
+                assertThat(g.resolution()).isEqualTo(GridResolution.THIRD_BEAT);
+                assertThat(g.tuplet()).isEmpty();
+            });
+        }
+
+        @Test
+        @DisplayName("a shuffle too hard to straighten is refused rather than clamped")
+        void anUnrepresentableRatioIsNotDeclaredASwing() {
+            // The off-beat window reaches further than the correction map can
+            // represent, so that a late cluster can be seen and measured at all.
+            // Reporting one as a hard swing while leaving the notes where they
+            // fell would engrave an already-shuffled figure under a shuffle
+            // direction, and a reader who obeyed it would swing it twice.
+            for (double phase : new double[] {0.82, 0.85, 0.875}) {
+                assertThat(Quantizer.quantize(pairs(phase, 4)).swing())
+                        .describedAs("off-beat at %s", phase)
+                        .isEqualTo(SwingFeel.STRAIGHT);
+            }
+        }
+
+        @Test
+        @DisplayName("a dotted eighth and sixteenth is read as a hard shuffle, and written straight")
+        void threeToOneIsReadAsAHardShuffle() {
+            // Pinned rather than endorsed. 3:1 is a notatable figure that the
+            // sixteenth grid could have printed exactly, and it comes out as
+            // straight eighths under a hard-swing direction instead. For a lead
+            // sheet that is the conventional reading -- a hard shuffle is
+            // routinely written either way -- but it is a real choice and it is
+            // not the literal one.
+            QuantizedScore quantized = Quantizer.quantize(pairs(0.75, 5));
+
+            assertThat(quantized.swing().swung()).isTrue();
+            assertThat(quantized.swing().displayName()).isEqualTo("hard swing");
+            assertThat(quantized.grids())
+                    .allSatisfy(g -> assertThat(g.resolution()).isEqualTo(GridResolution.HALF_BEAT));
+        }
+
+        @Test
+        @DisplayName("confidence falls off towards the threshold, not just with spread")
+        void confidenceReflectsHowShuffleLikeTheMaterialIs() {
+            SwingFeel marginal = Quantizer.quantize(pairs(0.59, 10)).swing();
+            SwingFeel unequivocal = Quantizer.quantize(pairs(2.0 / 3, 10)).swing();
+
+            assertThat(marginal.swung()).isTrue();
+            assertThat(unequivocal.swung()).isTrue();
+            assertThat(marginal.confidence().value())
+                    .isLessThan(unequivocal.confidence().value() / 2);
+        }
+
+        @Test
         @DisplayName("detection can be turned off, and then the shuffle is taken literally")
         void detectionCanBeDisabled() {
             QuantizedScore literal = Quantizer.quantize(pairs(SHUFFLE, 7),
@@ -152,6 +220,33 @@ class SwingDetectionTest {
                     .allSatisfy(g -> assertThat(g.resolution()).isEqualTo(GridResolution.HALF_BEAT));
             assertThat(offBeatOnsets(quantized))
                     .allSatisfy(b -> assertThat(b % 1.0).isCloseTo(0.5, within(1e-9)));
+        }
+
+        @Test
+        @DisplayName("a swung note's written length is straight too, not just its onset")
+        void offsetsAreDeswungAsWellAsOnsets() {
+            // A hard shuffle, played legato: each long note runs almost to the
+            // short one that follows it. Straightened, both are eighths.
+            // De-swinging only the onset leaves the long note ending at a
+            // written 0.8 of the beat, which rounds to a whole beat -- a quarter
+            // note where an eighth belongs, overlapping the note after it, and
+            // then lengthened again by any reader who obeys the swing direction.
+            //
+            // Deliberately played to the tick rather than jittered: what is
+            // under test is the transform applied to the offset, and the
+            // detector that feeds it is exercised by the jittered fixtures above.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR);
+            Performance performance = new Performance(tempoMap, 11);
+            for (int beat = 0; beat < BARS * 4; beat++) {
+                performance.exact(60, beat, 0.72);
+                performance.exact(60, beat + 0.75, 0.20);
+            }
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            assertThat(quantized.swing().ratio()).isCloseTo(0.75, within(1e-9));
+            assertThat(quantized.score().tracks().get(0).notes())
+                    .allSatisfy(n -> assertThat(n.durationBeats()).contains(0.5));
         }
 
         @Test

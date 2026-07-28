@@ -64,6 +64,14 @@ public record QuantizationSettings(
      * wins. That smallest margin is sixteenth-note triplets, at 0.011 beats per
      * note -- they are the hardest thing here to tell from plain sixteenths, and
      * they stay the first thing to break if these numbers move.
+     *
+     * <p>Fitted <em>at 120 BPM</em>, and that qualifier is load-bearing.
+     * Deviation is in beats while a player's spread is fixed in seconds, so the
+     * effective spread grows with the tempo and nothing here knows the tempo.
+     * Measured recovery is exact up to 120 and falls off above it, reaching
+     * about 40% for sixteenths at 200 BPM; the sweep and the numbers are in
+     * {@code QuantizerCalibrationTest}. Scaling these constants with the tempo
+     * was tried and makes it worse rather than better.
      */
     public static final QuantizationSettings DEFAULT =
             new QuantizationSettings(0.035, 0.015, 0.25, 0.9, true);

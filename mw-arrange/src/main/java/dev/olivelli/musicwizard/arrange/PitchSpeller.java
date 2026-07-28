@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.arrange;
 
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Mode;
@@ -111,6 +112,20 @@ public final class PitchSpeller {
      */
     private static final int MIN_FIFTHS = -15;
     private static final int MAX_FIFTHS = 19;
+
+    /**
+     * Octaves a spelling may be placed in: the band
+     * {@link PitchSpelling#parse} accepts.
+     *
+     * <p>Needed because an enharmonic can cross an octave boundary. In a key
+     * with five sharps, MIDI 0 is nearer B sharp than C on the line of fifths,
+     * and B sharp sounding as MIDI 0 sits in octave -2 -- a legal record that
+     * {@code parse} refuses, so it would not survive a config value, a CLI
+     * argument or an advisor's reply. A candidate that lands outside the band is
+     * passed over for the enharmonic that does not.
+     */
+    private static final int MIN_OCTAVE = -1;
+    private static final int MAX_OCTAVE = 9;
 
     private PitchSpeller() {
     }
@@ -225,9 +240,13 @@ public final class PitchSpeller {
             NoteLetter letter = NoteLetter.ofDiatonicStep(root.letter().diatonicStep() + steps[i]);
             int alteration = alterationFor(letter, pitchClass);
             if (alteration < -2 || alteration > 2) {
-                // A chord like D sharp diminished seventh wants a triple flat on
-                // one tone. Nothing can print that, so fall through to the line
-                // of fifths rather than emit an impossible accidental.
+                // A chord like F double flat diminished seventh wants a triple
+                // flat on one tone. Nothing can print that, so fall through to
+                // the line of fifths rather than emit an impossible accidental.
+                return Optional.empty();
+            }
+            int octave = octaveFor(letter, alteration, midiPitch);
+            if (octave < MIN_OCTAVE || octave > MAX_OCTAVE) {
                 return Optional.empty();
             }
             return Optional.of(atOctave(letter, Accidental.ofAlteration(alteration), midiPitch));
@@ -314,6 +333,9 @@ public final class PitchSpeller {
             if (Math.floorMod(fifths * 7, 12) != pitchClass) {
                 continue;
             }
+            if (!fitsInAWritableOctave(fifths, midiPitch)) {
+                continue;
+            }
             double distance = Math.abs(fifths - centre);
             int accidentals = Math.abs(Math.floorDiv(fifths + 1, 7));
             // Scanned flat to sharp and compared strictly, so an exact tie on
@@ -333,6 +355,14 @@ public final class PitchSpeller {
         int alteration = Math.floorDiv(best + 1, 7);
         NoteLetter letter = letterOfFifths(best - 7 * alteration);
         return atOctave(letter, Accidental.ofAlteration(alteration), midiPitch);
+    }
+
+    /** True when this spelling of the pitch lands in a writable octave. */
+    private static boolean fitsInAWritableOctave(int fifths, int midiPitch) {
+        int alteration = Math.floorDiv(fifths + 1, 7);
+        NoteLetter letter = letterOfFifths(fifths - 7 * alteration);
+        int octave = octaveFor(letter, alteration, midiPitch);
+        return octave >= MIN_OCTAVE && octave <= MAX_OCTAVE;
     }
 
     /** Position of a written pitch on the line of fifths, C being zero. */
@@ -366,9 +396,12 @@ public final class PitchSpeller {
      * as: C flat 4 sounds as MIDI 59, which is B 3.
      */
     private static PitchSpelling atOctave(NoteLetter letter, Accidental accidental, int midiPitch) {
-        int octave = Math.floorDiv(
-                midiPitch - 12 - letter.naturalPitchClass() - accidental.alteration(), 12);
-        return new PitchSpelling(letter, accidental, octave);
+        return new PitchSpelling(letter, accidental,
+                octaveFor(letter, accidental.alteration(), midiPitch));
+    }
+
+    private static int octaveFor(NoteLetter letter, int alteration, int midiPitch) {
+        return Math.floorDiv(midiPitch - 12 - letter.naturalPitchClass() - alteration, 12);
     }
 
     // ---------------------------------------------------------------- lookups
@@ -381,7 +414,13 @@ public final class PitchSpeller {
      * grid works in seconds, and it matters here specifically: the accidental
      * printed on a note and the chord symbol printed above it have to agree, and
      * they only reliably do if both were placed by the same axis the engraver
-     * reads.
+     * reads. A note rushed against a chord change is spelled from the chord it
+     * was played under rather than the one it will be printed under.
+     *
+     * <p>The beat branch does not fire in the pipeline as it stands, because
+     * nothing quantizes a {@link ChordProgression} yet -- that is #103. Until it
+     * does, the guarantee above is the seconds one, which is weaker by exactly
+     * that rounding.
      */
     private static Optional<Chord> chordUnder(Score score, Note note) {
         if (note.isQuantized() && score.chords().isQuantized() && !score.chords().isEmpty()) {

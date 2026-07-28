@@ -161,22 +161,21 @@ public final class Quantizer {
             TimeSignature meter = bars.meterOf(bar);
             for (int g = 0; g < candidates.length; g++) {
                 double step = candidates[g].stepQuarters(meter);
-                double snapped = snapWithin(beatInBar, step, meter);
-                // A note played a hair early against a bar line is printed on
-                // that bar line, which belongs to the next bar, so it votes
-                // there. Attributing it by where it sounded instead leaves the
-                // bar it prints in with no vote and the bar before it with one
-                // it never shows.
-                int votingBar = snapped >= meter.quarterBeatsPerBar() && bar + 1 < cost.length
-                        ? bar + 1
-                        : bar;
-                cost[votingBar][g] += Math.abs(beatInBar - snapped)
+                cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
                         + complexity(candidates[g], meter, settings);
             }
         }
         // A bar with no onsets accumulates nothing at all, so it costs zero on
         // every grid and inherits its neighbours' rather than voting for whole
         // notes and charging the section two grid changes to get back around it.
+        //
+        // A note played a hair early against a bar line votes in the bar it
+        // sounded in, not the one it will be printed in. That is deliberately
+        // left alone: the bar line is a grid position on every candidate, so
+        // such a note deviates by the same amount whichever grid is asked, and
+        // all it carries into the tally is one note's complexity -- the same
+        // vector of costs it would have carried into the next bar. Where it is
+        // published, which is what a reader sees, is decided after snapping.
 
         return decode(cost, candidates, sectionStarts(score, bars), settings.gridChangePenalty());
     }
@@ -297,21 +296,66 @@ public final class Quantizer {
         int onsetBar = bars.barOf(writtenOnset);
         TimeSignature onsetMeter = bars.meterOf(onsetBar);
         double onsetStep = perBar[onsetBar].stepQuarters(onsetMeter);
-        double onsetBeat = bars.startBeat(onsetBar)
-                + snapWithin(bars.beatInBar(writtenOnset, onsetBar), onsetStep, onsetMeter);
+        double onsetSteps = stepsWithin(bars.beatInBar(writtenOnset, onsetBar), onsetStep, onsetMeter);
+        double onsetBeat = bars.startBeat(onsetBar) + onsetSteps * onsetStep;
 
         double writtenOffset = bars.writtenOffsetBeat(note, swing, settings.articulationRatio());
         int offsetBar = bars.barOf(writtenOffset);
         TimeSignature offsetMeter = bars.meterOf(offsetBar);
         double offsetStep = perBar[offsetBar].stepQuarters(offsetMeter);
-        double offsetBeat = bars.startBeat(offsetBar)
-                + snapWithin(bars.beatInBar(writtenOffset, offsetBar), offsetStep, offsetMeter);
+        double offsetSteps =
+                stepsWithin(bars.beatInBar(writtenOffset, offsetBar), offsetStep, offsetMeter);
+
+        // Counted in whole grid steps and multiplied once, rather than
+        // subtracting two snapped positions. On a triplet grid the step is not
+        // representable, so the difference of two positions built from it lands
+        // a few ulps off and one third comes out as several distinct doubles
+        // depending on which bar the note fell in. The notation layer has to
+        // match a duration against a note value, and "one third, nearly" is not
+        // a note value.
+        //
+        // Only available while every bar the note crosses is divided the same
+        // way, which is the ordinary case and includes every note that does not
+        // cross a bar line at all. Where the division changes underneath a note
+        // the difference of the two positions is all there is, and that note is
+        // going to be split at the bar line and tied anyway.
+        java.util.OptionalInt uniform =
+                uniformSteps(bars, perBar, onsetBar, offsetBar, onsetStep);
+        double duration = uniform.isPresent()
+                ? (offsetSteps + uniform.getAsInt() - onsetSteps) * onsetStep
+                : bars.startBeat(offsetBar) - bars.startBeat(onsetBar)
+                        + offsetSteps * offsetStep - onsetSteps * onsetStep;
 
         // A note shorter than half a grid step -- a grace note, or a staccato
         // sixteenth on an eighth grid -- collapses onto its own onset. It is
         // lengthened rather than dropped: the pitch was played, and one step is
         // the shortest thing this grid can print.
-        return note.quantizedTo(onsetBeat, Math.max(offsetBeat - onsetBeat, onsetStep));
+        return note.quantizedTo(onsetBeat, Math.max(duration, onsetStep));
+    }
+
+    /**
+     * Grid steps between the start of the onset's bar and the start of the
+     * offset's, when every bar in between is divided into steps of the same
+     * length; empty when one of them is not.
+     *
+     * <p>The count is a whole number even across a meter change, because a
+     * bar's length is always a whole number of its own grid steps. That is what
+     * lets the duration be one multiplication rather than a subtraction.
+     */
+    private static java.util.OptionalInt uniformSteps(BarTable bars, GridResolution[] perBar,
+                                                      int onsetBar, int offsetBar, double step) {
+        int divisions = 0;
+        for (int bar = onsetBar; bar < offsetBar; bar++) {
+            TimeSignature meter = bars.meterOf(bar);
+            if (perBar[bar].stepQuarters(meter) != step) {
+                return java.util.OptionalInt.empty();
+            }
+            divisions += perBar[bar].divisionsPerBar(meter);
+        }
+        if (offsetBar > onsetBar && perBar[offsetBar].stepQuarters(bars.meterOf(offsetBar)) != step) {
+            return java.util.OptionalInt.empty();
+        }
+        return java.util.OptionalInt.of(divisions);
     }
 
     /**
@@ -323,9 +367,14 @@ public final class Quantizer {
      * belongs on the bar line.
      */
     private static double snapWithin(double beatInBar, double step, TimeSignature meter) {
+        return stepsWithin(beatInBar, step, meter) * step;
+    }
+
+    /** The same, left as a whole number of steps for the caller to scale once. */
+    private static double stepsWithin(double beatInBar, double step, TimeSignature meter) {
         double steps = Math.rint(beatInBar / step);
         double limit = Math.rint(meter.quarterBeatsPerBar() / step);
-        return Math.clamp(steps, 0, limit) * step;
+        return Math.clamp(steps, 0, limit);
     }
 
     // ---------------------------------------------------------------- bar table
@@ -395,9 +444,12 @@ public final class Quantizer {
         }
 
         private static double rawBeat(TempoMap tempoMap, double seconds) {
-            // Clamped because a map anchored a hair off zero can return a
-            // negative beat for the very first note, and every position below
-            // has to be on the musical timeline for toMusicalTime to accept it.
+            // Belt and braces rather than a live case: TempoMap requires its
+            // first segment to be anchored at beat 0 and second 0, and Note
+            // rejects a negative onset, so no reachable input converts to a
+            // negative beat today. It stays because toMusicalTime rejects one
+            // outright and this is the only place that would notice a future
+            // map whose anchoring rule had loosened.
             return Math.max(0, tempoMap.secondsToBeats(seconds));
         }
 
@@ -503,6 +555,17 @@ public final class Quantizer {
      * 0.667 average to 0.5 and spread wide, so triplets read as straight -- and
      * that is correct, because they are triplets, not a shuffle.
      *
+     * <p>Compound bars are not looked at, and that is not a shortcut. A shuffle
+     * <em>is</em> compound time written in a simple meter, so in a meter that is
+     * already compound there is nothing to take out: the natural subdivision of
+     * a 6/8 beat sits at a third and two thirds, and the commonest rhythm in the
+     * meter -- a quarter and an eighth -- lands on the shuffle signature exactly,
+     * with a tighter cluster than any human shuffle. Measured against a
+     * straight-time expectation it reads as a 66% swing, and the bar is then
+     * de-swung onto a duplet grid and engraved with a swing direction on top.
+     * That is #4 arriving in the one place {@link GridResolution} does not
+     * reach.
+     *
      * <p>One verdict for the whole piece. A track that swings its bridge and not
      * its verses will have the majority feel applied throughout.
      */
@@ -530,6 +593,9 @@ public final class Quantizer {
         /** Off-beat onsets at which the detection is considered fully supported. */
         private static final double FULL_SUPPORT = 24.0;
 
+        /** The classic triplet shuffle, at which the reading is unequivocal. */
+        private static final double FULL_SWING = 2.0 / 3;
+
         private SwingDetector() {
         }
 
@@ -537,7 +603,11 @@ public final class Quantizer {
             List<Double> offBeat = new ArrayList<>();
             int onBeat = 0;
             for (Note note : notes) {
-                double phase = bars.phaseWithinBeat(bars.rawBeat(note.onsetSeconds()));
+                double beat = bars.rawBeat(note.onsetSeconds());
+                if (bars.meterOf(bars.barOf(beat)).isCompound()) {
+                    continue;
+                }
+                double phase = bars.phaseWithinBeat(beat);
                 if (phase < ON_BEAT_WINDOW || phase >= 1 - ON_BEAT_WINDOW) {
                     onBeat++;
                 }
@@ -554,14 +624,27 @@ public final class Quantizer {
                     .mapToDouble(p -> (p - mean) * (p - mean))
                     .sum() / offBeat.size();
             double spread = Math.sqrt(variance);
-            if (mean < SWING_THRESHOLD || spread > MAX_SPREAD) {
+            // The off-beat window is wider than the band the correction map can
+            // represent, on purpose: a cluster out at 0.85 has to be seen in
+            // order to be measured, and a wide window is what lets the spread
+            // test reject a run of sixteenths. But a mean outside the band is
+            // then a shuffle nothing here can straighten, and clamping it into
+            // range would report a feel the notes were never moved to match --
+            // a triplet figure engraved under a hard-swing direction, shuffled
+            // twice by any reader who obeys it. So it is refused instead.
+            if (mean < SWING_THRESHOLD || mean > SwingFeel.MAX_RATIO || spread > MAX_SPREAD) {
                 return SwingFeel.STRAIGHT;
             }
 
-            double ratio = Math.clamp(mean, SwingFeel.MIN_RATIO, SwingFeel.MAX_RATIO);
+            // Confidence has to fall off near the threshold as well as with
+            // spread and sample count. A cluster at 0.585 is a shuffle by a hair
+            // and should not be reported as confidently as one at 0.667.
             double tightness = Math.clamp(1 - spread / MAX_SPREAD, 0, 1);
             double support = Math.clamp(offBeat.size() / FULL_SUPPORT, 0, 1);
-            return new SwingFeel(true, ratio, Confidence.clamped(tightness * support));
+            double decisiveness = Math.clamp(
+                    (mean - SWING_THRESHOLD) / (FULL_SWING - SWING_THRESHOLD), 0, 1);
+            return new SwingFeel(true, mean,
+                    Confidence.clamped(tightness * support * decisiveness));
         }
     }
 }
