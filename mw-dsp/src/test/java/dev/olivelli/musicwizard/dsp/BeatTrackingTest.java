@@ -248,6 +248,19 @@ class BeatTrackingTest {
             OnsetEnvelope.antiAlias(pair);
             assertThat(pair[0][0]).isCloseTo(1, within(1e-9));
             assertThat(pair[1][0]).isCloseTo(1, within(1e-9));
+
+            // Two frames is the shortest run the filter does something to, and
+            // the constant pair above cannot tell whether it did: asserted on a
+            // pair that differs, which must be pulled together. This is the case
+            // the run scanner's `length < 2` guard decides, and the differential
+            // test below cannot check it -- its reference filters each run by
+            // calling this same method, so an off-by-one in that guard moves
+            // both sides together and survives.
+            double[][] step = new double[2][40];
+            step[1][0] = 10;
+            OnsetEnvelope.antiAlias(step);
+            assertThat(step[0][0]).isGreaterThan(0.5);
+            assertThat(step[1][0]).isLessThan(9.5);
         }
 
         @Test
@@ -438,6 +451,95 @@ class BeatTrackingTest {
                     envelopeOf(SignalFactory.clickTrack(196, 20, RATE))).strength();
             assertThat(worst).isLessThan(weakestClick);
             assertThat(worst).isLessThan(0.6);
+        }
+
+        @Test
+        @DisplayName("the run scanner decomposes any pattern of poison the same way")
+        void runScanningMatchesAnExplicitDecomposition() {
+            // The loop that finds maximal runs of finite frames is hand-rolled
+            // and nested, and it is the fourth version of this code -- the three
+            // before it were each worse than what they replaced. So rather than
+            // pick cases, compare it against an explicit decomposition on random
+            // patterns: filter each run standalone and require the same answer,
+            // frame for frame.
+            //
+            // This checks the decomposition, not the filter arithmetic, since
+            // both sides call the same filter. antiAliasIsZeroPhase and
+            // antiAliasAttenuatesNearNyquistRipple cover the arithmetic.
+            Random random = new Random(49);
+            for (int trial = 0; trial < 500; trial++) {
+                int frames = 2 + random.nextInt(30);
+                double[] original = new double[frames];
+                for (int frame = 0; frame < frames; frame++) {
+                    original[frame] = random.nextDouble() < 0.25
+                            ? switch (random.nextInt(3)) {
+                                case 0 -> Double.NaN;
+                                case 1 -> Double.POSITIVE_INFINITY;
+                                default -> Double.NEGATIVE_INFINITY;
+                            }
+                            : random.nextGaussian() * 10;
+                }
+
+                double[][] actual = new double[frames][40];
+                for (int frame = 0; frame < frames; frame++) {
+                    actual[frame][0] = original[frame];
+                }
+                OnsetEnvelope.antiAlias(actual);
+
+                double[] expected = expectedByRun(original);
+                for (int frame = 0; frame < frames; frame++) {
+                    // NaN has to be compared as NaN: assertThat(double) uses ==,
+                    // under which NaN does not equal itself.
+                    if (Double.isNaN(expected[frame])) {
+                        assertThat(actual[frame][0])
+                                .as("trial %d, frame %d of %d", trial, frame, frames)
+                                .isNaN();
+                    } else {
+                        assertThat(actual[frame][0])
+                                .as("trial %d, frame %d of %d", trial, frame, frames)
+                                .isEqualTo(expected[frame]);
+                    }
+                }
+                // A poisoned frame must come back bit for bit, and the bands
+                // that were never written must stay untouched -- the scratch
+                // array is reused across runs and across bands.
+                for (int frame = 0; frame < frames; frame++) {
+                    if (!Double.isFinite(original[frame])) {
+                        assertThat(Double.doubleToRawLongBits(actual[frame][0]))
+                                .isEqualTo(Double.doubleToRawLongBits(original[frame]));
+                    }
+                    for (int band = 1; band < 40; band++) {
+                        assertThat(actual[frame][band]).isZero();
+                    }
+                }
+            }
+        }
+
+        /** Each maximal run of finite frames, filtered on its own. */
+        private double[] expectedByRun(double[] original) {
+            double[] expected = original.clone();
+            int frame = 0;
+            while (frame < original.length) {
+                while (frame < original.length && !Double.isFinite(original[frame])) {
+                    frame++;
+                }
+                int start = frame;
+                while (frame < original.length && Double.isFinite(original[frame])) {
+                    frame++;
+                }
+                int length = frame - start;
+                if (length >= 2) {
+                    double[][] solo = new double[length][40];
+                    for (int i = 0; i < length; i++) {
+                        solo[i][0] = original[start + i];
+                    }
+                    OnsetEnvelope.antiAlias(solo);
+                    for (int i = 0; i < length; i++) {
+                        expected[start + i] = solo[i][0];
+                    }
+                }
+            }
+            return expected;
         }
 
         @Test
