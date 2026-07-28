@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -91,7 +92,7 @@ public final class AudioTranscriber {
             throw new IllegalArgumentException(
                     "the recording is silent, so there is nothing to transcribe: " + file);
         }
-        progress.accept(String.format("decoded %.1fs at %d Hz",
+        progress.accept(String.format(Locale.ROOT, "decoded %.1fs at %d Hz",
                 audio.durationSeconds(), audio.sampleRate()));
 
         return transcribe(audio, settings);
@@ -120,7 +121,7 @@ public final class AudioTranscriber {
         // Named as beats per minute rather than as a tempo on purpose: the
         // tracker counts pulses, and a pulse is a quarter note only in simple
         // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
-        progress.accept(String.format("found %d beats at %.1f beats/min",
+        progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
                 beatTimes.size(), beats.beatsPerMinute()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
@@ -149,7 +150,7 @@ public final class AudioTranscriber {
         progress.accept("estimating chords");
         Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
         ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);
-        progress.accept(String.format("found %d chord spans", chords.size()));
+        progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
         return Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)

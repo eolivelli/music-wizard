@@ -534,6 +534,37 @@ class BeatUnitTest {
         }
 
         @Test
+        @DisplayName("answers the tempo question once, from the best evidence there is")
+        void oneTempoAnswerNotTwo() {
+            List<Double> pulses = new ArrayList<>();
+            for (int i = 0; i < 24; i++) {
+                pulses.add(0.05 + i * 0.5);
+            }
+
+            // Tracked: the grid wins over the map, because fromBeatTimes crams a
+            // whole pulse into the 0.05s before the first tracked beat and the
+            // map's average is measurably high for it.
+            Score tracked = Score.empty(TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT),
+                            12.0)
+                    .withBeatGrid(BeatGrid.ofTimes(pulses, TimeSignature.SIX_EIGHT,
+                            Confidence.of(0.9)));
+            assertThat(tracked.estimatedTempo()).isCloseTo(180.0, within(1e-6));
+            assertThat(tracked.tempoMap().averageTempo(12.0)).isGreaterThan(181.0);
+
+            // Forced: a single-segment map did not come from tracked beats, so it
+            // is a correction and it wins over the grid it is correcting.
+            Score corrected = tracked.withTempoMap(
+                    TempoMap.constantPulse(60, TimeSignature.SIX_EIGHT));
+            assertThat(corrected.estimatedTempo()).isEqualTo(90.0);
+            assertThat(TimeSignature.SIX_EIGHT.countedTempo(corrected.estimatedTempo()))
+                    .isEqualTo(60.0);
+
+            // Neither: all that is left is the map.
+            Score bare = Score.empty(TempoMap.constant(140), 10.0);
+            assertThat(bare.estimatedTempo()).isEqualTo(140.0);
+        }
+
+        @Test
         @DisplayName("reports a grid's rate in pulses, and its tempo in quarter notes")
         void gridRateAndTempoAreDifferentNumbers() {
             // These used to be one method called medianTempo returning pulses per

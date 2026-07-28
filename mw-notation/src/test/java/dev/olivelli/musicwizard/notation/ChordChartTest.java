@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -175,6 +176,62 @@ class ChordChartTest {
         assertThat(ChordChart.toText(fourChordSong(1)))
                 .contains("Tempo  120 BPM%n".formatted())
                 .doesNotContain("quarter notes/min");
+    }
+
+    @Test
+    @DisplayName("bars a chart at the tempo it prints, even when the user forced one")
+    void headerAndBarsCannotDisagree() {
+        // The chart used to read its header off the tempo map and its bar lines
+        // off the beat grid, and --tempo moves only the map. So a chart could be
+        // headed 60 BPM above bars a musician would count at 120, contradicting
+        // itself on its own face -- and the correction the README calls the
+        // highest-value thing a user can do reached the header and nothing else.
+        List<Double> pulses = new ArrayList<>();
+        for (int i = 0; i < 32; i++) {
+            pulses.add(i * 0.5);
+        }
+        // One chord every four seconds, which at the corrected 60 BPM is exactly
+        // one 4/4 bar each and at the tracked 120 BPM is every other bar.
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        for (int i = 0; i < 4; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    i * 4.0, i * 4.0 + 4.0, Confidence.of(0.9)));
+        }
+        // Tracked at 120, but the user says the tracker doubled it and it is 60.
+        Score corrected = Score.empty(TempoMap.constantPulse(60, TimeSignature.FOUR_FOUR), 16.0)
+                .withBeatGrid(BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR,
+                        Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChordChart.toText(corrected)).contains("Tempo  60 BPM");
+        // Four bars, one chord each. Off the grid the bars would be half as long,
+        // so there would be eight of them and every other one a "%" continuation
+        // -- bars a musician counts at 120 under a header saying 60.
+        assertThat(ChordChart.barLines(corrected)).hasSize(1);
+        assertThat(ChordChart.barLines(corrected).get(0))
+                .contains("C").contains("G").contains("A").contains("F")
+                .doesNotContain("%");
+    }
+
+    @Test
+    @DisplayName("prints a tempo the user can type back in, in any locale")
+    void tempoLineIsLocaleIndependent() {
+        // picocli parses --tempo with Double.valueOf, which rejects "120,0". A
+        // chart printed under fr_FR used to hand the user a number their own
+        // tool would not accept, and under ar_EG one in Arabic-Indic digits.
+        Locale original = Locale.getDefault();
+        try {
+            for (Locale locale : List.of(Locale.forLanguageTag("fr-FR"),
+                    Locale.forLanguageTag("ar-EG"), Locale.forLanguageTag("hi-IN"))) {
+                Locale.setDefault(locale);
+                assertThat(ChordChart.toText(fourChordSong(1)))
+                        .as("chart under %s", locale)
+                        .contains("Tempo  120 BPM");
+            }
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
