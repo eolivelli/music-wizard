@@ -113,9 +113,14 @@ public final class TempoEstimator {
          * average would let a sustained tone's near-perfect self-similarity
          * carry it. Zero for silence.
          *
-         * <p>Measured on 20-second synthetic signals: click tracks from 60 to
-         * 200 BPM score 0.63 to 0.84, a sustained sine 0.004, a crescendo 0.011,
-         * white noise 0.02, clicks at random intervals 0.03 to 0.09, silence 0.
+         * <p>Measured on 20-second synthetic signals: a sustained sine 0.004, a
+         * crescendo 0.011, white noise 0.02, clicks at random intervals 0.03 to
+         * 0.09, silence 0. Click tracks swept over every integer tempo from 60
+         * to 200 BPM span 0.53 to 0.93 — a wide spread rather than a band, and
+         * not monotone in tempo: 105 BPM scores 0.59 and 110 BPM 0.90. The floor
+         * is 0.53 at 78 BPM and the ceiling 0.93 at 136 BPM, both stable from 10
+         * to 40 seconds of signal, so the variation is a property of how the
+         * beat period lands on the frame grid rather than a sampling artefact.
          *
          * <p><strong>Use a low threshold, and only to reject degenerate
          * material.</strong> This separates "there are rhythmic events here"
@@ -125,14 +130,15 @@ public final class TempoEstimator {
          * bug that can be tuned away:
          *
          * <ul>
-         *   <li>A held note with ordinary vibrato reads as rhythmic — 50 cents
-         *       at 2 Hz scores 0.61 against a 60 BPM click track's 0.63, and at
-         *       7 Hz it scores 0.64 and <em>overtakes</em> that click track
-         *       outright, reporting 140 BPM — a third of the 420 BPM modulation
-         *       rate, which is above the 240 BPM top of the search range and so
-         *       cannot be reported at all, making the reading a subharmonic of a
-         *       wobble rather than any beat. Sustained chords of pure sines land
-         *       at 0.47.
+         *   <li>A held note with ordinary vibrato reads as rhythmic. 50 cents at
+         *       2 Hz scores 0.61, which outranks 17 of the 141 integer click
+         *       tempi above; at 7 Hz it scores 0.64 and outranks 25 of them,
+         *       reporting 140 BPM — a third of the 420 BPM modulation rate,
+         *       which is above the 240 BPM top of the search range and so cannot
+         *       be reported at all, making the reading a subharmonic of a wobble
+         *       rather than any beat. Sustained chords of pure sines land at
+         *       0.47. These are not near misses at the edge of a band: the two
+         *       populations genuinely interleave.
          *       Periodic modulation of one note produces a genuinely periodic
          *       train of accents, and nothing measurable in an onset envelope
          *       distinguishes that from a beat. So the ordering is not merely

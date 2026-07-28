@@ -252,17 +252,23 @@ class BeatTrackingTest {
             return TempoEstimator.estimate(envelopeOf(samples)).strength();
         }
 
+        // 78 and 105 are the floor and a second trough, 136 the ceiling, found
+        // by sweeping every integer tempo from 60 to 200 offline. The round
+        // tempi alone gave 0.63 to 0.82 and made the spread look like a narrow
+        // band; it is not one, and it is not monotone -- 105 scores 0.59 against
+        // 110's 0.90. The extremes are pinned here rather than the sweep being
+        // run in the suite, which costs 30 s for a claim that does not change.
         @ParameterizedTest(name = "a {0} BPM click track reads as confidently rhythmic")
-        @ValueSource(doubles = {60, 80, 100, 120, 140, 160, 180, 200})
+        @ValueSource(doubles = {60, 78, 100, 105, 120, 136, 160, 180, 200})
         void clickTracksScoreHigh(double bpm) {
             TempoEstimator.Estimate estimate =
                     TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
 
-            // Measured 0.63 (at 60 BPM) to 0.84 across this range. The bound is
-            // set below the whole measured band rather than snug against its
-            // floor, so that a real regression trips it and ordinary drift does
-            // not.
-            assertThat(estimate.strength()).isGreaterThan(0.5);
+            // Swept floor is 0.526 at 78 BPM, ceiling 0.931 at 136. The bound
+            // sits about 15% under the floor: close enough that a real
+            // regression trips it, far enough that the frame-grid jitter which
+            // produces the trough in the first place does not.
+            assertThat(estimate.strength()).isGreaterThan(0.45);
             assertThat(estimate.peakiness()).isGreaterThan(0.9);
         }
 
@@ -334,7 +340,9 @@ class BeatTrackingTest {
             // number: a threshold placed anywhere in the gap must classify all
             // of these correctly.
             double worstRhythmic = Double.MAX_VALUE;
-            for (double bpm : new double[] {60, 90, 120, 150, 180}) {
+            // Includes 78 and 105, the two troughs of the tempo sweep; the
+            // round tempi alone would have understated the worst case by 0.10.
+            for (double bpm : new double[] {60, 78, 90, 105, 120, 150, 180}) {
                 worstRhythmic = Math.min(worstRhythmic,
                         strengthOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
             }
@@ -393,6 +401,10 @@ class BeatTrackingTest {
             double slowestClicks = strengthOf(SignalFactory.clickTrack(60, SECONDS, RATE));
 
             assertThat(fast.strength()).isGreaterThan(slowestClicks);
+            // And it beats the weakest click tempo in the whole sweep by a
+            // margin no threshold could split: 0.64 against 0.53.
+            assertThat(fast.strength())
+                    .isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
             // 7 Hz is 420 modulations per minute; the reported tempo is the
             // vibrato rate divided down, not a beat anyone could tap.
             assertThat(fast.beatsPerMinute()).isCloseTo(140, within(5.0));
@@ -545,8 +557,12 @@ class BeatTrackingTest {
             // The other half of the previous test, and the one that stops these
             // guards being tightened into a bug. Rejecting absurd input is only
             // right if input that is merely large still reads correctly: both
-            // components are ratios, so amplitude must not enter the answer at
-            // all until the arithmetic actually overflows.
+            // components are ratios, so scaling up must not move the answer
+            // until the arithmetic actually overflows. Only upward -- scaling
+            // *down* past 1e-9 does change it, because OnsetEnvelope.isFlat
+            // uses an absolute threshold and estimate() short-circuits on it.
+            // That is pre-existing and unreachable through fromAudio, but it is
+            // why this test claims nothing about the small end.
             //
             // 1e150 is the largest round decade that survives the
             // autocorrelation, which squares.
