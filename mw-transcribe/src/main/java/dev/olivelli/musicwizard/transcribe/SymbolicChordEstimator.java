@@ -237,7 +237,7 @@ public final class SymbolicChordEstimator {
      * classes and differ only in which one is the root, so offering both would
      * put two states in permanent competition to be settled by the bass alone. A
      * C6 therefore comes back as {@code Am7/C}, which is not wrong, only
-     * unidiomatic -- see #116.
+     * unidiomatic -- see #122.
      */
     private static List<Template> buildTemplates() {
         // Prior per quality, in fit units. Zero for the two qualities a chart is
