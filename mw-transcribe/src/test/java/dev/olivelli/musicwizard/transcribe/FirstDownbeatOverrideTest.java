@@ -341,7 +341,7 @@ class FirstDownbeatOverrideTest {
     }
 
     @Test
-    @DisplayName("stops ranking below the estimator once the bar holds two beats")
+    @DisplayName("pins a known inversion: two beats to the bar rank a blind phase too high")
     void theBlindPhaseOnlyOutranksNothingInWiderBars() {
         // Recorded rather than fixed, and #88 is why. The estimator's floor is a
         // flat 0.35 whatever the meter, by a choice its own file argues for; this
@@ -371,6 +371,15 @@ class FirstDownbeatOverrideTest {
         BeatGrid threeFour = grid(null, TimeSignature.THREE_FOUR);
         assertThat(grid(600.0, TimeSignature.THREE_FOUR).downbeatConfidence().value())
                 .isLessThan(threeFour.downbeatConfidence().value());
+
+        // At one beat to the bar the question does not arise: neither side is
+        // guessing, so they agree exactly rather than one outranking the other.
+        // Asserted here as well as in oneBeatToTheBarIsAlwaysCertain, because the
+        // javadoc this test records once said the blind phase outranked the
+        // estimator at that meter too, and it does not.
+        TimeSignature oneFour = new TimeSignature(1, 4);
+        assertThat(grid(600.0, oneFour).downbeatConfidence())
+                .isEqualTo(grid(null, oneFour).downbeatConfidence());
     }
 
     @Test

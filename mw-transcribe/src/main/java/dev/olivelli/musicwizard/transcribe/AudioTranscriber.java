@@ -79,7 +79,7 @@ public final class AudioTranscriber {
      * <p>This is the bottom of the ambiguous band only, not of the function. A
      * request further out than this names no tracked pulse at all, and
      * {@link #snappedPhaseConfidence} answers that case separately and lower; the
-     * two used to share this constant, which gave a downbeat typed 888 seconds
+     * two used to share this constant, which gave a downbeat typed 588 seconds
      * past the end of a recording more confidence than the estimator's own
      * unsupported phase on the same audio.
      *
@@ -431,7 +431,7 @@ public final class AudioTranscriber {
      * {@code beatsPerBar}. It is the same count {@link DownbeatEstimator} builds
      * its own floor from, without the margin it adds for having at least looked
      * at the audio -- this looked at nothing. Letting that case share the
-     * tie-break floor put a downbeat typed 888 seconds past the end of a
+     * tie-break floor put a downbeat typed 588 seconds past the end of a
      * recording above the estimator's unsupported phase on the same audio.
      *
      * <p>Keyed on being outside the range rather than on the distance alone,
@@ -458,14 +458,22 @@ public final class AudioTranscriber {
      * meter by a deliberate choice its own file records -- the count behind it is
      * one phase in four, stated for the common meter and applied flat, on the
      * grounds that neither number is calibrated well enough to make it depend on
-     * the meter. So the two are only comparable where the flat figure happens to
-     * sit above the honest count, which is from three counted beats to the bar
-     * upward. At one or two, a request outside the tracked range reports more
-     * than a phase the estimator could not choose: 0.5 against 0.35 in 6/8 and
-     * 2/4. The count here is the accurate one of the pair -- a blind phase in a
-     * two-beat bar really is right half the time -- but a caller comparing the
-     * two numbers across meters is comparing things that were not built to be
-     * compared. Making them commensurate is #88.
+     * the meter. So the intended ordering holds only where the flat figure sits
+     * above the honest count, which is from three counted beats to the bar
+     * upward. At exactly two it inverts: a request outside the tracked range
+     * reports 0.5 against the estimator's 0.35, in 6/8 and in 2/4 alike. At one
+     * the question does not arise, since neither side is guessing -- the
+     * estimator answers that meter with certainty before gathering evidence and
+     * the caller short-circuits to the same, so the two agree exactly.
+     *
+     * <p>The count here is the accurate one of the pair -- a blind phase in a
+     * two-beat bar really is right half the time, and the flat figure understates
+     * that meter by the estimator's own account -- so the inversion is not
+     * repaired by capping this number against one that is less defensible. A
+     * caller comparing the two across meters is comparing things that were not
+     * built to be compared. Making them commensurate is #88, and
+     * {@code theBlindPhaseOnlyOutranksNothingInWiderBars} fails when it is
+     * done.
      *
      * <p>With fewer than two pulses there is no interval and no alternative pulse
      * to have meant, so the one that exists is the one the user named.
