@@ -74,6 +74,51 @@ shifts, and this is where reviews most often fail:
   test whose inputs never reach the changed branch passes for an unrelated
   reason and proves nothing — and it will keep passing after the bug returns.
 
+## Two checks to run mechanically, every round
+
+Do not reason about these. Run them. Each has caught real defects on this
+project after a round that reasoned about them and concluded they were fine.
+
+**1. Enumerate every reader of the value that changed.** Grep for the accessor,
+the field, the config key — then open each call site and decide, one at a time,
+whether it needs the fix too. Do not stop at the one the bug report named.
+
+This is the project's dominant failure mode and it recurs at a rate no amount
+of documenting it has reduced. Observed instances: a tempo fix that taught one
+of two transcriber paths, so `--tempo` diverged from the tracked path; the
+follow-up that reached the CLI but not the chart, so the tool printed 120 BPM
+and the engraved chart said 180; the one after that, which reached the chart's
+header but not its bars. Also a lyric ordering fixed at the accessor rather than
+the collection, a path check that normalised but did not resolve symlinks, and a
+NaN guard added at the consumer while the buffer that admitted the NaN kept
+admitting it. When a fix needs the same edit in a third place, stop asking for
+the third edit and ask for the structural change that removes the choice.
+
+**2. Run each new test against the code without its fix.** Revert the source
+hunk, keep the test, confirm it fails, restore. A test that passes both ways is
+not a regression test, however well it reads.
+
+On this project one author's own regression suite passed 17 of 19 against the
+unfixed code. Two specific traps:
+
+- **A fixture starting at `t = 0.0` proves nothing about tempo, phase or beat
+  alignment**, because every derivation agrees exactly at the origin. This has
+  now caught three separate changes on three separate issues, including one
+  written by an author who had read the warning.
+- **Asserting on a value the test itself initialised** passes for a reason that
+  has nothing to do with the code under review.
+
+**A mutant that fails to compile is not a killed mutant.** A reactor build
+against a stale `~/.m2` copy of an upstream module reports a build failure that
+looks exactly like a test failure in the summary; on this project that silently
+turned 10 of 25 mutants into false kills. Build dependent modules with `-am`,
+and check that each claimed kill names the test that failed.
+
+Where a change is meant to shift a *statistic*, a single fixture is not evidence.
+Ask for the swept population and the count of cases that invert — a headline
+number taken from sampled fixtures was 6.5x optimistic here, and the same
+shortcut was then repeated inside the fix for it.
+
 ## Reviewing a decision not to change anything
 
 You will also be asked to validate triage verdicts: `WONT_FIX`,
@@ -104,6 +149,19 @@ on what is wrong, a concrete input or interleaving that triggers it, why it
 matters, and `CONFIRMED` or `PLAUSIBLE`.
 
 Separately list what you verified and found correct.
+
+**An `APPROVE` covers one commit, not a branch.** If anything is pushed after
+your approval — including a comment or javadoc change — it is unreviewed until
+you say otherwise. Re-stamp it explicitly, and where the author claims the
+change is non-executable, have them show it mechanically rather than assert it:
+compiling with `-g:none` and diffing the class files settles it in one command.
+
+**Late rounds change character, and that is not a reason to stop.** Once the
+executable code stops yielding defects, what remains is claims that outrun their
+evidence — a result measured at one point and written up as general, a javadoc
+describing the design that was replaced, a confidence value the data cannot
+support. On a tool whose output is estimates that users act on, an overstated
+confidence *is* a defect. Report it as one.
 
 Do not soften a serious finding to be agreeable, and do not inflate a nitpick to
 look thorough. Severity should mean something. If the change is good, say it is

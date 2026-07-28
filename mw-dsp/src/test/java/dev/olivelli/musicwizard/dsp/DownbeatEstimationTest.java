@@ -135,6 +135,94 @@ class DownbeatEstimationTest {
         return java.util.Arrays.copyOfRange(full, (int) Math.round(2.5 * RATE), full.length);
     }
 
+    /**
+     * The same I-V-vi-IV signal with every chord change pushed ahead of the bar
+     * line by {@code pushBeats} beats, which is what a pop anticipation does.
+     *
+     * <p>The clicks stay exactly where they were, so the beats and the bar lines
+     * are untouched and only the harmony moves. At a push of one beat the chords
+     * change on beats 4, 8, 12 of the recording minus one — beats 3, 7, 11 of the
+     * tracked grid — while the bars still start at 0, 4, 8. That is the ground
+     * truth this fixture asserts and nothing in the audio records: see
+     * {@link Anticipation}.
+     *
+     * <p>At a push of zero it reproduces {@link #chordsPerBar} sample for sample,
+     * which is asserted rather than assumed, so that the pushed fixture is known
+     * to differ from the unpushed one in the push alone.
+     */
+    private static float[] pushedChords(double seconds, int pushBeats) {
+        float[] out = SignalFactory.clickTrack(120, seconds, RATE);
+        double[][] chords = {
+                SignalFactory.majorTriad(60),   // C
+                SignalFactory.majorTriad(67),   // G
+                SignalFactory.minorTriad(69),   // Am
+                SignalFactory.majorTriad(65),   // F
+        };
+        double interval = 60.0 / 120;
+        int beat = 0;
+        for (double t = 0; t < seconds; t += interval, beat++) {
+            double[] frequencies = chords[Math.floorMod(
+                    Math.floorDiv(beat + pushBeats, 4), chords.length)];
+            int start = (int) Math.round(t * RATE);
+            int noteLength = (int) Math.round(interval * RATE);
+            for (double frequency : frequencies) {
+                for (int i = 0; i < noteLength && start + i < out.length; i++) {
+                    double envelope = 0.7 + 0.3 * Math.exp(-3.0 * i / noteLength);
+                    out[start + i] += (float) (0.6 / frequencies.length * envelope
+                            * Math.sin(2 * Math.PI * frequency * i / RATE));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Chroma that holds one pitch class for {@code perBar} spans, then moves on. */
+    private static Chroma stepwiseChroma(int spans, int perBar, int offset) {
+        double[][] vectors = new double[spans][12];
+        for (int span = 0; span < spans; span++) {
+            int step = Math.floorDiv(span - offset, perBar);
+            vectors[span][Math.floorMod(step * 5, 12)] = 1;
+        }
+        return new Chroma(vectors, 0);
+    }
+
+    /** A flat envelope, so that onset energy cannot break any tie. */
+    private static OnsetEnvelope flatEnvelope(double seconds) {
+        return new OnsetEnvelope(new double[(int) Math.round(seconds * 100)], 100);
+    }
+
+    /**
+     * An envelope with a chosen strength at each phase's beats.
+     *
+     * <p>{@link OnsetEnvelope} is normalised to zero mean and unit variance,
+     * so the levels at the beats are free to be negative, and the tests below
+     * use negative ones deliberately: testing only with positive values would
+     * miss anything that treats the envelope as a magnitude, which is what
+     * let the first version of this scoring through. The fill between the
+     * beats is scenery — only the beat frames are ever sampled — and is set
+     * below zero so that reading this fixture does not suggest otherwise.
+     *
+     * @param levelsPerPhase strength at the beats of each phase, in deviations
+     */
+    private static OnsetEnvelope envelopeOf(List<Double> beatTimes, double[] levelsPerPhase) {
+        double[] strength = new double[(int) Math.round(
+                (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
+        java.util.Arrays.fill(strength, -0.2);
+        for (int beat = 0; beat < beatTimes.size(); beat++) {
+            strength[(int) Math.round(beatTimes.get(beat) * 100)] =
+                    levelsPerPhase[Math.floorMod(beat, levelsPerPhase.length)];
+        }
+        return new OnsetEnvelope(strength, 100);
+    }
+
+    private static List<Double> beatsEvery(double interval, int count) {
+        List<Double> times = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            times.add(i * interval);
+        }
+        return times;
+    }
+
     /** Everything the estimator needs, analysed from one signal. */
     private record Analysis(BeatTracker.Result beats, Chroma chroma, OnsetEnvelope envelope) {
         static Analysis of(float[] samples) {
@@ -143,6 +231,29 @@ class DownbeatEstimationTest {
             BeatTracker.Result beats = BeatTracker.track(envelope);
             Chroma chroma = Chroma.extract(audio).beatSynchronous(beats.beatTimes());
             return new Analysis(beats, chroma, envelope);
+        }
+
+        /**
+         * The same, over the grid the fixture was built on rather than the one
+         * the tracker recovers from it.
+         *
+         * <p>A tier-1 fixture knows its own beats exactly, and asking a question
+         * about the bar lines is not a way to ask one about the beats. It matters
+         * here rather than being tidiness: on {@code pushedChords(32, 1)} the
+         * tracker inserts a spurious beat at 1.207s, which shifts every index
+         * after it by one and lands the phase on 0 — the right answer, arrived at
+         * by a beat-tracking error cancelling a downbeat one. See #71.
+         */
+        static Analysis onExactBeats(float[] samples, double seconds) {
+            AudioBuffer audio = new AudioBuffer(samples, RATE);
+            OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+            List<Double> times = new ArrayList<>();
+            for (double t = 0; t + 0.5 < seconds; t += 0.5) {
+                times.add(t);
+            }
+            Chroma chroma = Chroma.extract(audio).beatSynchronous(times);
+            return new Analysis(
+                    new BeatTracker.Result(times, 120, Confidence.CERTAIN), chroma, envelope);
         }
 
         DownbeatEstimator.Estimate estimate(int beatsPerBar) {
@@ -212,13 +323,186 @@ class DownbeatEstimationTest {
             Confidence withoutChordChanges =
                     Analysis.of(accentedOneChord(24)).estimate(4).confidence();
 
-            assertThat(withChordChanges.value()).isGreaterThan(0.8);
-            // Capped at 0.45 for a phase nothing but the accent supports, so it
-            // can never read as strongly as one harmony has backed. The weakest
-            // evidence reporting the highest confidence is how the original bug
-            // stayed invisible.
-            assertThat(withoutChordChanges.value()).isLessThanOrEqualTo(0.45);
+            // Against the ceiling harmony can reach rather than against 0.8,
+            // which is where this sat until #48: what changed there is not how
+            // well the harmony is measured but how much a measurement of harmony
+            // is worth as a claim about bar lines, so every number harmony backs
+            // moved down together and the contrast this test is about did not.
+            assertThat(withChordChanges.value()).isGreaterThan(0.575);
+            // The floor exactly for a phase nothing but the accent supports, so
+            // it can never read as strongly as one harmony has backed. The
+            // weakest evidence reporting the highest confidence is how the
+            // original bug stayed invisible. Bounded at 0.45 until #48 took the
+            // accent out of the confidence, which was 40% slack on a band 0.25
+            // wide -- and 0.45 is not a number the code contains any more.
+            assertThat(withoutChordChanges.value()).isEqualTo(0.35)
+                    .isLessThan(withChordChanges.value());
         }
+    }
+
+    /**
+     * The anticipated chord change of #48: a chord that arrives a beat before
+     * the bar it belongs to, which is ordinary in pop and near-universal in some
+     * Latin idioms.
+     *
+     * <p>These tests do not pin desirable behaviour. The phase is still the
+     * anticipation and these record that it is, because the alternative would be
+     * a fixture nobody notices has stopped covering anything. What #48 changed is
+     * the second half: the answer is no longer reported as settled.
+     */
+    @Nested
+    @DisplayName("anticipated chord changes")
+    class Anticipation {
+
+        @Test
+        @DisplayName("differs from the unpushed fixture in the push and nothing else")
+        void thePushIsTheOnlyDifference() {
+            // The pushed fixture is only evidence about anticipation if it is the
+            // unpushed one with the harmony moved. Asserting that at a push of
+            // zero it reproduces chordsPerBar sample for sample says so, and
+            // catches a generator that drifted away from the one every other test
+            // here is calibrated against.
+            assertThat(pushedChords(16, 0)).isEqualTo(chordsPerBar(16));
+        }
+
+        @Test
+        @DisplayName("are still read as the downbeat, because the chroma cannot say otherwise")
+        void theAnticipationIsStillTheAnswer() {
+            // The bars start at beat 0 and the chords change at beat 3. The
+            // estimator answers 3: it is measuring harmonic change, which really
+            // is there, and calling it a bar line, which it is not.
+            Analysis analysis = Analysis.onExactBeats(pushedChords(32, 1), 32);
+
+            assertThat(analysis.estimate(4).phase()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("look exactly like a piece whose bars start mid-grid")
+        void anAnticipationLooksExactlyLikeAMidBarStart() {
+            // Why no reweighing of this evidence can fix #48, rather than an
+            // opinion that none can. chordsStartingMidBar is a recording whose
+            // bars genuinely start at phase 3; pushedChords is a recording whose
+            // bars start at phase 0 with the chords pushed onto phase 3. Ground
+            // truth differs. Everything the estimator can see agrees -- same
+            // phase, and confidences within a hundredth -- so any rule that moved
+            // one onto phase 0 would move the other off the answer it gets right.
+            //
+            // That is the argument for reporting the phase less confidently
+            // rather than differently: the evidence needed to choose is not being
+            // weighed wrongly here, it is absent. Adding it is #42.
+            DownbeatEstimator.Estimate pushed =
+                    Analysis.onExactBeats(pushedChords(28, 1), 28).estimate(4);
+            DownbeatEstimator.Estimate midBar =
+                    Analysis.onExactBeats(chordsStartingMidBar(28), 28).estimate(4);
+
+            assertThat(pushed.phase()).isEqualTo(midBar.phase()).isEqualTo(3);
+            assertThat(pushed.confidence().value())
+                    .isCloseTo(midBar.confidence().value(), within(0.01));
+        }
+
+        @Test
+        @DisplayName("are not reported as settled, however unanimous the harmony is")
+        void anAnticipationIsNotReportedAsSettled() {
+            // The bug in #48 was not the phase, which cannot be recovered from
+            // this evidence, but the 0.85 it came back with: a consumer reading
+            // downbeatConfidence could not tell it from an answer that was right,
+            // and 0.85 reads as "no need to check this".
+            //
+            // Sixteen chord changes that all agree, so every factor of the
+            // harmonic agreement is satisfied in full and this is the most the
+            // scoring can say. It is still not more than the assumption behind
+            // the scoring is worth -- and that holds for the unpushed fixture
+            // too, necessarily, since the estimator cannot tell them apart.
+            Analysis anticipated = Analysis.onExactBeats(pushedChords(32, 1), 32);
+            Analysis onTheBar = Analysis.onExactBeats(chordsPerBar(32), 32);
+
+            assertThat(anticipated.estimate(4).confidence().value()).isLessThanOrEqualTo(0.6);
+            assertThat(onTheBar.estimate(4).confidence().value()).isLessThanOrEqualTo(0.6);
+        }
+
+        @Test
+        @DisplayName("read the same with a backbeat under them as without one")
+        void theBackbeatUnderAPushDoesNotMoveTheNumber() {
+            // The failure that survived capping the confidence, and the reason a
+            // cap could not reach it. A push of one beat lands the chord on beat
+            // 4, which carries a backbeat, which is the loudest phase this
+            // envelope reports (#70) -- so the accent agreed with the anticipation
+            // and not with the bar. The pushed reading collected an accent bonus
+            // that the correct reading of the same music never could, because the
+            // bar line carries a kick and the bonus was floored at zero.
+            //
+            // A cap on the total did not touch that: it binds only where the
+            // harmonic agreement is already unanimous, and real chroma is not --
+            // these fixtures measure 0.92 -- so under the cap the pushed reading
+            // still came back at 0.600 against the bar line's 0.580.
+            //
+            // What is asserted is that the accent moves the number by nothing at
+            // all, which is the mechanism. An earlier version asserted the
+            // outcome instead -- that the pushed reading never exceeds the
+            // unpushed one -- and that is not a property this code has, or should
+            // claim: the two are indistinguishable, so which is the larger is
+            // residual chroma leakage. It came out the right way at 32 seconds
+            // and the wrong way at 12, 16, 20, 24, 28, 36 and 40, by between
+            // 3e-4 and 5e-3.
+            // Whether they are close is asserted, once, in
+            // anAnticipationLooksExactlyLikeAMidBarStart; asserting an ordering
+            // between them would pin noise and be a fixture length away from red.
+            for (double seconds : new double[] {16, 28, 32}) {
+                Analysis pushed = Analysis.onExactBeats(pushedChords(seconds, 1), seconds);
+                Analysis onTheBar = Analysis.onExactBeats(chordsPerBar(seconds), seconds);
+                List<Double> beats = pushed.beats().beatTimes();
+                double flatPushed = pushed.estimate(4).confidence().value();
+                double flatBarLine = onTheBar.estimate(4).confidence().value();
+
+                for (double backbeat : new double[] {0, 0.01, 0.3, 1, 2, 10, 1000}) {
+                    // On phase 3, which is beat 4: the backbeat the push lands on.
+                    OnsetEnvelope envelope = envelopeOf(beats, new double[] {0, 0, 0, backbeat});
+                    DownbeatEstimator.Estimate anticipated =
+                            DownbeatEstimator.estimate(beats, pushed.chroma(), envelope, 4);
+                    DownbeatEstimator.Estimate barLine =
+                            DownbeatEstimator.estimate(beats, onTheBar.chroma(), envelope, 4);
+
+                    assertThat(anticipated.phase())
+                            .as("%ss, backbeat %s", seconds, backbeat).isEqualTo(3);
+                    assertThat(anticipated.confidence().value())
+                            .as("%ss, backbeat %s", seconds, backbeat)
+                            .isCloseTo(flatPushed, within(1e-12));
+                    // And the bar line's own reading is not moved by it either,
+                    // so the two stay as indistinguishable as they started.
+                    assertThat(barLine.confidence().value())
+                            .as("%ss, backbeat %s", seconds, backbeat)
+                            .isCloseTo(flatBarLine, within(1e-12))
+                            .isCloseTo(flatPushed, within(0.01));
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("report the same way whatever phase they are pushed onto")
+        void everyOffsetIsReportedTheSameWay() {
+            // #48 was confirmed on chroma rather than on audio, at two offsets:
+            // changes on beats 3, 7, 11 came back as phase 3 at 0.85 and changes
+            // on 2, 6, 10 as phase 2 at 0.85. Reproduced here at every offset of
+            // every meter the grid supports, because a ceiling that only held for
+            // the one offset somebody happened to try would leave the issue open
+            // for the rest.
+            List<Double> beats = beatsEvery(0.5, 129);
+
+            for (int beatsPerBar = 2; beatsPerBar <= 6; beatsPerBar++) {
+                for (int offset = 0; offset < beatsPerBar; offset++) {
+                    DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(beats,
+                            stepwiseChroma(128, beatsPerBar, offset), flatEnvelope(70),
+                            beatsPerBar);
+
+                    assertThat(estimate.phase())
+                            .as("%d/4 offset %d", beatsPerBar, offset).isEqualTo(offset);
+                    assertThat(estimate.confidence().value())
+                            .as("%d/4 offset %d", beatsPerBar, offset)
+                            .isLessThanOrEqualTo(0.6);
+                }
+            }
+        }
+
     }
 
     @Nested
@@ -259,6 +543,14 @@ class DownbeatEstimationTest {
             // original confidence model reported 0.53 here, above what it gave
             // some harmony-backed answers. The three cheap fixtures alongside it
             // all stayed under the cap on their own.
+            //
+            // The floor exactly, rather than the 0.45 the accent could reach
+            // until #48: how loud the loudest phase was is not evidence that it
+            // is the bar line, since this envelope's loudest phase is the
+            // backbeat (#70), so scaling the number with it said a pronounced
+            // guess is a better guess than a faint one. An equality rather than a
+            // bound, because the claim is now that the accent does not move the
+            // number at all and a bound would not notice if it did.
             for (float[] signal : new float[][] {kickAndSnare(24), accentedOneChord(24),
                     chordsPerBar(32), SignalFactory.clickTrack(120, 20, RATE)}) {
                 Analysis analysis = Analysis.of(signal);
@@ -266,7 +558,7 @@ class DownbeatEstimationTest {
                 DownbeatEstimator.Estimate estimate = DownbeatEstimator.fromOnsets(
                         analysis.beats().beatTimes(), analysis.envelope(), 4);
 
-                assertThat(estimate.confidence().value()).isLessThanOrEqualTo(0.45);
+                assertThat(estimate.confidence().value()).isEqualTo(0.35);
             }
         }
     }
@@ -275,21 +567,17 @@ class DownbeatEstimationTest {
     @DisplayName("scoring")
     class Scoring {
 
-        /** Chroma that holds one pitch class for {@code perBar} spans, then moves on. */
-        private static Chroma stepwiseChroma(int spans, int perBar, int offset) {
-            double[][] vectors = new double[spans][12];
-            for (int span = 0; span < spans; span++) {
-                int step = Math.floorDiv(span - offset, perBar);
-                vectors[span][Math.floorMod(step * 5, 12)] = 1;
-            }
-            return new Chroma(vectors, 0);
-        }
-
         /**
          * The same, but with the two alternating vectors set to a chosen cosine
          * similarity, so a bar line's novelty can be made as faint as wanted.
          */
         private static Chroma faintlyStepwiseChroma(int spans, int perBar, double similarity) {
+            return faintlyStepwiseChroma(spans, perBar, similarity, 0);
+        }
+
+        /** The same, with the faint changes moved onto a chosen phase. */
+        private static Chroma faintlyStepwiseChroma(int spans, int perBar, double similarity,
+                                                    int offset) {
             double[] held = new double[12];
             held[0] = 1;
             double[] moved = new double[12];
@@ -298,7 +586,8 @@ class DownbeatEstimationTest {
 
             double[][] vectors = new double[spans][];
             for (int span = 0; span < spans; span++) {
-                vectors[span] = (Math.floorDiv(span, perBar) % 2 == 0 ? held : moved).clone();
+                vectors[span] = (Math.floorDiv(span - offset, perBar) % 2 == 0 ? held : moved)
+                        .clone();
             }
             return new Chroma(vectors, 0);
         }
@@ -337,43 +626,6 @@ class DownbeatEstimationTest {
                 vectors[span][span < changeAt ? 0 : 5] = 1;
             }
             return new Chroma(vectors, 0);
-        }
-
-        /** A flat envelope, so that onset energy cannot break any tie. */
-        private static OnsetEnvelope flatEnvelope(double seconds) {
-            return new OnsetEnvelope(new double[(int) Math.round(seconds * 100)], 100);
-        }
-
-        /**
-         * An envelope with a chosen strength at each phase's beats.
-         *
-         * <p>{@link OnsetEnvelope} is normalised to zero mean and unit variance,
-         * so the levels at the beats are free to be negative, and the tests below
-         * use negative ones deliberately: testing only with positive values would
-         * miss anything that treats the envelope as a magnitude, which is what
-         * let the first version of this scoring through. The fill between the
-         * beats is scenery — only the beat frames are ever sampled — and is set
-         * below zero so that reading this fixture does not suggest otherwise.
-         *
-         * @param levelsPerPhase strength at the beats of each phase, in deviations
-         */
-        private static OnsetEnvelope envelopeOf(List<Double> beatTimes, double[] levelsPerPhase) {
-            double[] strength = new double[(int) Math.round(
-                    (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
-            java.util.Arrays.fill(strength, -0.2);
-            for (int beat = 0; beat < beatTimes.size(); beat++) {
-                strength[(int) Math.round(beatTimes.get(beat) * 100)] =
-                        levelsPerPhase[Math.floorMod(beat, levelsPerPhase.length)];
-            }
-            return new OnsetEnvelope(strength, 100);
-        }
-
-        private static List<Double> beatsEvery(double interval, int count) {
-            List<Double> times = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                times.add(i * interval);
-            }
-            return times;
         }
 
         @Test
@@ -540,6 +792,175 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("the accent saturates at the scale it says it does")
+        void theAccentSaturatesWhereItSaysItDoes() {
+            // ONSET_FULL_SCALE sets how many deviations of accent it takes to
+            // reach most of the onset term's bound, so changing it changes how
+            // large an accent has to be to overturn a harmonic lead -- and hands
+            // a phase to whichever of the two the change happens to favour.
+            // Pinned through the phase, because the accent no longer touches the
+            // confidence: confidenceIsTheProductOfItsFactors used to pin this
+            // constant as a side effect of its worked example, and stopped when
+            // #48 took the accent out of that arithmetic. That worked example
+            // pinned it in both directions, so both are here.
+            //
+            // Both leads are set close to where the accent is worth exactly as
+            // much as the harmony, so the pair brackets the constant to about a
+            // fifth either way rather than to a factor of two. Brackets rather
+            // than pins: the only thing this constant is now observable through
+            // is which phase wins, which is a threshold, so a change of a few
+            // per cent cannot be caught at all. It could be pinned exactly again
+            // by putting the accent back into the confidence, and that is the
+            // trade #48 made deliberately.
+            //
+            // Larger scale, accent shrinks. Harmony leads on phase 2 by 0.049,
+            // inside the 0.1 an accent may move. An advantage of exactly one
+            // deviation on phase 0 and -1/3 elsewhere separates them by
+            // 0.05 * (tanh(1) + tanh(1/3)) = 0.0542 at full scale and by
+            // 0.05 * (tanh(1/1.2) + tanh(1/3.6)) = 0.0477 at a fifth more --
+            // one side of 0.049 and then the other, so the accent stops winning.
+            List<Double> beats = beatsEvery(0.5, 34);
+
+            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.049),
+                    envelopeOf(beats, new double[] {4.0 / 3, 0, 0, 0}), 4).phase()).isZero();
+
+            // Smaller scale, accent grows, and the failure is the mirror image:
+            // an accent that should not be enough becomes enough. A lead of
+            // 0.028 against an advantage of 0.4 gives
+            // 0.05 * (tanh(0.4) + tanh(2/15)) = 0.0256 at full scale and
+            // 0.05 * (tanh(0.5) + tanh(1/6)) = 0.0314 at a fifth less, so the
+            // accent starts taking a phase the harmony should have kept.
+            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.028),
+                    envelopeOf(beats, new double[] {0.4 / 0.75, 0, 0, 0}), 4).phase())
+                    .isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("the accent is measured over the beats the harmony was measured over")
+        void theAccentIsScoredOverTheSameBeatsAsTheHarmony() {
+            // Novelty is undefined at the first and last beat, so the harmony is
+            // scored over the beats between them and the accent has to be scored
+            // over exactly those too -- stated in estimate() and, like the scale
+            // above, pinned until #48 only as a side effect of a worked example
+            // that no longer involves the accent.
+            //
+            // One enormous onset on a beat no phase's harmony can see, and
+            // nothing anywhere else, so that without it every advantage is zero
+            // and the harmony decides alone. Reading that beat gives its phase a
+            // mean far above the others and an accent that takes the answer.
+            //
+            // Both ends, and the winner is phase 2 rather than phase 0, which is
+            // what makes the head of the range observable at all: beat 0 is a
+            // phase-0 beat, so an outlier there lands inside phase 0's own mean.
+            // A fixture whose winner is phase 0 is helped by reading it and
+            // cannot tell that it was read -- which is how the first version of
+            // this test passed while every range mutation survived.
+            List<Double> beats = beatsEvery(0.5, 34);
+
+            for (int loud : new int[] {0, 33}) {
+                assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.04),
+                        oneLoudBeat(beats, loud), 4).phase())
+                        .as("outlier on beat %d", loud).isEqualTo(2);
+            }
+        }
+
+        /**
+         * A flat envelope with one beat struck a hundred deviations hard.
+         *
+         * <p>Every other beat sits at zero rather than at the fill below it, so
+         * that widening the scored range is the only thing that can move an
+         * advantage.
+         */
+        private static OnsetEnvelope oneLoudBeat(List<Double> beatTimes, int loudBeat) {
+            double[] strength = new double[1800];
+            java.util.Arrays.fill(strength, -0.2);
+            for (double time : beatTimes) {
+                strength[(int) Math.round(time * 100)] = 0;
+            }
+            strength[(int) Math.round(beatTimes.get(loudBeat) * 100)] = 100;
+            return new OnsetEnvelope(strength, 100);
+        }
+
+        /** Chroma over 34 beats whose only novelty is a lead on every phase-2 beat. */
+        private static Chroma leadingOnPhaseTwo(double lead) {
+            double[] novelty = new double[34];
+            for (int beat = 2; beat <= 30; beat += 4) {
+                novelty[beat] = lead;
+            }
+            return chromaWithNovelty(novelty, 33);
+        }
+
+        @Test
+        @DisplayName("harmony alone reaches its ceiling and stops there")
+        void harmonyAloneStopsAtItsCeiling() {
+            // The ceiling is the reliability of "harmony moves at the bar line",
+            // not the weight of the harmony, so the best evidence the scoring can
+            // be given has to land exactly on it -- not below, or the ceiling is
+            // unreachable and means nothing, and not above, or #48 is back.
+            //
+            // Orthogonal chord changes on every bar line and nothing anywhere
+            // else, over a flat envelope, satisfy all three factors in full.
+            List<Double> beats = beatsEvery(0.5, 65);
+
+            assertThat(DownbeatEstimator
+                    .estimate(beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4)
+                    .confidence().value()).isCloseTo(0.6, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("nothing harmonic passes the ceiling, at any meter or phase")
+        void nothingHarmonicPassesTheCeiling() {
+            // The ceiling on one fixture is a number; the ceiling as a property
+            // is what #48 needs, since the anticipation it is there for can land
+            // on any phase of any meter. Swept over the meters the grid supports,
+            // every phase within each, and harmonic rhythms from one change a bar
+            // to one every four, with the accent pushed as hard onto the winning
+            // phase as tanh will carry it.
+            //
+            // Half the sweep holds a chord that changes outright and half one that
+            // barely moves, because an orthogonal change alone puts the harmonic
+            // agreement at exactly 1, where the number is at the ceiling however
+            // the accent is set -- so a sweep of only those cases would report a
+            // ceiling that held and never test what the accent does under it,
+            // which is where the #48 inversion actually lived.
+            List<Double> beats = beatsEvery(0.5, 129);
+            double worst = 0;
+            double leastWithHeadroom = 1;
+            for (int beatsPerBar = 2; beatsPerBar <= 6; beatsPerBar++) {
+                for (int offset = 0; offset < beatsPerBar; offset++) {
+                    for (int barsPerChord = 1; barsPerChord <= 4; barsPerChord++) {
+                        for (double similarity : new double[] {0, 0.98}) {
+                            int perBar = beatsPerBar * barsPerChord;
+                            Chroma chroma = similarity == 0
+                                    ? stepwiseChroma(128, perBar, offset)
+                                    : faintlyStepwiseChroma(128, perBar, similarity, offset);
+                            double[] levels = new double[beatsPerBar];
+                            levels[offset] = 40;
+                            double confidence = DownbeatEstimator
+                                    .estimate(beats, chroma, envelopeOf(beats, levels),
+                                            beatsPerBar)
+                                    .confidence().value();
+                            worst = Math.max(worst, confidence);
+                            if (similarity != 0) {
+                                leastWithHeadroom = Math.min(leastWithHeadroom, confidence);
+                            }
+                        }
+                    }
+                }
+            }
+            // Some case in the sweep really does sit below the ceiling, so the
+            // bound below is a bound and not an identity.
+            assertThat(leastWithHeadroom).isLessThan(0.55);
+
+            // Exactly the ceiling and not a thousandth over it, at the hardest
+            // input the sweep can build. The accent is saturated on the winning
+            // phase throughout, so before #48 capped the total this came back at
+            // 0.7 -- the onset bonus riding on top of a ceiling it was supposed to
+            // sit under.
+            assertThat(worst).isCloseTo(0.6, within(1e-9));
+        }
+
+        @Test
         @DisplayName("harmony that changes at no consistent phase is not confident")
         void unalignedHarmonyIsNotConfident() {
             // A wide margin over the runner-up is easy to come by on material
@@ -568,15 +989,23 @@ class DownbeatEstimationTest {
                             .confidence().value();
                     worst = Math.max(worst, confidence);
                     trials++;
-                    if (confidence >= 0.6) {
+                    // Half way from the floor a phase nothing supports reports to
+                    // the ceiling harmony can reach. It was 0.6 until #48 halved
+                    // the span between those two; 0.475 is the same fraction of
+                    // the new one, so the population being counted is unchanged.
+                    if (confidence >= 0.475) {
                         overHalf++;
                     }
                 }
             }
 
             // Below what the same measure reports for harmony that does line up,
-            // asserted just below as the control.
-            assertThat(worst).isLessThan(0.8);
+            // asserted just below as the control. 0.575 rather than the 0.6 the
+            // control reaches: 0.6 is the top of the band, so bounding by it would
+            // assert only that a confidence is not at the theoretical maximum,
+            // where the old 0.8 was 90% of the old band. 0.575 is that 90% of the
+            // new one, and the measured worst is 0.533.
+            assertThat(worst).isLessThan(0.575);
             // And rarely anywhere near it. The worst case alone is a weak claim:
             // the calibration that matters is that guesses are reported as
             // guesses in the aggregate, not that no single one slips through.
@@ -584,7 +1013,7 @@ class DownbeatEstimationTest {
                     .isLessThan(trials / 100);
             assertThat(DownbeatEstimator
                     .estimate(beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4)
-                    .confidence().value()).isGreaterThanOrEqualTo(0.8);
+                    .confidence().value()).isGreaterThanOrEqualTo(0.6);
         }
 
         @Test
@@ -604,9 +1033,16 @@ class DownbeatEstimationTest {
             //     decided   = margin 0.025 over CONFIDENT_MARGIN 0.1   = 0.250
             //     preferred = share 2/3, against 1/4 by chance         = 5/9
             //     observed  = two equal changes over three             = 2/3
-            //     accent    = a level chosen to put tanh exactly on    = 0.500
             //
-            //     0.35 + 0.5 * (0.25 * 5/9 * 2/3) + 0.1 * 0.5     = 0.44629...
+            //     0.35 + 0.25 * (0.25 * 5/9 * 2/3)                = 0.37314...
+            //
+            // The 0.25 in front of the harmonic agreement is the span from the
+            // floor to the ceiling, which #48 halved from 0.5.
+            //
+            // The accent is still in the envelope, at the level that used to put
+            // its tanh at exactly 0.5 and add 0.05 to this number. It is here to
+            // be ignored: the accent is not in the confidence any more, so the
+            // fixture that would show it if it were is the one worth keeping.
             //
             // Novelty of 0.5 rather than 1 on purpose: at 1 the sum, the count
             // and the effective count of a phase's changes all coincide, and the
@@ -640,7 +1076,13 @@ class DownbeatEstimationTest {
 
             assertThat(estimate.phase()).isZero();
             assertThat(estimate.confidence().value()).isCloseTo(
-                    0.35 + 0.5 * (0.25 * (5.0 / 9) * (2.0 / 3)) + 0.1 * 0.5, within(1e-9));
+                    0.35 + 0.25 * (0.25 * (5.0 / 9) * (2.0 / 3)), within(1e-9));
+            // And the same number without the accent, so that "the accent is not
+            // in this" is asserted rather than implied by an equality that would
+            // also hold if the constant behind it were zero for a different reason.
+            assertThat(DownbeatEstimator
+                    .estimate(beats, new Chroma(spans, 0), flatEnvelope(45), 4)
+                    .confidence().value()).isEqualTo(estimate.confidence().value());
         }
 
         @Test
@@ -658,7 +1100,10 @@ class DownbeatEstimationTest {
                     beats, faintlyStepwiseChroma(32, 4, 0.98), flatEnvelope(20), 4);
 
             assertThat(faint.phase()).isZero();
-            assertThat(faint.confidence().value()).isLessThan(0.6);
+            // 0.6 until #48, which is now the ceiling itself and would leave this
+            // asserting only that a confidence is a confidence. Half way from the
+            // floor to that ceiling is the same claim the 0.6 used to make.
+            assertThat(faint.confidence().value()).isLessThan(0.475);
         }
 
         @Test
@@ -677,28 +1122,55 @@ class DownbeatEstimationTest {
                     beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4);
 
             assertThat(once.phase()).isZero();
-            assertThat(once.confidence().value()).isLessThan(0.55);
-            assertThat(often.confidence().value()).isGreaterThan(0.8);
+            // 0.55 and 0.8 until #48 halved the span between the floor and the
+            // ceiling; both moved by that halving and neither by anything else.
+            assertThat(once.confidence().value()).isLessThan(0.45);
+            assertThat(often.confidence().value()).isGreaterThanOrEqualTo(0.6);
         }
 
         @Test
-        @DisplayName("an accent elsewhere in the bar does not undermine the harmony")
-        void aConflictingAccentDoesNotReduceConfidence() {
-            // A backbeat is ordinary in this material. Once harmony has decided
-            // the phase, the fact that the loudest beat is a different one is not
-            // evidence against the decision, and letting it subtract would make
-            // every backbeat recording report less confidence than the same music
-            // played flat.
-            List<Double> beats = beatsEvery(0.5, 33);
-            Chroma chroma = stepwiseChroma(32, 4, 0);
+        @DisplayName("no accent anywhere in the bar moves the confidence, either way")
+        void theAccentIsNotInTheConfidence() {
+            // Both halves of the same claim, and the second half is what #48
+            // ended up needing. A backbeat is ordinary in this material, so an
+            // accent on a beat harmony did not pick must not subtract -- that
+            // would make every backbeat recording report less than the same music
+            // played flat. And an accent on the beat harmony did pick must not
+            // add, because it is the same observation twice over (the accent
+            // already chose the phase, in the score) and because the phase it
+            // sits on is the backbeat, which is where an anticipation lands.
+            //
+            // Only the first half was asserted before, so halving the harmonic
+            // span and leaving the accent bonus alone was invisible here -- and
+            // that bonus is what let the pushed reading of a fixture outrank the
+            // bar line it was pushed off.
+            //
+            // Partial agreement deliberately: at unanimous agreement the number
+            // is at the ceiling and a bonus could not show even if there were
+            // one. A novelty floor of 0.1 under bar lines of 0.4 puts the share
+            // factor well below one while leaving a margin of 0.3 -- three times
+            // what an accent can move -- so the accent cannot take the phase and
+            // the test stays about the confidence.
+            List<Double> beats = beatsEvery(0.5, 65);
+            double[] novelty = new double[65];
+            for (int beat = 1; beat < 64; beat++) {
+                novelty[beat] = beat % 4 == 0 ? 0.4 : 0.1;
+            }
+            Chroma weaklyAligned = chromaWithNovelty(novelty, 64);
 
             DownbeatEstimator.Estimate flat = DownbeatEstimator.estimate(
-                    beats, chroma, flatEnvelope(20), 4);
+                    beats, weaklyAligned, flatEnvelope(40), 4);
             DownbeatEstimator.Estimate backbeat = DownbeatEstimator.estimate(
-                    beats, chroma, envelopeOf(beats, new double[] {0, 0, 5, 0}), 4);
+                    beats, weaklyAligned, envelopeOf(beats, new double[] {0, 0, 5, 0}), 4);
+            DownbeatEstimator.Estimate onTheChosenPhase = DownbeatEstimator.estimate(
+                    beats, weaklyAligned, envelopeOf(beats, new double[] {5, 0, 0, 0}), 4);
 
+            assertThat(flat.confidence().value()).isStrictlyBetween(0.35, 0.6);
             assertThat(backbeat.phase()).isEqualTo(flat.phase()).isZero();
+            assertThat(onTheChosenPhase.phase()).isZero();
             assertThat(backbeat.confidence().value())
+                    .isCloseTo(flat.confidence().value(), within(1e-12));
+            assertThat(onTheChosenPhase.confidence().value())
                     .isCloseTo(flat.confidence().value(), within(1e-12));
         }
 

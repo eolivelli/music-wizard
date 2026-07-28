@@ -143,6 +143,22 @@ The pattern worth remembering: **fixes tend to stop at the layer where the bug
 was noticed, not the layer where it lives.** Reviewers confirm findings by
 execution and label them `CONFIRMED` or `PLAUSIBLE`.
 
+Writing that pattern down here has not reduced how often it happens — four
+changes in a single night each shipped a first fix that reached one caller and
+missed another, and two used fixtures starting at `t=0.0`, where every tempo
+derivation agrees exactly and so nothing is tested. Both are now **mechanical
+checks the reviewer runs rather than judgement calls**: enumerate every reader
+of the value that changed, and re-run each new test against the code without its
+fix. See `.claude/agents/pr-reviewer.md`.
+
+Two further observations from the same night. When a fix needs the same edit in
+a *third* place, the structural change that removes the choice is cheaper than
+the third edit — that is where `Score.estimatedTempo()` came from. And once late
+rounds stop finding defects in executable code, what they find instead is claims
+that outrun their evidence: a result measured at one point written up as
+general, a javadoc describing the design that was replaced. On a tool whose
+output is estimates users act on, an overstated confidence is a defect.
+
 ## Conventions
 
 - **Push at every milestone**, not at the end.

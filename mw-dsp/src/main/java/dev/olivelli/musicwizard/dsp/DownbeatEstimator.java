@@ -50,29 +50,52 @@ import java.util.Objects;
  * distance and the accent always decides; on a chord change per bar they are
  * tenths and it never does.
  *
- * <p>Confidence follows the same ordering, and asks three separate questions of
- * the harmony rather than one: did it decide the phase, does it prefer that
- * phase over the alternatives, and was there enough of it to mean anything. A
- * margin alone is not enough — material that changes chord often at no
- * consistent phase produces a wide margin by luck — so the three are multiplied
- * and any one of them failing brings the number down. A phase resting on onsets
- * alone is capped below anything harmony has backed.
+ * <p>Confidence asks three separate questions of the harmony rather than one:
+ * did it decide the phase, does it prefer that phase over the alternatives, and
+ * was there enough of it to mean anything. A margin alone is not enough —
+ * material that changes chord often at no consistent phase produces a wide
+ * margin by luck — so the three are multiplied and any one of them failing
+ * brings the number down. The ceiling on the product is the reliability of what
+ * harmony assumes rather than the weight of what it measured — see
+ * {@link #HARMONIC_PHASE_CEILING}.
+ *
+ * <p><b>The accent is asked nothing.</b> It chooses the phase, in the score
+ * above, and is then not asked to vouch for the phase it chose. It used to be,
+ * and that was wrong twice over. It is the same observation counted a second
+ * time — evidence that picks an answer cannot also certify it — and it certifies
+ * the wrong answer, because {@link OnsetEnvelope} sums flux over forty mel
+ * bands, so a broadband snare excites all of them and a sixty-hertz kick about
+ * one, and the loudest phase it reports on ordinary drum material is the
+ * backbeat (#70). A chord pushed one beat lands on beat 4, which is a backbeat,
+ * so on exactly the material where the doubt below lives the accent sits on the
+ * anticipation rather than on the bar. Measured, the pushed reading of a fixture
+ * collected the bonus where the correct reading of the same fixture did not, and
+ * the anticipation reported 0.600 against the bar line's 0.580 — the wrong
+ * answer reading higher, which is worse than the flat 0.85 it replaced. So a
+ * phase chosen by the accent alone reports the floor: it is a guess, rather than
+ * a better guess than one chosen by nothing.
  *
  * <p>What to rely on in that number is its <em>ordering</em>, not its value.
- * The ordering is structural — onsets alone can never outrank harmony, and a
- * phase nothing supports lands on the floor — but the constants that space it
- * out were calibrated on synthetic fixtures, and synthetic audio is
+ * The ordering is structural — a phase nothing supports lands on the floor, a
+ * phase the accent alone chose lands there too, and only harmony lifts one off
+ * it — but the constants that space it out were calibrated on synthetic
+ * fixtures, and synthetic audio is
  * systematically easier than real audio. Two of the three factors are already
  * known not to measure quite what they claim on material with a chroma novelty
  * floor, which every real recording has: see #45.
  *
  * <p>The known limit of the approach is that it measures agreement with
- * harmonic change, not with bar lines, and takes the two to be the same thing.
- * Where a style consistently anticipates the chord — the pushed change an
- * eighth or a beat before the bar, ordinary in pop and near-universal in some
- * Latin idioms — this reports the anticipation as the downbeat, confidently,
- * because by its own measure it is right. Nothing here can detect that;
- * separating them needs evidence the estimator does not have. See #48.
+ * harmonic change, not with bar lines, and the step from one to the other is an
+ * assumption. Where a style consistently anticipates the chord — the pushed
+ * change an eighth or a beat before the bar, ordinary in pop and near-universal
+ * in some Latin idioms — the harmony moves a beat early and this agrees with the
+ * anticipation, unanimously, because by its own measure it is right. Nothing in
+ * the chroma separates the two readings: the same recording is a pushed bar and
+ * a bar that starts a beat later, and no further harmonic evidence tells them
+ * apart. So the phase is still the anticipation, and what changed for #48 is
+ * that it is no longer reported as settled — see {@link #HARMONIC_PHASE_CEILING}.
+ * Moving it needs evidence this stage does not have; the bass keeps landing on
+ * the bar line when the upper voices are pushed, which is #42.
  *
  * <p>The meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
  */
@@ -156,18 +179,55 @@ public final class DownbeatEstimator {
      */
     private static final double BASE_CONFIDENCE = 0.35;
 
-    /** What harmony agreeing with the chosen phase is worth on top of that. */
-    private static final double HARMONIC_CONFIDENCE = 0.5;
+    /**
+     * The most any phase {@link #estimate} chooses may report, whatever backs it.
+     *
+     * <p>The scoring measures agreement with harmonic change and takes a bar line
+     * to be where the harmony moves. That is a good assumption and a wrong one
+     * often enough to matter. A chord pushed ahead of the bar puts every change
+     * one beat early, and the scoring then agrees with the anticipation rather
+     * than with the bar — unanimously, because by its own measure it is right.
+     * The chroma cannot tell the two apart: the same audio is a pushed bar and a
+     * bar that starts a beat later, which is what #48 reported and what
+     * {@code anAnticipationLooksExactlyLikeAMidBarStart} pins.
+     *
+     * <p>So this ceiling is the reliability of that assumption, not the strength
+     * of the evidence for it, and nothing may pass it — which since the accent
+     * stopped contributing to the confidence is a property of the arithmetic
+     * rather than a clamp on it: it is exactly {@code BASE_CONFIDENCE} plus what
+     * unanimous harmonic agreement is worth. It was briefly a {@code Math.min}
+     * over a total the accent could also raise, and that was the wrong shape. A
+     * cap binds only where the harmony is already unanimous, real material sits
+     * below that, and below it the accent still lifted the anticipation above the
+     * bar line it was pushed off.
+     *
+     * <p>It is set the way {@link #BASE_CONFIDENCE} is — by counting what is left
+     * open. Unanimous harmonic agreement narrows the phase from every beat of the
+     * bar to two: the beat the harmony moves on, or the beat after it, since a
+     * push arrives early and never late. A one-in-two choice sits here for the
+     * same reason a one-in-four choice sits at {@code BASE_CONFIDENCE}.
+     *
+     * <p>That count is stated for the common meter and applied flat, exactly as
+     * {@code BASE_CONFIDENCE}'s "one phase in four" is: at 2/4 it narrows
+     * nothing, since two candidates are the whole bar, and this then reads
+     * generously. Making either of them depend on the meter is one change, and
+     * neither is calibrated well enough for that to be the improvement it looks
+     * like — the numbers want tier-2 audio (#12), not more arithmetic.
+     *
+     * <p>Deliberately in the band that reads as "probably, but check it". A
+     * confidently wrong phase costs a user more than an uncertain right one:
+     * correcting the first downbeat by hand is the highest-value action the tool
+     * asks of them, and a number that says not to bother is what stops them.
+     */
+    private static final double HARMONIC_PHASE_CEILING = 0.6;
 
     /**
-     * What an onset accent on the chosen phase is worth on top of that.
+     * What harmony agreeing with the chosen phase is worth on top of the floor.
      *
-     * <p>A fifth of what harmony is worth, so that a phase resting on onsets
-     * alone can never report more than {@code 0.45} — below anything harmony has
-     * backed. That ordering is the point: the onset heuristic is the one that
-     * produced the bug, and it must not be able to sound sure of itself.
+     * <p>Derived rather than chosen, so that the ceiling stays the thing that is
+     * stated and this stays the arithmetic that reaches it.
      */
-    private static final double ONSET_CONFIDENCE = 0.1;
+    private static final double HARMONIC_CONFIDENCE = HARMONIC_PHASE_CEILING - BASE_CONFIDENCE;
 
     private DownbeatEstimator() {
     }
@@ -264,12 +324,11 @@ public final class DownbeatEstimator {
         // equal — handing that to whichever came first would let an accent take a
         // decision the harmony had already made.
         int phase = argMax(score, harmony);
+        // The accent chose the phase, above, and is not asked to vouch for the
+        // phase it chose. See "The accent is asked nothing" on the class.
         double confidence = BASE_CONFIDENCE
                 + HARMONIC_CONFIDENCE
-                        * harmonicAgreement(harmony, novelty, phase, firstBeat, lastBeat)
-                // Never negative: a backbeat is ordinary in this material and says
-                // nothing against harmonic evidence that has already decided.
-                + ONSET_CONFIDENCE * Math.max(0, Math.tanh(accent[phase] / ONSET_FULL_SCALE));
+                        * harmonicAgreement(harmony, novelty, phase, firstBeat, lastBeat);
         return new Estimate(phase, beatsPerBar, Confidence.clamped(confidence));
     }
 
@@ -384,10 +443,18 @@ public final class DownbeatEstimator {
      * Estimates the downbeat phase from onset energy alone.
      *
      * <p>For callers with no chroma to hand. This is the weak heuristic
-     * described above, and its answers are capped at {@code 0.45} confidence
-     * however pronounced the accent, because a pronounced accent on the wrong
-     * beat is exactly how this heuristic fails. Prefer {@link #estimate}
-     * wherever chroma is available.
+     * described above, and every phase it estimates reports
+     * {@link #BASE_CONFIDENCE} — the floor — however pronounced the accent,
+     * because a pronounced accent on the wrong beat is exactly how this
+     * heuristic fails and the loudest phase this envelope reports is the
+     * backbeat (#70). It used to scale with the accent up to {@code 0.45}, which
+     * said a loud guess is a better guess than a faint one.
+     *
+     * <p>A one-beat bar is the exception and is not an estimate: it answers
+     * {@link Confidence#CERTAIN}, above everything here, because there is no
+     * phase to be wrong about. See {@code everyBeatIsADownbeat}.
+     *
+     * <p>Prefer {@link #estimate} wherever chroma is available.
      */
     public static Estimate fromOnsets(List<Double> beatTimes, OnsetEnvelope envelope,
                                       int beatsPerBar) {
@@ -401,10 +468,12 @@ public final class DownbeatEstimator {
 
         double[] accent = onsetAdvantage(onsetStrengthPerBeat(beatTimes, envelope),
                 0, beatTimes.size() - 1, beatsPerBar);
-        int phase = argMax(accent);
-        double confidence = BASE_CONFIDENCE
-                + ONSET_CONFIDENCE * Math.max(0, Math.tanh(accent[phase] / ONSET_FULL_SCALE));
-        return new Estimate(phase, beatsPerBar, Confidence.clamped(confidence));
+        // The floor, whatever the accent said, because how loud the loudest phase
+        // was is not evidence that it is the bar line -- this envelope's loudest
+        // phase is the backbeat on ordinary drum material (#70). Scaling the
+        // number with the accent said a pronounced accent is a better guess than
+        // a faint one, and it is the same guess.
+        return new Estimate(argMax(accent), beatsPerBar, Confidence.clamped(BASE_CONFIDENCE));
     }
 
     /**
