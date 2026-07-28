@@ -174,7 +174,7 @@ class ChordChartTest {
 
         // Unchanged in common time, where the two figures coincide.
         assertThat(ChordChart.toText(fourChordSong(1)))
-                .contains("Tempo  120 BPM%n".formatted())
+                .contains("Tempo  120 BPM\n")
                 .doesNotContain("quarter notes/min");
     }
 
@@ -215,29 +215,48 @@ class ChordChartTest {
     }
 
     @Test
-    @DisplayName("heads a chart with the tracked beats' tempo, not the map's average")
-    void headerUsesTheTrackedBeats() {
+    @DisplayName("reads its tempo from the tracked beats, for the header and the bars alike")
+    void headerAndBarsBothUseTheTrackedBeats() {
         // Every other fixture here uses a constant map or a grid starting at
         // t=0.0, and in both cases every source of a tempo agrees, so none of
-        // them can tell which one the header read. This one has a lead-in: a
-        // whole pulse crammed into the 0.05s before the first tracked beat pulls
-        // the map's average to 124, against the 120 a musician would count.
+        // them can tell which one was read. This one has a lead-in: a whole pulse
+        // crammed into the 0.05s before the first tracked beat pulls the map's
+        // average to 124.3, against the 120 a musician would count.
+        //
+        // Both assertions matter and neither implies the other. The header and
+        // the bar lines are separate readers of the same answer, and this PR has
+        // twice shipped a fix that reached one reader and not the other.
         List<Double> pulses = new ArrayList<>();
         for (int i = 0; i < 24; i++) {
             pulses.add(0.05 + i * 0.5);
         }
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A,
+                NoteLetter.F, NoteLetter.D, NoteLetter.E};
+        for (int i = 0; i < 6; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    0.05 + i * 2.1, 0.05 + (i + 1) * 2.1, Confidence.of(0.9)));
+        }
         Score tracked = Score.empty(
-                        TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR), 12.05)
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR), 12.65)
                 .withBeatGrid(BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR,
                         Confidence.of(0.9)))
-                .withChords(new ChordProgression(List.of(
-                        Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
-                                0.05, 12.05, Confidence.of(0.9))), Confidence.of(0.9)));
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
-        assertThat(tracked.tempoMap().averageTempo(12.05))
+        assertThat(tracked.tempoMap().averageTempo(12.65))
                 .as("the map is inflated, so this fixture discriminates")
                 .isGreaterThan(124.0);
+
         assertThat(ChordChart.toText(tracked)).contains("Tempo  120 BPM");
+        // At the tracked 120 a 4/4 bar is two seconds, so the harmony is six bars
+        // of one chord. Off the map's inflated average the bars are 1.93s, which
+        // rounds to a seventh bar with nothing in it -- a "%" continuation under
+        // a header that still says 120.
+        assertThat(ChordChart.barLines(tracked))
+                .allSatisfy(line -> assertThat(line).doesNotContain("%"));
+        assertThat(String.join("", ChordChart.barLines(tracked)))
+                .contains("C").contains("G").contains("A")
+                .contains("F").contains("D").contains("E");
     }
 
     @Test

@@ -85,8 +85,9 @@ class AnalyzeCommandTest {
         @DisplayName("prints the tracked beats' tempo, not the map's inflated average")
         void prefersTheTrackedBeatsOverTheMap() {
             // fromBeatTimes forces a whole pulse into the audio before the first
-            // tracked beat, so the map's average runs above the real tempo -- 122
-            // for a 120 BPM source on this project's own fixture. Guarded here
+            // tracked beat, so the map's average runs above the real tempo --
+            // 124.5 for the 120 BPM grid below, and 122 for the longer fixture
+            // EndToEndIT uses, where the same one pulse is spread thinner. Guarded here
             // because the two agree exactly whenever the grid starts at t=0, and
             // a fixture that starts there cannot tell the two sources apart.
             Score tracked = trackedAt(0.5, TimeSignature.FOUR_FOUR);

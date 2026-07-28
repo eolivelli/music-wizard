@@ -82,6 +82,31 @@ class TempoOverrideTest {
     }
 
     @Test
+    @DisplayName("means the same 120 by its fallback as a user means by --tempo 120")
+    void theNoBeatsFallbackIsInCountedBeats() {
+        // Too short for the tracker to find anything, which is the branch that
+        // returns a hard-coded 120. That 120 has to mean counted beats like every
+        // other 120 in this class, or the fallback and the override disagree in
+        // compound time -- 120 dotted quarters is 180 quarter notes, and reading
+        // it as quarter notes gives a bar half again too long.
+        float[] samples = new float[(int) (0.1 * SAMPLE_RATE)];
+        for (int i = 0; i < samples.length; i++) {
+            samples[i] = (float) (0.3 * Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE));
+        }
+        AudioBuffer tooShort = new AudioBuffer(samples, SAMPLE_RATE);
+
+        Score compound = new AudioTranscriber().transcribe(tooShort,
+                new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null));
+
+        assertThat(compound.beatGrid()).as("the tracker found nothing").isEmpty();
+        assertThat(compound.tempoMap().initialTempo()).isCloseTo(180.0, within(1e-9));
+        assertThat(barSeconds(compound)).isCloseTo(1.0, within(1e-9));
+        // Which is exactly what a typed --tempo 120 gives on the same meter.
+        assertThat(compound.tempoMap().initialTempo())
+                .isEqualTo(transcribeAt(120, TimeSignature.SIX_EIGHT).tempoMap().initialTempo());
+    }
+
+    @Test
     @DisplayName("leaves the tracked path alone")
     void trackedPathStillTracks() {
         // The override is the branch under test, so pin the other one too: with no

@@ -559,9 +559,26 @@ class BeatUnitTest {
             assertThat(TimeSignature.SIX_EIGHT.countedTempo(corrected.estimatedTempo()))
                     .isEqualTo(60.0);
 
-            // Neither: all that is left is the map.
-            Score bare = Score.empty(TempoMap.constant(140), 10.0);
-            assertThat(bare.estimatedTempo()).isEqualTo(140.0);
+            // Neither: all that is left is the map. It has to be a multi-segment
+            // map, or the first rule answers and this tests nothing -- every
+            // constant map is single-segment, which is the whole basis of rule 1.
+            TempoMap measured = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0, 120),
+                            new TempoMap.TempoSegment(4, 2.0, 60)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            Score bare = Score.empty(measured, 10.0);
+            assertThat(bare.tempoMap().segments()).hasSizeGreaterThan(1);
+            assertThat(bare.beatGrid()).isEmpty();
+            assertThat(bare.estimatedTempo()).isEqualTo(measured.averageTempo(10.0));
+            assertThat(bare.estimatedTempo()).isCloseTo(72.0, within(1e-9));
+
+            // A grid too short to have a median falls through to the map rather
+            // than asking it for one: BeatGrid.medianPulseRate throws below two
+            // beats, so the size check is load-bearing, not defensive.
+            Score oneBeat = Score.empty(measured, 10.0)
+                    .withBeatGrid(BeatGrid.ofTimes(List.of(0.05),
+                            TimeSignature.FOUR_FOUR, Confidence.of(0.9)));
+            assertThat(oneBeat.estimatedTempo()).isCloseTo(72.0, within(1e-9));
         }
 
         @Test
