@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.nio.file.Path;
 import java.util.List;
@@ -212,8 +213,8 @@ class RenderPartsTest {
         }
 
         @Test
-        @DisplayName("and no parts is an empty result, not a missing feature")
-        void nothingAtAllIsAnEmptyResult() {
+        @DisplayName("and no parts is an empty score, not a missing feature")
+        void nothingAtAllIsAnEmptyScore() {
             Path workspace = audioWorkspace("quiet", ChordProgression.empty());
 
             CliRunner.Result render = CliRunner.run(
@@ -221,8 +222,40 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("the analysis that produced it found no harmony")
+                    .contains("no chord progression and no parts either")
                     .doesNotContain("#115");
+        }
+
+        @Test
+        @DisplayName("says nothing about where the score came from, because it cannot know")
+        void doesNotGuessAtProvenance() {
+            // A MIDI file holding only a conductor track -- a plain tempo-map
+            // export -- imports to a score with no parts, and so takes the same
+            // branch as an audio analysis that found nothing. Round 1's fix
+            // replaced a source-file sniff with a proxy; round 2 found the proxy
+            // was wrong here, on a real file, with the source present and
+            // untouched. So neither message may name a source kind at all.
+            Path source = MidiFixtures.write(MidiFixtures.sequence()
+                    .name("Conductor")
+                    .tempo(120)
+                    .tempoAt(4, 60)
+                    .timeSignature(4, 4)
+                    .build(), directory.resolve("conductor.mid"));
+            Path root = directory.resolve("conductor.mwz");
+            assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                    .isZero();
+            assertThat(CliRunner.run("analyze", root.toString()).exitCode()).isZero();
+            assertThat(Workspace.open(root).readScore().orElseThrow().tracks())
+                    .as("the fixture must take the no-parts branch to discriminate")
+                    .isEmpty();
+
+            CliRunner.Result render = CliRunner.run("render", root.toString(), "--no-pdf");
+
+            assertThat(render.out())
+                    .contains("no chord progression and no parts either")
+                    .doesNotContain("recording")
+                    .doesNotContain("audio")
+                    .doesNotContain("MIDI file");
         }
 
         @Test

@@ -110,10 +110,18 @@ final class RenderCommand implements Callable<Integer> {
          * down. Provenance re-derived by each reader is provenance that can
          * disagree between readers; carrying it on the score is #120.
          *
-         * <p>The two wordings are kept, because the two situations really are
-         * different and both are visible in the score itself. A score with parts
-         * but no harmony had its notes read and its chords never estimated, which
-         * is #115. A score with neither had nothing found in it at all.
+         * <p>Two wordings survive, and round 2 was right that the first attempt
+         * justified them wrongly. They do <em>not</em> distinguish where the
+         * score came from: a MIDI file holding only a conductor track imports to
+         * a score with no parts at all, and was told the audio wording. What they
+         * distinguish is what this workspace holds, which is all either message
+         * claims -- a score with notes and no harmony is one step short of a
+         * chart and the step is named; a score with neither is not short of a
+         * step, it is empty. Both stay true whatever produced them, including an
+         * audio analysis that has separated stems but estimated no chords.
+         *
+         * <p>Provenance is deliberately not guessed at from a proxy a second
+         * time. Carrying it is #120.
          */
         String unavailableReason(Score score) {
             if (notImplemented != null) {
@@ -121,8 +129,8 @@ final class RenderCommand implements Callable<Integer> {
             }
             if (this == CHORDS && score.chords().isEmpty()) {
                 return score.tracks().isEmpty()
-                        ? "this score holds no chord progression; the analysis that produced"
-                                + " it found no harmony"
+                        ? "this score holds no chord progression and no parts either;"
+                                + " there is nothing in it to engrave"
                         : "this score holds " + score.tracks().size() + " part(s) but no chord"
                                 + " progression; naming the harmony a set of notes spells is"
                                 + " not implemented yet (#115)";

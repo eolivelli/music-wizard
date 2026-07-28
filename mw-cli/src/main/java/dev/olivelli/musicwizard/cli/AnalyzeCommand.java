@@ -151,11 +151,20 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println("Advisor    " + (config.isLlmEnabled() ? "enabled" : "disabled"));
         System.out.println();
 
-        Score score = transcribe(workspace, kind, source, config);
+        Transcription result = transcribe(workspace, kind, source, config);
+        Score score = result.score();
 
+        // The score is persisted before the cache entry, and never after. The
+        // score is what the user asked for; the cache is an optimisation for the
+        // next run, and losing minutes of DSP because a cache write failed is a
+        // poor trade in either order -- but this order also means the failure
+        // cannot happen before the deliverable is safe.
         workspace.updateMetadata(
                 workspace.title().orElse(null), workspace.artist().orElse(null));
         workspace.writeScore(score);
+        if (!result.fromCache()) {
+            storeQuietly(workspace.cache(), result.key(), score);
+        }
 
         System.out.println();
         for (String line : summary(kind, score)) {
@@ -169,6 +178,10 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     // ------------------------------------------------------------------- cache
 
+    /** A score, where it came from, and the key it belongs under. */
+    private record Transcription(Score score, StageCache.Key key, boolean fromCache) {
+    }
+
     /**
      * The transcription, from the cache when it is there and from the pipeline
      * when it is not.
@@ -178,7 +191,7 @@ final class AnalyzeCommand implements Callable<Integer> {
      * truncated by a full disk -- or written by a build whose score schema has
      * since moved on -- must still analyse rather than become unusable.
      */
-    private Score transcribe(
+    private Transcription transcribe(
             Workspace workspace, SourceKind kind, Path source, MusicWizardConfig config) {
         StageCache cache = workspace.cache();
         StageCache.Key key = transcriptionKey(kind, source, audioOptions(kind, config));
@@ -192,7 +205,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 // -- it is the only warning that the pipeline did not run.
                 System.out.println("  reusing the cached analysis of this file;"
                         + " --force recomputes it");
-                return cached;
+                return new Transcription(cached, key, true);
             }
         }
 
@@ -201,8 +214,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .transcribe(source, audioOptions(kind, config));
             case MIDI -> new MidiTranscriber(AnalyzeCommand::report).transcribe(source);
         };
-        cache.writeText(key, ".json", ScoreJson.toJson(score));
-        return score;
+        return new Transcription(score, key, false);
     }
 
     private static void report(String message) {
@@ -216,6 +228,26 @@ final class AnalyzeCommand implements Callable<Integer> {
             System.err.println("warning: a cached analysis could not be read and will be"
                     + " recomputed: " + e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Stores a result for the next run, or says why it could not.
+     *
+     * <p>Symmetrical with {@link #readCached}, which was guarded from the start
+     * for a reason the write side needed just as much: a cache is an
+     * optimisation, and a {@code cache/} that is full, read-only, or occupied by
+     * something that is not a directory must not cost the user an analysis that
+     * has already succeeded. Unguarded, this raised out of {@code analyze} after
+     * the pipeline had run -- on the audio path, minutes of DSP thrown away over
+     * a failure to write a file nothing was waiting for.
+     */
+    private static void storeQuietly(StageCache cache, StageCache.Key key, Score score) {
+        try {
+            cache.writeText(key, ".json", ScoreJson.toJson(score));
+        } catch (RuntimeException e) {
+            System.err.println("warning: this analysis could not be cached, so the next run"
+                    + " will recompute it: " + e.getMessage());
         }
     }
 
@@ -380,6 +412,15 @@ final class AnalyzeCommand implements Callable<Integer> {
      * disagreed with the meter line in the same block, since
      * {@code MidiTranscriber} already drops a restated meter and drops neither of
      * the other two (#118).
+     *
+     * <p>What this fixes is the three rows of the block agreeing with each other.
+     * It does <em>not</em> reach the importer's own stage line a few lines above
+     * them, which still counts entries and still says "the tempo changes 1
+     * time(s) during the piece" about a file whose tempo never changes. That line
+     * is emitted by {@code mw-transcribe} and is the same defect at its source;
+     * #118 is where it gets fixed, and until then this command's output does
+     * contradict itself on screen. Saying so here rather than claiming the
+     * contradiction is gone, which an earlier draft of this paragraph did.
      *
      * <p>Compared with {@code equals}, which for the tempo means comparing two
      * doubles exactly. That is right here rather than sloppy: a restated tempo is

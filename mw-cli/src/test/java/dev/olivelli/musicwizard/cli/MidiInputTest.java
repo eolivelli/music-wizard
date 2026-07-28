@@ -60,6 +60,20 @@ class MidiInputTest {
         return directory.resolve(name + ".mwz");
     }
 
+    /**
+     * The summary block, from its heading to the end.
+     *
+     * <p>Separated from the stage lines above it because the two are written by
+     * different modules and make their claims independently. A test that asserts
+     * over all of stdout is asserting about both, which is how one of these
+     * passed for a reason that had nothing to do with the code under review.
+     */
+    private static String summaryBlock(String out) {
+        int start = out.indexOf("From the file,");
+        assertThat(start).as("no summary block in:\n%s", out).isNotNegative();
+        return out.substring(start);
+    }
+
     /** Imports a fixture and returns its workspace directory. */
     private Path imported(Sequence sequence, String name) {
         Path source = fixture(sequence, name + ".mid");
@@ -207,12 +221,27 @@ class MidiInputTest {
                     .as("the entries really are duplicated, so this fixture discriminates")
                     .hasSize(2);
             assertThat(score.keys()).hasSize(2);
-            assertThat(analyze.out())
+
+            // Asserted over the summary block alone, not over the whole of
+            // stdout. An earlier version of this test asserted the latter and
+            // passed only because the importer's wording happens to be "changes"
+            // where this command's is "changed" -- it read as "no line here
+            // reports a change" and proved something much narrower.
+            String block = summaryBlock(analyze.out());
+            assertThat(block)
                     .as("a restatement reported as a change")
-                    .doesNotContain("changed");
-            assertThat(analyze.out())
+                    .doesNotContain("changed")
                     .contains("Tempo   120.0 BPM")
+                    .contains("Meter   4/4")
                     .contains("Key     C major");
+
+            // And the contradiction that remains, recorded rather than left to
+            // be discovered: the importer's own stage line still counts entries.
+            // This assertion is expected to fail when #118 lands, which is the
+            // point -- it is the reminder to delete it.
+            assertThat(analyze.out())
+                    .as("#118 is fixed; delete this assertion and the note beside it")
+                    .contains("the tempo changes 1 time(s) during the piece");
         }
 
         @Test

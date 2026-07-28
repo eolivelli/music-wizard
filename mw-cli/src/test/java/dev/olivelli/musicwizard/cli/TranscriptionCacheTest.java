@@ -181,6 +181,30 @@ class TranscriptionCacheTest {
     }
 
     @Test
+    @DisplayName("an analysis that cannot be cached is still saved")
+    void aFailedCacheWriteDoesNotLoseTheAnalysis() throws Exception {
+        // A plain file where the stage directory has to go, so createDirectories
+        // fails for every user including root -- a chmod would not, and this
+        // suite must not depend on not being root. It stands in for the real
+        // cases: a full disk, a read-only workspace, a cache/ copied in with
+        // somebody else's permissions.
+        StageCache.Key key = keyFor(SourceKind.MIDI);
+        Path stageDirectory = workspace().cache().pathFor(key, ".json").getParent();
+        java.nio.file.Files.createDirectories(stageDirectory.getParent());
+        java.nio.file.Files.writeString(stageDirectory, "not a directory");
+
+        CliRunner.Result analyze = CliRunner.run("analyze", workspaceDirectory.toString());
+
+        // The pipeline had already run. Raising here threw away the whole
+        // analysis -- on the audio path, minutes of it -- over a file nothing was
+        // waiting for.
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.err()).contains("could not be cached");
+        assertThat(workspace().readScore().orElseThrow().durationSeconds())
+                .isCloseTo(18.0, within(1e-9));
+    }
+
+    @Test
     @DisplayName("the audio key changes with the overrides, and the MIDI key does not")
     void keysCarryOnlyWhatTheirPathReads() {
         Path source = workspace().sourceFile();
