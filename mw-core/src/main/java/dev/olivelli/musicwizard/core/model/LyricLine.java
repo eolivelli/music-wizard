@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.Objects;
 
@@ -38,6 +39,12 @@ public record LyricLine(List<LyricWord> words, Confidence confidence) {
         words = words.stream()
                 .sorted(java.util.Comparator.comparingDouble(LyricWord::startSeconds))
                 .toList();
+    }
+
+    /** True once every word in the line carries beat-snapped timing. */
+    @JsonIgnore
+    public boolean isQuantized() {
+        return words.stream().allMatch(LyricWord::isQuantized);
     }
 
     public double startSeconds() {

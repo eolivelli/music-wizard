@@ -57,9 +57,9 @@ class ScoreRoundTripTest {
 
         // Two syllables of one word plus a plain one, so the hyphen and melisma
         // marks are both exercised in the same line as their absence.
-        LyricWord hel = new LyricWord("hel", 0.0, 0.2, Optional.of(0.0),
+        LyricWord hel = new LyricWord("hel", 0.0, 0.2, Optional.of(0.0), Optional.of(0.5),
                 true, false, Confidence.of(0.5));
-        LyricWord lo = new LyricWord("lo", 0.2, 0.4, Optional.of(0.5),
+        LyricWord lo = new LyricWord("lo", 0.2, 0.4, Optional.of(0.5), Optional.of(2.5),
                 false, true, Confidence.of(0.5));
         LyricWord world = LyricWord.ofSeconds("world", 0.5, 0.9, Confidence.of(0.5));
         Lyrics lyrics = new Lyrics(

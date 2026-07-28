@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -328,8 +329,8 @@ class PitchAndKeyTest {
                     .withHyphenToNext(true)
                     .withMelisma(true);
 
-            assertThat(word.snappedTo(4.0).hyphenatedToNext()).isTrue();
-            assertThat(word.snappedTo(4.0).melisma()).isTrue();
+            assertThat(word.snappedTo(4.0, 6.0).hyphenatedToNext()).isTrue();
+            assertThat(word.snappedTo(4.0, 6.0).melisma()).isTrue();
             assertThat(word.withText("hall").hyphenatedToNext()).isTrue();
             assertThat(word.withText("hall").melisma()).isTrue();
             assertThat(word.withHyphenToNext(false).melisma()).isTrue();
@@ -351,27 +352,84 @@ class PitchAndKeyTest {
         }
 
         @Test
-        @DisplayName("a melisma's extent is recoverable from the snapped beats")
-        void melismaExtentComesFromTheBeats() {
-            // Why melisma is a flag and not a length: the span a held syllable
-            // covers is already there, by value, as the gap to the next
-            // syllable's snapped beat. Storing it again would be a second source
-            // of truth that can disagree with the first -- the same argument this
-            // change makes for putting beats on Key and Section rather than bars.
+        @DisplayName("a melisma carries its own extent, not the gap to the next syllable")
+        void melismaCarriesItsOwnExtent() {
+            // Round 2 review finding. Reading the extent off the next syllable's
+            // start needs the words ordered, all snapped and none sharing a beat,
+            // and nothing promises any of the three -- least of all for the last
+            // syllable of a line, which has no successor. So the span is recorded
+            // where it is decided, and the flag says only "print the extender".
+            LyricWord held = LyricWord.ofSeconds("ri", 0.5, 1.0, Confidence.CERTAIN)
+                    .snappedTo(1.0, 5.0)
+                    .withMelisma(true);
             LyricLine line = new LyricLine(List.of(
                     LyricWord.ofSeconds("glo", 0.0, 0.5, Confidence.CERTAIN)
-                            .snappedTo(0.0).withHyphenToNext(true),
-                    LyricWord.ofSeconds("ri", 0.5, 1.0, Confidence.CERTAIN)
-                            .snappedTo(1.0).withHyphenToNext(true).withMelisma(true),
-                    LyricWord.ofSeconds("a", 2.5, 3.0, Confidence.CERTAIN).snappedTo(5.0)),
+                            .snappedTo(0.0, 1.0).withHyphenToNext(true),
+                    held),
                     Confidence.CERTAIN);
 
-            List<LyricWord> words = line.words();
-            double melismaStart = words.get(1).startBeat().orElseThrow();
-            double melismaEnd = words.get(2).startBeat().orElseThrow();
+            assertThat(held.melisma()).isTrue();
+            assertThat(held.durationBeats()).contains(4.0);
+            // Still the final syllable of the line, and its extent is unaffected.
+            assertThat(line.words().get(1).durationBeats()).contains(4.0);
+            assertThat(line.isQuantized()).isTrue();
+        }
 
-            assertThat(words.get(1).melisma()).isTrue();
-            assertThat(melismaEnd - melismaStart).isEqualTo(4.0);
+        @Test
+        @DisplayName("a word is snapped on both ends or on neither")
+        void wordsAreSnappedAllOrNothing() {
+            assertThatThrownBy(() -> new LyricWord("la", 0, 1,
+                    Optional.of(2.0), Optional.empty(), false, false, Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("both startBeat and endBeat");
+            assertThat(LyricWord.ofSeconds("la", 0, 1, Confidence.CERTAIN).isQuantized())
+                    .isFalse();
+        }
+
+        @Test
+        @DisplayName("a snapped beat cannot be NaN, infinite or negative")
+        void rejectsNonFiniteBeats() {
+            // Jackson writes a non-finite double as the string "NaN", which is not
+            // a JSON number -- one such value makes the whole score file unreadable
+            // by anything stricter than Jackson. Round 2 review finding.
+            LyricWord word = LyricWord.ofSeconds("la", 0, 1, Confidence.CERTAIN);
+
+            assertThatThrownBy(() -> word.snappedTo(Double.NaN, 1.0))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> word.snappedTo(0.0, Double.POSITIVE_INFINITY))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> word.snappedTo(-5.0, 1.0))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> word.snappedTo(4.0, 2.0))
+                    .isInstanceOf(IllegalArgumentException.class);
+            // Deserialization bypasses snappedTo, so the record must refuse it too.
+            assertThatThrownBy(() -> new LyricWord("la", 0, 1,
+                    Optional.of(Double.NaN), Optional.of(Double.NaN),
+                    false, false, Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            // A syllable on a single beat is normal and must still be allowed.
+            assertThat(word.snappedTo(3.0, 3.0).durationBeats()).contains(0.0);
+        }
+
+        @Test
+        @DisplayName("lines are ordered in time however they arrive")
+        void linesAreOrdered() {
+            // allWords() and text() both claim time order; without sorting they
+            // printed whatever order the recognition stages happened to append in.
+            LyricLine first = new LyricLine(
+                    List.of(LyricWord.ofSeconds("early", 1, 2, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+            LyricLine second = new LyricLine(
+                    List.of(LyricWord.ofSeconds("late", 9, 10, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            Lyrics lyrics = new Lyrics(List.of(second, first), "en", Confidence.CERTAIN);
+
+            assertThat(lyrics.text()).isEqualTo("early\nlate");
+            assertThat(lyrics.allWords()).extracting(LyricWord::text)
+                    .containsExactly("early", "late");
+            assertThat(lyrics.isQuantized()).isFalse();
         }
 
         @Test

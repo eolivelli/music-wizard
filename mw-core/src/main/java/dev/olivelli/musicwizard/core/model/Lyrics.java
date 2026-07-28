@@ -33,7 +33,12 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
         Objects.requireNonNull(lines, "lines");
         Objects.requireNonNull(language, "language");
         Objects.requireNonNull(confidence, "confidence");
-        lines = List.copyOf(lines);
+        // Ordered, so that allWords() and text() really are in time order as
+        // they claim: a stage that recognises a chorus before the verse before
+        // it would otherwise print the song out of sequence.
+        lines = lines.stream()
+                .sorted(java.util.Comparator.comparingDouble(LyricLine::startSeconds))
+                .toList();
     }
 
     public static Lyrics empty() {
@@ -43,6 +48,12 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
     @JsonIgnore
     public boolean isEmpty() {
         return lines.isEmpty();
+    }
+
+    /** True once every word carries beat-snapped timing. */
+    @JsonIgnore
+    public boolean isQuantized() {
+        return lines.stream().allMatch(LyricLine::isQuantized);
     }
 
     /** Every word across every line, in time order. */

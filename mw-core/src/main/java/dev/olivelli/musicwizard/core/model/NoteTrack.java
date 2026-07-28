@@ -66,10 +66,30 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
         return true;
     }
 
-    /** Notes overlapping a time span, in onset order. */
+    /** Notes overlapping a wall-clock span, in onset order. */
     public List<Note> notesBetween(double startSeconds, double endSeconds) {
         return notes.stream()
                 .filter(n -> n.offsetSeconds() > startSeconds && n.onsetSeconds() < endSeconds)
+                .toList();
+    }
+
+    /**
+     * Notes overlapping a span of quarter-note beats, in onset order.
+     *
+     * <p>The beat-axis counterpart of {@link #notesBetween}, because nothing
+     * downstream of the beat grid works in seconds: a bar, a section or a
+     * melisma is a beat span, and converting it back to seconds to ask this
+     * question would round independently of the quantizer.
+     *
+     * <p>Un-quantized notes are skipped rather than converted. They have no
+     * position on this axis, and guessing one is what the optional musical
+     * fields exist to prevent.
+     */
+    public List<Note> notesBetweenBeats(double startBeat, double endBeat) {
+        return notes.stream()
+                .filter(Note::isQuantized)
+                .filter(n -> n.offsetBeat().orElseThrow() > startBeat
+                        && n.onsetBeat().orElseThrow() < endBeat)
                 .toList();
     }
 

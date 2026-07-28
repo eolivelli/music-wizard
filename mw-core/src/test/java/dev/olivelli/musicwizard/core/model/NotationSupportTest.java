@@ -152,6 +152,28 @@ class NotationSupportTest {
         }
 
         @Test
+        @DisplayName("notesBetweenBeats works on the beat axis and skips un-quantized notes")
+        void notesBetweenBeatsIgnoresUnquantized() {
+            // A bar, a section and a melisma are all beat spans, so the question
+            // has to be askable without converting back to seconds. An
+            // un-quantized note has no position on this axis, so it is skipped
+            // rather than guessed at.
+            NoteTrack track = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                    Note.ofSeconds(0.0, 1.0, 60, Confidence.CERTAIN).quantizedTo(0.0, 2.0),
+                    Note.ofSeconds(2.0, 1.0, 62, Confidence.CERTAIN).quantizedTo(4.0, 2.0),
+                    Note.ofSeconds(4.0, 1.0, 64, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            assertThat(track.notesBetweenBeats(1.0, 5.0)).extracting(Note::midiPitch)
+                    .containsExactly(60, 62);
+            assertThat(track.notesBetweenBeats(0.0, 100.0)).extracting(Note::midiPitch)
+                    .containsExactly(60, 62);
+            // Half-open at the start, like notesBetween and chordsBetween.
+            assertThat(track.notesBetweenBeats(2.0, 4.0)).isEmpty();
+            assertThat(NoteTrack.empty(PartRole.BASS, "Bass").notesBetweenBeats(0, 10)).isEmpty();
+        }
+
+        @Test
         @DisplayName("pitchRange reports a comparable pair")
         void pitchRangeIsAValue() {
             assertThat(track().pitchRange()).contains(new PitchRange(55, 67));

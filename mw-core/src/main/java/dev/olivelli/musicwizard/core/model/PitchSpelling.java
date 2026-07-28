@@ -156,7 +156,16 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
         return lilyPondName() + String.valueOf(marks >= 0 ? '\'' : ',').repeat(Math.abs(marks));
     }
 
-    /** Human-readable name such as {@code F#4} or {@code Bb3}. */
+    /**
+     * Human-readable name such as {@code F#4} or {@code Bb3}.
+     *
+     * <p>{@link #parse} inverts this for every octave in
+     * {@value #MIN_PARSED_OCTAVE}..{@value #MAX_PARSED_OCTAVE}, which is every
+     * octave a spelling of a real pitch has. Outside that band the name is still
+     * produced but will not parse back, deliberately: an octave of two hundred
+     * million is a bug in whatever built the spelling, and the parser is where
+     * untrusted text is stopped rather than round-tripped.
+     */
     public String displayName() {
         return letter.name() + accidental.displaySuffix() + octave;
     }
@@ -172,7 +181,11 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
      *
      * <p>Because that input is untrusted, this is stricter than the record: only
      * ASCII digits count as an octave, and the octave must lie within
-     * {@value #MIN_PARSED_OCTAVE}..{@value #MAX_PARSED_OCTAVE}.
+     * {@value #MIN_PARSED_OCTAVE}..{@value #MAX_PARSED_OCTAVE}. That band is the
+     * range of scientific pitch notation, not of MIDI, so the result can still
+     * sound outside 0..127 — {@code Cb-1} and {@code B#9} both do — and a caller
+     * needing a playable pitch must range-check {@link #midiPitch()} exactly as
+     * that method already says.
      *
      * @throws IllegalArgumentException if the text is not a pitch in that form
      */
