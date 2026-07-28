@@ -39,7 +39,7 @@ import org.jtransforms.fft.FloatFFT_1D;
 public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, int hopSize) {
 
     /**
-     * Validates the magnitudes' structure and finiteness.
+     * Validates the sizes, then the magnitudes' structure and finiteness.
      *
      * <p>Every frame must be present, {@code windowSize / 2 + 1} bins wide, and
      * finite. What that buys is a contract the stages downstream can rely on
@@ -103,9 +103,10 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * reasons from this contract about whether a downstream guard can be
      * deleted. See issue #79.
      *
+     * @throws NullPointerException if {@code magnitudes} is null
      * @throws IllegalArgumentException if any of the three sizes is not
-     *     positive, {@code windowSize} is not a power of two, or a frame is
-     *     absent, the wrong width, or not finite
+     *     positive, {@code windowSize} is not a power of two, a frame is absent
+     *     or not {@code windowSize / 2 + 1} bins wide, or a bin is not finite
      */
     public Spectrogram {
         Objects.requireNonNull(magnitudes, "magnitudes");

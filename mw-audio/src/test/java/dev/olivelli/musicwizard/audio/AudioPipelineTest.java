@@ -380,6 +380,30 @@ class AudioPipelineTest {
         }
 
         @Test
+        @DisplayName("names which size was not positive, rather than which three could have been")
+        void rejectsNonPositiveSizes() {
+            // Untested before this PR, and the clause matters most for the two
+            // sizes nothing else catches: a non-positive windowSize is caught by
+            // the power-of-two check anyway, but a hopSize or sampleRate of zero
+            // would otherwise construct and make frameRate() return Infinity or
+            // NaN -- the silent wrong answer this constructor exists to replace.
+            assertThatThrownBy(() -> new Spectrogram(new float[0][], 0, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("sampleRate must be positive, got: 0");
+
+            assertThatThrownBy(() -> new Spectrogram(new float[0][], 22_050, 2048, 0))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("hopSize must be positive, got: 0");
+
+            // bitCount(Integer.MIN_VALUE) is 1, so it passes the power-of-two
+            // check; only the positivity clause stops it, and it must run first.
+            assertThatThrownBy(
+                    () -> new Spectrogram(new float[0][], 22_050, Integer.MIN_VALUE, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("windowSize must be positive, got: -2147483648");
+        }
+
+        @Test
         @DisplayName("accepts what compute actually produces, at every resolution the pipeline uses")
         void acceptsEveryResolutionTheTransformProduces() {
             // The other direction: the width check must not reject a real
