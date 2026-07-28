@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import dev.olivelli.musicwizard.arrange.BarGrid;
@@ -43,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -74,6 +76,36 @@ import org.junit.jupiter.api.io.TempDir;
  * check still has teeth through a bracket, which is the new thing to doubt.
  */
 class TupletEngravingIT {
+
+    /**
+     * The one complaint from LilyPond this suite tolerates, and the reasoning.
+     *
+     * <p>Every other line mentioning a warning or an error fails the test,
+     * because that is what makes engraving worth doing at all: a bar that does
+     * not fill its meter is a {@code warning: barcheck failed} and nothing else
+     * catches it.
+     *
+     * <p>This one is different in kind and the difference is checkable rather
+     * than asserted. It is a complaint about <em>spacing</em> — LilyPond cannot
+     * fit the little {@code 3} beside a steeply angled beam — raised from its
+     * own layout engine about its own output, not about the source it was given.
+     * The music is right, the bar sums, the PDF is produced and the exit status
+     * is zero. Nothing this emitter could write differently would avoid it
+     * without writing a different rhythm.
+     *
+     * <p>It is <b>reachable from ordinary material</b>, which is why this is a
+     * decision taken here rather than a surprise taken later: round 3 of review
+     * ran real {@code Quantizer} output through the emitter and found it in
+     * about one stave in eighty, in 4/4, 3/4, 3/2 and 7/8 — four of the twelve
+     * meters this project targets. It needs partial sixteenth-triplet brackets
+     * among rests and ties, which is exactly what a quantized performance
+     * produces and exactly what a bar with every grid position filled does not.
+     * {@link #theToleratedComplaintIsReachableAndIsOnlyThisOne} engraves review's
+     * own reproducer, so this constant is pinned to a case in the repository
+     * rather than to a memory of one. See #136.
+     */
+    private static final String TOLERATED_COMPLAINT =
+            "programming error: not enough space for tuplet number against beam";
 
     /** Onset spread of a decent human player, which is what the fixture plays with. */
     private static final double JITTER_SECONDS = 0.025;
@@ -186,11 +218,7 @@ class TupletEngravingIT {
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve("triplets/part.ly"), source);
-        assertThat(result.succeeded()).as("%s", result.output()).isTrue();
-        assertThat(result.output())
-                .as("the triplet page engraved with complaints")
-                .doesNotContainIgnoringCase("warning")
-                .doesNotContainIgnoringCase("error");
+        assertEngravedCleanly("the triplet page", result);
         Path pdf = result.pdf().orElseThrow();
         assertThat(pageCount(pdf)).isEqualTo(1);
         assertThat(Files.size(pdf)).as("an empty page").isGreaterThan(10_000);
@@ -239,6 +267,12 @@ class TupletEngravingIT {
 
         assertThat(result.succeeded()).isTrue();
         assertThat(result.output()).containsIgnoringCase("bar check failed");
+        // And the one complaint this suite tolerates does not swallow it. A
+        // tolerance is only worth having if the thing it was carved out of still
+        // fails, so the carve-out is pointed at the failure it must not cover.
+        assertThatThrownBy(() -> assertEngravedCleanly("short bracket", result))
+                .as("the tolerance swallowed a failed bar check")
+                .isInstanceOf(AssertionError.class);
     }
 
     @Test
@@ -254,8 +288,10 @@ class TupletEngravingIT {
         // below, in one meter each. This sweep is the other axis.
         //
         // Not every meter the model admits, either: there are 448 of those and
-        // the absurd ones are #131's and #136's business. These are the ones
-        // music is written in.
+        // the ones no one writes in are #131's business. These are the ones
+        // music is written in -- which is not the same as saying they are all
+        // clean, and #136 is exactly that distinction: the complaint recorded
+        // there fires in 4/4 and 3/4, on a shape this sweep does not produce.
         List<TimeSignature> meters = List.of(
                 new TimeSignature(4, 4), new TimeSignature(3, 4), new TimeSignature(2, 4),
                 new TimeSignature(5, 4), new TimeSignature(7, 8), TimeSignature.SIX_EIGHT,
@@ -278,11 +314,7 @@ class TupletEngravingIT {
 
                 LilyPondRenderer.Result result = renderer.renderSource(
                         tempDirectory.resolve("meters/" + name + "/part.ly"), source);
-                assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
-                assertThat(result.output())
-                        .as("%s engraved with complaints", name)
-                        .doesNotContainIgnoringCase("warning")
-                        .doesNotContainIgnoringCase("error");
+                assertEngravedCleanly(name, result);
                 engraved++;
             }
         }
@@ -318,14 +350,88 @@ class TupletEngravingIT {
 
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve(engraved.name() + "/part.ly"), source);
-            assertThat(result.succeeded()).as("%s: %s", engraved.name(), result.output()).isTrue();
-            assertThat(result.output())
-                    .as("%s engraved with complaints", engraved.name())
-                    .doesNotContainIgnoringCase("warning")
-                    .doesNotContainIgnoringCase("error");
+            assertEngravedCleanly(engraved.name(), result);
             assertThat(Files.size(result.pdf().orElseThrow()))
                     .as("%s is an empty page", engraved.name()).isGreaterThan(10_000);
         }
+    }
+
+    @Test
+    @DisplayName("the complaint this suite tolerates is real, is reachable, and is only that one")
+    void theToleratedComplaintIsReachableAndIsOnlyThisOne() {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        // Round 3 of review's reproducer, straight out of Quantizer on random
+        // phrases with 12 ms of human timing: three bars of 4/4, partial
+        // sixteenth-triplet brackets among rests and ties, over a wide enough
+        // range that the beams are steep. Recorded verbatim rather than
+        // regenerated, because the point of it is that a real quantized
+        // performance reaches this and a fully subdivided bar does not -- and a
+        // fixture that regenerated the material would eventually stop reaching
+        // it without saying so.
+        //
+        // The assertion is what makes TOLERATED_COMPLAINT a decision rather than
+        // a hole: if LilyPond ever stops complaining here, or complains
+        // differently, this fails and the tolerance is re-examined instead of
+        // silently covering something else.
+        String firstBar = "\\tuplet 3/2 { e16 g''8 } \\tuplet 3/2 { fis'16 f8~ }"
+                + " \\tuplet 3/2 { f8 r16 } \\tuplet 3/2 { r8 f16 }"
+                + " \\tuplet 3/2 { e16 e,8~ } e,8"
+                + " \\tuplet 3/2 { r16 cis'16 a16 } \\tuplet 3/2 { r16 fis,8 } |";
+        String secondBar = "\\tuplet 3/2 { r16 cis''16 a,16~ } \\tuplet 3/2 { a,16 r8 }"
+                + " \\tuplet 3/2 { e''8 r16 } f8~ \\tuplet 3/2 { f16 e8~ }"
+                + " \\tuplet 3/2 { e16 r16 cis'16~ } \\tuplet 3/2 { cis'8 r16 }"
+                + " \\tuplet 3/2 { f''16 g8 } |";
+        String thirdBar = "\\tuplet 3/2 { bes16 ees'8~ } \\tuplet 3/2 { ees'8 e16 }"
+                + " <c' f''>4 r2 |";
+        String source = String.join("\n",
+                "\\version \"2.24.0\"",
+                "\\score {",
+                "  \\new Staff {",
+                "    \\time #'(1 1 1 1) 4/4",
+                "    \\tempo 4 = 89",
+                "    " + firstBar,
+                "    " + secondBar,
+                "    " + thirdBar,
+                "    \\bar \"|.\"",
+                "  }",
+                "  \\layout { }",
+                "}",
+                "");
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve("tolerated/part.ly"), source);
+
+        assertThat(result.succeeded()).as("%s", result.output()).isTrue();
+        assertThat(result.output())
+                .as("the tolerated complaint is no longer reachable; re-read #136 before"
+                        + " widening anything on the strength of it")
+                .contains(TOLERATED_COMPLAINT);
+        // And the music is still right underneath it: a page came out, and the
+        // bar checks -- which is what the warning ban is really for -- passed.
+        assertThat(result.output()).doesNotContainIgnoringCase("barcheck");
+        assertThat(result.pdf()).isPresent();
+        assertEngravedCleanly("the tolerated case", result);
+    }
+
+    // ------------------------------------------------------------- assertions
+
+    /**
+     * Fails on anything LilyPond complains about, bar the one named exception.
+     *
+     * <p>One helper rather than the same two lines at four call sites, because
+     * the exception is a decision about what this suite means by "engraved
+     * cleanly" and a decision belongs in one place. See
+     * {@link #TOLERATED_COMPLAINT}.
+     */
+    private static void assertEngravedCleanly(String name, LilyPondRenderer.Result result) {
+        assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+        List<String> complaints = result.output().lines()
+                .filter(line -> line.toLowerCase(Locale.ROOT).contains("warning")
+                        || line.toLowerCase(Locale.ROOT).contains("error"))
+                .filter(line -> !line.strip().equals(TOLERATED_COMPLAINT))
+                .toList();
+        assertThat(complaints).as("%s engraved with complaints", name).isEmpty();
     }
 
     // -------------------------------------------------------- built fixtures

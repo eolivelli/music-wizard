@@ -975,11 +975,19 @@ class StaffNotationTest {
         Score score = score(TimeSignature.FOUR_FOUR, 120, voice, strays);
         QuantizedScore plan = quantized(score, GridResolution.THIRD_BEAT);
 
+        // The Score overload's failure is caught and asserted non-null first.
+        // Round 3 of review found that reading its message inline gave a
+        // NullPointerException the day it stopped throwing at all -- hiding the
+        // one thing that had actually changed behind the least informative
+        // failure there is.
+        Throwable withoutGrids = catchThrowable(() -> StaffNotation.toLilyPond(score, voice));
+        assertThat(withoutGrids)
+                .as("the Score overload no longer refuses this score, so there is nothing to match")
+                .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> StaffNotation.toLilyPond(plan, voice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("\"Keys\" runs that far, so look there rather than here")
-                .hasMessage(catchThrowable(() -> StaffNotation.toLilyPond(score, voice))
-                        .getMessage());
+                .hasMessage(withoutGrids.getMessage());
     }
 
     @Test
