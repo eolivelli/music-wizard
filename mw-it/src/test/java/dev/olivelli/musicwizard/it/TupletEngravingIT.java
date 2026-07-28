@@ -485,6 +485,15 @@ class TupletEngravingIT {
         // touched, and this pins what that buys. The tool writes one file per
         // part and a part is named after the song, so this is the ordinary case
         // for most of the world rather than an exotic one.
+        // A JVM whose sun.jnu.encoding is not UTF-8 -- a bare container, cron,
+        // a systemd unit with no locale at all -- cannot turn these into a Path
+        // in the first place, and would throw InvalidPathException long before
+        // reaching LilyPond. That is a fact about the JVM rather than about this
+        // emitter, so it is skipped and said out loud rather than failed.
+        assumeThat(System.getProperty("sun.jnu.encoding", ""))
+                .as("the JVM cannot represent a non-ASCII file name")
+                .containsIgnoringCase("UTF");
+
         QuantizedScore quantized = tripletsAmongPlainBeats();
         String source = StaffNotation.toLilyPond(
                 quantized, quantized.score().tracks().getFirst());

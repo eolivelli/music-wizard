@@ -65,30 +65,115 @@ class LilyPondRendererTest {
     }
 
     @Test
-    @DisplayName("nothing but the message language is touched, because the rest decodes filenames")
-    void theCharacterTypeIsLeftAlone() {
-        // Round 5 of review found the first version of this setting LC_ALL and
-        // LANG as well, which also set the character type -- and LilyPond then
-        // could not decode a non-ASCII filename off its own command line.
-        // canción.ly engraved before that change and failed after it. This is
-        // that regression, in the one form a unit test can hold: the variables
-        // that decide how bytes are read are left exactly as they were.
+    @DisplayName("an LC_ALL that would override the message language is moved out of the way")
+    void anAmbientLcAllIsNeutralisedRatherThanLeftToWin() {
+        // Round 6 of review found the previous version of this a no-op for the
+        // commonest way of all to set a locale: POSIX has LC_ALL override every
+        // individual category, so writing LC_MESSAGES=C beside an inherited
+        // LC_ALL=it_IT.UTF-8 changes nothing and LilyPond says "attenzione: bar
+        // check failed" -- which is round 4's bug, reopened by round 5's fix.
         ProcessBuilder builder = new ProcessBuilder("true");
         Map<String, String> environment = builder.environment();
-        environment.put("LC_ALL", "es_ES.UTF-8");
-        environment.put("LANG", "es_ES.UTF-8");
-        environment.put("LC_CTYPE", "es_ES.UTF-8");
-        environment.put("LANGUAGE", "es");
+        environment.put("LC_ALL", "it_IT.UTF-8");
+        environment.put("LANG", "it_IT.UTF-8");
+        environment.put("LANGUAGE", "it");
 
         LilyPondRenderer.speakEnglish(builder);
 
+        assertThat(environment).doesNotContainKey("LC_ALL").containsEntry("LC_MESSAGES", "C");
+        // Left alone: gettext ignores LANGUAGE once the messages locale is C,
+        // and LANG is outranked by LC_MESSAGES for messages.
         assertThat(environment)
-                .containsEntry("LC_ALL", "es_ES.UTF-8")
-                .containsEntry("LANG", "es_ES.UTF-8")
-                .containsEntry("LC_CTYPE", "es_ES.UTF-8")
-                // Left as it was, and harmless: gettext ignores LANGUAGE
-                // entirely once the messages locale is C.
-                .containsEntry("LANGUAGE", "es");
+                .containsEntry("LANGUAGE", "it")
+                .containsEntry("LANG", "it_IT.UTF-8");
+    }
+
+    @Test
+    @DisplayName("the character type survives, because it is what decodes a file name")
+    void theCharacterTypeIsCarriedRatherThanDropped() {
+        // Round 5 of review found round 4 setting a C ctype and breaking
+        // canción.ly outright. Removing LC_ALL without carrying it forward
+        // breaks the same file the same way whenever LC_ALL was the only locale
+        // variable set, which is exactly what "export LC_ALL=..." in a profile
+        // produces -- so its value moves rather than vanishing.
+        ProcessBuilder builder = new ProcessBuilder("true");
+        Map<String, String> environment = builder.environment();
+        environment.remove("LANG");
+        environment.remove("LC_CTYPE");
+        environment.put("LC_ALL", "es_ES.UTF-8");
+
+        LilyPondRenderer.speakEnglish(builder);
+
+        assertThat(environment).containsEntry("LC_CTYPE", "es_ES.UTF-8");
+    }
+
+    @Test
+    @DisplayName("the character type that was in force is the one kept, not the one being ignored")
+    void anOverriddenCharacterTypeIsReplacedByTheOneThatWasWinning() {
+        // LC_CTYPE set and LC_ALL set: the effective ctype is LC_ALL's, because
+        // it outranks. Keeping the LC_CTYPE that was being ignored would change
+        // how bytes are decoded, which is the thing this method must not do --
+        // so the move is unconditional rather than putIfAbsent.
+        ProcessBuilder builder = new ProcessBuilder("true");
+        Map<String, String> environment = builder.environment();
+        environment.put("LC_CTYPE", "POSIX");
+        environment.put("LC_ALL", "ja_JP.UTF-8");
+
+        LilyPondRenderer.speakEnglish(builder);
+
+        assertThat(environment).containsEntry("LC_CTYPE", "ja_JP.UTF-8");
+    }
+
+    @Test
+    @DisplayName("a machine with no LC_ALL keeps the character type it already had")
+    void nothingIsInventedWhenThereIsNoLcAllToMove() {
+        // The ordinary case, and the one that must not acquire a stray LC_CTYPE:
+        // an empty LC_ALL is not a setting either, since POSIX has it fall
+        // through to the individual categories.
+        for (String lcAll : new String[] {null, ""}) {
+            ProcessBuilder builder = new ProcessBuilder("true");
+            Map<String, String> environment = builder.environment();
+            environment.remove("LC_CTYPE");
+            if (lcAll == null) {
+                environment.remove("LC_ALL");
+            } else {
+                environment.put("LC_ALL", lcAll);
+            }
+            environment.put("LANG", "de_DE.UTF-8");
+
+            LilyPondRenderer.speakEnglish(builder);
+
+            assertThat(environment)
+                    .as("LC_ALL was %s", lcAll == null ? "unset" : "empty")
+                    .doesNotContainKey("LC_CTYPE")
+                    .containsEntry("LANG", "de_DE.UTF-8")
+                    .containsEntry("LC_MESSAGES", "C");
+        }
+    }
+
+    @Test
+    @DisplayName("engraving actually goes through it, rather than the method merely existing")
+    void theRendererAppliesItToTheProcessItStarts() throws Exception {
+        assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+
+        // Round 6 of review found that deleting both call sites left every test
+        // green: the seam was tested and the wiring was not. A stand-in binary
+        // that reports the locale it was started with is the only thing that can
+        // see the difference without LilyPond.
+        Path script = tempDirectory.resolve("reports-locale");
+        Files.writeString(script, """
+                #!/bin/sh
+                echo "LC_MESSAGES=[${LC_MESSAGES-unset}]"
+                exit 1
+                """);
+        Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Path source = tempDirectory.resolve("part.ly");
+        Files.writeString(source, "% nothing to engrave\n");
+
+        LilyPondRenderer renderer = new LilyPondRenderer(script);
+
+        assertThat(renderer.render(source).output()).contains("LC_MESSAGES=[C]");
+        assertThat(renderer.version()).as("--version reads output too").isPresent();
     }
 
     @Test

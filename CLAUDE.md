@@ -65,8 +65,10 @@ This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
 
-There is one edge between non-core modules: **`mw-notation` depends on
-`mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. The notation
+One edge between non-core modules is new and worth naming: **`mw-notation`
+depends on `mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. It
+joins the ones the pipeline already had — `mw-dsp` on `mw-audio`, and
+`mw-transcribe` on all three of `mw-audio`, `mw-dsp` and `mw-ml`. The notation
 layer needs the quantizer's tuplet decision and cannot re-derive it — three
 onsets a third of a beat apart and three a half beat apart are both legal on the
 sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both

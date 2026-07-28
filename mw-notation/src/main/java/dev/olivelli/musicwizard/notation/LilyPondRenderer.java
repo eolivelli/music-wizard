@@ -21,6 +21,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -69,22 +70,45 @@ public final class LilyPondRenderer {
      * keeping it current, in every language, for a string this project only
      * reads in order to know whether something went wrong.
      *
-     * <p><b>{@code LC_MESSAGES} only, and that is the whole point of this
-     * method.</b> The first version of it set {@code LC_ALL} and {@code LANG} as
-     * well, and round 5 of review found that this broke engraving outright for a
-     * file whose name is not ASCII: those two also set the character type, and
-     * LilyPond cannot decode a non-ASCII {@code argv} filename under a {@code C}
-     * ctype. {@code canción.ly}, {@code Präludium.ly} and {@code 夜曲.ly} all
-     * engraved before that change and all failed after it with
-     * {@code fatal error: failed files: "canci??n.ly"}. A fix for a test that
-     * silently stopped checking had turned into a fix that silently stopped
-     * engraving, which is the worse of the two by a distance.
+     * <p><b>Two variables, and each one is here because a previous version got
+     * it wrong.</b> It took three rounds to land, and the two wrong answers are
+     * worth keeping because they are opposite mistakes about the same fact.
      *
-     * <p>Nor is {@code LANGUAGE} cleared, though the first version did that too
-     * and the commit message called it the subtle part. gettext ignores
-     * {@code LANGUAGE} entirely when the messages locale is {@code C}, so
-     * clearing it changes nothing — measured, not assumed: with
-     * {@code LC_MESSAGES=C LANGUAGE=it} LilyPond still says
+     * <p>Round 4 set {@code LC_ALL}, {@code LANG} and {@code LC_MESSAGES} to
+     * {@code C}. Round 5 found that this broke engraving outright for a file
+     * whose name is not ASCII: those variables also set the <em>character
+     * type</em>, and LilyPond cannot decode a non-ASCII {@code argv} filename
+     * under a {@code C} ctype. {@code canción.ly}, {@code Präludium.ly} and
+     * {@code 夜曲.ly} all engraved before that change and all failed after it
+     * with {@code fatal error: failed files: "canci??n.ly"}. A fix for a test
+     * that had silently stopped checking had become a fix that silently stopped
+     * engraving, which is worse by a distance.
+     *
+     * <p>Round 5 therefore narrowed it to {@code LC_MESSAGES} alone — and round
+     * 6 found that this reopens the original bug for the commonest way of all to
+     * set a locale, because POSIX has {@code LC_ALL} <em>override</em> every
+     * individual category. A user with {@code LC_ALL=it_IT.UTF-8} got
+     * {@code attenzione: bar check failed} again, and the integration suite went
+     * silent again with it.
+     *
+     * <p>So {@code LC_ALL} has to go, and its value has to be <em>kept</em>
+     * rather than dropped: it may be the only thing telling LilyPond that the
+     * filesystem is UTF-8, and removing it without carrying it forward breaks
+     * the non-ASCII filename all over again. It is moved into {@code LC_CTYPE},
+     * unconditionally rather than only when unset, because the effective
+     * character type before this method ran <em>was</em> {@code LC_ALL}'s value
+     * — an existing {@code LC_CTYPE} was already being overridden and preserving
+     * it would change how bytes are decoded rather than leave it alone.
+     *
+     * <p>The other categories {@code LC_ALL} was covering — numeric, time,
+     * collation — fall back to {@code LANG} or to {@code C}. Measured rather
+     * than assumed: the same score engraved under a full {@code it_IT.UTF-8} and
+     * under this shape produces PDFs that differ in 73 bytes, all of them the
+     * embedded timestamp.
+     *
+     * <p>{@code LANGUAGE} is left alone. gettext consults it first but ignores
+     * it entirely once the messages locale is {@code C}, so clearing it changes
+     * nothing — measured too: {@code LC_MESSAGES=C LANGUAGE=it} still says
      * {@code programming error}. A line that cannot change the answer is a line
      * nothing can test.
      *
@@ -97,12 +121,17 @@ public final class LilyPondRenderer {
      * <p>Package-private so it can be tested against a {@link ProcessBuilder}
      * whose environment has been poisoned first. Testing it through the ambient
      * environment proved nothing: round 5 found that deleting the body left the
-     * suite green, because the build machine has no {@code LANGUAGE} set.
+     * suite green, because no build machine here sets any of this.
      */
     static void speakEnglish(ProcessBuilder builder) {
-        // Not LC_ALL, not LANG, not LC_CTYPE: those decide how the filename on
-        // the command line is decoded as well as which catalogue is loaded.
-        builder.environment().put("LC_MESSAGES", "C");
+        Map<String, String> environment = builder.environment();
+        // An empty LC_ALL is not a setting -- POSIX has it fall through to the
+        // individual categories -- so it carries nothing forward.
+        String everything = environment.remove("LC_ALL");
+        if (everything != null && !everything.isEmpty()) {
+            environment.put("LC_CTYPE", everything);
+        }
+        environment.put("LC_MESSAGES", "C");
     }
 
     /**
