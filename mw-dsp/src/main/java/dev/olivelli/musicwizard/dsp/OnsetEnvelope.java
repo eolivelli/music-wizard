@@ -285,7 +285,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         if (melBands.length < 2) {
             return;
         }
-        // One-pole coefficient for a cutoff expressed as a fraction of the
+        // One-pole coefficient for a pole expressed as a fraction of the
         // sampling rate, so it does not depend on the frame rate at all.
         double rc = 1.0 / (2 * Math.PI * ANTI_ALIAS_POLE);
         double alpha = 1.0 / (rc + 1.0);
