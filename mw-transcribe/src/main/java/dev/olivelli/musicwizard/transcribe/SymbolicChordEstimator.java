@@ -87,10 +87,22 @@ import java.util.function.Consumer;
  *
  * <p>No chord is a legitimate answer and this returns it: for silence, for a
  * drum-only file, and for any span whose winning chord never manages to sound
- * three of its own notes. A held drone and an unaccompanied melody both fall
- * into the last case, and naming a triad for either would be inventing harmony
- * that is not there. When <em>every</em> span comes back that way the result is
- * {@link ChordProgression#empty()} rather than a page of {@code N.C.}.
+ * three of its own notes. A held drone falls into the last case, and so does a
+ * line that keeps moving. When <em>every</em> span comes back that way the
+ * result is {@link ChordProgression#empty()} rather than a page of {@code N.C.}
+ *
+ * <p>It is worth being exact about the one people expect and do not get. An
+ * unaccompanied melody is <em>not</em> reliably discarded: measured over two
+ * thousand random monophonic diatonic lines, 96% of them carry at least one
+ * chord label. That is not a bug so much as the same judgement seen from the
+ * other side -- an arpeggio is an unaccompanied melody too, and a line dwelling
+ * on three tones of one chord is real evidence about the harmony, which is why
+ * {@code anArpeggioIsStillAChord} expects a label. What separates the two is
+ * only how much the line moves, and a tune that outlines its tonic triad looks
+ * exactly like an accompaniment that does. The confidence is where that shows:
+ * the repository's own 6/8 melody fixture comes back as {@code Cmaj7} at
+ * <em>zero</em> confidence, because {@code Am7} explains it exactly as well and
+ * nothing separates them.
  */
 public final class SymbolicChordEstimator {
 
@@ -139,12 +151,18 @@ public final class SymbolicChordEstimator {
      * fits is the second and comes back as no chord.
      *
      * <p>Worth being precise about what this does <em>not</em> decide, because
-     * measuring it was a surprise. An unaccompanied melody does not fail here.
-     * It chatters: a moving line takes every triad it passes through down to 0
-     * and the decoder pays the change penalty to follow it, one chord per note.
-     * What discards those is {@link #MIN_CHORD_TONES} afterwards, since a
-     * one-beat run holding one pitch class states nothing. This threshold is
-     * what keeps that from happening to an arpeggio as well.
+     * measuring it was a surprise twice over. A line that keeps moving does not
+     * fail here: it chatters, taking every triad it passes through down to 0
+     * while the decoder pays the change penalty to follow it, one chord per
+     * note, and what discards those is {@link #MIN_CHORD_TONES} afterwards --
+     * a one-beat run holding one pitch class states nothing. This threshold is
+     * what keeps the same thing happening to an arpeggio.
+     *
+     * <p>And a line that does <em>not</em> keep moving is not discarded at all.
+     * Most melodies dwell: 96% of two thousand random monophonic diatonic lines
+     * came back with a chord on them. Neither this threshold nor
+     * {@link #MIN_CHORD_TONES} is a filter for "unaccompanied", and nothing here
+     * is -- see the class javadoc.
      */
     private static final double NO_CHORD_FIT = 0.47;
 
@@ -1024,11 +1042,13 @@ public final class SymbolicChordEstimator {
                 // like a held pitch under a triad.
                 //
                 // And a Chord's pitchClasses() are computed from root and
-                // quality and do not include the bass, so a C/D would print a D
-                // that every consumer of that method -- the arranger, the MIDI
-                // writer, the engraved chart's own loop-closure test -- would
-                // then fail to sound. Lifting this gate is a change to the
-                // model, not to this line; see #134.
+                // quality and do not include the bass, so a C/D would carry a
+                // symbol promising a note the method does not report. Nothing
+                // reads pitchClasses() outside mw-core today -- mw-arrange has
+                // no sources yet and there is no MIDI writer -- so this is a
+                // gap waiting rather than a break happening, and the arranger
+                // (#10) is what will walk into it. Lifting this gate is a change
+                // to the model, not to this line; see #134.
                 if (bass >= 0 && bass != template.root() && isChordTone(template, bass)) {
                     chord = chord.withBass(spell(bass, flats));
                 }

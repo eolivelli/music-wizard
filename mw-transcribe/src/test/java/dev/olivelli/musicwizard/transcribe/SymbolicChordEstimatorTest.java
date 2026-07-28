@@ -177,6 +177,71 @@ class SymbolicChordEstimatorTest {
     }
 
     @Test
+    @DisplayName("a file split across two percussion tracks still has no harmony")
+    void aSecondPercussionTrackIsStillPercussion() {
+        // A kit and a hand-percussion part on two channel-10 tracks, which is
+        // how every DAW exports the pair.
+        //
+        // A score holds one track per named role, so the second used to be
+        // demoted to OTHER -- and OTHER means an unclassified *pitched* part.
+        // The drum exclusion reads the role, so the demoted part sailed straight
+        // into the histogram and a percussion-only file came back as a chord.
+        // The fix is in MidiTranscriber, which merges the two into the one kit
+        // they describe; the test is here, because here is where it did the
+        // damage.
+        MidiFixtures.SequenceBuilder builder = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4);
+        MidiFixtures.SequenceBuilder.PartBuilder kit =
+                builder.part("Drum Kit", MidiFixtures.DRUM_CHANNEL);
+        MidiFixtures.SequenceBuilder.PartBuilder hands =
+                builder.part("Percussion", MidiFixtures.DRUM_CHANNEL);
+        for (int beat = 0; beat < 8; beat++) {
+            kit.note(beat, 1, 36).note(beat + 0.5, 0.5, 42);
+            // Hi bongo, low conga and high agogo -- General MIDI 60, 64 and 67,
+            // which read as pitches are a C major triad. Chosen so that a second
+            // percussion track reaching the histogram states a chord rather than
+            // a cluster: a cluster is thrown out for stating nothing and this
+            // would pass whether the fix existed or not.
+            hands.note(beat, 1, 60).note(beat, 1, 64).note(beat, 1, 67);
+        }
+
+        assertThat(TRANSCRIBER.transcribe(builder.build()).chords().isEmpty()).isTrue();
+    }
+
+    @Test
+    @DisplayName("a song with two percussion tracks keeps the chords it states")
+    void twoPercussionTracksDoNotDisturbTheHarmony() {
+        MidiFixtures.SequenceBuilder builder = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4);
+        MidiFixtures.SequenceBuilder.PartBuilder keys = builder.part("Piano", 0);
+        MidiFixtures.SequenceBuilder.PartBuilder bass = builder.part("Bass", 1);
+        MidiFixtures.SequenceBuilder.PartBuilder kit =
+                builder.part("Drum Kit", MidiFixtures.DRUM_CHANNEL);
+        MidiFixtures.SequenceBuilder.PartBuilder hands =
+                builder.part("Percussion", MidiFixtures.DRUM_CHANNEL);
+        int[][] triads = {{60, 64, 67}, {59, 62, 67}, {60, 64, 69}, {60, 65, 69}};
+        int[] roots = {36, 43, 45, 41};
+        for (int bar = 0; bar < 8; bar++) {
+            double barStart = 4 + bar * 4.0;
+            keys.chord(barStart, 4, triads[bar % 4]);
+            bass.note(barStart, 2, roots[bar % 4]).note(barStart + 2, 2, roots[bar % 4]);
+            for (int beat = 0; beat < 4; beat++) {
+                kit.note(barStart + beat, 1, 36);
+                // Two-beat gate lengths, which congas and timbales really carry.
+                // Counted as pitches these turn every bar of this progression
+                // into a different chord: C becomes Cm, G becomes G7, Am becomes
+                // Adim7.
+                hands.note(barStart + beat, 2, 63).note(barStart + beat, 2, 65);
+            }
+        }
+
+        assertThat(symbolsOf(builder.build()))
+                .containsExactly("N.C.", "C", "G", "Am", "F", "C", "G", "Am", "F");
+    }
+
+    @Test
     @DisplayName("adding a drum kit to a chord chart does not change the chords")
     void drumsDoNotDisturbTheHarmony() {
         List<String> before = symbolsOf(MidiFixtures.fourChordSong());
