@@ -113,45 +113,51 @@ public final class TempoEstimator {
          * average would let a sustained tone's near-perfect self-similarity
          * carry it. Zero for silence.
          *
-         * <p>Measured on 20-second synthetic signals: a sustained sine 0.004, a
-         * crescendo 0.011, white noise 0.02, clicks at random intervals 0.03 to
-         * 0.09, silence 0. Click tracks swept over every integer tempo from 60
-         * to 200 BPM span 0.53 to 0.93 — a wide spread rather than a band, and
-         * not monotone in tempo: 105 BPM scores 0.59 and 110 BPM 0.90. The floor
-         * is 0.53 at 78 BPM and the ceiling 0.93 at 136 BPM, both stable from 10
-         * to 40 seconds of signal, so the variation is a property of how the
-         * beat period lands on the frame grid rather than a sampling artefact.
-         *
-         * <p><strong>Use a low threshold, and only to reject degenerate
-         * material.</strong> This separates "there are rhythmic events here"
-         * from "there are not". It does not grade how metronomic material is,
-         * and a threshold in the middle of the range is wrong in both
-         * directions at once. Two families sit in that middle and neither is a
-         * bug that can be tuned away:
+         * <p><strong>What this reliably detects is the absence of onset
+         * structure, and only that.</strong> Smooth material collapses by two
+         * orders of magnitude and stays collapsed: a sustained sine 0.004, a
+         * crescendo 0.011, silence 0. That is the discrimination this measure
+         * exists for and it is robust. Everything above that floor overlaps
+         * pairwise, and the overlaps are not tuning problems:
          *
          * <ul>
-         *   <li>A held note with ordinary vibrato reads as rhythmic. 50 cents at
-         *       2 Hz scores 0.61, which outranks 17 of the 141 integer click
-         *       tempi above; at 7 Hz it scores 0.64 and outranks 25 of them,
-         *       reporting 140 BPM — a third of the 420 BPM modulation rate,
-         *       which is above the 240 BPM top of the search range and so cannot
-         *       be reported at all, making the reading a subharmonic of a wobble
-         *       rather than any beat. Sustained chords of pure sines land at
-         *       0.47. These are not near misses at the edge of a band: the two
-         *       populations genuinely interleave.
-         *       Periodic modulation of one note produces a genuinely periodic
-         *       train of accents, and nothing measurable in an onset envelope
-         *       distinguishes that from a beat. So the ordering is not merely
-         *       tight here, it inverts: no threshold separates this family.
+         *   <li><b>Steady click tracks, 0.48 to 0.95.</b> Swept over every
+         *       integer tempo from 60 to 200 BPM at 20 s the span is 0.53 to
+         *       0.93, non-monotone in tempo — 105 BPM scores 0.59 against 110
+         *       BPM's 0.90. The floor also depends on clip length, and rises
+         *       with it: 0.48 at 10 s, 0.53 at 20 s, 0.56 at 40 s, with the
+         *       worst tempo itself moving from 64 to 78 BPM. So the floor is a
+         *       function of duration, not a constant.
+         *   <li><b>Clicks at random intervals, 0.04 to 0.12</b> over 200 seeds —
+         *       and a click track drifting by ±8%, which is real music, sits at
+         *       0.12 as well. There is no threshold between arrhythmic material
+         *       and rubato.
+         *   <li><b>A held note with ordinary vibrato, 0.61 to 0.64.</b> 50 cents
+         *       at 2 Hz scores 0.61 and outranks 17 of those 141 click tempi; at
+         *       7 Hz it scores 0.64 and outranks 25, reporting 140 BPM — a third
+         *       of the 420 BPM modulation rate, which is above the 240 BPM top
+         *       of the search range and so cannot be reported at all, making the
+         *       reading a subharmonic of a wobble rather than any beat.
+         *       Sustained chords of pure sines land at 0.47. Periodic modulation
+         *       of one note is a genuinely periodic train of accents, and nothing
+         *       measurable in an onset envelope distinguishes it from a beat.
          *       Issue #43 has the measurements and two refuted fixes.
-         *   <li>Tempo drift pushes the other way: a click track wandering by
-         *       ±8% falls to 0.12, well below the tone it should outrank.
          * </ul>
          *
-         * <p>The first of those is what stops this from being the general
-         * rhythmic-versus-arrhythmic discriminator it might look like; the
-         * second means any threshold meant for real music has to be chosen
-         * against tier-2 audio rather than against the figures above.
+         * <p>So: gate on it to ask "is there any onset structure at all", where
+         * the two populations are three decades apart. Do not gate on it to rank
+         * how rhythmic material is — there is no threshold that separates
+         * arrhythmic from rubato, or a vibrato pad from a metronome, and a
+         * mid-range cut is wrong in both directions at once. Any threshold meant
+         * for real music has to be chosen against tier-2 audio, not against
+         * synthetic figures.
+         *
+         * <p>These figures are for {@link TempoEstimator#estimate} over a whole
+         * clip. {@link BeatTracker} averages a per-window strength and reports
+         * materially less on recordings just past a window boundary — a clean
+         * 78 BPM click track measures 0.53 here and 0.36 through
+         * {@code BeatGrid.beatConfidence} at 26 seconds, because the trailing
+         * one-second sliver is averaged in at full weight. See issue #47.
          */
         public double strength() {
             return periodicity * peakiness;
@@ -233,10 +239,10 @@ public final class TempoEstimator {
      * the reciprocal of the kurtosis tends to {@code p} as {@code p} gets small
      * — the exact value is {@code p(1-p) / ((1-p)³ + p³)} — and small is the
      * regime that matters, since attacks are brief. Measured here, a 120 BPM
-     * click track has a kurtosis of about 85, a duty cycle of 1.2%, which is the
-     * two frames per beat the clicks physically occupy; a sustained sine measures
-     * 3.0, a duty cycle of a third, meaning its envelope is spread out exactly as
-     * noise would be.
+     * click track has a kurtosis of about 85, a duty cycle of 1.2% — and a beat
+     * there is 86 frames, so that is one frame per beat, which is what a click
+     * physically occupies. A sustained sine measures 3.0, a duty cycle of a
+     * third, meaning its envelope is spread out exactly as noise would be.
      *
      * <p>Expressing that duty cycle relative to the noise value is what turns an
      * open-ended moment into a fraction, and it puts the formula's only constant
@@ -247,8 +253,10 @@ public final class TempoEstimator {
      * concentration, not sharpness in the everyday sense: a signal that is on
      * almost always and briefly off scores identically to its inverse, because
      * kurtosis cannot tell a spike from a hole. And it floors at zero once the
-     * duty cycle passes about 21%, so accents wider than roughly 140 ms at the
-     * onset frame rate read as no evidence at all rather than as weak evidence.
+     * duty cycle passes 21.1% — the root of {@code 6p² - 6p + 1} — so accents
+     * occupying more than about a fifth of the gap between them read as no
+     * evidence at all rather than as weak evidence. That is a fraction of the
+     * repetition period, not a fixed span: 106 ms at 120 BPM, 211 ms at 60.
      * Neither is reachable through {@link OnsetEnvelope}, whose moving-average
      * subtraction and rectification leave attacks a few frames wide, but both
      * bound what this may be reused for.

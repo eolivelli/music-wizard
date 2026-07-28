@@ -356,9 +356,11 @@ class BeatTrackingTest {
                     Math.max(strengthOf(whiteNoise(SECONDS, SEED)),
                             strengthOf(arrhythmicClicks(SECONDS, SEED))));
 
-            // Measured: 0.63 against 0.09, a factor of seven. Asserting three
-            // leaves room for the sampling spread in the seeded fixtures without
-            // letting the two classes touch.
+            // Measured with the seed below: 0.53 against 0.06, a factor of
+            // nine. Asserting three rather than nine because the seeded
+            // fixtures do vary -- swept over 200 seeds the arrhythmic clicks
+            // reach 0.12, which still leaves a factor of 4.5, so the bound
+            // holds for draws this test will never see.
             //
             // The claim is about these four fixtures and no wider. A modulated
             // sustained tone would land inside the gap and is deliberately not
