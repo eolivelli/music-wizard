@@ -337,16 +337,19 @@ public final class MidiTranscriber {
                 // wrong. The audible difference between dropping it and
                 // honouring it is nil.
                 //
-                // One test, not three, because the two other conditions worth
-                // worrying about both reduce to this one. A beat collision --
-                // two ticks that divide to the same double, which happens above
+                // One condition, not three, because the two others worth
+                // worrying about both reduce to it. A beat collision -- two
+                // ticks that divide to the same double, which happens above
                 // 2^53 -- makes the increment below exactly zero, so the seconds
                 // do not advance either. And "not greater than" is already false
-                // for NaN. Guarding the beat axis separately looked like
-                // defence in depth and was a clause no input could reach on its
-                // own; guarding non-finiteness was a third. Both are gone, which
-                // is the same collapse this class made in readKeys and in
-                // buildNote, finally applied everywhere at once.
+                // for NaN, while the tick range and the tempo range together
+                // bound the sum far below overflow.
+                //
+                // Both inputs still have a test. The two axes are not always
+                // interchangeable, and this is not a rule the class applies
+                // everywhere: readKeys deliberately checks seconds *and* beats,
+                // because there the two are independent quantities rather than
+                // one derived from the other, and its own comment says so.
                 progress.accept("ignoring a tempo event at tick " + entry.getKey()
                         + " that is indistinguishable in time from the previous one");
                 continue;
@@ -399,9 +402,17 @@ public final class MidiTranscriber {
      * makes an event one tick past the origin count as being <em>on</em> bar
      * zero's line, which sends the walk into the branch that removes an entry.
      * The entry at that point is the bar-0 one the map requires to exist, and
-     * removing it took the index below zero. Half a tick cannot say that: ticks
-     * are whole numbers, so the first event after tick 0 is at least one tick
-     * from the origin, which is twice the tolerance whatever the resolution.
+     * removing it took the index below zero.
+     *
+     * <p>Half a tick cannot say that, and the reason is specifically about the
+     * origin rather than about bar lines in general: bar zero's line is at beat
+     * 0, the first event in this loop is at tick 1 or later, and one tick is
+     * twice the tolerance at every resolution. Later bar lines are <em>not</em>
+     * generally at whole ticks -- {@code 4 * ticksPerQuarter / denominator} need
+     * not be an integer, and at 120 ticks per quarter an x/64 bar line falls on
+     * a half tick -- so the tolerance does admit moving a change backwards
+     * there, by less than a tick. That is a rounding decision rather than the
+     * bar-sized move the paragraph above is about.
      */
     private List<TempoMap.MeterChange> readMeterChanges(Track[] tracks, int ticksPerQuarter) {
         TreeMap<Long, TimeSignature> meters = new TreeMap<>();
@@ -427,12 +438,21 @@ public final class MidiTranscriber {
         // The beat each change's bar line falls on, one per entry in changes, so
         // that removing an entry restores the bar count with it.
         List<Double> barLineBeats = new ArrayList<>();
-        // What to tell the user about each change, held rather than printed so
-        // that a change which is later discarded takes its report with it.
-        List<List<String>> reports = new ArrayList<>();
+        // Everything to tell the user, in the order it was discovered -- which
+        // is tick order, since the events are walked in tick order. Held rather
+        // than printed because one kind of line can stop being true: a report
+        // that a change moved to a bar line is false if that change is later
+        // displaced before the bar begins. Retracted by nulling the slot rather
+        // than removing it, so the surrounding lines keep their order.
+        List<String> log = new ArrayList<>();
+        // Where in the log each change's own "it moved" line sits, or -1. Only
+        // that line dies with its change: a line saying some *other* change
+        // never takes effect is a permanent fact, and parking it on an entry
+        // that was itself removed a moment later is how it went missing.
+        List<Integer> movedLine = new ArrayList<>();
         changes.add(new TempoMap.MeterChange(0, opening));
         barLineBeats.add(0.0);
-        reports.add(new ArrayList<>());
+        movedLine.add(-1);
 
         // Half a tick, in quarter beats. See the note on the method.
         double halfTick = 0.5 / ticksPerQuarter;
@@ -454,12 +474,20 @@ public final class MidiTranscriber {
             // Negative when an earlier change was moved forward past this one's
             // tick, in which case this change lands on the bar that one claimed.
             long wholeBars = Math.max(0, (long) Math.ceil(barsAhead));
-            if (wholeBars > 0 && Math.abs(barLineBeats.get(last)
+            if (wholeBars > 0 && barLength > halfTick && Math.abs(barLineBeats.get(last)
                     + (wholeBars - 1) * barLength - beat) <= halfTick) {
                 // The bar line just below is this event's own tick, so the
                 // ceiling overshot by one: the change is on that line, not after
                 // it. This is the whole of the tolerance -- everything else is
                 // exact arithmetic on whole ticks.
+                //
+                // Not applied where a whole bar is shorter than the tolerance,
+                // which needs a resolution of 8 ticks per quarter or less at
+                // 1/64. Several bar lines then sit inside half a tick, "the one
+                // just below" is not meaningfully nearer than the one the
+                // ceiling picked, and decrementing put an exactly-on-a-bar-line
+                // change one bar early -- silently, since the same tolerance
+                // then calls the result on a bar line too.
                 wholeBars--;
             }
             long bar = currentBar + wholeBars;
@@ -471,34 +499,35 @@ public final class MidiTranscriber {
             double barLineBeat = barLineBeats.get(last) + wholeBars * barLength;
             boolean onBarLine = Math.abs(barLineBeat - beat) <= halfTick;
 
-            List<String> entryReports = new ArrayList<>();
             if (bar == currentBar) {
                 // The change already on this bar is superseded before the bar
-                // begins, so it takes effect nowhere -- and whatever was going
-                // to be said about it is now false and goes with it.
+                // begins, so it takes effect nowhere. That is permanent, so it
+                // goes straight into the log; what does not survive is whatever
+                // that change had been told to say about itself.
                 //
                 // Never the entry at index 0: reaching here needs wholeBars to
                 // be zero, which at index 0 needs the event at or within half a
                 // tick of the origin, and tick 0 is not in this loop. So the
                 // bar-0 entry the map requires cannot be the one removed.
-                entryReports.add(String.format(Locale.ROOT,
+                log.add(String.format(Locale.ROOT,
                         "the time signature %s never takes effect: bar %d is redeclared"
                                 + " as %s before it begins",
                         current, bar + 1, meter));
                 changes.remove(last);
                 barLineBeats.remove(last);
-                reports.remove(last);
+                int retracted = movedLine.remove(last);
+                if (retracted >= 0) {
+                    log.set(retracted, null);
+                }
                 last--;
                 if (meter.equals(changes.get(last).timeSignature())) {
                     // With the displaced change gone the file's effective meter
                     // has not changed at all, so recording a change here would
                     // engrave a time signature identical to the one in force.
-                    // Its report goes to the entry that survives, so it is still
-                    // said rather than removed along with the entry.
-                    reports.get(last).addAll(entryReports);
                     continue;
                 }
             }
+            int movedAt = -1;
             if (!onBarLine) {
                 // Reported in the superseding case too. An earlier draft left it
                 // out there, so a change that both displaced another and sat
@@ -510,7 +539,8 @@ public final class MidiTranscriber {
                 // something a reader can act on. The distance moved is never
                 // negative, because the bar taken is the first at or after the
                 // event.
-                entryReports.add(String.format(Locale.ROOT,
+                movedAt = log.size();
+                log.add(String.format(Locale.ROOT,
                         "the time signature %s at tick %d does not fall on a bar line;"
                                 + " taking effect at bar %d, which begins %.3f quarter"
                                 + " beats later",
@@ -518,10 +548,12 @@ public final class MidiTranscriber {
             }
             changes.add(new TempoMap.MeterChange((int) bar, meter));
             barLineBeats.add(barLineBeat);
-            reports.add(entryReports);
+            movedLine.add(movedAt);
         }
-        for (List<String> entryReports : reports) {
-            entryReports.forEach(progress);
+        for (String line : log) {
+            if (line != null) {
+                progress.accept(line);
+            }
         }
         if (changes.size() > 1) {
             progress.accept("the meter changes " + (changes.size() - 1) + " time(s)");

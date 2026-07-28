@@ -429,6 +429,163 @@ class MidiImportEdgeCaseTest {
                 .withMessageContaining("not a readable file");
     }
 
+    // -------------------------------------------------- round 3 review findings
+
+    @Test
+    @DisplayName("a meter dropped by a chain of displacements is still reported")
+    void aReportSurvivesTheRemovalOfTheEntryItWasParkedOn() throws Exception {
+        // Three changes inside bar 1, each displacing the last. The report that
+        // the 3/4 never takes effect was parked on the entry the 3/4 was
+        // replaced by, and when the 7/8 in turn displaced that entry the report
+        // went with it -- so a meter the file declares vanished from the output
+        // entirely. Ordinary resolution and ordinary meters; nothing exotic is
+        // needed to lose it.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 480, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, 960, 0x58, new byte[] {7, 3, 24, 8});
+        meta(track, 1440, 0x58, new byte[] {5, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 16 * PPQ, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
+                new TempoMap.MeterChange(1, new TimeSignature(5, 4)));
+        assertThat(messages).anyMatch(message ->
+                message.contains("3/4") && message.contains("never takes effect"));
+        assertThat(messages).anyMatch(message ->
+                message.contains("7/8") && message.contains("never takes effect"));
+        // And the retracted line -- the 3/4's own "it moved" report, which
+        // stopped being true the moment the 7/8 displaced it -- is gone.
+        assertThat(messages).noneMatch(message ->
+                message.contains("3/4") && message.contains("does not fall on a bar line"));
+    }
+
+    @Test
+    @DisplayName("a change half a tick past a bar line is on it, not after it")
+    void theToleranceIsHalfATickWide() throws Exception {
+        // 1/64 at 120 ticks per quarter puts bar lines every 7.5 ticks, so bar 7
+        // begins at tick 52.5 -- half a tick below the change at tick 53. That
+        // is the widest gap the tolerance admits, and it is the only kind of
+        // input that exercises the step which pulls the bar count back: every
+        // other fixture has its events exactly on a bar line or a whole bar
+        // away, where the ceiling alone is already right.
+        Sequence sequence = new Sequence(Sequence.PPQ, 120);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {1, 6, 24, 8});
+        meta(track, 53, 0x58, new byte[] {4, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 480, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, new TimeSignature(1, 64)),
+                new TempoMap.MeterChange(7, TimeSignature.FOUR_FOUR));
+        // Within the tolerance is on the line, so there is nothing to report.
+        assertThat(messages).noneMatch(message ->
+                message.contains("does not fall on a bar line"));
+    }
+
+    @Test
+    @DisplayName("a bar shorter than the tolerance does not pull the change a bar early")
+    void theToleranceDoesNotSwallowAWholeBar() throws Exception {
+        // At 8 ticks per quarter a 1/64 bar is half a tick long, so the bar line
+        // below an exactly-on-the-line change is inside the tolerance too.
+        // Decrementing then puts the change one bar early -- and the same
+        // tolerance calls the result "on a bar line", so nothing is reported.
+        // Tick 8 is beat 1.0, which is exactly bar line 16 of a 1/64 meter.
+        Sequence sequence = new Sequence(Sequence.PPQ, 8);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {1, 6, 24, 8});
+        meta(track, 8, 0x58, new byte[] {3, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 64, 0, 60);
+
+        assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
+                .containsExactly(
+                        new TempoMap.MeterChange(0, new TimeSignature(1, 64)),
+                        new TempoMap.MeterChange(16, TimeSignature.THREE_FOUR));
+    }
+
+    @Test
+    @DisplayName("a bar line is recorded relative to the one before it, not to the origin")
+    void aRecordedBarLineIsMeasuredFromThePreviousOne() throws Exception {
+        // Four surviving changes, which is what it takes: the stored bar line is
+        // only re-used with a non-zero base from the third change onwards, so a
+        // version that dropped the base term and stored the offset alone agrees
+        // with this one on every shorter file.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {6, 3, 36, 8});
+        meta(track, 3360, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, 5760, 0x58, new byte[] {5, 2, 24, 8});
+        meta(track, 9600, 0x58, new byte[] {4, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 12000, 0, 60);
+
+        assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
+                .containsExactly(
+                        new TempoMap.MeterChange(0, TimeSignature.SIX_EIGHT),
+                        new TempoMap.MeterChange(3, TimeSignature.THREE_FOUR),
+                        new TempoMap.MeterChange(4, new TimeSignature(5, 4)),
+                        new TempoMap.MeterChange(6, TimeSignature.FOUR_FOUR));
+    }
+
+    @Test
+    @DisplayName("a change exactly half a tick from a bar line is on it, inclusively")
+    void theToleranceIsInclusiveAtItsBoundary() throws Exception {
+        // The boundary has to be hit exactly in binary, which needs a power-of-
+        // two resolution: at 120 ticks per quarter the distance that looks like
+        // half a tick is a hair under it, so an exclusive comparison agrees with
+        // an inclusive one and the two cannot be told apart.
+        //
+        // 3/32 at 4 ticks per quarter is 0.375 quarter beats to the bar and half
+        // a tick is 0.125, both exact. Bar 1 begins at beat 0.375 and the change
+        // is at tick 2, which is beat 0.5 -- exactly 0.125 away.
+        Sequence sequence = new Sequence(Sequence.PPQ, 4);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {3, 5, 24, 8});
+        meta(track, 2, 0x58, new byte[] {3, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 8, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, new TimeSignature(3, 32)),
+                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+        assertThat(messages).noneMatch(message ->
+                message.contains("does not fall on a bar line"));
+    }
+
+    @Test
+    @DisplayName("the bar count is never pulled back below the bar a change lands on")
+    void theToleranceNeverPullsBackFromAnAlreadyZeroBarCount() throws Exception {
+        // The pull-back exists to undo an overshooting ceiling, so it must not
+        // run when the ceiling did not overshoot. Where a change is displaced --
+        // the count is already zero -- decrementing gives minus one, and the
+        // entry then lands on a bar before the one preceding it, which the tempo
+        // map rejects outright.
+        //
+        // Reaching it needs the bar line one below to be within the tolerance
+        // too, which needs a very short bar: 1/64 is 0.0625 quarter beats, so
+        // bar 1 of the displaced change begins at beat 4 and the bar below it at
+        // 3.9375 -- tick 1890, exactly where the last change sits.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 960, 0x58, new byte[] {1, 6, 24, 8});
+        meta(track, 1890, 0x58, new byte[] {3, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 4 * PPQ, 0, 60);
+
+        assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
+                .containsExactly(
+                        new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
+                        new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+    }
+
     // -------------------------------------------------- round 2 review findings
 
     @Test
@@ -526,7 +683,14 @@ class MidiImportEdgeCaseTest {
         // Never a negative distance: what is reported is how far the change was
         // moved, which cannot be negative, rather than how far into a bar it
         // fell, which is negative exactly in this case.
-        assertThat(messages).noneMatch(message -> message.contains("(-"));
+        //
+        // Matched against the figure the message actually prints. An earlier
+        // version of this assertion looked for "(-", which was a marker of the
+        // message format this replaced -- so it was true of every possible
+        // output and pinned nothing at all.
+        assertThat(messages).filteredOn(message -> message.contains("quarter beats later"))
+                .isNotEmpty()
+                .allMatch(message -> message.matches(".* begins \\d+\\.\\d+ quarter beats later"));
     }
 
     @Test
