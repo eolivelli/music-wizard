@@ -21,6 +21,7 @@ import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -202,7 +203,8 @@ public final class AudioTranscriber {
             // the same thing as a typed --tempo 120, or the fallback and the
             // override disagree in compound time.
             return Score.empty(
-                    TempoMap.constantPulse(pulsesPerMinute(settings), meter),
+                    TempoMap.constantPulse(
+                            pulsesPerMinute(settings), meter, tempoProvenance(settings)),
                     audio.durationSeconds());
         }
 
@@ -236,13 +238,19 @@ public final class AudioTranscriber {
         // worth estimating.
         TempoMap tempoMap;
         if (settings.tempoOverride() != null) {
-            tempoMap = constantPulseFrom(settings.tempoOverride(), meter, beatTimes.get(0));
+            tempoMap = constantPulseFrom(
+                    settings.tempoOverride(), meter, beatTimes.get(0), Provenance.SUPPLIED);
         } else if (beatTimes.size() >= 2) {
             tempoMap = TempoMap.fromBeatTimes(beatTimes, meter);
         } else {
             progress.accept("only one beat was tracked, which carries no tempo; assuming "
                     + (int) DEFAULT_PULSES_PER_MINUTE + " beats/min");
-            tempoMap = constantPulseFrom(DEFAULT_PULSES_PER_MINUTE, meter, beatTimes.get(0));
+            // ASSUMED, not MEASURED: one pulse carries no interval, so nothing
+            // here was measured. Labelling it MEASURED would let a later stage
+            // treat this default as evidence, and labelling it SUPPLIED would
+            // credit the user with a figure they never typed.
+            tempoMap = constantPulseFrom(
+                    DEFAULT_PULSES_PER_MINUTE, meter, beatTimes.get(0), Provenance.ASSUMED);
         }
 
         // Chroma before the beat grid, because the downbeat phase is chosen from
@@ -280,6 +288,17 @@ public final class AudioTranscriber {
     }
 
     /**
+     * Where the tempo {@link #pulsesPerMinute} returns came from.
+     *
+     * <p>Derived from the same condition, in the same place, so that the figure
+     * and its origin cannot drift apart: the two-readers failure this project
+     * keeps paying for starts with a second method deciding the same thing.
+     */
+    private static Provenance tempoProvenance(Options settings) {
+        return settings.tempoOverride() != null ? Provenance.SUPPLIED : Provenance.ASSUMED;
+    }
+
+    /**
      * A constant-tempo map whose pulses start where the tracked ones do.
      *
      * <p>{@link TempoMap#constantPulse} anchors at (beat 0, second 0) with no
@@ -307,14 +326,22 @@ public final class AudioTranscriber {
      * recording -- a negative one, or one small enough that a whole pulse
      * crammed into it overflows -- can be driven directly.
      *
+     * <p>The lead-in is {@link Provenance#DERIVED} rather than carrying
+     * {@code provenance}, exactly as {@link TempoMap#fromBeatTimes} labels its
+     * own: its rate is whatever it took to reach the first tracked pulse, so
+     * reporting it as the tempo somebody supplied would name a figure nobody
+     * asked for. That labelling is what {@link Score#estimatedTempo()} reads,
+     * in place of identifying the lead-in by its position.
+     *
      * @param pulsesPerMinute  the counted tempo to hold throughout
      * @param firstBeatSeconds when the first tracked pulse falls
+     * @param provenance       where {@code pulsesPerMinute} came from
      */
-    static TempoMap constantPulseFrom(
-            double pulsesPerMinute, TimeSignature meter, double firstBeatSeconds) {
+    static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
+                                      double firstBeatSeconds, Provenance provenance) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
-        TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter);
+        TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);
         if (!(firstBeatSeconds > 0)) {
             // The first pulse is already the origin, so there is no lead-in and
             // nothing to anchor: the constant map carries the phase as it is.
@@ -339,9 +366,9 @@ public final class AudioTranscriber {
             return constant;
         }
         return new TempoMap(
-                List.of(new TempoMap.TempoSegment(0, 0.0, leadInTempo),
-                        new TempoMap.TempoSegment(
-                                leadInPulses * pulseQuarters, firstBeatSeconds, quarterBpm)),
+                List.of(new TempoMap.TempoSegment(0, 0.0, leadInTempo, Provenance.DERIVED),
+                        new TempoMap.TempoSegment(leadInPulses * pulseQuarters,
+                                firstBeatSeconds, quarterBpm, provenance)),
                 List.of(new TempoMap.MeterChange(0, meter)));
     }
 

@@ -1,0 +1,114 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.core.model;
+
+/**
+ * How a value in a score came to be known.
+ *
+ * <p>This exists because the pipeline kept deriving the answer twice. A value's
+ * origin is known exactly once -- by the stage that produced it -- and every
+ * reader afterwards had to guess it back from the shape of the artifact:
+ * {@link Score#estimatedTempo()} recognised a user-supplied tempo by counting
+ * tempo segments, and a command that wanted to know whether a score came from a
+ * recording or from a MIDI file re-read the input file. Both guesses were right
+ * for the cases they were written against and wrong just outside them. Carrying
+ * the fact costs one enum; deriving it costs a bug per reader.
+ *
+ * <p><b>This is not confidence.</b> {@link Confidence} says how much to trust an
+ * estimate; provenance says whether the value is an estimate at all. They are
+ * orthogonal: a {@link #MEASURED} beat grid can be highly confident, and a
+ * {@link #DECLARED} tempo is not an estimate of anything, so no confidence
+ * figure describes it. Nor does {@link #DECLARED} mean exact -- MIDI stores
+ * microseconds per quarter note as an integer, so a file that meant 140 BPM
+ * declares 140.00014 -- it means somebody stated the value rather than the
+ * pipeline inferring it.
+ *
+ * <p>Deliberately an enum rather than a boolean. The sources are already four
+ * today and M2 (separated stems) and M5 (advisor-proposed values) add more; a
+ * flag that only distinguishes "from the file" from "from the signal" would be
+ * wrong within a milestone. New constants are added as producers for them
+ * appear, which is why there is no {@code ADVISED} yet: an unused constant is a
+ * claim about behaviour that does not exist.
+ */
+public enum Provenance {
+
+    /**
+     * Not recorded. A value read from a score file written before its producer
+     * carried provenance, or built by a caller that did not say.
+     *
+     * <p>Readers must treat this as "unknown", never as a default origin.
+     * Guessing here is exactly the failure the enum exists to remove -- but a
+     * reader that must still answer may fall back on whatever heuristic it used
+     * before, since for these values nothing better exists.
+     */
+    UNKNOWN,
+
+    /**
+     * Derived from the signal by an analysis stage: tracked beats, estimated
+     * chords, tracked pitch. An estimate, and the least trustworthy origin here.
+     */
+    MEASURED,
+
+    /**
+     * Stated by the source file itself -- a MIDI tempo, meter or key-signature
+     * meta event. The pipeline read it rather than inferring it.
+     */
+    DECLARED,
+
+    /**
+     * Given by a human: {@code --tempo}, {@code --first-downbeat}, or a later
+     * edit. Outranks everything the pipeline worked out for itself, because a
+     * correction that loses to the value it corrects is not a correction.
+     */
+    SUPPLIED,
+
+    /**
+     * A documented default substituted because nothing stated the value and
+     * nothing measured it -- 120 BPM and 4/4 where a MIDI file declares neither,
+     * or where beat tracking found nothing to measure.
+     *
+     * <p>Distinct from {@link #DECLARED} on purpose: a file that declares 120
+     * and a file that declares nothing produce the same number, and reporting
+     * both as read from the file states a fact the file does not contain.
+     */
+    ASSUMED,
+
+    /**
+     * Computed from other facts already in the score rather than from the input:
+     * chords named from imported notes, or a tempo-map lead-in stretched to land
+     * on the first tracked pulse.
+     *
+     * <p>Kept apart from the origin it was computed from, because a derived
+     * value is not a second statement of that fact. A lead-in built to anchor a
+     * supplied tempo carries a rate nobody asked for -- it is an artefact of
+     * where the first pulse fell -- and reading it as {@code SUPPLIED} would
+     * report that artefact as the user's instruction.
+     */
+    DERIVED;
+
+    /**
+     * Whether somebody asserted this value rather than the pipeline working it
+     * out: {@link #DECLARED} or {@link #SUPPLIED}.
+     *
+     * <p>{@link #ASSUMED} is deliberately excluded. A default is nobody's
+     * statement; it is the pipeline filling a gap, and it must not win over
+     * measured evidence the way a statement does.
+     */
+    public boolean isStated() {
+        return this == DECLARED || this == SUPPLIED;
+    }
+}

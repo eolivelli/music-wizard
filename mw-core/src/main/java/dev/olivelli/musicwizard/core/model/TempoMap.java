@@ -44,11 +44,24 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     /**
      * A stretch of constant tempo.
      *
+     * <p>Provenance is carried per segment rather than per map because a single
+     * map routinely holds segments of different origin. The map built for
+     * {@code --tempo} is the standing example: its lead-in is
+     * {@link Provenance#DERIVED}, stretched so the first tracked pulse lands on
+     * a whole pulse, and only the segment after it carries the figure the user
+     * {@link Provenance#SUPPLIED}. A map-level label would have to be one or the
+     * other, and a reader would be back to identifying the lead-in by its
+     * position -- which is the guess this replaces.
+     *
      * @param startBeat    quarter-note beat at which this segment begins
      * @param startSeconds wall-clock time at which this segment begins
      * @param beatsPerMinute quarter-note tempo within this segment
+     * @param provenance   where this segment's tempo came from; never null, and
+     *                     {@link Provenance#UNKNOWN} for a segment read from a
+     *                     score file written before provenance was carried
      */
-    public record TempoSegment(double startBeat, double startSeconds, double beatsPerMinute) {
+    public record TempoSegment(
+            double startBeat, double startSeconds, double beatsPerMinute, Provenance provenance) {
         public TempoSegment {
             if (!Double.isFinite(startBeat) || startBeat < 0) {
                 throw new IllegalArgumentException("startBeat must be finite and non-negative, got: " + startBeat);
@@ -59,6 +72,26 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             if (!Double.isFinite(beatsPerMinute) || beatsPerMinute <= 0) {
                 throw new IllegalArgumentException("beatsPerMinute must be finite and positive, got: " + beatsPerMinute);
             }
+            // Normalised rather than rejected, because this is the property that
+            // an existing score.json does not have. Jackson passes null for a
+            // missing creator property, and rejecting it here would make every
+            // file written before this change unreadable -- which is #22, the
+            // breakage this project has already paid for once.
+            if (provenance == null) {
+                provenance = Provenance.UNKNOWN;
+            }
+        }
+
+        /**
+         * A segment whose origin is not recorded.
+         *
+         * <p>Kept so that a caller assembling a map by hand -- a test, or a
+         * stage that genuinely does not know -- says {@link Provenance#UNKNOWN}
+         * by omission rather than by choosing a plausible-looking origin. A
+         * producer that knows should always use the four-argument form.
+         */
+        public TempoSegment(double startBeat, double startSeconds, double beatsPerMinute) {
+            this(startBeat, startSeconds, beatsPerMinute, Provenance.UNKNOWN);
         }
 
         /** Seconds occupied by one quarter-note beat in this segment. */
@@ -151,11 +184,28 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         }
     }
 
-    /** A map with one constant tempo and one time signature from the start. */
-    public static TempoMap constant(double beatsPerMinute, TimeSignature timeSignature) {
+    /**
+     * A map with one constant tempo and one time signature from the start,
+     * whose tempo came from where the caller says it did.
+     */
+    public static TempoMap constant(
+            double beatsPerMinute, TimeSignature timeSignature, Provenance provenance) {
+        Objects.requireNonNull(provenance, "provenance");
         return new TempoMap(
-                List.of(new TempoSegment(0.0, 0.0, beatsPerMinute)),
+                List.of(new TempoSegment(0.0, 0.0, beatsPerMinute, provenance)),
                 List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /**
+     * A map with one constant tempo and one time signature from the start.
+     *
+     * <p>The tempo's origin is {@link Provenance#UNKNOWN}: this factory is
+     * reached both by a user correction and by a fallback default, so it cannot
+     * label the value itself. A producer that knows should say so through
+     * {@link #constant(double, TimeSignature, Provenance)}.
+     */
+    public static TempoMap constant(double beatsPerMinute, TimeSignature timeSignature) {
+        return constant(beatsPerMinute, timeSignature, Provenance.UNKNOWN);
     }
 
     /** A constant map in common time, the default assumption for popular music. */
@@ -176,7 +226,20 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * puts them 1.5x apart in compound time.
      */
     public static TempoMap constantPulse(double pulsesPerMinute, TimeSignature timeSignature) {
+        return constantPulse(pulsesPerMinute, timeSignature, Provenance.UNKNOWN);
+    }
+
+    /**
+     * A constant map in counted beats per minute, whose tempo came from where
+     * the caller says it did.
+     *
+     * <p>See {@link #constantPulse(double, TimeSignature)} for what "counted"
+     * means and why it is not the same as quarter notes per minute.
+     */
+    public static TempoMap constantPulse(
+            double pulsesPerMinute, TimeSignature timeSignature, Provenance provenance) {
         Objects.requireNonNull(timeSignature, "timeSignature");
+        Objects.requireNonNull(provenance, "provenance");
         // Validated before the conversion, not after. This number comes straight
         // from --tempo, and reporting it back multiplied names a figure the user
         // never typed: a rejected 6/8 tempo of -1 was complaining about -1.5.
@@ -190,7 +253,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
                     "pulsesPerMinute " + pulsesPerMinute + " is too large to express as a tempo"
                             + " in " + timeSignature);
         }
-        return constant(quarterBeatsPerMinute, timeSignature);
+        return constant(quarterBeatsPerMinute, timeSignature, provenance);
     }
 
     /**
@@ -206,6 +269,9 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * bars 6/8 every three pulses instead of every two. Use
      * {@link #fromBeatTimes(List, TimeSignature, double)} for a grid tracked at
      * some other pulse, such as one tracked at half tempo.
+     *
+     * <p>Every segment fitted to a beat interval is {@link Provenance#MEASURED};
+     * the lead-in, which no interval produced, is {@link Provenance#DERIVED}.
      */
     public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
@@ -281,13 +347,20 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             // tracked beat rather than merely close to it. The map is then
             // anchored at (beat 0, second 0) and every tracked pulse sits on a
             // whole number of pulses from the origin.
-            built.add(new TempoSegment(0, 0.0, 60.0 * leadInPulses * pulseQuarters / firstBeat));
+            //
+            // DERIVED, not MEASURED: no beat interval was ever this long, and
+            // nothing in the recording ran at this rate. It is the rate that
+            // makes the anchor come out right, and a reader asking what tempo
+            // was measured must not be handed it.
+            built.add(new TempoSegment(
+                    0, 0.0, 60.0 * leadInPulses * pulseQuarters / firstBeat, Provenance.DERIVED));
         }
         for (int i = 0; i < beatSeconds.size() - 1; i++) {
             double start = beatSeconds.get(i);
             double interval = beatSeconds.get(i + 1) - start;
             built.add(new TempoSegment(
-                    (leadInPulses + i) * pulseQuarters, start, 60.0 * pulseQuarters / interval));
+                    (leadInPulses + i) * pulseQuarters, start,
+                    60.0 * pulseQuarters / interval, Provenance.MEASURED));
         }
         return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
     }
@@ -518,7 +591,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         if (segments.size() == 1) {
             return segments.get(0).beatsPerMinute();
         }
-        return averageTempoUpTo(segments.get(segments.size() - 1).startSeconds());
+        return averageTempoBetween(0.0, segments.get(segments.size() - 1).startSeconds());
     }
 
     /**
@@ -531,14 +604,60 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             throw new IllegalArgumentException(
                     "totalSeconds must be finite and positive, got: " + totalSeconds);
         }
-        return averageTempoUpTo(totalSeconds);
+        return averageTempoBetween(0.0, totalSeconds);
     }
 
-    private double averageTempoUpTo(double endSeconds) {
+    /**
+     * The average tempo across the piece, ignoring a lead-in built to anchor the
+     * map rather than to describe the music.
+     *
+     * <p>Both {@link #fromBeatTimes} and a supplied-tempo override open with a
+     * {@link Provenance#DERIVED} segment whose rate is whatever it took to land
+     * the first tracked pulse on a whole pulse. Nothing in the recording ran at
+     * that rate -- on a short clip it is several times the real tempo -- so
+     * averaging it in reports a figure the music never had. That distortion is
+     * the reason {@link Score#estimatedTempo()} prefers a beat grid to the map
+     * at all (#69); this removes it wherever the map says which segment is the
+     * artefact.
+     *
+     * <p>Only <em>leading</em> derived segments are skipped, and only when what
+     * follows is a real span: a map that is nothing but a lead-in, or whose
+     * lead-in reaches past the end of the piece, still answers from the whole of
+     * itself rather than from nothing. When no segment is labelled derived --
+     * every map written before #120, and every map a caller assembled by hand --
+     * this is {@link #averageTempo(double)} exactly.
+     *
+     * @param totalSeconds the piece's duration, which bounds the final segment
+     */
+    public double averageTempoIgnoringLeadIn(double totalSeconds) {
+        if (!Double.isFinite(totalSeconds) || totalSeconds <= 0) {
+            throw new IllegalArgumentException(
+                    "totalSeconds must be finite and positive, got: " + totalSeconds);
+        }
+        int from = 0;
+        while (from < segments.size()
+                && segments.get(from).provenance() == Provenance.DERIVED) {
+            from++;
+        }
+        if (from == 0 || from == segments.size()
+                || segments.get(from).startSeconds() >= totalSeconds) {
+            return averageTempoBetween(0.0, totalSeconds);
+        }
+        return averageTempoBetween(segments.get(from).startSeconds(), totalSeconds);
+    }
+
+    /**
+     * Duration-weighted mean tempo over {@code [startSeconds, endSeconds)}.
+     *
+     * <p>A segment straddling either bound contributes only the part inside it,
+     * so the result is the mean over the window and not over whichever segments
+     * happen to overlap it.
+     */
+    private double averageTempoBetween(double startSeconds, double endSeconds) {
         double totalBeats = 0;
         double totalSeconds = 0;
         for (int i = 0; i < segments.size(); i++) {
-            double segmentStart = segments.get(i).startSeconds();
+            double segmentStart = Math.max(segments.get(i).startSeconds(), startSeconds);
             if (segmentStart >= endSeconds) {
                 break;
             }
