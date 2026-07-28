@@ -51,8 +51,21 @@ public record LyricLine(List<LyricWord> words, Confidence confidence) {
         return words.stream().mapToDouble(LyricWord::endSeconds).max().orElseThrow();
     }
 
-    /** The line as plain text. */
+    /**
+     * The line as plain text.
+     *
+     * <p>Syllables joined by a hyphen are rejoined without a space, so a line
+     * split for engraving still prints as "Hallelujah" on a chord chart rather
+     * than as four words.
+     */
     public String text() {
-        return words.stream().map(LyricWord::text).reduce((a, b) -> a + " " + b).orElse("");
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < words.size(); i++) {
+            out.append(words.get(i).text());
+            if (i < words.size() - 1 && !words.get(i).hyphenatedToNext()) {
+                out.append(' ');
+            }
+        }
+        return out.toString();
     }
 }

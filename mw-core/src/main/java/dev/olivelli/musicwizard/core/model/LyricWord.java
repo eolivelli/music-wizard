@@ -28,17 +28,30 @@ import java.util.Optional;
  * only needs to know which beat a word lands on, and this type deliberately
  * does not pretend to more precision than that.
  *
- * @param text         the word as written
- * @param startSeconds approximate start
- * @param endSeconds   approximate end
- * @param startBeat    beat-snapped start, once decided
- * @param confidence   how much the pipeline trusts this word
+ * <p>The two engraving flags are what a lyric line needs beyond its text.
+ * LilyPond writes a word split across notes as {@code Hal -- le -- lu -- jah},
+ * and a syllable held over several notes as {@code jah __}; neither mark can be
+ * inferred from the text, and neither can be recovered from a link to the note a
+ * syllable starts on. Splitting a word into syllables needs pronunciation, and
+ * whether a held syllable is a melisma or two repeated notes is a musical
+ * decision, so both are recorded here by whichever stage makes them rather than
+ * re-derived downstream. A word that was never split simply leaves both false.
+ *
+ * @param text              the word, or one syllable of it, as written
+ * @param startSeconds      approximate start
+ * @param endSeconds        approximate end
+ * @param startBeat         beat-snapped start, once decided
+ * @param hyphenatedToNext  true when this syllable joins the next one with a hyphen
+ * @param melisma           true when this syllable is sung over more than one note
+ * @param confidence        how much the pipeline trusts this word
  */
 public record LyricWord(
         String text,
         double startSeconds,
         double endSeconds,
         Optional<Double> startBeat,
+        boolean hyphenatedToNext,
+        boolean melisma,
         Confidence confidence) {
 
     public LyricWord {
@@ -56,6 +69,13 @@ public record LyricWord(
                     "endSeconds must be finite and not before startSeconds; got start=" + startSeconds
                             + " end=" + endSeconds);
         }
+    }
+
+    /** A plain word as recognition first produces it: no beat, no engraving marks. */
+    public static LyricWord ofSeconds(String text, double startSeconds, double endSeconds,
+                                      Confidence confidence) {
+        return new LyricWord(text, startSeconds, endSeconds, Optional.empty(),
+                false, false, confidence);
     }
 
     /**
@@ -86,11 +106,25 @@ public record LyricWord(
 
     /** Returns a copy snapped to a beat position. */
     public LyricWord snappedTo(double beat) {
-        return new LyricWord(text, startSeconds, endSeconds, Optional.of(beat), confidence);
+        return new LyricWord(text, startSeconds, endSeconds, Optional.of(beat),
+                hyphenatedToNext, melisma, confidence);
     }
 
     /** Returns a copy with corrected text, keeping all timing. */
     public LyricWord withText(String newText) {
-        return new LyricWord(newText, startSeconds, endSeconds, startBeat, confidence);
+        return new LyricWord(newText, startSeconds, endSeconds, startBeat,
+                hyphenatedToNext, melisma, confidence);
+    }
+
+    /** Returns a copy that joins the following syllable with a hyphen, or stops doing so. */
+    public LyricWord withHyphenToNext(boolean hyphenated) {
+        return new LyricWord(text, startSeconds, endSeconds, startBeat,
+                hyphenated, melisma, confidence);
+    }
+
+    /** Returns a copy marked, or unmarked, as sung over more than one note. */
+    public LyricWord withMelisma(boolean sungAsMelisma) {
+        return new LyricWord(text, startSeconds, endSeconds, startBeat,
+                hyphenatedToNext, sungAsMelisma, confidence);
     }
 }

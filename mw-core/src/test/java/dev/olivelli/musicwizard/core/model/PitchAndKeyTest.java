@@ -17,8 +17,10 @@
 package dev.olivelli.musicwizard.core.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.Optional;
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -78,6 +80,64 @@ class PitchAndKeyTest {
                 assertThat(PitchSpelling.ofMidiPitchFlat(midi).midiPitch()).isEqualTo(midi);
             }
         }
+
+        @ParameterizedTest(name = "{0}{1}{2} is LilyPond {3}")
+        @CsvSource({
+            "C, NATURAL, 4, c",
+            "C, SHARP, 4, cis",
+            "B, FLAT, 3, bes",
+            "F, DOUBLE_SHARP, 5, fisis",
+            "E, DOUBLE_FLAT, 2, eeses"})
+        void lilyPondNames(NoteLetter letter, Accidental accidental, int octave, String expected) {
+            assertThat(new PitchSpelling(letter, accidental, octave).lilyPondName())
+                    .isEqualTo(expected);
+        }
+
+        @ParameterizedTest(name = "{0}{1}{2} is LilyPond {3} in absolute octaves")
+        @CsvSource({
+            "C, NATURAL, 3, c",
+            "C, NATURAL, 4, c'",
+            "C, NATURAL, 6, c'''",
+            "C, NATURAL, 2, 'c,'",
+            "A, FLAT, 1, 'aes,,'"})
+        void lilyPondAbsoluteNames(NoteLetter letter, Accidental accidental, int octave,
+                                   String expected) {
+            // LilyPond's unmarked octave is the one below middle C, so getting
+            // this off by one puts the whole staff an octave out.
+            assertThat(new PitchSpelling(letter, accidental, octave).lilyPondAbsoluteName())
+                    .isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("every spelling parses back from its display name")
+        void parseInvertsDisplayName() {
+            for (int octave = -1; octave <= 9; octave++) {
+                for (NoteLetter letter : NoteLetter.values()) {
+                    for (Accidental accidental : Accidental.values()) {
+                        PitchSpelling original = new PitchSpelling(letter, accidental, octave);
+                        assertThat(PitchSpelling.parse(original.displayName()))
+                                .as("round trip of %s", original.displayName())
+                                .isEqualTo(original);
+                    }
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("parsing accepts a lower-case letter and surrounding space")
+        void parseIsForgivingWhereItCanBe() {
+            assertThat(PitchSpelling.parse("  bb3  "))
+                    .isEqualTo(new PitchSpelling(NoteLetter.B, Accidental.FLAT, 3));
+            assertThat(PitchSpelling.parse("f#4"))
+                    .isEqualTo(new PitchSpelling(NoteLetter.F, Accidental.SHARP, 4));
+        }
+
+        @ParameterizedTest(name = "\"{0}\" is not a pitch")
+        @CsvSource({"''", "H4", "C", "C#", "Cx4", "C4.5", "4", "Cb"})
+        void parseRejectsRubbish(String text) {
+            assertThatThrownBy(() -> PitchSpelling.parse(text))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Nested
@@ -85,12 +145,12 @@ class PitchAndKeyTest {
     class KeySignatures {
 
         private Key major(NoteLetter letter, Accidental accidental) {
-            return new Key(new PitchSpelling(letter, accidental, 4), Mode.MAJOR, 0, 1,
+            return Key.ofSeconds(new PitchSpelling(letter, accidental, 4), Mode.MAJOR, 0, 1,
                     Confidence.CERTAIN);
         }
 
         private Key minor(NoteLetter letter, Accidental accidental) {
-            return new Key(new PitchSpelling(letter, accidental, 4), Mode.MINOR, 0, 1,
+            return Key.ofSeconds(new PitchSpelling(letter, accidental, 4), Mode.MINOR, 0, 1,
                     Confidence.CERTAIN);
         }
 
@@ -208,15 +268,80 @@ class PitchAndKeyTest {
         @ParameterizedTest(name = "\"{0}\" counts as {1} syllable(s)")
         @CsvSource({"love, 1", "baby, 2", "hello, 2", "beautiful, 3", "the, 1", "sky, 1", "away, 2"})
         void estimatesSyllables(String text, int expected) {
-            LyricWord word = new LyricWord(text, 0, 0.5, Optional.empty(), Confidence.CERTAIN);
+            LyricWord word = LyricWord.ofSeconds(text, 0, 0.5, Confidence.CERTAIN);
             assertThat(word.syllableEstimate()).isEqualTo(expected);
         }
 
         @Test
         @DisplayName("always reports at least one syllable")
         void neverReportsZero() {
-            LyricWord word = new LyricWord("shh", 0, 0.5, Optional.empty(), Confidence.CERTAIN);
+            LyricWord word = LyricWord.ofSeconds("shh", 0, 0.5, Confidence.CERTAIN);
             assertThat(word.syllableEstimate()).isGreaterThanOrEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("a plain word carries no engraving marks")
+        void plainWordHasNoMarks() {
+            LyricWord word = LyricWord.ofSeconds("love", 0, 0.5, Confidence.CERTAIN);
+
+            assertThat(word.hyphenatedToNext()).isFalse();
+            assertThat(word.melisma()).isFalse();
+        }
+
+        @Test
+        @DisplayName("engraving marks survive the copying operations")
+        void marksSurviveCopies() {
+            // snappedTo and withText run after the marks are decided, so dropping
+            // them there would lose every hyphen the moment lyrics were snapped
+            // to the beat grid.
+            LyricWord word = LyricWord.ofSeconds("hal", 0, 0.5, Confidence.CERTAIN)
+                    .withHyphenToNext(true)
+                    .withMelisma(true);
+
+            assertThat(word.snappedTo(4.0).hyphenatedToNext()).isTrue();
+            assertThat(word.snappedTo(4.0).melisma()).isTrue();
+            assertThat(word.withText("hall").hyphenatedToNext()).isTrue();
+            assertThat(word.withText("hall").melisma()).isTrue();
+            assertThat(word.withHyphenToNext(false).melisma()).isTrue();
+            assertThat(word.withMelisma(false).hyphenatedToNext()).isTrue();
+        }
+
+        @Test
+        @DisplayName("hyphenated syllables print as one word")
+        void hyphenatedSyllablesRejoin() {
+            LyricLine line = new LyricLine(List.of(
+                    LyricWord.ofSeconds("hal", 0.0, 0.2, Confidence.CERTAIN).withHyphenToNext(true),
+                    LyricWord.ofSeconds("le", 0.2, 0.4, Confidence.CERTAIN).withHyphenToNext(true),
+                    LyricWord.ofSeconds("lu", 0.4, 0.6, Confidence.CERTAIN).withHyphenToNext(true),
+                    LyricWord.ofSeconds("jah", 0.6, 0.8, Confidence.CERTAIN).withMelisma(true),
+                    LyricWord.ofSeconds("now", 1.0, 1.2, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            assertThat(line.text()).isEqualTo("hallelujah now");
+        }
+
+        @Test
+        @DisplayName("an unhyphenated line still prints with spaces")
+        void plainLineIsUnchanged() {
+            LyricLine line = new LyricLine(List.of(
+                    LyricWord.ofSeconds("hello", 0.0, 0.4, Confidence.CERTAIN),
+                    LyricWord.ofSeconds("world", 0.5, 0.9, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            assertThat(line.text()).isEqualTo("hello world");
+        }
+
+        @Test
+        @DisplayName("a hyphen on the last syllable of a line does not leave a trailing space")
+        void trailingHyphenDoesNotPad() {
+            // A word split across a line break leaves the last syllable hyphenated
+            // with nothing after it; the plain text must not gain a stray space.
+            LyricLine line = new LyricLine(List.of(
+                    LyricWord.ofSeconds("won", 0.0, 0.4, Confidence.CERTAIN)
+                            .withHyphenToNext(true)),
+                    Confidence.CERTAIN);
+
+            assertThat(line.text()).isEqualTo("won");
         }
     }
 }

@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A monophonic or polyphonic sequence of notes belonging to one part.
@@ -65,10 +66,17 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
         return true;
     }
 
+    /** Notes overlapping a time span, in onset order. */
+    public List<Note> notesBetween(double startSeconds, double endSeconds) {
+        return notes.stream()
+                .filter(n -> n.offsetSeconds() > startSeconds && n.onsetSeconds() < endSeconds)
+                .toList();
+    }
+
     /** Lowest and highest sounding MIDI pitch, or empty when there are no notes. */
-    public java.util.Optional<int[]> pitchRange() {
+    public Optional<PitchRange> pitchRange() {
         if (notes.isEmpty()) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
         int low = Integer.MAX_VALUE;
         int high = Integer.MIN_VALUE;
@@ -76,7 +84,7 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
             low = Math.min(low, note.midiPitch());
             high = Math.max(high, note.midiPitch());
         }
-        return java.util.Optional.of(new int[] {low, high});
+        return Optional.of(new PitchRange(low, high));
     }
 
     /** True once every note carries quantized musical timing. */

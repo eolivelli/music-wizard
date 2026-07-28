@@ -36,6 +36,9 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
 
     private static final int MIDI_C0 = 12;
 
+    /** The scientific octave LilyPond writes with no {@code '} or {@code ,} mark. */
+    private static final int LILYPOND_UNMARKED_OCTAVE = 3;
+
     public PitchSpelling {
         if (letter == null) {
             throw new IllegalArgumentException("letter must not be null");
@@ -114,9 +117,101 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
         throw new IllegalStateException("unreachable: no spelling for pitch class " + pitchClass);
     }
 
+    /**
+     * Returns a copy moved by whole octaves, keeping letter and accidental.
+     *
+     * <p>The only transposition that is safe to apply without knowing the key:
+     * an octave never changes how a note is spelled, whereas any other interval
+     * does.
+     */
+    public PitchSpelling transposedByOctaves(int octaves) {
+        return new PitchSpelling(letter, accidental, octave + octaves);
+    }
+
+    /**
+     * The LilyPond note name without an octave mark, e.g. {@code cis} or
+     * {@code bes}.
+     *
+     * <p>This is the form {@code \chordmode} wants. For a note on a staff use
+     * {@link #lilyPondAbsoluteName()}, which adds the octave.
+     */
+    public String lilyPondName() {
+        return letter.name().toLowerCase(java.util.Locale.ROOT) + accidental.lilyPondSuffix();
+    }
+
+    /**
+     * The LilyPond note name in absolute octave notation, e.g. {@code cis'} for
+     * C sharp 4.
+     *
+     * <p>LilyPond's unmarked octave is the one below middle C, so C4 is
+     * {@code c'} and C3 is bare {@code c}; higher octaves add apostrophes and
+     * lower ones commas.
+     */
+    public String lilyPondAbsoluteName() {
+        int marks = octave - LILYPOND_UNMARKED_OCTAVE;
+        return lilyPondName() + String.valueOf(marks >= 0 ? '\'' : ',').repeat(Math.abs(marks));
+    }
+
     /** Human-readable name such as {@code F#4} or {@code Bb3}. */
     public String displayName() {
         return letter.name() + accidental.displaySuffix() + octave;
+    }
+
+    /**
+     * Parses the form {@link #displayName()} produces: {@code F#4}, {@code Bb3},
+     * {@code F##4}, {@code Ebb2}, {@code C-1}.
+     *
+     * <p>Exists so that a spelling can survive a config value, a CLI argument or
+     * an advisor's reply, none of which can carry a record. The letter may be
+     * given in either case; {@code bb3} is B flat 3, which is unambiguous
+     * because the letter is always exactly one character.
+     */
+    public static PitchSpelling parse(String text) {
+        if (text == null) {
+            throw new IllegalArgumentException("pitch must not be null");
+        }
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("pitch must not be blank");
+        }
+        NoteLetter parsedLetter;
+        try {
+            parsedLetter = NoteLetter.valueOf(trimmed.substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "pitch must start with a note letter A-G, got: " + text, e);
+        }
+        // The accidental runs up to the octave, which is the first digit or the
+        // sign in front of it. Splitting there keeps "Bb3" unambiguous: the
+        // letter is exactly one character, so the rest can only be an accidental.
+        int octaveStart = 1;
+        while (octaveStart < trimmed.length()
+                && trimmed.charAt(octaveStart) != '-'
+                && !Character.isDigit(trimmed.charAt(octaveStart))) {
+            octaveStart++;
+        }
+        if (octaveStart >= trimmed.length()) {
+            throw new IllegalArgumentException("pitch must carry an octave, got: " + text);
+        }
+        Accidental parsedAccidental = accidentalOfDisplaySuffix(
+                trimmed.substring(1, octaveStart), text);
+        int parsedOctave;
+        try {
+            parsedOctave = Integer.parseInt(trimmed.substring(octaveStart));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("pitch has an unreadable octave: " + text, e);
+        }
+        return new PitchSpelling(parsedLetter, parsedAccidental, parsedOctave);
+    }
+
+    private static Accidental accidentalOfDisplaySuffix(String suffix, String whole) {
+        for (Accidental candidate : Accidental.values()) {
+            if (candidate.displaySuffix().equals(suffix)) {
+                return candidate;
+            }
+        }
+        throw new IllegalArgumentException(
+                "unknown accidental \"" + suffix + "\" in pitch: " + whole);
     }
 
     @Override

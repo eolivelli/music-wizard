@@ -55,10 +55,15 @@ class ScoreRoundTripTest {
                 .quantizedTo(0.0, 4.0);
         Chord silence = Chord.noChord(2.0, 3.0, Confidence.of(0.6));
 
-        LyricWord hello = new LyricWord("hello", 0.0, 0.4, Optional.of(0.0), Confidence.of(0.5));
-        LyricWord world = new LyricWord("world", 0.5, 0.9, Optional.empty(), Confidence.of(0.5));
+        // Two syllables of one word plus a plain one, so the hyphen and melisma
+        // marks are both exercised in the same line as their absence.
+        LyricWord hel = new LyricWord("hel", 0.0, 0.2, Optional.of(0.0),
+                true, false, Confidence.of(0.5));
+        LyricWord lo = new LyricWord("lo", 0.2, 0.4, Optional.of(0.5),
+                false, true, Confidence.of(0.5));
+        LyricWord world = LyricWord.ofSeconds("world", 0.5, 0.9, Confidence.of(0.5));
         Lyrics lyrics = new Lyrics(
-                List.of(new LyricLine(List.of(hello, world), Confidence.of(0.5))),
+                List.of(new LyricLine(List.of(hel, lo, world), Confidence.of(0.5))),
                 "en", Confidence.of(0.5));
 
         BeatGrid grid = BeatGrid.ofTimes(List.of(0.0, 0.5, 1.0, 1.5, 2.0), 4, Confidence.of(0.9));
@@ -69,8 +74,10 @@ class ScoreRoundTripTest {
                 TempoMap.constant(120, TimeSignature.FOUR_FOUR)
                         .withMeterChange(2, TimeSignature.THREE_FOUR),
                 Optional.of(grid),
-                List.of(new Key(c4, Mode.MAJOR, 0.0, 3.0, Confidence.of(0.8))),
+                List.of(new Key(c4, Mode.MAJOR, 0.0, 3.0,
+                        Optional.of(0.0), Optional.of(6.0), Confidence.of(0.8))),
                 List.of(new Section(SectionKind.VERSE, "Verse 1", 0.0, 3.0,
+                        Optional.of(0.0), Optional.of(6.0),
                         Optional.of("A"), Confidence.of(0.7))),
                 List.of(voice, bass),
                 new ChordProgression(List.of(chord, silence), Confidence.of(0.7)),
@@ -133,6 +140,54 @@ class ScoreRoundTripTest {
         }
 
         @Test
+        @DisplayName("re-serializing a restored score reproduces the same bytes")
+        void roundTripIsByteIdentical() {
+            // Object equality would still hold if a field were dropped on write
+            // and defaulted back to the same value on read. Comparing the text
+            // catches that, and catches a new field that writes but does not read.
+            String once = ScoreJson.toJson(fullyPopulated());
+
+            assertThat(ScoreJson.toJson(ScoreJson.fromJson(once))).isEqualTo(once);
+        }
+
+        @Test
+        @DisplayName("musical time on keys and sections survives the round trip")
+        void preservesStructuralBeats() {
+            Score restored = ScoreJson.fromJson(ScoreJson.toJson(fullyPopulated()));
+
+            assertThat(restored.keys().get(0).isQuantized()).isTrue();
+            assertThat(restored.keys().get(0).startBeat()).contains(0.0);
+            assertThat(restored.keys().get(0).endBeat()).contains(6.0);
+            assertThat(restored.sections().get(0).startBeat()).contains(0.0);
+            assertThat(restored.sections().get(0).durationBeats()).contains(6.0);
+        }
+
+        @Test
+        @DisplayName("lyric engraving marks survive the round trip")
+        void preservesLyricMarks() {
+            Score restored = ScoreJson.fromJson(ScoreJson.toJson(fullyPopulated()));
+            List<LyricWord> words = restored.lyrics().allWords();
+
+            assertThat(words).extracting(LyricWord::hyphenatedToNext)
+                    .containsExactly(true, false, false);
+            assertThat(words).extracting(LyricWord::melisma)
+                    .containsExactly(false, true, false);
+        }
+
+        @Test
+        @DisplayName("a pitch range serializes as a named pair")
+        void pitchRangeSerializes() throws Exception {
+            // The reason pitchRange() stopped returning int[]: an array has no
+            // equals, so a range could never be compared or meaningfully stored.
+            PitchRange range = new PitchRange(40, 64);
+
+            String json = ScoreJson.mapper().writeValueAsString(range);
+
+            assertThat(json).contains("\"lowest\"").contains("\"highest\"");
+            assertThat(ScoreJson.mapper().readValue(json, PitchRange.class)).isEqualTo(range);
+        }
+
+        @Test
         @DisplayName("a score written by a newer build still opens")
         void toleratesUnknownFields() {
             String json = ScoreJson.toJson(Score.empty(TempoMap.constant(120), 5.0))
@@ -182,18 +237,91 @@ class ScoreRoundTripTest {
             Score score = Score.empty(TempoMap.constant(120), 100);
 
             assertThatThrownBy(() -> score.withKeys(List.of(
-                    new Key(c, Mode.MAJOR, 0, 60, Confidence.CERTAIN),
-                    new Key(c, Mode.MINOR, 50, 80, Confidence.CERTAIN))))
+                    Key.ofSeconds(c, Mode.MAJOR, 0, 60, Confidence.CERTAIN),
+                    Key.ofSeconds(c, Mode.MINOR, 50, 80, Confidence.CERTAIN))))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("must not overlap");
+        }
+
+        @Test
+        @DisplayName("a key cannot be half-quantized")
+        void rejectsHalfQuantizedKey() {
+            PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
+
+            assertThatThrownBy(() -> new Key(c, Mode.MAJOR, 0, 10,
+                    Optional.of(0.0), Optional.empty(), Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("both startBeat and endBeat");
+        }
+
+        @Test
+        @DisplayName("a section cannot be half-quantized")
+        void rejectsHalfQuantizedSection() {
+            assertThatThrownBy(() -> new Section(SectionKind.CHORUS, "Chorus", 0, 10,
+                    Optional.empty(), Optional.of(8.0), Optional.empty(), Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("both startBeat and endBeat");
+        }
+
+        @Test
+        @DisplayName("a section cannot end before it starts in beat terms")
+        void rejectsInvertedSectionBeats() {
+            assertThatThrownBy(() -> new Section(SectionKind.CHORUS, "Chorus", 0, 10,
+                    Optional.of(9.0), Optional.of(4.0), Optional.empty(), Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("endBeat");
+        }
+
+        @Test
+        @DisplayName("keys that are ordered in seconds may not overlap in beats")
+        void rejectsKeysOverlappingOnlyInBeats() {
+            // The whole point of putting beats on a key: the notation stage reads
+            // only the beat axis, so a quantizer that put the second key change
+            // before the first one ended would engrave a change inside the key it
+            // replaces, with nothing wrong in seconds to show for it.
+            PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
+            Score score = Score.empty(TempoMap.constant(120), 100);
+
+            assertThatThrownBy(() -> score.withKeys(List.of(
+                    Key.ofSeconds(c, Mode.MAJOR, 0, 30, Confidence.CERTAIN).quantizedTo(0, 60),
+                    Key.ofSeconds(c, Mode.MINOR, 30, 60, Confidence.CERTAIN).quantizedTo(48, 120))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("keys must not overlap")
+                    .hasMessageContaining("beat");
+        }
+
+        @Test
+        @DisplayName("sections that are ordered in seconds may not overlap in beats")
+        void rejectsSectionsOverlappingOnlyInBeats() {
+            Score score = Score.empty(TempoMap.constant(120), 100);
+
+            assertThatThrownBy(() -> score.withSections(List.of(
+                    Section.unlabelled(0, 30, "A", Confidence.CERTAIN).quantizedTo(0, 60),
+                    Section.unlabelled(30, 60, "B", Confidence.CERTAIN).quantizedTo(48, 120))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("sections must not overlap")
+                    .hasMessageContaining("beat");
+        }
+
+        @Test
+        @DisplayName("a partly quantized score is still a legal intermediate state")
+        void allowsPartlyQuantizedKeys() {
+            // Stages fill the beat axis in one at a time, so a quantized key
+            // followed by an un-quantized one must not be rejected.
+            PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
+
+            assertThatCode(() -> Score.empty(TempoMap.constant(120), 100).withKeys(List.of(
+                    Key.ofSeconds(c, Mode.MAJOR, 0, 30, Confidence.CERTAIN).quantizedTo(0, 60),
+                    Key.ofSeconds(c, Mode.MINOR, 30, 60, Confidence.CERTAIN))))
+                    .doesNotThrowAnyException();
         }
 
         @Test
         @DisplayName("keyAt answers by position, not by insertion order")
         void keyAtIsPositional() {
             PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
-            Key later = new Key(c, Mode.MINOR, 50, 60, Confidence.CERTAIN);
-            Key earlier = new Key(c, Mode.MAJOR, 0, 50, Confidence.CERTAIN);
+            Key later = Key.ofSeconds(c, Mode.MINOR, 50, 60, Confidence.CERTAIN);
+            Key earlier = Key.ofSeconds(c, Mode.MAJOR, 0, 50, Confidence.CERTAIN);
 
             // Deliberately supplied out of order.
             Score score = Score.empty(TempoMap.constant(120), 100)
@@ -316,8 +444,8 @@ class ScoreRoundTripTest {
             // Recognition spans on sung speech overlap, so the word that starts
             // last need not be the one that finishes last.
             LyricLine line = new LyricLine(List.of(
-                    new LyricWord("looong", 1.0, 99.0, Optional.empty(), Confidence.CERTAIN),
-                    new LyricWord("short", 2.0, 3.0, Optional.empty(), Confidence.CERTAIN)),
+                    LyricWord.ofSeconds("looong", 1.0, 99.0, Confidence.CERTAIN),
+                    LyricWord.ofSeconds("short", 2.0, 3.0, Confidence.CERTAIN)),
                     Confidence.CERTAIN);
 
             assertThat(line.endSeconds()).isEqualTo(99.0);
@@ -327,8 +455,8 @@ class ScoreRoundTripTest {
         @DisplayName("a lyric line reports a sane span even if words arrive unordered")
         void lyricLineOrdersWords() {
             LyricLine line = new LyricLine(List.of(
-                    new LyricWord("late", 5, 6, Optional.empty(), Confidence.CERTAIN),
-                    new LyricWord("early", 1, 2, Optional.empty(), Confidence.CERTAIN)),
+                    LyricWord.ofSeconds("late", 5, 6, Confidence.CERTAIN),
+                    LyricWord.ofSeconds("early", 1, 2, Confidence.CERTAIN)),
                     Confidence.CERTAIN);
 
             assertThat(line.startSeconds()).isLessThan(line.endSeconds());

@@ -102,6 +102,18 @@ public record Chord(
         return endSeconds - startSeconds;
     }
 
+    /**
+     * How long the chord lasts in quarter-note beats, once quantized.
+     *
+     * <p>Empty exactly when the chord is un-quantized. Notation needs this to
+     * choose the number of bars a symbol spans, and computing it from
+     * {@link #durationSeconds()} would go through the tempo a second time and
+     * disagree with the quantizer at the rounding boundary.
+     */
+    public Optional<Double> durationBeats() {
+        return startBeat.map(from -> endBeat.orElseThrow() - from);
+    }
+
     @JsonIgnore
     public boolean isNoChord() {
         return quality == ChordQuality.NONE;
