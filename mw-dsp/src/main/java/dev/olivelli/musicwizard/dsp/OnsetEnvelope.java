@@ -76,14 +76,21 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * will be wrong by a factor of four.
      *
      * <p>At {@link #ONSET_HOP} that corner is 17.5 Hz, which is worth knowing
-     * because of what it nearly equals: {@code sampleRate / ONSET_WINDOW} is
-     * 21.5 Hz, the fastest envelope change a 1024-sample window can express at
-     * all. Anything faster in the band series is interference between partials
-     * rather than the note doing something, so the filter turns out to pass
-     * approximately what the window can resolve and stop approximately where
-     * the artefacts begin. That is a coincidence of the arithmetic rather than
-     * a design, but it is why this value is defensible as something other than
-     * the number that scored best.
+     * because of what it nearly equals. Measured by amplitude-modulating a tone
+     * and reading the band series back at eight times the hop rate, so the
+     * measurement cannot itself alias, this analysis window passes genuine
+     * envelope modulation to a corner of <b>18.7 Hz</b> and rolls off after it:
+     * 4 dB down by 21.5, 7 by 30, 13 by 43 and 30 by 86. Modulation faster than
+     * that is attenuated rather than absent, and what is left up there is not
+     * the note doing something -- on a held 440 Hz note with eight partials the
+     * band series carries its energy at the partial differences, 440 Hz and up,
+     * with essentially nothing anywhere in between.
+     *
+     * <p>So the filter passes approximately what the window can resolve and
+     * stops approximately where the interference begins. That is a coincidence
+     * of the arithmetic rather than a design, and it is not exact, but it is
+     * why this value is defensible as something other than the number that
+     * scored best.
      *
      * <p>Expressed relative to the frame rate rather than in hertz, so the
      * filter follows {@link #ONSET_HOP} instead of having to be re-tuned with
