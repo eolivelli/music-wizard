@@ -59,9 +59,13 @@ public final class Resampler {
      * above the bound. Double is the accurate side of the difference.
      *
      * <p>Two things worth knowing beyond the bound. The differences are common
-     * rather than rare -- between the rates this pipeline uses, 13% to 25% of
-     * samples on uniform noise and about 1% on tonal material -- so this is not
-     * a last-bit curiosity. And integer <em>decimation</em> is bit-identical,
+     * rather than rare -- on uniform noise, 6% to 25% of samples across every
+     * source rate from 8 kHz to 192 kHz into this pipeline's 22.05 and 44.1,
+     * and about 1% on tonal material -- so this is not a last-bit curiosity.
+     * The low end is the steep decimations, because the low-pass runs first and
+     * shrinks adjacent differences until the float subtraction is exact more
+     * often: 192k to 22.05k is the 6%, 16k to 22.05k the 25%. And integer
+     * <em>decimation</em> is bit-identical,
      * because {@code fraction} is then always zero and no interpolation
      * happens: 44.1k to 22.05k and 96k to 8k show no change at all. Integer
      * <em>upsampling</em> is not, and the distinction is easy to get backwards
@@ -76,7 +80,6 @@ public final class Resampler {
      * taken. Those drafts are in this file's history from that PR. The bound
      * above is what a caller needs; anyone who needs more should measure it
      * rather than inherit it.
-     *
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {
