@@ -23,6 +23,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,63 +31,64 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * What the renderer does to the process it starts, checked without LilyPond.
  *
- * <p>Engraving itself belongs in {@code mw-it}, and does not run here: {@code
- * mvn verify} has to stay fast, offline and binary-free. The environment the
- * subprocess is handed is not engraving — it is arithmetic this class does
- * before starting anything — so it is checked here against a stand-in binary
- * that reports what it was given.
+ * <p>Engraving itself belongs in {@code mw-it} and does not run here: {@code mvn
+ * verify} has to stay fast, offline and binary-free. What the subprocess is
+ * handed is not engraving — it is arithmetic done before anything starts — so it
+ * is checked here, against an environment poisoned on purpose rather than
+ * against the machine's own.
+ *
+ * <p>That distinction is the finding of round 5 and is why this file was
+ * rewritten: asserting on the ambient environment proved nothing, because the
+ * build machine has no {@code LANGUAGE} set and every mutation of the code under
+ * test passed.
  */
 class LilyPondRendererTest {
 
     @TempDir
     Path tempDirectory;
 
-    /**
-     * A stand-in for LilyPond that prints the locale it was started with.
-     *
-     * <p>A shell script, so this is POSIX-only and says so rather than pretending
-     * otherwise; #33 records that nothing here has ever run on Windows.
-     */
-    private static Path localeReporter(Path directory) throws Exception {
-        Path script = directory.resolve("fake-lilypond");
-        Files.writeString(script, """
-                #!/bin/sh
-                echo "LANGUAGE=[${LANGUAGE-unset}]"
-                echo "LC_ALL=[${LC_ALL-unset}]"
-                echo "LANG=[${LANG-unset}]"
-                echo "LC_MESSAGES=[${LC_MESSAGES-unset}]"
-                exit 1
-                """);
-        Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
-        return script;
+    @Test
+    @DisplayName("LilyPond is asked for English messages, whatever the machine says")
+    void theSubprocessIsAskedForEnglishMessages() {
+        // Poisoned first, so the assertion is about what the method does rather
+        // than about what this machine happens not to have set.
+        ProcessBuilder builder = new ProcessBuilder("true");
+        Map<String, String> environment = builder.environment();
+        environment.put("LC_MESSAGES", "it_IT.UTF-8");
+        environment.put("LANGUAGE", "it");
+        environment.put("LC_ALL", "it_IT.UTF-8");
+        environment.put("LANG", "it_IT.UTF-8");
+
+        LilyPondRenderer.speakEnglish(builder);
+
+        assertThat(environment).containsEntry("LC_MESSAGES", "C");
     }
 
     @Test
-    @DisplayName("LilyPond is run in one language, whatever the machine is set to")
-    void theSubprocessIsPinnedToTheCLocale() throws Exception {
-        assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+    @DisplayName("nothing but the message language is touched, because the rest decodes filenames")
+    void theCharacterTypeIsLeftAlone() {
+        // Round 5 of review found the first version of this setting LC_ALL and
+        // LANG as well, which also set the character type -- and LilyPond then
+        // could not decode a non-ASCII filename off its own command line.
+        // canción.ly engraved before that change and failed after it. This is
+        // that regression, in the one form a unit test can hold: the variables
+        // that decide how bytes are read are left exactly as they were.
+        ProcessBuilder builder = new ProcessBuilder("true");
+        Map<String, String> environment = builder.environment();
+        environment.put("LC_ALL", "es_ES.UTF-8");
+        environment.put("LANG", "es_ES.UTF-8");
+        environment.put("LC_CTYPE", "es_ES.UTF-8");
+        environment.put("LANGUAGE", "es");
 
-        // Round 4 of review found LilyPond's diagnostics translated on a machine
-        // with LANGUAGE set: a failed bar check comes out as "attenzione: bar
-        // check failed" under Italian, which contains neither "warning" nor
-        // "error". Everything that reads that output to find out whether
-        // something went wrong therefore stops finding out, and stops silently.
-        //
-        // Checked here rather than in mw-it because it is not about engraving
-        // and because reproducing it there would need the forked JVM's own
-        // environment changed, which is a build-file setting that would then be
-        // the thing under test.
-        Path source = tempDirectory.resolve("part.ly");
-        Files.writeString(source, "% nothing to engrave\n");
+        LilyPondRenderer.speakEnglish(builder);
 
-        String output = new LilyPondRenderer(localeReporter(tempDirectory)).render(source).output();
-
-        assertThat(output)
-                .as("gettext reads LANGUAGE before LC_ALL, so setting the others is not enough")
-                .contains("LANGUAGE=[unset]")
-                .contains("LC_ALL=[C]")
-                .contains("LANG=[C]")
-                .contains("LC_MESSAGES=[C]");
+        assertThat(environment)
+                .containsEntry("LC_ALL", "es_ES.UTF-8")
+                .containsEntry("LANG", "es_ES.UTF-8")
+                .containsEntry("LC_CTYPE", "es_ES.UTF-8")
+                // Left as it was, and harmless: gettext ignores LANGUAGE
+                // entirely once the messages locale is C.
+                .containsEntry("LANGUAGE", "es");
     }
 
     @Test
@@ -94,18 +96,19 @@ class LilyPondRendererTest {
     void aFailedRunIsAResultRatherThanAnException() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
 
-        // The property the locale test leans on, pinned separately so that it is
-        // not silently what makes that one pass: a non-zero exit produces a
-        // Result carrying the output, because a failed engraving must not lose
-        // the analysis that produced it.
+        // The renderer's own contract, and the reason a failed engraving does
+        // not lose the analysis that produced it. Uses a stand-in binary rather
+        // than LilyPond, so it stays in the offline suite.
+        Path script = tempDirectory.resolve("not-lilypond");
+        Files.writeString(script, "#!/bin/sh\necho 'it went wrong'\nexit 1\n");
+        Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
         Path source = tempDirectory.resolve("part.ly");
         Files.writeString(source, "% nothing to engrave\n");
 
-        LilyPondRenderer.Result result =
-                new LilyPondRenderer(localeReporter(tempDirectory)).render(source);
+        LilyPondRenderer.Result result = new LilyPondRenderer(script).render(source);
 
         assertThat(result.succeeded()).isFalse();
         assertThat(result.pdf()).isEmpty();
-        assertThat(result.output()).isNotEmpty();
+        assertThat(result.output()).contains("it went wrong");
     }
 }

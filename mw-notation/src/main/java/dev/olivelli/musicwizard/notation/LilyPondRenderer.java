@@ -21,7 +21,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -52,7 +51,7 @@ public final class LilyPondRenderer {
 
     /**
      * Runs LilyPond with its diagnostics in one language, whatever the machine
-     * is set to.
+     * is set to — and changes nothing else about the process.
      *
      * <p>LilyPond translates its own messages through gettext, and it translates
      * the <em>prefix</em> while leaving the payload alone: under {@code
@@ -62,7 +61,7 @@ public final class LilyPondRenderer {
      * all on an Italian machine, and stops silently — which is the worst way for
      * a check to fail, because the build stays green and the thing it was
      * watching for goes unreported. Round 4 of review found exactly that: under
-     * {@code LANGUAGE=it} a bar that does not fill its meter produced no
+     * {@code LANGUAGE=it} a bar that did not fill its meter produced no
      * complaint anywhere in the integration suite.
      *
      * <p>So the environment is pinned rather than the parsing widened. Widening
@@ -70,23 +69,40 @@ public final class LilyPondRenderer {
      * keeping it current, in every language, for a string this project only
      * reads in order to know whether something went wrong.
      *
-     * <p>{@code LANGUAGE} is cleared as well as {@code LC_ALL} and {@code LANG}
-     * being set, because gettext consults it first and it overrides both — a
-     * fact that is easy to miss and that makes the fix look like it works while
-     * doing nothing.
+     * <p><b>{@code LC_MESSAGES} only, and that is the whole point of this
+     * method.</b> The first version of it set {@code LC_ALL} and {@code LANG} as
+     * well, and round 5 of review found that this broke engraving outright for a
+     * file whose name is not ASCII: those two also set the character type, and
+     * LilyPond cannot decode a non-ASCII {@code argv} filename under a {@code C}
+     * ctype. {@code canción.ly}, {@code Präludium.ly} and {@code 夜曲.ly} all
+     * engraved before that change and all failed after it with
+     * {@code fatal error: failed files: "canci??n.ly"}. A fix for a test that
+     * silently stopped checking had turned into a fix that silently stopped
+     * engraving, which is the worse of the two by a distance.
+     *
+     * <p>Nor is {@code LANGUAGE} cleared, though the first version did that too
+     * and the commit message called it the subtle part. gettext ignores
+     * {@code LANGUAGE} entirely when the messages locale is {@code C}, so
+     * clearing it changes nothing — measured, not assumed: with
+     * {@code LC_MESSAGES=C LANGUAGE=it} LilyPond still says
+     * {@code programming error}. A line that cannot change the answer is a line
+     * nothing can test.
      *
      * <p>The cost is that a non-English user sees LilyPond's own complaints in
      * English. That is the trade: this project embeds those lines in its own
      * English messages anyway, and a tool whose behaviour depends on the
      * machine's locale is the same defect {@link StaffNotation}'s
      * {@code Locale.ROOT} tempo mark exists to prevent, one process out.
+     *
+     * <p>Package-private so it can be tested against a {@link ProcessBuilder}
+     * whose environment has been poisoned first. Testing it through the ambient
+     * environment proved nothing: round 5 found that deleting the body left the
+     * suite green, because the build machine has no {@code LANGUAGE} set.
      */
-    private static void speakEnglish(ProcessBuilder builder) {
-        Map<String, String> environment = builder.environment();
-        environment.remove("LANGUAGE");
-        environment.put("LC_ALL", "C");
-        environment.put("LANG", "C");
-        environment.put("LC_MESSAGES", "C");
+    static void speakEnglish(ProcessBuilder builder) {
+        // Not LC_ALL, not LANG, not LC_CTYPE: those decide how the filename on
+        // the command line is decoded as well as which catalogue is loaded.
+        builder.environment().put("LC_MESSAGES", "C");
     }
 
     /**

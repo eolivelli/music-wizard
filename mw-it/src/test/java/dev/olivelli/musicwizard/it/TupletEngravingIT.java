@@ -84,7 +84,7 @@ class TupletEngravingIT {
      *
      * <p>Every other line mentioning a warning or an error fails the test,
      * because that is what makes engraving worth doing at all: a bar that does
-     * not fill its meter is a {@code warning: barcheck failed} and nothing else
+     * not fill its meter is a {@code warning: bar check failed} and nothing else
      * catches it.
      *
      * <p>This one is different in kind and the difference is checkable rather
@@ -415,7 +415,10 @@ class TupletEngravingIT {
         // Round 4 rendered this page at 900 dpi and looked at both complaint
         // sites: the tuplet number is present and legible, placed above the
         // steep beam rather than inside it. Nothing missing, nothing colliding.
-        assertThat(result.output()).doesNotContainIgnoringCase("barcheck");
+        // Spelled the way LilyPond 2.26 spells it, with the space. Round 5 of
+        // review found this written "barcheck" -- a string LilyPond never emits,
+        // so the assertion could not have failed whatever the bar summed to.
+        assertThat(result.output()).doesNotContainIgnoringCase("bar check");
         assertThat(result.pdf()).isPresent();
         assertEngravedCleanly("the tolerated case", result);
     }
@@ -450,7 +453,7 @@ class TupletEngravingIT {
         // And the thing the ban exists for, beside the tolerated line rather
         // than instead of it.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
-                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: barcheck failed at: 3/4")))
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
                 .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> assertEngravedCleanly("a real error",
                 engraved("part.ly:5:20: error: syntax error, unexpected '}'")))
@@ -461,6 +464,38 @@ class TupletEngravingIT {
     private static LilyPondRenderer.Result engraved(String... output) {
         return new LilyPondRenderer.Result(true, Optional.of(Path.of("part.pdf")),
                 String.join("\n", output) + "\n");
+    }
+
+    @Test
+    @DisplayName("a part whose file name is not ASCII still engraves")
+    void aNonAsciiFileNameStillEngraves() {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+        LilyPondRenderer renderer = new LilyPondRenderer(lilypond);
+
+        // Round 5 of review found round 4's locale fix breaking this outright:
+        // LC_ALL and LANG set the character type as well as the message
+        // catalogue, and LilyPond cannot decode a non-ASCII name off its own
+        // command line under a C ctype -- "fatal error: failed files:
+        // canci??n.ly". A fix for a test that had silently stopped checking had
+        // become a fix that silently stopped engraving.
+        //
+        // It is here rather than in mw-notation because only a real LilyPond can
+        // show it: the unit test beside speakEnglish pins which variables are
+        // touched, and this pins what that buys. The tool writes one file per
+        // part and a part is named after the song, so this is the ordinary case
+        // for most of the world rather than an exotic one.
+        QuantizedScore quantized = tripletsAmongPlainBeats();
+        String source = StaffNotation.toLilyPond(
+                quantized, quantized.score().tracks().getFirst());
+
+        for (String name : List.of("canción", "Präludium", "夜曲", "Пример")) {
+            LilyPondRenderer.Result result = renderer.renderSource(
+                    tempDirectory.resolve("names/" + name + ".ly"), source);
+            assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+            assertEngravedCleanly(name, result);
+            assertThat(result.pdf()).as("%s produced no page", name).isPresent();
+        }
     }
 
     // ------------------------------------------------------------- assertions
@@ -475,10 +510,16 @@ class TupletEngravingIT {
      */
     private static void assertEngravedCleanly(String name, LilyPondRenderer.Result result) {
         assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+        // Selected case-insensitively and matched exactly. The two directions
+        // are deliberately different: being over-inclusive about what counts as
+        // a complaint can only produce a loud failure, while being over-generous
+        // about what the tolerance covers produces a silent pass. Round 5 found
+        // the trailing strip() on the match inert -- LilyPond does not indent
+        // its diagnostics -- so it is gone rather than kept as reassurance.
         List<String> complaints = result.output().lines()
                 .filter(line -> line.toLowerCase(Locale.ROOT).contains("warning")
                         || line.toLowerCase(Locale.ROOT).contains("error"))
-                .filter(line -> !line.strip().equals(TOLERATED_COMPLAINT))
+                .filter(line -> !line.equals(TOLERATED_COMPLAINT))
                 .toList();
         assertThat(complaints).as("%s engraved with complaints", name).isEmpty();
     }
