@@ -263,15 +263,25 @@ class TempoOverrideTest {
     @Test
     @DisplayName("anchors nothing when the first pulse is already the origin")
     void anchorAtTheOriginStaysASingleSegment() {
-        // The helper is exercised directly because a beat tracker quantises to
-        // the analysis hop and cannot produce these anchors from a recording.
+        // An anchor at the origin is the ordinary case rather than an edge one:
+        // hop quantisation is what produces it, so any recording whose first beat
+        // falls in frame 0 lands here. Asserted through a recording as well as
+        // directly, since it is reachable both ways.
         TempoMap atOrigin = AudioTranscriber.constantPulseFrom(
                 120, TimeSignature.FOUR_FOUR, 0.0);
         assertThat(atOrigin).isEqualTo(TempoMap.constantPulse(120, TimeSignature.FOUR_FOUR));
 
-        // An anchor so small that cramming a whole pulse into it overflows to an
-        // infinite tempo. The rate the user asked for is worth more than a thrown
-        // map, so the phase is dropped rather than the analysis.
+        Score fromTheOrigin = new AudioTranscriber().transcribe(clickTrack(12.0, 0.5, 0.0),
+                new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, null));
+        assertThat(fromTheOrigin.beatGrid().orElseThrow().beatTimes().get(0)).isZero();
+        assertThat(fromTheOrigin.tempoMap().segments()).hasSize(1);
+        assertThat(fromTheOrigin.estimatedTempo()).isCloseTo(90.0, within(1e-9));
+
+        // The genuinely unreachable anchors, which is why the helper is
+        // package-private. First, one so small that cramming a whole pulse into
+        // it overflows to an infinite tempo: the rate the user asked for is worth
+        // more than a thrown map, so the phase is dropped rather than the
+        // analysis.
         TempoMap unrepresentable = AudioTranscriber.constantPulseFrom(
                 120, TimeSignature.FOUR_FOUR, Double.MIN_VALUE);
         assertThat(unrepresentable.segments()).hasSize(1);

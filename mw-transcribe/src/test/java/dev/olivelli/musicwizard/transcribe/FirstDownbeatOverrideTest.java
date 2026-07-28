@@ -197,16 +197,20 @@ class FirstDownbeatOverrideTest {
                 .isGreaterThan(nudged.downbeatConfidence().value());
         assertThat(nudged.downbeatConfidence().value())
                 .isGreaterThan(midway.downbeatConfidence().value());
-        // At the halfway point the phase claim is halved, and no further: a
-        // badly-aimed human downbeat still says more than a guess.
+        // At the halfway point the phase claim is halved: the user meant one of
+        // two pulses and the tie-break is right half the time.
         assertThat(midway.downbeatConfidence().value())
                 .isCloseTo(0.5 * midway.beatConfidence().value(), within(1e-9));
         assertThat(exact.downbeatConfidence()).isEqualTo(exact.beatConfidence());
 
-        // And a time far outside the tracked range is floored there rather than
-        // going negative or wrapping.
+        // Further out than that is a different claim, not more of the same one:
+        // a time ten minutes past the end of the recording names no pulse at all,
+        // so the phase is worth one guess in four rather than one in two -- below
+        // what the estimator gives a phase it could not choose, not above it.
         assertThat(grid(600.0, TimeSignature.FOUR_FOUR).downbeatConfidence().value())
-                .isCloseTo(0.5 * exact.beatConfidence().value(), within(1e-9));
+                .isCloseTo(0.25 * exact.beatConfidence().value(), within(1e-9));
+        assertThat(grid(600.0, TimeSignature.FOUR_FOUR).downbeatConfidence().value())
+                .isLessThan(grid(null, TimeSignature.FOUR_FOUR).downbeatConfidence().value());
     }
 
     @Test
@@ -222,59 +226,66 @@ class FirstDownbeatOverrideTest {
                 0.0, 0.5, 1.0, 1.5, /* 2.0 dropped */ 2.5, 3.0, 3.5, 4.0, 4.2, 4.7);
 
         // Landing on a pulse is the user's instruction whatever the neighbours do.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 1.5))
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 1.5, 4))
                 .isEqualTo(Confidence.CERTAIN);
 
-        // In the dropped-beat gap: half a beat out is most likely a request for a
-        // beat the grid does not contain, so the phase is probably off by one.
-        // Scaling by the 1.0s rival gap would call this a third of the way to
-        // ambiguity and report 0.83.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 2.0).value())
+        // In the dropped-beat gap: half a typical beat out is as ambiguous as a
+        // request between two pulses ever gets, whether the user meant the pulse
+        // this snapped to or one the tracker dropped. Scaling by the 1.0s rival
+        // gap would call it a third of the way to ambiguity and report 0.83.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 3, 2.0, 4).value())
                 .isCloseTo(0.5, within(1e-9));
 
         // In the crowded gap: equidistant from beats 7 and 8 is a genuine coin
         // flip, whatever the median says. Scaling by the 0.5s median would report
         // 0.8 for a phase chosen by a tie-break.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.1).value())
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.1, 4).value())
                 .isCloseTo(0.5, within(1e-9));
         // And a quarter of the way across that short gap is a quarter of the way
         // to ambiguity, not a twentieth.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.05).value())
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.05, 4).value())
                 .isCloseTo(0.75, within(1e-9));
 
         // The same crowded gap approached from the other side. Asserted because
         // the rival is chosen by which side of the pulse the request fell, and
         // every case above happens to fall after it -- so reading the rival as
         // "always the next pulse" would pass all of them and report 0.90 here.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.15).value())
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.15, 4).value())
                 .isCloseTo(0.75, within(1e-9));
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.1).value())
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.1, 4).value())
                 .isCloseTo(0.5, within(1e-9));
 
-        // Past the last pulse there is no rival on that side at all, so the median
-        // stands in; well past it, that reaches the floor rather than certainty.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0).value())
+        // Past the last pulse there is no second candidate at all -- the request
+        // is not between two pulses -- so beyond half a typical pulse it is worth
+        // a guess in beatsPerBar. Asserted at three meters, because at two beats
+        // to the bar that count and the tie-break count coincide at a half and a
+        // single meter could not tell them apart.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0, 4).value())
+                .isCloseTo(0.25, within(1e-9));
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0, 3).value())
+                .isCloseTo(1.0 / 3, within(1e-9));
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0, 2).value())
                 .isCloseTo(0.5, within(1e-9));
         // Before the first pulse, likewise -- and this is the only shape that
         // tells "no rival on that side" apart from "the rival is the next pulse",
         // since it needs a non-zero distance and an opening gap shorter than the
         // median. Reading the rival as the next pulse would score 0.50.
         List<Double> shortOpening = List.of(1.0, 1.1, 1.6, 2.1, 2.6, 3.1);
-        assertThat(AudioTranscriber.snappedPhaseConfidence(shortOpening, 0, 0.95).value())
+        assertThat(AudioTranscriber.snappedPhaseConfidence(shortOpening, 0, 0.95, 4).value())
                 .isCloseTo(0.90, within(1e-9));
 
         // Landing exactly on the first pulse is certain because the distance is
         // zero, not because of anything about rivals.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 0, 0.0))
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 0, 0.0, 4))
                 .isEqualTo(Confidence.CERTAIN);
 
         // One pulse: no interval, and no other pulse they could have meant.
-        assertThat(AudioTranscriber.snappedPhaseConfidence(List.of(3.0), 0, 90.0))
+        assertThat(AudioTranscriber.snappedPhaseConfidence(List.of(3.0), 0, 90.0, 4))
                 .isEqualTo(Confidence.CERTAIN);
     }
 
     @Test
-    @DisplayName("beats a blind guess by as much as two candidates beat four")
+    @DisplayName("beats what the estimator gives a phase it could not choose")
     void theSnapFloorOutranksAPhaseNothingSupports() {
         // Measured across the seam rather than asserted from two files agreeing,
         // because SNAPPED_PHASE_FLOOR is only meaningful next to what
@@ -292,8 +303,12 @@ class FirstDownbeatOverrideTest {
         BeatGrid estimatedGrid = grid(null, TimeSignature.FOUR_FOUR);
         double beatConfidence = estimatedGrid.beatConfidence().value();
 
-        // A click track gives the estimator no harmony at all, so this is it
-        // claiming as little as it can claim: one phase in four.
+        // The estimator lands on exactly its own floor here, and the mechanism is
+        // worth naming rather than guessing at: a click track does have chroma
+        // novelty, but it is around 1e-6 and the phases are indistinguishable, so
+        // the accent decides -- and it decides for a phase the harmony did not
+        // prefer, which makes the margin negative and `decided` exactly zero.
+        // This is the estimator claiming as little as it can claim.
         double estimated = estimatedGrid.downbeatConfidence().value() / beatConfidence;
         // A request exactly halfway between two pulses: this code claiming as
         // little as it can claim, which is one candidate of two.
@@ -303,7 +318,10 @@ class FirstDownbeatOverrideTest {
 
         assertThat(worstSnap).isGreaterThan(estimated);
         // Pinned as values too, so that either side drifting is visible here
-        // rather than only in the ordering, which has slack in it.
+        // rather than only in the ordering, which has slack in it. Note the gap
+        // is 0.5 against 0.35 rather than 0.5 against the 0.25 a blind guess in
+        // four is worth: BASE_CONFIDENCE is that count plus a deliberate margin
+        // for the bars having to start somewhere.
         assertThat(worstSnap).isCloseTo(0.5, within(1e-9));
         assertThat(estimated).isCloseTo(0.35, within(1e-9));
     }
@@ -358,7 +376,12 @@ class FirstDownbeatOverrideTest {
         BeatGrid onePulse = blip.beatGrid().orElseThrow();
         assertThat(onePulse.size()).isEqualTo(1);
         assertThat(onePulse.beats().get(0).downbeat()).isTrue();
-        assertThat(onePulse.downbeatConfidence()).isEqualTo(onePulse.beatConfidence());
+        // The phase confidence itself is asserted in
+        // snapConfidenceBoundsAmbiguityInBothDirections, not here: a one-beat
+        // grid has a beat confidence of zero and toBeatGrid multiplies, so every
+        // assertion on this grid's downbeat confidence is zero either way and
+        // proves nothing about the branch above it.
+        assertThat(onePulse.beatConfidence().value()).isZero();
 
         // No pulses at all: nothing to mark, but the override must not vanish
         // without comment -- that is the shape of the bug this option had.

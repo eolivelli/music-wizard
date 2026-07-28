@@ -68,16 +68,20 @@ public final class AudioTranscriber {
     private static final double DOWNBEAT_SNAP_TOLERANCE_SECONDS = 0.05;
 
     /**
-     * Confidence in a forced phase whose snap moved it as far as it can move.
+     * Confidence in a forced phase that fell exactly between two tracked pulses.
      *
      * <p>Counted rather than chosen, the way {@link DownbeatEstimator} counts its
-     * own floor. A snap at maximum ambiguity is equidistant from exactly two
-     * pulses, one of which the user meant, and which of them comes out is a
-     * tie-break; so the phase reported is right half the time. Half is therefore
-     * what it is worth. That it lands above the estimator's floor is a
-     * consequence rather than a constraint, and by the same argument: a phase
-     * nothing supports is one guess in {@code beatsPerBar}, and two candidates
-     * beat four.
+     * own floor. A request equidistant from two pulses is one the grid can still
+     * express -- the user meant one of the two -- and which of them comes out is
+     * {@link #nearestBeatIndex}'s tie-break, so the phase reported is right half
+     * the time. Half is what it is worth.
+     *
+     * <p>This is the bottom of the ambiguous band only, not of the function. A
+     * request further out than this names no tracked pulse at all, and
+     * {@link #snappedPhaseConfidence} answers that case separately and lower; the
+     * two used to share this constant, which gave a downbeat typed 888 seconds
+     * past the end of a recording more confidence than the estimator's own
+     * unsupported phase on the same audio.
      *
      * <p>It is deliberately <em>not</em> placed below what a harmony-backed phase
      * scores, which an earlier draft claimed. Since #48 that band runs from 0.35
@@ -294,9 +298,14 @@ public final class AudioTranscriber {
      * tracked pulse then sits a whole number of pulses from the origin, at the
      * user's tempo.
      *
-     * <p>Package-private so the degenerate anchors can be driven directly; they
-     * are not reachable through a recording, since a beat tracker quantises its
-     * output to the analysis hop.
+     * <p>An anchor at the origin is not degenerate and is ordinary: hop
+     * quantisation is what produces it, since any recording whose first beat
+     * falls in frame 0 reports it at exactly 0.0. There is no lead-in to model
+     * then, and the map stays the single constant segment it always was.
+     *
+     * <p>Package-private so the anchors that really are unreachable through a
+     * recording -- a negative one, or one small enough that a whole pulse
+     * crammed into it overflows -- can be driven directly.
      *
      * @param pulsesPerMinute  the counted tempo to hold throughout
      * @param firstBeatSeconds when the first tracked pulse falls
@@ -379,7 +388,8 @@ public final class AudioTranscriber {
                         // below one that can -- which is the one thing these
                         // numbers are supposed to guarantee.
                         ? Confidence.CERTAIN
-                        : snappedPhaseConfidence(beatTimes, index, downbeatSeconds));
+                        : snappedPhaseConfidence(
+                                beatTimes, index, downbeatSeconds, beatsPerBar));
     }
 
     /**
@@ -403,18 +413,39 @@ public final class AudioTranscriber {
      * scored 0.65. Neither scale bounds the ambiguity on its own; the minimum
      * bounds it in both directions.
      *
-     * <p>Where the request falls past the last pulse or before the first there is
-     * no rival on that side, and the median stands in. The falloff is then the
-     * plain one: a request ten milliseconds before the first pulse is
-     * unmistakably naming it and stays near certain, while one well outside the
-     * tracked range reaches the floor, which is the right answer for a time the
-     * grid cannot express as a phase at all.
+     * <p>That falloff covers every request that lands <em>between</em> two
+     * tracked pulses, which is every request inside the tracked range. Two
+     * candidates, the nearer one taken, and confidence falling to a half as they
+     * become equally good. It does not distinguish a user who meant one of those
+     * two pulses from one who meant a beat the tracker dropped between them --
+     * nothing here can, which is what the warning above is for.
      *
-     * <p>The floor is the chance of the tie-break being right, and so sits above
-     * what {@link DownbeatEstimator} gives a phase nothing supports: choosing
-     * between two candidates beats choosing between {@code beatsPerBar} of them.
-     * See {@link #SNAPPED_PHASE_FLOOR} for why it is not also ordered against a
-     * harmony-backed phase.
+     * <p>Outside the range there is no second candidate. A request before the
+     * first pulse or after the last is not between anything, and past half a
+     * typical pulse it is not naming the end pulse either: the phase that comes
+     * back is what clamping produced, and that is worth one guess in
+     * {@code beatsPerBar}. It is the same count {@link DownbeatEstimator} builds
+     * its own floor from, without the margin it adds for having at least looked
+     * at the audio -- this looked at nothing. Letting that case share the
+     * tie-break floor put a downbeat typed 888 seconds past the end of a
+     * recording above the estimator's unsupported phase on the same audio.
+     *
+     * <p>Keyed on being outside the range rather than on the distance alone,
+     * which matters more than it sounds: a request at the exact midpoint of an
+     * ordinary gap sits within a hair of half the median either way, so a
+     * distance test would hand the commonest case in the method to whichever side
+     * of the median that gap's jitter fell.
+     *
+     * <p>Nearer than half a pulse the plain falloff still applies outside the
+     * range too, since a request ten milliseconds before the first pulse is
+     * unmistakably naming it. The step at that boundary is real, and is the
+     * honest shape: it is where "just before the first beat" stops meaning the
+     * first beat.
+     *
+     * <p>The counts agree wherever they must. At two beats to the bar, being lost
+     * between two candidates and being lost among every phase there is are the
+     * same predicament, and both give a half; at one, both give certainty, which
+     * is why the caller can short-circuit that meter without contradicting this.
      *
      * <p>With fewer than two pulses there is no interval and no alternative pulse
      * to have meant, so the one that exists is the one the user named.
@@ -423,22 +454,30 @@ public final class AudioTranscriber {
      * driven directly rather than approximated with a fixture.
      */
     static Confidence snappedPhaseConfidence(
-            List<Double> beatTimes, int index, double downbeatSeconds) {
+            List<Double> beatTimes, int index, double downbeatSeconds, int beatsPerBar) {
         if (beatTimes.size() < 2) {
             return Confidence.CERTAIN;
         }
         double chosen = beatTimes.get(index);
         // The pulse the snap would have picked had the request fallen a little
         // further the same way -- which is the one it is being confused with.
+        // Absent exactly when the request is outside the tracked range, since
+        // nothing outside it lies between two pulses.
         int rival = downbeatSeconds >= chosen ? index + 1 : index - 1;
         double rivalGap = rival >= 0 && rival < beatTimes.size()
                 ? Math.abs(beatTimes.get(rival) - chosen)
                 : Double.POSITIVE_INFINITY;
         double halfPulse = Math.min(medianInterval(beatTimes), rivalGap) / 2;
         double missed = halfPulse > 0
-                ? Math.clamp(Math.abs(chosen - downbeatSeconds) / halfPulse, 0, 1)
-                : 1;
-        return Confidence.clamped(1.0 - (1.0 - SNAPPED_PHASE_FLOOR) * missed);
+                ? Math.abs(chosen - downbeatSeconds) / halfPulse
+                // Also the NaN path: a grid whose median is zero cannot say how
+                // far out anything is.
+                : Double.POSITIVE_INFINITY;
+        if (Double.isInfinite(rivalGap) && !(missed <= 1)) {
+            return Confidence.clamped(1.0 / beatsPerBar);
+        }
+        return Confidence.clamped(
+                1.0 - (1.0 - SNAPPED_PHASE_FLOOR) * Math.clamp(missed, 0, 1));
     }
 
     /** The median gap between tracked pulses, as a robust idea of pulse length. */
