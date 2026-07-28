@@ -225,11 +225,18 @@ class PitchSpellerTest {
                     .isEqualTo(PitchSpelling.parse("B#3"));
             assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(7, Mode.MINOR)))
                     .isEqualTo(PitchSpelling.parse("B#3"));
-            // Three sharps -- A major -- and it is a plain C again, which is
-            // what makes the choice a decision rather than a quirk of the
-            // search order. The boundary sits between four sharps and five.
-            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(3, Mode.MAJOR)))
+            // And the boundary itself, which is not where a single rule puts it
+            // for both modes: four sharps still gives a plain C in major and
+            // already gives B sharp in minor, because MINOR_CENTRE_OFFSET pulls
+            // the centre three quarters of a fifth further round.
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(4, Mode.MAJOR)))
                     .isEqualTo(PitchSpelling.parse("C4"));
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(5, Mode.MAJOR)))
+                    .isEqualTo(PitchSpelling.parse("B#3"));
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(3, Mode.MINOR)))
+                    .isEqualTo(PitchSpelling.parse("C4"));
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(4, Mode.MINOR)))
+                    .isEqualTo(PitchSpelling.parse("B#3"));
         }
 
         @Test

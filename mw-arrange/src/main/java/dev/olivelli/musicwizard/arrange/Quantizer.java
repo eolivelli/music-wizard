@@ -746,14 +746,21 @@ public final class Quantizer {
         /**
          * How tight that cluster has to be.
          *
-         * <p>Measured against the window this detector actually uses, and as a
-         * bound rather than a ratio, because the ratio moves with the fixture.
-         * Sixteenths spread 0.149 to 0.153. A shuffle spreads 0.034 to 0.084
-         * across every shuffle fixture in the suite and thirty re-seedings at
-         * phases from 0.58 to 0.75. So the threshold sits between the two
-         * populations, with the shuffle side the tighter margin -- and what
-         * loses a genuine shuffle in practice is
-         * {@link #SWING_THRESHOLD}, not this.
+         * <p>Measured against the window this detector actually uses, over
+         * thirty re-seedings of a human performance at the 25 ms spread this
+         * project's fixtures use, and stated as the range each population
+         * covers rather than as a ratio between them -- a ratio moves with the
+         * fixture and has twice been quoted from one draw of it. Sixteenths
+         * spread 0.135 to 0.167. A shuffle spreads 0.034 to 0.084 across the
+         * same seeds at every phase from 0.58 to 0.75. So the threshold sits
+         * between the two populations, with the shuffle side the tighter
+         * margin -- and what loses a genuine shuffle in practice is
+         * {@link #SWING_THRESHOLD} rather than this.
+         *
+         * <p>Both figures are for a <em>played</em> cluster. A fixture that
+         * fixes its own spread by construction, or plays to the tick, sits
+         * below the shuffle floor by definition rather than by measurement, and
+         * several in the test suite do.
          *
          * <p>An earlier comment said sixteenths spread about 0.19, which is
          * what they spread against a window starting at 0.25; the figure
