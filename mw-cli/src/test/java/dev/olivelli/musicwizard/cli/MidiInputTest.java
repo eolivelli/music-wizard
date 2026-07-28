@@ -142,8 +142,39 @@ class MidiInputTest {
 
             // "0 spans" would read as the result of looking, and nothing looked.
             assertThat(analyze.out())
-                    .contains("Chords  none: a MIDI file states notes, not harmony (#115)")
+                    .contains("Chords  none: it holds 2 part(s), and naming the harmony"
+                            + " a set of notes spells is not implemented yet (#115)")
                     .doesNotContain("0 spans");
+        }
+
+        @Test
+        @DisplayName("gives the same reason render gives, for a file with no notes at all")
+        void agreesWithRenderAboutWhyThereAreNoChords() {
+            // A conductor-track-only file. analyze used to name #115 here
+            // unconditionally -- false for a file that states no notes, since
+            // #115 is about naming the harmony notes spell -- and render, three
+            // commands later, said something different about the same score.
+            // Both now read the explanation from one place.
+            Sequence conductorOnly = MidiFixtures.sequence()
+                    .name("Conductor")
+                    .tempo(120)
+                    .tempoAt(4, 60)
+                    .timeSignature(4, 4)
+                    .build();
+            Path workspace = imported(conductorOnly, "conductor");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(analyze.out())
+                    .contains("Parts   none")
+                    .contains("there are no parts in it either")
+                    .as("naming a stage that could not produce chords for a file with no notes")
+                    .doesNotContain("(#115)");
+            assertThat(render.out())
+                    .as("the two commands disagree about the same score")
+                    .contains("there are no parts in it either");
         }
 
         @Test
@@ -376,6 +407,29 @@ class MidiInputTest {
             assertThat(analyze.out())
                     .contains("Tempo   120.0 BPM")
                     .contains("Meter   4/4");
+        }
+
+        @Test
+        @DisplayName("--skip-separation is answered for what it is: not implemented anywhere")
+        void skipSeparationIsNotAMidiSpecificExclusion() {
+            // Round 3 found it described as an audio option, ignored in silence
+            // by an audio run, and reported to a MIDI user in words implying an
+            // audio run would honour it. Nothing separates stems on either path
+            // until #8, so that is what it says -- and it must not be listed
+            // among the overrides the *file* supersedes, which is a different
+            // reason entirely.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+
+            CliRunner.Result analyze = CliRunner.run(
+                    "analyze", workspace.toString(), "--skip-separation");
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.err())
+                    .contains("--skip-separation has no effect yet on any input")
+                    .contains("#8");
+            assertThat(analyze.err())
+                    .as("listed among the options the file's own declarations supersede")
+                    .doesNotContain("--skip-separation has no effect on a MIDI workspace");
         }
 
         @Test

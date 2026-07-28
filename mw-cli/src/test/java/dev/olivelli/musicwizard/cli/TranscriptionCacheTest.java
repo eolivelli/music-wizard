@@ -74,7 +74,7 @@ class TranscriptionCacheTest {
 
     private StageCache.Key keyFor(SourceKind kind) {
         return AnalyzeCommand.transcriptionKey(kind, workspace().sourceFile(),
-                kind == SourceKind.AUDIO ? AudioTranscriber.Options.defaults() : null);
+                kind == SourceKind.AUDIO ? AudioTranscriber.Options.defaults() : null, false);
     }
 
     /**
@@ -89,7 +89,8 @@ class TranscriptionCacheTest {
      * thing that can separate them.
      */
     private StageCache.Key audioKeyWithMidiComponents() {
-        return AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, workspace().sourceFile(), null);
+        return AnalyzeCommand.transcriptionKey(
+                SourceKind.AUDIO, workspace().sourceFile(), null, false);
     }
 
     @Test
@@ -210,18 +211,25 @@ class TranscriptionCacheTest {
         Path source = workspace().sourceFile();
 
         String plain = AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults()).digest();
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false).digest();
         String corrected = AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
-                new AudioTranscriber.Options(90.0, null, null)).digest();
+                new AudioTranscriber.Options(90.0, null, null), false).digest();
 
         assertThat(corrected)
                 .as("a corrected tempo produces a different audio analysis")
                 .isNotEqualTo(plain);
-        // Nothing on the MIDI path reads them, so keying on them would miss the
-        // cache for a reason that is not a reason.
-        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null).digest())
+        // Keyed although nothing reads it yet: separation lands under #8, and a
+        // setting that changes the analysis while the key does not change is how
+        // a corrected run gets served the answer it was correcting.
+        assertThat(AnalyzeCommand.transcriptionKey(
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true).digest())
+                .as("--skip-separation will change the audio analysis under #8")
+                .isNotEqualTo(plain);
+        // Nothing on the MIDI path reads any of them, so keying on them would
+        // miss the cache for a reason that is not a reason.
+        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null, false).digest())
                 .isEqualTo(AnalyzeCommand.transcriptionKey(
                         SourceKind.MIDI, source,
-                        new AudioTranscriber.Options(90.0, null, null)).digest());
+                        new AudioTranscriber.Options(90.0, null, null), true).digest());
     }
 }

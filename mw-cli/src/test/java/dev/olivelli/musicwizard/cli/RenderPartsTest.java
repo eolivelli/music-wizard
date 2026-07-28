@@ -205,7 +205,7 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("holds 2 part(s) but no chord progression")
+                    .contains("no chord progression in this score: it holds 2 part(s)")
                     .contains("(#115)");
             // The empty chart is not written at all: a file saying "(no chords
             // were found)" is a file a user has to open to learn nothing.
@@ -222,7 +222,7 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
-                    .contains("no chord progression and no parts either")
+                    .contains("there are no parts in it either")
                     .doesNotContain("#115");
         }
 
@@ -252,7 +252,12 @@ class RenderPartsTest {
             CliRunner.Result render = CliRunner.run("render", root.toString(), "--no-pdf");
 
             assertThat(render.out())
-                    .contains("no chord progression and no parts either")
+                    .contains("there are no parts in it either")
+                    // The round 1 wording, which named a source kind this
+                    // command cannot know. Pinned by name rather than only by
+                    // the absence of the word "audio", because the bug was a
+                    // specific wrong sentence and not a stray adjective.
+                    .doesNotContain("the analysis that produced it found no harmony")
                     .doesNotContain("recording")
                     .doesNotContain("audio")
                     .doesNotContain("MIDI file");

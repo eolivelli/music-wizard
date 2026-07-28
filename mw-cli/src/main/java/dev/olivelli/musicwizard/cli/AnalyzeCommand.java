@@ -121,7 +121,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     Double firstDownbeat;
 
     @Option(names = "--skip-separation",
-            description = "Analyse the mix directly instead of separating stems. Audio only.")
+            description = "Analyse the mix directly instead of separating stems. Has no "
+                    + "effect yet: nothing separates stems until #8 lands.")
     boolean skipSeparation;
 
     @Option(names = "--no-llm", description = "Disable the Claude advisor layer for this run.")
@@ -142,9 +143,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     "warning: the source recording has changed since this workspace was created;"
                             + " cached results may not correspond to it. Re-run with --force to recompute.");
         }
-        if (kind == SourceKind.MIDI) {
-            warnAboutAudioOnlyOptions();
-        }
+        warnAboutOptionsThatDoNothing(kind);
 
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Source     " + source.getFileName() + " (" + kind.description() + ")");
@@ -194,7 +193,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     private Transcription transcribe(
             Workspace workspace, SourceKind kind, Path source, MusicWizardConfig config) {
         StageCache cache = workspace.cache();
-        StageCache.Key key = transcriptionKey(kind, source, audioOptions(kind, config));
+        StageCache.Key key = transcriptionKey(
+                kind, source, audioOptions(kind, config), skipSeparationRequested(config));
 
         if (!force) {
             Score cached = readCached(cache, key);
@@ -287,14 +287,23 @@ final class AnalyzeCommand implements Callable<Integer> {
      * the component reads "development". That is why the reuse is announced on
      * every hit rather than being silent, and why {@code --force} exists.
      *
-     * <p>The audio overrides are components only on the audio path. On the MIDI
+     * <p>The audio settings are components only on the audio path. On the MIDI
      * path they change nothing, because nothing reads them, so keying on them
      * would miss the cache for a reason that is not a reason.
      *
+     * <p>{@code skipSeparation} is a component even though <em>nothing reads it
+     * yet</em>, and that is the point: separation lands under #8, and a setting
+     * that will change the analysis while the key does not change is how a
+     * corrected run gets served the answer it was correcting. This project has
+     * already paid for that shape once with {@code --tempo}. Keying on it now
+     * costs a recompute that would have produced the same score anyway; keying
+     * on it later costs a wrong one.
+     *
      * <p>Package-private so a test can compare two keys over the same file.
      */
-    static StageCache.Key transcriptionKey(
-            SourceKind kind, Path source, AudioTranscriber.Options options) {
+    static StageCache.Key transcriptionKey(SourceKind kind, Path source,
+                                           AudioTranscriber.Options options,
+                                           boolean skipSeparation) {
         StageCache.Key key = StageCache.Key
                 .forStage(STAGE_PREFIX + kind.name().toLowerCase(Locale.ROOT))
                 .with("build", buildVersion())
@@ -302,7 +311,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (kind == SourceKind.AUDIO && options != null) {
             key.with("tempo", options.tempoOverride())
                     .with("meter", options.timeSignatureOrDefault())
-                    .with("firstDownbeat", options.firstDownbeatSeconds());
+                    .with("firstDownbeat", options.firstDownbeatSeconds())
+                    .with("skipSeparation", skipSeparation);
         }
         return key;
     }
@@ -362,8 +372,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         lines.add(score.chords().isEmpty()
                 // Not "0 spans", which reads as the result of looking. Nothing
                 // looked: a MIDI file states which notes sound, and naming the
-                // harmony they spell is a stage that does not exist yet (#115).
-                ? "Chords  none: a MIDI file states notes, not harmony (#115)"
+                // harmony they spell is a stage that does not exist yet.
+                //
+                // The reason itself comes from MissingHarmony rather than being
+                // written here, because this line used to name #115
+                // unconditionally -- which is false for a file holding no notes,
+                // and contradicted what render said about the same score.
+                ? "Chords  none: " + MissingHarmony.explain(score)
                 : "Chords  " + score.chords().size() + " spans");
         return lines;
     }
@@ -502,38 +517,55 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * Says which typed options the MIDI path will not act on.
+     * Says which typed options this run will not act on, and why.
      *
-     * <p>Said rather than passed over. These options correct stages that a MIDI
-     * import does not run, so honouring them would mean overriding what the file
-     * states with a guess; ignoring them silently would mean discarding an
-     * instruction the user typed, which is the failure this project keeps
-     * finding elsewhere.
+     * <p>Said rather than passed over. Ignoring an instruction the user typed is
+     * the failure this project keeps finding elsewhere, and it is the same defect
+     * #82 was filed for -- announcing something that does not happen -- one
+     * command over.
      *
-     * <p>Only the options typed on this command line, not the effective config.
-     * A value in a config file is a preference that happens not to apply here; a
+     * <p>Two separate reasons, because they are separate. The tempo, meter and
+     * downbeat overrides correct stages a MIDI import does not run, so on that
+     * path honouring them would mean overriding what the file declares with a
+     * guess. {@code --skip-separation} is different: it does nothing on
+     * <em>either</em> path, because nothing separates anything yet (#8). Round 3
+     * found it announced as an audio option, quietly ignored by an audio run and
+     * reported to a MIDI user in words implying an audio run would honour it.
+     *
+     * <p>Only the options typed on this command line, not the effective config. A
+     * value in a config file is a preference that happens not to apply here; a
      * value on the command line is an instruction for this run.
      */
-    private void warnAboutAudioOnlyOptions() {
-        List<String> ignored = new ArrayList<>();
-        if (tempo != null) {
-            ignored.add("--tempo");
-        }
-        if (timeSignature != null) {
-            ignored.add("--time-signature");
-        }
-        if (firstDownbeat != null) {
-            ignored.add("--first-downbeat");
+    private void warnAboutOptionsThatDoNothing(SourceKind kind) {
+        if (kind == SourceKind.MIDI) {
+            List<String> ignored = new ArrayList<>();
+            if (tempo != null) {
+                ignored.add("--tempo");
+            }
+            if (timeSignature != null) {
+                ignored.add("--time-signature");
+            }
+            if (firstDownbeat != null) {
+                ignored.add("--first-downbeat");
+            }
+            if (!ignored.isEmpty()) {
+                System.err.println("warning: " + String.join(", ", ignored)
+                        + (ignored.size() == 1 ? " has" : " have")
+                        + " no effect on a MIDI workspace; the file declares its own tempo"
+                        + " and meter");
+            }
         }
         if (skipSeparation) {
-            ignored.add("--skip-separation");
+            System.err.println("warning: --skip-separation has no effect yet on any input;"
+                    + " nothing separates stems until #8 lands, so the mix is what every"
+                    + " stage already analyses");
         }
-        if (!ignored.isEmpty()) {
-            System.err.println("warning: " + String.join(", ", ignored)
-                    + (ignored.size() == 1 ? " has" : " have")
-                    + " no effect on a MIDI workspace; the file states its own tempo and"
-                    + " meter, and nothing is separated");
-        }
+    }
+
+    /** Whether this run was asked to skip separation, from any config layer. */
+    private static boolean skipSeparationRequested(MusicWizardConfig config) {
+        var analysis = config.analysis();
+        return analysis != null && Boolean.TRUE.equals(analysis.skipSeparation());
     }
 
     /**

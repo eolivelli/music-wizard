@@ -110,30 +110,20 @@ final class RenderCommand implements Callable<Integer> {
          * down. Provenance re-derived by each reader is provenance that can
          * disagree between readers; carrying it on the score is #120.
          *
-         * <p>Two wordings survive, and round 2 was right that the first attempt
-         * justified them wrongly. They do <em>not</em> distinguish where the
-         * score came from: a MIDI file holding only a conductor track imports to
-         * a score with no parts at all, and was told the audio wording. What they
-         * distinguish is what this workspace holds, which is all either message
-         * claims -- a score with notes and no harmony is one step short of a
-         * chart and the step is named; a score with neither is not short of a
-         * step, it is empty. Both stay true whatever produced them, including an
-         * audio analysis that has separated stems but estimated no chords.
-         *
-         * <p>Provenance is deliberately not guessed at from a proxy a second
-         * time. Carrying it is #120.
+         * <p>The wording of the empty-harmony case now lives in
+         * {@link MissingHarmony}, and this method does not have its own copy of
+         * it. Round 3 found the third divergent wording of the same explanation
+         * -- {@code analyze} had one too, and on a conductor-track-only file the
+         * two commands contradicted each other three lines apart. Two rounds of
+         * fixing this in place was the signal to remove the choice rather than
+         * make the same edit again.
          */
         String unavailableReason(Score score) {
             if (notImplemented != null) {
                 return notImplemented;
             }
             if (this == CHORDS && score.chords().isEmpty()) {
-                return score.tracks().isEmpty()
-                        ? "this score holds no chord progression and no parts either;"
-                                + " there is nothing in it to engrave"
-                        : "this score holds " + score.tracks().size() + " part(s) but no chord"
-                                + " progression; naming the harmony a set of notes spells is"
-                                + " not implemented yet (#115)";
+                return "no chord progression in this score: " + MissingHarmony.explain(score);
             }
             return null;
         }
@@ -258,10 +248,11 @@ final class RenderCommand implements Callable<Integer> {
                     "unknown part '" + name + "'; expected one of: " + String.join(", ",
                             java.util.Arrays.stream(Part.values()).map(Part::partName).toList()))));
         }
-        if (resolved.isEmpty()) {
-            throw new CommandLine.ParameterException(
-                    spec.commandLine(), "--parts was given no part names");
-        }
+        // No empty-list branch: picocli requires at least one value for --parts,
+        // and an empty string among them is an unrecognised name rather than an
+        // absent one, so it is refused above. A guard here would be code no input
+        // can reach, which reads as a case that has been thought about and has
+        // not been.
         return List.copyOf(resolved);
     }
 
