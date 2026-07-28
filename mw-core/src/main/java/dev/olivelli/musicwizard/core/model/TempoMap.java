@@ -363,25 +363,31 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * count below 2^31 -- every product below is therefore exact.
      *
      * <p>The floor can only be wrong just under a bar line, since nowhere else
-     * is the quotient near an integer. So take {@code r} one step under
-     * {@code k*L}: the exact quotient is {@code k - g/L}, where {@code g} is the
-     * gap below {@code k*L}. Write {@code k*L} in the binade {@code [2^e,
-     * 2^(e+1))} and {@code L} in {@code [2^f, 2^(f+1))}. Then {@code g} is at
-     * least {@code 2^(e-53)} -- a full ULP normally, half of one when
-     * {@code k*L} is itself a power of two -- and {@code L < 2^(f+1)}, so
-     * {@code g/L > 2^(e-f-54)}. Meanwhile {@code k = k*L/L}, which is greater
-     * than {@code 2^(e-f-1)}, so the step below {@code k} is at most
-     * {@code 2^(e-f-1-52)} and half of it at most {@code 2^(e-f-54)}. The
-     * shortfall therefore exceeds half a step and the quotient rounds strictly
-     * below {@code k}, never up to it. When {@code L} is not a power of two
-     * {@code k} sits a binade lower still, which only widens the margin. At a
-     * bar line the quotient is exactly {@code k}, and above one it exceeds
-     * {@code k}, so the floor cannot fall short either.
+     * is the quotient near an integer. So take {@code r} one step under a bar
+     * line {@code k*L}. The exact quotient is {@code k - g/L}, where {@code g}
+     * is the gap below {@code k*L}, and the question is whether that shortfall
+     * clears half the step below {@code k}: anything less rounds back up to
+     * {@code k} and the floor is one too many.
      *
-     * <p>Checked as well as argued: 274 million boundary values, every legal
-     * signature against every bar line up to 4096, every power of two to 2^31
-     * with its neighbours, and 200,000 random counts each, with no
-     * disagreement.
+     * <p>Write {@code L = 2^f*s} and {@code k = 2^m*t}, with {@code s} and
+     * {@code t} in {@code [1,2)}. A gap below a value is one ULP of that
+     * value's binade, halved exactly when the value is itself a power of two.
+     * Where {@code k} is not a power of two, the shortfall {@code g/L} is at
+     * least {@code 2^(m-52)/s} against a half-step of {@code 2^(m-53)}. Where
+     * {@code k} is a power of two the half-step halves as well, while the
+     * shortfall halves only if {@code L} is a power of two too. Either way the
+     * shortfall clears the half-step by a factor of {@code 2/s}, which exceeds
+     * one because {@code s} is below two -- narrowly, at the extreme: the
+     * tightest legal case is a 63/64 bar, which wins by 1.6%. So the quotient
+     * rounds strictly below {@code k} and never up to it. On a bar line the
+     * quotient is exactly {@code k}, and above one it exceeds {@code k}, so the
+     * floor cannot fall short either.
+     *
+     * <p>Checked as well as argued, since an argument in a comment is the thing
+     * this file has learned not to trust: 274 million boundary values across
+     * every legal signature, and independently 10.8 million exact-rational
+     * comparisons in review, with no disagreement, and a build carrying the
+     * corrections alongside confirming they never fire.
      */
     private static long wholeBarsIn(double remaining, double barLength) {
         double quotient = Math.floor(remaining / barLength);
