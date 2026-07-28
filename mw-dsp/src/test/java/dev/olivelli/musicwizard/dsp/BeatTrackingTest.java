@@ -295,36 +295,53 @@ class BeatTrackingTest {
                 bands[frame][1] = 5;
             }
             bands[50][0] = Double.NaN;
-            // A run at the very start, which has no previous sample to hold.
+            // A run at the very start, which has no earlier frame at all.
             bands[0][1] = Double.NaN;
             bands[1][1] = Double.NEGATIVE_INFINITY;
             OnsetEnvelope.antiAlias(bands);
 
-            // Band 0 still gets filtered despite carrying the poison -- which
-            // is the whole point, since skipping it would leave the ripple at
-            // its full amplitude of 1.
-            for (int frame = 5; frame <= 40; frame++) {
+            // Band 0 is filtered on both sides of the poison, which is the
+            // point: skipping the band would leave the ripple at its full
+            // amplitude of 1, and that is how the filter was once disabled for
+            // a whole recording by a single bad sample.
+            for (int frame = 5; frame <= 45; frame++) {
                 assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
             }
-            for (int frame = 62; frame <= 95; frame++) {
+            for (int frame = 56; frame <= 95; frame++) {
                 assertThat(Math.abs(bands[frame][0])).as("frame %d", frame).isLessThan(0.15);
             }
-            // The poisoned frame itself comes back as it went in. Holding is
-            // for the recursion's benefit only: put the held value back and the
-            // far edge of a poisoned run becomes a step, which differences into
-            // an onset that is not in the recording. Left non-finite, the flux
-            // loop drops the difference across that edge instead.
+            // The poisoned frame comes back as it went in, so the flux loop
+            // drops the differences across it rather than reading the run's
+            // recovery as an onset.
             assertThat(bands[50][0]).isNaN();
-            // Still symmetric either side of the defect, so the filter is zero
-            // phase across a hole and not only across clean data.
-            assertThat(bands[49][0]).isCloseTo(bands[51][0], within(1e-12));
-            assertThat(bands[48][0]).isCloseTo(bands[52][0], within(1e-12));
-            // A leading run has no earlier finite sample to hold, so it takes
-            // the first later one. That only shows up inside the filter -- the
-            // frames themselves come back non-finite like any other -- but it
-            // matters: holding zero instead would push a 5 dB step through the
-            // recursion and ring for a dozen frames after the run ended, where
-            // band 1 is constant and must come back constant.
+
+            // Each side is filtered as a series in its own right, so neither
+            // can be contaminated by the other. Checked by filtering the two
+            // halves separately and requiring the same answer.
+            double[][] before = new double[50][40];
+            double[][] after = new double[49][40];
+            for (int frame = 0; frame < 50; frame++) {
+                before[frame][0] = frame % 2 == 0 ? 1 : -1;
+            }
+            for (int frame = 0; frame < 49; frame++) {
+                after[frame][0] = (frame + 51) % 2 == 0 ? 1 : -1;
+            }
+            OnsetEnvelope.antiAlias(before);
+            OnsetEnvelope.antiAlias(after);
+            for (int frame = 0; frame < 50; frame++) {
+                assertThat(bands[frame][0]).as("frame %d", frame)
+                        .isCloseTo(before[frame][0], within(1e-12));
+            }
+            for (int frame = 0; frame < 49; frame++) {
+                assertThat(bands[frame + 51][0]).as("frame %d", frame + 51)
+                        .isCloseTo(after[frame][0], within(1e-12));
+            }
+
+            // A leading run has no earlier frame to filter with, so the run
+            // simply starts after it. The frames themselves come back
+            // non-finite, and what follows must be untouched by them: band 1 is
+            // constant and has to come back constant rather than ringing from
+            // an invented starting value.
             assertThat(bands[0][1]).isNaN();
             assertThat(bands[1][1]).isNegative().isInfinite();
             for (int frame = 2; frame < bands.length; frame++) {
@@ -355,19 +372,28 @@ class BeatTrackingTest {
                     overall = Math.max(overall, value);
                 }
                 double resume = to / (double) RATE;
-                double atResumption = 0;
+                double atResumption = Double.NEGATIVE_INFINITY;
                 for (int frame = envelope.frameOf(resume);
                         frame <= envelope.frameOf(resume + 0.1); frame++) {
                     atResumption = Math.max(atResumption, envelope.strength()[frame]);
                 }
+                // The envelope is mean-subtracted, so its quiet floor is
+                // NEGATIVE, around -0.21. Seeding the running maximum at 0
+                // rather than at -inf therefore made this assertion pass on its
+                // own initialiser, and it would have tolerated an accent of up
+                // to 3% of a click's height without noticing.
+                assertThat(atResumption).isNotEqualTo(Double.NEGATIVE_INFINITY);
 
                 // A click every 0.5 s, so a hole of 0.5 s or more swallows one
-                // and the 100 ms after it must be silent. The 0.05 s hole sits
+                // and the 100 ms after it must be quiet. The 0.05 s hole sits
                 // inside one beat and the next real click is 0.4 s away, so the
-                // same window is silent for that too.
+                // same window is quiet for that too. Compared against a clean
+                // stretch of the same envelope rather than against zero, so
+                // "quiet" means what it does everywhere else in this signal.
+                double quietFloor = envelope.strength()[envelope.frameOf(3.25)];
                 assertThat(atResumption)
                         .as("hole of %.2f s, overall peak %.2f", holeSeconds, overall)
-                        .isZero();
+                        .isCloseTo(quietFloor, within(0.01));
             }
         }
 
@@ -375,26 +401,43 @@ class BeatTrackingTest {
         @DisplayName("a long hole in smooth material does not make it read as rhythmic")
         void aLongHoleDoesNotInventRhythm() {
             // The end of a poisoned run is where a manufactured accent would
-            // land, and a multi-second run is the worst case for it: the value
-            // being held is stale by seconds, so the recovery is large. The
-            // recovery frame's own rise is dropped -- it is a difference
-            // against a non-finite neighbour -- but the frames after it were
-            // filtered against the held value and ramp back over about ten of
-            // them, which is a real accent.
+            // land, and a crescendo has nothing rhythmic in it at any point, so
+            // whatever this scores is entirely artefact.
             //
-            // A crescendo has nothing rhythmic in it at any point, so whatever
-            // this scores is entirely artefact. Measured: 0.163 with a 5 s
-            // hole, against 0.295 for the same input on main, and against a
-            // click floor of 0.751. Asserted against the floor rather than at a
-            // fixed value, because what matters is that it cannot be mistaken
-            // for a beat.
-            float[] swell = crescendo(440, 20);
-            int from = (int) (7.5 * RATE);
-            for (int i = from; i < from + 5 * RATE && i < swell.length; i++) {
-                swell[i] = Float.NaN;
+            // Swept rather than sampled, and that is the whole point of this
+            // test. The version of this fixture that pinned a single hole at
+            // 7.5 s asserted a bound of 0.4 against a measured 0.163 -- and
+            // moving the same hole to 1 s and lengthening it to 8 gave 0.4005,
+            // which would have failed its own assertion. A one-point
+            // measurement of a residue is not a measurement of the residue,
+            // which is the mistake issue #49 itself was corrected for.
+            //
+            // Nine configurations here; the offline sweep behind them is 245,
+            // over carriers 220 Hz to 3 kHz, hole starts 1 to 11 s and lengths
+            // 1 to 5 s. Worst point 0.504 against a click floor of 0.751 -- and
+            // 0.743 against the same floor before the filter was changed to run
+            // per unbroken stretch of finite frames.
+            double worst = 0;
+            for (double start : new double[] {1.0, 4.0, 7.5}) {
+                for (double length : new double[] {2.0, 5.0, 8.0}) {
+                    float[] swell = crescendo(1750, 20);
+                    int from = (int) (start * RATE);
+                    int to = (int) ((start + length) * RATE);
+                    for (int i = from; i < to && i < swell.length; i++) {
+                        swell[i] = Float.NaN;
+                    }
+                    worst = Math.max(worst,
+                            TempoEstimator.estimate(envelopeOf(swell)).strength());
+                }
             }
 
-            assertThat(TempoEstimator.estimate(envelopeOf(swell)).strength()).isLessThan(0.4);
+            // Against the click floor, which is the claim -- a hole must not
+            // make smooth material readable as a beat -- rather than against a
+            // number chosen after the fact.
+            double weakestClick = TempoEstimator.estimate(
+                    envelopeOf(SignalFactory.clickTrack(196, 20, RATE))).strength();
+            assertThat(worst).isLessThan(weakestClick);
+            assertThat(worst).isLessThan(0.6);
         }
 
         @Test

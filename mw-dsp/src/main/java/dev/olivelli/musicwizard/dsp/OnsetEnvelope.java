@@ -75,22 +75,33 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * 6 dB down at 0.154, and 18.6 dB down at Nyquist. Model it as 0.45 and you
      * will be wrong by a factor of four.
      *
-     * <p>At {@link #ONSET_HOP} that corner is 17.5 Hz, which is worth knowing
-     * because of what it nearly equals. Measured by amplitude-modulating a tone
-     * and reading the band series back at eight times the hop rate, so the
-     * measurement cannot itself alias, this analysis window passes genuine
-     * envelope modulation to a corner of <b>18.7 Hz</b> and rolls off after it:
-     * 4 dB down by 21.5, 7 by 30, 13 by 43 and 30 by 86. Modulation faster than
-     * that is attenuated rather than absent, and what is left up there is not
-     * the note doing something -- on a held 440 Hz note with eight partials the
-     * band series carries its energy at the partial differences, 440 Hz and up,
-     * with essentially nothing anywhere in between.
+     * <p>At {@link #ONSET_HOP} that corner is 17.5 Hz, and the useful
+     * comparison is against what the analysis window can deliver. Measured by
+     * amplitude-modulating a tone at 10% depth and reading the band series back
+     * at eight times the hop rate -- so the measurement cannot itself alias --
+     * with a windowed transform at the modulation rate, the window's own
+     * envelope corner is <b>about 24 Hz</b>: 23.5 to 24.8 across carriers from
+     * 440 Hz to 2 kHz, and stable to 0.05 Hz against the choice of reference.
      *
-     * <p>So the filter passes approximately what the window can resolve and
-     * stops approximately where the interference begins. That is a coincidence
-     * of the arithmetic rather than a design, and it is not exact, but it is
-     * why this value is defensible as something other than the number that
-     * scored best.
+     * <p>So the filter is slightly <em>tighter</em> than the window, not
+     * matched to it. That is worth stating the right way round, because it
+     * names the cost: between 17.5 and 24 Hz there is genuine envelope
+     * detail being attenuated, which is why attacks come out about half a frame
+     * wider and why peakiness falls a little. What it buys is that the filter
+     * is well clear of the interference region -- on a held 440 Hz note with
+     * eight partials, the bands carrying the note put their energy at the
+     * partial differences, 440 Hz and up, with four to six orders of magnitude
+     * less anywhere between 1 and 340 Hz. (The topmost bands, 60 to 80 dB down
+     * and carrying only leakage, are not so clean: there the low rates come
+     * within a factor of two of the 440 Hz line.)
+     *
+     * <p>An earlier version of this comment claimed the two corners nearly
+     * coincided, at 18.7 Hz against 17.5. That figure came from an unwindowed
+     * transform at 50% modulation depth, where leakage flattered it; it does
+     * not reproduce. The argument survives the correction but it is a weaker
+     * and more honest one -- the value is defensible because it sits between
+     * what the window can resolve and where the artefacts live, not because it
+     * lands on a landmark.
      *
      * <p>Expressed relative to the frame rate rather than in hertz, so the
      * filter follows {@link #ONSET_HOP} instead of having to be re-tuned with
@@ -277,16 +288,41 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * disabled this filter for the whole recording and quietly restored the
      * behaviour of the bug it fixes, at 0.751 for the worst held note.
      *
-     * <p>So each non-finite sample takes the value of the last finite one
-     * before it for the duration of the filtering -- which keeps the recursion
-     * clean -- and is then put back as it was. Both halves are needed. Holding
-     * alone leaves a step at the far edge of a poisoned run, and differencing a
-     * step manufactures an onset that is not in the recording: measured on a
-     * click track with a half-second hole, an accent at 53% of the height of a
-     * real click, where the unfiltered code produced nothing at all. Restoring
-     * the original makes that difference non-finite again, so the flux loop
-     * drops it exactly as it always did, and the damage really does stay in the
-     * frames where it arrived.
+     * <p>So each unbroken run of finite frames is filtered as a series in its
+     * own right, and the non-finite frames between runs are left alone. That is
+     * the only arrangement of this that survived measurement, and it took three
+     * attempts to find, so the two that failed are worth recording:
+     *
+     * <ul>
+     *   <li><b>Skip any band containing a non-finite value.</b> One bad audio
+     *       sample reaches all forty bands, so this disabled the filter for the
+     *       whole recording and silently restored the bug -- 0.751 again.
+     *   <li><b>Hold the last finite value across the run, then restore it.</b>
+     *       This removes the step at the far edge, but the frames after a run
+     *       have been filtered against a stale value and ramp back over about
+     *       ten of them, which is an accent. Swept over hole position, length
+     *       and carrier against a swelling sine -- material with nothing
+     *       rhythmic in it anywhere -- it reached <b>0.743</b> against a click
+     *       floor of 0.751, a margin of 0.008.
+     * </ul>
+     *
+     * <p>Filtering per run has no such edge, because the recursion never sees
+     * outside the run it is filtering. Over 245 such configurations its worst
+     * point is <b>0.504</b>, a margin of 0.247, and it beats doing no filtering
+     * at all at 60% of them.
+     *
+     * <p>It does not beat it everywhere, and that is worth stating rather than
+     * rounding off: at 27% of those configurations this is still worse than not
+     * filtering, by up to 0.188, and its worst point of 0.504 is above the 0.434
+     * that no filtering reaches. What changed is the distance to the click
+     * floor, from 0.008 to 0.247 -- from a margin that could be crossed to one
+     * that could not.
+     *
+     * <p>None of this is reachable from a real recording -- a dropout is
+     * digital silence, not NaN, and silence is filtered like anything else. It
+     * matters because {@code AudioBuffer} does not reject non-finite samples
+     * (issue #61); if it ever does, this whole branch becomes dead code and
+     * should go.
      */
     static void antiAlias(double[][] melBands) {
         if (melBands.length < 2) {
@@ -299,59 +335,47 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
 
         double[] series = new double[melBands.length];
         for (int band = 0; band < MEL_BANDS; band++) {
-            int first = firstFiniteFrame(melBands, band);
-            if (first < 0) {
-                // Nothing to hold over, so nothing to filter either.
-                continue;
-            }
-            double held = melBands[first][band];
-            for (int frame = 0; frame < melBands.length; frame++) {
-                double value = melBands[frame][band];
-                if (Double.isFinite(value)) {
-                    held = value;
+            int frame = 0;
+            while (frame < melBands.length) {
+                while (frame < melBands.length
+                        && !Double.isFinite(melBands[frame][band])) {
+                    frame++;
                 }
-                series[frame] = held;
-            }
-            for (int pass = 0; pass < ANTI_ALIAS_STAGES; pass++) {
-                double state = series[0];
-                for (int frame = 0; frame < series.length; frame++) {
-                    state += alpha * (series[frame] - state);
-                    series[frame] = state;
+                int start = frame;
+                while (frame < melBands.length
+                        && Double.isFinite(melBands[frame][band])) {
+                    frame++;
                 }
-                state = series[series.length - 1];
-                for (int frame = series.length - 1; frame >= 0; frame--) {
-                    state += alpha * (series[frame] - state);
-                    series[frame] = state;
+                int length = frame - start;
+                if (length < 2) {
+                    // Nothing a two-tap recursion can do with one sample.
+                    continue;
                 }
-            }
-            for (int frame = 0; frame < melBands.length; frame++) {
-                // Only where the input was finite. Putting the held value back
-                // would hand the flux a step at the far edge of a poisoned run
-                // and so an onset that is not in the recording; leaving the
-                // original there means the difference across that edge is
-                // non-finite and gets dropped, which is what happened before
-                // this filter existed.
-                if (Double.isFinite(melBands[frame][band])) {
-                    melBands[frame][band] = series[frame];
+                for (int i = 0; i < length; i++) {
+                    series[i] = melBands[start + i][band];
+                }
+                filterInPlace(series, length, alpha);
+                for (int i = 0; i < length; i++) {
+                    melBands[start + i][band] = series[i];
                 }
             }
         }
     }
 
-    /**
-     * The first frame in which a band is finite, or -1 if it never is.
-     *
-     * <p>Needed so that a run of non-finite frames at the very start has
-     * something to take its value from: holding the previous sample has no
-     * previous sample to hold.
-     */
-    private static int firstFiniteFrame(double[][] melBands, int band) {
-        for (int frame = 0; frame < melBands.length; frame++) {
-            if (Double.isFinite(melBands[frame][band])) {
-                return frame;
+    /** The zero-phase cascade, over the first {@code length} samples. */
+    private static void filterInPlace(double[] series, int length, double alpha) {
+        for (int pass = 0; pass < ANTI_ALIAS_STAGES; pass++) {
+            double state = series[0];
+            for (int i = 0; i < length; i++) {
+                state += alpha * (series[i] - state);
+                series[i] = state;
+            }
+            state = series[length - 1];
+            for (int i = length - 1; i >= 0; i--) {
+                state += alpha * (series[i] - state);
+                series[i] = state;
             }
         }
-        return -1;
     }
 
     /**
