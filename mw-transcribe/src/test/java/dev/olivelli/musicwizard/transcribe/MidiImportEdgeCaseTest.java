@@ -764,8 +764,10 @@ class MidiImportEdgeCaseTest {
         assertThat(score.tempoMap().meterChanges())
                 .containsExactly(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR));
         assertThat(messages).noneMatch(message -> message.contains("the meter changes"));
-        // Still said, even though the entry it was attached to was removed: the
-        // report moves to the change that survives rather than going with it.
+        // Still said, even though the change it is about was removed. It is a
+        // permanent fact, so it goes into the log outright rather than being
+        // attached to any entry -- only a change's own "it moved" line belongs
+        // to an entry, because only that line can stop being true.
         assertThat(messages).anyMatch(message ->
                 message.contains("7/8") && message.contains("never takes effect"));
     }
