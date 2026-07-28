@@ -98,11 +98,6 @@ public record Score(
                                 + keys.get(i).startSeconds() + "s but the previous ends at "
                                 + keys.get(i - 1).endSeconds() + "s");
             }
-            // Once quantized, the beat axis has to agree with the seconds axis.
-            // The notation stage reads only the beats, so a quantizer that
-            // mapped two keys onto overlapping bars would engrave a key change
-            // inside the key it replaces, with nothing in seconds to show for it.
-            requireOrderedBeats(keys.get(i - 1).endBeat(), keys.get(i).startBeat(), "keys", "key", i);
         }
         for (int i = 1; i < sections.size(); i++) {
             if (sections.get(i).startSeconds() < sections.get(i - 1).endSeconds() - 1e-6) {
@@ -111,9 +106,13 @@ public record Score(
                                 + sections.get(i).startSeconds() + "s but the previous ends at "
                                 + sections.get(i - 1).endSeconds() + "s");
             }
-            requireOrderedBeats(sections.get(i - 1).endBeat(), sections.get(i).startBeat(),
-                    "sections", "section", i);
         }
+        // Once quantized, the beat axis has to agree with the seconds axis. The
+        // notation stage reads only the beats, so a quantizer that mapped two
+        // keys onto overlapping bars would engrave a key change inside the key
+        // it replaces, with nothing in seconds to show for it.
+        requireOrderedBeats(keys, Key::startBeat, Key::endBeat, "keys", "key");
+        requireOrderedBeats(sections, Section::startBeat, Section::endBeat, "sections", "section");
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0) {
             throw new IllegalArgumentException(
                     "durationSeconds must be finite and positive, got: " + durationSeconds);
@@ -121,22 +120,35 @@ public record Score(
     }
 
     /**
-     * Rejects a quantized span that starts before the previous one ended.
+     * Rejects a quantized span that starts before an earlier quantized one ended.
      *
-     * <p>Only checks when both spans have been quantized: a score is built up in
-     * stages, so a quantized key followed by an un-quantized one is a normal
-     * intermediate state rather than a contradiction.
+     * <p>Un-quantized spans are skipped rather than compared, because a score is
+     * built up in stages and a quantized key followed by an un-quantized one is a
+     * normal intermediate state. But they must not break the chain: comparing
+     * only against the immediately preceding span let an un-quantized key sit
+     * between two overlapping quantized ones and hide the overlap completely,
+     * which is the very case the stage-by-stage argument makes likely. So the
+     * furthest quantized end seen so far is carried forward instead.
      */
-    private static void requireOrderedBeats(Optional<Double> previousEnd, Optional<Double> start,
-                                            String plural, String singular, int index) {
-        if (previousEnd.isEmpty() || start.isEmpty()) {
-            return;
-        }
-        if (start.get() < previousEnd.get() - 1e-6) {
-            throw new IllegalArgumentException(
-                    plural + " must not overlap; " + singular + " " + index
-                            + " starts at beat " + start.get()
-                            + " but the previous ends at beat " + previousEnd.get());
+    private static <T> void requireOrderedBeats(List<T> spans,
+                                                java.util.function.Function<T, Optional<Double>> startBeat,
+                                                java.util.function.Function<T, Optional<Double>> endBeat,
+                                                String plural, String singular) {
+        double furthestEnd = Double.NEGATIVE_INFINITY;
+        int furthestIndex = -1;
+        for (int i = 0; i < spans.size(); i++) {
+            Optional<Double> start = startBeat.apply(spans.get(i));
+            if (furthestIndex >= 0 && start.isPresent() && start.get() < furthestEnd - 1e-6) {
+                throw new IllegalArgumentException(
+                        plural + " must not overlap; " + singular + " " + i
+                                + " starts at beat " + start.get() + " but " + singular + " "
+                                + furthestIndex + " ends at beat " + furthestEnd);
+            }
+            Optional<Double> end = endBeat.apply(spans.get(i));
+            if (end.isPresent() && end.get() > furthestEnd) {
+                furthestEnd = end.get();
+                furthestIndex = i;
+            }
         }
     }
 

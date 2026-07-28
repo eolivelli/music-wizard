@@ -39,6 +39,10 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
     /** The scientific octave LilyPond writes with no {@code '} or {@code ,} mark. */
     private static final int LILYPOND_UNMARKED_OCTAVE = 3;
 
+    /** Octaves {@link #parse} accepts: the range scientific pitch notation uses. */
+    private static final int MIN_PARSED_OCTAVE = -1;
+    private static final int MAX_PARSED_OCTAVE = 9;
+
     public PitchSpelling {
         if (letter == null) {
             throw new IllegalArgumentException("letter must not be null");
@@ -165,6 +169,12 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
      * an advisor's reply, none of which can carry a record. The letter may be
      * given in either case; {@code bb3} is B flat 3, which is unambiguous
      * because the letter is always exactly one character.
+     *
+     * <p>Because that input is untrusted, this is stricter than the record: only
+     * ASCII digits count as an octave, and the octave must lie within
+     * {@value #MIN_PARSED_OCTAVE}..{@value #MAX_PARSED_OCTAVE}.
+     *
+     * @throws IllegalArgumentException if the text is not a pitch in that form
      */
     public static PitchSpelling parse(String text) {
         if (text == null) {
@@ -181,13 +191,16 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
             throw new IllegalArgumentException(
                     "pitch must start with a note letter A-G, got: " + text, e);
         }
-        // The accidental runs up to the octave, which is the first digit or the
-        // sign in front of it. Splitting there keeps "Bb3" unambiguous: the
+        // The accidental runs up to the octave, which is the first ASCII digit or
+        // the sign in front of it. Splitting there keeps "Bb3" unambiguous: the
         // letter is exactly one character, so the rest can only be an accidental.
+        // Deliberately not Character.isDigit, which is true of every decimal
+        // digit in Unicode -- and Integer.parseInt accepts those too, so an
+        // Arabic-Indic digit would otherwise parse to a value nobody typed.
         int octaveStart = 1;
         while (octaveStart < trimmed.length()
                 && trimmed.charAt(octaveStart) != '-'
-                && !Character.isDigit(trimmed.charAt(octaveStart))) {
+                && !isAsciiDigit(trimmed.charAt(octaveStart))) {
             octaveStart++;
         }
         if (octaveStart >= trimmed.length()) {
@@ -195,13 +208,48 @@ public record PitchSpelling(NoteLetter letter, Accidental accidental, int octave
         }
         Accidental parsedAccidental = accidentalOfDisplaySuffix(
                 trimmed.substring(1, octaveStart), text);
-        int parsedOctave;
-        try {
-            parsedOctave = Integer.parseInt(trimmed.substring(octaveStart));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("pitch has an unreadable octave: " + text, e);
-        }
+        int parsedOctave = parseOctave(trimmed.substring(octaveStart), text);
         return new PitchSpelling(parsedLetter, parsedAccidental, parsedOctave);
+    }
+
+    private static boolean isAsciiDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    /**
+     * Reads the octave, rejecting anything outside scientific pitch notation.
+     *
+     * <p>Bounded because the octave is unbounded arithmetic everywhere it is
+     * used: an octave of two hundred million overflows {@link #midiPitch()} into
+     * a negative number without complaint, and
+     * {@link #lilyPondAbsoluteName()} would build a string with one octave mark
+     * per octave. {@code parse} is the door untrusted text comes through -- a
+     * config value, a CLI argument, an advisor's reply -- so it is the place to
+     * shut that off. Direct construction still allows any octave, since an
+     * extreme spelling is legitimate as an intermediate value.
+     */
+    private static int parseOctave(String digits, String whole) {
+        int from = digits.charAt(0) == '-' ? 1 : 0;
+        if (from >= digits.length()) {
+            throw new IllegalArgumentException("pitch has an unreadable octave: " + whole);
+        }
+        for (int i = from; i < digits.length(); i++) {
+            if (!isAsciiDigit(digits.charAt(i))) {
+                throw new IllegalArgumentException("pitch has an unreadable octave: " + whole);
+            }
+        }
+        int octave;
+        try {
+            octave = Integer.parseInt(digits);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("pitch has an unreadable octave: " + whole, e);
+        }
+        if (octave < MIN_PARSED_OCTAVE || octave > MAX_PARSED_OCTAVE) {
+            throw new IllegalArgumentException(
+                    "octave must be within " + MIN_PARSED_OCTAVE + ".." + MAX_PARSED_OCTAVE
+                            + ", got: " + whole);
+        }
+        return octave;
     }
 
     private static Accidental accidentalOfDisplaySuffix(String suffix, String whole) {

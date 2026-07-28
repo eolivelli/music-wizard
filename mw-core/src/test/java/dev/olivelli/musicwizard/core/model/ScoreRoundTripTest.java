@@ -142,9 +142,10 @@ class ScoreRoundTripTest {
         @Test
         @DisplayName("re-serializing a restored score reproduces the same bytes")
         void roundTripIsByteIdentical() {
-            // Object equality would still hold if a field were dropped on write
-            // and defaulted back to the same value on read. Comparing the text
-            // catches that, and catches a new field that writes but does not read.
+            // Guards the case object equality cannot see: a field that is written
+            // but not read back, so the second serialization differs from the
+            // first. A field dropped on write is caught by the assertions on
+            // specific values below, not by this one.
             String once = ScoreJson.toJson(fullyPopulated());
 
             assertThat(ScoreJson.toJson(ScoreJson.fromJson(once))).isEqualTo(once);
@@ -301,6 +302,48 @@ class ScoreRoundTripTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("sections must not overlap")
                     .hasMessageContaining("beat");
+        }
+
+        @Test
+        @DisplayName("an un-quantized span between two overlapping ones does not hide the overlap")
+        void unquantizedSpanDoesNotBreakTheOverlapCheck() {
+            // Comparing only against the immediately preceding span made a gap in
+            // the beat axis conceal the overlap entirely -- and the gap is the
+            // normal case, because stages quantize one span at a time. Round 1
+            // review finding.
+            PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
+            Score score = Score.empty(TempoMap.constant(120), 100);
+
+            assertThatThrownBy(() -> score.withKeys(List.of(
+                    Key.ofSeconds(c, Mode.MAJOR, 0, 10, Confidence.CERTAIN).quantizedTo(0, 100),
+                    Key.ofSeconds(c, Mode.MINOR, 10, 20, Confidence.CERTAIN),
+                    Key.ofSeconds(c, Mode.MAJOR, 20, 30, Confidence.CERTAIN).quantizedTo(50, 200))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("keys must not overlap")
+                    .hasMessageContaining("beat");
+
+            assertThatThrownBy(() -> score.withSections(List.of(
+                    Section.unlabelled(0, 10, "A", Confidence.CERTAIN).quantizedTo(0, 100),
+                    Section.unlabelled(10, 20, "B", Confidence.CERTAIN),
+                    Section.unlabelled(20, 30, "C", Confidence.CERTAIN).quantizedTo(50, 200))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("sections must not overlap");
+        }
+
+        @Test
+        @DisplayName("touching spans and a later short span are not overlaps")
+        void beatCheckAcceptsWhatItShould() {
+            // The furthest-end-so-far rule must not turn a legal score illegal:
+            // spans that touch exactly are fine, and so is one that starts after
+            // the furthest end even though an earlier neighbour ended sooner.
+            PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
+            Score score = Score.empty(TempoMap.constant(120), 100);
+
+            assertThatCode(() -> score.withKeys(List.of(
+                    Key.ofSeconds(c, Mode.MAJOR, 0, 10, Confidence.CERTAIN).quantizedTo(0, 20),
+                    Key.ofSeconds(c, Mode.MINOR, 10, 20, Confidence.CERTAIN).quantizedTo(20, 40),
+                    Key.ofSeconds(c, Mode.MAJOR, 20, 30, Confidence.CERTAIN).quantizedTo(40, 60))))
+                    .doesNotThrowAnyException();
         }
 
         @Test

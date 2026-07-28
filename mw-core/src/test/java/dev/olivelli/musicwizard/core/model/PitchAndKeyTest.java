@@ -133,10 +133,40 @@ class PitchAndKeyTest {
         }
 
         @ParameterizedTest(name = "\"{0}\" is not a pitch")
-        @CsvSource({"''", "H4", "C", "C#", "Cx4", "C4.5", "4", "Cb"})
+        @CsvSource({"''", "H4", "C", "C#", "Cx4", "C4.5", "4", "Cb", "C--1", "C4x"})
         void parseRejectsRubbish(String text) {
             assertThatThrownBy(() -> PitchSpelling.parse(text))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("parsing rejects an octave that is not an ASCII number")
+        void parseRejectsNonAsciiDigits() {
+            // Integer.parseInt accepts every Unicode decimal digit, so an
+            // Arabic-Indic six would otherwise parse to an octave nobody typed.
+            assertThatThrownBy(() -> PitchSpelling.parse("C\u0664"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PitchSpelling.parse("C\u06664"))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("parsing rejects an octave outside scientific pitch notation")
+        void parseRejectsAbsurdOctaves() {
+            // Unbounded, the octave overflows midiPitch silently and makes
+            // lilyPondAbsoluteName allocate one octave mark per octave. parse is
+            // where untrusted text arrives, so it is where that is stopped.
+            assertThatThrownBy(() -> PitchSpelling.parse("C200000000"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("octave must be within");
+            assertThatThrownBy(() -> PitchSpelling.parse("C-2"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PitchSpelling.parse("C10"))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            // The ends of the accepted range still parse.
+            assertThat(PitchSpelling.parse("C-1").octave()).isEqualTo(-1);
+            assertThat(PitchSpelling.parse("G9").midiPitch()).isEqualTo(127);
         }
     }
 
@@ -321,6 +351,30 @@ class PitchAndKeyTest {
         }
 
         @Test
+        @DisplayName("a melisma's extent is recoverable from the snapped beats")
+        void melismaExtentComesFromTheBeats() {
+            // Why melisma is a flag and not a length: the span a held syllable
+            // covers is already there, by value, as the gap to the next
+            // syllable's snapped beat. Storing it again would be a second source
+            // of truth that can disagree with the first -- the same argument this
+            // change makes for putting beats on Key and Section rather than bars.
+            LyricLine line = new LyricLine(List.of(
+                    LyricWord.ofSeconds("glo", 0.0, 0.5, Confidence.CERTAIN)
+                            .snappedTo(0.0).withHyphenToNext(true),
+                    LyricWord.ofSeconds("ri", 0.5, 1.0, Confidence.CERTAIN)
+                            .snappedTo(1.0).withHyphenToNext(true).withMelisma(true),
+                    LyricWord.ofSeconds("a", 2.5, 3.0, Confidence.CERTAIN).snappedTo(5.0)),
+                    Confidence.CERTAIN);
+
+            List<LyricWord> words = line.words();
+            double melismaStart = words.get(1).startBeat().orElseThrow();
+            double melismaEnd = words.get(2).startBeat().orElseThrow();
+
+            assertThat(words.get(1).melisma()).isTrue();
+            assertThat(melismaEnd - melismaStart).isEqualTo(4.0);
+        }
+
+        @Test
         @DisplayName("an unhyphenated line still prints with spaces")
         void plainLineIsUnchanged() {
             LyricLine line = new LyricLine(List.of(
@@ -335,13 +389,17 @@ class PitchAndKeyTest {
         @DisplayName("a hyphen on the last syllable of a line does not leave a trailing space")
         void trailingHyphenDoesNotPad() {
             // A word split across a line break leaves the last syllable hyphenated
-            // with nothing after it; the plain text must not gain a stray space.
+            // with nothing after it. Two words, not one, so the loop actually
+            // reaches the final element with the flag set rather than
+            // short-circuiting on the line having a single word.
             LyricLine line = new LyricLine(List.of(
-                    LyricWord.ofSeconds("won", 0.0, 0.4, Confidence.CERTAIN)
+                    LyricWord.ofSeconds("I", 0.0, 0.2, Confidence.CERTAIN),
+                    LyricWord.ofSeconds("won", 0.4, 0.6, Confidence.CERTAIN)
                             .withHyphenToNext(true)),
                     Confidence.CERTAIN);
 
-            assertThat(line.text()).isEqualTo("won");
+            assertThat(line.text()).isEqualTo("I won");
+            assertThat(line.text()).doesNotEndWith(" ").doesNotEndWith("-");
         }
     }
 }
