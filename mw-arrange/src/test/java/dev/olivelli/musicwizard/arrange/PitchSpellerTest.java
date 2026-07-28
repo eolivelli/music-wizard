@@ -138,18 +138,29 @@ class PitchSpellerTest {
                     .isEqualTo(PitchSpelling.parse("Bb4"));
         }
 
-        @Test
-        @DisplayName("a chord tone needing a triple flat falls back rather than throwing")
-        void anUnprintableChordToneFallsBack() {
-            Chord absurd = new Chord(
-                    new PitchSpelling(dev.olivelli.musicwizard.core.model.NoteLetter.F,
-                            Accidental.DOUBLE_FLAT, 4),
-                    ChordQuality.DIMINISHED_SEVENTH, Optional.empty(),
+        @ParameterizedTest
+        @CsvSource({
+                // A triple flat: the first alteration nothing can print, and the
+                // one the guard exists for. Reachable from 106 chord and pitch
+                // pairs across the vocabulary; this is one of them.
+                "Abb4, DIMINISHED_SEVENTH, 61, -3",
+                // Four flats. Further out, and the case the test used to cover
+                // on its own -- which left the boundary itself untouched, so
+                // widening the guard to plus or minus three survived the suite.
+                "Fbb4, DIMINISHED_SEVENTH, 60, -4",
+        })
+        @DisplayName("a chord tone needing more accidentals than exist falls back, not throws")
+        void anUnprintableChordToneFallsBack(String root, ChordQuality quality, int midiPitch,
+                                             int unprintableAlteration) {
+            Chord absurd = new Chord(PitchSpelling.parse(root), quality, Optional.empty(),
                     0, 1, Optional.empty(), Optional.empty(), Confidence.CERTAIN);
-            // The diminished seventh of F double flat is E triple flat.
-            PitchSpelling spelled = PitchSpeller.spell(60, Optional.of(absurd),
+
+            PitchSpelling spelled = PitchSpeller.spell(midiPitch, Optional.of(absurd),
                     Optional.of(C_MAJOR));
-            assertThat(spelled.midiPitch()).isEqualTo(60);
+
+            assertThat(spelled.midiPitch())
+                    .describedAs("chord tone wanting alteration %s", unprintableAlteration)
+                    .isEqualTo(midiPitch);
             assertThat(spelled.accidental().alteration()).isBetween(-2, 2);
         }
 

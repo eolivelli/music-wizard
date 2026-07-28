@@ -205,7 +205,7 @@ public final class Quantizer {
             TimeSignature meter = bars.meterOf(bar);
             for (int g = 0; g < candidates.length; g++) {
                 double step = candidates[g].stepQuarters(meter);
-                cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step, meter))
+                cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step))
                         + complexity(candidates[g], meter, settings);
             }
         }
@@ -503,7 +503,7 @@ public final class Quantizer {
      * the next bar's downbeat, not the last step inside it. Nothing clamps that
      * -- see {@link #stepsWithin}.
      */
-    private static double snapWithin(double beatInBar, double step, TimeSignature meter) {
+    private static double snapWithin(double beatInBar, double step) {
         return stepsWithin(beatInBar, step) * step;
     }
 

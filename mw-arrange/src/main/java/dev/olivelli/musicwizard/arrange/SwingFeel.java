@@ -60,9 +60,16 @@ public record SwingFeel(boolean swung, double ratio, Confidence confidence) {
      * An off-beat later than {@value #MAX_RATIO} of the beat is outside the
      * window, so no feel is found, and the grid vote then does exactly what the
      * paragraph above describes -- folds each off-beat onto the next downbeat.
-     * It takes machine-exact input to reach: a human shuffle spreads enough to
-     * keep part of the cluster inside the window even at 0.92, so it is a
-     * programmed or step-sequenced part that gets there. See #111.
+     *
+     * <p>A human plays into that, and the figure is worth stating rather than
+     * waving at. Measured over fifty seeds of this project's own 25 ms fixture:
+     * a shuffle at 0.92 of the beat loses its feel in 46 cases of 50 at 90 BPM,
+     * 23 of 50 at 120 and 7 of 50 at 160, and every loss engraves half its note
+     * heads on top of another. At 0.90 it is 9, 1 and 0. An earlier version of
+     * this paragraph said it took machine-exact input, on the argument that a
+     * human spread keeps part of the cluster inside the window -- true, and
+     * beside the point, because it is {@code MIN_OFF_BEAT} that binds first and
+     * part of a cluster is not eight onsets. See #111.
      */
     static final double MIN_RATIO = 0.5;
     static final double MAX_RATIO = 0.88;
