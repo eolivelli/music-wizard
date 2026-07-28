@@ -55,11 +55,20 @@ public final class Resampler {
      * the same holds for 48k to 16k and any other integer ratio, and not
      * because downsampling is inherently safe.
      *
-     * <p>The two expressions differ exactly when the float subtraction
+     * <p>The two expressions differ <em>only</em> when the float subtraction
      * {@code b - a} is inexact -- if it is exact, both evaluate the same
      * {@code double} and cast to the same {@code float}. Measured: of 20
      * million random pairs, 5.9 million differ and <em>none</em> of them had an
      * exact subtraction.
+     *
+     * <p>Only when, not exactly when, and the difference is not pedantic: an
+     * inexact subtraction usually produces no difference at all, because the
+     * perturbation has still to straddle a rounding boundary to change the
+     * result. Roughly half of the inexact subtractions on this path leave the
+     * output identical, and at an integer ratio all of them do -- 44.1k to
+     * 22.05k is bit-identical while a third of its subtractions are inexact.
+     * Read the other way round, the inexact rate would over-predict the
+     * divergence rate quoted above by two to three times.
      *
      * <p>That does not make half an ulp of {@code |b - a|} the bound, and it is
      * worth saying why, because that is the form this paragraph has twice been
