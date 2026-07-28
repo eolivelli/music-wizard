@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -65,6 +66,17 @@ public final class AudioTranscriber {
      * between two beats does not.
      */
     private static final double DOWNBEAT_SNAP_TOLERANCE_SECONDS = 0.05;
+
+    /**
+     * Confidence in a forced phase whose snap moved it as far as it can move.
+     *
+     * <p>Above {@link DownbeatEstimator}'s floor for a phase nothing supports and
+     * above its ceiling for one resting on onsets alone, since a human aiming
+     * badly still says more than a guess -- and below what harmony agreeing with
+     * the beats can reach, since at half a pulse the phase reported is no longer
+     * the one that was asked for.
+     */
+    private static final double SNAPPED_PHASE_FLOOR = 0.5;
 
     /**
      * Optional overrides for the stages that most often need correcting.
@@ -158,6 +170,13 @@ public final class AudioTranscriber {
         BeatTracker.Result beats = BeatTracker.track(envelope);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
+            if (settings.firstDownbeatSeconds() != null) {
+                // Said rather than passed over. There is genuinely no pulse to
+                // mark as a downbeat, but an override that vanishes without
+                // comment is the shape of the bug this branch's sibling had.
+                progress.accept("no beats were tracked, so the requested downbeat"
+                        + " has nothing to mark; ignoring it");
+            }
             // A tempo the user supplied still applies when the tracker found
             // nothing: they are the caller most likely to have typed one, since
             // an unreadable track is exactly what a correction is for, and
@@ -313,12 +332,20 @@ public final class AudioTranscriber {
      * That is also the honest reading of the instruction: the user is saying
      * which beat begins the bar, not proposing a beat the tracker missed.
      *
-     * <p>Reported as {@link Confidence#CERTAIN}, which is a claim about the phase
-     * alone -- a human counted the bars, and nothing this pipeline measures
-     * outranks that. It does not become a claim about the grid:
+     * <p>Reported as {@link Confidence#CERTAIN} when the request landed on a
+     * tracked pulse: a human counted the bars, and nothing this pipeline measures
+     * outranks that. It is not a claim about the grid, only about the phase --
      * {@link BeatTracker#toBeatGrid} multiplies it by the confidence in the beats
      * being phased, so a hand-picked downbeat over shaky beats still reads as
      * shaky, which is what it is.
+     *
+     * <p>It falls away with the distance the snap had to move, because at that
+     * point two different things are being reported as one. A request halfway
+     * between two pulses names neither of them, and the phase that comes out is
+     * this method's guess at which neighbour was meant, not the user's
+     * instruction -- yet it would otherwise be recorded as more certain than any
+     * phase harmony ever backs. The distance is already measured for the warning
+     * above; it costs nothing to let it say something.
      */
     private DownbeatEstimator.Estimate forcedDownbeat(
             List<Double> beatTimes, double downbeatSeconds, int beatsPerBar) {
@@ -331,7 +358,52 @@ public final class AudioTranscriber {
                     downbeatSeconds, distance, beatTimes.get(index)));
         }
         return new DownbeatEstimator.Estimate(
-                Math.floorMod(index, beatsPerBar), beatsPerBar, Confidence.CERTAIN);
+                Math.floorMod(index, beatsPerBar), beatsPerBar,
+                snappedPhaseConfidence(beatTimes, distance));
+    }
+
+    /**
+     * How far to trust a phase the user chose but the grid had to move.
+     *
+     * <p>Measured against half a pulse, which is the furthest a snap can ever
+     * travel while still landing on the nearer of two neighbours: at zero the
+     * user named a tracked pulse and the phase is theirs, at half a pulse the two
+     * neighbours are equally close and which one comes out is arithmetic rather
+     * than instruction. Linear between, since there is no reason to think the
+     * confidence falls any particular other way.
+     *
+     * <p>The floor is deliberately above what an unsupported phase scores in
+     * {@link DownbeatEstimator} and above its onsets-only ceiling, and below what
+     * harmony that agrees with the beats can reach. A badly-aimed human downbeat
+     * still says more than a guess; it should not outrank evidence that actually
+     * lines up with the pulses it is phasing.
+     *
+     * <p>The median interval is the scale, not the interval either side of the
+     * chosen pulse: a request can land in a gap where the tracker dropped a beat,
+     * and normalising by that gap would call a snap of a whole beat a small one.
+     * With fewer than two pulses there is no interval and no alternative pulse to
+     * have meant, so the one that exists is the one the user named.
+     */
+    private static Confidence snappedPhaseConfidence(List<Double> beatTimes, double distance) {
+        if (beatTimes.size() < 2) {
+            return Confidence.CERTAIN;
+        }
+        double halfPulse = medianInterval(beatTimes) / 2;
+        double missed = halfPulse > 0 ? Math.clamp(distance / halfPulse, 0, 1) : 1;
+        return Confidence.clamped(1.0 - (1.0 - SNAPPED_PHASE_FLOOR) * missed);
+    }
+
+    /** The median gap between tracked pulses, as a robust idea of pulse length. */
+    private static double medianInterval(List<Double> beatTimes) {
+        double[] intervals = new double[beatTimes.size() - 1];
+        for (int i = 0; i < intervals.length; i++) {
+            intervals[i] = beatTimes.get(i + 1) - beatTimes.get(i);
+        }
+        Arrays.sort(intervals);
+        int middle = intervals.length / 2;
+        return intervals.length % 2 == 1
+                ? intervals[middle]
+                : (intervals[middle - 1] + intervals[middle]) / 2.0;
     }
 
     /**

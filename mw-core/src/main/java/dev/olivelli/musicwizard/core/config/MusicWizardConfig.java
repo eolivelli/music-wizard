@@ -54,7 +54,10 @@ public record MusicWizardConfig(
             Double tempoOverride,
             /* Force a time signature, written as e.g. "4/4". */
             String timeSignatureOverride,
-            /* Force the first downbeat, in seconds. Currently ignored; see #67. */
+            /* Force where a bar begins, in seconds. Snapped to the nearest
+             * tracked beat, which then begins every bar in the saved score; the
+             * engraved chart still anchors its bar lines on the first chord,
+             * see #83. */
             Double firstDownbeatSecondsOverride,
             /* Skip stem separation and analyse the mix directly. */
             Boolean skipSeparation) {

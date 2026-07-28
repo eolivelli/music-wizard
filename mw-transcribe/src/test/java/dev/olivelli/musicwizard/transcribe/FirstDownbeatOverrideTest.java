@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.transcribe;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -175,6 +176,84 @@ class FirstDownbeatOverrideTest {
         // further.
         assertThat(forced.downbeatConfidence()).isEqualTo(forced.beatConfidence());
         assertThat(forced.downbeatConfidence()).isGreaterThan(estimated.downbeatConfidence());
+    }
+
+    @Test
+    @DisplayName("says less about a phase it had to move than about one it was handed")
+    void confidenceFallsAwayWithTheSnap() {
+        List<Double> pulses = grid(null, TimeSignature.FOUR_FOUR).beatTimes();
+        double interval = pulses.get(3) - pulses.get(2);
+
+        // Halfway between two pulses names neither, and the phase that comes out
+        // is this code's guess at which neighbour was meant. Reporting that as
+        // certain -- above anything harmony can reach -- claims an instruction
+        // that was not given.
+        BeatGrid exact = grid(pulses.get(2), TimeSignature.FOUR_FOUR);
+        BeatGrid nudged = grid(pulses.get(2) + 0.25 * interval, TimeSignature.FOUR_FOUR);
+        BeatGrid midway = grid(pulses.get(2) + 0.5 * interval, TimeSignature.FOUR_FOUR);
+
+        assertThat(exact.downbeatConfidence().value())
+                .isGreaterThan(nudged.downbeatConfidence().value());
+        assertThat(nudged.downbeatConfidence().value())
+                .isGreaterThan(midway.downbeatConfidence().value());
+        // At the halfway point the phase claim is halved, and no further: a
+        // badly-aimed human downbeat still says more than a guess.
+        assertThat(midway.downbeatConfidence().value())
+                .isCloseTo(0.5 * midway.beatConfidence().value(), within(1e-9));
+        assertThat(exact.downbeatConfidence()).isEqualTo(exact.beatConfidence());
+
+        // And a time far outside the tracked range is floored there rather than
+        // going negative or wrapping.
+        assertThat(grid(600.0, TimeSignature.FOUR_FOUR).downbeatConfidence().value())
+                .isCloseTo(0.5 * exact.beatConfidence().value(), within(1e-9));
+    }
+
+    @Test
+    @DisplayName("works alongside a forced tempo without either disturbing the other")
+    void combinesWithAForcedTempo() {
+        // The two overrides are read from the same Options and neither had a test
+        // that set both. --tempo drives the map, --first-downbeat the grid, and
+        // each has to still do its own job with the other present.
+        List<Double> pulses = grid(null, TimeSignature.FOUR_FOUR).beatTimes();
+        Score both = new AudioTranscriber().transcribe(AUDIO,
+                new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, pulses.get(2)));
+
+        assertThat(both.estimatedTempo()).isCloseTo(90.0, within(1e-9));
+        assertThat(both.beatGrid().orElseThrow().beats().get(2).downbeat()).isTrue();
+        // The map still anchors the first tracked pulse on a whole pulse.
+        double firstPulseBeats = both.tempoMap().secondsToBeats(pulses.get(0));
+        assertThat(firstPulseBeats).isCloseTo(Math.rint(firstPulseBeats), within(1e-9));
+    }
+
+    @Test
+    @DisplayName("phases a one-beat clip, and says so when there are no beats at all")
+    void copesWithTooFewBeatsToPhase() {
+        // One pulse: there is no other pulse the user could have meant, so it
+        // takes the downbeat whatever time was typed, and the phase is not in
+        // doubt. Reached only through the branch that cannot infer a tempo.
+        float[] tone = new float[(int) (0.25 * SAMPLE_RATE)];
+        for (int i = 0; i < tone.length; i++) {
+            tone[i] = (float) (0.3 * Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE));
+        }
+        Score blip = new AudioTranscriber().transcribe(new AudioBuffer(tone, SAMPLE_RATE),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, 5.0));
+        BeatGrid onePulse = blip.beatGrid().orElseThrow();
+        assertThat(onePulse.size()).isEqualTo(1);
+        assertThat(onePulse.beats().get(0).downbeat()).isTrue();
+        assertThat(onePulse.downbeatConfidence()).isEqualTo(onePulse.beatConfidence());
+
+        // No pulses at all: nothing to mark, but the override must not vanish
+        // without comment -- that is the shape of the bug this option had.
+        float[] blink = new float[(int) (0.1 * SAMPLE_RATE)];
+        for (int i = 0; i < blink.length; i++) {
+            blink[i] = (float) (0.3 * Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE));
+        }
+        List<String> messages = new ArrayList<>();
+        Score empty = new AudioTranscriber(messages::add).transcribe(
+                new AudioBuffer(blink, SAMPLE_RATE),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, 1.0));
+        assertThat(empty.beatGrid()).isEmpty();
+        assertThat(messages).anyMatch(m -> m.contains("nothing to mark"));
     }
 
     @Test
