@@ -751,19 +751,21 @@ public final class Quantizer {
          * project's fixtures use, and stated as the range each population
          * covers rather than as a ratio between them -- a ratio moves with the
          * fixture and has twice been quoted from one draw of it. Sixteenths
-         * spread 0.135 to 0.167. A shuffle spreads 0.034 to 0.084 across the
+         * spread 0.135 to 0.170. A shuffle spreads 0.034 to 0.084 across the
          * same seeds at every phase from 0.58 to 0.75. So the threshold sits
          * between the two populations, with the shuffle side the tighter
          * margin -- and what loses a genuine shuffle in practice is
          * {@link #SWING_THRESHOLD} rather than this.
          *
          * <p>Both figures are for a <em>played</em> cluster, and a constructed
-         * one says nothing about them either way -- two shuffle fixtures in the
-         * suite play to the tick and spread exactly zero, and two more set their
-         * own spread alternately either side of the shuffle point. A constructed
-         * fixture can still be evidence about the threshold, though, and one is:
-         * the widest of them sits at 0.060, between the two populations, and is
-         * what fails if this constant is lowered towards the shuffle side.
+         * one is not evidence about the measurement -- four shuffle fixtures in
+         * the suite either play to the tick, spreading zero, or set their own
+         * spread alternately either side of the shuffle point. It can still be
+         * evidence about the <em>threshold</em>, and that is what holds this
+         * constant at both ends. The widest constructed fixture sits at 0.085,
+         * inside the gap between the populations and just under this value, and
+         * is what fails if it is lowered towards the shuffle side; a played
+         * bar of sixteenths is what fails if it is raised.
          *
          * <p>An earlier comment said sixteenths spread about 0.19, which is
          * what they spread against a window starting at 0.25; the figure

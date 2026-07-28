@@ -143,8 +143,9 @@ class SwingDetectionTest {
             // side is the narrow one -- a played shuffle reaches 0.084 against a
             // threshold of 0.09. Nothing was holding that end: lowering the
             // threshold to 0.07 left the whole suite green. This does, and the
-            // fixture is constructed rather than played so the spread it
-            // exercises is exactly the number in the name.
+            // fixture is constructed rather than played, so the spread it
+            // exercises is exactly the number in the call rather than a draw
+            // from a distribution.
             SwingFeel swing = Quantizer.quantize(wobbled(8, 0.085)).swing();
 
             assertThat(swing.swung())
