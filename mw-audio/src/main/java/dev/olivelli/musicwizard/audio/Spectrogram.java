@@ -23,9 +23,13 @@ import org.jtransforms.fft.FloatFFT_1D;
  * A short-time Fourier transform: magnitude per frequency bin, per frame.
  *
  * <p>Everything spectral in the pipeline starts here — the onset envelope, the
- * chroma used for chord estimation, and the tuning estimate. It is computed once
- * per recording and shared, because it is the single most expensive step that
- * more than one stage needs.
+ * chroma used for chord estimation, and the tuning estimate. It is the single
+ * most expensive step any of them takes.
+ *
+ * <p>It is <em>not</em> shared between them, though, whatever this comment used
+ * to claim: harmony wants 4096/1024 for frequency resolution and onsets want
+ * 1024/128 for time resolution, so a run computes two of these and neither is
+ * at the default resolution.
  *
  * @param magnitudes  frame-major magnitudes, {@code [frame][bin]}
  * @param sampleRate  sample rate of the source signal
@@ -35,12 +39,22 @@ import org.jtransforms.fft.FloatFFT_1D;
 public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, int hopSize) {
 
     /**
-     * <p>Magnitudes must be finite, rectangular and present. What that buys is
-     * a contract the stages downstream can rely on without each re-deriving it:
-     * a {@code Spectrogram} they are handed is one they can read. Chroma, the
-     * tuning estimate and the onset envelope all reach for
-     * {@code magnitudes[frame][bin]} directly, and {@link #binCount()} already
-     * takes {@code magnitudes[0].length} as the width of every row.
+     * <p>Every frame must be present, {@code windowSize / 2 + 1} bins wide, and
+     * finite. What that buys is a contract the stages downstream can rely on
+     * without each re-deriving it: chroma, the tuning estimate and the onset
+     * envelope all index straight into {@code magnitudes[frame][bin]}, and
+     * {@link #binOf}, {@link #frequencyOf} and {@link #binCount} all assume the
+     * width the transform produces.
+     *
+     * <p>The width is checked against {@code windowSize} rather than against
+     * the first row, because agreeing with each other is not the property
+     * anything depends on. A three-frame spectrogram of five bins each is
+     * perfectly rectangular and still wrong: {@code binOf(440)} returns bin 4,
+     * whose centre frequency is 43 Hz, so a caller asking for the 440 Hz bin
+     * gets a confident wrong answer rather than the named exception this check
+     * exists to give them. Zero-width frames fall out of the same clause; they
+     * previously failed as {@code IllegalArgumentException: 0 > -1} from inside
+     * {@code Math.clamp}, three call levels down.
      *
      * <p>The finiteness half is not implied by the buffer the magnitudes came
      * from. {@link AudioBuffer} rejects non-finite samples, but the window
@@ -48,15 +62,21 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * produces a non-finite bin at a sample magnitude around {@code 3.3e35} at
      * the default resolution. That is thirty-five orders above full scale and
      * will not fire on audio -- so treat it as the contract being stated rather
-     * than a bug being caught. The ragged and null cases are the ones that will
-     * actually fire, on a hand-built spectrogram, and they turn an
-     * {@code ArrayIndexOutOfBoundsException} from inside a DSP loop into
-     * something that names the frame.
+     * than a bug being caught. The structural clauses are the ones that will
+     * ever fire, on a hand-built spectrogram.
      *
-     * <p>The scan costs 16.6 ms against the 531 ms it takes to compute a
-     * five-minute spectrogram, which is paid twice per recording -- once for
-     * harmony and once for onsets -- because the result is shared by every
-     * spectral stage.
+     * <p>The scan is one pass over the magnitudes, and there are two of them
+     * per recording: measured over five minutes at 22.05 kHz, 4.5 ms against
+     * 338 ms to compute at the harmony resolution and 9.7 ms against 489 ms at
+     * the onset resolution. The 16.6 ms quoted on the issue is the default
+     * resolution, which no stage uses.
+     *
+     * <p>Like {@link AudioBuffer}, this validates at construction and shares
+     * the array rather than copying it, so a caller that writes through
+     * {@link #magnitudes()} afterwards can break any of these properties and
+     * nothing will notice. That matters more here than it looks: issue #76
+     * reasons from this contract about whether a downstream guard can be
+     * deleted. See issue #79.
      */
     public Spectrogram {
         Objects.requireNonNull(magnitudes, "magnitudes");
@@ -68,24 +88,30 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
             throw new IllegalArgumentException(
                     "windowSize must be a power of two, got: " + windowSize);
         }
+        int expectedBins = windowSize / 2 + 1;
         for (int frame = 0; frame < magnitudes.length; frame++) {
             float[] bins = magnitudes[frame];
             if (bins == null) {
                 throw new IllegalArgumentException("magnitudes[" + frame + "] is null");
             }
-            if (bins.length != magnitudes[0].length) {
-                throw new IllegalArgumentException("magnitudes must be rectangular, but"
-                        + " magnitudes[" + frame + "] has " + bins.length + " bins and"
-                        + " magnitudes[0] has " + magnitudes[0].length);
+            if (bins.length != expectedBins) {
+                throw new IllegalArgumentException("magnitudes[" + frame + "] has "
+                        + bins.length + " bins, but windowSize " + windowSize
+                        + " gives " + expectedBins);
             }
-            for (int bin = 0; bin < bins.length; bin++) {
+            for (int bin = 0; bin < expectedBins; bin++) {
                 if (!Float.isFinite(bins[bin])) {
                     throw new IllegalArgumentException("magnitudes must be finite, but magnitudes["
                             + frame + "][" + bin + "] is " + bins[bin]
-                            + " -- usually the audio was far outside [-1, 1]");
+                            + " -- the transform overflowed, or the spectrogram was built by hand");
                 }
             }
         }
+    }
+
+    /** The magnitudes, shared rather than copied. Do not modify; see #79. */
+    public float[][] magnitudes() {
+        return magnitudes;
     }
 
     /**

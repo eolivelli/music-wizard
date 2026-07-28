@@ -325,41 +325,75 @@ class AudioPipelineTest {
         @Test
         @DisplayName("refuses a spectrogram with a non-finite bin")
         void rejectsNonFiniteMagnitudes() {
+            // windowSize 8 gives 5 bins, so these frames are the right width and
+            // the finiteness clause is what they exercise.
             float[][] magnitudes = new float[3][5];
             magnitudes[1][4] = Float.NaN;
 
-            assertThatThrownBy(() -> new Spectrogram(magnitudes, 22_050, 2048, 512))
+            assertThatThrownBy(() -> new Spectrogram(magnitudes, 22_050, 8, 2))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("magnitudes[1][4]");
 
             float[][] missingFrame = new float[2][];
             missingFrame[0] = new float[5];
-            assertThatThrownBy(() -> new Spectrogram(missingFrame, 22_050, 2048, 512))
+            assertThatThrownBy(() -> new Spectrogram(missingFrame, 22_050, 8, 2))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("magnitudes[1]");
+                    .hasMessageContaining("magnitudes[1]")
+                    .hasMessageContaining("null");
         }
 
         @Test
-        @DisplayName("refuses a ragged spectrogram, which every reader assumes cannot exist")
-        void rejectsRaggedMagnitudes() {
-            // binCount() takes magnitudes[0].length as the width of every row,
-            // and Chroma, the tuning estimate and the onset envelope all index
-            // straight into rows on that basis. A short row reaches all three as
-            // an ArrayIndexOutOfBoundsException from inside a DSP loop, which is
-            // the same unhelpful failure the null check exists to prevent.
+        @DisplayName("refuses frames that are not the width the transform produces")
+        void rejectsFramesOfTheWrongWidth() {
+            // A short row reaches Chroma, the tuning estimate and the onset
+            // envelope as an ArrayIndexOutOfBoundsException from inside a DSP
+            // loop -- the same unhelpful failure the null check exists to
+            // prevent. windowSize 8 gives 5 bins.
             float[][] ragged = {new float[5], new float[3]};
-
-            assertThatThrownBy(() -> new Spectrogram(ragged, 22_050, 2048, 512))
+            assertThatThrownBy(() -> new Spectrogram(ragged, 22_050, 8, 2))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("rectangular")
-                    .hasMessageContaining("magnitudes[1]");
+                    .hasMessageContaining("magnitudes[1] has 3 bins")
+                    .hasMessageContaining("windowSize 8 gives 5");
 
-            // A long row is just as wrong, and fails silently rather than
+            // A long row is just as wrong and fails silently rather than
             // loudly: the extra bins are simply never read.
             float[][] overlong = {new float[5], new float[9]};
-            assertThatThrownBy(() -> new Spectrogram(overlong, 22_050, 2048, 512))
+            assertThatThrownBy(() -> new Spectrogram(overlong, 22_050, 8, 2))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("rectangular");
+                    .hasMessageContaining("magnitudes[1] has 9 bins");
+
+            // Rectangular but wrong is the case checking rows against each other
+            // would have missed, and it is the one that does damage quietly:
+            // every frequency method assumes the transform's width, so a caller
+            // asking for 440 Hz would have been handed a bin centred at 43 Hz.
+            float[][] uniformlyWrong = new float[3][5];
+            assertThatThrownBy(() -> new Spectrogram(uniformlyWrong, 22_050, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("magnitudes[0] has 5 bins")
+                    .hasMessageContaining("windowSize 2048 gives 1025");
+
+            // Zero-width frames fall out of the same clause. They used to fail
+            // as "0 > -1" from inside Math.clamp, three call levels down.
+            assertThatThrownBy(() -> new Spectrogram(new float[3][0], 22_050, 8, 2))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("magnitudes[0] has 0 bins");
+        }
+
+        @Test
+        @DisplayName("accepts what compute actually produces, at every resolution the pipeline uses")
+        void acceptsEveryResolutionTheTransformProduces() {
+            // The other direction: the width check must not reject a real
+            // spectrogram. These are the two resolutions the pipeline runs at,
+            // plus the default that neither stage uses.
+            AudioBuffer audio = new AudioBuffer(SignalFactory.sine(440, 0.5, 22_050), 22_050);
+
+            for (int[] resolution : new int[][] {{4096, 1024}, {1024, 128}, {2048, 512}}) {
+                Spectrogram spectrogram = Spectrogram.compute(audio, resolution[0], resolution[1]);
+                assertThat(spectrogram.binCount()).isEqualTo(resolution[0] / 2 + 1);
+                for (float[] frame : spectrogram.magnitudes()) {
+                    assertThat(frame).hasSize(resolution[0] / 2 + 1);
+                }
+            }
         }
 
         @Test
