@@ -117,6 +117,7 @@ public final class AudioTranscriber {
         // harmonic change rather than from onset energy. The order stays acyclic:
         // chroma needs the beats, the downbeat phase needs the chroma, and chord
         // estimation needs neither the phase nor the grid.
+        progress.accept("extracting chroma");
         Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
 
         BeatGrid grid = BeatTracker.toBeatGrid(beats,

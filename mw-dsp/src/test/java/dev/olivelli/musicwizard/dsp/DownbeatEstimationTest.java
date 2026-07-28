@@ -270,6 +270,33 @@ class DownbeatEstimationTest {
             return new Chroma(vectors, 0);
         }
 
+        /**
+         * The same, but with the two alternating vectors set to a chosen cosine
+         * similarity, so a bar line's novelty can be made as faint as wanted.
+         */
+        private static Chroma faintlyStepwiseChroma(int spans, int perBar, double similarity) {
+            double[] held = new double[12];
+            held[0] = 1;
+            double[] moved = new double[12];
+            moved[0] = similarity;
+            moved[1] = Math.sqrt(1 - similarity * similarity);
+
+            double[][] vectors = new double[spans][];
+            for (int span = 0; span < spans; span++) {
+                vectors[span] = (Math.floorDiv(span, perBar) % 2 == 0 ? held : moved).clone();
+            }
+            return new Chroma(vectors, 0);
+        }
+
+        /** Chroma with exactly one change, at the given span boundary. */
+        private static Chroma oneChangeChroma(int spans, int changeAt) {
+            double[][] vectors = new double[spans][12];
+            for (int span = 0; span < spans; span++) {
+                vectors[span][span < changeAt ? 0 : 5] = 1;
+            }
+            return new Chroma(vectors, 0);
+        }
+
         /** A flat envelope, so that onset energy cannot break any tie. */
         private static OnsetEnvelope flatEnvelope(double seconds) {
             return new OnsetEnvelope(new double[(int) Math.round(seconds * 100)], 100);
@@ -278,12 +305,13 @@ class DownbeatEstimationTest {
         /**
          * An envelope with a chosen strength at each phase's beats.
          *
-         * <p>Shaped like a real one: {@link OnsetEnvelope} is normalised to zero
-         * mean and unit variance, so between the peaks it sits <em>below</em>
-         * zero, and the levels at the beats themselves are free to be negative
-         * too. Testing only with positive values would miss anything that treats
-         * the envelope as a magnitude, which is what let the first version of
-         * this scoring through.
+         * <p>{@link OnsetEnvelope} is normalised to zero mean and unit variance,
+         * so the levels at the beats are free to be negative, and the tests below
+         * use negative ones deliberately: testing only with positive values would
+         * miss anything that treats the envelope as a magnitude, which is what
+         * let the first version of this scoring through. The fill between the
+         * beats is scenery — only the beat frames are ever sampled — and is set
+         * below zero so that reading this fixture does not suggest otherwise.
          *
          * @param levelsPerPhase strength at the beats of each phase, in deviations
          */
@@ -411,13 +439,21 @@ class DownbeatEstimationTest {
             // saturate a clamp and must still rank the second beat highest.
             List<Double> beats = beatsEvery(0.5, 33);
 
+            // Held over an unchanging harmony, so the accent is all there is to
+            // rank and the full estimator has to rank it too -- not only
+            // fromOnsets, which never applies the bound in the first place.
+            Chroma unchanging = stepwiseChroma(32, 32, 0);
+
             for (double[] levels : new double[][] {
                     {6, 9, 2, 2}, {8, 10, 2, 2}, {5, 6, 1, 1}, {4, 5, 1, 1}}) {
-                DownbeatEstimator.Estimate estimate =
-                        DownbeatEstimator.fromOnsets(beats, envelopeOf(beats, levels), 4);
+                OnsetEnvelope envelope = envelopeOf(beats, levels);
 
-                assertThat(estimate.phase())
-                        .as("levels %s", java.util.Arrays.toString(levels)).isEqualTo(1);
+                assertThat(DownbeatEstimator.fromOnsets(beats, envelope, 4).phase())
+                        .as("fromOnsets, levels %s", java.util.Arrays.toString(levels))
+                        .isEqualTo(1);
+                assertThat(DownbeatEstimator.estimate(beats, unchanging, envelope, 4).phase())
+                        .as("estimate, levels %s", java.util.Arrays.toString(levels))
+                        .isEqualTo(1);
             }
         }
 
@@ -455,6 +491,116 @@ class DownbeatEstimationTest {
             assertThat(DownbeatEstimator
                     .estimate(beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4)
                     .confidence().value()).isGreaterThanOrEqualTo(0.8);
+        }
+
+        @Test
+        @DisplayName("faint harmonic evidence is not confident evidence")
+        void faintNoveltyIsNotConfident() {
+            // Guards the first confidence factor. The bar lines here carry all of
+            // the harmonic change there is -- so the phase is unambiguous and the
+            // second factor is satisfied in full -- but the change itself is a
+            // fiftieth of a cosine distance, well inside what an accent could have
+            // moved. Without the margin factor this reports 0.85, the same as a
+            // fixture whose chords change outright.
+            List<Double> beats = beatsEvery(0.5, 33);
+
+            DownbeatEstimator.Estimate faint = DownbeatEstimator.estimate(
+                    beats, faintlyStepwiseChroma(32, 4, 0.98), flatEnvelope(20), 4);
+
+            assertThat(faint.phase()).isZero();
+            assertThat(faint.confidence().value()).isLessThan(0.6);
+        }
+
+        @Test
+        @DisplayName("one chord change is not a pattern, however long the recording")
+        void oneChangeIsNotAPattern() {
+            // Guards the third confidence factor, and guards it against counting
+            // the wrong thing: a single change lands on some phase by necessity,
+            // and a long recording holding one chord either side of it is not more
+            // evidence than a short one. Counting bars rather than changes gave
+            // this 0.85 -- the same as sixteen chord changes that all agree.
+            List<Double> beats = beatsEvery(0.5, 65);
+
+            DownbeatEstimator.Estimate once = DownbeatEstimator.estimate(
+                    beats, oneChangeChroma(64, 12), flatEnvelope(40), 4);
+            DownbeatEstimator.Estimate often = DownbeatEstimator.estimate(
+                    beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4);
+
+            assertThat(once.phase()).isZero();
+            assertThat(once.confidence().value()).isLessThan(0.55);
+            assertThat(often.confidence().value()).isGreaterThan(0.8);
+        }
+
+        @Test
+        @DisplayName("an accent elsewhere in the bar does not undermine the harmony")
+        void aConflictingAccentDoesNotReduceConfidence() {
+            // A backbeat is ordinary in this material. Once harmony has decided
+            // the phase, the fact that the loudest beat is a different one is not
+            // evidence against the decision, and letting it subtract would make
+            // every backbeat recording report less confidence than the same music
+            // played flat.
+            List<Double> beats = beatsEvery(0.5, 33);
+            Chroma chroma = stepwiseChroma(32, 4, 0);
+
+            DownbeatEstimator.Estimate flat = DownbeatEstimator.estimate(
+                    beats, chroma, flatEnvelope(20), 4);
+            DownbeatEstimator.Estimate backbeat = DownbeatEstimator.estimate(
+                    beats, chroma, envelopeOf(beats, new double[] {0, 0, 5, 0}), 4);
+
+            assertThat(backbeat.phase()).isEqualTo(flat.phase()).isZero();
+            assertThat(backbeat.confidence().value())
+                    .isCloseTo(flat.confidence().value(), within(1e-12));
+        }
+
+        @Test
+        @DisplayName("a harmonic lead of exactly the bound still beats a maximal accent")
+        void harmonyWinsAtTheBoundary() {
+            // tanh reaches exactly 1 in double arithmetic, so at a harmonic lead
+            // of exactly 2 * ONSET_WEIGHT the two scores are equal rather than
+            // ordered. Taking the earlier phase there would hand an accent a
+            // decision the harmony had already made, so ties go to harmony.
+            // Ten scorable beats of phase 2, one of them carrying an orthogonal
+            // change, put the lead at exactly 0.1.
+            List<Double> beats = beatsEvery(0.5, 40);
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(beats,
+                    oneChangeChroma(39, 2), envelopeOf(beats, new double[] {1000, -1000, -1000, -1000}), 4);
+
+            assertThat(estimate.phase()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("an unobserved phase is not credited with the average")
+        void unobservedPhasesScoreNoNovelty() {
+            // Only one beat has chroma on both sides here, and it is phase 1.
+            // Handing the three unobserved phases the overall mean made all four
+            // equal and gave the answer to phase 0 -- discarding the only evidence
+            // the recording had. No change observed is zero, not average.
+            List<Double> beats = List.of(0.0, 0.5, 1.0);
+            double[][] spans = new double[2][12];
+            spans[0][0] = 1;
+            spans[1][5] = 1;
+
+            assertThat(DownbeatEstimator
+                    .estimate(beats, new Chroma(spans, 0), flatEnvelope(2), 4).phase())
+                    .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("a ragged chroma is refused evidence rather than read off the end")
+        void raggedChromaRowsAreNotNovel() {
+            // Chroma does not validate its row shapes, so comparing a twelve-bin
+            // vector with a shorter one indexed past the end of the shorter.
+            double[][] spans = {new double[12], new double[6], new double[12]};
+            spans[0][0] = 1;
+            spans[1][0] = 1;
+            spans[2][0] = 1;
+
+            double[] novelty = DownbeatEstimator.harmonicNovelty(new Chroma(spans, 0));
+
+            for (double value : novelty) {
+                assertThat(value).isZero();
+            }
         }
 
         @Test
@@ -543,9 +689,16 @@ class DownbeatEstimationTest {
         @DisplayName("never claims more confidence in the bars than in the beats")
         void downbeatConfidenceIsNotInflated() {
             Analysis analysis = Analysis.of(chordsPerBar(16));
+            DownbeatEstimator.Estimate estimate = analysis.estimate(4);
 
-            BeatGrid grid = BeatTracker.toBeatGrid(analysis.beats(), analysis.estimate(4));
+            BeatGrid grid = BeatTracker.toBeatGrid(analysis.beats(), estimate);
 
+            // The two doubts multiply. A constant factor here -- which is what
+            // this was -- reports the same confidence for a phase sixteen chord
+            // changes agree on as for one picked out of noise, and cannot fall
+            // when the phase evidence does.
+            assertThat(grid.downbeatConfidence().value()).isEqualTo(
+                    analysis.beats().confidence().value() * estimate.confidence().value());
             assertThat(grid.downbeatConfidence().value())
                     .isLessThan(grid.beatConfidence().value() + 1e-9);
             assertThat(grid.beatConfidence()).isEqualTo(analysis.beats().confidence());

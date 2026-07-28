@@ -67,10 +67,15 @@ public final class DownbeatEstimator {
      *
      * <p>A bound rather than a scaling, which is what makes the balance between
      * the two terms something that can be stated rather than tuned: the onset
-     * term stays strictly inside this much either way, so a phase whose mean
-     * harmonic novelty leads by more than {@code 2 * ONSET_WEIGHT} wins whatever
+     * term reaches this much either way and no further, so a phase whose mean
+     * harmonic novelty leads by {@code 2 * ONSET_WEIGHT} or more wins whatever
      * the onsets say. Below that margin the harmony is not distinguishing the
      * phases and the accent is allowed to decide.
+     *
+     * <p>Inclusive at the boundary only because ties are broken on harmony:
+     * {@code tanh} does reach exactly 1 in double arithmetic, so at a lead of
+     * exactly {@code 2 * ONSET_WEIGHT} the two scores can be equal, and without
+     * that tie rule the accent would take a decision harmony had already made.
      */
     private static final double ONSET_WEIGHT = 0.05;
 
@@ -99,9 +104,9 @@ public final class DownbeatEstimator {
      * The harmonic margin over the runner-up above which the answer was decided
      * by harmony alone.
      *
-     * <p>Not chosen: it is the margin above which the onset term provably cannot
-     * change the winner, since that term stays strictly inside
-     * {@code ±ONSET_WEIGHT}.
+     * <p>Not chosen: it is the margin at and above which the onset term provably
+     * cannot change the winner, since that term is bounded by
+     * {@code ±ONSET_WEIGHT} and ties go to harmony.
      *
      * <p>This says <em>who</em> decided, not <em>how well</em>. It is used as one
      * factor of the confidence and not as the whole of it, because a large margin
@@ -111,14 +116,20 @@ public final class DownbeatEstimator {
     private static final double CONFIDENT_MARGIN = 2 * ONSET_WEIGHT;
 
     /**
-     * Bars that must be observed before harmonic evidence is taken at full
-     * strength.
+     * Chord changes on one phase that count as full harmonic evidence.
      *
-     * <p>Two, because one bar cannot establish that anything recurs: a single
-     * chord change lands on some phase by necessity, and reading that as a
-     * preference would be reading the only datum as a pattern.
+     * <p>Three, from the odds of the alternative. If {@code k} changes all land
+     * on the same phase and phase meant nothing, that happens with probability
+     * {@code (1 / beatsPerBar)^(k-1)} — for 4/4, one in four at two changes and
+     * one in sixteen at three. One change lands somewhere by necessity and is no
+     * evidence at all, two are an ordinary coincidence, and by three the
+     * coincidence is unlikely enough to stop calling it one.
+     *
+     * <p>Counted in changes rather than in bars because length is not evidence:
+     * a minute of one chord says no more about where the bars start than a bar
+     * of it does.
      */
-    private static final int BARS_FOR_FULL_CONFIDENCE = 2;
+    private static final double CHANGES_FOR_FULL_CONFIDENCE = 3;
 
     /**
      * Confidence in a phase nothing at all supports.
@@ -210,10 +221,10 @@ public final class DownbeatEstimator {
                             + (chroma.isBeatSynchronous() ? "" : " on a fixed time grid"));
         }
 
+        double[] novelty = harmonicNovelty(chroma);
         // Zero for a phase with no beats in range, because no observed novelty is
         // exactly what it says: nothing changed there that we saw.
-        double[] harmony = meanPerPhase(
-                harmonicNovelty(chroma), firstBeat, lastBeat, beatsPerBar, 0);
+        double[] harmony = meanPerPhase(novelty, firstBeat, lastBeat, beatsPerBar, 0);
         double[] accent = onsetAdvantage(
                 onsetStrengthPerBeat(beatTimes, envelope), firstBeat, lastBeat, beatsPerBar);
 
@@ -222,10 +233,17 @@ public final class DownbeatEstimator {
             score[phase] = harmony[phase] + onsetTerm(accent[phase]);
         }
 
-        int phase = argMax(score);
-        int scorableBeats = lastBeat - firstBeat + 1;
+        // Harmony breaks a tie rather than the phase index. tanh reaches exactly
+        // 1 in double arithmetic, so the onset term does attain its bound and two
+        // phases whose harmony differs by exactly 2 * ONSET_WEIGHT can score
+        // equal — handing that to whichever came first would let an accent take a
+        // decision the harmony had already made.
+        int phase = argMax(score, harmony);
         double confidence = BASE_CONFIDENCE
-                + HARMONIC_CONFIDENCE * harmonicAgreement(harmony, phase, scorableBeats)
+                + HARMONIC_CONFIDENCE
+                        * harmonicAgreement(harmony, novelty, phase, firstBeat, lastBeat)
+                // Never negative: a backbeat is ordinary in this material and says
+                // nothing against harmonic evidence that has already decided.
                 + ONSET_CONFIDENCE * Math.max(0, Math.tanh(accent[phase] / ONSET_FULL_SCALE));
         return new Estimate(phase, beatsPerBar, Confidence.clamped(confidence));
     }
@@ -246,14 +264,17 @@ public final class DownbeatEstimator {
      *     this, material that changes chord often at no consistent phase produces
      *     a large margin by luck and reports full confidence in a guess — the
      *     margin is real, the phase is not.</li>
-     * <li><b>There is enough of it.</b> One bar cannot establish that anything
-     *     recurs.</li>
+     * <li><b>There was enough of it.</b> Counted in chord changes on the winning
+     *     phase, not in beats: a long recording holding one chord is no more
+     *     evidence than a short one, and a single change lands on some phase by
+     *     necessity rather than by preference.</li>
      * </ul>
      *
      * <p>Multiplied rather than averaged, so that any one of them failing takes
      * the confidence down rather than being outvoted by the other two.
      */
-    private static double harmonicAgreement(double[] harmony, int phase, int scorableBeats) {
+    private static double harmonicAgreement(double[] harmony, double[] novelty, int phase,
+                                            int firstBeat, int lastBeat) {
         int beatsPerBar = harmony.length;
         double margin = harmony[phase] - runnerUp(harmony, phase);
         double decided = Math.clamp(margin / CONFIDENT_MARGIN, 0, 1);
@@ -271,8 +292,31 @@ public final class DownbeatEstimator {
                 : 1;
 
         double observed = Math.clamp(
-                scorableBeats / (double) (BARS_FOR_FULL_CONFIDENCE * beatsPerBar), 0, 1);
+                changesOn(novelty, phase, beatsPerBar, firstBeat, lastBeat)
+                        / CHANGES_FOR_FULL_CONFIDENCE, 0, 1);
         return decided * preferred * observed;
+    }
+
+    /**
+     * How many chord changes a phase actually carries.
+     *
+     * <p>The effective count {@code (sum)^2 / sum of squares}, which is one when
+     * a single beat carries all of the phase's novelty and {@code k} when {@code
+     * k} beats carry it equally. Counting beats over a threshold would need a
+     * threshold, and every recording sits at a different novelty floor; this
+     * needs none and degrades smoothly between the two cases.
+     */
+    private static double changesOn(double[] novelty, int phase, int beatsPerBar,
+                                    int firstBeat, int lastBeat) {
+        double sum = 0;
+        double sumOfSquares = 0;
+        for (int beat = firstBeat; beat <= lastBeat; beat++) {
+            if (Math.floorMod(beat, beatsPerBar) == phase) {
+                sum += novelty[beat];
+                sumOfSquares += novelty[beat] * novelty[beat];
+            }
+        }
+        return sumOfSquares > 0 ? sum * sum / sumOfSquares : 0;
     }
 
     /**
@@ -421,6 +465,23 @@ public final class DownbeatEstimator {
         int best = 0;
         for (int phase = 1; phase < score.length; phase++) {
             if (score[phase] > score[best]) {
+                best = phase;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The highest-scoring phase, with ties broken on a second quantity.
+     *
+     * <p>Exists so that the guarantee about harmony outranking accent holds at
+     * its boundary rather than just inside it.
+     */
+    private static int argMax(double[] score, double[] tieBreak) {
+        int best = 0;
+        for (int phase = 1; phase < score.length; phase++) {
+            if (score[phase] > score[best]
+                    || (score[phase] == score[best] && tieBreak[phase] > tieBreak[best])) {
                 best = phase;
             }
         }
