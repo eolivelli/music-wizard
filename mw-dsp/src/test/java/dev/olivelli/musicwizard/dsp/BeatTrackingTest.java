@@ -425,11 +425,13 @@ class BeatTrackingTest {
             // measurement of a residue is not a measurement of the residue,
             // which is the mistake issue #49 itself was corrected for.
             //
-            // Nine configurations here; the offline sweep behind them is 245,
-            // over carriers 220 Hz to 3 kHz, hole starts 1 to 11 s and lengths
-            // 1 to 5 s. Worst point 0.504 against a click floor of 0.751 -- and
-            // 0.743 against the same floor before the filter was changed to run
-            // per unbroken stretch of finite frames.
+            // Nine configurations here, over carriers 220 Hz to 3 kHz, hole
+            // starts 1 to 11 s and lengths 1 to 5 s. The offline sweep behind
+            // them gave a worst point of 0.504 on an even grid and 0.52 to 0.54
+            // when the same family is drawn from at random -- see antiAlias's
+            // javadoc, which records the grid figure as the flattering one.
+            // Against a click floor of 0.751, and against 0.743 before the
+            // filter was changed to run per unbroken stretch of finite frames.
             double worst = 0;
             for (double start : new double[] {1.0, 4.0, 7.5}) {
                 for (double length : new double[] {2.0, 5.0, 8.0}) {

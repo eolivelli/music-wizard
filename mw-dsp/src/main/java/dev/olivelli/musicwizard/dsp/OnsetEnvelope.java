@@ -321,20 +321,26 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * beats doing no filtering at all at 48% of them.
      *
      * <p>It does not beat it everywhere, and that is worth stating rather than
-     * rounding off: at 33% of those points this is still worse than not
-     * filtering, by up to 0.322, and its worst point is above the 0.471 that no
-     * filtering reaches.
+     * rounding off: this is still worse than not filtering at <b>33% to 45%</b>
+     * of those points and by up to <b>0.32 to 0.40</b>, across four independent
+     * draws from the family, and its worst point is above the 0.47 that no
+     * filtering reaches. The spread across draws is mostly how ties are counted
+     * -- the low figure comes from ignoring differences under 0.05 -- so take
+     * the wide end.
      *
      * <p>Those figures are drawn rather than gridded, deliberately. An evenly
      * spaced grid over the same family gave 0.504, 27% and 0.188 -- every one of
      * them flattering, because a grid samples a smooth artefact at its own
-     * spacing rather than where it is worst.
+     * spacing rather than where it is worst. Three reviewers re-drew this and
+     * all three found it worse than the grid said; that is the pattern to
+     * expect from any single sample of this residue, including these.
      *
      * <p>And the family itself is not general, which is the shape of claim that
      * has now twice been mistaken for one. A hole that begins at
      * {@code t = 0} and covers most of the clip -- leaving one short run at the
-     * end -- reaches <b>0.775, above the click floor</b>, at 9 of 36 lengths
-     * tried between 14 and 17.5 seconds of 20. Filtering per run neither causes
+     * end -- reaches <b>0.780, above the click floor</b>, and at 87.31 Hz it is
+     * over the floor at 33 of 36 lengths tried between 14 and 17.5 seconds of
+     * 20, not at a handful of them. Filtering per run neither causes
      * that nor fixes it: a leading hole leaves exactly one run, so this and the
      * scheme it replaced agree there to four decimal places. The honest summary
      * is that per-run is the best of the three everywhere measured and that no
