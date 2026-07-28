@@ -96,6 +96,16 @@ public record Note(
         return onsetSeconds + durationSeconds;
     }
 
+    /**
+     * When the note stops sounding in quarter-note beats, once quantized.
+     *
+     * <p>Empty exactly when the note is un-quantized, so a caller cannot get a
+     * beat offset that is really a seconds value in disguise.
+     */
+    public Optional<Double> offsetBeat() {
+        return onsetBeat.map(onset -> onset + durationBeats.orElseThrow());
+    }
+
     /** True once both quantized onset and duration are present. */
     @JsonIgnore
     public boolean isQuantized() {
@@ -126,15 +136,31 @@ public record Note(
                 Optional.of(newSpelling), onsetBeat, durationBeats, confidence);
     }
 
-    /** Returns a copy transposed by a number of semitones, dropping any spelling. */
+    /**
+     * Returns a copy transposed by a number of semitones.
+     *
+     * <p>A whole-octave shift keeps the spelling, moved by the same octaves: an
+     * octave changes neither letter nor accidental, so dropping the spelling
+     * there would throw away a decision the pipeline already made and fall back
+     * to the sharp-preferring default — which prints an A flat bass line as G
+     * sharps. This is exactly the {@link PartRole#BASS} case, where the written
+     * staff sits an octave above the sounding pitch.
+     *
+     * <p>Any other interval does drop the spelling, because choosing the new one
+     * needs the key: transposing C sharp up a semitone gives D in one key and C
+     * double sharp in another, and this type cannot tell which.
+     */
     public Note transposedBy(int semitones) {
         int shifted = midiPitch + semitones;
         if (shifted < 0 || shifted > 127) {
             throw new IllegalArgumentException(
                     "transposing by " + semitones + " puts pitch " + midiPitch + " out of MIDI range");
         }
+        Optional<PitchSpelling> shiftedSpelling = semitones % 12 == 0
+                ? spelling.map(s -> s.transposedByOctaves(semitones / 12))
+                : Optional.empty();
         return new Note(onsetSeconds, durationSeconds, shifted, velocity,
-                Optional.empty(), onsetBeat, durationBeats, confidence);
+                shiftedSpelling, onsetBeat, durationBeats, confidence);
     }
 
     /** The spelling if one was chosen, otherwise a sharp-preferring default. */

@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A monophonic or polyphonic sequence of notes belonging to one part.
@@ -65,10 +66,37 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
         return true;
     }
 
+    /** Notes overlapping a wall-clock span, in onset order. */
+    public List<Note> notesBetween(double startSeconds, double endSeconds) {
+        return notes.stream()
+                .filter(n -> n.offsetSeconds() > startSeconds && n.onsetSeconds() < endSeconds)
+                .toList();
+    }
+
+    /**
+     * Notes overlapping a span of quarter-note beats, in onset order.
+     *
+     * <p>The beat-axis counterpart of {@link #notesBetween}, because nothing
+     * downstream of the beat grid works in seconds: a bar, a section or a
+     * melisma is a beat span, and converting it back to seconds to ask this
+     * question would round independently of the quantizer.
+     *
+     * <p>Un-quantized notes are skipped rather than converted. They have no
+     * position on this axis, and guessing one is what the optional musical
+     * fields exist to prevent.
+     */
+    public List<Note> notesBetweenBeats(double startBeat, double endBeat) {
+        return notes.stream()
+                .filter(Note::isQuantized)
+                .filter(n -> n.offsetBeat().orElseThrow() > startBeat
+                        && n.onsetBeat().orElseThrow() < endBeat)
+                .toList();
+    }
+
     /** Lowest and highest sounding MIDI pitch, or empty when there are no notes. */
-    public java.util.Optional<int[]> pitchRange() {
+    public Optional<PitchRange> pitchRange() {
         if (notes.isEmpty()) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
         int low = Integer.MAX_VALUE;
         int high = Integer.MIN_VALUE;
@@ -76,7 +104,7 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
             low = Math.min(low, note.midiPitch());
             high = Math.max(high, note.midiPitch());
         }
-        return java.util.Optional.of(new int[] {low, high});
+        return Optional.of(new PitchRange(low, high));
     }
 
     /** True once every note carries quantized musical timing. */
