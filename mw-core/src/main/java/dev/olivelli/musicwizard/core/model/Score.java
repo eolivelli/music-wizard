@@ -214,17 +214,23 @@ public record Score(
      * <p>The order is:
      *
      * <ol>
-     *   <li><b>A single-segment map wins</b>, taken to mean a tempo somebody
-     *       supplied rather than one measured, because a supplied tempo is a
-     *       correction of the tracked one and ignoring it ignores the
-     *       instruction. Segment count is a <em>proxy</em> for that, not proof of
-     *       it: {@link TempoMap#fromBeatTimes} emits one segment per beat
-     *       interval, so it produces a single-segment map only in the degenerate
-     *       case of exactly two beats with the first at second 0. That case is
-     *       harmless today, because the one segment then carries exactly the
-     *       tempo the grid's median would report. It stops being harmless if a
-     *       caller uses the explicit-pulse overload, where the two would differ.
-     *       Carrying provenance rather than inferring it is #73.
+     *   <li><b>A map that states one tempo wins</b>, taken to mean a tempo
+     *       somebody supplied rather than one measured, because a supplied tempo
+     *       is a correction of the tracked one and ignoring it ignores the
+     *       instruction. "States one tempo" means every segment from the first
+     *       tracked beat onwards carries the same figure; a lead-in segment ahead
+     *       of that beat is exempt, because an anchored constant map spends it
+     *       stretching the pickup onto the first tracked pulse and its tempo is
+     *       an artefact of where that pulse fell rather than a claim about the
+     *       music.
+     *       <p>The shape is a <em>proxy</em> for provenance, not proof of it:
+     *       {@link TempoMap#fromBeatTimes} emits one segment per beat interval,
+     *       so it too states one tempo when the beats are perfectly regular, or
+     *       when there are only two of them. Both cases are harmless, because the
+     *       figure the map then states is the one the grid's median would report.
+     *       It stops being harmless if a caller uses the explicit-pulse overload,
+     *       where the two would differ. Carrying provenance rather than inferring
+     *       it is #73.
      *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
      *       one dropped beat does not skew it. Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
@@ -241,13 +247,51 @@ public record Score(
      * {@link TimeSignature#countedTempo(double)}.
      */
     public double estimatedTempo() {
-        if (tempoMap.segments().size() == 1) {
-            return tempoMap.initialTempo();
+        double stated = statedConstantTempo();
+        if (!Double.isNaN(stated)) {
+            return stated;
         }
         if (beatGrid.isPresent() && beatGrid.get().size() >= 2) {
             return beatGrid.get().medianTempo(tempoMap.initialTimeSignature());
         }
         return tempoMap.averageTempo(durationSeconds);
+    }
+
+    /**
+     * The one tempo the map states, or {@code NaN} when it states none.
+     *
+     * <p>A single-segment map states its only tempo. A longer one states a tempo
+     * when every segment from the first tracked beat onwards agrees. Only a
+     * lead-in segment is exempt, and it is identified rather than assumed: the
+     * segment before the one that begins exactly at the grid's first beat. That
+     * segment exists to land the first tracked pulse on a whole pulse and carries
+     * whatever rate that took, which is a fact about the pickup and not about the
+     * piece. Without the exemption, correcting the tempo of a recording whose
+     * first beat is a fraction of a second in would leave the chart headed
+     * with -- and barred at -- the tracked tempo the correction was issued
+     * against. Exempting segment zero <em>unconditionally</em> would be the other
+     * error: a map with no lead-in would have its opening tempo ignored.
+     *
+     * <p>Compared exactly rather than within a tolerance. A stated tempo is one
+     * value copied into every segment, so it is bit-identical by construction; a
+     * measured one is a division per beat interval, and asking whether two of
+     * those are close enough is asking how steady a performance has to be before
+     * its map counts as a claim, which is not a question this can answer.
+     */
+    private double statedConstantTempo() {
+        List<TempoMap.TempoSegment> segments = tempoMap.segments();
+        int from = 0;
+        if (segments.size() > 1 && beatGrid.isPresent()
+                && segments.get(1).startSeconds() == beatGrid.get().beats().get(0).seconds()) {
+            from = 1;
+        }
+        double candidate = segments.get(from).beatsPerMinute();
+        for (int i = from + 1; i < segments.size(); i++) {
+            if (segments.get(i).beatsPerMinute() != candidate) {
+                return Double.NaN;
+            }
+        }
+        return candidate;
     }
 
     /** True when there is enough here to engrave something useful. */

@@ -34,17 +34,21 @@ This is roughly the tier of a good automatic chord-recognition service, plus
 notation. It is not a replacement for a human transcriber.
 
 The single highest-value thing you can do to improve output is correct the
-tempo by hand. Beat tracking is the least reliable stage and everything
-downstream depends on it, so one right number fixes a lot:
+tempo or the first downbeat by hand. Beat tracking is the least reliable stage
+and everything downstream depends on it, so one right number fixes a lot:
 
 ```
-mw analyze mysong.mwz --tempo 128 --time-signature 4/4
+mw analyze mysong.mwz --tempo 128 --time-signature 4/4 --first-downbeat 1.75
 ```
 
 `--tempo` is in the beat you count, so in 6/8 it is dotted quarters rather than
-quarters. `--first-downbeat` is accepted but not yet honoured ([#67][i67]).
+quarters. It replaces the tracked *rate* only: the tracked beats still say where
+beat one falls, so the bar grid stays where the recording put it.
 
-[i67]: https://github.com/eolivelli/music-wizard/issues/67
+`--first-downbeat` is in seconds from the start of the recording, and is snapped
+to the nearest tracked beat — it says which beat begins a bar, not that a beat
+was missed. It overrides the downbeat detector outright rather than being
+weighed against it.
 
 ## Installing
 
