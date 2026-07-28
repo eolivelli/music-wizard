@@ -130,7 +130,22 @@ test run either side of it.
 
 ```sh
 git worktree add /tmp/wt-issue-42 -b issue-42-fix origin/main
+cd /tmp/wt-issue-42
+export MAVEN_ARGS="-Dmaven.repo.local=/tmp/wt-issue-42/.m2"
 ```
+
+Give each worktree its own local Maven repository as well. The worktree isolates
+the source tree; `~/.m2` is the channel it does not isolate — an artifact one
+task installs becomes another task's dependency, so a reactor build can resolve
+a sibling module from somebody else's uncommitted work instead of from your own
+source. Build with `-am` for the same reason, so siblings are built rather than
+resolved.
+
+The failure this prevents is quiet rather than loud: a mutation sweep run as
+`mvn -pl mw-dsp` against a stale `mw-audio` produced ten mutants that failed to
+compile, which the summary reported as killed — full coverage, from a build that
+never ran the tests. Expect the first build in a fresh repository to re-download
+the dependency set.
 
 ## Pushing
 

@@ -109,10 +109,17 @@ unfixed code. Two specific traps:
   has nothing to do with the code under review.
 
 **A mutant that fails to compile is not a killed mutant.** A reactor build
-against a stale `~/.m2` copy of an upstream module reports a build failure that
-looks exactly like a test failure in the summary; on this project that silently
-turned 10 of 25 mutants into false kills. Build dependent modules with `-am`,
-and check that each claimed kill names the test that failed.
+against a stale copy of an upstream module reports a build failure that looks
+exactly like a test failure in the summary; on this project that silently turned
+10 of 25 mutants into false kills. Check that each claimed kill names the test
+that failed, and build with `-am` so siblings come from the source tree.
+
+Review in your own worktree with your own local Maven repository —
+`-Dmaven.repo.local=<your worktree>/.m2` on every invocation — for the same
+reason the author does. A shared `~/.m2` carries another agent's installed
+artifacts into your build, so a result you reproduce may be a result about
+their uncommitted code. Reproducing a finding against the wrong bytes is worse
+than not reproducing it, because you will report it as `CONFIRMED`.
 
 Where a change is meant to shift a *statistic*, a single fixture is not evidence.
 Ask for the swept population and the count of cases that invert — a headline
