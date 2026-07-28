@@ -94,8 +94,9 @@ class SwingDetectionTest {
         @DisplayName("a run of sixteenths is not a shuffle, however late its mean sits")
         void sixteenthsAreNotASwing() {
             // Onsets at 0.25, 0.5 and 0.75 of the beat average above 0.5, which
-            // is why the mean alone would be fooled. Their spread is twice what
-            // any shuffle's is, and that is what rules them out.
+            // is why the mean alone would be fooled. Their spread is several
+            // times a shuffle's, and that is what rules them out; the figures
+            // are on MAX_SPREAD and deliberately nowhere else.
             SwingFeel swing = Quantizer.quantize(divisions(4, 4)).swing();
             assertThat(swing.swung()).isFalse();
         }

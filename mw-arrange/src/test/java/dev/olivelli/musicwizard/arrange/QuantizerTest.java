@@ -905,6 +905,30 @@ class QuantizerTest {
                     .isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withGridChangePenalty(Double.NaN))
                     .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withOverlapTolerance(-1))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withOverlapTolerance(Double.NaN))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("each copy differs in the component it names and in nothing else")
+        void withMethodsChangeOnlyWhatTheyName() {
+            // A record component added late has to be threaded through every
+            // copy method, and a slip there is invisible: a settings object that
+            // quietly resets the overlap tolerance would still quantize, just
+            // differently. Nothing in the suite could see three of the four
+            // places overlapTolerance had to be carried.
+            QuantizationSettings from = new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true);
+
+            assertThat(from.withGridChangePenalty(0.99))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true));
+            assertThat(from.withArticulationRatio(0.75))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true));
+            assertThat(from.withOverlapTolerance(0.09))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true));
+            assertThat(from.withoutSwingDetection())
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false));
         }
     }
 

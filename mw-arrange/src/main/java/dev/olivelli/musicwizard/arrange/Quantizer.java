@@ -696,8 +696,10 @@ public final class Quantizer {
      *
      * <p>The tightness requirement is what keeps a run of sixteenths from being
      * read as swing. Sixteenths put onsets at 0.25, 0.5 and 0.75, whose spread
-     * is three to four times any shuffle's, even though their mean sits above
-     * 0.5.
+     * is several times a shuffle's, even though their mean sits above 0.5. The
+     * measured figures are on {@link SwingDetector#MAX_SPREAD}, and they are
+     * there only: a multiple stated in more than one place is a multiple that
+     * goes stale in all but one of them.
      * It is also what keeps a genuine triplet passage out: onsets at 0.333 and
      * 0.667 average to 0.5 and spread wide, so triplets read as straight -- and
      * that is correct, because they are triplets, not a shuffle.
@@ -744,11 +746,18 @@ public final class Quantizer {
         /**
          * How tight that cluster has to be.
          *
-         * <p>Measured against the window this detector actually uses:
-         * sixteenths spread 0.153 and a shuffle 0.038 to 0.049, so the threshold
-         * sits between them with room on both sides. An earlier comment said
-         * 0.19, which is what sixteenths spread against a window starting at
-         * 0.25 -- the figure predated {@link #OFF_BEAT_LOW} being raised.
+         * <p>Measured against the window this detector actually uses, and as a
+         * bound rather than a ratio, because the ratio moves with the fixture.
+         * Sixteenths spread 0.149 to 0.153. A shuffle spreads 0.034 to 0.084
+         * across every shuffle fixture in the suite and thirty re-seedings at
+         * phases from 0.58 to 0.75. So the threshold sits between the two
+         * populations, with the shuffle side the tighter margin -- and what
+         * loses a genuine shuffle in practice is
+         * {@link #SWING_THRESHOLD}, not this.
+         *
+         * <p>An earlier comment said sixteenths spread about 0.19, which is
+         * what they spread against a window starting at 0.25; the figure
+         * predated {@link #OFF_BEAT_LOW} being raised to 0.30.
          */
         private static final double MAX_SPREAD = 0.09;
 

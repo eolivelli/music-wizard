@@ -215,6 +215,24 @@ class PitchSpellerTest {
         }
 
         @Test
+        @DisplayName("a sharp key spells its leading tone as a leading tone, across the octave")
+        void aSharpKeySpellsItsLeadingToneAsALeadingTone() {
+            // MIDI 60 is C, and in C sharp major it is the leading tone -- B
+            // sharp, in the octave below the C it sounds as. Nothing else in the
+            // suite expects a B sharp to be chosen rather than declined, so
+            // skipping twelve fifths entirely used to pass.
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(7, Mode.MAJOR)))
+                    .isEqualTo(PitchSpelling.parse("B#3"));
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(7, Mode.MINOR)))
+                    .isEqualTo(PitchSpelling.parse("B#3"));
+            // Three sharps -- A major -- and it is a plain C again, which is
+            // what makes the choice a decision rather than a quirk of the
+            // search order. The boundary sits between four sharps and five.
+            assertThat(PitchSpeller.spellFromKey(60, keyWithSignature(3, Mode.MAJOR)))
+                    .isEqualTo(PitchSpelling.parse("C4"));
+        }
+
+        @Test
         @DisplayName("an exact tie prefers fewer accidentals, then flats")
         void tieBreaking() {
             // A flat and G sharp are equidistant from C major's centre.
@@ -458,9 +476,11 @@ class PitchSpellerTest {
             // above the tonic is E double flat, and printing a plain D there
             // would be a note outside the key with no accidental to explain it.
             // All three fail if the search is narrowed to single accidentals.
-            // B sharp is deliberately not among them: it sits at twelve fifths,
-            // inside the single-sharp band, so it would pass a narrowed search
-            // and prove nothing here -- it is covered by the octave tests.
+            // B sharp is not among them: it sits at twelve fifths, inside the
+            // single-sharp band, so it would pass a narrowed search and prove
+            // nothing about the far ends. It is pinned in
+            // aSharpKeySpellsItsLeadingToneAsALeadingTone instead, which is the
+            // question it was actually answering.
             Key cFlatMajor = keyWithSignature(-7, Mode.MAJOR);
             assertThat(PitchSpeller.spellFromKey(2, cFlatMajor))
                     .isEqualTo(PitchSpelling.parse("Ebb-1"));
