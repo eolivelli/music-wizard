@@ -450,8 +450,9 @@ public final class AudioTranscriber {
      * two candidates and being lost among every phase there is are the same
      * predicament and both give a half. At one beat to the bar the two branches
      * part company instead: the out-of-range count reaches certainty, correctly,
-     * while the falloff still bottoms out at a half against a rival that cannot
-     * exist. So it is the caller that supplies the certainty for that meter,
+     * while the falloff still bottoms out at a half against an alternative phase
+     * that does not exist -- the neighbouring pulse is real enough, it just
+     * begins the same bar. So it is the caller that supplies the certainty for that meter,
      * rather than this method agreeing with itself, and that meter never reaches
      * here.
      *

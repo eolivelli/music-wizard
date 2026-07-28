@@ -40,19 +40,29 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Eleven of these fifteen tests fail against that code, by asserting that a
  * requested downbeat <em>changes</em> the grid, which is precisely what the
- * ignored option could not do. The four that do not are worth knowing apart,
- * because a test that passes both ways is not a regression test for the bug it
- * sits beside:
+ * ignored option could not do. Measured by restoring the bug -- taking every
+ * read of {@code firstDownbeatSeconds} out of {@code transcribe} while leaving
+ * {@code Options} validating it, since the option was validated and persisted
+ * before this change and only its use was missing. Reverting the validation too
+ * makes it twelve, for a reason that has nothing to do with #67.
+ *
+ * <p>The four that pass are worth knowing apart, because a test that passes both
+ * ways is not a regression test for the bug it sits beside:
  *
  * <ul>
- * <li>{@code doesNotDisturbTheTempoMap} and {@code rejectsNonsenseDownbeats}
- *     guard against an interaction and an input this change could introduce,
- *     rather than reproducing anything.</li>
+ * <li>{@code doesNotDisturbTheTempoMap} guards against an interaction between
+ *     the two overrides that this change could introduce, and
+ *     {@code rejectsNonsenseDownbeats} against a consequence it introduces: a
+ *     negative or non-finite downbeat was accepted and inert before, and now
+ *     reaches {@link AudioTranscriber#nearestBeatIndex}, which has no opinion
+ *     about it. Neither reproduces anything.</li>
  * <li>{@code snapConfidenceBoundsAmbiguityInBothDirections} and
  *     {@code oneBeatToTheBarIsAlwaysCertain} are regression tests for defects
- *     found in review of the fix itself -- a confidence scale that over-reported
- *     a coin-flip phase, and a phase that cannot be wrong ranked below one that
- *     can. They gate this file's own invariants, not #67.</li>
+ *     found in review of the fix itself, both first raised in round 2 -- a
+ *     confidence scale that over-reported a coin-flip phase, and a phase that
+ *     cannot be wrong ranked below one that can. The first was then reworked in
+ *     rounds 3, 5 and 6 as each round found the previous round's scale wrong in
+ *     a new direction. They gate this file's own invariants, not #67.</li>
  * </ul>
  */
 class FirstDownbeatOverrideTest {
