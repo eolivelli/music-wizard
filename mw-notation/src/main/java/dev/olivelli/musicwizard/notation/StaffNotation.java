@@ -123,7 +123,7 @@ public final class StaffNotation {
     static String staffBlock(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
-        if (track.role() == PartRole.DRUMS) {
+        if (!canEngrave(track.role())) {
             throw new IllegalArgumentException(
                     "percussion parts need a DrumStaff, which this does not emit; see #95");
         }
@@ -137,7 +137,7 @@ public final class StaffNotation {
                 .append(escape(track.name())).append("\" } {\n");
         out.append("    \\clef \"").append(clefOf(track.role())).append("\"\n");
         out.append("    \\key ").append(keyOf(score)).append('\n');
-        appendBars(out, score, events, music);
+        appendBars(out, score, track.name(), events, music);
         out.append("    \\bar \"|.\"\n");
         out.append("  }\n");
         return out.toString();
@@ -190,8 +190,8 @@ public final class StaffNotation {
             if (!note.isQuantized()) {
                 // The track being engraved has already been rejected if it holds
                 // one of these. The other tracks reach here only through
-                // pickupStart, which asks where the score's music begins and can
-                // answer that from the tracks that have a position on the beat
+                // musicSpan, which asks where the score's music begins and ends
+                // and can answer that from the parts with a position on the beat
                 // axis, rather than refusing to engrave a finished part because
                 // an unrelated one is still in seconds.
                 continue;
@@ -210,9 +210,13 @@ public final class StaffNotation {
         for (Map.Entry<Double, List<Note>> entry : byOnset.entrySet()) {
             double onset = entry.getKey();
             double end = onset;
-            // Deduplicated by written name: two transcribed notes at the same
-            // pitch would otherwise print as a unison chord, which LilyPond warns
-            // about and no reader wants to see.
+            // Deduplicated by written name. Two transcribed notes at the same
+            // pitch print as a unison chord, which is meaningless on a staff and
+            // which LilyPond will engrave without complaint -- I checked, on
+            // 2.26; there is no warning to lean on. Notes at the same sounding
+            // pitch spelled differently still survive this and come out as
+            // <cis' des'>, which is a spelling disagreement the pipeline should
+            // have resolved upstream rather than something to hide here.
             Map<String, PitchSpelling> pitches = new LinkedHashMap<>();
             for (Note note : entry.getValue()) {
                 end = Math.max(end, snap(note.offsetBeat().orElseThrow()));
@@ -263,8 +267,17 @@ public final class StaffNotation {
     // ------------------------------------------------------------------ bars
 
     /**
-     * Where the music starts within bar zero, or zero when it starts on the
-     * downbeat.
+     * Where the music begins and ends, in quarter-note beats.
+     *
+     * @param startBeat where the music begins, which is a pickup when it falls
+     *                  inside the opening bar and zero otherwise
+     * @param endBeat   where the last engravable part stops sounding
+     */
+    private record Span(double startBeat, double endBeat) {
+    }
+
+    /**
+     * The stretch of beats every staff of this score is barred across.
      *
      * <p>A piece whose first note is not on beat one has a pickup, and a pickup
      * is a short bar rather than a bar of rests: written as rests, every bar line
@@ -272,18 +285,28 @@ public final class StaffNotation {
      * the normal case for song melodies, not an edge case.
      *
      * <p>Both ends are taken across the whole <em>score</em> rather than across
-     * this track, so that parts engraved separately share a bar grid. A bass
-     * that enters in bar four does not get its own pickup, and one that stops
-     * playing in bar four does not get its own final bar line — it rests to the
-     * end like a real part, instead of the staff simply stopping. The track being
-     * engraved is included whether or not the score holds it, so that engraving a
-     * track the caller built by hand does not silently lose either end.
+     * this track, so that parts engraved separately share a bar grid. A bass that
+     * enters in bar four does not get its own pickup, and one that stops playing
+     * in bar four does not get its own final bar line — it rests to the end like
+     * a real part, instead of the staff simply stopping. The track being engraved
+     * is included whether or not the score holds it, so that engraving a track
+     * the caller built by hand does not silently lose either end.
      *
-     * <p>Only the start was score-wide until round 7 of review found the two
-     * derived from different scopes. A part that dropped out early ended its
-     * staff mid-system, with a final bar line drawn under the middle of the parts
-     * beside it — and every check passed, because each bar it did write summed
-     * correctly and LilyPond had nothing to complain about.
+     * <p><b>Both ends are also bounded, and for the same reason.</b> A pickup is
+     * only a gap inside the opening bar; music that starts in bar two starts
+     * after a bar of rest, and saying otherwise would move every bar line in the
+     * piece. Symmetrically, another part may extend this staff only as far as the
+     * recording goes: a note quantized a hundred bars past the end of the audio
+     * is a beat-axis error, and unbounded it appended a hundred bars of rest to
+     * <em>every</em> staff in the score, or made a healthy one-bar part fail the
+     * bar ceiling and blame itself. The engraved track's own end is never
+     * clamped — its notes have to be written, and if the outlier is in this part
+     * then this part really is that long and the complaint names the right one.
+     *
+     * <p>Parts this emitter cannot engrave do not get a vote. A drum count-in
+     * before beat one is the most ordinary thing a percussion track contains, and
+     * it gave every visible staff a pickup that nothing on the page justified.
+     * When #95 makes percussion engravable the filter goes with it.
      *
      * <p>Measured on the <em>events</em>, not on the notes. Those differ: a note
      * shorter than a 64th disappears when its onset and offset snap to the same
@@ -299,42 +322,44 @@ public final class StaffNotation {
      * move every bar line. That is the price of parts that agree with each other
      * rather than each choosing its own grid, and it argues for engraving a score
      * once its stages have all finished rather than part by part as they land.
-     *
-     * @param startBeat where the music begins, which is a pickup when it falls
-     *                  inside the opening bar and zero otherwise
-     * @param endBeat   where the last part stops sounding
      */
-    private record Span(double startBeat, double endBeat) {
-    }
-
     private static Span musicSpan(Score score, NoteTrack engraved, List<Event> events) {
-        double earliest = Double.POSITIVE_INFINITY;
-        double latest = 0;
-        List<List<Event>> parts = new ArrayList<>();
-        parts.add(events);
+        // The last event ends last: overlaps were resolved by truncating the
+        // earlier of the pair, so ends increase with onsets.
+        double earliest = events.isEmpty()
+                ? Double.POSITIVE_INFINITY : events.getFirst().startBeat();
+        double latest = events.isEmpty() ? 0 : events.getLast().endBeat();
+        // Where the recording stops, which is the only evidence in the model that
+        // is independent of the quantizer that placed the notes.
+        double recordingEnd = score.tempoMap().secondsToBeats(score.durationSeconds());
         for (NoteTrack track : score.tracks()) {
-            if (!track.equals(engraved)) {
-                parts.add(eventsOf(score, track));
+            if (track.equals(engraved) || !canEngrave(track.role())) {
+                continue;
             }
-        }
-        for (List<Event> part : parts) {
-            if (!part.isEmpty()) {
-                earliest = Math.min(earliest, part.getFirst().startBeat());
-                // The last event ends last: overlaps were resolved by truncating
-                // the earlier of the pair, so ends increase with onsets.
-                latest = Math.max(latest, part.getLast().endBeat());
+            List<Event> other = eventsOf(score, track);
+            if (!other.isEmpty()) {
+                earliest = Math.min(earliest, other.getFirst().startBeat());
+                latest = Math.max(latest, Math.min(other.getLast().endBeat(), recordingEnd));
             }
         }
         double firstBar = score.tempoMap().timeSignatureAtBar(0).quarterBeatsPerBar();
-        // Only a gap inside the opening bar is a pickup. Music that starts in bar
-        // two starts after a bar of rest, and saying otherwise would move every
-        // bar line in the piece.
         boolean pickup = Double.isFinite(earliest) && earliest > 0 && earliest < firstBar;
         return new Span(pickup ? earliest : 0, latest);
     }
 
-    private static void appendBars(StringBuilder out, Score score, List<Event> events,
-                                   Span music) {
+    /**
+     * Whether this emitter can put a part in this role on a staff.
+     *
+     * <p>One predicate rather than two, because {@link #staffBlock} refusing a
+     * role while {@link #musicSpan} counts it is how a part that can never be on
+     * the page came to move the bar lines of the parts that are.
+     */
+    private static boolean canEngrave(PartRole role) {
+        return role != PartRole.DRUMS;
+    }
+
+    private static void appendBars(StringBuilder out, Score score, String name,
+                                   List<Event> events, Span music) {
         double pickupStart = music.startBeat();
         double musicEnd = music.endBeat();
 
@@ -369,9 +394,10 @@ public final class StaffNotation {
             }
         }
         throw new IllegalStateException(
-                "this part runs past " + MAX_BARS + " bars, which is more music than a staff is"
-                        + " engraved for; if the recording is not that long, the beat axis is"
-                        + " wrong -- a note quantized to a beat far past the end will do it");
+                "\"" + name + "\" runs past " + MAX_BARS + " bars, which is more music than a"
+                        + " staff is engraved for; if the recording is not that long, the beat"
+                        + " axis is wrong -- a note in this part quantized to a beat far past the"
+                        + " end will do it");
     }
 
     /**

@@ -393,6 +393,47 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a part elsewhere in the score cannot extend a staff past the recording")
+    void anOutlyingNoteCannotPadEveryStaff() {
+        // Round 8 of review found the round 7 fix carrying the scope of the bar
+        // grid across without the bound that makes it safe. One accompaniment
+        // note quantized a hundred bars late -- one bad conversion on the stage
+        // this project calls its least reliable -- appended a hundred bars of
+        // rest to every staff in the score, and past the bar ceiling it made a
+        // healthy one-bar part fail and blame itself.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"), note(4, 4, "D5"));
+        NoteTrack strays = track(PartRole.ACCOMPANIMENT, "Keys", note(400, 4, "E4"));
+        // Sixteen seconds of audio at 120 BPM is eight bars of 4/4, so the stray
+        // note sits far outside a recording that is itself longer than the music.
+        Score score = new Score(Optional.empty(), Optional.empty(),
+                TempoMap.constant(120, TimeSignature.FOUR_FOUR), Optional.empty(),
+                List.of(), List.of(), List.of(voice, strays),
+                dev.olivelli.musicwizard.core.model.ChordProgression.empty(),
+                dev.olivelli.musicwizard.core.model.Lyrics.empty(), 16);
+
+        assertThat(barCount(StaffNotation.toLilyPond(score, voice))).isEqualTo(8);
+        // The part actually holding the outlier is still written in full: its
+        // notes have to appear, and the complaint then names the right part.
+        assertThat(barCount(StaffNotation.toLilyPond(score, strays))).isEqualTo(101);
+    }
+
+    @Test
+    @DisplayName("a part this cannot engrave does not move the bar lines of the parts it can")
+    void percussionDoesNotDriveTheBarGrid() {
+        // A count-in before beat one is the most ordinary thing a drum track
+        // contains, and it gave every visible staff a pickup that nothing on the
+        // page justified -- plus, after the shared end landed, trailing rests.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(4, 4, "C5"));
+        NoteTrack drums = track(PartRole.DRUMS, "Drums", note(2, 1, "C4"), note(20, 1, "C4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, drums);
+
+        String source = StaffNotation.toLilyPond(score, voice);
+        assertThat(source).doesNotContain("\\partial");
+        assertThat(barCount(source)).isEqualTo(2);
+        assertBarsFillTheirMeter("percussion ignored", source);
+    }
+
+    @Test
     @DisplayName("music beginning exactly on the second downbeat is a bar of rest, not a pickup")
     void musicOnTheSecondDownbeatIsNotAPickup() {
         // The boundary of the pickup test, which is the value most likely to be
@@ -461,18 +502,6 @@ class StaffNotationTest {
      * have caught a bar that is a sixteenth short, which LilyPond engraves
      * happily and no golden file would have questioned.
      */
-    /** Bars in an emitted staff, counted by the bar checks the emitter writes. */
-    private static int barCount(String source) {
-        int bars = 0;
-        for (String rawLine : source.split("\n")) {
-            String line = rawLine.trim();
-            if (line.endsWith("|") && !line.startsWith("\\bar")) {
-                bars++;
-            }
-        }
-        return bars;
-    }
-
     private static void assertBarsFillTheirMeter(String label, String source) {
         double barLength = 0;
         double expected = -1;
@@ -501,6 +530,18 @@ class StaffNotationTest {
             }
         }
         assertThat(barNumber).as("%s: no bars were written", label).isPositive();
+    }
+
+    /** Bars in an emitted staff, counted by the bar checks the emitter writes. */
+    private static int barCount(String source) {
+        int bars = 0;
+        for (String rawLine : source.split("\n")) {
+            String line = rawLine.trim();
+            if (line.endsWith("|") && !line.startsWith("\\bar")) {
+                bars++;
+            }
+        }
+        return bars;
     }
 
     /**
