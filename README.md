@@ -34,12 +34,34 @@ This is roughly the tier of a good automatic chord-recognition service, plus
 notation. It is not a replacement for a human transcriber.
 
 The single highest-value thing you can do to improve output is correct the
-tempo or the first downbeat by hand. Beat tracking is the least reliable stage
-and everything downstream depends on it, so one right number fixes a lot:
+tempo by hand. Beat tracking is the least reliable stage and everything
+downstream depends on it, so one right number fixes a lot:
 
 ```
-mw analyze mysong.mwz --tempo 128 --time-signature 4/4 --first-downbeat 0.42
+mw analyze mysong.mwz --tempo 128 --time-signature 4/4
 ```
+
+`--tempo` is in the beat you count, so in 6/8 it is dotted quarters rather than
+quarters. It replaces the tracked *rate* only. The tracked beats survive, and
+the map is anchored so that the first of them still falls on a whole counted
+beat rather than part-way through one — but they keep the spacing they were
+tracked at, so halving the tempo leaves a grid whose beats are now eighth notes.
+Correcting a half-or-double reading fixes the chart; it does not re-track the
+beats, and it does not line the map's bar lines up with them ([#84][i84]).
+
+`--first-downbeat` is in seconds from the start of the recording. It is snapped
+to the nearest tracked beat — it says which beat begins a bar, not that a beat
+was missed — and it overrides the downbeat detector outright rather than being
+weighed against it.
+
+**It changes the saved score and not, yet, the engraved chart.** The chart
+anchors its bar lines on the first chord rather than on the detected downbeat,
+deliberately, and does not yet distinguish a downbeat a human supplied from one
+that was guessed ([#83][i83]). So today this option is worth setting for the
+score and for anything reading it, and will not move a bar line in the PDF.
+
+[i83]: https://github.com/eolivelli/music-wizard/issues/83
+[i84]: https://github.com/eolivelli/music-wizard/issues/84
 
 ## Installing
 

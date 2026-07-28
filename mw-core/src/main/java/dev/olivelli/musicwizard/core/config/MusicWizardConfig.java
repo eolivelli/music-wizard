@@ -47,12 +47,17 @@ public record MusicWizardConfig(
     /** How the audio should be analysed, including manual overrides. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record AnalysisConfig(
-            /* Force a tempo instead of tracking it. The single highest-value
-             * override: one correct number fixes everything downstream. */
+            /* Force a tempo instead of tracking it, in the meter's counted beats
+             * per minute -- dotted quarters in 6/8, not quarters. The single
+             * highest-value override: one correct number fixes everything
+             * downstream. */
             Double tempoOverride,
             /* Force a time signature, written as e.g. "4/4". */
             String timeSignatureOverride,
-            /* Force the first downbeat, in seconds. */
+            /* Force where a bar begins, in seconds. Snapped to the nearest
+             * tracked beat, which then begins every bar in the saved score; the
+             * engraved chart still anchors its bar lines on the first chord,
+             * see #83. */
             Double firstDownbeatSecondsOverride,
             /* Skip stem separation and analyse the mix directly. */
             Boolean skipSeparation) {

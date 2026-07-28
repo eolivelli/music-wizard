@@ -86,7 +86,17 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         }
     }
 
-    /** Builds a grid from bare beat times, assuming a fixed meter and a downbeat on the first beat. */
+    /**
+     * Builds a grid from bare beat times, assuming a fixed meter and a downbeat
+     * on the first beat.
+     *
+     * <p>Prefer {@link #ofTimes(List, TimeSignature, Confidence)}: the count
+     * wanted here is tracked pulses per bar, which is the meter's numerator only
+     * in simple time. In 6/8 it is two, and passing six phases the downbeats
+     * three times too slowly.
+     *
+     * @param beatsPerBar tracked pulses in one bar, not the meter's numerator
+     */
     public static BeatGrid ofTimes(List<Double> beatSeconds, int beatsPerBar, Confidence confidence) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
         if (beatsPerBar < 1) {
@@ -100,6 +110,20 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         return new BeatGrid(built, confidence, confidence);
     }
 
+    /**
+     * Builds a grid from bare beat times in a known meter, one tracked pulse per
+     * counted beat.
+     *
+     * <p>The safe form of {@link #ofTimes(List, int, Confidence)}, because the
+     * meter answers the question that overload leaves to the caller: 6/8 bars
+     * every two pulses, not every six.
+     */
+    public static BeatGrid ofTimes(
+            List<Double> beatSeconds, TimeSignature timeSignature, Confidence confidence) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return ofTimes(beatSeconds, timeSignature.beatsPerBar(), confidence);
+    }
+
     /** Just the beat times. */
     public List<Double> beatTimes() {
         return beats.stream().map(Beat::seconds).toList();
@@ -110,8 +134,16 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         return beats.stream().filter(Beat::downbeat).map(Beat::seconds).toList();
     }
 
-    /** Median tempo implied by the beat intervals, in beats per minute. */
-    public double medianTempo() {
+    /**
+     * Median rate of the tracked pulses, in pulses per minute.
+     *
+     * <p>Deliberately not called a tempo. A grid holds pulses, and a pulse is a
+     * quarter note only in simple time, so this is 1.5x under the quarter-note
+     * tempo in 6/8 -- exactly the conflation that mis-barred compound meters in
+     * the first place. Use {@link #medianTempo(TimeSignature)} for a figure
+     * comparable with {@link TempoMap#tempoAtBeat(double)}.
+     */
+    public double medianPulseRate() {
         if (beats.size() < 2) {
             throw new IllegalStateException("cannot infer tempo from fewer than two beats");
         }
@@ -125,6 +157,15 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
                 ? intervals[middle]
                 : (intervals[middle - 1] + intervals[middle]) / 2.0;
         return 60.0 / median;
+    }
+
+    /**
+     * Median tempo in quarter notes per minute, the unit every other tempo in the
+     * model is in.
+     */
+    public double medianTempo(TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return medianPulseRate() * timeSignature.beatUnitQuarters();
     }
 
     /** Index of the beat nearest a given time. */

@@ -42,14 +42,35 @@ one agent's commit landed on another agent's branch because HEAD moved under it
 mid-operation, and it was only caught because the agent noticed and restored the
 other branch by hand. Nothing about that is visible in a passing test run.
 
+**Use a dedicated local Maven repository too, for the same reason.** A shared
+`~/.m2` is a second channel between agents that a worktree does not isolate:
+whatever you `install` becomes another agent's dependency, and whatever they
+installed becomes yours. A reactor build that resolves a sibling module from the
+repository instead of the source tree is building against somebody else's
+uncommitted work.
+
 ```sh
 git fetch origin
 git worktree add /tmp/wt-issue-<number> -b issue-<number>-<slug> origin/main
 cd /tmp/wt-issue-<number>
+export MAVEN_ARGS="-Dmaven.repo.local=/tmp/wt-issue-<number>/.m2"
 ```
 
-Do all your work there, and remove the worktree when you are finished. Never run
-`git checkout` in the shared clone.
+Pass `-Dmaven.repo.local` on **every** Maven invocation — builds, single-module
+runs, mutation sweeps. Exporting `MAVEN_ARGS` as above is the reliable way to
+not forget it on the one command where it matters.
+
+The first build in a fresh repository re-downloads the dependency set and takes
+a few minutes; that is the price of the isolation and it is worth paying.
+
+This is not theoretical either. On this project a mutation sweep run as
+`mvn -pl mw-dsp` resolved a stale `mw-audio` from the shared `~/.m2`, so ten
+mutants "failed to build" and were counted as killed — reported as full coverage
+until a reviewer re-ran it. Build with `-am` as well, so siblings come from your
+source tree rather than from any repository.
+
+Do all your work there, and remove the worktree **and its local repository**
+when you are finished. Never run `git checkout` in the shared clone.
 
 Branching from a stale `main` produces conflicts at merge time, review findings
 that were already fixed, and worst of all a "fix" for a bug somebody else

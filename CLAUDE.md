@@ -143,6 +143,22 @@ The pattern worth remembering: **fixes tend to stop at the layer where the bug
 was noticed, not the layer where it lives.** Reviewers confirm findings by
 execution and label them `CONFIRMED` or `PLAUSIBLE`.
 
+Writing that pattern down here has not reduced how often it happens — four
+changes in a single night each shipped a first fix that reached one caller and
+missed another, and two used fixtures starting at `t=0.0`, where every tempo
+derivation agrees exactly and so nothing is tested. Both are now **mechanical
+checks the reviewer runs rather than judgement calls**: enumerate every reader
+of the value that changed, and re-run each new test against the code without its
+fix. See `.claude/agents/pr-reviewer.md`.
+
+Two further observations from the same night. When a fix needs the same edit in
+a *third* place, the structural change that removes the choice is cheaper than
+the third edit — that is where `Score.estimatedTempo()` came from. And once late
+rounds stop finding defects in executable code, what they find instead is claims
+that outrun their evidence: a result measured at one point written up as
+general, a javadoc describing the design that was replaced. On a tool whose
+output is estimates users act on, an overstated confidence is a defect.
+
 ## Conventions
 
 - **Push at every milestone**, not at the end.
@@ -156,6 +172,14 @@ execution and label them `CONFIRMED` or `PLAUSIBLE`.
 - **One git worktree per concurrent task**, never the shared checkout. A
   `git checkout` moves HEAD for every process in that clone; a commit made
   during the move lands on another branch, silently.
+- **One local Maven repository per worktree**, passed as
+  `-Dmaven.repo.local=<worktree>/.m2` on every invocation. The worktree isolates
+  the source; `~/.m2` is the channel it does not isolate. Whatever one agent
+  installs becomes another's dependency, so a build can silently resolve a
+  sibling module from somebody else's uncommitted work. It has already produced
+  a false result here: a `mvn -pl mw-dsp` mutation sweep picked up a stale
+  `mw-audio`, ten mutants failed to *build*, and the summary counted them as
+  killed. Build with `-am` too, so siblings come from the source tree.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
