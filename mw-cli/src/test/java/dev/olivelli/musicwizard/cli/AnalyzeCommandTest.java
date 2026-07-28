@@ -41,17 +41,29 @@ import org.junit.jupiter.api.Test;
  */
 class AnalyzeCommandTest {
 
+    /**
+     * Pulses starting a little after t=0, which is where a beat tracker actually
+     * puts them and what makes this fixture discriminate.
+     *
+     * <p>A grid starting at exactly 0.0 is the trap CLAUDE.md records: with no
+     * lead-in, the tempo map's average equals the grid's median to the bit, so
+     * every source of a tempo agrees and a test cannot tell which one was read.
+     * The 0.05 s here is a whole pulse crammed into a twentieth of one, which
+     * pulls the map's average to 124.5 against the grid's 120.
+     */
     private static List<Double> pulses(int count, double interval) {
         List<Double> times = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            times.add(i * interval);
+            times.add(LEAD_IN + i * interval);
         }
         return times;
     }
 
+    private static final double LEAD_IN = 0.05;
+
     private static Score trackedAt(double interval, TimeSignature meter) {
         List<Double> times = pulses(24, interval);
-        return Score.empty(TempoMap.fromBeatTimes(times, meter), 24 * interval)
+        return Score.empty(TempoMap.fromBeatTimes(times, meter), LEAD_IN + 24 * interval)
                 .withBeatGrid(BeatGrid.ofTimes(times, meter, Confidence.of(0.9)));
     }
 
@@ -67,6 +79,22 @@ class AnalyzeCommandTest {
             // 120 dotted quarters a minute, which the map stores as 180 quarters.
             assertThat(AnalyzeCommand.tempoLine(trackedAt(0.5, TimeSignature.SIX_EIGHT)))
                     .isEqualTo("Tempo   120.0 BPM (180.0 quarter notes/min)");
+        }
+
+        @Test
+        @DisplayName("prints the tracked beats' tempo, not the map's inflated average")
+        void prefersTheTrackedBeatsOverTheMap() {
+            // fromBeatTimes forces a whole pulse into the audio before the first
+            // tracked beat, so the map's average runs above the real tempo -- 122
+            // for a 120 BPM source on this project's own fixture. Guarded here
+            // because the two agree exactly whenever the grid starts at t=0, and
+            // a fixture that starts there cannot tell the two sources apart.
+            Score tracked = trackedAt(0.5, TimeSignature.FOUR_FOUR);
+
+            assertThat(tracked.tempoMap().averageTempo(tracked.durationSeconds()))
+                    .as("the map is inflated, so this fixture discriminates")
+                    .isGreaterThan(124.0);
+            assertThat(AnalyzeCommand.tempoLine(tracked)).isEqualTo("Tempo   120.0 BPM");
         }
 
         @Test

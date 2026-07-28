@@ -214,11 +214,17 @@ public record Score(
      * <p>The order is:
      *
      * <ol>
-     *   <li><b>A single-segment map wins.</b> Such a map did not come from
-     *       tracked beats -- {@link TempoMap#fromBeatTimes} emits one segment per
-     *       beat interval -- so it is a tempo somebody supplied, and a supplied
-     *       tempo is a correction of the tracked one. Ignoring it is ignoring the
-     *       instruction.
+     *   <li><b>A single-segment map wins</b>, taken to mean a tempo somebody
+     *       supplied rather than one measured, because a supplied tempo is a
+     *       correction of the tracked one and ignoring it ignores the
+     *       instruction. Segment count is a <em>proxy</em> for that, not proof of
+     *       it: {@link TempoMap#fromBeatTimes} emits one segment per beat
+     *       interval, so it produces a single-segment map only in the degenerate
+     *       case of exactly two beats with the first at second 0. That case is
+     *       harmless today, because the one segment then carries exactly the
+     *       tempo the grid's median would report. It stops being harmless if a
+     *       caller uses the explicit-pulse overload, where the two would differ.
+     *       Carrying provenance rather than inferring it is #73.
      *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
      *       one dropped beat does not skew it. Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first

@@ -215,6 +215,32 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("heads a chart with the tracked beats' tempo, not the map's average")
+    void headerUsesTheTrackedBeats() {
+        // Every other fixture here uses a constant map or a grid starting at
+        // t=0.0, and in both cases every source of a tempo agrees, so none of
+        // them can tell which one the header read. This one has a lead-in: a
+        // whole pulse crammed into the 0.05s before the first tracked beat pulls
+        // the map's average to 124, against the 120 a musician would count.
+        List<Double> pulses = new ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            pulses.add(0.05 + i * 0.5);
+        }
+        Score tracked = Score.empty(
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR), 12.05)
+                .withBeatGrid(BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR,
+                        Confidence.of(0.9)))
+                .withChords(new ChordProgression(List.of(
+                        Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
+                                0.05, 12.05, Confidence.of(0.9))), Confidence.of(0.9)));
+
+        assertThat(tracked.tempoMap().averageTempo(12.05))
+                .as("the map is inflated, so this fixture discriminates")
+                .isGreaterThan(124.0);
+        assertThat(ChordChart.toText(tracked)).contains("Tempo  120 BPM");
+    }
+
+    @Test
     @DisplayName("prints a tempo the user can type back in, in any locale")
     void tempoLineIsLocaleIndependent() {
         // picocli parses --tempo with Double.valueOf, which rejects "120,0". A

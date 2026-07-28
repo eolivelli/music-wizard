@@ -81,9 +81,9 @@ public final class ChordChart {
         // chart would print "120,0", which that rejects; under ar_EG it would
         // print Arabic-Indic digits.
         if (meter.beatUnitQuarters() == 1.0) {
-            return String.format(Locale.ROOT, "Tempo  %.0f BPM%n", quarterBpm);
+            return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
         }
-        return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)%n",
+        return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
                 meter.countedTempo(quarterBpm), quarterBpm);
     }
 
