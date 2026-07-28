@@ -304,7 +304,8 @@ public final class DownbeatEstimator {
         double chance = 1.0 / beatsPerBar;
         double share = total > 0 ? harmony[phase] / total : chance;
         // The clamp is belt and braces rather than load-bearing: neither bound
-        // can bind. A share above one is impossible, and a share below chance
+        // can bind, given that novelty is floored at zero. A share above one
+        // would need a negative novelty somewhere, and a share below chance
         // means this phase is not the harmonic maximum -- which makes the margin
         // negative and `decided` zero, so the product is zero either way.
         double preferred = beatsPerBar > 1
@@ -395,8 +396,12 @@ public final class DownbeatEstimator {
             // novelty would make a silent passage the most persuasive evidence
             // in the recording -- more persuasive than any real chord change,
             // which never reaches a full cosine distance of 1.
+            // Floored at zero because a cosine can come back a hair above 1 for
+            // two identical spans, which would make an unchanged bar carry a
+            // novelty of -2e-16 -- enough to push a phase's share of the total
+            // above 1 and put a negative where the arithmetic below assumes none.
             double cosine = cosine(spans[beat - 1], spans[beat]);
-            novelty[beat] = Double.isNaN(cosine) ? 0 : 1 - cosine;
+            novelty[beat] = Double.isNaN(cosine) ? 0 : Math.max(0, 1 - cosine);
         }
         return novelty;
     }

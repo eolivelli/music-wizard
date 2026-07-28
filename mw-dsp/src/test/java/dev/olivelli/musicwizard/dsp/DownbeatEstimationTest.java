@@ -794,7 +794,7 @@ class DownbeatEstimationTest {
                     beats, chromaWithNovelty(novelty, 16), flatEnvelope(10), 1);
 
             assertThat(estimate.phase()).isZero();
-            assertThat(estimate.confidence().value()).isEqualTo(0.85);
+            assertThat(estimate.confidence().value()).isCloseTo(0.85, within(1e-9));
         }
 
         @Test
@@ -949,6 +949,25 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("bars are as long as the estimate says, not as long as 4/4")
+        void usesTheMeterTheEstimateCarries() {
+            // The bar length travels inside the Estimate so that a phase computed
+            // for one meter cannot be applied to another. Nothing here infers a
+            // meter -- 4/4 remains the prior, and this is the caller's meter
+            // being honoured rather than guessed -- but hard-coding four in the
+            // one place that reads it left the whole suite green.
+            BeatTracker.Result result = new BeatTracker.Result(
+                    List.of(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5), 120, Confidence.CERTAIN);
+
+            BeatGrid grid = BeatTracker.toBeatGrid(result,
+                    new DownbeatEstimator.Estimate(0, 3, Confidence.CERTAIN));
+
+            assertThat(grid.beats()).extracting(BeatGrid.Beat::positionInBar)
+                    .containsExactly(0, 1, 2, 0, 1, 2, 0, 1);
+            assertThat(grid.downbeatTimes()).containsExactly(0.0, 1.5, 3.0);
+        }
+
+        @Test
         @DisplayName("puts the bar lines mid-grid when that is where the chords change")
         void barLinesNeedNotStartAtTheFirstBeat() {
             // The same, reached through the whole stage rather than by handing
@@ -990,9 +1009,17 @@ class DownbeatEstimationTest {
         void rejectsEmptyResult() {
             BeatTracker.Result empty =
                     new BeatTracker.Result(List.of(), 120, Confidence.UNKNOWN);
+            OnsetEnvelope envelope = new OnsetEnvelope(new double[100], 100);
 
             assertThatIllegalArgumentException().isThrownBy(() -> BeatTracker.toBeatGrid(empty,
                     new DownbeatEstimator.Estimate(0, 4, Confidence.CERTAIN)));
+            // Both overloads, and both saying what the caller asked for rather
+            // than what a stage they did not call happens to complain about:
+            // without its own check the onset overload reports a downbeat phase
+            // it was never asked to estimate.
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> BeatTracker.toBeatGrid(empty, envelope, 4))
+                    .withMessageContaining("beat grid");
         }
     }
 }
