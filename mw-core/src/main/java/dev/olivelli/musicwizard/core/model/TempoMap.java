@@ -169,9 +169,35 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      *
      * <p>This is the honest conversion when beats were tracked from audio: it
      * does not pretend the performance had a constant tempo.
+     *
+     * <p>Each tracked pulse is taken to be one beat <em>of the given meter</em>,
+     * which in compound time is a dotted quarter rather than a quarter -- see
+     * {@link TimeSignature#beatUnitQuarters()}. Assuming a quarter regardless
+     * bars 6/8 every three pulses instead of every two. Use
+     * {@link #fromBeatTimes(List, TimeSignature, double)} for a grid tracked at
+     * some other pulse, such as one tracked at half tempo.
      */
     public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return fromBeatTimes(beatSeconds, timeSignature, timeSignature.beatUnitQuarters());
+    }
+
+    /**
+     * Builds a tempo map from a beat grid whose pulse is known independently of
+     * the meter.
+     *
+     * @param pulseQuarters quarter notes spanned by one tracked pulse: 1.0 for a
+     *                      quarter-note pulse, 1.5 for the dotted-quarter pulse
+     *                      of compound time, 2.0 for a grid tracked at half tempo
+     */
+    public static TempoMap fromBeatTimes(
+            List<Double> beatSeconds, TimeSignature timeSignature, double pulseQuarters) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        if (!Double.isFinite(pulseQuarters) || pulseQuarters <= 0) {
+            throw new IllegalArgumentException(
+                    "pulseQuarters must be finite and positive, got: " + pulseQuarters);
+        }
         if (beatSeconds.size() < 2) {
             throw new IllegalArgumentException(
                     "need at least two beats to infer tempo, got " + beatSeconds.size());
@@ -189,34 +215,41 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // A beat tracker never reports a beat at exactly t=0, so the audio before
         // the first tracked beat is a lead-in. Left unmodelled it maps to negative
         // beats, and any note or chord estimated in the intro then fails to
-        // convert. The lead-in is therefore given a whole number of beats.
+        // convert. The lead-in is therefore given a whole number of pulses -- of
+        // pulses rather than of quarter beats, because a whole number of quarters
+        // is not a whole number of dotted quarters, and rounding to the wrong one
+        // puts the first tracked pulse a third of a beat off the grid in 6/8.
         //
         // It must be at least one whenever the first beat is after t=0. The
         // alternative -- shifting the seconds axis so the first tracked beat
         // becomes the origin -- silently misaligns the entire map from the audio
         // by up to half a beat, which is worse than the problem it solves.
-        int leadInBeats = 0;
+        int leadInPulses = 0;
         if (firstBeat > 0) {
             double ratio = firstBeat / firstInterval;
             // Guard the cast: a pathological interval (units confusion, say
             // samples for seconds) would otherwise overflow silently into a
             // nonsensical but structurally valid map.
             long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
-            leadInBeats = (int) Math.max(1, rounded);
+            leadInPulses = (int) Math.max(1, rounded);
         }
 
+        // Written so that a quarter-note pulse multiplies by an exact 1.0 in the
+        // same association order the pulse-agnostic version used, which leaves
+        // every simple-meter map bit-for-bit what it was.
         List<TempoSegment> built = new ArrayList<>(beatSeconds.size() + 1);
-        if (leadInBeats > 0) {
+        if (leadInPulses > 0) {
             // Stretch or squeeze the lead-in so it lands exactly on the first
             // tracked beat rather than merely close to it. The map is then
-            // anchored at (beat 0, second 0) and every tracked beat sits on an
-            // integer beat position.
-            built.add(new TempoSegment(0, 0.0, 60.0 * leadInBeats / firstBeat));
+            // anchored at (beat 0, second 0) and every tracked pulse sits on a
+            // whole number of pulses from the origin.
+            built.add(new TempoSegment(0, 0.0, 60.0 * leadInPulses * pulseQuarters / firstBeat));
         }
         for (int i = 0; i < beatSeconds.size() - 1; i++) {
             double start = beatSeconds.get(i);
             double interval = beatSeconds.get(i + 1) - start;
-            built.add(new TempoSegment(leadInBeats + i, start, 60.0 / interval));
+            built.add(new TempoSegment(
+                    (leadInPulses + i) * pulseQuarters, start, 60.0 * pulseQuarters / interval));
         }
         return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
     }

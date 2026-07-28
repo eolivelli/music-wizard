@@ -131,7 +131,9 @@ public final class ChordChart {
      * immediately as chords landing in the wrong bar.
      */
     private static double barDurationSeconds(Score score) {
-        int beatsPerBar = score.tempoMap().initialTimeSignature().numerator();
+        // Counted beats, not the numerator: the grid holds one pulse per counted
+        // beat, so a 6/8 bar is two of the tracked intervals and not six.
+        int beatsPerBar = score.tempoMap().initialTimeSignature().beatsPerBar();
 
         Optional<BeatGrid> grid = score.beatGrid();
         if (grid.isPresent() && grid.get().size() >= 2) {

@@ -122,6 +122,35 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("bars a 6/8 chart every two pulses, not every six")
+    void barsCompoundTimeOnTheCountedBeat() {
+        // A 6/8 tune at a dotted-quarter pulse of 0.5s: one bar is a second, and
+        // one chord per bar for four bars. Reading the meter's numerator instead
+        // of its counted beats made a bar three times too long, so all four
+        // chords collapsed into the first two bars.
+        List<Double> pulses = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            pulses.add(i * 0.5);
+        }
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        for (int i = 0; i < 4; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    i * 1.0, i * 1.0 + 1.0, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT), 4.0)
+                .withBeatGrid(BeatGrid.ofTimes(pulses, TimeSignature.SIX_EIGHT, Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        List<String> lines = ChordChart.barLines(score);
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0)).contains("C").contains("G").contains("A").contains("F");
+        assertThat(lines.get(0)).doesNotContain("%");
+    }
+
+    @Test
     @DisplayName("escapes quotes in the title rather than producing broken source")
     void escapesTitle() {
         Score score = fourChordSong(1).withMetadata("A \"Quoted\" Title", null);

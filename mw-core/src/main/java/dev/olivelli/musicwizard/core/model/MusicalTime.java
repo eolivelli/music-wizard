@@ -55,6 +55,18 @@ public record MusicalTime(int bar, double beatInBar, TimeSignature timeSignature
         return bar + 1;
     }
 
+    /**
+     * One-based position within the bar counted in the meter's own beats, the
+     * way a musician says it: the second beat of a 6/8 bar is 2, not 2.5.
+     *
+     * <p>{@link #beatInBar()} answers the same question in quarter notes, which
+     * is what the timing arithmetic needs and what a reader does not want to see.
+     * The two agree exactly in every x/4 meter.
+     */
+    public double beatNumber() {
+        return beatInBar / timeSignature.beatUnitQuarters() + 1;
+    }
+
     /** True when this position falls exactly on the downbeat of its bar. */
     @JsonIgnore
     public boolean isDownbeat() {
@@ -69,6 +81,6 @@ public record MusicalTime(int bar, double beatInBar, TimeSignature timeSignature
 
     @Override
     public String toString() {
-        return "bar " + barNumber() + " beat " + (beatInBar + 1);
+        return "bar " + barNumber() + " beat " + beatNumber();
     }
 }

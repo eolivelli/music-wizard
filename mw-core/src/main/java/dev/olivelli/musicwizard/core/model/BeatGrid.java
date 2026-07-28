@@ -86,7 +86,17 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         }
     }
 
-    /** Builds a grid from bare beat times, assuming a fixed meter and a downbeat on the first beat. */
+    /**
+     * Builds a grid from bare beat times, assuming a fixed meter and a downbeat
+     * on the first beat.
+     *
+     * <p>Prefer {@link #ofTimes(List, TimeSignature, Confidence)}: the count
+     * wanted here is tracked pulses per bar, which is the meter's numerator only
+     * in simple time. In 6/8 it is two, and passing six phases the downbeats
+     * three times too slowly.
+     *
+     * @param beatsPerBar tracked pulses in one bar, not the meter's numerator
+     */
     public static BeatGrid ofTimes(List<Double> beatSeconds, int beatsPerBar, Confidence confidence) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
         if (beatsPerBar < 1) {
@@ -98,6 +108,20 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
             built.add(new Beat(beatSeconds.get(i), position == 0, position));
         }
         return new BeatGrid(built, confidence, confidence);
+    }
+
+    /**
+     * Builds a grid from bare beat times in a known meter, one tracked pulse per
+     * counted beat.
+     *
+     * <p>The safe form of {@link #ofTimes(List, int, Confidence)}, because the
+     * meter answers the question that overload leaves to the caller: 6/8 bars
+     * every two pulses, not every six.
+     */
+    public static BeatGrid ofTimes(
+            List<Double> beatSeconds, TimeSignature timeSignature, Confidence confidence) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return ofTimes(beatSeconds, timeSignature.beatsPerBar(), confidence);
     }
 
     /** Just the beat times. */

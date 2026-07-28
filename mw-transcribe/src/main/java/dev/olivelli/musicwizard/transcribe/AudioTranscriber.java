@@ -112,7 +112,9 @@ public final class AudioTranscriber {
                 ? TempoMap.constant(settings.tempoOverride(), meter)
                 : TempoMap.fromBeatTimes(beatTimes, meter);
 
-        BeatGrid grid = BeatTracker.toBeatGrid(beats, envelope, meter.numerator());
+        // Pulses per bar, not the numerator: the tracker emits one pulse per
+        // counted beat, and 6/8 counts two of them to a bar rather than six.
+        BeatGrid grid = BeatTracker.toBeatGrid(beats, envelope, meter.beatsPerBar());
 
         progress.accept("estimating chords");
         Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
