@@ -370,6 +370,42 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("parts share the end of the score, so a part that stops early rests to it")
+    void partsShareTheEndOfTheScore() {
+        // Round 7 of review found the two ends of the bar grid derived from
+        // different scopes: the pickup across the score, the last bar across this
+        // track alone. A bass that drops out for the outro therefore ended its
+        // staff mid-system, with a final bar line drawn under the middle of the
+        // parts beside it -- and every check passed, because each bar it did
+        // write summed and LilyPond had nothing to complain about.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C5"), note(4, 4, "D5"), note(8, 4, "E5"), note(12, 4, "F5"));
+        NoteTrack bass = track(PartRole.BASS, "Bass", note(0, 4, "C2"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, bass);
+
+        String bassSource = StaffNotation.toLilyPond(score, bass);
+        assertThat(barCount(bassSource))
+                .as("the bass staff stops before the vocal staff does")
+                .isEqualTo(barCount(StaffNotation.toLilyPond(score, voice)))
+                .isEqualTo(4);
+        assertThat(bassSource).contains("R1 |");
+        assertBarsFillTheirMeter("shared end", bassSource);
+    }
+
+    @Test
+    @DisplayName("music beginning exactly on the second downbeat is a bar of rest, not a pickup")
+    void musicOnTheSecondDownbeatIsNotAPickup() {
+        // The boundary of the pickup test, which is the value most likely to be
+        // written as <= by somebody tidying it: one beat further in and every bar
+        // line in the piece moves.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(4, 4, "G4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).doesNotContain("\\partial").contains("R1 |");
+        assertBarsFillTheirMeter("second downbeat", source);
+    }
+
+    @Test
     @DisplayName("a note too short to write does not open a pickup bar for music that is not there")
     void aDroppedNoteDoesNotCreateAPickup() {
         // Round 4 of review found this emitting "\\partial 1*63/64" followed by
@@ -425,6 +461,18 @@ class StaffNotationTest {
      * have caught a bar that is a sixteenth short, which LilyPond engraves
      * happily and no golden file would have questioned.
      */
+    /** Bars in an emitted staff, counted by the bar checks the emitter writes. */
+    private static int barCount(String source) {
+        int bars = 0;
+        for (String rawLine : source.split("\n")) {
+            String line = rawLine.trim();
+            if (line.endsWith("|") && !line.startsWith("\\bar")) {
+                bars++;
+            }
+        }
+        return bars;
+    }
+
     private static void assertBarsFillTheirMeter(String label, String source) {
         double barLength = 0;
         double expected = -1;

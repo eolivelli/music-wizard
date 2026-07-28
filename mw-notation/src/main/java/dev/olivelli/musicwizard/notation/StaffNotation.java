@@ -130,14 +130,14 @@ public final class StaffNotation {
         requireQuantized(track);
 
         List<Event> events = eventsOf(score, track);
-        double pickupStart = pickupStart(score, track, events);
+        Span music = musicSpan(score, track, events);
 
         StringBuilder out = new StringBuilder();
         out.append("  \\new Staff \\with { instrumentName = \"")
                 .append(escape(track.name())).append("\" } {\n");
         out.append("    \\clef \"").append(clefOf(track.role())).append("\"\n");
         out.append("    \\key ").append(keyOf(score)).append('\n');
-        appendBars(out, score, events, pickupStart);
+        appendBars(out, score, events, music);
         out.append("    \\bar \"|.\"\n");
         out.append("  }\n");
         return out.toString();
@@ -271,11 +271,19 @@ public final class StaffNotation {
      * after it lands in the wrong place relative to what a reader counts. This is
      * the normal case for song melodies, not an edge case.
      *
-     * <p>Taken from the earliest note in the <em>score</em> rather than in this
-     * track, so that parts engraved separately still share a bar grid. A bass
-     * that enters in bar four does not get its own pickup. The track being
-     * engraved is included whether or not the score holds it, so that engraving
-     * a track the caller built by hand does not silently lose its pickup.
+     * <p>Both ends are taken across the whole <em>score</em> rather than across
+     * this track, so that parts engraved separately share a bar grid. A bass
+     * that enters in bar four does not get its own pickup, and one that stops
+     * playing in bar four does not get its own final bar line — it rests to the
+     * end like a real part, instead of the staff simply stopping. The track being
+     * engraved is included whether or not the score holds it, so that engraving a
+     * track the caller built by hand does not silently lose either end.
+     *
+     * <p>Only the start was score-wide until round 7 of review found the two
+     * derived from different scopes. A part that dropped out early ended its
+     * staff mid-system, with a final bar line drawn under the middle of the parts
+     * beside it — and every check passed, because each bar it did write summed
+     * correctly and LilyPond had nothing to complain about.
      *
      * <p>Measured on the <em>events</em>, not on the notes. Those differ: a note
      * shorter than a 64th disappears when its onset and offset snap to the same
@@ -291,31 +299,44 @@ public final class StaffNotation {
      * move every bar line. That is the price of parts that agree with each other
      * rather than each choosing its own grid, and it argues for engraving a score
      * once its stages have all finished rather than part by part as they land.
+     *
+     * @param startBeat where the music begins, which is a pickup when it falls
+     *                  inside the opening bar and zero otherwise
+     * @param endBeat   where the last part stops sounding
      */
-    private static double pickupStart(Score score, NoteTrack engraved, List<Event> events) {
-        double earliest = events.isEmpty()
-                ? Double.POSITIVE_INFINITY : events.getFirst().startBeat();
+    private record Span(double startBeat, double endBeat) {
+    }
+
+    private static Span musicSpan(Score score, NoteTrack engraved, List<Event> events) {
+        double earliest = Double.POSITIVE_INFINITY;
+        double latest = 0;
+        List<List<Event>> parts = new ArrayList<>();
+        parts.add(events);
         for (NoteTrack track : score.tracks()) {
-            if (track.equals(engraved)) {
-                continue;
+            if (!track.equals(engraved)) {
+                parts.add(eventsOf(score, track));
             }
-            List<Event> other = eventsOf(score, track);
-            if (!other.isEmpty()) {
-                earliest = Math.min(earliest, other.getFirst().startBeat());
+        }
+        for (List<Event> part : parts) {
+            if (!part.isEmpty()) {
+                earliest = Math.min(earliest, part.getFirst().startBeat());
+                // The last event ends last: overlaps were resolved by truncating
+                // the earlier of the pair, so ends increase with onsets.
+                latest = Math.max(latest, part.getLast().endBeat());
             }
         }
         double firstBar = score.tempoMap().timeSignatureAtBar(0).quarterBeatsPerBar();
         // Only a gap inside the opening bar is a pickup. Music that starts in bar
         // two starts after a bar of rest, and saying otherwise would move every
         // bar line in the piece.
-        return Double.isFinite(earliest) && earliest > 0 && earliest < firstBar ? earliest : 0;
+        boolean pickup = Double.isFinite(earliest) && earliest > 0 && earliest < firstBar;
+        return new Span(pickup ? earliest : 0, latest);
     }
 
     private static void appendBars(StringBuilder out, Score score, List<Event> events,
-                                   double pickupStart) {
-        // The last event ends last: overlaps were resolved by truncating the
-        // earlier of the pair, so ends increase with onsets.
-        double musicEnd = events.isEmpty() ? 0 : events.getLast().endBeat();
+                                   Span music) {
+        double pickupStart = music.startBeat();
+        double musicEnd = music.endBeat();
 
         TimeSignature previousMeter = null;
         double barStart = 0;

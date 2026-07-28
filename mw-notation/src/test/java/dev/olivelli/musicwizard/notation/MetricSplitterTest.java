@@ -292,15 +292,17 @@ class MetricSplitterTest {
      * Positions worth trying in a bar, in shortest-value units.
      *
      * <p>Deliberately built around the beat rather than by stepping: the bar
-     * line, one unit either side of the first two beats, the middle of the bar
-     * and one unit either side of it, and the last unit. Half of them are off the
-     * beat by construction, whatever the meter, which is what a scaled step
-     * cannot promise.
+     * line, one unit either side of each of the first two beats, the last beat,
+     * the middle of the bar and one unit either side of it, and the last unit.
+     * Half of them are off the beat by construction, whatever the meter, which is
+     * what a scaled step cannot promise — round 6 found a step that came out a
+     * whole multiple of the beat unit in the three longest meters, so those
+     * sampled nothing but downbeats.
      */
     private static java.util.SortedSet<Long> samplePositions(long bar, long beat) {
         java.util.SortedSet<Long> positions = new java.util.TreeSet<>(List.of(
-                0L, 1L, beat - 1, beat, beat + 1, 2 * beat, 2 * beat + 1,
-                bar / 2, bar / 2 + 1, bar - beat, bar - 1, bar));
+                0L, 1L, beat - 1, beat, beat + 1, 2 * beat - 1, 2 * beat, 2 * beat + 1,
+                bar / 2 - 1, bar / 2, bar / 2 + 1, bar - beat, bar - 1, bar));
         positions.removeIf(position -> position < 0 || position > bar);
         return positions;
     }
