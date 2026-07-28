@@ -344,8 +344,7 @@ public final class AudioTranscriber {
      * between two pulses names neither of them, and the phase that comes out is
      * this method's guess at which neighbour was meant, not the user's
      * instruction -- yet it would otherwise be recorded as more certain than any
-     * phase harmony ever backs. The distance is already measured for the warning
-     * above; it costs nothing to let it say something.
+     * phase harmony ever backs.
      */
     private DownbeatEstimator.Estimate forcedDownbeat(
             List<Double> beatTimes, double downbeatSeconds, int beatsPerBar) {
@@ -393,9 +392,11 @@ public final class AudioTranscriber {
      * bounds it in both directions.
      *
      * <p>Where the request falls past the last pulse or before the first there is
-     * no rival on that side, and the median stands in: a time outside the tracked
-     * range is not a phase the grid can express, and the floor is the right
-     * answer for it.
+     * no rival on that side, and the median stands in. The falloff is then the
+     * plain one: a request ten milliseconds before the first pulse is
+     * unmistakably naming it and stays near certain, while one well outside the
+     * tracked range reaches the floor, which is the right answer for a time the
+     * grid cannot express as a phase at all.
      *
      * <p>The floor is deliberately above what an unsupported phase scores in
      * {@link DownbeatEstimator} and above its onsets-only ceiling, and below what

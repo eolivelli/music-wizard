@@ -242,10 +242,29 @@ class FirstDownbeatOverrideTest {
         assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 7, 4.05).value())
                 .isCloseTo(0.75, within(1e-9));
 
-        // Outside the tracked range there is no rival on that side at all, so the
-        // median stands in and the answer is the floor rather than certainty.
+        // The same crowded gap approached from the other side. Asserted because
+        // the rival is chosen by which side of the pulse the request fell, and
+        // every case above happens to fall after it -- so reading the rival as
+        // "always the next pulse" would pass all of them and report 0.90 here.
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.15).value())
+                .isCloseTo(0.75, within(1e-9));
+        assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 8, 4.1).value())
+                .isCloseTo(0.5, within(1e-9));
+
+        // Past the last pulse there is no rival on that side at all, so the median
+        // stands in; well past it, that reaches the floor rather than certainty.
         assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 9, 600.0).value())
                 .isCloseTo(0.5, within(1e-9));
+        // Before the first pulse, likewise -- and this is the only shape that
+        // tells "no rival on that side" apart from "the rival is the next pulse",
+        // since it needs a non-zero distance and an opening gap shorter than the
+        // median. Reading the rival as the next pulse would score 0.50.
+        List<Double> shortOpening = List.of(1.0, 1.1, 1.6, 2.1, 2.6, 3.1);
+        assertThat(AudioTranscriber.snappedPhaseConfidence(shortOpening, 0, 0.95).value())
+                .isCloseTo(0.90, within(1e-9));
+
+        // Landing exactly on the first pulse is certain because the distance is
+        // zero, not because of anything about rivals.
         assertThat(AudioTranscriber.snappedPhaseConfidence(ragged, 0, 0.0))
                 .isEqualTo(Confidence.CERTAIN);
 
