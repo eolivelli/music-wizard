@@ -22,7 +22,9 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,92 @@ class BeatTrackingTest {
 
     private static OnsetEnvelope envelopeOf(float[] samples) {
         return OnsetEnvelope.fromAudio(new AudioBuffer(samples, RATE));
+    }
+
+    /**
+     * Clicks at intervals drawn uniformly from 0.12 s to 1.12 s: onsets as sharp
+     * as a metronome's with no tempo behind them.
+     *
+     * <p>Seeded rather than random. A battery that passes on one draw and fails
+     * on the next is not a regression gate, and the point of these fixtures is
+     * to be comparable between runs.
+     */
+    private static float[] arrhythmicClicks(double seconds, long seed) {
+        Random random = new Random(seed);
+        List<Double> times = new ArrayList<>();
+        for (double t = 0; t < seconds; t += 0.12 + random.nextDouble()) {
+            times.add(t);
+        }
+        return clicksAt(times, seconds);
+    }
+
+    /** Clicks with the same shape as {@link SignalFactory#clickTrack}, at given times. */
+    private static float[] clicksAt(List<Double> times, double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        int clickLength = Math.max(1, RATE / 100);
+        for (double time : times) {
+            int start = (int) Math.round(time * RATE);
+            for (int i = 0; i < clickLength && start + i < out.length; i++) {
+                double decay = Math.exp(-8.0 * i / clickLength);
+                out[start + i] += (float) (0.8 * decay * Math.sin(2 * Math.PI * 1000 * i / RATE));
+            }
+        }
+        return out;
+    }
+
+    private static float[] whiteNoise(double seconds, long seed) {
+        Random random = new Random(seed);
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (float) (0.3 * random.nextGaussian());
+        }
+        return out;
+    }
+
+    /** A held note with vibrato: {@code cents} of frequency sweep at {@code rateHz}. */
+    private static float[] vibrato(double frequencyHz, double cents, double rateHz,
+                                   double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        double phase = 0;
+        for (int i = 0; i < out.length; i++) {
+            double t = i / (double) RATE;
+            double swept = frequencyHz
+                    * Math.pow(2, (cents / 1200.0) * Math.sin(2 * Math.PI * rateHz * t));
+            phase += 2 * Math.PI * swept / RATE;
+            out[i] = (float) (0.5 * Math.sin(phase));
+        }
+        return out;
+    }
+
+    /** A held note with harmonics: constant amplitude, no attack, no modulation. */
+    private static float[] heldNote(double fundamentalHz, int harmonics, double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        for (int harmonic = 1; harmonic <= harmonics; harmonic++) {
+            for (int i = 0; i < out.length; i++) {
+                out[i] += (float) (0.4 / harmonic
+                        * Math.sin(2 * Math.PI * fundamentalHz * harmonic * i / RATE));
+            }
+        }
+        return out;
+    }
+
+    /** A tone that swells from quiet to loud: smooth, but not stationary. */
+    private static float[] crescendo(double frequencyHz, double seconds) {
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        for (int i = 0; i < out.length; i++) {
+            double t = i / (double) RATE;
+            out[i] = (float) (0.5 * (0.2 + 0.8 * t / seconds)
+                    * Math.sin(2 * Math.PI * frequencyHz * t));
+        }
+        return out;
+    }
+
+    private static float[] scaled(float[] samples, double gain) {
+        float[] out = samples.clone();
+        for (int i = 0; i < out.length; i++) {
+            out[i] *= (float) gain;
+        }
+        return out;
     }
 
     @Nested
@@ -87,9 +175,8 @@ class BeatTrackingTest {
             // stand out. Clicks reach about 10 standard deviations; a sustained
             // sine reaches under 3.
             //
-            // Deliberately not asserting on Estimate.strength: that measure does
-            // not separate these two cases, and tuning it until this test passed
-            // would be fitting the metric to the test rather than to reality.
+            // This is the property Estimate.peakiness turns into a number; the
+            // assertions on that live in TempoConfidence.
             double tonePeak = peak(envelopeOf(SignalFactory.sine(440, 20, RATE)));
             double clickPeak = peak(envelopeOf(SignalFactory.clickTrack(120, 20, RATE)));
 
@@ -155,6 +242,472 @@ class BeatTrackingTest {
         void silenceHasNoConfidence() {
             assertThat(TempoEstimator.estimate(envelopeOf(SignalFactory.silence(5, RATE))).strength())
                     .isZero();
+        }
+    }
+
+    /**
+     * Confidence has to rank rhythmic material above everything else, which is
+     * more than "the two cases in the bug report come out the right way round".
+     * These run a battery — clicks across the tempo range, smooth tones, noise,
+     * sharp but arrhythmic onsets, silence — because each of the two components
+     * is separately fooled by one of them, and only the product survives all
+     * five.
+     */
+    @Nested
+    @DisplayName("tempo confidence")
+    class TempoConfidence {
+
+        private static final double SECONDS = 20;
+        private static final long SEED = 20_260_727L;
+
+        private static double strengthOf(float[] samples) {
+            return TempoEstimator.estimate(envelopeOf(samples)).strength();
+        }
+
+        // 78 and 105 are the floor and a second trough, 136 the ceiling, found
+        // by sweeping every integer tempo from 60 to 200 offline. The round
+        // tempi alone gave 0.63 to 0.82 and made the spread look like a narrow
+        // band; it is not one, and it is not monotone -- 105 scores 0.59 against
+        // 110's 0.90. The extremes are pinned here rather than the sweep being
+        // run in the suite, which costs 30 s for a claim that does not change.
+        @ParameterizedTest(name = "a {0} BPM click track reads as confidently rhythmic")
+        @ValueSource(doubles = {60, 78, 100, 105, 120, 136, 160, 180, 200})
+        void clickTracksScoreHigh(double bpm) {
+            TempoEstimator.Estimate estimate =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
+
+            // Swept floor is 0.526 at 78 BPM, ceiling 0.931 at 136. The bound
+            // sits about 15% under the floor: close enough that a real
+            // regression trips it, far enough that the frame-grid jitter which
+            // produces the trough in the first place does not.
+            assertThat(estimate.strength()).isGreaterThan(0.45);
+            assertThat(estimate.peakiness()).isGreaterThan(0.9);
+        }
+
+        @Test
+        @DisplayName("a sustained tone no longer out-scores a click track")
+        void sustainedToneNoLongerBeatsClicks() {
+            TempoEstimator.Estimate tone =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.sine(440, SECONDS, RATE)));
+            TempoEstimator.Estimate clicks =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(120, SECONDS, RATE)));
+
+            // The inversion the issue reported is still there in the periodicity
+            // component and always will be: a smooth envelope really is
+            // self-similar at every lag, so 0.96 for the tone against 0.85 for
+            // the clicks is an honest reading of periodicity. What was wrong was
+            // calling that confidence.
+            assertThat(tone.periodicity()).isGreaterThan(clicks.periodicity());
+
+            // Peakiness is what breaks the tie, and it is not close.
+            assertThat(tone.peakiness()).isLessThan(0.05);
+            assertThat(clicks.peakiness()).isGreaterThan(0.9);
+            assertThat(tone.strength()).isLessThan(clicks.strength() / 20);
+        }
+
+        @Test
+        @DisplayName("a held harmonic note still out-scores half the click tempi: the unfixed half")
+        void sustainedHarmonicNoteIsNotSeparated() {
+            // The limitation that stops this PR from closing issue #26, pinned at
+            // its worst measured point rather than a convenient one.
+            // sustainedToneNoLongerBeatsClicks above uses a pure 440 Hz sine,
+            // which collapses to 0.004 -- but that collapse is a coincidence of
+            // that pitch, not a rule about smooth material.
+            //
+            // This fixture is a held note: eight harmonics at constant
+            // amplitude, no attack, no decay, no vibrato, no tremolo. Nothing
+            // about it is rhythmic. It scores about 0.75, above a click track at
+            // 78 BPM (0.53) and above 72 of the 141 integer tempi from 60 to
+            // 200 -- more than half. 440 Hz with six partials scores 0.57 and
+            // beats only 9, which is why the harmonic count has to be swept and
+            // the worst point pinned: neighbouring inputs differ hugely because
+            // partial beating folds into the tempo band at a rate set by the
+            // exact frequencies present.
+            //
+            // Still a real improvement: the same fixture beat 135 of 141 on
+            // main and beats 72 now. Both halves are asserted. Issue #49.
+            double worst = strengthOf(heldNote(440, 8, SECONDS));
+
+            assertThat(worst).isBetween(0.6, 0.9);
+            assertThat(worst).isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
+            // The improvement half: on main this fixture scored 0.947 and beat
+            // all but six tempi. It must stay below the tempi the estimator
+            // handles cleanly.
+            assertThat(worst).isLessThan(strengthOf(SignalFactory.clickTrack(136, SECONDS, RATE)));
+        }
+
+        @Test
+        @DisplayName("a pure sine's score depends on its pitch, so 440 Hz proves nothing alone")
+        void pureSineScoreDependsOnPitch() {
+            // crescendoScoresLow and sustainedToneNoLongerBeatsClicks both use
+            // 440 Hz, where the score is 0.004. That is not representative, and
+            // asserting only there would let the javadoc keep claiming that
+            // featureless material collapses.
+            double at440 = strengthOf(SignalFactory.sine(440, SECONDS, RATE));
+            double at87 = strengthOf(SignalFactory.sine(87.31, SECONDS, RATE));
+
+            assertThat(at440).isLessThan(0.05);
+            // Two orders of magnitude apart, from nothing but pitch.
+            assertThat(at87).isGreaterThan(0.3);
+            assertThat(at87).isGreaterThan(50 * at440);
+
+            // And a crescendo at the same pitch tracks it, so "not stationary"
+            // is not what rescues the 440 Hz case either.
+            assertThat(strengthOf(crescendo(87.31, SECONDS))).isCloseTo(at87, within(0.05));
+        }
+
+        @Test
+        @DisplayName("material outside the search range scores zero, like silence")
+        void tooSlowOrTooShortScoresZero() {
+            // Documented because it is a trap for anyone gating on a low
+            // threshold: these are not weak readings, they are no reading at
+            // all, and they are indistinguishable from silence.
+            TempoEstimator.Estimate slow =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.clickTrack(30, SECONDS, RATE)));
+
+            assertThat(slow.peakiness()).isGreaterThan(0.9);   // the onsets are there
+            assertThat(slow.periodicity()).isZero();           // 30 BPM is below MIN_TEMPO
+            assertThat(slow.strength()).isZero();              // and so this says "nothing"
+
+            // Likewise a clip too short to hold several periods.
+            assertThat(strengthOf(SignalFactory.clickTrack(120, 1, RATE)))
+                    .isLessThan(strengthOf(SignalFactory.sine(440, SECONDS, RATE)));
+
+            // Only the bottom of the range does this. Above MAX_TEMPO the
+            // estimator finds a subharmonic instead of giving up, so a 300 BPM
+            // metronome reads high rather than zero -- the asymmetry is worth
+            // pinning because "outside the search range reads as nothing" is the
+            // natural and wrong assumption.
+            assertThat(strengthOf(SignalFactory.clickTrack(300, SECONDS, RATE)))
+                    .isGreaterThan(0.5);
+        }
+
+        @Test
+        @DisplayName("a swelling tone is smooth too, and scores no better")
+        void crescendoScoresLow() {
+            // A crescendo is the case a periodicity-only measure could plausibly
+            // have got right by accident, since it is not stationary. It does
+            // not: only the envelope's shape matters, and that is still a wash.
+            assertThat(strengthOf(crescendo(440, SECONDS))).isLessThan(0.05);
+        }
+
+        @Test
+        @DisplayName("sharp onsets with no tempo behind them score low")
+        void arrhythmicClicksScoreLow() {
+            TempoEstimator.Estimate estimate =
+                    TempoEstimator.estimate(envelopeOf(arrhythmicClicks(SECONDS, SEED)));
+
+            // The mirror image of the sustained tone, and the reason peakiness
+            // cannot be the whole answer either: these onsets are every bit as
+            // impulsive as a metronome's, and there is no tempo there at all.
+            assertThat(estimate.peakiness()).isGreaterThan(0.9);
+            assertThat(estimate.periodicity()).isLessThan(0.2);
+            assertThat(estimate.strength()).isLessThan(0.2);
+        }
+
+        @Test
+        @DisplayName("white noise scores low on both counts")
+        void whiteNoiseScoresLow() {
+            assertThat(strengthOf(whiteNoise(SECONDS, SEED))).isLessThan(0.15);
+        }
+
+        @Test
+        @DisplayName("silence scores zero on every component")
+        void silenceScoresZero() {
+            TempoEstimator.Estimate estimate =
+                    TempoEstimator.estimate(envelopeOf(SignalFactory.silence(SECONDS, RATE)));
+
+            assertThat(estimate.periodicity()).isZero();
+            assertThat(estimate.peakiness()).isZero();
+            assertThat(estimate.strength()).isZero();
+        }
+
+        @Test
+        @DisplayName("every rhythmic signal outranks every non-rhythmic one")
+        void rhythmicMaterialOutranksTheRest() {
+            // The claim worth locking down is the ordering, not any single
+            // number: a threshold placed anywhere in the gap must classify all
+            // of these correctly.
+            double worstRhythmic = Double.MAX_VALUE;
+            // Includes 78 and 105, the two troughs of the tempo sweep; the
+            // round tempi alone would have understated the worst case by 0.10.
+            for (double bpm : new double[] {60, 78, 90, 105, 120, 150, 180}) {
+                worstRhythmic = Math.min(worstRhythmic,
+                        strengthOf(SignalFactory.clickTrack(bpm, SECONDS, RATE)));
+            }
+            worstRhythmic = Math.min(worstRhythmic, strengthOf(SignalFactory.clickTrackWithChords(
+                    120, new double[][] {SignalFactory.majorTriad(60), SignalFactory.majorTriad(67)},
+                    4, SECONDS, RATE)));
+
+            double bestNonRhythmic = Math.max(Math.max(
+                            strengthOf(SignalFactory.sine(440, SECONDS, RATE)),
+                            strengthOf(crescendo(440, SECONDS))),
+                    Math.max(strengthOf(whiteNoise(SECONDS, SEED)),
+                            strengthOf(arrhythmicClicks(SECONDS, SEED))));
+
+            // Measured with the seed below: 0.53 against 0.06, a factor of
+            // nine. Asserting three rather than nine because the seeded
+            // fixtures do vary -- swept over 200 seeds the arrhythmic clicks
+            // reach 0.12, which still leaves a factor of 4.5, so the bound
+            // holds for draws this test will never see.
+            //
+            // The claim is about these four fixtures and no wider. A modulated
+            // sustained tone would land inside the gap and is deliberately not
+            // in the set; modulatedToneIsNotSeparated covers that, and says so.
+            assertThat(worstRhythmic).isGreaterThan(3 * bestNonRhythmic);
+        }
+
+        @Test
+        @DisplayName("a modulated sustained tone is NOT separated, and this pins how far it gets")
+        void modulatedToneIsNotSeparated() {
+            // A documented limitation rather than a passing grade. One held note
+            // with ordinary vibrato reads as rhythmic: 50 cents at 2 Hz measures
+            // 0.61, against a 60 BPM click track's 0.63. The dB flux sharpens
+            // smooth modulation into a periodic train of accents, at which point
+            // no statistic of the onset envelope can tell it from a beat.
+            //
+            // Two candidate fixes were measured and both refuted, so this is not
+            // a matter of trying harder: counting how many mel bands rise
+            // together does not separate them (vibrato lifts 32 of 40 against a
+            // click's 40, because frequency-modulating a tone drags its whole
+            // leakage skirt), and a SuperFlux-style maximum-filtered reference
+            // frame makes it worse, taking vibrato from 0.78 to 0.90 and a plain
+            // sine from 0.004 to 0.63. Issue #43 carries both measurements.
+            //
+            // Asserted as a range so that the day this improves, the test fails
+            // and the limitation gets revisited rather than quietly outliving
+            // its own fix.
+            double modulated = strengthOf(vibrato(440, 50, 2.0, SECONDS));
+            double unmodulated = strengthOf(SignalFactory.sine(440, SECONDS, RATE));
+
+            assertThat(modulated).isBetween(0.4, 0.8);
+            assertThat(modulated).isGreaterThan(20 * unmodulated);
+
+            // The 2 Hz case above only ties the click track. Pinning the faster
+            // one too, because that is where the ordering actually *inverts* --
+            // and a partial fix that pulled 2 Hz below the line while leaving
+            // this one above it would otherwise leave the tripwire green.
+            TempoEstimator.Estimate fast =
+                    TempoEstimator.estimate(envelopeOf(vibrato(440, 50, 7.0, SECONDS)));
+            double slowestClicks = strengthOf(SignalFactory.clickTrack(60, SECONDS, RATE));
+
+            assertThat(fast.strength()).isGreaterThan(slowestClicks);
+            // And it beats the weakest click tempo in the whole sweep by a
+            // margin no threshold could split: 0.64 against 0.53.
+            assertThat(fast.strength())
+                    .isGreaterThan(strengthOf(SignalFactory.clickTrack(78, SECONDS, RATE)));
+            // 7 Hz is 420 modulations per minute; the reported tempo is the
+            // vibrato rate divided down, not a beat anyone could tap.
+            assertThat(fast.beatsPerMinute()).isCloseTo(140, within(5.0));
+        }
+
+        @Test
+        @DisplayName("confidence does not depend on how loud the recording is")
+        void confidenceIsLevelIndependent() {
+            // Both components are ratios over an envelope that is already
+            // normalised, so a quiet mix must not read as less rhythmic than a
+            // loud one. Worth pinning: gating on confidence would otherwise
+            // penalise quiet recordings for being quiet.
+            float[] clicks = SignalFactory.clickTrack(120, SECONDS, RATE);
+
+            assertThat(strengthOf(scaled(clicks, 0.01)))
+                    .isCloseTo(strengthOf(clicks), within(0.02));
+        }
+
+        @Test
+        @DisplayName("peakiness reads as the duty cycle it claims to measure")
+        void peakinessMatchesDutyCycle() {
+            // Pinned on constructed arrays rather than on audio, so a change in
+            // the onset front end cannot quietly move the arithmetic. An impulse
+            // train on for one frame in fifty has kurtosis 48.0 by the closed
+            // form for a two-valued signal, hence 1 - 3/48.0.
+            double[] impulses = new double[5_000];
+            for (int i = 0; i < impulses.length; i += 50) {
+                impulses[i] = 1;
+            }
+            assertThat(TempoEstimator.peakiness(impulses)).isCloseTo(1 - 3.0 / 48.0, within(0.01));
+
+            // A constant signal has no events to be sharp, and a sinusoid is
+            // flatter than noise rather than peakier -- kurtosis 1.5 -- so both
+            // must floor at zero instead of going negative.
+            double[] constant = new double[100];
+            java.util.Arrays.fill(constant, 5.0);
+            assertThat(TempoEstimator.peakiness(constant)).isZero();
+
+            double[] sinusoid = new double[1_000];
+            for (int i = 0; i < sinusoid.length; i++) {
+                sinusoid[i] = Math.sin(2 * Math.PI * i / 37.0);
+            }
+            assertThat(TempoEstimator.peakiness(sinusoid)).isZero();
+
+            assertThat(TempoEstimator.peakiness(new double[0])).isZero();
+            assertThat(TempoEstimator.peakiness(new double[] {1})).isZero();
+        }
+
+        @Test
+        @DisplayName("peakiness depends on the signal's shape, not its offset or its level")
+        void peakinessIsInvariantUnderOffsetAndScale() {
+            // Both properties matter because estimateWindow passes a *slice* of
+            // an envelope normalised over the whole recording: a window is
+            // neither mean-zero nor unit-variance, so measuring it about the
+            // recording's mean, or guarding on an absolute variance, would make
+            // a window's answer depend on what surrounds it.
+            //
+            // Pinned on arrays rather than on audio deliberately. The same claim
+            // asserted over two windows of a click track cannot fail -- measured,
+            // the difference between taking the moments about the window's own
+            // mean and about the recording's is 0.00002, against any tolerance
+            // loose enough to write -- so that test would have kept passing after
+            // the property was lost.
+            double[] impulses = new double[5_000];
+            for (int i = 0; i < impulses.length; i += 50) {
+                impulses[i] = 1;
+            }
+            double reference = TempoEstimator.peakiness(impulses);
+            assertThat(reference).isGreaterThan(0.9);
+
+            assertThat(TempoEstimator.peakiness(offsetBy(impulses, 7.5)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(offsetBy(impulses, -1e6)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(multipliedBy(impulses, 1e-9)))
+                    .isCloseTo(reference, within(1e-9));
+            assertThat(TempoEstimator.peakiness(multipliedBy(impulses, 1e9)))
+                    .isCloseTo(reference, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("an envelope carrying a non-finite sample reports no evidence")
+        void nonFiniteEnvelopeIsRejectedQuietly() {
+            // OnsetEnvelope's constructor is public and validates only the frame
+            // rate, so a hand-built envelope can carry a NaN or an infinity.
+            // Neither can come from fromAudio, but the failure mode if one did
+            // was an IllegalArgumentException from Estimate's own validation
+            // blaming peakiness for a malformed input -- the least informative
+            // place for it to surface.
+            for (double poison : new double[] {Double.NaN, Double.POSITIVE_INFINITY,
+                    Double.NEGATIVE_INFINITY}) {
+                double[] values = new double[64];
+                for (int i = 0; i < values.length; i += 8) {
+                    values[i] = 1;
+                }
+                values[13] = poison;
+                OnsetEnvelope envelope = new OnsetEnvelope(values, 172.0);
+
+                assertThat(TempoEstimator.peakiness(values)).isZero();
+                assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
+                assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("an envelope of finite but enormous samples reports no evidence too")
+        void overflowingEnvelopeIsRejectedQuietly() {
+            // These are the cases the finiteness checks exist for, and every one
+            // of them has only finite samples -- which is exactly why the test
+            // above does not reach them. The overflow happens inside the
+            // arithmetic rather than arriving in the input, and it happens at
+            // two different layers that need separate guards.
+            //
+            // Both of the first two saturate the running sum, so the mean and
+            // then `largest` go infinite: the second is the same failure with
+            // the opposite sign, not a different one. Neither reaches the
+            // deviation arithmetic.
+            double[] hugeMeanPositive = new double[64];
+            java.util.Arrays.fill(hugeMeanPositive, 1e308);
+
+            double[] hugeMeanNegative = new double[64];
+            java.util.Arrays.fill(hugeMeanNegative, -1.7e308);
+            hugeMeanNegative[13] = 1.7e308;
+
+            // This one is different in kind: its mean and moments are perfectly
+            // well behaved, and it fails a layer later, in the autocorrelation,
+            // which squares the envelope.
+            double[] hugeImpulses = new double[64];
+            for (int i = 0; i < hugeImpulses.length; i += 8) {
+                hugeImpulses[i] = 1e200;
+            }
+
+            for (double[] values : List.of(hugeMeanPositive, hugeMeanNegative, hugeImpulses)) {
+                OnsetEnvelope envelope = new OnsetEnvelope(values, 172.0);
+
+                assertThat(TempoEstimator.estimate(envelope).strength()).isZero();
+                assertThat(BeatTracker.track(envelope).confidence().value()).isZero();
+            }
+
+            assertThat(TempoEstimator.peakiness(hugeMeanPositive)).isZero();
+            assertThat(TempoEstimator.peakiness(hugeMeanNegative)).isZero();
+            assertThat(TempoEstimator.peakiness(hugeImpulses)).isGreaterThan(0.4);
+            assertThat(TempoEstimator.estimate(new OnsetEnvelope(hugeImpulses, 172.0))
+                    .periodicity()).isZero();
+        }
+
+        @Test
+        @DisplayName("merely enormous input still gets a real answer, not a rejection")
+        void overflowGuardsDoNotFireOnLargeButUsableInput() {
+            // The other half of the previous test, and the one that stops these
+            // guards being tightened into a bug. Rejecting absurd input is only
+            // right if input that is merely large still reads correctly: both
+            // components are ratios, so scaling up must not move the answer
+            // until the arithmetic actually overflows. Only upward -- scaling
+            // *down* past 1e-9 does change it, because OnsetEnvelope.isFlat
+            // uses an absolute threshold and estimate() short-circuits on it.
+            // That is pre-existing and unreachable through fromAudio, but it is
+            // why this test claims nothing about the small end.
+            //
+            // 1e150 is the largest round decade that survives the
+            // autocorrelation, which squares.
+            double[] enormous = new double[64];
+            double[] ordinary = new double[64];
+            for (int i = 0; i < enormous.length; i += 8) {
+                enormous[i] = 1e150;
+                ordinary[i] = 1;
+            }
+
+            TempoEstimator.Estimate large =
+                    TempoEstimator.estimate(new OnsetEnvelope(enormous, 172.0));
+            TempoEstimator.Estimate small =
+                    TempoEstimator.estimate(new OnsetEnvelope(ordinary, 172.0));
+
+            assertThat(large.strength()).isGreaterThan(0.1);
+            assertThat(large.strength()).isCloseTo(small.strength(), within(1e-12));
+            assertThat(large.peakiness()).isCloseTo(small.peakiness(), within(1e-12));
+            assertThat(large.periodicity()).isCloseTo(small.periodicity(), within(1e-12));
+        }
+
+        @Test
+        @DisplayName("windowed estimates of a click track stay rhythmic wherever the window sits")
+        void windowedEstimatesStayRhythmic() {
+            // A plain end-to-end guard on estimateWindow, making no claim about
+            // which mean the moments are taken about -- that is
+            // peakinessIsInvariantUnderOffsetAndScale's job.
+            OnsetEnvelope envelope = envelopeOf(SignalFactory.clickTrack(120, 60, RATE));
+            int windowFrames = envelope.frameOf(15);
+
+            TempoEstimator.Estimate first =
+                    TempoEstimator.estimateWindow(envelope, 0, windowFrames);
+            TempoEstimator.Estimate last = TempoEstimator.estimateWindow(
+                    envelope, envelope.length() - windowFrames, envelope.length());
+
+            assertThat(first.strength()).isGreaterThan(0.5);
+            assertThat(last.strength()).isGreaterThan(0.5);
+            assertThat(first.peakiness()).isCloseTo(last.peakiness(), within(0.05));
+        }
+
+        private static double[] offsetBy(double[] values, double offset) {
+            double[] out = values.clone();
+            for (int i = 0; i < out.length; i++) {
+                out[i] += offset;
+            }
+            return out;
+        }
+
+        private static double[] multipliedBy(double[] values, double factor) {
+            double[] out = values.clone();
+            for (int i = 0; i < out.length; i++) {
+                out[i] *= factor;
+            }
+            return out;
         }
     }
 
