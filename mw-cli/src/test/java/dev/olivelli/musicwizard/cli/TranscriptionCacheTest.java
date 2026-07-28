@@ -73,9 +73,19 @@ class TranscriptionCacheTest {
         return Workspace.open(workspaceDirectory);
     }
 
+    /**
+     * The key a plain {@code analyze} of this workspace would use.
+     *
+     * <p>The advisor flag is read from the workspace's own effective config
+     * rather than written as a literal, because the command computes it the same
+     * way and a literal here would silently stop matching the moment the default
+     * changed -- which it already did not match: hard-coding {@code true} made
+     * three tests miss a cache they had just written to.
+     */
     private StageCache.Key keyFor(SourceKind kind) {
         return AnalyzeCommand.transcriptionKey(kind, workspace().sourceFile(),
-                kind == SourceKind.AUDIO ? AudioTranscriber.Options.defaults() : null, false);
+                kind == SourceKind.AUDIO ? AudioTranscriber.Options.defaults() : null,
+                false, workspace().effectiveConfig().isLlmEnabled());
     }
 
     /**
@@ -90,8 +100,8 @@ class TranscriptionCacheTest {
      * thing that can separate them.
      */
     private StageCache.Key audioKeyWithMidiComponents() {
-        return AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, workspace().sourceFile(), null, false);
+        return AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, workspace().sourceFile(),
+                null, false, workspace().effectiveConfig().isLlmEnabled());
     }
 
     @Test
@@ -257,9 +267,10 @@ class TranscriptionCacheTest {
         Path source = workspace().sourceFile();
 
         String plain = AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false).digest();
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, true)
+                .digest();
         String corrected = AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
-                new AudioTranscriber.Options(90.0, null, null), false).digest();
+                new AudioTranscriber.Options(90.0, null, null), false, true).digest();
 
         assertThat(corrected)
                 .as("a corrected tempo produces a different audio analysis")
@@ -268,14 +279,28 @@ class TranscriptionCacheTest {
         // setting that changes the analysis while the key does not change is how
         // a corrected run gets served the answer it was correcting.
         assertThat(AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true).digest())
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true, true)
+                .digest())
                 .as("--skip-separation will change the audio analysis under #8")
                 .isNotEqualTo(plain);
+        // The advisor is keyed on both paths: #11 advises on meter, structure
+        // and spelling, all of which a symbolic import produces too.
+        assertThat(AnalyzeCommand.transcriptionKey(
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, false)
+                .digest())
+                .as("the advisor will change the analysis under #11")
+                .isNotEqualTo(plain);
+        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null, false, false)
+                .digest())
+                .as("the advisor is not an audio-only stage")
+                .isNotEqualTo(AnalyzeCommand.transcriptionKey(
+                        SourceKind.MIDI, source, null, false, true).digest());
         // Nothing on the MIDI path reads any of them, so keying on them would
         // miss the cache for a reason that is not a reason.
-        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null, false).digest())
+        assertThat(AnalyzeCommand.transcriptionKey(
+                SourceKind.MIDI, source, null, false, true).digest())
                 .isEqualTo(AnalyzeCommand.transcriptionKey(
                         SourceKind.MIDI, source,
-                        new AudioTranscriber.Options(90.0, null, null), true).digest());
+                        new AudioTranscriber.Options(90.0, null, null), true, true).digest());
     }
 }

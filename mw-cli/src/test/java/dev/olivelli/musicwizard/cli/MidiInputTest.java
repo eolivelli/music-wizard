@@ -276,6 +276,39 @@ class MidiInputTest {
         }
 
         @Test
+        @DisplayName("a key declared part-way through is not reported as the key at the start")
+        void aLateKeySignatureIsNotReportedAsTheOpeningKey() {
+            // Unlike the tempo and meter rows, this one has no origin guarantee
+            // behind it: TempoMap's constructor forces its first segment and
+            // first meter change to bar 0, and nothing imposes that on the key
+            // list -- MidiTranscriber emits exactly the events the file carries.
+            //
+            // Every key fixture in the repo declares at beat 0, so this row's
+            // overstatement survived five rounds behind the origin trap
+            // CLAUDE.md names. This file declares its first key four bars in and
+            // says nothing about the bars before it.
+            Sequence lateKey = MidiFixtures.sequence()
+                    .name("Late key")
+                    .tempo(120)
+                    .timeSignature(4, 4)
+                    .keySignatureAt(16, 1, dev.olivelli.musicwizard.core.model.Mode.MINOR)
+                    .part("Melody", 0)
+                    .note(1, 1, 60).note(17, 1, 64)
+                    .build();
+            Path workspace = imported(lateKey, "latekey");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+            Score score = Workspace.open(workspace).readScore().orElseThrow();
+
+            assertThat(score.keys()).singleElement().satisfies(key ->
+                    assertThat(key.startBeat().orElseThrow())
+                            .as("the fixture must not declare at the origin to discriminate")
+                            .isEqualTo(16.0));
+            assertThat(summaryBlock(analyze.out()))
+                    .contains("Key     not declared at the start; E minor from beat 16.000");
+        }
+
+        @Test
         @DisplayName("a tempo the format cannot hold exactly is not printed to a precision it lacks")
         void tempoIsPrintedToThePrecisionTheFormatHas() {
             // A MIDI tempo event carries whole microseconds per quarter note, so

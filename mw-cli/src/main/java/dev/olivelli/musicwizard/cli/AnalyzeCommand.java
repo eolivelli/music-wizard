@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
@@ -193,8 +194,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     private Transcription transcribe(
             Workspace workspace, SourceKind kind, Path source, MusicWizardConfig config) {
         StageCache cache = workspace.cache();
-        StageCache.Key key = transcriptionKey(
-                kind, source, audioOptions(kind, config), skipSeparationRequested(config));
+        StageCache.Key key = transcriptionKey(kind, source, audioOptions(kind, config),
+                skipSeparationRequested(config), config.isLlmEnabled());
 
         if (!force) {
             Score cached = readCached(cache, key);
@@ -291,22 +292,31 @@ final class AnalyzeCommand implements Callable<Integer> {
      * path they change nothing, because nothing reads them, so keying on them
      * would miss the cache for a reason that is not a reason.
      *
-     * <p>{@code skipSeparation} is a component even though <em>nothing reads it
-     * yet</em>, and that is the point: separation lands under #8, and a setting
-     * that will change the analysis while the key does not change is how a
-     * corrected run gets served the answer it was correcting. This project has
-     * already paid for that shape once with {@code --tempo}. Keying on it now
-     * costs a recompute that would have produced the same score anyway; keying
-     * on it later costs a wrong one.
+     * <p>{@code skipSeparation} and {@code advisorEnabled} are components even
+     * though <em>nothing reads either yet</em>, and that is the point:
+     * separation lands under #8 and the advisor under #11, and a setting that
+     * will change the analysis while the key does not change is how a corrected
+     * run gets served the answer it was correcting. This project has already
+     * paid for that shape once with {@code --tempo}. Keying on them now costs a
+     * recompute that would have produced the same score anyway; keying on them
+     * later costs a wrong one.
+     *
+     * <p>The advisor is keyed on <em>both</em> paths, unlike the audio settings.
+     * It is not an audio stage: #11 advises on meter, structure and spelling,
+     * every one of which a symbolic import produces too. Round 6 found it keyed
+     * nowhere while {@code skipSeparation} was keyed, with nothing in this
+     * javadoc saying whether that was a decision -- it was not, and the argument
+     * above applies to it word for word.
      *
      * <p>Package-private so a test can compare two keys over the same file.
      */
     static StageCache.Key transcriptionKey(SourceKind kind, Path source,
                                            AudioTranscriber.Options options,
-                                           boolean skipSeparation) {
+                                           boolean skipSeparation, boolean advisorEnabled) {
         StageCache.Key key = StageCache.Key
                 .forStage(STAGE_PREFIX + kind.name().toLowerCase(Locale.ROOT))
                 .with("build", buildVersion())
+                .with("advisor", advisorEnabled)
                 .withFile("source", source);
         if (kind == SourceKind.AUDIO && options != null) {
             key.with("tempo", options.tempoOverride())
@@ -407,14 +417,54 @@ final class AnalyzeCommand implements Callable<Integer> {
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
     }
 
+    /**
+     * The key the file declares, and from where.
+     *
+     * <p>Where matters here and does not in the two rows above it, which is the
+     * whole reason this one is longer. {@link TempoMap}'s constructor requires
+     * its first tempo segment and first meter change to sit at the origin, so
+     * {@code segments().get(0)} and {@code initialTimeSignature()} really are
+     * "at the start" by construction. Nothing imposes that on
+     * {@link Score#keys()}: {@code MidiTranscriber.readKeys} emits exactly the
+     * key-signature events the file contains, at whatever tick they carry, so the
+     * first of them may be four bars in.
+     *
+     * <p>Printing it unqualified said the piece opens in a key the file says
+     * nothing about, and with a second key present it read "E minor at the start,
+     * changed 1 time later" for a file whose first four bars are undeclared --
+     * the overstatement round 1 removed from the tempo and meter rows, surviving
+     * in the third row of the same block because that row's fixture, like every
+     * key fixture in the repo, declared at beat 0.
+     *
+     * <p>Judged on the beat axis when there is one, and on seconds otherwise. A
+     * key imported from MIDI always carries both; one deserialized from a score
+     * some other producer wrote need not.
+     */
     private static String statedKey(Score score) {
         if (score.keys().isEmpty()) {
             return "not declared by the file";
         }
-        String opening = score.keys().get(0).displayName();
+        Key first = score.keys().get(0);
+        String opening = first.displayName();
         int changes = countChanges(score.keys(), key -> key.tonic() + "/" + key.mode());
-        return changes == 0 ? opening : opening + " at the start, " + changed(changes);
+        String tail = changes == 0 ? "" : ", " + changed(changes);
+        double start = first.startBeat().orElse(first.startSeconds());
+        if (start <= ORIGIN_TOLERANCE) {
+            return changes == 0 ? opening : opening + " at the start" + tail;
+        }
+        return String.format(Locale.ROOT, "not declared at the start; %s from beat %.3f%s",
+                opening, start, tail);
     }
+
+    /**
+     * How near the origin a position has to be to count as being at it.
+     *
+     * <p>A key imported from MIDI at tick 0 divides to exactly 0.0, so this is
+     * not doing any rounding for that path. It is here for a score read back from
+     * somebody else's JSON, where a position of 1e-15 means the origin and
+     * saying "from beat 0.000" about it would be true and useless.
+     */
+    private static final double ORIGIN_TOLERANCE = 1e-9;
 
     /**
      * How many times a value actually changes along a list.
