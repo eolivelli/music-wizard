@@ -191,6 +191,30 @@ class DownbeatEstimationTest {
         return new OnsetEnvelope(new double[(int) Math.round(seconds * 100)], 100);
     }
 
+    /**
+     * An envelope with a chosen strength at each phase's beats.
+     *
+     * <p>{@link OnsetEnvelope} is normalised to zero mean and unit variance,
+     * so the levels at the beats are free to be negative, and the tests below
+     * use negative ones deliberately: testing only with positive values would
+     * miss anything that treats the envelope as a magnitude, which is what
+     * let the first version of this scoring through. The fill between the
+     * beats is scenery — only the beat frames are ever sampled — and is set
+     * below zero so that reading this fixture does not suggest otherwise.
+     *
+     * @param levelsPerPhase strength at the beats of each phase, in deviations
+     */
+    private static OnsetEnvelope envelopeOf(List<Double> beatTimes, double[] levelsPerPhase) {
+        double[] strength = new double[(int) Math.round(
+                (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
+        java.util.Arrays.fill(strength, -0.2);
+        for (int beat = 0; beat < beatTimes.size(); beat++) {
+            strength[(int) Math.round(beatTimes.get(beat) * 100)] =
+                    levelsPerPhase[Math.floorMod(beat, levelsPerPhase.length)];
+        }
+        return new OnsetEnvelope(strength, 100);
+    }
+
     private static List<Double> beatsEvery(double interval, int count) {
         List<Double> times = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -304,7 +328,7 @@ class DownbeatEstimationTest {
             // well the harmony is measured but how much a measurement of harmony
             // is worth as a claim about bar lines, so every number harmony backs
             // moved down together and the contrast this test is about did not.
-            assertThat(withChordChanges.value()).isGreaterThan(0.55);
+            assertThat(withChordChanges.value()).isGreaterThan(0.575);
             // Capped at 0.45 for a phase nothing but the accent supports, so it
             // can never read as strongly as one harmony has backed. The weakest
             // evidence reporting the highest confidence is how the original bug
@@ -392,6 +416,34 @@ class DownbeatEstimationTest {
 
             assertThat(anticipated.estimate(4).confidence().value()).isLessThanOrEqualTo(0.6);
             assertThat(onTheBar.estimate(4).confidence().value()).isLessThanOrEqualTo(0.6);
+        }
+
+        @Test
+        @DisplayName("are not lifted by the backbeat they land on")
+        void theBackbeatUnderThePushDoesNotLiftIt() {
+            // The case the audio fixtures here cannot show, because every click on
+            // them is identical and the onset term is structurally zero. Real
+            // material is not like that, and it is worse than neutral: a push of
+            // one beat lands the chord on beat 4, which carries a backbeat, which
+            // is the loudest phase the envelope reports (#70). So the accent
+            // agrees with the anticipation.
+            //
+            // Uncapped, that reported the pushed reading at 0.70 -- above the same
+            // music unpushed, and above the 0.85 it replaced in the only sense
+            // that matters, since it is the wrong answer being lifted by the
+            // agreement of two sources that are both wrong for the same reason.
+            List<Double> beats = beatsEvery(0.5, 129);
+            Chroma pushedOntoPhaseThree = stepwiseChroma(128, 4, 3);
+
+            for (double backbeat : new double[] {0, 0.5, 1, 2, 10, 1000}) {
+                DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
+                        beats, pushedOntoPhaseThree,
+                        envelopeOf(beats, new double[] {0, 0, 0, backbeat}), 4);
+
+                assertThat(estimate.phase()).as("backbeat %s", backbeat).isEqualTo(3);
+                assertThat(estimate.confidence().value())
+                        .as("backbeat %s", backbeat).isLessThanOrEqualTo(0.6);
+            }
         }
 
         @Test
@@ -528,30 +580,6 @@ class DownbeatEstimationTest {
                 vectors[span][span < changeAt ? 0 : 5] = 1;
             }
             return new Chroma(vectors, 0);
-        }
-
-        /**
-         * An envelope with a chosen strength at each phase's beats.
-         *
-         * <p>{@link OnsetEnvelope} is normalised to zero mean and unit variance,
-         * so the levels at the beats are free to be negative, and the tests below
-         * use negative ones deliberately: testing only with positive values would
-         * miss anything that treats the envelope as a magnitude, which is what
-         * let the first version of this scoring through. The fill between the
-         * beats is scenery — only the beat frames are ever sampled — and is set
-         * below zero so that reading this fixture does not suggest otherwise.
-         *
-         * @param levelsPerPhase strength at the beats of each phase, in deviations
-         */
-        private static OnsetEnvelope envelopeOf(List<Double> beatTimes, double[] levelsPerPhase) {
-            double[] strength = new double[(int) Math.round(
-                    (beatTimes.get(beatTimes.size() - 1) + 1) * 100)];
-            java.util.Arrays.fill(strength, -0.2);
-            for (int beat = 0; beat < beatTimes.size(); beat++) {
-                strength[(int) Math.round(beatTimes.get(beat) * 100)] =
-                        levelsPerPhase[Math.floorMod(beat, levelsPerPhase.length)];
-            }
-            return new OnsetEnvelope(strength, 100);
         }
 
         @Test
@@ -759,9 +787,12 @@ class DownbeatEstimationTest {
                 }
             }
 
-            // The onset bonus rides on top of the harmonic ceiling, so the bound
-            // over the whole sweep is the two together and never more.
-            assertThat(worst).isLessThanOrEqualTo(0.7 + 1e-9).isGreaterThan(0.6);
+            // Exactly the ceiling and not a thousandth over it, at the hardest
+            // input the sweep can build. The accent is saturated on the winning
+            // phase throughout, so before #48 capped the total this came back at
+            // 0.7 -- the onset bonus riding on top of a ceiling it was supposed to
+            // sit under.
+            assertThat(worst).isCloseTo(0.6, within(1e-9));
         }
 
         @Test
@@ -804,8 +835,12 @@ class DownbeatEstimationTest {
             }
 
             // Below what the same measure reports for harmony that does line up,
-            // asserted just below as the control.
-            assertThat(worst).isLessThan(0.6);
+            // asserted just below as the control. 0.575 rather than the 0.6 the
+            // control reaches: 0.6 is the top of the band, so bounding by it would
+            // assert only that a confidence is not at the theoretical maximum,
+            // where the old 0.8 was 90% of the old band. 0.575 is that 90% of the
+            // new one, and the measured worst is 0.533.
+            assertThat(worst).isLessThan(0.575);
             // And rarely anywhere near it. The worst case alone is a weak claim:
             // the calibration that matters is that guesses are reported as
             // guesses in the aggregate, not that no single one slips through.
