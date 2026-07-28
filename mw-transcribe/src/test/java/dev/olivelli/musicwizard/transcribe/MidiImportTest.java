@@ -177,6 +177,31 @@ class MidiImportTest {
     }
 
     @Test
+    @DisplayName("the third tempo segment starts where the second one carried it to")
+    void secondsAccumulateAcrossMoreThanOneTempoChange() {
+        // Two changes, not one. With a single change every segment's start in
+        // seconds is measured from the origin, where "accumulate from the
+        // previous segment" and "multiply the beat by this tempo" agree exactly
+        // -- the t=0 trap one level in. Segment 2 is the first that can tell
+        // them apart, and a wrong answer here is not subtle: TempoMap validates
+        // that the stored tempo carries from one segment to the next, so it
+        // would reject an ordinary file outright.
+        Sequence sequence = MidiFixtures.sequence()
+                .tempo(120)
+                .tempoAt(4, 60)
+                .tempoAt(8, 120)
+                .part("Melody", 0).note(1, 1, 60).note(9, 1, 62).build();
+        Score score = TRANSCRIBER.transcribe(sequence);
+        assertThat(score.tempoMap().segments()).hasSize(3);
+        // Four beats at 120 is 2s; four more at 60 is another 4s.
+        assertThat(score.tempoMap().segments().get(1).startSeconds()).isEqualTo(2.0);
+        assertThat(score.tempoMap().segments().get(2).startSeconds()).isEqualTo(6.0);
+        assertThat(score.tempoMap().beatsToSeconds(8.0)).isEqualTo(6.0);
+        // The note after the second change is placed through the whole map.
+        assertThat(named(score, "Melody").notes().get(1).onsetSeconds()).isEqualTo(6.5);
+    }
+
+    @Test
     @DisplayName("a file that names no tempo is played at 120, as the specification says")
     void theDefaultTempoIsOneHundredAndTwenty() {
         Sequence bare = MidiFixtures.sequence()

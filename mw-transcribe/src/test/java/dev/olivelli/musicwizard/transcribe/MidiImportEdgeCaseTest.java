@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import java.nio.charset.StandardCharsets;
@@ -428,6 +429,156 @@ class MidiImportEdgeCaseTest {
                 .withMessageContaining("not a readable file");
     }
 
+    // -------------------------------------------------- round 1 review findings
+    @Test
+    @DisplayName("two tempo events the seconds axis cannot separate do not sink the file")
+    void aTempoEventIndistinguishableInTimeIsSkipped() throws Exception {
+        // Far-fetched but reachable, and the failure is total rather than
+        // partial: TempoMap requires strictly increasing start times, so without
+        // the skip the whole import throws and the file is unreadable.
+        //
+        // A very long stretch at the slowest tempo a MIDI file can name puts the
+        // seconds axis at 1.7e13, where one ulp is about four milliseconds. One
+        // tick at the fastest nameable tempo advances it by a microsecond, which
+        // is absorbed: the second and third segments start at the same instant.
+        Sequence sequence = new Sequence(Sequence.PPQ, 1);
+        Track track = sequence.createTrack();
+        tempo(track, 0, 0xFFFFFF);
+        tempo(track, 1_000_000_000_000L, 1);
+        tempo(track, 1_000_000_000_001L, 500_000);
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 1, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().segments()).hasSize(2);
+        assertThat(messages).anyMatch(message ->
+                message.contains("indistinguishable in time"));
+    }
+
+
+    @Test
+    @DisplayName("a meter that is superseded before its bar begins leaves no change behind")
+    void aSupersededMeterDoesNotBecomeAChangeToTheMeterAlreadyInForce() throws Exception {
+        // 4/4, then 7/8 a fraction of a bar in, then 4/4 again a fraction later.
+        // The 7/8 moves forward to bar 1 and the second 4/4 lands on bar 1 too,
+        // so the file's effective meter never changes at all. Recording a change
+        // from 4/4 to 4/4 is accepted by the model and answered correctly by
+        // timeSignatureAtBar -- and engraved by the notation layer as a
+        // redundant time signature in the middle of the piece.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 100, 0x58, new byte[] {7, 3, 24, 8});
+        meta(track, 200, 0x58, new byte[] {4, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 1920, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges())
+                .containsExactly(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR));
+        assertThat(messages).noneMatch(message -> message.contains("the meter changes"));
+    }
+
+    @Test
+    @DisplayName("a meter that never takes effect is said to never take effect")
+    void aDroppedMeterIsReportedRatherThanVanishing() throws Exception {
+        // 4/4, then 3/4 half-way through bar 0, then 5/4 at the bar line. The
+        // 3/4 moves forward to bar 1, where the 5/4 displaces it: it is in force
+        // nowhere. Saying only "3/4 takes effect at bar 2" would be a false
+        // report of a bar the score does not contain in that meter.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 2 * PPQ, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, 4 * PPQ, 0x58, new byte[] {5, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 8 * PPQ, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
+                new TempoMap.MeterChange(1, new TimeSignature(5, 4)));
+        assertThat(messages).anyMatch(message ->
+                message.contains("3/4") && message.contains("never takes effect"));
+        // And no message claims a bar number the score does not hold in 3/4.
+        assertThat(messages).noneMatch(message ->
+                message.contains("3/4") && message.contains("taking effect at bar"));
+    }
+
+    @Test
+    @DisplayName("the same pitch on two channels of one track is two notes, not one queue")
+    void notePairingIsKeyedByChannelAsWellAsPitch() throws Exception {
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        trackName(track, "Split");
+        // Interleaved so that pairing by pitch alone crosses the two channels
+        // over: it would give each part the other's length.
+        noteOn(track, 0, 0, 60, 90);
+        noteOn(track, 480, 1, 60, 90);
+        noteOff(track, 960, 1, 60);
+        noteOff(track, 1440, 0, 60);
+
+        List<NoteTrack> tracks = transcriber.transcribe(sequence).tracks();
+        assertThat(tracks).extracting(NoteTrack::name)
+                .containsExactly("Split ch 1", "Split ch 2");
+        assertThat(tracks.get(0).notes().get(0).onsetBeat()).contains(0.0);
+        assertThat(tracks.get(0).notes().get(0).durationBeats()).contains(3.0);
+        assertThat(tracks.get(1).notes().get(0).onsetBeat()).contains(1.0);
+        assertThat(tracks.get(1).notes().get(0).durationBeats()).contains(1.0);
+    }
+
+    @Test
+    @DisplayName("an emptied named track does not become the title of the piece")
+    void theTitleComesFromTheConductorTrackOnly() throws Exception {
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        // Track 0: tempo only, unnamed -- so the file has no title.
+        Track conductor = sequence.createTrack();
+        meta(conductor, 0, 0x51, new byte[] {0x07, (byte) 0xA1, 0x20});
+        // Track 1: a part whose notes have been deleted, which is what a muted
+        // or emptied track looks like in a DAW export.
+        Track emptied = sequence.createTrack();
+        trackName(emptied, "Piano");
+        Track sounding = sequence.createTrack();
+        trackName(sounding, "Bass");
+        noteOn(sounding, 0, 0, 40, 90);
+        noteOff(sounding, 480, 0, 40);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.title()).isEmpty();
+        assertThat(score.tracks()).extracting(NoteTrack::name).containsExactly("Bass");
+    }
+
+    @Test
+    @DisplayName("a note dropped for being zero-length is not also reported as unterminated")
+    void oneLostNoteIsReportedOnce() throws Exception {
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track dangling = sequence.createTrack();
+        // At the last tick with no note-off: both unterminated and zero-length,
+        // and counting it twice overstates how much of the file was lost.
+        noteOn(dangling, 480, 0, 60, 90);
+        Track other = sequence.createTrack();
+        noteOn(other, 0, 1, 48, 90);
+        noteOff(other, 480, 1, 48);
+
+        transcriber.transcribe(sequence);
+        assertThat(messages).anyMatch(message -> message.contains("zero length"));
+        assertThat(messages).noneMatch(message -> message.contains("no note-off"));
+    }
+
+    @Test
+    @DisplayName("a file too large to parse within a sane heap is refused, not attempted")
+    void anOversizedFileIsRefused(@TempDir Path directory) throws Exception {
+        // The cap is on bytes because bytes are all that can be counted before
+        // parsing, but a MIDI file expands to roughly 35 times its size in live
+        // objects, so above the cap the alternative to this refusal is an
+        // OutOfMemoryError thrown from inside the JDK's parser.
+        Path file = directory.resolve("huge.mid");
+        Files.write(file, new byte[8 * 1024 * 1024 + 1]);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> transcriber.transcribe(file))
+                .withMessageContaining("refusing to read");
+    }
+
     // -------------------------------------------------------------- resolutions
 
     @Test
@@ -459,6 +610,15 @@ class MidiImportEdgeCaseTest {
 
     private static void trackName(Track track, String name) throws InvalidMidiDataException {
         meta(track, 0, 0x03, name.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A tempo event, in microseconds per quarter note as the wire format holds it. */
+    private static void tempo(Track track, long tick, int microsecondsPerQuarter)
+            throws InvalidMidiDataException {
+        meta(track, tick, 0x51, new byte[] {
+            (byte) (microsecondsPerQuarter >> 16),
+            (byte) (microsecondsPerQuarter >> 8),
+            (byte) microsecondsPerQuarter});
     }
 
     private static void meta(Track track, long tick, int type, byte[] data)
