@@ -55,11 +55,18 @@ public final class Resampler {
      * the same holds for 48k to 16k and any other integer ratio, and not
      * because downsampling is inherently safe.
      *
-     * <p>The difference is a rounding of {@code b - a}, so it is at most half
-     * an ulp of {@code |b - a|}, and {@code |b - a|} reaches twice the peak.
-     * The bound is therefore half an ulp of {@code 2 x peak} -- equivalently
-     * <b>one ulp of the peak</b> -- and it scales with amplitude, so no single
-     * absolute figure is a bound on its own:
+     * <p>Two roundings produce the difference, not one: {@code b - a} is
+     * rounded, and then so is the result. So it is not bounded by half an ulp
+     * of either operand -- that form is exceeded fourfold by ordinary
+     * material, because Sterbenz makes {@code b - a} exact unless the operands
+     * differ by more than a factor of two, which leaves only the cases where
+     * the result's ulp is much the larger. Both quantities live below twice the
+     * peak, and the bound that does hold is half an ulp of {@code 2 x peak} --
+     * equivalently <b>one ulp of the peak</b>, since doubling a normal float
+     * doubles its ulp. Attained but never exceeded over roughly 64 million
+     * constructed pairs, including denormals, binade edges and both signs. It
+     * scales with amplitude, so no single absolute figure is a bound on its
+     * own:
      *
      * <pre>
      *   peak   bound = ulp(peak)   worst measured
@@ -75,8 +82,11 @@ public final class Resampler {
      * {@code 2 x peak} lands on a binade boundary and the two coincide. Off a
      * power of two it is short by exactly 2x: a normalised master peaking at
      * 0.9, which is the ordinary case, measures 6.0e-8 where that rule predicts
-     * 3.0e-8. Downsampling is looser again, because the low-pass shrinks the
-     * values before anything subtracts them.
+     * 3.0e-8. Downsampling is looser again, and not because the low-pass
+     * shrinks the values -- at peak 0.9 into 16 kHz it takes the peak down by
+     * a factor of 0.81, which alone would leave {@code max|b - a|} at 1.45 and
+     * change nothing. It shrinks the <em>differences</em>, by 0.29, and that is
+     * what carries them under the binade boundary.
      *
      * <p>Six orders below the tightest tolerance anywhere downstream of this
      * method, and double is the accurate side of the difference. Do not quote
