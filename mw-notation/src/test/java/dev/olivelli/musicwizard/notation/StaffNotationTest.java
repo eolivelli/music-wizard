@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
@@ -956,6 +957,29 @@ class StaffNotationTest {
                 quantized(score, GridResolution.THIRD_BEAT), voice);
         assertThat(source).contains("\\tuplet 3/2 { c'8 r8 e'8 } g'2. |");
         assertBarsFillTheirMeter("rest in a bracket", source);
+    }
+
+    @Test
+    @DisplayName("both overloads refuse an impossible score the same way, with the same message")
+    void theTwoOverloadsFailIdentically() {
+        // Round 2 of review noticed the two diverging here. A note quantized past
+        // bar 2^31 makes TempoMap.toMusicalTime refuse outright, with a message
+        // about bar indices -- so asking the grid where such a note falls threw
+        // that instead of the emitter's own complaint, which says which part runs
+        // that far and that the beat axis is probably wrong. Unreachable in
+        // practice, at something like a century of music, and pinned anyway:
+        // "the two overloads fail differently" is the shape this project keeps
+        // paying for, and it costs one comparison to not have it.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
+        NoteTrack strays = track(PartRole.ACCOMPANIMENT, "Keys", note(1e10, 4, "E4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, strays);
+        QuantizedScore plan = quantized(score, GridResolution.THIRD_BEAT);
+
+        assertThatThrownBy(() -> StaffNotation.toLilyPond(plan, voice))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"Keys\" runs that far, so look there rather than here")
+                .hasMessage(catchThrowable(() -> StaffNotation.toLilyPond(score, voice))
+                        .getMessage());
     }
 
     @Test

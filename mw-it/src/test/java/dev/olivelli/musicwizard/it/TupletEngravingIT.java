@@ -242,16 +242,20 @@ class TupletEngravingIT {
     }
 
     @Test
-    @DisplayName("every tuplet grid of every meter anyone writes engraves without complaint")
+    @DisplayName("a fully subdivided bar of every tuplet grid of every usable meter engraves")
     void everyTupletGridOfEveryUsableMeterEngraves() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
         LilyPondRenderer renderer = new LilyPondRenderer(lilypond);
 
-        // Not every meter the model admits -- there are 448 of those and the
-        // absurd ones are #131's business. These are the ones music is written
-        // in, crossed with every grid GridResolution calls a tuplet in them, and
-        // that is 29 combinations rather than the five shapes below.
+        // Meters, not shapes. Every bar here is fully subdivided, so every
+        // bracket it writes is a complete one -- the partial brackets, the ties
+        // out of brackets and the plain beats between them are the five cases
+        // below, in one meter each. This sweep is the other axis.
+        //
+        // Not every meter the model admits, either: there are 448 of those and
+        // the absurd ones are #131's and #136's business. These are the ones
+        // music is written in.
         List<TimeSignature> meters = List.of(
                 new TimeSignature(4, 4), new TimeSignature(3, 4), new TimeSignature(2, 4),
                 new TimeSignature(5, 4), new TimeSignature(7, 8), TimeSignature.SIX_EIGHT,
@@ -282,7 +286,13 @@ class TupletEngravingIT {
                 engraved++;
             }
         }
-        assertThat(engraved).as("the sweep engraved nothing").isEqualTo(29);
+        // Twelve meters hold 29 tuplet grids between them. Pinned so that a
+        // thirteenth meter, or a seventh GridResolution, has to come past this
+        // line rather than quietly widening or narrowing what LilyPond is asked
+        // to engrave -- and #136 is why that matters: the meters outside this
+        // list are not all clean.
+        assertThat(engraved).as("tuplet grids engraved across %d meters", meters.size())
+                .isEqualTo(29);
     }
 
     @Test

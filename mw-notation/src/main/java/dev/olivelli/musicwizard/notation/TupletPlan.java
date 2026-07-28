@@ -16,8 +16,10 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -90,6 +92,19 @@ final class TupletPlan {
      */
     Optional<TupletBar> covering(double beat) {
         if (quantized == null || !Double.isFinite(beat) || beat < 0) {
+            return Optional.empty();
+        }
+        // Past the last bar anything sounds in there is no grid to find, so the
+        // answer is known without walking the tempo map for it. Not an
+        // optimisation: TempoMap.toMusicalTime refuses a beat past bar 2^31 with
+        // a message about bar indices, and a note quantized that far out would
+        // therefore have been diagnosed one way through this overload and
+        // another -- with StaffNotation's own message, naming the part
+        // responsible -- through the other. Two overloads of the same method
+        // failing differently on the same score is the shape this project keeps
+        // paying for, and it costs one comparison to not have it.
+        List<BarGrid> grids = quantized.grids();
+        if (grids.isEmpty() || beat >= grids.getLast().endBeat()) {
             return Optional.empty();
         }
         return atBar(quantized.score().tempoMap().toMusicalTime(beat).bar());
