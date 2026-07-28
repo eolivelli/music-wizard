@@ -29,16 +29,58 @@ import java.util.Objects;
  * buffers routinely hold tens of millions of samples, and copying them at each
  * stage boundary would dominate the runtime of the whole pipeline. Treat the
  * array as read-only by convention; the stages in this project do.
+ *
+ * <p>Samples must be finite, and that is checked rather than assumed. See the
+ * constructor for why it is checked here and not somewhere cheaper.
  */
 public final class AudioBuffer {
 
     private final float[] samples;
     private final int sampleRate;
 
+    /**
+     * Wraps a sample array, rejecting any sample that is not finite.
+     *
+     * <p>A single non-finite sample does not stay where it lands. It reaches
+     * every FFT bin of every window containing it, and any stage that then
+     * aggregates over frames inherits it as a whole: one NaN in a 32-second
+     * I-V-vi-IV click track pins {@code Chroma.estimateTuning} at -0.4875
+     * semitones -- because a NaN deviation histograms into slot 0 and
+     * {@code >} against NaN is false, so the mode can never move off it -- and
+     * turns a chart of {@code C G Am F} at 0.91 confidence into a single
+     * {@code N.C.} at 0.44. Beat tracking is untouched, so the failure does not
+     * look like the bad sample it is.
+     *
+     * <p>Rejected rather than replaced with zero, and rejected here rather than
+     * at the decode boundary, for one reason: no decodable file can produce a
+     * non-finite sample. {@link AudioDecoder} converts every source format to
+     * 16-bit signed PCM, and no 16-bit integer decodes to NaN or an infinity --
+     * a float WAV carrying NaN, both infinities and 1e30 decodes to zeros, as
+     * {@code AudioPipelineTest} asserts. So this cannot turn a readable
+     * recording into a hard error; the only thing it can catch is a caller with
+     * a bug, and quietly substituting zero for that would alter the audio and
+     * hide the cause at once.
+     *
+     * <p>The scan is a full pass over every buffer, including ones the pipeline
+     * derives from other buffers, and that is affordable: 3.2 ms over five
+     * minutes of audio, against 531 ms for {@code Spectrogram.compute} and
+     * 1124 ms for {@code OnsetEnvelope.fromAudio} on the same samples. There is
+     * deliberately no unchecked back door, because a back door is how the
+     * invariant stops being one.
+     *
+     * @throws IllegalArgumentException if {@code sampleRate} is not positive or
+     *     any sample is NaN or infinite
+     */
     public AudioBuffer(float[] samples, int sampleRate) {
         this.samples = Objects.requireNonNull(samples, "samples");
         if (sampleRate <= 0) {
             throw new IllegalArgumentException("sampleRate must be positive, got: " + sampleRate);
+        }
+        for (int i = 0; i < samples.length; i++) {
+            if (!Float.isFinite(samples[i])) {
+                throw new IllegalArgumentException(
+                        "samples must be finite, but samples[" + i + "] is " + samples[i]);
+            }
         }
         this.sampleRate = sampleRate;
     }

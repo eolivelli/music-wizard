@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -264,39 +265,57 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("one non-finite sample costs its own frames and not the filter")
-        void oneBadSampleStaysLocal() {
-            // A recursive filter smears one poisoned value across the whole
-            // series, and the flux loop drops a non-finite rise silently
-            // because `rise > 0` is false for NaN. Together those turn eight
-            // damaged frames into a flat envelope for the entire recording:
-            // measured, a 120 BPM click track goes from 0.865 to 0.000.
+        @DisplayName("poisoned audio never reaches the filter, because the buffer refuses it")
+        void poisonedAudioIsRefusedBeforeItCanReachTheFilter() {
+            // This test replaces three that measured what the envelope does with
+            // non-finite *audio* -- one bad sample, a hole, and a swept family of
+            // long holes in smooth material. Since issue #61, AudioBuffer rejects
+            // non-finite samples, so none of those inputs can be built and their
+            // measurements are about a signal the pipeline cannot receive.
             //
-            // The held note is the assertion that matters and the click track
-            // is not, which is the opposite of how this test was first
-            // written. One bad audio sample poisons every FFT bin of the eight
-            // windows containing it, so it reaches all forty bands at once --
-            // meaning the tempting fix, skipping a band that cannot be
-            // filtered, silently disables the filter for the whole recording
-            // and restores the bug. A click track cannot see that happen: it
-            // reads 0.865 filtered and 0.818 unfiltered, both of them healthy.
-            // A held note goes from 0.591 to 0.751 and straight back over the
-            // click floor, so it can.
+            // What they were protecting is still protected, and by better-placed
+            // tests: antiAlias's run scanning is pinned directly on hand-built
+            // mel bands by the tests below, which is the layer the code actually
+            // works at. What is gone is only the audio-level route to it. The
+            // guard inside antiAlias is deliberately left in place -- see #76.
+            //
+            // The blast radius those tests recorded is worth keeping, because it
+            // is why the guard sits where it does: one bad audio sample lands in
+            // every FFT bin of the eight windows containing it, so it poisons all
+            // forty bands at once. Skipping a poisoned *band* would therefore
+            // have disabled the filter for the whole recording, restoring the bug
+            // it fixes; a click track could not see that happen (0.865 filtered,
+            // 0.818 unfiltered, both healthy) and only a held note could
+            // (0.591 to 0.751, straight back over the click floor).
             for (float poison : new float[] {Float.NaN, Float.POSITIVE_INFINITY,
                     Float.NEGATIVE_INFINITY}) {
                 float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
                 clicks[100_000] = poison;
-                TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelopeOf(clicks));
+                assertThatThrownBy(() -> new AudioBuffer(clicks, RATE))
+                        .as("single sample, %s", poison)
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining("samples[100000]");
 
-                assertThat(estimate.beatsPerMinute()).as("%s", poison).isCloseTo(120, within(1.0));
-                assertThat(estimate.strength()).as("%s", poison).isGreaterThan(0.7);
-
-                float[] held = heldNote(440, 8, 20);
-                held[100_000] = poison;
-                assertThat(TempoEstimator.estimate(envelopeOf(held)).strength())
-                        .as("the filter still runs, %s", poison)
-                        .isLessThan(0.65);
+                // And a hole rather than a single sample, which is the shape the
+                // deleted tests swept over.
+                float[] holed = SignalFactory.clickTrack(120, 20, RATE);
+                for (int i = 10 * RATE; i < 10 * RATE + RATE / 2; i++) {
+                    holed[i] = poison;
+                }
+                assertThatThrownBy(() -> new AudioBuffer(holed, RATE))
+                        .as("half-second hole, %s", poison)
+                        .isInstanceOf(IllegalArgumentException.class);
             }
+
+            // A real dropout is digital silence, not NaN, and silence is
+            // filtered like anything else: it still tracks 120 BPM.
+            float[] silenced = SignalFactory.clickTrack(120, 20, RATE);
+            for (int i = 10 * RATE; i < 10 * RATE + RATE / 2; i++) {
+                silenced[i] = 0;
+            }
+            TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelopeOf(silenced));
+            assertThat(estimate.beatsPerMinute()).isCloseTo(120, within(1.0));
+            assertThat(estimate.strength()).isGreaterThan(0.7);
         }
 
         @Test
@@ -360,106 +379,6 @@ class BeatTrackingTest {
             for (int frame = 2; frame < bands.length; frame++) {
                 assertThat(bands[frame][1]).as("frame %d", frame).isCloseTo(5, within(1e-9));
             }
-        }
-
-        @Test
-        @DisplayName("a hole in the audio does not become an onset where it ends")
-        void poisonedRunDoesNotManufactureAnOnset() {
-            // The failure mode of holding a value across a gap: the far edge is
-            // a step in the band decibels, and a step is exactly what the flux
-            // is built to report. Measured before this was fixed, a half-second
-            // hole produced an accent 53% as tall as a real click, at a moment
-            // when nothing happened in the recording. Unfiltered code produced
-            // nothing there, and neither must this.
-            for (double holeSeconds : new double[] {0.05, 0.5, 2.0}) {
-                float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
-                int from = 10 * RATE;
-                int to = from + (int) (holeSeconds * RATE);
-                for (int i = from; i < to && i < clicks.length; i++) {
-                    clicks[i] = Float.NaN;
-                }
-                OnsetEnvelope envelope = envelopeOf(clicks);
-
-                double overall = 0;
-                for (double value : envelope.strength()) {
-                    overall = Math.max(overall, value);
-                }
-                double resume = to / (double) RATE;
-                double atResumption = Double.NEGATIVE_INFINITY;
-                for (int frame = envelope.frameOf(resume);
-                        frame <= envelope.frameOf(resume + 0.1); frame++) {
-                    atResumption = Math.max(atResumption, envelope.strength()[frame]);
-                }
-                // The envelope is mean-subtracted, so its quiet floor is
-                // NEGATIVE, around -0.21. Seeding the running maximum at 0
-                // rather than at -inf therefore made this assertion pass on its
-                // own initialiser, and it would have tolerated an accent of up
-                // to 3% of a click's height without noticing.
-                assertThat(atResumption).isNotEqualTo(Double.NEGATIVE_INFINITY);
-
-                // A click every 0.5 s, so a hole of 0.5 s or more swallows one
-                // and the 100 ms after it must be quiet. The 0.05 s hole sits
-                // inside one beat and the next real click is 0.4 s away, so the
-                // same window is quiet for that too. Compared against a clean
-                // stretch of the same envelope rather than against zero, so
-                // "quiet" means what it does everywhere else in this signal.
-                double quietFloor = envelope.strength()[envelope.frameOf(3.25)];
-                assertThat(atResumption)
-                        .as("hole of %.2f s, overall peak %.2f", holeSeconds, overall)
-                        .isCloseTo(quietFloor, within(0.01));
-            }
-        }
-
-        @Test
-        @DisplayName("a long hole in smooth material does not make it read as rhythmic")
-        void aLongHoleDoesNotInventRhythm() {
-            // The end of a poisoned run is where a manufactured accent would
-            // land, and a crescendo has nothing rhythmic in it at any point, so
-            // whatever this scores is entirely artefact.
-            //
-            // Swept rather than sampled, and that is the whole point of this
-            // test. The version of this fixture that pinned a single hole at
-            // 7.5 s asserted a bound of 0.4 against a measured 0.163 -- and
-            // moving the same hole to 1 s and lengthening it to 8 gave 0.4005,
-            // which would have failed its own assertion. A one-point
-            // measurement of a residue is not a measurement of the residue,
-            // which is the mistake issue #49 itself was corrected for.
-            //
-            // Nine configurations here, over carriers 220 Hz to 3 kHz, hole
-            // starts 1 to 11 s and lengths 1 to 5 s. The offline sweep behind
-            // them gave a worst point of 0.504 on an even grid and 0.52 to 0.54
-            // when the same family is drawn from at random -- see antiAlias's
-            // javadoc, which records the grid figure as the flattering one.
-            // Against a click floor of 0.751, and against 0.743 before the
-            // filter was changed to run per unbroken stretch of finite frames.
-            double worst = 0;
-            for (double start : new double[] {1.0, 4.0, 7.5}) {
-                for (double length : new double[] {2.0, 5.0, 8.0}) {
-                    float[] swell = crescendo(1750, 20);
-                    int from = (int) (start * RATE);
-                    int to = (int) ((start + length) * RATE);
-                    for (int i = from; i < to && i < swell.length; i++) {
-                        swell[i] = Float.NaN;
-                    }
-                    worst = Math.max(worst,
-                            TempoEstimator.estimate(envelopeOf(swell)).strength());
-                }
-            }
-
-            // Two bounds, and it is the second that does the work -- the
-            // opposite of what this comment used to claim. Against the previous
-            // scheme these nine points give 0.7045, which is under the click
-            // floor, so the ordering assertion passes and only the 0.6 catches
-            // it. And 0.6 IS a number chosen after the fact: the nine-point
-            // worst is 0.4847, so it is the measured value plus about a quarter.
-            //
-            // The ordering is still worth asserting, because it is the claim a
-            // reader cares about and it cannot drift with the fixtures; but it
-            // is a statement of intent, not the tripwire.
-            double weakestClick = TempoEstimator.estimate(
-                    envelopeOf(SignalFactory.clickTrack(196, 20, RATE))).strength();
-            assertThat(worst).isLessThan(weakestClick);
-            assertThat(worst).isLessThan(0.6);
         }
 
         @Test

@@ -21,8 +21,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.testkit.SignalFactory;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,35 @@ class AudioPipelineTest {
     private Path writeWav(float[] samples, int sampleRate) {
         Path file = tempDirectory.resolve("signal-" + System.nanoTime() + ".wav");
         SignalFactory.writeWav(file, samples, sampleRate);
+        return file;
+    }
+
+    /**
+     * Writes a 32-bit IEEE-float WAV, which {@code SignalFactory} cannot: it
+     * writes 16-bit PCM, and 16-bit PCM is exactly the encoding that makes a
+     * non-finite sample unrepresentable.
+     */
+    private Path writeFloatWav(float[] samples, int sampleRate) throws Exception {
+        int dataBytes = samples.length * 4;
+        ByteBuffer buffer = ByteBuffer.allocate(44 + dataBytes).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.put("RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        buffer.putInt(36 + dataBytes);
+        buffer.put("WAVE".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        buffer.put("fmt ".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        buffer.putInt(16);
+        buffer.putShort((short) 3);   // WAVE_FORMAT_IEEE_FLOAT
+        buffer.putShort((short) 1);   // mono
+        buffer.putInt(sampleRate);
+        buffer.putInt(sampleRate * 4);
+        buffer.putShort((short) 4);
+        buffer.putShort((short) 32);
+        buffer.put("data".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        buffer.putInt(dataBytes);
+        for (float sample : samples) {
+            buffer.putFloat(sample);
+        }
+        Path file = tempDirectory.resolve("float-" + System.nanoTime() + ".wav");
+        Files.write(file, buffer.array());
         return file;
     }
 
@@ -191,6 +223,156 @@ class AudioPipelineTest {
             AudioBuffer audio = new AudioBuffer(new float[100], 22_050);
 
             assertThat(Spectrogram.compute(audio).frameCount()).isZero();
+        }
+    }
+
+    /**
+     * A non-finite sample is not a local defect. It reaches every bin of every
+     * window containing it, and any stage that aggregates over frames then
+     * inherits it whole, so the buffer is where it has to be stopped.
+     */
+    @Nested
+    @DisplayName("non-finite values")
+    class NonFinite {
+
+        @Test
+        @DisplayName("refuses a buffer containing NaN, naming where it is")
+        void rejectsNaN() {
+            float[] samples = SignalFactory.sine(440, 0.1, 22_050);
+            samples[137] = Float.NaN;
+
+            assertThatThrownBy(() -> new AudioBuffer(samples, 22_050))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("samples[137]")
+                    .hasMessageContaining("NaN");
+        }
+
+        @Test
+        @DisplayName("refuses a buffer containing either infinity")
+        void rejectsInfinities() {
+            float[] positive = new float[8];
+            positive[3] = Float.POSITIVE_INFINITY;
+            assertThatThrownBy(() -> new AudioBuffer(positive, 22_050))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("samples[3]")
+                    .hasMessageContaining("Infinity");
+
+            float[] negative = new float[8];
+            negative[7] = Float.NEGATIVE_INFINITY;
+            assertThatThrownBy(() -> new AudioBuffer(negative, 22_050))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("samples[7]");
+        }
+
+        @Test
+        @DisplayName("still accepts every finite value, including the extremes")
+        void acceptsFiniteExtremes() {
+            // The check is about finiteness, not range. A buffer can legitimately
+            // sit outside [-1, 1] between a gain stage and a normalisation, and
+            // rejecting that would be a different -- and wrong -- change.
+            float[] samples = {
+                0f, -0f, 1f, -1f, 2.5f, -2.5f,
+                Float.MAX_VALUE, -Float.MAX_VALUE, Float.MIN_VALUE,
+            };
+
+            AudioBuffer buffer = new AudioBuffer(samples, 22_050);
+
+            assertThat(buffer.length()).isEqualTo(samples.length);
+            assertThat(buffer.peak()).isEqualTo(Float.MAX_VALUE);
+            assertThat(new AudioBuffer(new float[0], 22_050).length()).isZero();
+        }
+
+        @Test
+        @DisplayName("keeps slicing a valid buffer working")
+        void sliceOfAValidBufferSurvivesTheCheck() {
+            AudioBuffer buffer = new AudioBuffer(SignalFactory.sine(440, 1.0, 22_050), 22_050);
+
+            assertThat(buffer.slice(0.25, 0.75).durationSeconds()).isCloseTo(0.5, within(0.01));
+        }
+
+        @Test
+        @DisplayName("decodes a float WAV carrying NaN and infinities rather than failing on it")
+        void decodingNeverProducesANonFiniteSample() throws Exception {
+            // This is the test that makes rejecting -- rather than sanitising --
+            // safe, and it is a tripwire as much as an assertion. AudioDecoder
+            // converts every format to 16-bit signed PCM, and no 16-bit integer
+            // decodes to NaN or an infinity, so arbitrary user audio cannot reach
+            // the constructor with one. If a float passthrough is ever added, the
+            // constructor will start throwing here and this fails loudly, which
+            // is the point at which sanitising at the decode boundary becomes the
+            // right conversation.
+            float[] samples = SignalFactory.sine(440, 0.5, 22_050);
+            samples[1000] = Float.NaN;
+            samples[2000] = Float.POSITIVE_INFINITY;
+            samples[3000] = Float.NEGATIVE_INFINITY;
+            samples[4000] = 1e30f;
+            Path file = writeFloatWav(samples, 22_050);
+
+            AudioBuffer decoded = AudioDecoder.decode(file, 22_050);
+
+            assertThat(decoded.samples()).isNotEmpty();
+            for (float sample : decoded.samples()) {
+                assertThat(Float.isFinite(sample)).isTrue();
+            }
+            // And through the resampler as well, which runs before the buffer
+            // is constructed and so is covered by the same check.
+            AudioBuffer resampled = AudioDecoder.decode(file, 16_000);
+            for (float sample : resampled.samples()) {
+                assertThat(Float.isFinite(sample)).isTrue();
+            }
+        }
+
+        @Test
+        @DisplayName("refuses a spectrogram with a non-finite bin")
+        void rejectsNonFiniteMagnitudes() {
+            float[][] magnitudes = new float[3][5];
+            magnitudes[1][4] = Float.NaN;
+
+            assertThatThrownBy(() -> new Spectrogram(magnitudes, 22_050, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("magnitudes[1][4]");
+
+            float[][] missingFrame = new float[2][];
+            missingFrame[0] = new float[5];
+            assertThatThrownBy(() -> new Spectrogram(missingFrame, 22_050, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("magnitudes[1]");
+        }
+
+        @Test
+        @DisplayName("refuses a spectrogram the transform overflowed, not just a poisoned input")
+        void spectrogramOverflowIsCaughtEvenThoughTheBufferWasFinite() {
+            // 1e38 is finite, so the buffer accepts it -- and the window multiply
+            // and transform then overflow. Validating only the input would leave
+            // this door open, and a poisoned bin is worse than a poisoned sample
+            // because every spectral stage reads the spectrogram, not the audio.
+            float[] enormous = new float[8192];
+            Arrays.fill(enormous, 1e38f);
+            AudioBuffer buffer = new AudioBuffer(enormous, 22_050);
+
+            assertThatThrownBy(() -> Spectrogram.compute(buffer, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("magnitudes must be finite");
+        }
+
+        @Test
+        @DisplayName("resamples large values without inventing an infinity")
+        void resamplingDoesNotOverflow() {
+            // Alternating extremes, because the interpolation subtracts adjacent
+            // samples: in float that difference overflows, in double it does not.
+            // Upsampling is the case that exposes it, since downsampling
+            // low-passes first and shrinks the values before they are subtracted.
+            float[] alternating = new float[1000];
+            for (int i = 0; i < alternating.length; i++) {
+                alternating[i] = i % 2 == 0 ? Float.MAX_VALUE : -Float.MAX_VALUE;
+            }
+
+            for (float sample : Resampler.resample(alternating, 22_050, 44_100)) {
+                assertThat(Float.isFinite(sample)).isTrue();
+            }
+            for (float sample : Resampler.resample(alternating, 44_100, 22_050)) {
+                assertThat(Float.isFinite(sample)).isTrue();
+            }
         }
     }
 }

@@ -36,6 +36,15 @@ public final class Resampler {
      * <p>Interpolation is linear. It is not the best kernel available, but the
      * error it leaves is broadband and small relative to the spectral resolution
      * every stage downstream actually uses, whereas aliasing is neither.
+     *
+     * <p>Finite input gives finite output. That is worth stating because it did
+     * not used to be true: the interpolation subtracted two floats before
+     * widening, so upsampling a signal near {@code Float.MAX_VALUE} overflowed
+     * to infinity -- 1998 of 2000 output samples, from input that was entirely
+     * finite. Downsampling hid it, because the low-pass runs first and shrinks
+     * the values. {@link AudioDecoder} resamples before it constructs the
+     * {@link AudioBuffer}, so without this the buffer's own check would have
+     * been the thing reporting a fault the resampler had just introduced.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {
@@ -65,8 +74,8 @@ public final class Resampler {
             double position = i * step;
             int index = (int) position;
             double fraction = position - index;
-            float a = source[Math.min(index, source.length - 1)];
-            float b = source[Math.min(index + 1, source.length - 1)];
+            double a = source[Math.min(index, source.length - 1)];
+            double b = source[Math.min(index + 1, source.length - 1)];
             out[i] = (float) (a + (b - a) * fraction);
         }
         return out;
