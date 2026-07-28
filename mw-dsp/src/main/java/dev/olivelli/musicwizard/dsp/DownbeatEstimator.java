@@ -58,6 +58,14 @@ import java.util.Objects;
  * and any one of them failing brings the number down. A phase resting on onsets
  * alone is capped below anything harmony has backed.
  *
+ * <p>The known limit of the approach is that it measures agreement with
+ * harmonic change, not with bar lines, and takes the two to be the same thing.
+ * Where a style consistently anticipates the chord — the pushed change an
+ * eighth or a beat before the bar, ordinary in pop and near-universal in some
+ * Latin idioms — this reports the anticipation as the downbeat, confidently,
+ * because by its own measure it is right. Nothing here can detect that;
+ * separating them needs evidence the estimator does not have. See #48.
+ *
  * <p>The meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
  */
 public final class DownbeatEstimator {

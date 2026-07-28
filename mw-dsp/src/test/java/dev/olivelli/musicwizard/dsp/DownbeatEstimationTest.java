@@ -429,6 +429,24 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("without chroma, the first and last beats still count")
+        void onsetsScoreEveryBeat() {
+            // estimate() scores only the beats with harmony on both sides, and
+            // has to: novelty is undefined at either end. fromOnsets has no such
+            // constraint and must not inherit the restriction, because on a short
+            // recording those two beats are a real share of the evidence. Here
+            // the whole accent is on the first beat, and dropping it moves the
+            // answer to a beat that is merely the loudest of what remains.
+            List<Double> beats = beatsEvery(0.5, 9);
+            double[] strength = new double[500];
+            strength[0] = 10;
+            strength[(int) Math.round(beats.get(3) * 100)] = 1;
+
+            assertThat(DownbeatEstimator
+                    .fromOnsets(beats, new OnsetEnvelope(strength, 100), 4).phase()).isZero();
+        }
+
+        @Test
         @DisplayName("bounding the accent does not cost it its ranking")
         void loudAccentsAreStillRanked() {
             // Bounding the onset term by clamping it flattened every accent past
@@ -466,6 +484,8 @@ class DownbeatEstimationTest {
             // alone reported the ceiling on a quarter of these.
             List<Double> beats = beatsEvery(0.5, 65);
             double worst = 0;
+            int overHalf = 0;
+            int trials = 0;
             for (int seed = 1; seed <= 8; seed++) {
                 Random random = new Random(seed);
                 for (int trial = 0; trial < 200; trial++) {
@@ -479,18 +499,84 @@ class DownbeatEstimationTest {
                         }
                         spans[span][pitchClass] = 1;
                     }
-                    worst = Math.max(worst, DownbeatEstimator
+                    double confidence = DownbeatEstimator
                             .estimate(beats, new Chroma(spans, 0), flatEnvelope(40), 4)
-                            .confidence().value());
+                            .confidence().value();
+                    worst = Math.max(worst, confidence);
+                    trials++;
+                    if (confidence >= 0.6) {
+                        overHalf++;
+                    }
                 }
             }
 
             // Below what the same measure reports for harmony that does line up,
             // asserted just below as the control.
             assertThat(worst).isLessThan(0.8);
+            // And rarely anywhere near it. The worst case alone is a weak claim:
+            // the calibration that matters is that guesses are reported as
+            // guesses in the aggregate, not that no single one slips through.
+            assertThat(overHalf).as("%d of %d trials", overHalf, trials)
+                    .isLessThan(trials / 100);
             assertThat(DownbeatEstimator
                     .estimate(beats, stepwiseChroma(64, 4, 0), flatEnvelope(40), 4)
                     .confidence().value()).isGreaterThanOrEqualTo(0.8);
+        }
+
+        @Test
+        @DisplayName("confidence is exactly the product of its factors")
+        void confidenceIsTheProductOfItsFactors() {
+            // A worked example, pinning the whole model at once rather than one
+            // mechanism at a time. Every quantity below is a different fraction,
+            // so no two of them can be confused for each other and no constant
+            // can be changed without moving the answer.
+            //
+            // 82 beats score beats 1 to 80, which is exactly twenty of each
+            // phase. Two phase-0 beats and one phase-1 beat carry a change, each
+            // of novelty 0.5, and nothing else changes at all:
+            //
+            //     harmony   = [0.050, 0.025, 0, 0]
+            //
+            //     decided   = margin 0.025 over CONFIDENT_MARGIN 0.1   = 0.250
+            //     preferred = share 2/3, against 1/4 by chance         = 5/9
+            //     observed  = two equal changes over three             = 2/3
+            //     accent    = a level chosen to put tanh exactly on    = 0.500
+            //
+            //     0.35 + 0.5 * (0.25 * 5/9 * 2/3) + 0.1 * 0.5     = 0.44629...
+            //
+            // Novelty of 0.5 rather than 1 on purpose: at 1 the sum, the count
+            // and the effective count of a phase's changes all coincide, and the
+            // effective count is the thing being pinned. Beat 0 is phase 0 and
+            // beat 81 is phase 1, so widening the scored range at either end
+            // dilutes one of the two phases that matter and moves the answer.
+            List<Double> beats = beatsEvery(0.5, 82);
+            // Two directions sixty degrees apart, so each change between them is
+            // a cosine distance of exactly 0.5, and both are non-negative as a
+            // chroma vector has to be.
+            double[] held = new double[12];
+            held[0] = 1;
+            double[] moved = new double[12];
+            moved[0] = 0.5;
+            moved[5] = Math.sqrt(3) / 2;
+
+            double[][] spans = new double[81][];
+            boolean atHeld = true;
+            for (int span = 0; span < spans.length; span++) {
+                if (span == 4 || span == 8 || span == 13) {
+                    atHeld = !atHeld;
+                }
+                spans[span] = (atHeld ? held : moved).clone();
+            }
+            // Twenty of the eighty scored beats carry the accent, so a level of
+            // a on those and zero elsewhere gives phase 0 an advantage of 3a/4.
+            double loud = 2 * Math.log(3) / 3;
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(beats,
+                    new Chroma(spans, 0), envelopeOf(beats, new double[] {loud, 0, 0, 0}), 4);
+
+            assertThat(estimate.phase()).isZero();
+            assertThat(estimate.confidence().value()).isCloseTo(
+                    0.35 + 0.5 * (0.25 * (5.0 / 9) * (2.0 / 3)) + 0.1 * 0.5, within(1e-9));
         }
 
         @Test
