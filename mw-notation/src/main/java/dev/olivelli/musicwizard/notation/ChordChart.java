@@ -16,13 +16,13 @@
 
 package dev.olivelli.musicwizard.notation;
 
-import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Renders a score's harmony as a chord chart.
@@ -53,8 +53,7 @@ public final class ChordChart {
             out.append('\n');
         }
 
-        out.append(String.format("Tempo  %.0f BPM%n", score.tempoMap().averageTempo(
-                score.durationSeconds())));
+        out.append(tempoLine(score));
         out.append("Meter  ").append(score.tempoMap().initialTimeSignature()).append('\n');
         score.primaryKey().ifPresent(key -> out.append("Key    ")
                 .append(key.displayName()).append('\n'));
@@ -64,6 +63,28 @@ public final class ChordChart {
             out.append(line).append('\n');
         }
         return out.toString();
+    }
+
+    /**
+     * The tempo, in the beat the reader counts.
+     *
+     * <p>The map stores quarter notes per minute. Printed unqualified next to a
+     * {@code Meter 6/8} line that makes it look authoritative, that is a
+     * metronome marking 50% fast, because a 6/8 bar is counted in dotted
+     * quarters. Identical in every x/4 meter, where the two coincide.
+     */
+    private static String tempoLine(Score score) {
+        double quarterBpm = score.estimatedTempo();
+        TimeSignature meter = score.tempoMap().initialTimeSignature();
+        // Locale.ROOT, because this number is meant to be typed back in via
+        // --tempo and picocli parses it with Double.valueOf. Under fr_FR the
+        // chart would print "120,0", which that rejects; under ar_EG it would
+        // print Arabic-Indic digits.
+        if (meter.beatUnitQuarters() == 1.0) {
+            return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
+        }
+        return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
+                meter.countedTempo(quarterBpm), quarterBpm);
     }
 
     /**
@@ -123,37 +144,24 @@ public final class ChordChart {
     /**
      * How long one bar lasts.
      *
-     * <p>Measured from the tracked beats where they exist, rather than derived
-     * from the tempo map. The map begins with a synthetic lead-in segment
-     * covering the audio before the first tracked beat, and when that gap is a
-     * fraction of a beat the segment carries an implausibly fast tempo. Reading
-     * bar length out of it therefore drifts, and a drifting bar grid shows up
-     * immediately as chords landing in the wrong bar.
+     * <p>Derived from {@link Score#estimatedTempo()}, which is also what
+     * {@link #tempoLine} prints, so the header and the bar lines cannot disagree.
+     * They used to: the header read the tempo map while this measured the tracked
+     * beats, and {@code --tempo} moves only the map, so a chart could be headed
+     * 60 BPM above bars a musician would count at 120.
+     *
+     * <p>That accessor keeps the reason this method preferred the grid in the
+     * first place -- the map's synthetic lead-in segment carries an implausible
+     * tempo when the first tracked beat is a fraction of a beat in, and a
+     * drifting bar grid shows up immediately as chords landing in the wrong bar.
+     * It just keeps it in one place rather than two.
      */
     private static double barDurationSeconds(Score score) {
-        int beatsPerBar = score.tempoMap().initialTimeSignature().numerator();
-
-        Optional<BeatGrid> grid = score.beatGrid();
-        if (grid.isPresent() && grid.get().size() >= 2) {
-            List<Double> times = grid.get().beatTimes();
-            double[] intervals = new double[times.size() - 1];
-            for (int i = 0; i < intervals.length; i++) {
-                intervals[i] = times.get(i + 1) - times.get(i);
-            }
-            java.util.Arrays.sort(intervals);
-            // Median, so one dropped beat does not stretch every bar.
-            int middle = intervals.length / 2;
-            double median = intervals.length % 2 == 1
-                    ? intervals[middle]
-                    : (intervals[middle - 1] + intervals[middle]) / 2.0;
-            if (median > 0) {
-                return median * beatsPerBar;
-            }
+        double quarterBpm = score.estimatedTempo();
+        if (!(quarterBpm > 0) || !Double.isFinite(quarterBpm)) {
+            return 0;
         }
-
-        double quarterBeats = score.tempoMap().initialTimeSignature().quarterBeatsPerBar();
-        return score.tempoMap().beatsToSeconds(quarterBeats)
-                - score.tempoMap().beatsToSeconds(0);
+        return score.tempoMap().initialTimeSignature().quarterBeatsPerBar() * 60.0 / quarterBpm;
     }
 
     /**

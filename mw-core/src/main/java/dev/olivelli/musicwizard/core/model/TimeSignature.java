@@ -17,8 +17,21 @@
 package dev.olivelli.musicwizard.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * A time signature, such as 4/4 or 6/8.
+ *
+ * <p>Two different questions are asked of a meter and it is worth keeping them
+ * apart, because conflating them is what mis-bars compound time. <em>How much
+ * music is in a bar</em> is {@link #quarterBeatsPerBar()}, and it is measured in
+ * quarter notes because everything downstream of the beat grid is. <em>How that
+ * bar divides into beats</em> is {@link #beatsPerBar()} and
+ * {@link #beatUnitQuarters()}, and it is what a musician counts, what a beat
+ * tracker pulses on, and what a beam or a bar line has to respect. 3/4 and 6/8
+ * agree on the first question and disagree on the second; that disagreement is
+ * the entire difference between them.
  *
  * @param numerator   beats per bar as written
  * @param denominator note value that gets one beat, as a power of two
@@ -62,6 +75,71 @@ public record TimeSignature(int numerator, int denominator) {
     @JsonIgnore
     public boolean isCompound() {
         return denominator >= 8 && numerator % 3 == 0 && numerator > 3;
+    }
+
+    /**
+     * Quarter notes in one counted beat: 1.0 in 4/4 and 3/4, 1.5 -- a dotted
+     * quarter -- in 6/8, 0.5 in 7/8.
+     *
+     * <p>This does not contradict the rule that the pipeline counts quarter-note
+     * beats; it is what lets that rule survive contact with compound time. A beat
+     * tracker in 6/8 emits a dotted-quarter pulse, so a stage converting tracked
+     * pulses to musical time needs to know that one pulse is worth 1.5 quarters.
+     * Without it six pulses become two bars of 6/8 instead of three, which is
+     * arithmetically consistent and musically wrong.
+     */
+    public double beatUnitQuarters() {
+        // Exact: the denominator is a power of two no greater than 64, so the
+        // quotient is a dyadic rational a double holds without rounding. That
+        // matters because beatsPerBar() * beatUnitQuarters() has to equal
+        // quarterBeatsPerBar() to the last bit, or a position on the final beat
+        // of a bar can round into the next bar.
+        return (isCompound() ? 3 : 1) * 4.0 / denominator;
+    }
+
+    /**
+     * Counted beats per bar: 4 in 4/4, 3 in 3/4, 2 in 6/8, 4 in 12/8.
+     *
+     * <p>Deliberately not {@link #numerator}. Passing the numerator where this is
+     * wanted is the mis-barring bug in miniature: it bars 6/8 every six pulses
+     * rather than every two.
+     */
+    public int beatsPerBar() {
+        return isCompound() ? numerator / 3 : numerator;
+    }
+
+    /**
+     * Converts a tempo in quarter notes per minute into this meter's counted
+     * beats per minute -- the figure a metronome shows and the only one a reader
+     * can act on.
+     *
+     * <p>The inverse of what {@link TempoMap#constantPulse(double, TimeSignature)}
+     * does on the way in. Printing a stored tempo without it shows 180 for a 6/8
+     * piece a musician counts at 120, which is a metronome marking 50% fast.
+     */
+    public double countedTempo(double quarterBeatsPerMinute) {
+        return quarterBeatsPerMinute / beatUnitQuarters();
+    }
+
+    /**
+     * How the bar divides into beats, counted in denominator units and summing to
+     * {@link #numerator}: {@code [1,1,1,1]} for 4/4, {@code [3,3]} for 6/8,
+     * {@code [3,3,3,3]} for 12/8.
+     *
+     * <p>This is the form a notation back end wants: it is what LilyPond's
+     * {@code beatStructure} takes, provided the emitter also sets
+     * {@code baseMoment} to one denominator unit, and it is why a 6/8 bar beams
+     * as two groups of three eighths rather than as three quarters or six
+     * eighths. Nothing emits it yet -- see #64, where the chord chart's LilyPond
+     * output does not so much as name the meter.
+     *
+     * <p>Irregular meters get one beat per denominator unit rather than a
+     * conventional asymmetric grouping: 7/8 is {@code [1,1,1,1,1,1,1]}, not
+     * {@code [2,2,3]}. Both 2+2+3 and 3+2+2 occur in practice and nothing in the
+     * model can currently tell them apart, so this declines to guess. See #62.
+     */
+    public List<Integer> beatStructure() {
+        return List.copyOf(Collections.nCopies(beatsPerBar(), isCompound() ? 3 : 1));
     }
 
     @Override

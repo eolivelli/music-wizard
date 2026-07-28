@@ -22,6 +22,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -42,7 +43,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--tempo", paramLabel = "BPM",
-            description = "Force a tempo instead of tracking it.")
+            description = "Force a tempo instead of tracking it, in counted beats "
+                    + "per minute (dotted quarters in 6/8, not quarters).")
     Double tempo;
 
     @Option(names = "--time-signature", paramLabel = "N/D",
@@ -50,7 +52,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     String timeSignature;
 
     @Option(names = "--first-downbeat", paramLabel = "SECONDS",
-            description = "Force the time of the first downbeat.")
+            description = "Force the time of the first downbeat. "
+                    + "Accepted but not yet honoured (issue #67).")
     Double firstDownbeat;
 
     @Option(names = "--skip-separation",
@@ -88,14 +91,42 @@ final class AnalyzeCommand implements Callable<Integer> {
         workspace.writeScore(score);
 
         System.out.println();
-        System.out.printf("Tempo   %.1f BPM%n",
-                score.tempoMap().averageTempo(score.durationSeconds()));
+        System.out.println(tempoLine(score));
         System.out.println("Meter   " + score.tempoMap().initialTimeSignature());
         System.out.println("Chords  " + score.chords().size() + " spans");
         System.out.println("Saved   " + workspace.scoreFile());
         System.out.println();
         System.out.println("Next: mw render " + workspace.root().getFileName());
         return 0;
+    }
+
+    /**
+     * Prints the tempo in the unit the user counts in.
+     *
+     * <p>The map stores quarter notes per minute, which is the same number in
+     * every x/4 meter and a different one in 6/8, where the counted beat is a
+     * dotted quarter. Printing the stored figure unqualified there would show a
+     * tempo the user cannot type back in via {@code --tempo}.
+     *
+     * <p>The tempo itself comes from {@link Score#estimatedTempo()} rather than
+     * straight off the map, so this and the engraved chart's header print the
+     * same number.
+     *
+     * <p>The meter is the one the piece opens in, so a piece that changes meter
+     * part-way would be converted with the wrong beat unit for its later
+     * sections. Nothing emits a meter change today; see #66.
+     */
+    static String tempoLine(Score score) {
+        double quarterBpm = score.estimatedTempo();
+        TimeSignature meter = score.tempoMap().initialTimeSignature();
+        // Locale.ROOT, because the whole point is that the user can type this
+        // number back in via --tempo, and picocli parses it with Double.valueOf:
+        // under fr_FR this printed "120,0", which that rejects outright.
+        if (meter.beatUnitQuarters() == 1.0) {
+            return String.format(Locale.ROOT, "Tempo   %.1f BPM", quarterBpm);
+        }
+        return String.format(Locale.ROOT, "Tempo   %.1f BPM (%.1f quarter notes/min)",
+                meter.countedTempo(quarterBpm), quarterBpm);
     }
 
     private AudioTranscriber.Options options(MusicWizardConfig config) {

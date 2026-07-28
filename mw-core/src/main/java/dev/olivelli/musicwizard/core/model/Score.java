@@ -201,6 +201,55 @@ public record Score(
                 b.endSeconds() - b.startSeconds()));
     }
 
+    /**
+     * The piece's tempo in quarter notes per minute, from the best evidence
+     * available.
+     *
+     * <p>There are two answers in a score and they do not agree, which is why
+     * this exists: derive it twice and the two derivations drift, and a chart
+     * whose printed tempo contradicts its own bar lines is worse than one that
+     * is merely approximate. Every stage that needs a single tempo figure should
+     * come here rather than pick one.
+     *
+     * <p>The order is:
+     *
+     * <ol>
+     *   <li><b>A single-segment map wins</b>, taken to mean a tempo somebody
+     *       supplied rather than one measured, because a supplied tempo is a
+     *       correction of the tracked one and ignoring it ignores the
+     *       instruction. Segment count is a <em>proxy</em> for that, not proof of
+     *       it: {@link TempoMap#fromBeatTimes} emits one segment per beat
+     *       interval, so it produces a single-segment map only in the degenerate
+     *       case of exactly two beats with the first at second 0. That case is
+     *       harmless today, because the one segment then carries exactly the
+     *       tempo the grid's median would report. It stops being harmless if a
+     *       caller uses the explicit-pulse overload, where the two would differ.
+     *       Carrying provenance rather than inferring it is #73.
+     *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
+     *       one dropped beat does not skew it. Preferred over the map because
+     *       {@link TempoMap#fromBeatTimes} gives the audio before the first
+     *       tracked beat a whole beat of lead-in, and on a short clip that one
+     *       crammed beat pulls the map's average measurably above the real tempo
+     *       -- 122 BPM for a 120 BPM source on this project's own fixture. That
+     *       distortion is in the map itself and is not fixed here; see #69.
+     *   <li><b>Otherwise the map's duration-weighted average</b>, which is all
+     *       that is left.
+     * </ol>
+     *
+     * <p>In quarter notes per minute, like every other tempo in the model. For
+     * the figure a musician counts, pass it through
+     * {@link TimeSignature#countedTempo(double)}.
+     */
+    public double estimatedTempo() {
+        if (tempoMap.segments().size() == 1) {
+            return tempoMap.initialTempo();
+        }
+        if (beatGrid.isPresent() && beatGrid.get().size() >= 2) {
+            return beatGrid.get().medianTempo(tempoMap.initialTimeSignature());
+        }
+        return tempoMap.averageTempo(durationSeconds);
+    }
+
     /** True when there is enough here to engrave something useful. */
     public boolean hasRenderableContent() {
         return !tracks.isEmpty() || !chords.isEmpty();
