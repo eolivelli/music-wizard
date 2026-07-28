@@ -23,8 +23,9 @@ import java.util.Objects;
  *
  * <p>Samples are nominally in [-1, 1] and that is <em>not</em> enforced, on
  * purpose: a buffer can legitimately sit outside the range between a gain stage
- * and a normalisation. Finiteness is a correctness invariant and is checked;
- * range is a convention and is not.
+ * and a normalisation. Finiteness is a correctness invariant and is checked at
+ * construction -- see the constructor for why it is checked there and not
+ * somewhere cheaper; range is a convention and is not checked at all.
  *
  * <p>Mono because every analysis stage in this project wants one signal, and
  * float because the alternative is 16-bit integers that every stage would have
@@ -34,9 +35,6 @@ import java.util.Objects;
  * buffers routinely hold tens of millions of samples, and copying them at each
  * stage boundary would dominate the runtime of the whole pipeline. Treat the
  * array as read-only by convention; the stages in this project do.
- *
- * <p>Samples must be finite, and that is checked rather than assumed. See the
- * constructor for why it is checked here and not somewhere cheaper.
  */
 public final class AudioBuffer {
 

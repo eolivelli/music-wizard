@@ -39,6 +39,8 @@ import org.jtransforms.fft.FloatFFT_1D;
 public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, int hopSize) {
 
     /**
+     * Validates the magnitudes' structure and finiteness.
+     *
      * <p>Every frame must be present, {@code windowSize / 2 + 1} bins wide, and
      * finite. What that buys is a contract the stages downstream can rely on
      * without each re-deriving it: chroma, the tuning estimate and the onset
@@ -65,21 +67,34 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * than a bug being caught. The structural clauses are the ones that will
      * ever fire, on a hand-built spectrogram.
      *
-     * <p>The scan is one pass over the magnitudes, and a run pays it twice.
-     * Measured single-shot in a fresh JVM over five minutes at 22.05 kHz, three
-     * repeats each: <b>5 to 7 ms against 370 to 479 ms</b> to compute at the
-     * harmony resolution, and <b>15 to 30 ms against 720 to 843 ms</b> at the
-     * onset resolution. One to four per cent, and the spread between repeats of
-     * one resolution is wider than the difference between resolutions.
+     * <p>The scan is one pass over the magnitudes, and a run pays it twice --
+     * as the <em>first</em> construction in the process, which is the one that
+     * costs. Over five minutes at 22.05 kHz, four fresh JVMs each, timing the
+     * first {@code new Spectrogram} and then four more in the same JVM:
      *
-     * <p>Which is the point of quoting a range. The onset resolution scans
-     * twice the data (26.5 M values against 13.2 M) and that is a real
-     * difference; the default resolution scans 13.2 M, within 0.08% of the
-     * harmony one, so any gap between those two is measurement and not
-     * resolution. An earlier draft explained a 3.7x gap as a resolution
-     * difference between exactly that pair -- it was warm against cold, and the
-     * numbers were from different regimes with a causal story attached that
-     * they did not carry.
+     * <pre>
+     *   resolution        values     first        thereafter
+     *   4096/1024 harmony  13.2 M   16.3-16.6 ms   5.8-6.4 ms
+     *   1024/128  onsets   26.5 M   24.9-25.7 ms  12.7-13.5 ms
+     * </pre>
+     *
+     * <p>Against <b>370 to 479 ms</b> and <b>720 to 843 ms</b> to compute those
+     * two, so the check is 3% to 4% of the transform it guards either way.
+     *
+     * <p>Both columns are quoted because they answer different questions, and
+     * conflating them is how this paragraph has been wrong twice. The first
+     * column is what a recording pays; the second is what a
+     * {@code checkStructure()} called repeatedly would cost, which is what
+     * issue #79 needs. An earlier draft quoted the second column and described
+     * it as the first, and the draft before that explained the resulting 3.7x
+     * gap as a difference between resolutions.
+     *
+     * <p>It was not one. The onset resolution really does scan twice the data,
+     * and the two columns are far enough apart that no repeat of one resolution
+     * overlaps the other. But the <em>default</em> resolution scans 13,238,900
+     * values against harmony's 13,228,344 -- 0.08% apart -- so any gap measured
+     * between those two is method, not resolution, and that was the pair the
+     * 3.7x was drawn from.
      *
      * <p>Like {@link AudioBuffer}, this validates at construction and shares
      * the array rather than copying it, so a caller that writes through
@@ -87,12 +102,21 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * nothing will notice. That matters more here than it looks: issue #76
      * reasons from this contract about whether a downstream guard can be
      * deleted. See issue #79.
+     *
+     * @throws IllegalArgumentException if any of the three sizes is not
+     *     positive, {@code windowSize} is not a power of two, or a frame is
+     *     absent, the wrong width, or not finite
      */
     public Spectrogram {
         Objects.requireNonNull(magnitudes, "magnitudes");
-        if (sampleRate <= 0 || windowSize <= 0 || hopSize <= 0) {
-            throw new IllegalArgumentException(
-                    "sampleRate, windowSize and hopSize must be positive");
+        if (sampleRate <= 0) {
+            throw new IllegalArgumentException("sampleRate must be positive, got: " + sampleRate);
+        }
+        if (windowSize <= 0) {
+            throw new IllegalArgumentException("windowSize must be positive, got: " + windowSize);
+        }
+        if (hopSize <= 0) {
+            throw new IllegalArgumentException("hopSize must be positive, got: " + hopSize);
         }
         if (Integer.bitCount(windowSize) != 1) {
             throw new IllegalArgumentException(
