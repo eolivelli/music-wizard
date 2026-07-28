@@ -382,11 +382,13 @@ class AudioPipelineTest {
         @Test
         @DisplayName("names which size was not positive, rather than which three could have been")
         void rejectsNonPositiveSizes() {
-            // Untested before this PR, and the clause matters most for the two
-            // sizes nothing else catches: a non-positive windowSize is caught by
-            // the power-of-two check anyway, but a hopSize or sampleRate of zero
-            // would otherwise construct and make frameRate() return Infinity or
-            // NaN -- the silent wrong answer this constructor exists to replace.
+            // Untested before this PR, and load-bearing for the two sizes
+            // nothing else catches. Measured on a build with the clause deleted:
+            // sampleRate = 0 constructs, and then timeOf(0) is Infinity and
+            // binOf() collapses every frequency onto bin 0 -- note frameRate()
+            // is 0.0 there, finite and wrong, which is why it is the wrong
+            // method to cite. hopSize = 0 constructs and frameRate() is
+            // Infinity. Silent wrong answers, which is what this replaces.
             assertThatThrownBy(() -> new Spectrogram(new float[0][], 0, 2048, 512))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("sampleRate must be positive, got: 0");
@@ -395,12 +397,22 @@ class AudioPipelineTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("hopSize must be positive, got: 0");
 
-            // bitCount(Integer.MIN_VALUE) is 1, so it passes the power-of-two
-            // check; only the positivity clause stops it, and it must run first.
+            // bitCount(Integer.MIN_VALUE) is 1, so the power-of-two check never
+            // catches it whatever order the clauses run in -- only this one
+            // does. That is about coverage, not ordering.
             assertThatThrownBy(
                     () -> new Spectrogram(new float[0][], 22_050, Integer.MIN_VALUE, 512))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("windowSize must be positive, got: -2147483648");
+
+            // The ordering itself, which needs a value both clauses reject:
+            // bitCount(-4) is 30, so whichever check runs first names itself.
+            // #86 proposes hoisting these into compute() and reasons from
+            // positivity running first, so it should be defended rather than
+            // asserted in a comment.
+            assertThatThrownBy(() -> new Spectrogram(new float[0][], 22_050, -4, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("windowSize must be positive, got: -4");
         }
 
         @Test

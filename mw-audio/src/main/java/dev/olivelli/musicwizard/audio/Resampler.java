@@ -45,6 +45,17 @@ public final class Resampler {
      * the values. {@link AudioDecoder} resamples before it constructs the
      * {@link AudioBuffer}, so without this the buffer's own check would have
      * been the thing reporting a fault the resampler had just introduced.
+     *
+     * <p>It moves ordinary output too, and by more than "a rounding difference"
+     * suggests if you count in ulps. Against the previous float arithmetic:
+     * 44.1k to 22.05k is bit-identical, but only because the ratio is exactly
+     * two so no interpolation happens at all; 44.1k to 16k differs on 12.9% of
+     * samples, 22.05k to 44.1k on 14.4%, and 44.1k to 48k on 25.5%, by up to
+     * <b>131,072 ulps</b>. The ulp figure is meaningless -- the differences
+     * cluster at zero crossings, where an ulp is tiny -- and the number that
+     * means something is the absolute one: <b>at most 3.0e-8</b>, about
+     * -150 dBFS, or half a 24-bit LSB. Double is the accurate side of that
+     * difference, and nothing in the suite is within six orders of it.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {

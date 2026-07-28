@@ -70,7 +70,7 @@ public final class AudioBuffer {
      * derives from other buffers, and that is affordable. Measured single-shot
      * in a fresh JVM -- which is the regime that matters, since a run builds one
      * of these -- five minutes at 22.05 kHz costs <b>8 to 14 ms</b> across
-     * repeats, against <b>370 to 840 ms</b> for the {@code Spectrogram.compute}
+     * repeats, against <b>370 to 843 ms</b> for the {@code Spectrogram.compute}
      * that immediately follows it. There is deliberately no cheaper unchecked
      * constructor for internally derived buffers.
      *
@@ -106,7 +106,7 @@ public final class AudioBuffer {
         this.sampleRate = sampleRate;
     }
 
-    /** The samples, shared rather than copied. Do not modify. */
+    /** The samples, shared rather than copied. Do not modify; see #79. */
     public float[] samples() {
         return samples;
     }
