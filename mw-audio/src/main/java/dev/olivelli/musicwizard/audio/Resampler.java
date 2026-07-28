@@ -46,91 +46,31 @@ public final class Resampler {
      * {@link AudioBuffer}, so without this the buffer's own check would have
      * been the thing reporting a fault the resampler had just introduced.
      *
-     * <p>It moves ordinary output too. Against the previous float arithmetic,
-     * on uniform noise: 44.1k to 16k differs on 13.6% of samples, 22.05k to
-     * 44.1k on 14.3%, 44.1k to 48k on 24.5%. Tonal and music-like material
-     * differs on about 1%, so those are the conservative end. 44.1k to 22.05k
-     * is bit-identical, but only because the ratio is exactly two, so
-     * {@code fraction} is always zero and no interpolation happens at all --
-     * the same holds for 48k to 16k and any other integer ratio, and not
-     * because downsampling is inherently safe.
+     * <p>It moves ordinary output too, and the size of that is the thing to
+     * know: the difference between the two expressions is at most <b>one ulp of
+     * the signal's peak</b>. Attained but never exceeded over roughly 64 million
+     * constructed pairs, including denormals, binade edges and both signs. So
+     * 6.0e-8 for normalised audio -- about -144 dBFS, half a 24-bit LSB -- and
+     * it scales with amplitude, twice that for a buffer peaking at 2.0. Six
+     * orders below the tightest tolerance anywhere downstream, and double is
+     * the accurate side of the difference.
      *
-     * <p>The two expressions differ <em>only</em> when the float subtraction
-     * {@code b - a} is inexact -- if it is exact, both evaluate the same
-     * {@code double} and cast to the same {@code float}. Measured: of 20
-     * million random pairs, 5.9 million differ and <em>none</em> of them had an
-     * exact subtraction.
+     * <p>Two things worth knowing beyond the bound. The differences are common
+     * rather than rare -- 14% to 25% of samples on uniform noise, about 1% on
+     * tonal material -- so this is not a last-bit curiosity; and any integer
+     * ratio is bit-identical, because {@code fraction} is then always zero and
+     * no interpolation happens at all, which is why 44.1k to 22.05k shows no
+     * change and 44.1k to 48k shows the most.
      *
-     * <p>Only when, not exactly when, and the difference is not pedantic: an
-     * inexact subtraction usually produces no difference at all, because the
-     * perturbation has still to straddle a rounding boundary to change the
-     * result. Roughly half of the inexact subtractions on this path leave the
-     * output identical, and at an integer ratio all of them do -- 44.1k to
-     * 22.05k is bit-identical while a third of its subtractions are inexact.
-     * Read the other way round, the inexact rate would over-predict the
-     * divergence rate. <b>On uniform noise</b> that factor is two to three and
-     * a half -- 2.3x into 16k, 2.0x into 48k, and 3.4x for 22.05k to 44.1k.
+     * <p>Everything else about this difference -- how it distributes, how it
+     * relates to the exactness of the subtraction, and why the obvious bound of
+     * half an ulp of {@code |b - a|} is wrong by a factor of four -- is a
+     * side-question, and it was got wrong eight times over eleven review rounds
+     * on PR #78, always by stating a measurement more broadly than it was taken.
+     * That history is on the PR. Nothing downstream of this method is within
+     * six orders of the bound above, so the bound is all a caller needs, and
+     * anyone who needs more should measure it rather than inherit it.
      *
-     * <p>That range is closed rather than sampled, for noise. With the rates in
-     * lowest terms as {@code p:q}, {@code fraction} is zero exactly when
-     * {@code q} divides the output index, so the copied share is {@code 1/q}
-     * and the factor is about {@code 2 / (1 - 1/q)}. The smallest interpolated
-     * share available is {@code q = 2} -- an exact 2x upsample, which is what
-     * 22.05k to 44.1k is -- so 3.4x is the worst case, and it is the same 3.4x
-     * on 11.025k to 22.05k, 44.1k to 88.2k and 8k to 16k. Restricted to the
-     * genuinely interpolated samples that path is 1.7x, like the others.
-     *
-     * <p>The range does <em>not</em> carry to tonal material, and that is the
-     * qualifier to keep: measured on a 440 Hz sine, a triad and a twelve-
-     * harmonic sawtooth, 22.05k to 44.1k runs <b>4.8x to 7.5x</b>. Divergence
-     * there is the ~1% quoted above while the inexact rate falls further still,
-     * so the ratio widens. The error is at least in the safe direction -- a
-     * factor quoted too low makes divergence inferred from inexactness too
-     * high -- but do not invert these numbers on anything but noise.
-     *
-     * <p>That does not make half an ulp of {@code |b - a|} the bound, and it is
-     * worth saying why, because that is the form this paragraph has twice been
-     * tempted back into. The subtraction is perturbed by up to half an ulp of
-     * {@code |b - a|}, but the result is then rounded on its own scale, and
-     * {@code ulp(result)} runs up to <b>twice</b> {@code ulp(|b - a|)} -- never
-     * more, and smaller in 88% of differing samples. A perturbation that
-     * straddles a rounding boundary therefore moves the answer by a whole
-     * {@code ulp(result)}, which is four times half an ulp of {@code |b - a|}.
-     * That factor of four is attained, on ordinary material.
-     *
-     * <p>Both quantities live below twice the peak, so the bound that does hold
-     * is half an ulp of {@code 2 x peak} -- equivalently <b>one ulp of the
-     * peak</b>, since doubling a normal float doubles its ulp. Attained but
-     * never exceeded over roughly 64 million constructed pairs, including
-     * denormals, binade edges and both signs. It scales with amplitude, so no
-     * single absolute figure is a bound on its own:
-     *
-     * <pre>
-     *   peak   bound = ulp(peak)   worst measured
-     *   0.5    6.0e-8              3.0e-8   (-150.5 dBFS)
-     *   0.9    6.0e-8              6.0e-8   (-144.5 dBFS)
-     *   1.0    1.2e-7              6.0e-8   (-144.5 dBFS)  -- half a 24-bit LSB
-     *   2.0    2.4e-7              1.2e-7   (-138.5 dBFS)
-     * </pre>
-     *
-     * <p>Read the bound column, not the measured one. An earlier draft of this
-     * paragraph gave "half an ulp of the peak" as the rule, having measured it
-     * at 0.5, 1.0 and 2.0 -- every one of them an exact power of two, where
-     * {@code 2 x peak} lands on a binade boundary and the two coincide. Off a
-     * power of two it is short by exactly 2x: a normalised master peaking at
-     * 0.9, which is the ordinary case, measures 6.0e-8 where that rule predicts
-     * 3.0e-8. Downsampling is looser again, and not because the low-pass
-     * shrinks the values -- at peak 0.9 into 16 kHz it takes the peak down by
-     * a factor of 0.81, which alone would leave {@code max|b - a|} at 1.45 and
-     * change nothing. It shrinks the <em>differences</em>, by 0.29, and that is
-     * what carries them under the binade boundary.
-     *
-     * <p>Six orders below the tightest tolerance anywhere downstream of this
-     * method, and double is the accurate side of the difference. Do not quote
-     * the ulp count: it runs to the hundreds of thousands, because the
-     * differences sit at zero crossings where an ulp is vanishingly small, and
-     * being a maximum over samples it grows with the length of the signal
-     * rather than converging on a bound.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {
