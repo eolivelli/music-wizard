@@ -543,11 +543,36 @@ class MidiInputTest {
 
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.err())
-                    .contains("--skip-separation has no effect yet on any input")
+                    .contains("skipping separation has no effect yet on any input")
                     .contains("#8");
             assertThat(analyze.err())
                     .as("listed among the options the file's own declarations supersede")
                     .doesNotContain("--skip-separation has no effect on a MIDI workspace");
+        }
+
+        @Test
+        @DisplayName("and is answered from the config file too, because it applies to no run")
+        void skipSeparationIsAnsweredFromTheConfigLayer() {
+            // The rule render arrived at, applied here: an override that merely
+            // does not apply to *this* run may be passed over in silence, and one
+            // that applies to no run may not. The tempo and meter overrides are
+            // the first kind and stay silent from a config file; this is the
+            // second.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null,
+                    new MusicWizardConfig.AnalysisConfig(90.0, "3/4", null, Boolean.TRUE),
+                    null, null, null, null));
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.err())
+                    .contains("skipping separation has no effect yet on any input");
+            // And the other half of the rule, which must stay silent: a tempo in
+            // a config file does apply, just not on this path.
+            assertThat(analyze.err())
+                    .as("a preference that merely does not apply here was announced")
+                    .doesNotContain("no effect on a MIDI workspace");
         }
 
         @Test

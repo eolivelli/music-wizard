@@ -153,7 +153,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                             + " created; this analysis is of the file as it is now, and"
                             + " anything already rendered from the old one is out of date.");
         }
-        warnAboutOptionsThatDoNothing(kind);
+        warnAboutOptionsThatDoNothing(kind, config);
 
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Source     " + source.getFileName() + " (" + kind.description() + ")");
@@ -623,11 +623,19 @@ final class AnalyzeCommand implements Callable<Integer> {
      * found it announced as an audio option, quietly ignored by an audio run and
      * reported to a MIDI user in words implying an audio run would honour it.
      *
-     * <p>Only the options typed on this command line, not the effective config. A
-     * value in a config file is a preference that happens not to apply here; a
-     * value on the command line is an instruction for this run.
+     * <p>The two are read from different places, and the split is the rule
+     * {@code render} arrived at in round 10. The tempo, meter and downbeat
+     * overrides are read from the <em>typed fields</em>: they apply on the audio
+     * path and not the MIDI one, so a config file carrying them is a preference
+     * that happens not to apply to this run, and saying so every time somebody
+     * analysed a MIDI file would be noise. {@code --skip-separation} is read
+     * from the <em>effective config</em>, because it applies to no run at all --
+     * "happens not to apply here" and "cannot apply anywhere" are different
+     * claims and only the first is safe to leave unsaid. An earlier draft of
+     * this paragraph stated the first rule flatly and governed both, which made
+     * a false sentence out of the one option it was wrong about.
      */
-    private void warnAboutOptionsThatDoNothing(SourceKind kind) {
+    private void warnAboutOptionsThatDoNothing(SourceKind kind, MusicWizardConfig config) {
         if (kind == SourceKind.MIDI) {
             List<String> ignored = new ArrayList<>();
             if (tempo != null) {
@@ -646,8 +654,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " and meter");
             }
         }
-        if (skipSeparation) {
-            System.err.println("warning: --skip-separation has no effect yet on any input;"
+        if (skipSeparationRequested(config)) {
+            System.err.println("warning: skipping separation has no effect yet on any input,"
+                    + " whether asked for on the command line or in the config;"
                     + " nothing separates stems until #8 lands, so the mix is what every"
                     + " stage already analyses");
         }

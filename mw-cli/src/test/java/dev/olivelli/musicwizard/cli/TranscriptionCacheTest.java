@@ -234,7 +234,7 @@ class TranscriptionCacheTest {
                 .contains("estimating chords");
         assertThat(skipped.err())
                 .as("the audio path swallowed the option in silence")
-                .contains("--skip-separation has no effect yet on any input");
+                .contains("skipping separation has no effect yet on any input");
     }
 
     @Test

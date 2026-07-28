@@ -194,6 +194,30 @@ class RenderPartsTest {
         }
 
         @Test
+        @DisplayName("every notation key but lilypondPath is covered, not only the two with flags")
+        void coverTheKeysWithNoFlagOfTheirOwn() {
+            // capo and the accidental preference have no command-line flag, so
+            // the config file is the only way to ask for them -- and they are as
+            // inert as the two that do. Widened into the warning in round 10 with
+            // no test in either direction, which is how two of the four newly
+            // warned keys went unexercised.
+            Path workspace = audioWorkspace("song", fourChords());
+            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
+                    new MusicWizardConfig.NotationConfig(null, null, null, 3,
+                            MusicWizardConfig.AccidentalPreference.SHARPS),
+                    null, null, null));
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err())
+                    .contains("the capo")
+                    .contains("the accidental preference")
+                    .contains("#129");
+        }
+
+        @Test
         @DisplayName("asking for the default is not asking for anything")
         void theDefaultsAreNotReported() {
             // Every notation key has a built-in default, so the effective config

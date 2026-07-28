@@ -53,6 +53,26 @@
   <build>
     <plugins>
       <!--
+        The tests here run whole commands, and a command reads the user's global
+        config layer at $XDG_CONFIG_HOME/music-wizard/config.yaml. Left alone,
+        that makes the suite depend on the machine it runs on: a contributor who
+        is also a user, with the paperSize the README tells them to set, gets a
+        failure in RenderPartsTest with no visible cause. Pointed at a directory
+        under target/ that is never created, so the global layer is reliably
+        empty. The same hazard exists reactor-wide (mw-core fails first under the same
+        config) and belongs in the parent pom; that is #133, which this module
+        does not own the file to fix.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${project.build.directory}/no-global-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+      <!--
         The CLI is the one module a user actually runs, so it ships as a single
         executable jar. Without this, running the tool means reconstructing a
         classpath by hand, and the documented `mw` commands do not exist.
