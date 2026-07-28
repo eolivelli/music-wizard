@@ -429,6 +429,129 @@ class MidiImportEdgeCaseTest {
                 .withMessageContaining("not a readable file");
     }
 
+    // -------------------------------------------------- round 2 review findings
+
+    @Test
+    @DisplayName("a change one tick into a very wide opening bar does not take the walk apart")
+    void aChangeJustAfterTheOriginDoesNotRemoveTheBarZeroEntry() throws Exception {
+        // 64/1 is 256 quarter beats to the bar, and 32767 is the highest tick
+        // resolution a MIDI header can declare. With the "is this on a bar line"
+        // tolerance denominated in bars, a millionth of a bar is wider than a
+        // tick here, so an event at tick 1 counted as being on bar zero's own
+        // line -- which sent the walk into the branch that removes an entry, and
+        // the entry was the bar-0 one the tempo map requires to exist. The index
+        // went to -1 and the import died with an IndexOutOfBoundsException,
+        // which is not among the failures this class documents.
+        Sequence sequence = new Sequence(Sequence.PPQ, 32767);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {64, 0, 24, 8});
+        meta(track, 1, 0x58, new byte[] {3, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 32767, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, new TimeSignature(64, 1)),
+                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+    }
+
+    @Test
+    @DisplayName("a change after an undone one is measured from the bar line that survived")
+    void undoingAChangeRestoresItsBarLineAsWellAsItsMeter() throws Exception {
+        // 4/4; 3/4 mid-bar, which moves to bar 1; 4/4 again before bar 1 begins,
+        // which displaces the 3/4 and restores the opening meter, so the entry
+        // and the bar line measured from it both have to come out. The two
+        // changes after it are what make the bar line observable: if only the
+        // meter were restored and the stale bar line left behind, the last
+        // change lands at bar 4 instead of bar 3 and every bar number after it
+        // is wrong.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 2 * PPQ, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, (long) (3.5 * PPQ), 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 6 * PPQ, 0x58, new byte[] {7, 3, 24, 8});
+        meta(track, 10 * PPQ, 0x58, new byte[] {5, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 16 * PPQ, 0, 60);
+
+        assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
+                .containsExactly(
+                        new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
+                        new TempoMap.MeterChange(2, new TimeSignature(7, 8)),
+                        new TempoMap.MeterChange(3, new TimeSignature(5, 4)));
+    }
+
+    @Test
+    @DisplayName("a bar line recorded after a change is in quarter beats, not counted beats")
+    void aRecordedBarLineIsInQuarterBeats() throws Exception {
+        // The bar line stored with a change is used to place the *next* one, so
+        // it needs a second change after a compound meter to be observable at
+        // all. A 6/8 bar is three quarter beats and two counted beats: storing
+        // the counted count puts the 5/4 a bar late.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {6, 3, 36, 8});
+        meta(track, 7 * PPQ, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, 12 * PPQ, 0x58, new byte[] {5, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 20 * PPQ, 0, 60);
+
+        assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
+                .containsExactly(
+                        new TempoMap.MeterChange(0, TimeSignature.SIX_EIGHT),
+                        new TempoMap.MeterChange(3, TimeSignature.THREE_FOUR),
+                        new TempoMap.MeterChange(4, new TimeSignature(5, 4)));
+    }
+
+    @Test
+    @DisplayName("a change that both displaces another and sits mid-bar still says it moved")
+    void aSupersedingChangeStillReportsThatItMoved() throws Exception {
+        // The 6/8 at beat 6 displaces the 5/4 and takes effect at beat 7, a
+        // whole quarter beat later than the file puts it. An earlier draft
+        // reported the move only on the non-superseding path, so this one was
+        // silent -- and the gap can be a whole bar.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {4, 2, 24, 8});
+        meta(track, 2 * PPQ, 0x58, new byte[] {3, 2, 24, 8});
+        meta(track, 5 * PPQ, 0x58, new byte[] {5, 2, 24, 8});
+        meta(track, 6 * PPQ, 0x58, new byte[] {6, 3, 36, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 16 * PPQ, 0, 60);
+
+        transcriber.transcribe(sequence);
+        assertThat(messages).anyMatch(message ->
+                message.contains("6/8") && message.contains("does not fall on a bar line"));
+        // Never a negative distance: what is reported is how far the change was
+        // moved, which cannot be negative, rather than how far into a bar it
+        // fell, which is negative exactly in this case.
+        assertThat(messages).noneMatch(message -> message.contains("(-"));
+    }
+
+    @Test
+    @DisplayName("two tempo events the beat axis cannot separate do not sink the file either")
+    void aTempoEventIndistinguishableInBeatsIsSkipped() throws Exception {
+        // The sibling of the seconds case, on the other axis. Above 2^53 a tick
+        // count is no longer exactly representable, so two consecutive ticks
+        // divide to the same beat; TempoMap requires strictly increasing start
+        // beats, so without the skip the file is unreadable rather than slightly
+        // wrong.
+        Sequence sequence = new Sequence(Sequence.PPQ, 1);
+        Track track = sequence.createTrack();
+        long huge = 1L << 60;
+        assertThat((double) huge).isEqualTo((double) (huge + 1));
+        tempo(track, huge, 250_000);
+        tempo(track, huge + 1, 100_000);
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 1, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+        assertThat(score.tempoMap().segments()).hasSize(2);
+        assertThat(messages).anyMatch(message ->
+                message.contains("indistinguishable in time"));
+    }
+
     // -------------------------------------------------- round 1 review findings
     @Test
     @DisplayName("two tempo events the seconds axis cannot separate do not sink the file")
@@ -477,6 +600,10 @@ class MidiImportEdgeCaseTest {
         assertThat(score.tempoMap().meterChanges())
                 .containsExactly(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR));
         assertThat(messages).noneMatch(message -> message.contains("the meter changes"));
+        // Still said, even though the entry it was attached to was removed: the
+        // report moves to the change that survives rather than going with it.
+        assertThat(messages).anyMatch(message ->
+                message.contains("7/8") && message.contains("never takes effect"));
     }
 
     @Test
@@ -573,7 +700,7 @@ class MidiImportEdgeCaseTest {
         // objects, so above the cap the alternative to this refusal is an
         // OutOfMemoryError thrown from inside the JDK's parser.
         Path file = directory.resolve("huge.mid");
-        Files.write(file, new byte[8 * 1024 * 1024 + 1]);
+        Files.write(file, new byte[4 * 1024 * 1024 + 1]);
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> transcriber.transcribe(file))
                 .withMessageContaining("refusing to read");

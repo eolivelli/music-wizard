@@ -100,20 +100,30 @@ public final class MidiTranscriber {
      *
      * <p>The cap is on bytes because bytes are all that can be counted before
      * parsing, but what it is really bounding is heap, and the two are not the
-     * same size. {@code MidiSystem} materialises a {@code MidiEvent} and a
-     * {@code ShortMessage} per note event, which under running status is about
-     * three input bytes, so the sequence costs roughly <em>35 times</em> the
-     * file. Measured on this JDK: a 63 MB file of ordinary note events needs
-     * more than 2 GB of heap and dies with an {@code OutOfMemoryError} thrown
-     * from inside the JDK's parser -- which is exactly the outcome a cap is
-     * supposed to replace with a polite refusal.
+     * same size. This figure is measured rather than modelled, because two
+     * successive attempts to model it were both wrong and both wrong low: a
+     * {@code MidiEvent} plus a {@code ShortMessage} per three input bytes gives
+     * 35x, and the JDK's {@code Track} keeps a {@code HashSet} of its events
+     * beside the {@code ArrayList}, which that count leaves out.
      *
-     * <p>Eight megabytes is therefore the figure, not sixty-four. It costs about
-     * 280 MB of heap in the worst case, which a default JVM has, and it is still
-     * an order of magnitude above any real score: a full orchestral piece with
-     * every controller gesture intact is a couple of megabytes.
+     * <p>Measured on this JDK against the densest file the format allows --
+     * running-status note events, three bytes each -- by bisecting {@code -Xmx}
+     * over the whole {@code transcribe} path:
+     *
+     * <pre>
+     *   4 MB file, 699,040 notes: fails at 256m, succeeds at 288m
+     *   6 MB file, 1,048,565 notes: fails at 384m, succeeds at 512m
+     *   8 MB file, 1,398,096 notes: fails at 512m
+     * </pre>
+     *
+     * <p>So the real ratio is about 70x, not 35x. Four megabytes is the figure
+     * because a JVM with no {@code -Xmx} takes a quarter of the machine, and a
+     * 2 GB container therefore gets 512 MB -- which the row above clears with
+     * margin, where 8 MB does not clear it at all. It is still far above any
+     * real score: a full orchestral piece with every controller gesture intact
+     * is a couple of megabytes.
      */
-    private static final long MAX_FILE_BYTES = 8L * 1024 * 1024;
+    private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
 
     /** How much of a track name is kept, in code points. */
     private static final int MAX_NAME_LENGTH = 96;
@@ -150,21 +160,6 @@ public final class MidiTranscriber {
 
     /** Largest denominator {@link TimeSignature} accepts, as a power of two. */
     private static final int MAX_METER_DENOMINATOR_LOG2 = 6;
-
-    /**
-     * How far a meter change may sit from a bar line and still count as on it.
-     *
-     * <p>A bar position is a quotient of two exact quantities, so the residue is
-     * rounding noise or it is a genuinely mid-bar event; a millionth of a bar
-     * separates the two by a wide margin either way.
-     *
-     * <p>Denominated in bars, so its size in ticks grows with the bar. At the
-     * largest resolution a MIDI file can declare, 32767 ticks per quarter, a bar
-     * beyond about 30 quarter beats makes a millionth of a bar wider than a
-     * tick, and a change one tick after a bar line snaps back onto it. No
-     * sequencer writes above 960; see #108.
-     */
-    private static final double BAR_EPSILON = 1e-6;
 
     private final Consumer<String> progress;
 
@@ -334,12 +329,24 @@ public final class MidiTranscriber {
         for (Map.Entry<Long, Double> entry : tempi.tailMap(0L, false).entrySet()) {
             double beat = entry.getKey() / (double) ticksPerQuarter;
             double seconds = previousSeconds + (beat - previousBeat) * (60.0 / previousTempo);
-            if (!(beat > previousBeat) || !(seconds > previousSeconds)
-                    || !Double.isFinite(seconds)) {
+            if (!(seconds > previousSeconds)) {
                 // Two tempo events so close together that the map cannot tell
-                // them apart on one axis or the other. Keeping the later one
-                // would break the strict ordering the map requires; the audible
-                // difference between dropping it and honouring it is nil.
+                // them apart. Keeping the later one would break the strict
+                // ordering the map requires -- on either axis, and the map is
+                // then unbuildable and the file unreadable rather than slightly
+                // wrong. The audible difference between dropping it and
+                // honouring it is nil.
+                //
+                // One test, not three, because the two other conditions worth
+                // worrying about both reduce to this one. A beat collision --
+                // two ticks that divide to the same double, which happens above
+                // 2^53 -- makes the increment below exactly zero, so the seconds
+                // do not advance either. And "not greater than" is already false
+                // for NaN. Guarding the beat axis separately looked like
+                // defence in depth and was a clause no input could reach on its
+                // own; guarding non-finiteness was a third. Both are gone, which
+                // is the same collapse this class made in readKeys and in
+                // buildNote, finally applied everywhere at once.
                 progress.accept("ignoring a tempo event at tick " + entry.getKey()
                         + " that is indistinguishable in time from the previous one");
                 continue;
@@ -385,6 +392,16 @@ public final class MidiTranscriber {
      * draft carried the count separately and emitted a change from 4/4 to 4/4,
      * which the model accepts, {@code timeSignatureAtBar} answers correctly, and
      * the notation layer engraves as a redundant time signature mid-piece.
+     *
+     * <p>"On a bar line" is judged to within <em>half a tick</em>, and that is
+     * load-bearing rather than a detail. A tolerance denominated in bars -- what
+     * an earlier draft used -- grows with the bar, and once it exceeds a tick it
+     * makes an event one tick past the origin count as being <em>on</em> bar
+     * zero's line, which sends the walk into the branch that removes an entry.
+     * The entry at that point is the bar-0 one the map requires to exist, and
+     * removing it took the index below zero. Half a tick cannot say that: ticks
+     * are whole numbers, so the first event after tick 0 is at least one tick
+     * from the origin, which is twice the tolerance whatever the resolution.
      */
     private List<TempoMap.MeterChange> readMeterChanges(Track[] tracks, int ticksPerQuarter) {
         TreeMap<Long, TimeSignature> meters = new TreeMap<>();
@@ -410,13 +427,15 @@ public final class MidiTranscriber {
         // The beat each change's bar line falls on, one per entry in changes, so
         // that removing an entry restores the bar count with it.
         List<Double> barLineBeats = new ArrayList<>();
-        // What to tell the user about each change, or null where there is
-        // nothing to say. Held rather than printed so that a change which is
-        // later discarded takes its report with it.
-        List<String> reports = new ArrayList<>();
+        // What to tell the user about each change, held rather than printed so
+        // that a change which is later discarded takes its report with it.
+        List<List<String>> reports = new ArrayList<>();
         changes.add(new TempoMap.MeterChange(0, opening));
         barLineBeats.add(0.0);
-        reports.add(null);
+        reports.add(new ArrayList<>());
+
+        // Half a tick, in quarter beats. See the note on the method.
+        double halfTick = 0.5 / ticksPerQuarter;
 
         for (Map.Entry<Long, TimeSignature> entry : meters.tailMap(0L, false).entrySet()) {
             TimeSignature meter = entry.getValue();
@@ -429,26 +448,40 @@ public final class MidiTranscriber {
                 continue;
             }
             long currentBar = changes.get(last).startBar();
+            double barLength = current.quarterBeatsPerBar();
             double beat = entry.getKey() / (double) ticksPerQuarter;
-            double barsAhead = (beat - barLineBeats.get(last)) / current.quarterBeatsPerBar();
+            double barsAhead = (beat - barLineBeats.get(last)) / barLength;
             // Negative when an earlier change was moved forward past this one's
             // tick, in which case this change lands on the bar that one claimed.
-            long wholeBars = Math.max(0, (long) Math.ceil(barsAhead - BAR_EPSILON));
+            long wholeBars = Math.max(0, (long) Math.ceil(barsAhead));
+            if (wholeBars > 0 && Math.abs(barLineBeats.get(last)
+                    + (wholeBars - 1) * barLength - beat) <= halfTick) {
+                // The bar line just below is this event's own tick, so the
+                // ceiling overshot by one: the change is on that line, not after
+                // it. This is the whole of the tolerance -- everything else is
+                // exact arithmetic on whole ticks.
+                wholeBars--;
+            }
             long bar = currentBar + wholeBars;
             if (bar > Integer.MAX_VALUE) {
                 progress.accept("ignoring the time signature at tick " + entry.getKey()
                         + ": it falls past the last bar a score can number");
                 continue;
             }
-            double barLineBeat = barLineBeats.get(last)
-                    + wholeBars * current.quarterBeatsPerBar();
+            double barLineBeat = barLineBeats.get(last) + wholeBars * barLength;
+            boolean onBarLine = Math.abs(barLineBeat - beat) <= halfTick;
 
-            String report = null;
+            List<String> entryReports = new ArrayList<>();
             if (bar == currentBar) {
                 // The change already on this bar is superseded before the bar
                 // begins, so it takes effect nowhere -- and whatever was going
                 // to be said about it is now false and goes with it.
-                progress.accept(String.format(Locale.ROOT,
+                //
+                // Never the entry at index 0: reaching here needs wholeBars to
+                // be zero, which at index 0 needs the event at or within half a
+                // tick of the origin, and tick 0 is not in this loop. So the
+                // bar-0 entry the map requires cannot be the one removed.
+                entryReports.add(String.format(Locale.ROOT,
                         "the time signature %s never takes effect: bar %d is redeclared"
                                 + " as %s before it begins",
                         current, bar + 1, meter));
@@ -460,22 +493,35 @@ public final class MidiTranscriber {
                     // With the displaced change gone the file's effective meter
                     // has not changed at all, so recording a change here would
                     // engrave a time signature identical to the one in force.
+                    // Its report goes to the entry that survives, so it is still
+                    // said rather than removed along with the entry.
+                    reports.get(last).addAll(entryReports);
                     continue;
                 }
-            } else if (Math.abs(barsAhead - wholeBars) > BAR_EPSILON) {
-                report = String.format(Locale.ROOT,
-                        "the time signature %s at tick %d does not fall on a bar line"
-                                + " (%.3f bars after bar %d); taking effect at bar %d instead",
-                        meter, entry.getKey(), barsAhead, currentBar + 1, bar + 1);
+            }
+            if (!onBarLine) {
+                // Reported in the superseding case too. An earlier draft left it
+                // out there, so a change that both displaced another and sat
+                // mid-bar was moved -- by up to a whole bar -- with nothing said.
+                // How far it moved, in quarter beats, rather than how far into
+                // a bar it fell. The latter is negative in the superseding case
+                // -- the change sits before a bar line an earlier change was
+                // already pushed to -- and a negative count of bars is not
+                // something a reader can act on. The distance moved is never
+                // negative, because the bar taken is the first at or after the
+                // event.
+                entryReports.add(String.format(Locale.ROOT,
+                        "the time signature %s at tick %d does not fall on a bar line;"
+                                + " taking effect at bar %d, which begins %.3f quarter"
+                                + " beats later",
+                        meter, entry.getKey(), bar + 1, barLineBeat - beat));
             }
             changes.add(new TempoMap.MeterChange((int) bar, meter));
             barLineBeats.add(barLineBeat);
-            reports.add(report);
+            reports.add(entryReports);
         }
-        for (String report : reports) {
-            if (report != null) {
-                progress.accept(report);
-            }
+        for (List<String> entryReports : reports) {
+            entryReports.forEach(progress);
         }
         if (changes.size() > 1) {
             progress.accept("the meter changes " + (changes.size() - 1) + " time(s)");
