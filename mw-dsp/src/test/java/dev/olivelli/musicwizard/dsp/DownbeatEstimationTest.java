@@ -442,7 +442,8 @@ class DownbeatEstimationTest {
             // unpushed one -- and that is not a property this code has, or should
             // claim: the two are indistinguishable, so which is the larger is
             // residual chroma leakage. It came out the right way at 32 seconds
-            // and the wrong way at 12, 16, 20, 24, 28, 36 and 40, by about 5e-3.
+            // and the wrong way at 12, 16, 20, 24, 28, 36 and 40, by between
+            // 3e-4 and 5e-3.
             // Whether they are close is asserted, once, in
             // anAnticipationLooksExactlyLikeAMidBarStart; asserting an ordering
             // between them would pin noise and be a fixture length away from red.
@@ -794,23 +795,44 @@ class DownbeatEstimationTest {
         @DisplayName("the accent saturates at the scale it says it does")
         void theAccentSaturatesWhereItSaysItDoes() {
             // ONSET_FULL_SCALE sets how many deviations of accent it takes to
-            // reach most of the onset term's bound, so doubling it halves an
-            // accent's effective size and hands back to the harmony a phase the
-            // accent should have taken. Pinned through the phase, because the
-            // accent no longer touches the confidence: confidenceIsTheProductOfIts
-            // Factors used to pin this constant as a side effect of its worked
-            // example, and stopped when #48 took the accent out of that arithmetic.
+            // reach most of the onset term's bound, so changing it changes how
+            // large an accent has to be to overturn a harmonic lead -- and hands
+            // a phase to whichever of the two the change happens to favour.
+            // Pinned through the phase, because the accent no longer touches the
+            // confidence: confidenceIsTheProductOfItsFactors used to pin this
+            // constant as a side effect of its worked example, and stopped when
+            // #48 took the accent out of that arithmetic. That worked example
+            // pinned it in both directions, so both are here.
             //
-            // Harmony leads on phase 2 by 0.04, inside the 0.1 an accent is
-            // allowed to move. A level of 4/3 on phase 0 gives it an advantage of
-            // exactly one deviation and every other phase -1/3, so the onset term
-            // separates them by 0.05 * (tanh(1) + tanh(1/3)) = 0.0542 at full
-            // scale and by 0.05 * (tanh(0.5) + tanh(1/6)) = 0.0314 at twice it --
-            // one side of 0.04 and then the other.
+            // Both leads are set close to where the accent is worth exactly as
+            // much as the harmony, so the pair brackets the constant to about a
+            // fifth either way rather than to a factor of two. Brackets rather
+            // than pins: the only thing this constant is now observable through
+            // is which phase wins, which is a threshold, so a change of a few
+            // per cent cannot be caught at all. It could be pinned exactly again
+            // by putting the accent back into the confidence, and that is the
+            // trade #48 made deliberately.
+            //
+            // Larger scale, accent shrinks. Harmony leads on phase 2 by 0.049,
+            // inside the 0.1 an accent may move. An advantage of exactly one
+            // deviation on phase 0 and -1/3 elsewhere separates them by
+            // 0.05 * (tanh(1) + tanh(1/3)) = 0.0542 at full scale and by
+            // 0.05 * (tanh(1/1.2) + tanh(1/3.6)) = 0.0477 at a fifth more --
+            // one side of 0.049 and then the other, so the accent stops winning.
             List<Double> beats = beatsEvery(0.5, 34);
 
-            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(),
+            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.049),
                     envelopeOf(beats, new double[] {4.0 / 3, 0, 0, 0}), 4).phase()).isZero();
+
+            // Smaller scale, accent grows, and the failure is the mirror image:
+            // an accent that should not be enough becomes enough. A lead of
+            // 0.028 against an advantage of 0.4 gives
+            // 0.05 * (tanh(0.4) + tanh(2/15)) = 0.0256 at full scale and
+            // 0.05 * (tanh(0.5) + tanh(1/6)) = 0.0314 at a fifth less, so the
+            // accent starts taking a phase the harmony should have kept.
+            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.028),
+                    envelopeOf(beats, new double[] {0.4 / 0.75, 0, 0, 0}), 4).phase())
+                    .isEqualTo(2);
         }
 
         @Test
@@ -822,30 +844,48 @@ class DownbeatEstimationTest {
             // above, pinned until #48 only as a side effect of a worked example
             // that no longer involves the accent.
             //
-            // One enormous onset on beat 0, which no phase's harmony can see,
-            // lifts the mean the advantages are taken against if that mean is
-            // taken over every beat rather than over the scored ones. The lift is
-            // uniform, so it cannot change which phase is loudest; what it changes
-            // is how far tanh has saturated by the time it reaches them, and the
-            // accent that should overturn a harmonic lead of 0.04 then cannot.
+            // One enormous onset on a beat no phase's harmony can see, and
+            // nothing anywhere else, so that without it every advantage is zero
+            // and the harmony decides alone. Reading that beat gives its phase a
+            // mean far above the others and an accent that takes the answer.
+            //
+            // Both ends, and the winner is phase 2 rather than phase 0, which is
+            // what makes the head of the range observable at all: beat 0 is a
+            // phase-0 beat, so an outlier there lands inside phase 0's own mean.
+            // A fixture whose winner is phase 0 is helped by reading it and
+            // cannot tell that it was read -- which is how the first version of
+            // this test passed while every range mutation survived.
             List<Double> beats = beatsEvery(0.5, 34);
-            double[] strength = new double[1800];
-            java.util.Arrays.fill(strength, -0.2);
-            for (int beat = 0; beat < beats.size(); beat++) {
-                strength[(int) Math.round(beats.get(beat) * 100)] =
-                        beat % 4 == 0 ? 4.0 / 3 : 0;
-            }
-            strength[0] = 100;
 
-            assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(),
-                    new OnsetEnvelope(strength, 100), 4).phase()).isZero();
+            for (int loud : new int[] {0, 33}) {
+                assertThat(DownbeatEstimator.estimate(beats, leadingOnPhaseTwo(0.04),
+                        oneLoudBeat(beats, loud), 4).phase())
+                        .as("outlier on beat %d", loud).isEqualTo(2);
+            }
         }
 
-        /** Chroma whose only novelty is 0.04 on every phase-2 beat of 34. */
-        private static Chroma leadingOnPhaseTwo() {
+        /**
+         * A flat envelope with one beat struck a hundred deviations hard.
+         *
+         * <p>Every other beat sits at zero rather than at the fill below it, so
+         * that widening the scored range is the only thing that can move an
+         * advantage.
+         */
+        private static OnsetEnvelope oneLoudBeat(List<Double> beatTimes, int loudBeat) {
+            double[] strength = new double[1800];
+            java.util.Arrays.fill(strength, -0.2);
+            for (double time : beatTimes) {
+                strength[(int) Math.round(time * 100)] = 0;
+            }
+            strength[(int) Math.round(beatTimes.get(loudBeat) * 100)] = 100;
+            return new OnsetEnvelope(strength, 100);
+        }
+
+        /** Chroma over 34 beats whose only novelty is a lead on every phase-2 beat. */
+        private static Chroma leadingOnPhaseTwo(double lead) {
             double[] novelty = new double[34];
             for (int beat = 2; beat <= 30; beat += 4) {
-                novelty[beat] = 0.04;
+                novelty[beat] = lead;
             }
             return chromaWithNovelty(novelty, 33);
         }
