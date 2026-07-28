@@ -58,19 +58,19 @@ public final class Resampler {
      * same units is {@code isEffectivelySilent}'s peak of 1e-4, three orders
      * above the bound. Double is the accurate side of the difference.
      *
-     * <p>Two things worth knowing beyond the bound. The differences are common
-     * rather than rare -- on uniform noise, 6% to 25% of samples across every
-     * source rate from 8 kHz to 192 kHz into this pipeline's 22.05 and 44.1,
-     * and about 1% on tonal material -- so this is not a last-bit curiosity.
-     * The low end is the steep decimations, because the low-pass runs first and
-     * shrinks adjacent differences until the float subtraction is exact more
-     * often: 192k to 22.05k is the 6%, 16k to 22.05k the 25%. And integer
-     * <em>decimation</em> is bit-identical,
-     * because {@code fraction} is then always zero and no interpolation
-     * happens: 44.1k to 22.05k and 96k to 8k show no change at all. Integer
-     * <em>upsampling</em> is not, and the distinction is easy to get backwards
-     * -- 22.05k to 44.1k is an exact 2:1 ratio and differs on 14% of samples,
-     * because there the step is 0.5 rather than 2.
+     * <p>One thing worth knowing beyond the bound: the differences are common
+     * rather than rare, so this is not a last-bit curiosity. On the two
+     * conversions a real recording actually takes into the analysis rate,
+     * measured: <b>44.1k to 22.05k is bit-identical</b> -- the step is exactly
+     * 2, so {@code fraction} is always zero and no interpolation happens, which
+     * holds for any integer decimation -- and <b>48k to 22.05k differs on 15%
+     * of samples</b> on uniform noise, 0.9% on a triad.
+     *
+     * <p>Do not read a range off those two. Divergence varies from about 3% to
+     * 25% over the source rates a file might declare, it is not ordered by how
+     * steep the conversion is, and three successive attempts to state it as a
+     * swept range were each wrong at the floor. If you need the figure for some
+     * other pair, measure that pair.
      *
      * <p>Everything else about this difference -- how it distributes, how it
      * relates to the exactness of the subtraction, and why the obvious bound of
