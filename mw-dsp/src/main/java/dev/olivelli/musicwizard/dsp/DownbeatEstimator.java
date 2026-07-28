@@ -197,9 +197,15 @@ public final class DownbeatEstimator {
      * Estimates the downbeat phase from harmonic change, with onset energy as a
      * tie-breaker.
      *
+     * <p>A one-beat bar is answered without looking at anything, so the chroma
+     * is not checked at that meter. The check exists to stop a chroma that does
+     * not line up with these beats from choosing an arbitrary phase, and at one
+     * beat to the bar there is no phase to choose.
+     *
      * @param beatTimes   the tracked beats, in seconds and ascending
      * @param chroma      beat-synchronous chroma over exactly those beats, so that
-     *                    {@code chroma.frameCount() == beatTimes.size() - 1}
+     *                    {@code chroma.frameCount() == beatTimes.size() - 1};
+     *                    required at every bar length but one
      * @param envelope    the onset envelope the beats were tracked from
      * @param beatsPerBar the assumed bar length; not inferred
      */

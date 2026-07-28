@@ -391,6 +391,28 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("answers for the meter it was asked about")
+        void reportsTheMeterItWasAsked() {
+            // The Estimate carries the bar length so that a phase computed for
+            // one meter cannot be applied to another, and toBeatGrid reads it
+            // back. Nothing asserted that an estimator asked for one meter
+            // answers for that meter, so widening the one-beat-bar guard by a
+            // single beat -- which hands a caller asking for 2 an Estimate saying
+            // 1, and a grid where every beat is a downbeat -- passed everything.
+            List<Double> beats = beatsEvery(0.5, 33);
+            Chroma chroma = stepwiseChroma(32, 4, 0);
+
+            for (int beatsPerBar = 1; beatsPerBar <= 6; beatsPerBar++) {
+                assertThat(DownbeatEstimator
+                        .estimate(beats, chroma, flatEnvelope(20), beatsPerBar).beatsPerBar())
+                        .isEqualTo(beatsPerBar);
+                assertThat(DownbeatEstimator
+                        .fromOnsets(beats, flatEnvelope(20), beatsPerBar).beatsPerBar())
+                        .isEqualTo(beatsPerBar);
+            }
+        }
+
+        @Test
         @DisplayName("finds a phase that is not zero")
         void findsAnOffsetPhase() {
             // Guards against an estimator that happens to return 0 for every
@@ -818,8 +840,10 @@ class DownbeatEstimationTest {
                 assertThat(DownbeatEstimator.estimate(beats, chroma, flatEnvelope(10), 1)
                         .confidence()).isEqualTo(Confidence.CERTAIN);
             }
-            // Including the paths that never reach the harmonic scoring at all:
-            // two beats fall back to onsets, and fromOnsets is reachable directly.
+            // Answered before any evidence is gathered, so it holds for inputs
+            // there is nothing to gather from, and on the onset path -- which
+            // used to report the floor here, since the answer lived inside the
+            // harmonic scoring that fromOnsets never runs.
             assertThat(DownbeatEstimator.estimate(List.of(0.0, 0.5),
                     new Chroma(new double[1][12], 0), flatEnvelope(2), 1).confidence())
                     .isEqualTo(Confidence.CERTAIN);
