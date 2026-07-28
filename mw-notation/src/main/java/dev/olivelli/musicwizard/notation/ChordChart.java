@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.notation;
 
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
+import dev.olivelli.musicwizard.core.model.ChordQuality;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -134,8 +136,7 @@ public final class ChordChart {
             for (int i = 0; i < chords.size(); i++) {
                 Chord chord = chords.get(i);
                 double startBeat = chord.startBeat().orElseThrow();
-                double lastBeat =
-                        Math.max(startBeat, chord.endBeat().orElseThrow() - BAR_END_NUDGE);
+                double lastBeat = Math.max(startBeat, printedEndBeat(chord) - BAR_END_NUDGE);
                 barOfChord[i] = map.toMusicalTime(startBeat).bar() - origin;
                 lastBar = Math.max(lastBar, map.toMusicalTime(lastBeat).bar() - origin);
             }
@@ -308,39 +309,101 @@ public final class ChordChart {
      * would make a readable file unengravable over a rounding error.
      */
     private static String quantizedDuration(Chord chord) {
-        Optional<Double> beats = chord.durationBeats();
-        if (beats.isEmpty()) {
-            return null;
-        }
-        double units = Math.max(1, Math.round(beats.get() / LilyPondDuration.SHORTEST_QUARTERS));
-        return LilyPondDuration.scaled(units * LilyPondDuration.SHORTEST_QUARTERS);
+        return chord.durationBeats().isEmpty()
+                ? null
+                : LilyPondDuration.scaled(printedLengthBeats(chord));
     }
 
-    /** One chordmode event: a rest for no-chord, otherwise root, duration, quality. */
+    /**
+     * A chord's length as it will be printed: its own, snapped to the shortest
+     * value a duration can name.
+     *
+     * <p>Shared with {@link #barGrid} on purpose. The text chart counts the bars
+     * a chord touches and the engraving writes how long it lasts, and if those
+     * two round differently they disagree -- a piece whose last note-off lands a
+     * few MIDI ticks past a bar line got a trailing {@code | % |} in the text
+     * that the engraved page did not have. One rounding, in one place, and the
+     * question cannot come up again.
+     */
+    private static double printedLengthBeats(Chord chord) {
+        double beats = chord.durationBeats().orElseThrow();
+        double units = Math.max(1, Math.round(beats / LilyPondDuration.SHORTEST_QUARTERS));
+        return units * LilyPondDuration.SHORTEST_QUARTERS;
+    }
+
+    /** Where a chord is printed as ending, which is its start plus its printed length. */
+    private static double printedEndBeat(Chord chord) {
+        return chord.startBeat().orElseThrow() + printedLengthBeats(chord);
+    }
+
+    /**
+     * One chordmode event: a rest for no-chord, otherwise root, duration,
+     * quality and any bass.
+     *
+     * <p>The bass is what makes {@code C/E} engrave as C/E rather than as C.
+     * Dropping it printed a chord in root position that the chart said was an
+     * inversion, which is a different instruction to a bass player.
+     */
     private static String chordMode(Chord chord, String duration) {
-        return chord.isNoChord()
-                ? "r" + duration
-                : lilyPondRoot(chord) + duration + lilyPondQuality(chord);
+        if (chord.isNoChord()) {
+            return "r" + duration;
+        }
+        String symbol = lilyPondRoot(chord) + duration + lilyPondQuality(chord);
+        return chord.isSlashChord()
+                ? symbol + "/" + lilyPondName(chord.bass().orElseThrow())
+                : symbol;
     }
 
     /** The root in LilyPond note-name form, e.g. {@code c} or {@code bes}. */
     private static String lilyPondRoot(Chord chord) {
-        return chord.root().letter().name().toLowerCase(java.util.Locale.ROOT)
-                + chord.root().accidental().lilyPondSuffix();
+        return lilyPondName(chord.root());
     }
 
-    /** The quality modifier, which follows the duration in chordmode. */
+    /** A written pitch in LilyPond note-name form, without an octave. */
+    private static String lilyPondName(PitchSpelling pitch) {
+        return pitch.letter().name().toLowerCase(Locale.ROOT)
+                + pitch.accidental().lilyPondSuffix();
+    }
+
+    /**
+     * The quality modifier, which follows the duration in chordmode.
+     *
+     * <p>Every quality has its own case and there is no {@code default}, so the
+     * switch is exhaustive and adding a constant to {@link ChordQuality} stops
+     * the build rather than quietly engraving the wrong chord. It used to have
+     * one, and it collapsed four qualities onto {@code :m} and three onto
+     * {@code :dim} -- which was invisible while only major, minor and no-chord
+     * could reach here, and became visible the moment #115 gave the symbolic
+     * estimator a wider vocabulary. A chart that said {@code Am7} engraved as
+     * Am, and one that said {@code Bm7b5} engraved as a B diminished triad: a
+     * different chord, printed confidently.
+     *
+     * <p>The modifiers are the ones LilyPond means the same thing by, checked by
+     * rendering each and reading the pitches back out of the engraver's own MIDI
+     * -- {@code :m7.5-} is a half-diminished seventh and prints as Bø,
+     * {@code :m7+} is a minor triad with a major seventh, and both {@code :maj7}
+     * and {@code :m7+} print their seventh as the conventional triangle.
+     */
     private static String lilyPondQuality(Chord chord) {
         return switch (chord.quality()) {
-            case MINOR, MINOR_SEVENTH, MINOR_SIXTH, MINOR_MAJOR_SEVENTH -> ":m";
-            case DIMINISHED, DIMINISHED_SEVENTH, HALF_DIMINISHED_SEVENTH -> ":dim";
+            case MAJOR -> "";
+            case MINOR -> ":m";
+            case DIMINISHED -> ":dim";
             case AUGMENTED -> ":aug";
-            case DOMINANT_SEVENTH -> ":7";
-            case MAJOR_SEVENTH -> ":maj7";
             case SUSPENDED_SECOND -> ":sus2";
             case SUSPENDED_FOURTH -> ":sus4";
+            case DOMINANT_SEVENTH -> ":7";
+            case MAJOR_SEVENTH -> ":maj7";
+            case MINOR_SEVENTH -> ":m7";
+            case MINOR_MAJOR_SEVENTH -> ":m7+";
+            case HALF_DIMINISHED_SEVENTH -> ":m7.5-";
+            case DIMINISHED_SEVENTH -> ":dim7";
             case SIXTH -> ":6";
-            default -> "";
+            case MINOR_SIXTH -> ":m6";
+            // Never reached: a no-chord span is written as a rest, which has no
+            // root to hang a modifier on. Named rather than defaulted so the
+            // exhaustiveness above is real.
+            case NONE -> "";
         };
     }
 
