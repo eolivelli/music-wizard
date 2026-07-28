@@ -73,12 +73,6 @@ final class RenderCommand implements Callable<Integer> {
      * a name this command does not recognise at all is a typo, and deserves a
      * different answer from a name it recognises and cannot yet honour.
      */
-    /** How one part is produced, once it is known that it can be. */
-    @FunctionalInterface
-    private interface Emitter {
-        List<Path> emit(Workspace workspace, Score score, Optional<Path> lilypond);
-    }
-
     private enum Part {
         CHORDS("chords", null, RenderCommand::writeChordChart),
         VOICE("voice", "melody transcription is not implemented yet (#8)", null),
@@ -168,6 +162,12 @@ final class RenderCommand implements Callable<Integer> {
         }
     }
 
+    /** How one part is produced, once it is known that it can be. */
+    @FunctionalInterface
+    private interface Emitter {
+        List<Path> emit(Workspace workspace, Score score, Optional<Path> lilypond);
+    }
+
     @Spec
     CommandSpec spec;
 
@@ -198,7 +198,7 @@ final class RenderCommand implements Callable<Integer> {
         Workspace workspace = Workspace.open(workspaceDirectory);
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         List<Part> requested = requestedParts();
-        warnAboutOptionsThatDoNothing();
+        warnAboutOptionsThatDoNothing(config);
 
         // The score is read before anything is announced, because what can be
         // produced is a property of it. Announcing an output directory and an
@@ -366,21 +366,54 @@ final class RenderCommand implements Callable<Integer> {
      * key -- a confident wrong answer rather than a missing one, which is the
      * category this whole change exists to remove. Nothing reads either value
      * (#129).
+     *
+     * <p>Read from the <em>effective</em> config rather than from the typed
+     * fields, which is the opposite of what {@code analyze} does with its own
+     * overrides, and the difference is the point. {@code --tempo} applies on the
+     * audio path and not the MIDI one, so a config file carrying it is a
+     * preference that happens not to apply to this run and passing over it in
+     * silence is right. These two apply on no path, ever. "Happens not to apply
+     * here" and "cannot apply anywhere" are different claims, and only the first
+     * is safe to leave unsaid -- so a paper size set once in {@code
+     * workspace.yaml}, which is exactly where a persistent preference belongs,
+     * warns just as the flag does.
      */
-    private void warnAboutOptionsThatDoNothing() {
-        List<String> ignored = new ArrayList<>();
-        if (transpose != null) {
-            ignored.add("--transpose");
+    private static void warnAboutOptionsThatDoNothing(MusicWizardConfig config) {
+        var notation = config.notation();
+        var defaults = MusicWizardConfig.DEFAULTS.notation();
+        if (notation == null || defaults == null) {
+            return;
         }
-        if (paperSize != null) {
-            ignored.add("--paper");
+        // Against the defaults, not against null. Every one of these keys has a
+        // built-in default, so the effective config always carries a value and a
+        // non-null test would warn on every run in the tool. What is worth
+        // saying is that somebody asked for something other than what the tool
+        // would have done anyway -- and asking for the default is not asking for
+        // anything, since honouring it would produce the same chart.
+        List<String> ignored = new ArrayList<>();
+        if (differs(notation.transposeSemitones(), defaults.transposeSemitones())) {
+            ignored.add("the transposition");
+        }
+        if (differs(notation.paperSize(), defaults.paperSize())) {
+            ignored.add("the paper size");
+        }
+        if (differs(notation.capo(), defaults.capo())) {
+            ignored.add("the capo");
+        }
+        if (differs(notation.accidentalPreference(), defaults.accidentalPreference())) {
+            ignored.add("the accidental preference");
         }
         if (!ignored.isEmpty()) {
             System.err.println("warning: " + String.join(", ", ignored)
                     + (ignored.size() == 1 ? " has" : " have")
-                    + " no effect yet; nothing reads either value, so the chart is"
-                    + " engraved untransposed at the default paper size (#129)");
+                    + " no effect yet, whether set on the command line or in the workspace"
+                    + " config; nothing reads any notation setting but lilypondPath, so the"
+                    + " chart is engraved exactly as the defaults would engrave it (#129)");
         }
+    }
+
+    private static boolean differs(Object requested, Object byDefault) {
+        return requested != null && !requested.equals(byDefault);
     }
 
     private MusicWizardConfig overrides() {

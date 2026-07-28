@@ -27,9 +27,14 @@ import picocli.CommandLine.Command;
 /**
  * Reports whether the environment can run the full pipeline.
  *
- * <p>Worth having as its own command because the two things most likely to be
- * missing, a LilyPond binary and an API key, both fail late and confusingly if
- * they are only discovered halfway through a long analysis run.
+ * <p>Worth having as its own command because a missing LilyPond binary fails
+ * late and confusingly if it is only discovered after a long analysis run.
+ *
+ * <p>The API key is reported for a different reason and with a different claim.
+ * Nothing consumes it -- the advisor layer is #11 and {@code mw-llm} holds no
+ * source -- so it fails nowhere, and saying it made "the advisor layer
+ * available" was this command's version of the defect #82 was filed for, in the
+ * one command whose whole job is answering what works.
  */
 @Command(name = "doctor", description = "Check that the environment is set up correctly.")
 final class DoctorCommand implements Callable<Integer> {

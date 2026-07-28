@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
@@ -187,9 +188,25 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("--transpose, --paper")
+                    .contains("the transposition, the paper size")
                     .contains("no effect yet")
                     .contains("#129");
+        }
+
+        @Test
+        @DisplayName("asking for the default is not asking for anything")
+        void theDefaultsAreNotReported() {
+            // Every notation key has a built-in default, so the effective config
+            // always carries a value: a non-null test would warn on every run in
+            // the tool. --paper a4 is the default paper size, so honouring it
+            // would produce the same chart and there is nothing to warn about.
+            Path workspace = audioWorkspace("song", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--paper", "a4", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err()).doesNotContain("no effect yet");
         }
 
         @Test
@@ -200,7 +217,33 @@ class RenderPartsTest {
             CliRunner.Result render = CliRunner.run(
                     "render", workspace.toString(), "--no-pdf");
 
+            // The exit code as well, because "the warning did not appear" is
+            // equally satisfied by the command dying before it would have -- the
+            // shape round 5 found and round 8 found again, both in this file.
+            assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err()).doesNotContain("no effect yet");
+        }
+
+        @Test
+        @DisplayName("warn from the workspace config too, not only from the command line")
+        void areReportedFromTheConfigLayerAsWell() {
+            // A paper size is a persistent preference, so workspace.yaml is
+            // exactly where it belongs -- and it reached nothing, in silence,
+            // while the flag warned. analyze is right to pass over a config value
+            // that merely does not apply to this run; these apply to no run.
+            Path workspace = audioWorkspace("song", fourChords());
+            Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
+                    new MusicWizardConfig.NotationConfig(null, "letter", -2, null, null),
+                    null, null, null));
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err())
+                    .contains("the transposition, the paper size")
+                    .contains("whether set on the command line or in the workspace config")
+                    .contains("#129");
         }
 
         @Test

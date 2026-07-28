@@ -149,6 +149,16 @@ llm:
   enabled: true
 ```
 
+Of the keys in that example, only `analysis` and `notation.lilypondPath` reach
+anything today. Every other `notation` key is read, layered, and then read by
+nothing ([#129][i129]); so is `arrangement`, since `mw-arrange` holds no code
+yet; and the advisor is the section below. `render` warns when a notation
+setting is asked for and cannot be honoured — from the flag or from this file —
+rather than engraving the default chart in silence.
+
+[i129]: https://github.com/eolivelli/music-wizard/issues/129
+
+
 ## The Claude advisor (optional, and not built yet)
 
 **None of this section is implemented.** `mw-llm` holds no code; the config keys
