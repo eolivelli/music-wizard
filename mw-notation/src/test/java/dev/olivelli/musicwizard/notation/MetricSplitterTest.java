@@ -245,6 +245,19 @@ class MetricSplitterTest {
                     long position = from;
                     List<String> values = MetricSplitter.split(
                             meter, from * GRID, to * GRID);
+                    // Checked here as well as in everySplitSumsToTheSpan, because
+                    // that one samples a sixteenth grid and this is the only
+                    // sweep that reaches a 64th-note offset. A bar that does not
+                    // fill its meter is the failure this whole class exists to
+                    // prevent, and LilyPond engraves one without complaint.
+                    long total = 0;
+                    for (String value : values) {
+                        total += units(LilyPondNotes.quartersOf(value));
+                    }
+                    assertThat(total)
+                            .as("%s span %s..%s split as %s does not add back up",
+                                    meter, from * GRID, to * GRID, values)
+                            .isEqualTo(to - from);
                     for (String value : values) {
                         long length = units(LilyPondNotes.quartersOf(value));
                         if (position % beat == 0) {
@@ -300,16 +313,31 @@ class MetricSplitterTest {
         return rounded;
     }
 
+    /** The longest bar the exhaustive sweep covers, in quarter beats. */
+    private static final double LONGEST_SWEPT_BAR = 8;
+
     /**
-     * Every meter small enough to sweep exhaustively, which is every meter a
-     * transcription of popular music is likely to reach and several it is not.
+     * Every meter the model admits whose bar is short enough to sweep
+     * exhaustively at the emitter's own resolution — 190 of the 448.
+     *
+     * <p>Built from {@link TimeSignature}'s own limits rather than from a list
+     * somebody typed. Round 5 of review found the list version claiming to be
+     * this while covering 44: it stopped at denominator 16 and numerator 16, so
+     * every meter in 32nds and 64ths, and both meters in whole notes, went
+     * unswept while the javadoc said otherwise. On a rule four rounds found
+     * wrong, the stated coverage is most of the test's value, and the excluded
+     * meters turned out to cost about a second.
+     *
+     * <p>Longer bars are covered by {@link #everySplitSumsToTheSpan} at a coarser
+     * step, which is the trade: this sweep is exhaustive and bounded, that one is
+     * sampled and unbounded.
      */
     private static List<TimeSignature> meters() {
         List<TimeSignature> all = new ArrayList<>();
-        for (int denominator : new int[] {2, 4, 8, 16}) {
-            for (int numerator = 1; numerator <= 16; numerator++) {
+        for (int denominator = 1; denominator <= 64; denominator *= 2) {
+            for (int numerator = 1; numerator <= 64; numerator++) {
                 TimeSignature meter = new TimeSignature(numerator, denominator);
-                if (meter.quarterBeatsPerBar() <= 8) {
+                if (meter.quarterBeatsPerBar() <= LONGEST_SWEPT_BAR) {
                     all.add(meter);
                 }
             }
@@ -318,17 +346,24 @@ class MetricSplitterTest {
     }
 
     @Test
-    @DisplayName("every span of every bar adds back up to itself")
+    @DisplayName("a bar too long to sweep exhaustively still adds back up")
     void everySplitSumsToTheSpan() {
+        // The complement of noSymbolSwallowsACountedBeat, which is exhaustive but
+        // stops at an eight-quarter bar. These are the meters past that bound,
+        // sampled rather than swept, up to the longest bar the model admits.
         List<TimeSignature> meters = List.of(
-                TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
-                FIVE_FOUR, SEVEN_EIGHT, TWELVE_EIGHT,
-                new TimeSignature(2, 2), new TimeSignature(9, 8), new TimeSignature(2, 4));
-        // A sixteenth grid rather than the full 64th one: the same arithmetic,
-        // in a test that still finishes in well under a second.
-        double step = 0.25;
+                new TimeSignature(12, 4), new TimeSignature(16, 4), new TimeSignature(9, 2),
+                new TimeSignature(4, 1), new TimeSignature(64, 8), new TimeSignature(24, 8),
+                new TimeSignature(64, 4), new TimeSignature(17, 4), new TimeSignature(64, 1));
         for (TimeSignature meter : meters) {
             double bar = meter.quarterBeatsPerBar();
+            // Sampled at a step that keeps every bar to about the same number of
+            // positions, whether it holds twelve quarter beats or two hundred and
+            // fifty-six. Sweeping the longest at a sixteenth would be a quarter
+            // of a million spans of a bar nobody writes, and "mvn verify must
+            // stay fast" is a rule of this project rather than a preference.
+            double step = Math.max(0.25, Math.pow(2, Math.ceil(
+                    Math.log(bar / 48) / Math.log(2))));
             for (double from = 0; from < bar; from += step) {
                 for (double to = from + step; to <= bar; to += step) {
                     List<String> values = MetricSplitter.split(meter, from, to);

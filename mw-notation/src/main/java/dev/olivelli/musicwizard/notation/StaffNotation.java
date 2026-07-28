@@ -284,6 +284,13 @@ public final class StaffNotation {
      * followed by seven rest symbols. A stray sub-64th onset at the head of a
      * transcription is ordinary input, not a corrupt score, so this asks the
      * question of the thing that actually reaches the page.
+     *
+     * <p>One consequence is worth knowing: a part engraves differently depending
+     * on what the <em>rest</em> of the score has had done to it. Quantize the
+     * bass after engraving the vocal and the vocal staff can gain a pickup and
+     * move every bar line. That is the price of parts that agree with each other
+     * rather than each choosing its own grid, and it argues for engraving a score
+     * once its stages have all finished rather than part by part as they land.
      */
     private static double pickupStart(Score score, NoteTrack engraved, List<Event> events) {
         double earliest = events.isEmpty()
