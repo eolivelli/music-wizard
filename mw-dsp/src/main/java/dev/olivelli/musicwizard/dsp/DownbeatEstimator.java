@@ -210,6 +210,9 @@ public final class DownbeatEstimator {
         Objects.requireNonNull(envelope, "envelope");
         requireBeatsPerBar(beatsPerBar);
         requireBeats(beatTimes);
+        if (beatsPerBar == 1) {
+            return everyBeatIsADownbeat();
+        }
 
         // Novelty is only defined where a beat has a chroma span on both sides,
         // so the first and last beats are out of scope. Both terms are then
@@ -265,6 +268,26 @@ public final class DownbeatEstimator {
     }
 
     /**
+     * The answer for a one-beat bar, which is not an estimate at all.
+     *
+     * <p>Every beat begins a bar, so phase 0 is the only phase there is and it
+     * is right whatever the recording contains. Answered here, before any
+     * evidence is gathered, rather than derived from it: the whole scoring
+     * apparatus is about choosing between phases, and deriving "there is nothing
+     * to choose" through measures of how well the evidence discriminates makes
+     * the answer depend on how much harmonic change a recording with no choice
+     * to make happened to have.
+     *
+     * <p>{@link Confidence#CERTAIN} rather than the ceiling an estimated phase
+     * can reach, because this is not a claim that could be wrong, and reporting
+     * it below a 4/4 phase that could be would invert the only thing about these
+     * numbers a caller should rely on.
+     */
+    private static Estimate everyBeatIsADownbeat() {
+        return new Estimate(0, 1, Confidence.CERTAIN);
+    }
+
+    /**
      * How far the harmony backs the chosen phase, in {@code [0, 1]}.
      *
      * <p>Three things all have to hold before harmonic evidence is worth much,
@@ -292,15 +315,6 @@ public final class DownbeatEstimator {
     private static double harmonicAgreement(double[] harmony, double[] novelty, int phase,
                                             int firstBeat, int lastBeat) {
         int beatsPerBar = harmony.length;
-        if (beatsPerBar == 1) {
-            // Every beat begins a bar, so there is one candidate phase and it is
-            // certainly the right one. None of the three questions below is being
-            // asked -- they are all about choosing between phases -- and reaching
-            // this answer through them rather than stating it means the answer
-            // depends on how much harmonic change a recording with no choice to
-            // make happened to contain.
-            return 1;
-        }
         double margin = harmony[phase] - runnerUp(harmony, phase);
         double decided = Math.clamp(margin / CONFIDENT_MARGIN, 0, 1);
 
@@ -375,6 +389,9 @@ public final class DownbeatEstimator {
         Objects.requireNonNull(envelope, "envelope");
         requireBeatsPerBar(beatsPerBar);
         requireBeats(beatTimes);
+        if (beatsPerBar == 1) {
+            return everyBeatIsADownbeat();
+        }
 
         double[] accent = onsetAdvantage(onsetStrengthPerBeat(beatTimes, envelope),
                 0, beatTimes.size() - 1, beatsPerBar);

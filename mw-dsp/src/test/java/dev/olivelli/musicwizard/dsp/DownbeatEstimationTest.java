@@ -775,15 +775,12 @@ class DownbeatEstimationTest {
         @Test
         @DisplayName("a one-beat bar has no phase to get wrong")
         void oneBeatBars() {
-            // Degenerate but reachable through the meter, and the two places that
-            // special-case it -- the runner-up of a single phase, and a share
-            // measured against a chance of one -- would otherwise divide by zero
-            // or subtract one from one.
+            // Degenerate but reachable through the meter, and the case the whole
+            // scoring apparatus has no question to answer for.
             //
-            // The novelty is deliberately faint. Every beat starts a bar here, so
-            // the phase is certain no matter how weak the harmonic evidence for
-            // it is, and a runner-up of zero rather than "no runner-up at all"
-            // would quietly make the certainty proportional to the evidence.
+            // The novelty is deliberately faint: the phase is certain no matter
+            // how weak the harmonic evidence for it is, since there is no other
+            // phase for the evidence to be weighed against.
             List<Double> beats = beatsEvery(0.5, 17);
             double[] novelty = new double[17];
             for (int beat = 4; beat < 15; beat += 4) {
@@ -794,20 +791,24 @@ class DownbeatEstimationTest {
                     beats, chromaWithNovelty(novelty, 16), flatEnvelope(10), 1);
 
             assertThat(estimate.phase()).isZero();
-            assertThat(estimate.confidence().value()).isCloseTo(0.85, within(1e-9));
+            assertThat(estimate.confidence()).isEqualTo(Confidence.CERTAIN);
         }
 
         @Test
         @DisplayName("a one-beat bar is certain whatever the harmony does")
         void oneBeatBarsAreCertainOfTheirPhase() {
-            // The three confidence factors all ask how to choose between phases.
+            // The scoring apparatus is entirely about choosing between phases.
             // At a one-beat bar there is nothing to choose: every beat begins a
             // bar, phase 0 is the only phase there is, and it is right whatever
-            // the recording contains. Reaching that answer through the factors
-            // rather than stating it made it depend on how much harmonic change
-            // a recording with no choice to make happened to have -- an unchanging
-            // chord and silence came out a full 0.5 apart, on a question neither
-            // of them has any bearing on.
+            // the recording contains. Deriving that through measures of how well
+            // the evidence discriminates made it depend on how much harmonic
+            // change a recording with no choice to make happened to have -- an
+            // unchanging chord and silence came out half a point apart, on a
+            // question neither of them bears on.
+            //
+            // Certain, not merely high: a phase that cannot be wrong must not
+            // report less than a 4/4 phase that can, which is the one thing
+            // about these numbers a caller should be able to rely on.
             List<Double> beats = beatsEvery(0.5, 17);
 
             for (Chroma chroma : new Chroma[] {
@@ -815,7 +816,46 @@ class DownbeatEstimationTest {
                     new Chroma(new double[16][12], 0),       // silence
                     stepwiseChroma(16, 4, 0)}) {             // chords every bar
                 assertThat(DownbeatEstimator.estimate(beats, chroma, flatEnvelope(10), 1)
-                        .confidence().value()).isCloseTo(0.85, within(1e-9));
+                        .confidence()).isEqualTo(Confidence.CERTAIN);
+            }
+            // Including the paths that never reach the harmonic scoring at all:
+            // two beats fall back to onsets, and fromOnsets is reachable directly.
+            assertThat(DownbeatEstimator.estimate(List.of(0.0, 0.5),
+                    new Chroma(new double[1][12], 0), flatEnvelope(2), 1).confidence())
+                    .isEqualTo(Confidence.CERTAIN);
+            assertThat(DownbeatEstimator.fromOnsets(beats, flatEnvelope(10), 1).confidence())
+                    .isEqualTo(Confidence.CERTAIN);
+        }
+
+        @Test
+        @DisplayName("a span that was observed and did not change beats one that was not observed")
+        void unchangedBeatsUnobserved() {
+            // Silence routes through the undefined-cosine branch to exactly zero.
+            // A held chord next to itself lands a hair BELOW zero, because a
+            // cosine of two numerically parallel vectors can round above one --
+            // for a triad of unit components, exactly -2.22e-16. Unfloored, the
+            // phase whose beats sit beside silence therefore outranks the phase
+            // that was observed and did not change, and so does a phase with no
+            // beats in range at all: absence of evidence outranks presence of it.
+            //
+            // This is the one place the floor is observable. It is not much of a
+            // margin, but it decides the phase, and it is why the floor belongs
+            // where the sign is decided rather than as defensive checks further
+            // down that would each look unnecessary alone.
+            double[] triad = new double[12];
+            triad[0] = 1;
+            triad[4] = 1;
+            triad[7] = 1;
+            double[][] spans = new double[20][];
+            for (int span = 0; span < spans.length; span++) {
+                spans[span] = span % 5 == 4 ? new double[12] : triad.clone();
+            }
+            List<Double> beats = beatsEvery(0.5, 21);
+
+            for (int beatsPerBar : new int[] {2, 3, 4}) {
+                assertThat(DownbeatEstimator
+                        .estimate(beats, new Chroma(spans, 0), flatEnvelope(12), beatsPerBar)
+                        .phase()).as("%d beats per bar", beatsPerBar).isZero();
             }
         }
 
