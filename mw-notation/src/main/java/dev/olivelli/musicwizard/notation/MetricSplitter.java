@@ -41,9 +41,9 @@ import java.util.Objects;
  * <p>A span is written as one value when two things hold. Its length must be a
  * length that unit naturally takes — a whole number of the unit's children, or
  * one and a half of them, which is what a dot is. And it must be allowed to
- * <em>start</em> where it does: a symbol long enough to swallow a beat may only
- * begin on one. Otherwise the span is cut at the unit's children and each piece
- * asked the same question.
+ * <em>start</em> where it does: a symbol that would swallow a counted beat whole
+ * may only begin on one. Otherwise the span is cut at the unit's children and
+ * each piece asked the same question.
  *
  * <p>Those two together are what separates the meters. The first four eighths of
  * a 4/4 bar are a dotted quarter; the first four eighths of a 6/8 bar are a
@@ -138,7 +138,7 @@ final class MetricSplitter {
         }
         double length = to - from;
         if (isNaturalLength(length, unit.childLength(), unit.children().size())
-                && mayStartHere(from, length, unit.childLength(), beatUnit, compound)
+                && mayStartHere(from, to, beatUnit, compound)
                 && LilyPondDuration.isSingleValue(length)) {
             out.add(LilyPondDuration.of(length).orElseThrow());
             return;
@@ -221,34 +221,42 @@ final class MetricSplitter {
      * lying across the bar of the second beat, hiding the very grouping the meter
      * exists to show. The conventional writing ties: {@code 4~ 8}.
      *
-     * <p>One sentence: <b>a symbol has to begin on a counted beat once it is long
-     * enough to swallow one.</b> Long enough means either longer than a dotted
-     * beat, or — in compound time only — as long as a beat, because there the
-     * three-grouping <em>is</em> the meter and a symbol laid across it removes the
-     * only thing distinguishing 6/8 from 3/4. Anything shorter may start
-     * anywhere.
+     * <p>The rule, in the terms a reader sees rather than in the terms the tree
+     * is built from:
      *
-     * <p>That threshold is where it is so that ordinary syncopation survives.
-     * A quarter on the second eighth of a 4/4 bar is a quarter and a dotted
-     * quarter there is a dotted quarter; both cross the next beat, both are how
-     * every syncopated pop chart is printed, and refusing them would fill the
-     * page with ties nobody writes. One beat further and the symbol stops being a
-     * syncopation and starts being a hole in the bar: a half note beginning a
-     * sixteenth after beat one of 4/4 swallows the middle of it.
+     * <ul>
+     *   <li><b>A symbol must not swallow a counted beat whole.</b> Crossing one
+     *       boundary is syncopation and is how every pop chart is printed — a
+     *       quarter, or a dotted quarter, on the second eighth of a 4/4 bar. But
+     *       a symbol with a complete beat strictly inside it leaves that beat
+     *       with neither an onset nor an ending anywhere on the page, and the
+     *       reader has nothing to count against.
+     *   <li><b>In compound time, a symbol as long as a beat must begin on one.</b>
+     *       There the three-grouping <em>is</em> the meter, and a dotted quarter
+     *       laid across the join removes the only thing distinguishing 6/8 from
+     *       3/4 — without ever containing a whole beat, so the first clause does
+     *       not see it.
+     *   <li><b>Beginning on a counted beat lifts both.</b> A note that starts
+     *       where the reader is counting can run as long as it likes.
+     * </ul>
      *
-     * <p>Round 1 of review caught the length half of this missing entirely, and
-     * round 2 caught the first fix testing the <em>unit's</em> size rather than
-     * the <em>symbol's</em>. Those differ in exactly the meters whose beats do not
-     * come in a power-of-two count — 3/4, 5/4, 6/4, 7/8 — where the bar divides
-     * straight into beats, so no unit is ever longer than one and the first fix
-     * never fired. A whole note swallowing four beats of a 5/4 bar from a
-     * sixteenth-note offset passed every test in the suite, because the bar still
-     * summed and LilyPond still engraved it without a word.
+     * <p>Three rounds of review went into that shape, and the two discarded
+     * versions are worth recording because both were wrong in the same direction.
+     * Round 1 tested length alone and hid compound beats. Round 2 tested the
+     * enclosing <em>unit's</em> size, which equals the symbol's only when the bar
+     * has a unit longer than a beat — it does not in 3/4, 5/4, 6/4 or 7/8, where
+     * the bar divides straight into beats, so a whole note could still swallow
+     * four beats of a 5/4 bar. Round 3 caught the replacement exempting a symbol
+     * of <em>exactly</em> a dotted beat, which in those same meters covers a
+     * complete beat: 3/4 wrote {@code [0.75..2.25]} as one {@code 4.} while 4/4
+     * tied the identical span. Each fix stopped at the layer the example came
+     * from. This one asks about the symbol and the beats directly, so there is no
+     * proxy left to be wrong about.
      */
-    private static boolean mayStartHere(double from, double length, double childLength,
-                                        double beatUnit, boolean compound) {
-        boolean couldSwallowABeat = length > DOT_FACTOR * beatUnit
-                || (childLength == beatUnit && compound);
+    private static boolean mayStartHere(double from, double to, double beatUnit,
+                                        boolean compound) {
+        boolean couldSwallowABeat = (compound && to - from >= beatUnit)
+                || coversAWholeBeat(from, to, beatUnit);
         if (!couldSwallowABeat) {
             return true;
         }
@@ -257,6 +265,20 @@ final class MetricSplitter {
         // another returns the whole number exactly when there is one.
         double beats = from / beatUnit;
         return beats == Math.rint(beats);
+    }
+
+    /**
+     * Whether a whole counted beat lies strictly inside a span — beginning after
+     * it starts and ending before it ends.
+     *
+     * <p>Strictly, on both sides, and that is the whole subtlety. A dotted
+     * quarter from the second eighth of a 4/4 bar reaches beat three exactly, so
+     * beat two ends where the symbol does and the reader can still find it; the
+     * same symbol a sixteenth later buries beat two completely.
+     */
+    private static boolean coversAWholeBeat(double from, double to, double beatUnit) {
+        double firstBeatAfterStart = Math.floor(from / beatUnit + 1) * beatUnit;
+        return firstBeatAfterStart + beatUnit < to;
     }
 
     /** The metric tree of one bar. */

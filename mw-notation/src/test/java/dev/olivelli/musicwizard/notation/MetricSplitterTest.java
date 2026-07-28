@@ -20,7 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -132,6 +134,16 @@ class MetricSplitterTest {
             "5/4  | 0.5  | 3.5  | 8,2,8",
             "6/4  | 0.5  | 4.5  | 8,2.,8",
             "7/8  | 0.25 | 1.75 | 16,4,16",
+            // Round 3 found the second fix exempting a symbol of *exactly* a
+            // dotted beat. Where the bar divides straight into beats, such a
+            // symbol covers a complete one: 3/4 wrote this as a single 4. while
+            // 4/4 tied the identical span.
+            "3/4  | 0.75 | 2.25 | 16,4,16",
+            "5/4  | 0.75 | 2.25 | 16,4,16",
+            "7/8  | 0.375| 1.125| 32,8,32",
+            // The same span in 4/4, which never had the defect, to pin that
+            // triple time now reads identically rather than more loosely.
+            "4/4  | 0.75 | 2.25 | 16,4,16",
     })
     @DisplayName("a symbol may not begin off the beat and then lie across one")
     void aSymbolMayNotHideABeatItStartsInsideOf(String meter, double from, double to,
@@ -205,6 +217,87 @@ class MetricSplitterTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> MetricSplitter.split(TimeSignature.FOUR_FOUR, 0, 1.0 / 3))
                 .withMessageContaining("whole number of 1/64");
+    }
+
+    @Test
+    @DisplayName("no symbol ever swallows a counted beat it did not start on")
+    void noSymbolSwallowsACountedBeat() {
+        // Stated over the symbols that come out, in the terms a reader would use,
+        // rather than by re-asking the predicate that produced them. That
+        // distinction is not pedantry: two rounds of review found this rule
+        // wrong, and both times the sweep that was supposed to catch it was
+        // written as the implementation's own length threshold negated, so it
+        // agreed with the code about which spans were even worth looking at.
+        // A beat with neither an onset nor an ending anywhere on the page is
+        // something a reader can see without knowing how the splitter works.
+        double step = 0.25;
+        int checked = 0;
+        for (TimeSignature meter : meters()) {
+            double bar = meter.quarterBeatsPerBar();
+            double beatUnit = meter.beatUnitQuarters();
+            for (double from = 0; from < bar; from += step) {
+                for (double to = from + step; to <= bar; to += step) {
+                    double position = from;
+                    for (String value : MetricSplitter.split(meter, from, to)) {
+                        double length = LilyPondNotes.quartersOf(value);
+                        checked++;
+                        if (startsOnACountedBeat(position, beatUnit)) {
+                            position += length;
+                            continue;
+                        }
+                        assertThat(swallowedBeat(position, position + length, beatUnit))
+                                .as("%s span %s..%s split as %s: the symbol %s at beat %s buries"
+                                                + " a whole counted beat",
+                                        meter, from, to, MetricSplitter.split(meter, from, to),
+                                        value, position)
+                                .isEmpty();
+                        if (meter.isCompound()) {
+                            assertThat(length)
+                                    .as("%s span %s..%s split as %s: the symbol %s at beat %s is a"
+                                                    + " whole compound beat lying across the join",
+                                            meter, from, to,
+                                            MetricSplitter.split(meter, from, to), value, position)
+                                    .isLessThan(beatUnit);
+                        }
+                        position += length;
+                    }
+                }
+            }
+        }
+        assertThat(checked).as("the sweep produced no symbols at all").isGreaterThan(10_000);
+    }
+
+    /** The first counted beat lying wholly inside a symbol, if any buries one. */
+    private static Optional<Double> swallowedBeat(double from, double to, double beatUnit) {
+        for (double beat = Math.floor(from / beatUnit + 1) * beatUnit;
+                beat + beatUnit <= to; beat += beatUnit) {
+            if (beat > from && beat + beatUnit < to) {
+                return Optional.of(beat);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean startsOnACountedBeat(double position, double beatUnit) {
+        double beats = position / beatUnit;
+        return beats == Math.rint(beats);
+    }
+
+    /**
+     * Every meter small enough to sweep exhaustively, which is every meter a
+     * transcription of popular music is likely to reach and several it is not.
+     */
+    private static List<TimeSignature> meters() {
+        List<TimeSignature> all = new ArrayList<>();
+        for (int denominator : new int[] {2, 4, 8, 16}) {
+            for (int numerator = 1; numerator <= 16; numerator++) {
+                TimeSignature meter = new TimeSignature(numerator, denominator);
+                if (meter.quarterBeatsPerBar() <= 8) {
+                    all.add(meter);
+                }
+            }
+        }
+        return all;
     }
 
     @Test
