@@ -834,10 +834,20 @@ public final class MidiTranscriber {
             // guard exists to keep out.
             //
             // A span really can advance in beats and not in seconds, but the
-            // mechanism is duller and is within a single segment: some
-            // thousands of years into a piece, one tick is narrower than an ulp
-            // of the elapsed seconds. Seconds-only rejects those, which is what
-            // a score wants.
+            // mechanism is duller and is within a single segment: once the
+            // elapsed seconds pass about 2^52 ticks' worth, one tick is
+            // narrower than an ulp of them and the two ends convert to the same
+            // instant. Seconds-only rejects those spans, which is what a score
+            // wants.
+            //
+            // How far into a piece that is depends on the tempo and the
+            // resolution, and not by a little: half a million years at an
+            // ordinary tempo and 480 ticks per quarter, but six days at the
+            // fastest tempo a tempo event can name and the highest resolution a
+            // header can declare -- which fits in a MIDI file of 1470 bytes. An
+            // earlier draft of this sentence said "thousands of years" flatly,
+            // which is true only of ordinary tempi and understated the reachable
+            // case by five orders of magnitude, in the reassuring direction.
             if (!(endSeconds > startSeconds)) {
                 continue;
             }
