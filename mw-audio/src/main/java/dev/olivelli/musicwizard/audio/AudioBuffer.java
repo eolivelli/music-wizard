@@ -53,9 +53,11 @@ public final class AudioBuffer {
      *
      * <p>Rejected rather than replaced with zero, and rejected here rather than
      * at the decode boundary, for one reason: no decodable file can produce a
-     * non-finite sample. {@link AudioDecoder} converts every source format to
-     * 16-bit signed PCM, and no 16-bit integer decodes to NaN or an infinity --
-     * a float WAV carrying NaN, both infinities and 1e30 decodes to zeros, as
+     * non-finite sample. {@link AudioDecoder} never reads a float out of the
+     * stream at all -- {@code frameToMono} reassembles two bytes into an
+     * {@code int} and divides -- so even a provider that ignored the 16-bit
+     * format it is asked for would yield finite garbage rather than a NaN. A
+     * float WAV carrying NaN, both infinities and 1e30 decodes to zeros, as
      * {@code AudioPipelineTest} asserts. So this cannot turn a readable
      * recording into a hard error; the only thing it can catch is a caller with
      * a bug, and quietly substituting zero for that would alter the audio and
@@ -65,8 +67,16 @@ public final class AudioBuffer {
      * derives from other buffers, and that is affordable: 3.2 ms over five
      * minutes of audio, against 531 ms for {@code Spectrogram.compute} and
      * 1124 ms for {@code OnsetEnvelope.fromAudio} on the same samples. There is
-     * deliberately no unchecked back door, because a back door is how the
-     * invariant stops being one.
+     * deliberately no cheaper unchecked constructor for internally derived
+     * buffers.
+     *
+     * <p>What this does <em>not</em> give you is an invariant that holds for
+     * the lifetime of the buffer. The array is shared rather than copied, so a
+     * caller that writes through {@link #samples()} -- a gain stage working in
+     * place, say, which is exactly what the no-copy design invites -- can make
+     * a validated buffer non-finite afterwards and nothing will notice. The
+     * check is on construction; after that the read-only convention is what
+     * holds, as it does for every other property of the array. See issue #79.
      *
      * @throws IllegalArgumentException if {@code sampleRate} is not positive or
      *     any sample is NaN or infinite

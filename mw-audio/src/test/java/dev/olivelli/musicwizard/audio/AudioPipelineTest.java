@@ -340,6 +340,29 @@ class AudioPipelineTest {
         }
 
         @Test
+        @DisplayName("refuses a ragged spectrogram, which every reader assumes cannot exist")
+        void rejectsRaggedMagnitudes() {
+            // binCount() takes magnitudes[0].length as the width of every row,
+            // and Chroma, the tuning estimate and the onset envelope all index
+            // straight into rows on that basis. A short row reaches all three as
+            // an ArrayIndexOutOfBoundsException from inside a DSP loop, which is
+            // the same unhelpful failure the null check exists to prevent.
+            float[][] ragged = {new float[5], new float[3]};
+
+            assertThatThrownBy(() -> new Spectrogram(ragged, 22_050, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("rectangular")
+                    .hasMessageContaining("magnitudes[1]");
+
+            // A long row is just as wrong, and fails silently rather than
+            // loudly: the extra bins are simply never read.
+            float[][] overlong = {new float[5], new float[9]};
+            assertThatThrownBy(() -> new Spectrogram(overlong, 22_050, 2048, 512))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("rectangular");
+        }
+
+        @Test
         @DisplayName("refuses a spectrogram the transform overflowed, not just a poisoned input")
         void spectrogramOverflowIsCaughtEvenThoughTheBufferWasFinite() {
             // 1e38 is finite, so the buffer accepts it -- and the window multiply

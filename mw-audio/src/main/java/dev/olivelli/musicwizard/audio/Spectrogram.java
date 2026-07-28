@@ -35,17 +35,28 @@ import org.jtransforms.fft.FloatFFT_1D;
 public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, int hopSize) {
 
     /**
-     * <p>Magnitudes must be finite, and that is not implied by the buffer they
-     * came from. {@link AudioBuffer} rejects non-finite samples, but the window
-     * multiply and the transform can still overflow when the samples are large:
-     * a buffer of {@code 1e38} -- finite, and accepted -- produces 3341
-     * non-finite bins here. Checking only the input would leave that door open,
-     * and a poisoned bin is worse than a poisoned sample, because every stage
-     * downstream reads this rather than the audio.
+     * <p>Magnitudes must be finite, rectangular and present. What that buys is
+     * a contract the stages downstream can rely on without each re-deriving it:
+     * a {@code Spectrogram} they are handed is one they can read. Chroma, the
+     * tuning estimate and the onset envelope all reach for
+     * {@code magnitudes[frame][bin]} directly, and {@link #binCount()} already
+     * takes {@code magnitudes[0].length} as the width of every row.
+     *
+     * <p>The finiteness half is not implied by the buffer the magnitudes came
+     * from. {@link AudioBuffer} rejects non-finite samples, but the window
+     * multiply and the transform can still overflow: {@code compute} first
+     * produces a non-finite bin at a sample magnitude around {@code 3.3e35} at
+     * the default resolution. That is thirty-five orders above full scale and
+     * will not fire on audio -- so treat it as the contract being stated rather
+     * than a bug being caught. The ragged and null cases are the ones that will
+     * actually fire, on a hand-built spectrogram, and they turn an
+     * {@code ArrayIndexOutOfBoundsException} from inside a DSP loop into
+     * something that names the frame.
      *
      * <p>The scan costs 16.6 ms against the 531 ms it takes to compute a
-     * five-minute spectrogram, which is paid once per recording because the
-     * result is shared by every spectral stage.
+     * five-minute spectrogram, which is paid twice per recording -- once for
+     * harmony and once for onsets -- because the result is shared by every
+     * spectral stage.
      */
     public Spectrogram {
         Objects.requireNonNull(magnitudes, "magnitudes");
@@ -61,6 +72,11 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
             float[] bins = magnitudes[frame];
             if (bins == null) {
                 throw new IllegalArgumentException("magnitudes[" + frame + "] is null");
+            }
+            if (bins.length != magnitudes[0].length) {
+                throw new IllegalArgumentException("magnitudes must be rectangular, but"
+                        + " magnitudes[" + frame + "] has " + bins.length + " bins and"
+                        + " magnitudes[0] has " + magnitudes[0].length);
             }
             for (int bin = 0; bin < bins.length; bin++) {
                 if (!Float.isFinite(bins[bin])) {
