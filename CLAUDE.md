@@ -172,6 +172,14 @@ output is estimates users act on, an overstated confidence is a defect.
 - **One git worktree per concurrent task**, never the shared checkout. A
   `git checkout` moves HEAD for every process in that clone; a commit made
   during the move lands on another branch, silently.
+- **One local Maven repository per worktree**, passed as
+  `-Dmaven.repo.local=<worktree>/.m2` on every invocation. The worktree isolates
+  the source; `~/.m2` is the channel it does not isolate. Whatever one agent
+  installs becomes another's dependency, so a build can silently resolve a
+  sibling module from somebody else's uncommitted work. It has already produced
+  a false result here: a `mvn -pl mw-dsp` mutation sweep picked up a stale
+  `mw-audio`, ten mutants failed to *build*, and the summary counted them as
+  killed. Build with `-am` too, so siblings come from the source tree.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
