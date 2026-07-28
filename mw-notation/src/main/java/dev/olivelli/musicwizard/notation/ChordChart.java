@@ -19,7 +19,6 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
-import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -27,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Renders a score's harmony as a chord chart.
@@ -203,7 +201,7 @@ public final class ChordChart {
     }
 
     /**
-     * How long one bar lasts.
+     * How long one bar lasts, for a progression that has no beat axis.
      *
      * <p>Derived from {@link Score#estimatedTempo()}, which is also what
      * {@link #tempoLine} prints, so the header and the bar lines cannot disagree.
@@ -216,6 +214,16 @@ public final class ChordChart {
      * tempo when the first tracked beat is a fraction of a beat in, and a
      * drifting bar grid shows up immediately as chords landing in the wrong bar.
      * It just keeps it in one place rather than two.
+     *
+     * <p>That agreement is only claimed for the unquantized path, and it is worth
+     * saying which one because #115 made the other one reachable. A quantized
+     * progression is barred by {@link #barGrid} straight off the beat axis and
+     * never comes here, so its bars honour tempo <em>and</em> meter changes while
+     * {@link #tempoLine} still prints one averaged number through
+     * {@code initialTimeSignature()}. A MIDI file that changes tempo at beat 8 is
+     * therefore headed with a tempo it never plays, over bars that are correct.
+     * That is #66, which recorded itself as latent because nothing emitted a
+     * meter change; MIDI import now does, so it is not.
      */
     private static double barDurationSeconds(Score score) {
         double quarterBpm = score.estimatedTempo();
@@ -348,22 +356,13 @@ public final class ChordChart {
         if (chord.isNoChord()) {
             return "r" + duration;
         }
-        String symbol = lilyPondRoot(chord) + duration + lilyPondQuality(chord);
+        String symbol = chord.root().lilyPondName() + duration + lilyPondQuality(chord);
         return chord.isSlashChord()
-                ? symbol + "/" + lilyPondName(chord.bass().orElseThrow())
+                ? symbol + "/" + chord.bass().orElseThrow().lilyPondName()
                 : symbol;
     }
 
-    /** The root in LilyPond note-name form, e.g. {@code c} or {@code bes}. */
-    private static String lilyPondRoot(Chord chord) {
-        return lilyPondName(chord.root());
-    }
 
-    /** A written pitch in LilyPond note-name form, without an octave. */
-    private static String lilyPondName(PitchSpelling pitch) {
-        return pitch.letter().name().toLowerCase(Locale.ROOT)
-                + pitch.accidental().lilyPondSuffix();
-    }
 
     /**
      * The quality modifier, which follows the duration in chordmode.

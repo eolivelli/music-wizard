@@ -360,9 +360,12 @@ class ChordChartTest {
     /**
      * Every quality the model has, and what chordmode calls it.
      *
-     * <p>Enumerated from {@link ChordQuality} rather than listed, so a quality
-     * added to the model without a mapping fails here as well as failing to
-     * compile. The tokens are not guesses: each was engraved with LilyPond
+     * <p>The rows are listed rather than derived, because the whole point is to
+     * state independently what each quality should engrave as. What stops the
+     * list going stale is elsewhere and in two places: the emitter's switch has
+     * no {@code default}, so a new quality fails to compile, and
+     * {@code noQualityIsUnaccountedFor} fails if one is added without a row
+     * here. The tokens are not guesses: each was engraved with LilyPond
      * 2.26.0 and the sounding pitches read back out of its MIDI, and every one
      * matches {@code ChordQuality.intervals()}. {@code :m7.5-} prints as Bø and
      * {@code :m7+} as a minor triad with the conventional major-seventh
