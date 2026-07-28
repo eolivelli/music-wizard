@@ -21,6 +21,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +51,45 @@ public final class LilyPondRenderer {
     }
 
     /**
+     * Runs LilyPond with its diagnostics in one language, whatever the machine
+     * is set to.
+     *
+     * <p>LilyPond translates its own messages through gettext, and it translates
+     * the <em>prefix</em> while leaving the payload alone: under {@code
+     * LANGUAGE=it} a failed bar check is {@code attenzione: bar check failed}
+     * and a layout complaint is {@code errore di programmazione: ...}. Anything
+     * reading that output for the word "warning" therefore stops reading it at
+     * all on an Italian machine, and stops silently — which is the worst way for
+     * a check to fail, because the build stays green and the thing it was
+     * watching for goes unreported. Round 4 of review found exactly that: under
+     * {@code LANGUAGE=it} a bar that does not fill its meter produced no
+     * complaint anywhere in the integration suite.
+     *
+     * <p>So the environment is pinned rather than the parsing widened. Widening
+     * would mean carrying LilyPond's message catalogue in this repository and
+     * keeping it current, in every language, for a string this project only
+     * reads in order to know whether something went wrong.
+     *
+     * <p>{@code LANGUAGE} is cleared as well as {@code LC_ALL} and {@code LANG}
+     * being set, because gettext consults it first and it overrides both — a
+     * fact that is easy to miss and that makes the fix look like it works while
+     * doing nothing.
+     *
+     * <p>The cost is that a non-English user sees LilyPond's own complaints in
+     * English. That is the trade: this project embeds those lines in its own
+     * English messages anyway, and a tool whose behaviour depends on the
+     * machine's locale is the same defect {@link StaffNotation}'s
+     * {@code Locale.ROOT} tempo mark exists to prevent, one process out.
+     */
+    private static void speakEnglish(ProcessBuilder builder) {
+        Map<String, String> environment = builder.environment();
+        environment.remove("LANGUAGE");
+        environment.put("LC_ALL", "C");
+        environment.put("LANG", "C");
+        environment.put("LC_MESSAGES", "C");
+    }
+
+    /**
      * Engraves a source file, writing the PDF beside it.
      *
      * @param source a {@code .ly} file
@@ -69,6 +109,7 @@ public final class LilyPondRenderer {
                 binary.toString(), "--pdf", "-o", stem, source.getFileName().toString());
         builder.directory(directory.toFile());
         builder.redirectErrorStream(true);
+        speakEnglish(builder);
 
         Process process = null;
         try {
@@ -116,8 +157,10 @@ public final class LilyPondRenderer {
     /** The version LilyPond reports, useful for diagnostics. */
     public Optional<String> version() {
         try {
-            Process process = new ProcessBuilder(binary.toString(), "--version")
-                    .redirectErrorStream(true).start();
+            ProcessBuilder builder = new ProcessBuilder(binary.toString(), "--version")
+                    .redirectErrorStream(true);
+            speakEnglish(builder);
+            Process process = builder.start();
             String output;
             try (var stream = process.getInputStream()) {
                 output = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);

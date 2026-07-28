@@ -960,6 +960,50 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a grid list whose last entry is not its furthest still brackets the bars before it")
+    void theGridBoundIsTakenAcrossEveryEntryRatherThanTheLastOne() {
+        // QuantizedScore validates that its grids are ordered by bar and says
+        // nothing about their startBeats, so the furthest end is not necessarily
+        // the last entry's. Round 4 of review found nothing pinning that: reading
+        // the bound off the last entry left the whole reactor green.
+        //
+        // It matters because of blast radius rather than likelihood. A grid whose
+        // startBeat disagrees with its own tempo map used to misplace its own bar
+        // and nothing else; taken as the bound, it decides whether every bar in
+        // the piece gets looked up at all -- so one bad entry at the end would
+        // silently un-bracket the triplets three bars earlier, which is #92 back
+        // again in a corner nobody would look in.
+        // The note that makes the difference visible is one too short to write:
+        // on its bar's own grid its onset and offset land on the same step and
+        // it is dropped, exactly as dropsNotesTooShortToWrite drops one on the
+        // 64th grid. Reached with the bound too small it is never put on that
+        // grid at all, survives into the bar as a span of a twentieth of a beat,
+        // and asks for a note value of zero -- an IllegalStateException, in a bar
+        // whose own grid entry was perfectly good.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C4"),
+                note(4, thirds(1), "D4"), note(4 + thirds(1), thirds(1), "E4"),
+                note(4 + thirds(2), thirds(1), "F4"),
+                note(5.4, 0.05, "A4"),
+                note(6, 2, "G4"),
+                note(8, 4, "B4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+        // Bar 2's entry claims to start at beat zero, which is a lie, and it is
+        // last in a list that is nonetheless correctly ordered by bar -- which is
+        // all QuantizedScore promises.
+        QuantizedScore misordered = new QuantizedScore(score, List.of(
+                new BarGrid(0, 0, GridResolution.BEAT, TimeSignature.FOUR_FOUR),
+                new BarGrid(1, 4, GridResolution.THIRD_BEAT, TimeSignature.FOUR_FOUR),
+                new BarGrid(2, 0, GridResolution.BEAT, TimeSignature.FOUR_FOUR)),
+                SwingFeel.STRAIGHT);
+
+        String source = StaffNotation.toLilyPond(misordered, voice);
+        assertThat(source).contains("\\tuplet 3/2 { d'8 e'8 f'8 } r4 g'2 |")
+                .doesNotContain("a'");
+        assertBarsFillTheirMeter("grid bound", source);
+    }
+
+    @Test
     @DisplayName("both overloads refuse an impossible score the same way, with the same message")
     void theTwoOverloadsFailIdentically() {
         // Round 2 of review noticed the two diverging here. A note quantized past

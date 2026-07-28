@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
@@ -45,6 +46,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -100,9 +102,13 @@ class TupletEngravingIT {
      * meters this project targets. It needs partial sixteenth-triplet brackets
      * among rests and ties, which is exactly what a quantized performance
      * produces and exactly what a bar with every grid position filled does not.
-     * {@link #theToleratedComplaintIsReachableAndIsOnlyThisOne} engraves review's
-     * own reproducer, so this constant is pinned to a case in the repository
-     * rather than to a memory of one. See #136.
+     * {@link #theToleratedComplaintIsReachableAndIsOnlyThisOne} drives review's
+     * own material through this emitter and engraves the result, so the constant
+     * is pinned to a case in the repository rather than to a memory of one --
+     * and to a case <em>this</em> emitter produces rather than to hand-copied
+     * LilyPond. {@link #theToleranceIsNarrowerThanTheWordItContains} pins how
+     * little it covers. See #136, which also records that the printed page is
+     * fine where it fires: the number is placed above the beam, not lost.
      */
     private static final String TOLERATED_COMPLAINT =
             "programming error: not enough space for tuplet number against beam";
@@ -362,43 +368,40 @@ class TupletEngravingIT {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
 
-        // Round 3 of review's reproducer, straight out of Quantizer on random
-        // phrases with 12 ms of human timing: three bars of 4/4, partial
-        // sixteenth-triplet brackets among rests and ties, over a wide enough
-        // range that the beams are steep. Recorded verbatim rather than
-        // regenerated, because the point of it is that a real quantized
-        // performance reaches this and a fully subdivided bar does not -- and a
-        // fixture that regenerated the material would eventually stop reaching
-        // it without saying so.
+        // The material round 3 of review found this with, reduced to the notes
+        // rather than kept as the LilyPond it produced, and shrunk from three
+        // bars to the one that still complains.
         //
-        // The assertion is what makes TOLERATED_COMPLAINT a decision rather than
-        // a hole: if LilyPond ever stops complaining here, or complains
-        // differently, this fails and the tolerance is re-examined instead of
-        // silently covering something else.
-        String firstBar = "\\tuplet 3/2 { e16 g''8 } \\tuplet 3/2 { fis'16 f8~ }"
-                + " \\tuplet 3/2 { f8 r16 } \\tuplet 3/2 { r8 f16 }"
-                + " \\tuplet 3/2 { e16 e,8~ } e,8"
-                + " \\tuplet 3/2 { r16 cis'16 a16 } \\tuplet 3/2 { r16 fis,8 } |";
-        String secondBar = "\\tuplet 3/2 { r16 cis''16 a,16~ } \\tuplet 3/2 { a,16 r8 }"
-                + " \\tuplet 3/2 { e''8 r16 } f8~ \\tuplet 3/2 { f16 e8~ }"
-                + " \\tuplet 3/2 { e16 r16 cis'16~ } \\tuplet 3/2 { cis'8 r16 }"
-                + " \\tuplet 3/2 { f''16 g8 } |";
-        String thirdBar = "\\tuplet 3/2 { bes16 ees'8~ } \\tuplet 3/2 { ees'8 e16 }"
-                + " <c' f''>4 r2 |";
-        String source = String.join("\n",
-                "\\version \"2.24.0\"",
-                "\\score {",
-                "  \\new Staff {",
-                "    \\time #'(1 1 1 1) 4/4",
-                "    \\tempo 4 = 89",
-                "    " + firstBar,
-                "    " + secondBar,
-                "    " + thirdBar,
-                "    \\bar \"|.\"",
-                "  }",
-                "  \\layout { }",
-                "}",
-                "");
+        // One bar of sixteenth triplets, on the SIXTH_BEAT grid, with a third of
+        // the positions silent and the rest one or two steps long -- so most
+        // brackets are partial -- over four octaves, which is what makes the
+        // beams steep enough for the number to have nowhere to go. Reduced from
+        // the three bars round 3 sent to the one bar that still complains.
+        //
+        // {step index, length in steps, MIDI pitch}
+        int[][] played = {
+                {0, 1, 87}, {1, 2, 86}, {3, 1, 72}, {4, 1, 74}, {5, 1, 72},
+                {6, 1, 76}, {7, 1, 68}, {8, 2, 82}, {11, 2, 54}, {13, 1, 67},
+                {16, 1, 56}, {18, 2, 75}, {21, 1, 82}, {22, 2, 47}};
+        double step = 1.0 / 6;
+        List<Note> notes = new ArrayList<>(played.length);
+        for (int[] event : played) {
+            notes.add(note(event[0] * step, event[1] * step, event[2]));
+        }
+        QuantizedScore quantized = verdict(TimeSignature.FOUR_FOUR, 89, notes,
+                GridResolution.SIXTH_BEAT);
+        NoteTrack voice = quantized.score().tracks().getFirst();
+        String source = StaffNotation.toLilyPond(quantized, voice);
+
+        // Driven through the emitter, so this says the shape is one *we* write.
+        // Round 4 of review pointed out that engraving hand-copied LilyPond pins
+        // LilyPond's behaviour and says nothing about ours -- and a tolerance
+        // left standing for a shape this emitter can no longer produce is
+        // exactly the dead carve-out worth avoiding. The day StaffNotation stops
+        // writing partial sixteenth-triplet brackets, this fails here rather
+        // than leaving the tolerance to cover whatever comes next.
+        assertThat(source).contains("\\tuplet 3/2 { ").contains("16 ");
+
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve("tolerated/part.ly"), source);
 
@@ -409,9 +412,55 @@ class TupletEngravingIT {
                 .contains(TOLERATED_COMPLAINT);
         // And the music is still right underneath it: a page came out, and the
         // bar checks -- which is what the warning ban is really for -- passed.
+        // Round 4 rendered this page at 900 dpi and looked at both complaint
+        // sites: the tuplet number is present and legible, placed above the
+        // steep beam rather than inside it. Nothing missing, nothing colliding.
         assertThat(result.output()).doesNotContainIgnoringCase("barcheck");
         assertThat(result.pdf()).isPresent();
         assertEngravedCleanly("the tolerated case", result);
+    }
+
+    @Test
+    @DisplayName("the tolerance is exactly one line, and everything either side of it still fails")
+    void theToleranceIsNarrowerThanTheWordItContains() {
+        // Round 4 of review found nothing pinning the width: the filter could be
+        // widened to "any line containing the word error" and the whole suite
+        // stayed green, because the only negative fixture was a *warning* and
+        // the carve-out sits on the error side. So the width is asserted here,
+        // against the helper directly rather than through LilyPond -- a
+        // synthetic Result is the only way to say "a different programming
+        // error" without asking LilyPond to have one.
+        assertThatNoException().isThrownBy(() ->
+                assertEngravedCleanly("only the tolerated line", engraved(TOLERATED_COMPLAINT)));
+        assertThatNoException().isThrownBy(() ->
+                assertEngravedCleanly("nothing at all", engraved("Processing `part.ly'")));
+
+        // A different complaint of the same class. This is the one that matters:
+        // "programming error" is not the tolerated thing, the rest of the line
+        // is, and a filter keyed on the prefix would let every internal
+        // complaint LilyPond has through.
+        assertThatThrownBy(() -> assertEngravedCleanly("another programming error",
+                engraved("programming error: cyclic dependency: chain of aligned objects")))
+                .isInstanceOf(AssertionError.class);
+        // The tolerated text with anything else on the line, which is how a
+        // substring match would have been fooled.
+        assertThatThrownBy(() -> assertEngravedCleanly("more on the line",
+                engraved(TOLERATED_COMPLAINT + " (and something else went wrong)")))
+                .isInstanceOf(AssertionError.class);
+        // And the thing the ban exists for, beside the tolerated line rather
+        // than instead of it.
+        assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: barcheck failed at: 3/4")))
+                .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> assertEngravedCleanly("a real error",
+                engraved("part.ly:5:20: error: syntax error, unexpected '}'")))
+                .isInstanceOf(AssertionError.class);
+    }
+
+    /** A successful engraving that said exactly these lines. */
+    private static LilyPondRenderer.Result engraved(String... output) {
+        return new LilyPondRenderer.Result(true, Optional.of(Path.of("part.pdf")),
+                String.join("\n", output) + "\n");
     }
 
     // ------------------------------------------------------------- assertions
