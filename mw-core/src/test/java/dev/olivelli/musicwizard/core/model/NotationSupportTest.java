@@ -174,6 +174,40 @@ class NotationSupportTest {
         }
 
         @Test
+        @DisplayName("a syllable's beat span selects exactly the notes it is sung on")
+        void lyricSpanSelectsItsNotes() {
+            // The seam between the two halves of this change: LyricWord.endBeat
+            // and notesBetweenBeats were added for each other, and if they
+            // disagreed about whether the span is half-open, a melisma would come
+            // out a note short or a one-note syllable would come out empty.
+            // Round 3 review finding -- neither half was tested against the other.
+            List<Note> notes = new java.util.ArrayList<>();
+            for (int beat = 0; beat <= 5; beat++) {
+                notes.add(Note.ofSeconds(beat + 0.001, 1.0, 60 + beat, Confidence.CERTAIN)
+                        .quantizedTo(beat, 1.0));
+            }
+            NoteTrack track = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes,
+                    Confidence.CERTAIN);
+
+            LyricWord oneNote = LyricWord.ofSeconds("la", 2.0, 3.0, Confidence.CERTAIN)
+                    .snappedTo(2.0, 3.0);
+            LyricWord melisma = LyricWord.ofSeconds("ah", 1.0, 5.0, Confidence.CERTAIN)
+                    .snappedTo(1.0, 5.0)
+                    .withMelisma(true);
+
+            assertThat(track.notesBetweenBeats(
+                    oneNote.startBeat().orElseThrow(), oneNote.endBeat().orElseThrow()))
+                    .extracting(Note::midiPitch)
+                    .containsExactly(62);
+            assertThat(track.notesBetweenBeats(
+                    melisma.startBeat().orElseThrow(), melisma.endBeat().orElseThrow()))
+                    .extracting(Note::midiPitch)
+                    .containsExactly(61, 62, 63, 64);
+            // Four notes held, which is what makes it a melisma at all.
+            assertThat(melisma.durationBeats()).contains(4.0);
+        }
+
+        @Test
         @DisplayName("pitchRange reports a comparable pair")
         void pitchRangeIsAValue() {
             assertThat(track().pitchRange()).contains(new PitchRange(55, 67));

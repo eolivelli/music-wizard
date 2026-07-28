@@ -47,6 +47,11 @@ import java.util.Optional;
  * extent is the one measurement the notation stage cannot do without, so it is
  * recorded where it is decided.
  *
+ * <p>{@code endBeat} is the offset of a half-open span, the same as everywhere
+ * else in the model, so it feeds {@link NoteTrack#notesBetweenBeats} directly
+ * and returns exactly the notes the syllable is sung on. A syllable on a single
+ * note is not zero-length: it lasts that note.
+ *
  * @param text              the word, or one syllable of it, as written
  * @param startSeconds      approximate start
  * @param endSeconds        approximate end
@@ -97,11 +102,16 @@ public record LyricWord(
             if (!Double.isFinite(from) || from < 0) {
                 throw new IllegalArgumentException("startBeat must be finite and non-negative, got: " + from);
             }
-            // Not before, rather than after: a syllable snapped to a single beat
-            // is a normal one-note syllable, unlike a chord or a note.
-            if (!Double.isFinite(to) || to < from) {
+            // After, not merely not-before, and for the same reason as Chord and
+            // Section: endBeat is the offset of a half-open span, so a syllable
+            // with equal ends covers no notes at all. A syllable sung on one note
+            // is not zero-length -- it lasts that note -- and letting the two look
+            // alike would make a one-note syllable and a mistake indistinguishable
+            // to NoteTrack.notesBetweenBeats, which is the consumer this span
+            // exists for.
+            if (!Double.isFinite(to) || to <= from) {
                 throw new IllegalArgumentException(
-                        "endBeat must be finite and not before startBeat; got start=" + from + " end=" + to);
+                        "endBeat must be finite and after startBeat; got start=" + from + " end=" + to);
             }
         }
     }
@@ -162,9 +172,9 @@ public record LyricWord(
             throw new IllegalArgumentException(
                     "startBeat must be finite and non-negative, got: " + newStartBeat);
         }
-        if (!Double.isFinite(newEndBeat) || newEndBeat < newStartBeat) {
+        if (!Double.isFinite(newEndBeat) || newEndBeat <= newStartBeat) {
             throw new IllegalArgumentException(
-                    "endBeat must be finite and not before startBeat; got start=" + newStartBeat
+                    "endBeat must be finite and after startBeat; got start=" + newStartBeat
                             + " end=" + newEndBeat);
         }
         return new LyricWord(text, startSeconds, endSeconds,

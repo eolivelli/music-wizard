@@ -33,10 +33,10 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
         Objects.requireNonNull(lines, "lines");
         Objects.requireNonNull(language, "language");
         Objects.requireNonNull(confidence, "confidence");
-        // Ordered, so that allWords() and text() really are in time order as
-        // they claim: a stage that recognises a chorus before the verse before
-        // it would otherwise print the song out of sequence.
-        lines = lines.stream()
+        // copyOf first, then sort: copyOf is what rejects a null line, and the
+        // sort alone would not, because a one-element list never invokes the
+        // comparator that would have dereferenced it.
+        lines = List.copyOf(lines).stream()
                 .sorted(java.util.Comparator.comparingDouble(LyricLine::startSeconds))
                 .toList();
     }
@@ -56,9 +56,19 @@ public record Lyrics(List<LyricLine> lines, String language, Confidence confiden
         return lines.stream().allMatch(LyricLine::isQuantized);
     }
 
-    /** Every word across every line, in time order. */
+    /**
+     * Every word across every line, in time order.
+     *
+     * <p>Sorted here rather than relying on the line order, because recognition
+     * spans on sung speech overlap: a line that starts later can hold a word
+     * that starts before the end of the line before it, so concatenating
+     * already-ordered lines is not enough to make the words ordered.
+     */
     public List<LyricWord> allWords() {
-        return lines.stream().flatMap(line -> line.words().stream()).toList();
+        return lines.stream()
+                .flatMap(line -> line.words().stream())
+                .sorted(java.util.Comparator.comparingDouble(LyricWord::startSeconds))
+                .toList();
     }
 
     /** The full text, one line per line. */

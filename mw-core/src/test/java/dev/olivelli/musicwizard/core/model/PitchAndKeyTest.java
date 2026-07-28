@@ -407,9 +407,26 @@ class PitchAndKeyTest {
                     Optional.of(Double.NaN), Optional.of(Double.NaN),
                     false, false, Confidence.CERTAIN))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
 
-            // A syllable on a single beat is normal and must still be allowed.
-            assertThat(word.snappedTo(3.0, 3.0).durationBeats()).contains(0.0);
+        @Test
+        @DisplayName("a syllable's beat span cannot be empty")
+        void rejectsZeroLengthSpan() {
+            // Round 3 review finding. endBeat is the offset of a half-open span,
+            // exactly as on Chord and Section, so equal ends would describe a
+            // syllable covering no notes at all -- and would make a one-note
+            // syllable indistinguishable from a mistake to notesBetweenBeats. A
+            // syllable sung on one note is not zero-length: it lasts that note.
+            LyricWord word = LyricWord.ofSeconds("la", 0, 1, Confidence.CERTAIN);
+
+            assertThatThrownBy(() -> word.snappedTo(3.0, 3.0))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("after startBeat");
+            assertThatThrownBy(() -> new LyricWord("la", 0, 1,
+                    Optional.of(3.0), Optional.of(3.0), false, false, Confidence.CERTAIN))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            assertThat(word.snappedTo(3.0, 4.0).durationBeats()).contains(1.0);
         }
 
         @Test
@@ -430,6 +447,41 @@ class PitchAndKeyTest {
             assertThat(lyrics.allWords()).extracting(LyricWord::text)
                     .containsExactly("early", "late");
             assertThat(lyrics.isQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("words are ordered across lines, not merely within them")
+        void wordsAreOrderedAcrossOverlappingLines() {
+            // Round 3 review finding: sorting the lines was the layer the bug was
+            // noticed at, not the layer it lives at. Recognition spans on sung
+            // speech overlap, so a later line can hold a word that starts before
+            // the previous line ends, and concatenating ordered lines then gives
+            // words out of order.
+            LyricLine longLine = new LyricLine(List.of(
+                    LyricWord.ofSeconds("a", 0.0, 1.0, Confidence.CERTAIN),
+                    LyricWord.ofSeconds("z", 100.0, 101.0, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+            LyricLine inner = new LyricLine(
+                    List.of(LyricWord.ofSeconds("m", 50.0, 51.0, Confidence.CERTAIN)),
+                    Confidence.CERTAIN);
+
+            Lyrics lyrics = new Lyrics(List.of(longLine, inner), "en", Confidence.CERTAIN);
+
+            assertThat(lyrics.allWords()).extracting(LyricWord::text)
+                    .containsExactly("a", "m", "z");
+        }
+
+        @Test
+        @DisplayName("a null line is still rejected")
+        void rejectsNullLine() {
+            // Sorting replaced List.copyOf, which is what did the rejecting; a
+            // one-element list never invokes the comparator that would otherwise
+            // have dereferenced the null. Round 3 review finding.
+            List<LyricLine> withNull = new java.util.ArrayList<>();
+            withNull.add(null);
+
+            assertThatThrownBy(() -> new Lyrics(withNull, "en", Confidence.CERTAIN))
+                    .isInstanceOf(NullPointerException.class);
         }
 
         @Test
