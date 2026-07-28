@@ -46,6 +46,11 @@ package dev.olivelli.musicwizard.arrange;
  *                          turns every detached quarter into a dotted eighth;
  *                          dividing the played length by this before snapping
  *                          is what stops that. 1.0 disables the allowance
+ * @param overlapTolerance  how far past a whole number of grid steps a note may
+ *                          sound before the allowance decides it must have been
+ *                          written longer. Suppresses the allowance for a note
+ *                          held <em>through</em> its written end rather than
+ *                          short of it. 0.0 applies the allowance to everything
  * @param detectSwing       whether to look for a shuffle and write it straight
  */
 public record QuantizationSettings(
@@ -53,6 +58,7 @@ public record QuantizationSettings(
         double tupletPenalty,
         double gridChangePenalty,
         double articulationRatio,
+        double overlapTolerance,
         boolean detectSwing) {
 
     /**
@@ -75,7 +81,7 @@ public record QuantizationSettings(
      * was tried and makes it worse rather than better.
      */
     public static final QuantizationSettings DEFAULT =
-            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, true);
+            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true);
 
     /** The narrowest articulation allowance that is not absurd. */
     private static final double MIN_ARTICULATION_RATIO = 0.25;
@@ -84,6 +90,7 @@ public record QuantizationSettings(
         requireNonNegative(levelPenalty, "levelPenalty");
         requireNonNegative(tupletPenalty, "tupletPenalty");
         requireNonNegative(gridChangePenalty, "gridChangePenalty");
+        requireNonNegative(overlapTolerance, "overlapTolerance");
         if (!(articulationRatio >= MIN_ARTICULATION_RATIO && articulationRatio <= 1.0)) {
             throw new IllegalArgumentException(
                     "articulationRatio must be within " + MIN_ARTICULATION_RATIO
@@ -101,18 +108,32 @@ public record QuantizationSettings(
     /** Returns a copy with swing detection turned off. */
     public QuantizationSettings withoutSwingDetection() {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, false);
+                articulationRatio, overlapTolerance, false);
     }
 
     /** Returns a copy with a different per-section grid-change cost. */
     public QuantizationSettings withGridChangePenalty(double penalty) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, penalty,
-                articulationRatio, detectSwing);
+                articulationRatio, overlapTolerance, detectSwing);
     }
 
     /** Returns a copy with a different articulation allowance. */
     public QuantizationSettings withArticulationRatio(double ratio) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                ratio, detectSwing);
+                ratio, overlapTolerance, detectSwing);
+    }
+
+    /**
+     * Returns a copy with a different overlap tolerance.
+     *
+     * <p>Exists so that the tolerance can be measured rather than asserted. It
+     * was a private constant for four review rounds, and the sentence
+     * justifying its value was wrong for all of them precisely because nothing
+     * could move it -- while its neighbour, which had an accessor, was measured
+     * and corrected twice.
+     */
+    public QuantizationSettings withOverlapTolerance(double tolerance) {
+        return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
+                articulationRatio, tolerance, detectSwing);
     }
 }

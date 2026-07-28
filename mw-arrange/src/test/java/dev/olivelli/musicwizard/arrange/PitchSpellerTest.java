@@ -457,18 +457,16 @@ class PitchSpellerTest {
             // far ends are not decoration: in C flat major the note a whole tone
             // above the tonic is E double flat, and printing a plain D there
             // would be a note outside the key with no accidental to explain it.
-            // Every assertion here fails if the search is narrowed to single
-            // accidentals.
+            // All three fail if the search is narrowed to single accidentals.
+            // B sharp is deliberately not among them: it sits at twelve fifths,
+            // inside the single-sharp band, so it would pass a narrowed search
+            // and prove nothing here -- it is covered by the octave tests.
             Key cFlatMajor = keyWithSignature(-7, Mode.MAJOR);
             assertThat(PitchSpeller.spellFromKey(2, cFlatMajor))
                     .isEqualTo(PitchSpelling.parse("Ebb-1"));
             assertThat(PitchSpeller.spellFromKey(9, cFlatMajor))
                     .isEqualTo(PitchSpelling.parse("Bbb-1"));
-
-            Key aSharpMinor = keyWithSignature(7, Mode.MINOR);
-            assertThat(PitchSpeller.spellFromKey(60, aSharpMinor))
-                    .isEqualTo(PitchSpelling.parse("B#3"));
-            assertThat(PitchSpeller.spellFromKey(67, aSharpMinor))
+            assertThat(PitchSpeller.spellFromKey(67, keyWithSignature(7, Mode.MINOR)))
                     .isEqualTo(PitchSpelling.parse("F##4"));
         }
 

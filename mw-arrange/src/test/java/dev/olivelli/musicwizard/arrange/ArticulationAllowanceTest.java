@@ -92,6 +92,39 @@ class ArticulationAllowanceTest {
     }
 
     @Test
+    @DisplayName("suppressing the allowance on explained lengths is a trade, and this is its price")
+    void whatTheOverlapToleranceCosts() {
+        // This is the comparison the tolerance was justified by for four rounds
+        // and that nothing could run, because it was a private constant with no
+        // way to move it. Now it moves: zero applies the allowance to every
+        // note, which is what "unconditional" means.
+        QuantizationSettings unconditional =
+                QuantizationSettings.DEFAULT.withOverlapTolerance(0.0);
+
+        double detachedGuarded = recovery(QuantizationSettings.DEFAULT, Articulation.DETACHED);
+        double detachedFree = recovery(unconditional, Articulation.DETACHED);
+        double legatoGuarded = recovery(QuantizationSettings.DEFAULT, Articulation.MOSTLY_LEGATO);
+        double legatoFree = recovery(unconditional, Articulation.MOSTLY_LEGATO);
+
+        // The guard loses on the detached player and wins on the legato one.
+        // Measured 0.661 against 0.720, and 0.760 against 0.724.
+        assertThat(detachedGuarded)
+                .describedAs("detached: guarded %.4f, unconditional %.4f",
+                        detachedGuarded, detachedFree)
+                .isLessThan(detachedFree);
+        assertThat(legatoGuarded)
+                .describedAs("legato: guarded %.4f, unconditional %.4f",
+                        legatoGuarded, legatoFree)
+                .isGreaterThan(legatoFree);
+        // It is kept for what the unconditional version does rather than how
+        // often: a whole extra grid step on a note nobody shortened. The two
+        // stay within a couple of points of each other overall, which is the
+        // bound worth gating.
+        assertThat(Math.abs(recovery(QuantizationSettings.DEFAULT) - recovery(unconditional)))
+                .isLessThan(0.02);
+    }
+
+    @Test
     @DisplayName("what the allowance costs the players it was not written for")
     void whatItCostsALegatoPlayer() {
         // The allowance is aimed at a player who releases early. One who holds

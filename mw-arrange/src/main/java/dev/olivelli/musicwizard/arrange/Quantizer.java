@@ -89,22 +89,6 @@ public final class Quantizer {
      */
     private static final int MAX_BARS = 400_000;
 
-    /**
-     * How far past a whole number of grid steps a note may sound before the
-     * articulation allowance decides it must have been written longer.
-     *
-     * <p>Small because it is only there to recognise a note held <em>through</em>
-     * its written end rather than short of it. Two per cent was chosen so that
-     * the guard costs nothing: it recovers as many durations as applying the
-     * allowance unconditionally does, and does not lengthen the notes the
-     * unconditional version got wrong. {@code ArticulationAllowanceTest}
-     * measures that rather than asserting it, over three articulation
-     * distributions and note lengths from one to sixteen steps -- the figures
-     * are there, where they are re-derived on every build, rather than here,
-     * where an earlier set of them went stale without anything noticing.
-     */
-    private static final double OVERLAP_TOLERANCE = 0.02;
-
     private Quantizer() {
     }
 
@@ -467,8 +451,17 @@ public final class Quantizer {
      * all: applied unconditionally it also lengthens notes that were never
      * shortened, and a half note held two milliseconds past its written end came
      * out a sixteenth long. So a length already within
-     * {@value #OVERLAP_TOLERANCE} of a whole number of steps is left alone --
-     * a player may hold slightly through a note, and that reading needs no help.
+     * {@link QuantizationSettings#overlapTolerance()} of a whole number of steps
+     * is left alone -- a player may hold slightly through a note, and that
+     * reading needs no help.
+     *
+     * <p>That suppression is a trade, not a free correction, and the numbers are
+     * in {@code ArticulationAllowanceTest} where they can be re-derived. Against
+     * applying the allowance to everything, the default tolerance recovers 105
+     * more durations from a mostly-legato player and 164 fewer from a detached
+     * one. It is kept because what the unconditional version does to the notes
+     * it gets wrong is qualitatively worse -- a whole extra grid step on a note
+     * nobody shortened -- not because it wins on count.
      *
      * <p>The tolerance is proportional, so past about twenty-five steps it
      * covers the whole rounding cell and the allowance stops firing. That is
@@ -487,7 +480,7 @@ public final class Quantizer {
         // confirm. That needs no test of its own: the comparison becomes
         // "length at or below zero", and at zero the other branch returns the
         // same position anyway.
-        if (lengthSteps <= plain * (1 + OVERLAP_TOLERANCE)) {
+        if (lengthSteps <= plain * (1 + settings.overlapTolerance())) {
             return offsetInBar;
         }
         return Math.min(
@@ -703,7 +696,8 @@ public final class Quantizer {
      *
      * <p>The tightness requirement is what keeps a run of sixteenths from being
      * read as swing. Sixteenths put onsets at 0.25, 0.5 and 0.75, whose spread
-     * is far wider than any shuffle's, even though their mean sits above 0.5.
+     * is three to four times any shuffle's, even though their mean sits above
+     * 0.5.
      * It is also what keeps a genuine triplet passage out: onsets at 0.333 and
      * 0.667 average to 0.5 and spread wide, so triplets read as straight -- and
      * that is correct, because they are triplets, not a shuffle.
@@ -747,7 +741,15 @@ public final class Quantizer {
         /** How late the off-beat cluster has to sit before it counts as swung. */
         private static final double SWING_THRESHOLD = 0.58;
 
-        /** How tight that cluster has to be. Sixteenths spread about 0.19. */
+        /**
+         * How tight that cluster has to be.
+         *
+         * <p>Measured against the window this detector actually uses:
+         * sixteenths spread 0.153 and a shuffle 0.038 to 0.049, so the threshold
+         * sits between them with room on both sides. An earlier comment said
+         * 0.19, which is what sixteenths spread against a window starting at
+         * 0.25 -- the figure predated {@link #OFF_BEAT_LOW} being raised.
+         */
         private static final double MAX_SPREAD = 0.09;
 
         /** Off-beat onsets at which the detection is considered fully supported. */

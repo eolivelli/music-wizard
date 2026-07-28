@@ -81,7 +81,7 @@ public final class PitchSpeller {
      * The same for a minor key, pulled sharp by three quarters of a fifth.
      *
      * <p>A minor key in practice includes its raised leading tone, which sits
-     * seven fifths above the sixth degree and is not in the signature. Ignoring
+     * seven fifths above the seventh degree and is not in the signature. Ignoring
      * it centres A minor exactly where C major is and spells the leading tone of
      * A minor as A flat, which is wrong in a way every musician notices. The
      * offset is the centroid of the natural minor scale plus that one raised
