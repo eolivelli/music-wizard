@@ -181,7 +181,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * leak into the same FFT bin beat there at their difference frequency,
      * which for a harmonic note is hundreds of hertz. The analysis window sets
      * how loud that ripple is, not how fast it runs, so the band series carries
-     * modulation far above the {@value #ONSET_HOP}-sample hop's 86 Hz Nyquist —
+     * modulation far above the {@value #ONSET_HOP}-sample hop's 86 Hz Nyquist --
      * and it was sampled at that hop with no filter in front of it. What lands
      * in the sampled series is the folded remainder, and half-wave
      * rectification of the first difference then demodulates it into a slow,
@@ -224,11 +224,11 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * has them crossing.
      *
      * <p>Filtering the linear magnitude instead of the decibels was tried and
-     * is much worse — clicks at 200 BPM collapse to 0.0, because between clicks
+     * is much worse -- clicks at 200 BPM collapse to 0.0, because between clicks
      * the magnitude sits on the decibel floor and smearing the impulse across
      * that floor destroys the attack. Oversampling the spectrogram and
-     * decimating after the filter — the textbook anti-alias, which removes the
-     * folded components rather than the ripple that carries them — was tried at
+     * decimating after the filter -- the textbook anti-alias, which removes the
+     * folded components rather than the ripple that carries them -- was tried at
      * four times the hop rate and is no better at the worst point (0.718), for
      * four times the STFT cost. The ripple, not the fold, is what has to go.
      *
