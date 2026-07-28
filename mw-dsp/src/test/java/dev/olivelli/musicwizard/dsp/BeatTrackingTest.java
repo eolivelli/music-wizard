@@ -300,8 +300,8 @@ class BeatTrackingTest {
         }
 
         @Test
-        @DisplayName("a non-finite sample is held over, not smeared and not skipped")
-        void nonFiniteSampleIsHeldOver() {
+        @DisplayName("a non-finite sample is left alone, not smeared and not skipped")
+        void nonFiniteSampleIsLeftAlone() {
             double[][] bands = new double[100][40];
             for (int frame = 0; frame < bands.length; frame++) {
                 bands[frame][0] = frame % 2 == 0 ? 1 : -1;
@@ -577,8 +577,13 @@ class BeatTrackingTest {
             // The envelope is normalised to unit variance, so what separates
             // rhythmic material is not how often it exceeds a threshold -- the
             // tone actually exceeds 2.0 more often -- but how far its attacks
-            // stand out. Clicks reach about 10 standard deviations; a sustained
-            // sine reaches under 3.
+            // stand out. A 120 BPM click track peaks at about 7.7 standard
+            // deviations and the weakest tempo in 60..200 at 5.9; a sustained
+            // sine reaches 2.2. Those were 10.1 and 2.7 before the band
+            // low-pass of issue #49, which lowers every peak by roughly a
+            // quarter -- it widens each attack by about half a frame, so the
+            // same energy is spread over more of them. The ratio, which is what
+            // this test is about, is barely touched.
             //
             // This is the property Estimate.peakiness turns into a number; the
             // assertions on that live in TempoConfidence.

@@ -96,10 +96,12 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * half a frame wider and why peakiness falls a little. What it buys is that the filter
      * is well clear of the interference region -- on a held 440 Hz note with
      * eight partials, the bands carrying the note put their energy at the
-     * partial differences, 440 Hz and up, with four to six orders of magnitude
-     * less anywhere between 1 and 340 Hz. (The topmost bands, 60 to 80 dB down
-     * and carrying only leakage, are not so clean: there the low rates come
-     * within a factor of two of the 440 Hz line.)
+     * partial differences, 440 Hz and up, and three to five orders of magnitude
+     * less in amplitude anywhere between 1 and 340 Hz. (In amplitude, since
+     * these are decibel series; six to ten orders in power, which is the same
+     * statement.) The topmost bands, 60 to 80 dB down and carrying only
+     * leakage, are not so clean -- there the low rates come within about an
+     * order of magnitude of the 440 Hz line rather than five.
      *
      * <p>An earlier version of this comment claimed the two corners nearly
      * coincided, at 18.7 Hz against 17.5. That figure came from an unwindowed
@@ -280,7 +282,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * four times the hop rate and is no better at the worst point (0.718), for
      * four times the STFT cost. The ripple, not the fold, is what has to go.
      *
-     * <p>Non-finite samples are held over rather than filtered through.
+     * <p>Non-finite samples are left alone rather than filtered through.
      * Recursive filters spread one poisoned value across the whole series, and
      * the flux loop downstream drops a non-finite rise silently because
      * {@code rise > 0} is false for NaN -- so filtering it costs the entire
@@ -313,18 +315,23 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * </ul>
      *
      * <p>Filtering per run has no such edge, because the recursion never sees
-     * outside the run it is filtering. Over 245 such configurations its worst
-     * point is <b>0.504</b>, a margin of 0.247, and it beats doing no filtering
-     * at all at 60% of them.
+     * outside the run it is filtering. Sampled at 1200 points drawn uniformly
+     * from holes of 1 to 5 seconds beginning between 1 and 11 seconds, against
+     * carriers from 220 Hz to 3 kHz, its worst point is <b>0.533</b> and it
+     * beats doing no filtering at all at 48% of them.
      *
      * <p>It does not beat it everywhere, and that is worth stating rather than
-     * rounding off: at 27% of those configurations this is still worse than not
-     * filtering, by up to 0.188, and its worst point of 0.504 is above the 0.434
-     * that no filtering reaches.
+     * rounding off: at 33% of those points this is still worse than not
+     * filtering, by up to 0.322, and its worst point is above the 0.471 that no
+     * filtering reaches.
      *
-     * <p>And those 245 configurations are holes of 1 to 5 seconds beginning at
-     * 1 second or later, which is the shape of grid that has now twice been
-     * mistaken for a general result. It is not one. A hole that begins at
+     * <p>Those figures are drawn rather than gridded, deliberately. An evenly
+     * spaced grid over the same family gave 0.504, 27% and 0.188 -- every one of
+     * them flattering, because a grid samples a smooth artefact at its own
+     * spacing rather than where it is worst.
+     *
+     * <p>And the family itself is not general, which is the shape of claim that
+     * has now twice been mistaken for one. A hole that begins at
      * {@code t = 0} and covers most of the clip -- leaving one short run at the
      * end -- reaches <b>0.775, above the click floor</b>, at 9 of 36 lengths
      * tried between 14 and 17.5 seconds of 20. Filtering per run neither causes
