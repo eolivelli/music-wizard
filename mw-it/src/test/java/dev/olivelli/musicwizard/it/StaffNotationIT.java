@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.it;
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
@@ -193,6 +194,14 @@ class StaffNotationIT {
         assertThat(failedBarChecksIn(result.output()))
                 .as("%s", result.output())
                 .contains("3/4");
+        // And the gate the test above rests on fails on it. Round 2 of review on
+        // #164 called this an inconsistency rather than a gap -- the same fact
+        // is pinned synthetically in LilyPondComplaintsTest -- but the two
+        // teeth-tests in this module now read the same way, and this one says it
+        // against a real binary on whichever spelling it uses.
+        assertThatThrownBy(() -> assertEngravedCleanly("the short bar", result))
+                .as("%s", result.output())
+                .isInstanceOf(AssertionError.class);
     }
 
     /** Pages in a PDF, read from the page objects rather than from the trailer. */

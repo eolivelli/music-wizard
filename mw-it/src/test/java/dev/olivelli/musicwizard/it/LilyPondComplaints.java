@@ -126,9 +126,12 @@ final class LilyPondComplaints {
      *
      * <p><b>It is not granted by default</b>, and after round 1 of review on
      * #164 it is not granted by the helper either: a caller that wants it names
-     * it, so a chord-chart suite cannot acquire a carve-out nothing it engraves
-     * can reach by picking the obviously-named assertion. Only
-     * {@link TupletEngravingIT} passes it.
+     * it, so a suite cannot acquire a carve-out nothing it engraves can reach by
+     * picking the obviously-named assertion. Of the eleven call sites that
+     * engrave a real page, <b>exactly one names it</b> —
+     * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne},
+     * the test that exists to reach it. Round 2 of review measured the other
+     * ten: none produces this line on 2.24.3 or on 2.26.0.
      */
     static final String TOLERATED_COMPLAINT =
             "programming error: not enough space for tuplet number against beam";
@@ -158,7 +161,7 @@ final class LilyPondComplaints {
     /**
      * Fails unless LilyPond produced a page and said nothing about it.
      *
-     * <p>One helper rather than the same two lines at each of nine call sites,
+     * <p>One helper rather than the same two lines at each of eleven call sites,
      * and it is here rather than in an {@code *IT} so that the guard on how wide
      * the tolerance is can run in {@code mvn verify} — a tolerance whose only
      * test sits behind {@code -Pintegration} can widen without anyone noticing,

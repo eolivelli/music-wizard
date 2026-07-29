@@ -115,7 +115,7 @@ class TupletEngravingIT {
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve("triplets/part.ly"), source);
-        assertEngravedCleanly("the triplet page", result, TOLERATED_COMPLAINT);
+        assertEngravedCleanly("the triplet page", result);
         Path pdf = result.pdf().orElseThrow();
         assertThat(pageCount(pdf)).isEqualTo(1);
         assertThat(Files.size(pdf)).as("an empty page").isGreaterThan(10_000);
@@ -154,11 +154,19 @@ class TupletEngravingIT {
         assertThat(failedBarChecksIn(result.output()))
                 .as("%s", result.output())
                 .contains("11/12");
-        // And the one complaint this suite tolerates does not swallow it. A
-        // tolerance is only worth having if the thing it was carved out of still
-        // fails, so the carve-out is pointed at the failure it must not cover.
-        assertThatThrownBy(() -> assertEngravedCleanly("short bracket", result, TOLERATED_COMPLAINT))
-                .as("the tolerance swallowed a failed bar check")
+        // And the gate the clean runs above rest on fails here, on a real
+        // binary, with a real failed bar check in whichever spelling this
+        // LilyPond uses.
+        //
+        // It used to say it showed the *tolerance* did not swallow the bar
+        // check, and round 2 of review on #164 measured that this run emits no
+        // tolerated line at all, on either version -- so nothing was being
+        // swallowed and nothing was proved. That claim is
+        // LilyPondComplaintsTest.theToleranceIsNarrowerThanTheWordItContains's
+        // to make, where a synthetic Result puts the two lines side by side
+        // without asking LilyPond to produce both at once.
+        assertThatThrownBy(() -> assertEngravedCleanly("short bracket", result))
+                .as("a failed bar check did not fail the gate")
                 .isInstanceOf(AssertionError.class);
     }
 
@@ -201,7 +209,7 @@ class TupletEngravingIT {
 
                 LilyPondRenderer.Result result = renderer.renderSource(
                         tempDirectory.resolve("meters/" + name + "/part.ly"), source);
-                assertEngravedCleanly(name, result, TOLERATED_COMPLAINT);
+                assertEngravedCleanly(name, result);
                 engraved++;
             }
         }
@@ -237,7 +245,7 @@ class TupletEngravingIT {
 
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve(engraved.name() + "/part.ly"), source);
-            assertEngravedCleanly(engraved.name(), result, TOLERATED_COMPLAINT);
+            assertEngravedCleanly(engraved.name(), result);
             assertThat(Files.size(result.pdf().orElseThrow()))
                     .as("%s is an empty page", engraved.name()).isGreaterThan(10_000);
         }
@@ -305,6 +313,14 @@ class TupletEngravingIT {
         // the moments rather than for the prose is what removes the question.
         assertThat(failedBarChecksIn(result.output())).isEmpty();
         assertThat(result.pdf()).isPresent();
+        // The only call site in the module that names the tolerance, and the
+        // only one that reaches it. Round 2 of review on #164 stripped the
+        // argument from all six sites in this file and got exactly one failure,
+        // here -- so the other five were carrying a carve-out for a line their
+        // fixtures never produce, on either LilyPond version, which is the dead
+        // carve-out the argument was introduced to make visible. They no longer
+        // do. If one of them starts complaining, that is a fact about the
+        // emitter and it should go red rather than be tolerated by inheritance.
         assertEngravedCleanly("the tolerated case", result, TOLERATED_COMPLAINT);
     }
 
@@ -344,7 +360,7 @@ class TupletEngravingIT {
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve("names/" + name + ".ly"), source);
             assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
-            assertEngravedCleanly(name, result, TOLERATED_COMPLAINT);
+            assertEngravedCleanly(name, result);
             assertThat(result.pdf()).as("%s produced no page", name).isPresent();
         }
     }

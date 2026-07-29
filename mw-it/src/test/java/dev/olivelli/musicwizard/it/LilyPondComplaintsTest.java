@@ -58,13 +58,15 @@ import org.junit.jupiter.api.Test;
  * one class over.
  *
  * <p>What that does <em>not</em> buy is noticing a test that stops being run at
- * all. Round 1 of review on #164 renamed {@link StaffNotationOverloadTest} to
- * {@code *IT} and watched {@code mvn verify} report {@code Tests run: 21} and
- * {@code BUILD SUCCESS}, one quieter than before: surefire's
+ * all. Rounds 1 and 2 of review on #164 each renamed
+ * {@link StaffNotationOverloadTest} to {@code *IT} and watched {@code mvn
+ * verify} go green one test quieter than before: surefire's
  * {@code failIfNoTests} is not configured anywhere in this build, so a
  * {@code *Test} that disappears is exactly as silent as an {@code *IT} that
  * does. The argument for the name is which job runs it, not what happens when
- * nothing does.
+ * nothing does. (The count is deliberately not written down here — round 1
+ * recorded one and the same commit then added a test, so it was stale before it
+ * was pushed.)
  */
 class LilyPondComplaintsTest {
 
@@ -312,10 +314,10 @@ class LilyPondComplaintsTest {
         // tolerance was baked into the helper, the obviously-named assertion
         // carried a carve-out for a tuplet-number spacing complaint to callers
         // engraving chord charts, which have neither beams nor tuplet numbers.
-        // Six of the nine call sites now pass nothing, and this is what says
-        // that passing nothing means nothing -- a helper that kept the old
-        // default while accepting the argument would pass every other case in
-        // this class.
+        // Ten of the eleven call sites that engrave a real page now pass
+        // nothing, and this is what says that passing nothing means nothing -- a
+        // helper that kept the old default while accepting the argument would
+        // pass every other case in this class.
         assertThatThrownBy(() -> assertEngravedCleanly(
                 "the tuplet carve-out, unasked-for", engraved(TOLERATED_COMPLAINT)))
                 .isInstanceOf(AssertionError.class);
