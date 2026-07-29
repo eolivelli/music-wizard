@@ -139,26 +139,40 @@ public enum Provenance {
      *
      * <p>It swallows a misspelt label as well as a future one, and what that
      * costs is worth tabulating rather than summarising, because it is neither
-     * "the value is not recorded" nor monotonic in the number of typos. On the
-     * map {@code --tempo 60} builds -- a {@link #DERIVED} anchor and a
-     * {@link #SUPPLIED} 60 -- {@link Score#estimatedTempo()} answers:
+     * "the value is not recorded" nor monotonic in the number of typos. Take the
+     * map {@code --tempo 60} builds for a twelve-second recording whose first
+     * tracked pulse falls at 0.2s: a {@link #DERIVED} anchor running at 300 for
+     * that 0.2s, then the {@link #SUPPLIED} 60. Beside it, the grid it was built
+     * from, tracked at 120. {@link Score#estimatedTempo()} answers:
      *
      * <pre>
-     *   labels lost   with a beat grid at 120   with no beat grid
-     *   none                     60                     60
-     *   one (the supplied)      120                     60
-     *   all                      60                     64
+     *   labels lost   with that grid   with no beat grid
+     *   none                60                 60
+     *   one (the supplied) 120                 60
+     *   all                 60                 64
      * </pre>
      *
-     * <p>Each wrong cell is wrong for its own reason. With a grid, losing one
+     * <p>Each wrong cell is wrong for its own reason. With the grid, losing one
      * label leaves the map recording <em>some</em> provenance, so neither a
      * supplied tempo nor the shape proxy answers and the grid does -- the
      * correction is discarded. With no grid, losing <em>every</em> label sends
      * the map to the proxy, which gives up, and the fallback then has no
-     * {@code DERIVED} label to tell it which segment is the anchor, so the
-     * anchor's 300 is averaged in and 64 comes back: a figure nobody supplied
-     * and the music never had. Losing every label with a grid, and losing one
-     * without, both happen to come out right.
+     * {@code DERIVED} label to tell it which segment is the anchor: the anchor's
+     * 300 over 0.2s and the 60 over the remaining 11.8s average to 64. A figure
+     * nobody supplied and the music never had -- and one that moves with the
+     * recording's length, unlike the 60 and the 120 beside it, which are the
+     * supplied value and the grid's median.
+     *
+     * <p>The two cells that come out right are not right for the same reason.
+     * Losing one label without a grid is right <em>by design</em>: the surviving
+     * {@code DERIVED} label is doing exactly its job, and that cell is the only
+     * assertion in this module standing between the anchor-skip and a widening
+     * of it that would look like an improvement. Losing every label with the
+     * grid is a coincidence: the proxy identifies the lead-in by <em>position</em>,
+     * as the segment starting where the grid's first beat does, so it holds only
+     * while the two still agree. Hand-edit the grid's first beat to 0.25s and
+     * that cell reads 120 as well. The table is for the grid the map was built
+     * from; nothing here claims it for a grid that has drifted from its map.
      *
      * <p>So the honest summary is that a typo degrades to whatever the score's
      * <em>other</em> evidence says, which on this particular correction is the

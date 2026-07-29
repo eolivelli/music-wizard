@@ -326,7 +326,8 @@ class ProvenanceTest {
             // records some provenance so the proxy does not run and there is no
             // supplied tempo left to find. All of them typed wrong happens to
             // come out right, since the proxy runs and identifies the lead-in by
-            // position.
+            // position -- a coincidence that holds only while the grid and the
+            // map still agree about where the first beat is, asserted below.
             assertThat(Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid).estimatedTempo())
                     .isEqualTo(60.0);
             assertThat(Score.empty(oneLost, 12.0).withBeatGrid(grid).estimatedTempo())
@@ -347,6 +348,23 @@ class ProvenanceTest {
             assertThat(Score.empty(allLost, 12.0).estimatedTempo())
                     .as("64 is not a tempo anything in this score states")
                     .isNotIn(60.0, 120.0, 300.0);
+            // And unlike the 60 and the 120, it is not a property of the map:
+            // it is a duration-weighted mean, so it moves with the recording's
+            // length. Worth pinning, because a reader who took 64 for a
+            // constant would not know which cells of the table generalise.
+            assertThat(Score.empty(allLost, 0.3).estimatedTempo())
+                    .isNotCloseTo(64.0, within(1.0));
+
+            // The one cell that is a coincidence rather than a design: the
+            // proxy identifies the lead-in as the segment starting where the
+            // grid's first beat does, so it survives only while the two agree.
+            // Move the grid a hand-edit off its map and the all-lost cell reads
+            // the grid's median too. Not a corruption anything produces -- it
+            // takes editing times as well as labels -- but the table is for the
+            // grid the map was built from, and this marks that boundary.
+            BeatGrid drifted = gridOf(pulses(0.25, 0.5, 24));
+            assertThat(Score.empty(allLost, 12.0).withBeatGrid(drifted).estimatedTempo())
+                    .isEqualTo(drifted.medianTempo(TimeSignature.FOUR_FOUR));
         }
 
         @Test
