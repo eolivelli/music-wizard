@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -222,6 +223,125 @@ class TempoOverrideTest {
     }
 
     @Test
+    @DisplayName("says where each of the map's tempi came from")
+    void theMapSaysWhereItsTempiCameFrom() {
+        // The producer side of #120. Whoever chose the tempo is the only code
+        // that knows why, and it records it here rather than leaving
+        // Score.estimatedTempo to work it out from the map's shape.
+        AudioBuffer audio = clickTrack(12.0, 0.5, 1.3);
+
+        Score forced = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(60.0, TimeSignature.FOUR_FOUR, null));
+        assertThat(provenances(forced))
+                .containsExactly(Provenance.DERIVED, Provenance.SUPPLIED);
+
+        // The tracked path: every segment fitted to a real interval says so,
+        // and the anchor in front of them does not claim to be one.
+        Score tracked = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+        assertThat(provenances(tracked)).hasSizeGreaterThan(2);
+        assertThat(provenances(tracked).get(0)).isEqualTo(Provenance.DERIVED);
+        assertThat(provenances(tracked).subList(1, provenances(tracked).size()))
+                .containsOnly(Provenance.MEASURED);
+    }
+
+    @Test
+    @DisplayName("a fallback tempo is assumed, never measured and never supplied")
+    void aFallbackTempoSaysItIsAFallback() {
+        // Nothing was measured on either of these clips and nobody typed a
+        // tempo, so the 120 in the map is the pipeline filling a gap. Labelling
+        // it MEASURED would let a later stage treat it as evidence; labelling it
+        // SUPPLIED would credit the user with a figure they never typed.
+        for (AudioBuffer audio : List.of(tone(0.1), tone(0.25))) {
+            Score assumed = new AudioTranscriber().transcribe(audio,
+                    new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+            assertThat(provenances(assumed))
+                    .as("no override on a %.2fs clip", audio.durationSeconds())
+                    .contains(Provenance.ASSUMED)
+                    .doesNotContain(Provenance.MEASURED, Provenance.SUPPLIED);
+
+            // The same two clips with a tempo typed: same branch, different origin.
+            Score typed = new AudioTranscriber().transcribe(audio,
+                    new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, null));
+            assertThat(provenances(typed))
+                    .as("--tempo 90 on a %.2fs clip", audio.durationSeconds())
+                    .contains(Provenance.SUPPLIED)
+                    .doesNotContain(Provenance.ASSUMED, Provenance.MEASURED);
+        }
+    }
+
+    @Test
+    @DisplayName("no branch of the transcriber leaves a tempo unlabelled")
+    void everyBranchLabelsWhatItProduces() {
+        // A property, stated once over every tempo branch: nothing this class
+        // produces leaves a segment unlabelled, because an unlabelled one
+        // silently re-enables the shape proxy Score.estimatedTempo keeps for
+        // old files.
+        //
+        // Worth being honest about what this is and is not. It kills no mutant
+        // the per-branch tests above do not already kill -- measured, on all
+        // three labels -- because it runs the same three fixtures they do. What
+        // it adds is the statement of the property itself, so a fourth branch
+        // added here has an assertion to fail rather than needing its author to
+        // remember to write one. It does not cover a producer added in another
+        // class; #143 records that gap rather than pretending this closes it.
+        List<AudioBuffer> clips = List.of(tone(0.1), tone(0.25), clickTrack(12.0, 0.5, 1.3));
+        List<Double> overrides = java.util.Arrays.asList(null, 90.0);
+        int checked = 0;
+        for (AudioBuffer audio : clips) {
+            for (Double override : overrides) {
+                Score score = new AudioTranscriber().transcribe(audio,
+                        new AudioTranscriber.Options(override, TimeSignature.FOUR_FOUR, null));
+                assertThat(provenances(score))
+                        .as("clip of %.2fs, --tempo %s", audio.durationSeconds(), override)
+                        .isNotEmpty()
+                        .doesNotContain(Provenance.UNKNOWN);
+                checked++;
+            }
+        }
+        // Guards the guard, and pins that the fixtures really do span the three
+        // branches rather than all landing in one.
+        assertThat(checked).isEqualTo(6);
+        assertThat(new AudioTranscriber().transcribe(clips.get(0),
+                        AudioTranscriber.Options.defaults()).beatGrid())
+                .as("the first clip must track no beats") .isEmpty();
+        assertThat(new AudioTranscriber().transcribe(clips.get(1),
+                        AudioTranscriber.Options.defaults()).beatGrid().orElseThrow().size())
+                .as("the second must track exactly one").isEqualTo(1);
+        assertThat(new AudioTranscriber().transcribe(clips.get(2),
+                        AudioTranscriber.Options.defaults()).beatGrid().orElseThrow().size())
+                .as("the third must track many").isGreaterThan(2);
+    }
+
+    @Test
+    @DisplayName("does not tell a user who typed a tempo that it was assumed")
+    void aTypedTempoIsNotAnnouncedAsAnAssumption() {
+        // The three-way branch made this structural: the "assuming 120" line
+        // lived where an override could not reach it. Collapsing the branch
+        // turned it into a runtime condition, and a condition asserted only in
+        // a comment is one a later edit deletes for free -- the message then
+        // tells someone who typed 90 that the tool assumed 90.
+        List<String> typed = new java.util.ArrayList<>();
+        new AudioTranscriber(typed::add).transcribe(tone(0.25),
+                new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, null));
+        assertThat(typed).as("progress on a one-beat clip with --tempo 90")
+                .isNotEmpty()
+                .noneMatch(line -> line.contains("assuming"));
+
+        // And the message is still emitted when nothing was typed, or this
+        // would pass by having silenced it everywhere.
+        List<String> untyped = new java.util.ArrayList<>();
+        new AudioTranscriber(untyped::add).transcribe(tone(0.25),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+        assertThat(untyped).anyMatch(line -> line.contains("assuming 120 beats/min"));
+    }
+
+    private static List<Provenance> provenances(Score score) {
+        return score.tempoMap().segments().stream()
+                .map(TempoMap.TempoSegment::provenance).toList();
+    }
+
+    @Test
     @DisplayName("transcribes a clip that tracks exactly one beat")
     void oneTrackedBeatIsNotAnError() {
         // One beat passes the empty check and then reaches fromBeatTimes, which
@@ -268,8 +388,12 @@ class TempoOverrideTest {
         // falls in frame 0 lands here. Asserted through a recording as well as
         // directly, since it is reachable both ways.
         TempoMap atOrigin = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, 0.0);
-        assertThat(atOrigin).isEqualTo(TempoMap.constantPulse(120, TimeSignature.FOUR_FOUR));
+                120, TimeSignature.FOUR_FOUR, 0.0, Provenance.SUPPLIED);
+        // The provenance travels the degenerate path too: a map that skipped the
+        // anchor still has to say the tempo in it was supplied, or the one
+        // recording whose first beat lands in frame 0 loses its correction.
+        assertThat(atOrigin).isEqualTo(
+                TempoMap.constantPulse(120, TimeSignature.FOUR_FOUR, Provenance.SUPPLIED));
 
         Score fromTheOrigin = new AudioTranscriber().transcribe(clickTrack(12.0, 0.5, 0.0),
                 new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, null));
@@ -283,14 +407,16 @@ class TempoOverrideTest {
         // more than a thrown map, so the phase is dropped rather than the
         // analysis.
         TempoMap unrepresentable = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, Double.MIN_VALUE);
+                120, TimeSignature.FOUR_FOUR, Double.MIN_VALUE, Provenance.SUPPLIED);
         assertThat(unrepresentable.segments()).hasSize(1);
         assertThat(unrepresentable.initialTempo()).isEqualTo(120.0);
 
         // And a negative anchor cannot be produced by a grid, but must not build
         // a map with a segment running backwards if one ever reaches it.
-        assertThat(AudioTranscriber.constantPulseFrom(120, TimeSignature.FOUR_FOUR, -1.0))
-                .isEqualTo(TempoMap.constantPulse(120, TimeSignature.FOUR_FOUR));
+        assertThat(AudioTranscriber.constantPulseFrom(
+                        120, TimeSignature.FOUR_FOUR, -1.0, Provenance.SUPPLIED))
+                .isEqualTo(TempoMap.constantPulse(
+                        120, TimeSignature.FOUR_FOUR, Provenance.SUPPLIED));
     }
 
     @Test
