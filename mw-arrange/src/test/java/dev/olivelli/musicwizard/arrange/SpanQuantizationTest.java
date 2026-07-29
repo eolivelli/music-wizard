@@ -313,9 +313,14 @@ class SpanQuantizationTest {
             QuantizedScore once = Quantizer.quantize(score);
             QuantizedScore twice = Quantizer.quantize(once.score());
 
+            // Stated rather than only compared, because two passes that both
+            // dropped the same chord would agree with each other just as
+            // happily: what has to survive the second pass is the fallback, not
+            // merely stability.
+            assertThat(once.unplaceableChords()).isEqualTo(1);
+            assertThat(twice.unplaceableChords()).isEqualTo(1);
             assertThat(twice.score().chords().chords())
                     .isEqualTo(once.score().chords().chords());
-            assertThat(twice.unplaceableChords()).isEqualTo(once.unplaceableChords());
         }
 
         @Test
