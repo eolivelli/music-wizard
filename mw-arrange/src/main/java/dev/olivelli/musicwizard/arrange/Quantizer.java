@@ -257,68 +257,70 @@ import java.util.function.ToDoubleFunction;
  * boundaries a half beat apart in a map counting whole ones -- and any producer
  * whose spans are finer than the meter's beat.
  *
- * <p><b>How often the all-or-nothing is paid: the cases, and no bound.</b> Five
- * drafts of this paragraph have described when this collapse is reached and each
- * was refuted by running it -- "never isolated", "only a hand-built score",
- * "one-sided", a rate of {@code 1 - supplied/tracked}, and a mechanism claimed
- * to be exact that missed a case this class's own tests ship. So what follows
- * lists what has been measured and claims no bound and no completeness.
+ * <p><b>When the all-or-nothing is paid.</b> Two questions, and they deserve
+ * different confidence, because merging them into one disclaimer was itself a
+ * defect: <em>which</em> ways a span can be left with no length is settled and
+ * provable; <em>which producers reach them, and how often</em> has been
+ * described five times here and refuted five times.
  *
- * <p>Two things reach it, and the second is the one the "exact" draft missed:
+ * <p><b>The ways in are exactly two, by construction.</b> The guard is
+ * {@code end <= max(snap(start), furthestEnd)}, which is
+ * {@code end <= snap(start) || end <= furthestEnd}, and there is no room for a
+ * third:
  *
  * <ul>
- *   <li><b>Both boundaries round to the same counted beat.</b> The span is
- *       shorter than the counted beat it is <em>measured against</em> -- which
- *       it becomes by being cut against one ruler and measured against another,
- *       the first three cases below.
- *   <li><b>The clamp resolves a start onto the span's own snapped end.</b>
- *       {@link #onGrid} takes {@code max(snap(start), furthestEnd)}, so a span
- *       whose two boundaries round to <em>different</em> beats can still be left
- *       with none. This needs no second ruler and no short span: measured on a
- *       constant 120 map with spans cut at 120, a chord of exactly 1.000000
- *       counted beats whose start carries the microsecond of overlap
- *       {@code ChordProgression} tolerates snaps to beats 1 and 2, is clamped to
- *       2, and goes. {@code theToleratedOverlapIsTheOneExceptionToTheBound} is
- *       that case, and the class states its cost 300 lines below -- which is why
- *       a draft calling the first bullet the whole mechanism was refutable from
- *       inside this file.
+ *   <li><b>Both boundaries round to the same counted beat.</b> Snapping is
+ *       monotone, so this is exactly the case of a span shorter than the counted
+ *       beat it is <em>measured against</em> -- which it becomes by being cut
+ *       against one ruler and measured against another.
+ *   <li><b>The clamp resolves the start onto or past the span's own snapped
+ *       end</b>, which can happen while the two boundaries round to
+ *       <em>different</em> beats. It needs the microsecond of overlap
+ *       {@code ChordProgression} tolerates <em>and</em> a boundary landing on a
+ *       rounding midpoint, so it is a phase and not a regime: in
+ *       {@code theToleratedOverlapIsTheOneExceptionToTheBound} the G runs from
+ *       beat 2.4999992 to 3.4999992 and snaps to 2 and 3, while the C before it
+ *       ends at 2.5000008 and snaps to 3, so the clamp takes the start to 3 and
+ *       the span is gone. Sweeping that boundary across a whole counted beat
+ *       loses one phase in a hundred, and it is the midpoint; spans cut on the
+ *       map's own grid lose nothing at any tolerated overlap size.
  * </ul>
  *
- * <p>Where the first bullet has been reached, measured:
+ * <p><b>Which producers reach the first, measured -- no bound claimed.</b>
  *
  * <ul>
- *   <li><b>Audio, no override: not reached, and by construction rather than by
- *       luck.</b> {@code ChordEstimator} takes every span boundary from the
- *       tracked beat times, and {@code TempoMap.fromBeatTimes} anchors tracked
- *       beat <i>i</i> at exactly that beat, so snapping is the identity on those
- *       positions. Swept over eight meters, rubato to 45% and lead-ins to
- *       4.4 seconds: nothing collapses.
- *   <li><b>Audio with a supplied {@code --tempo}: reached, and the sign of the
- *       correction is second-order.</b> What does it is a <em>constant</em>
- *       supplied map read against a pulse that is not constant:
- *       {@code fromBeatTimes} fits a segment per beat interval, so each span is
- *       compared with its own interval and a single supplied figure is above
- *       some and below others. Over 200 drifting pulses at 0.5% per beat, a
- *       chart of <b>200 one-beat chords</b>, correcting to the reported figure
- *       rounded down, to the reported figure itself, and rounded up: <b>193, 159
- *       and 130 of 200 charts withdrawn</b>. The middle column is a user typing
- *       back the number the run just printed, which is what
- *       {@code AudioTranscriber} says the option is for.
+ *   <li><b>Audio, no override: not reached, by construction rather than luck.</b>
+ *       {@code ChordEstimator} takes every span boundary from the tracked beat
+ *       times and {@code TempoMap.fromBeatTimes} anchors tracked beat <i>i</i> at
+ *       exactly that beat, so snapping is the identity there. Swept over eight
+ *       meters, rubato to 45% and lead-ins to 4.4 seconds: nothing collapses.
+ *   <li><b>Audio with a supplied {@code --tempo}: reached.</b> What does it is a
+ *       <em>constant</em> supplied map read against a pulse that is not
+ *       constant: {@code fromBeatTimes} fits a segment per beat interval, so
+ *       each span is compared with its own interval and one supplied figure is
+ *       above some and below others. Over 200 pulses drifting 0.5% per beat, on
+ *       a chart of <b>200 chords one beat long</b>, correcting to the reported
+ *       figure rounded down and rounded up withdraws <b>193 and 130 of 200
+ *       charts</b>; correcting to the reported figure itself lands between them.
+ *       Against a pulse that is <em>exactly</em> constant the sign is instead the
+ *       whole story -- every downward correction withdraws and every upward one
+ *       is free, which is what {@code aSmallDownwardCorrectionCostsTheWholeBeatAxis}
+ *       pins. Neither is the general case; the drift is.
  *   <li><b>MIDI, no override at all: reached.</b> {@code --tempo} is ignored on
- *       this path. {@code SymbolicChordEstimator} truncates its final span to
- *       the sounding length, so a piece not ending on a counted beat emits one
+ *       this path. {@code SymbolicChordEstimator} truncates its final span to the
+ *       sounding length, so a piece not ending on a counted beat emits one
  *       sub-beat final span; if the harmony changes onto it, it collapses.
- *       Through the estimator's own entry point, eight beats of C with a G on
- *       the tail: 0.5 beats and above are placed, <b>0.4999 and below withdraw
- *       the whole progression</b>.
+ *       Through the estimator's own entry point, eight beats of C with a G on the
+ *       tail: 0.5 beats and above are placed, <b>0.4999 and below withdraw the
+ *       whole progression</b>.
  * </ul>
  *
- * <p>None of those figures is a rate, and quoting them without their population
- * would make them one. They are for a chart of 200 chords that change harmony on
- * every beat; the same sweep over a 32-chord chart withdraws <b>none</b>, and
- * over two-beat chords none at any length. Exposure grows with how many one-beat
- * spans a chart has, because any one of them withdraws all the others -- and
- * that, rather than any of the numbers, is what the all-or-nothing costs.
+ * <p>None of those figures is a rate, and reading them as one is the mistake two
+ * earlier drafts made. Each is for a chart of 200 chords that change harmony on
+ * every beat, drifting 0.5% per beat: the same sweep over a 32-chord chart
+ * withdraws none, and over two-beat chords none at any length or drift. What
+ * generalises is only the shape -- exposure grows with how many one-beat spans a
+ * chart has, because any one of them withdraws all the others.
  *
  * <p>The ordering that follows from all of this is the useful part: <b>#173
  * should land before this pass is wired into the pipeline</b>. Per-chord
