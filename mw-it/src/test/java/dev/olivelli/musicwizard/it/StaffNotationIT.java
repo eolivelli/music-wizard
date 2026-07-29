@@ -16,8 +16,10 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
@@ -139,16 +141,16 @@ class StaffNotationIT {
                     tempDirectory.resolve(engraved.name() + "/part.ly"),
                     StaffNotation.toLilyPond(engraved.score(), track));
 
-            assertThat(result.succeeded())
-                    .as("%s: %s", engraved.name(), result.output())
-                    .isTrue();
             // A failed bar check is a warning, not an error: LilyPond engraves
             // the wrong bar and carries on. Treating any warning as a failure is
             // what makes this test worth running.
-            assertThat(result.output())
-                    .as("%s engraved with complaints", engraved.name())
-                    .doesNotContainIgnoringCase("warning")
-                    .doesNotContainIgnoringCase("error");
+            //
+            // Through the shared helper since #164, having been the third copy
+            // of the same two lines -- and by the project's own rule, the place
+            // the third edit would go is the place the structure should change
+            // instead. Nothing tolerated: this file's staves are the plain ones,
+            // and the tuplet suite's carve-out has nothing here to apply to.
+            assertEngravedCleanly(engraved.name(), result);
 
             Path pdf = result.pdf().orElseThrow();
             assertThat(pageCount(pdf)).as("%s page count", engraved.name()).isEqualTo(1);
@@ -192,6 +194,14 @@ class StaffNotationIT {
         assertThat(failedBarChecksIn(result.output()))
                 .as("%s", result.output())
                 .contains("3/4");
+        // And the gate the test above rests on fails on it. Round 2 of review on
+        // #164 called this an inconsistency rather than a gap -- the same fact
+        // is pinned synthetically in LilyPondComplaintsTest -- but the two
+        // teeth-tests in this module now read the same way, and this one says it
+        // against a real binary on whichever spelling it uses.
+        assertThatThrownBy(() -> assertEngravedCleanly("the short bar", result))
+                .as("%s", result.output())
+                .isInstanceOf(AssertionError.class);
     }
 
     /** Pages in a PDF, read from the page objects rather than from the trailer. */
