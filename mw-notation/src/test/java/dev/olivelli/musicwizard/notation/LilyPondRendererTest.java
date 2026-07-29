@@ -798,6 +798,63 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("costs nothing across several diagnostics either, however their echoes came out")
+        void severalDiagnosticsWithEchoesPresentLoseNothing() {
+            // Restores the multi-diagnostic coverage that was deleted in the
+            // same commit as round 8's fix -- which is how that fix came to
+            // revert clean. The residual this whole design is described by is a
+            // property of *neighbouring* diagnostics, so a single-diagnostic
+            // generator cannot bound it however many trials it runs.
+            //
+            // Containment rather than equality: with echoes present but
+            // sometimes unrecognised, the over-reports cascade in a way that is
+            // tedious to predict and is not what this asserts. What it asserts
+            // is the thing that matters -- no real moment goes missing.
+            //
+            // Echoes are always present, as either the well-formed pair or the
+            // single truncated line real LilyPond emits for a long source line.
+            // Echoes that are *absent* are the documented residual and live in
+            // theShapesTheEchoSkipCanSwallow.
+            Random random = new Random(90909L);
+            for (int trial = 0; trial < 20000; trial++) {
+                StringBuilder output = new StringBuilder();
+                List<String> expected = new ArrayList<>();
+                for (int diagnostic = 1 + random.nextInt(4); diagnostic > 0; diagnostic--) {
+                    for (int noise = random.nextInt(3); noise > 0; noise--) {
+                        output.append(random.nextBoolean() ? "" : "Interpreting music...")
+                                .append('\n');
+                    }
+                    int column = 1 + random.nextInt(60);
+                    String moment = (1 + random.nextInt(9)) + "/" + (1 + random.nextInt(8));
+                    // Some file names begin with whitespace, which LilyPond
+                    // prints verbatim and which is one way into the residual.
+                    String file = (random.nextInt(4) == 0 ? "  " : "") + "f.ly";
+                    // A quarter of them name no column at all, which is the
+                    // branch round 9 found untested.
+                    String location = random.nextInt(4) == 0 ? "" : file + ":1:" + column + ": ";
+                    output.append(location).append("warning: bar check failed at: ")
+                            .append(moment).append('\n');
+                    expected.add(moment);
+                    String tail = random.nextInt(3) == 0
+                            ? " % a:1:2: warning: bar check failed at: 9/9"
+                            : " | c4 c4";
+                    if (random.nextInt(3) == 0) {
+                        // Truncated: one line, as 2.26.0 emits for a long line.
+                        output.append("x".repeat(Math.max(0, column - 4))).append(tail)
+                                .append('\n');
+                    } else {
+                        output.append("x".repeat(column - 1)).append('\n');
+                        output.append(" ".repeat(column - 1)).append("| rest").append(tail)
+                                .append('\n');
+                    }
+                }
+                assertThat(said(output.toString()).failedBarChecks())
+                        .as("trial %d%n%s", trial, output)
+                        .containsAll(expected);
+            }
+        }
+
+        @Test
         @DisplayName("costs nothing while an echo is there at all, recognised or not")
         void anEchoThatIsPresentNeverCostsAMoment() {
             // Round 8 found the previous version of this passing on seed luck --

@@ -267,12 +267,21 @@ import java.util.regex.Pattern;
  * no echo there.</b>
  *
  * <p>That the precondition is the <em>whole</em> of it is checked by generation
- * rather than argued, since arguing it has now been wrong three times: 20 000
- * randomly built outputs in which every located diagnostic is followed by a
- * well-formed echo, with whitespace-prefixed file names and diagnostic-shaped
- * echo text mixed in, lose nothing at all. The same generator with echoes
- * omitted at random loses 36 moments. A smaller seeded run of it is
- * {@code thePreconditionIsTheWholeOfTheResidual}.
+ * rather than argued, since arguing it has been wrong four times. Two
+ * generators do it, and the pair matters:
+ * {@code anEchoThatIsPresentNeverCostsAMoment} takes one diagnostic at a time
+ * and asserts an exact result, so it can see an over-report appear or vanish;
+ * {@code severalDiagnosticsWithEchoesPresentLoseNothing} takes up to four, with
+ * whitespace-prefixed file names, unlocated diagnostics and truncated one-line
+ * echoes mixed in, and asserts only that no real moment goes missing.
+ *
+ * <p>The second exists because this residual is a property of <em>neighbouring</em>
+ * diagnostics, which the first cannot produce however many trials it runs. Round
+ * 8 replaced a multi-diagnostic generator with a single-diagnostic one in the
+ * same commit as a fix to this logic, and round 9 found that the fix therefore
+ * reverted clean; the paragraph that used to stand here cited the generator that
+ * commit deleted, and the figures it quoted came from a population round 8 had
+ * already shown was measured on seed luck.
  *
  * <p>And the precondition holds: every located diagnostic 2.26.0 produces is
  * followed by its echo, including from stdin and from music built inside a
