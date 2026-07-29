@@ -457,11 +457,11 @@ public final class Quantizer {
      *
      * <p>The count is of chords that <em>collapsed</em>, and it is worth being
      * exact about that because the useful-sounding reading is a different
-     * quantity. It is not how many chords are shorter than their counted beat:
-     * the clamp in {@link #onGrid} resolves an overlapping boundary forward, so
-     * two short chords in a row can leave the second one placeable, and the
-     * count then depends on phase rather than on how badly the pulse disagrees.
-     * {@link QuantizedScore#unplaceableChords()} carries the measurement.
+     * quantity: it is not how many chords are shorter than their counted beat.
+     * {@link QuantizedScore#unplaceableChords()} carries the measurements and
+     * the warning to callers. No mechanism is offered for the difference here,
+     * deliberately -- two attempts to give one named the {@link #onGrid} clamp,
+     * and deleting the clamp changes the count in none of 320 swept cases.
      */
     private static PlacedChords chordsOnGrid(List<Chord> chords, BarTable bars) {
         int[] unplaceable = {0};

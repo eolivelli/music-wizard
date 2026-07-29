@@ -496,14 +496,15 @@ class SpanQuantizationTest {
         @Test
         @DisplayName("the same disagreement gives a different count at a different phase")
         void theCountMovesWithThePhaseAndNotOnlyTheDisagreement() {
-            // The mechanism the javadoc names for why the count is not a measure
-            // of the disagreement: the clamp resolves an overlapping boundary
-            // forward, so whether two short chords in a row leave the second one
-            // placeable depends on where in the beat the progression starts.
-            // Same tempo, same spans, same disagreement -- four phases, and one
-            // of them differs. An earlier version argued this from two tempos
-            // instead and got the arithmetic wrong: 30 and 24 BPM are a factor
-            // of four and five against the harmony, not a doubling.
+            // Same tempo, same spans, same disagreement -- four starting
+            // offsets, and one of them counts differently. That is the whole
+            // claim: the count is not a function of the disagreement alone.
+            //
+            // No mechanism asserted, because two have been asserted here and
+            // both were wrong. The second blamed the onGrid clamp; deleting the
+            // clamp changes the count in none of 320 swept cases, while the
+            // deletion is live enough to fail four other tests. The first
+            // argued from two tempos and had the arithmetic wrong besides.
             TempoMap tempoMap = TempoMap.constant(40, TimeSignature.FOUR_FOUR);
             List<Integer> counts = new ArrayList<>();
             for (double offset : List.of(0.0, 0.25, 0.50, 0.75)) {
@@ -592,9 +593,19 @@ class SpanQuantizationTest {
                             chord("C4", from, from + secondsPerUnit),
                             chord("G4", from + secondsPerUnit, from + 2 * secondsPerUnit));
 
-                    List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+                    QuantizedScore quantized = Quantizer.quantize(score);
 
-                    assertThat(quantized).as("%s, offset %d of a unit", meter, step).hasSize(2);
+                    // Placement, not survival. Counting the chords used to be
+                    // the whole assertion, and it stopped meaning anything the
+                    // moment this pass stopped deleting chords: size is now
+                    // preserved for every input whatsoever, so hasSize(2) held
+                    // even under a mutant that snapped chords to bar lines and
+                    // collapsed every one of these.
+                    assertThat(quantized.unplaceableChords())
+                            .as("%s, offset %d of a unit", meter, step)
+                            .isZero();
+                    assertThat(quantized.score().chords().chords())
+                            .as("%s, offset %d of a unit", meter, step).hasSize(2);
                 }
             }
         }
@@ -868,11 +879,20 @@ class SpanQuantizationTest {
         @Test
         @DisplayName("however many spans go in, that many come out, whatever collapses")
         void everyKindOfSpanSurvivesInItsOwnNumber() {
-            // The totality of onGrid, which is what makes "nothing is ever
-            // deleted" a property of the code rather than a convention every
-            // caller has to keep. Before this PR the collapse handler could
-            // return null and the loop would skip the span; now there is no way
-            // to spell that, so the loop adds exactly one span per iteration.
+            // Size preservation across all three kinds of span, under a map that
+            // collapses most of them.
+            //
+            // What this does NOT test, stated because the comment here used to
+            // claim it did: the collapse handler's old ability to return null
+            // and have onGrid skip the span. Restoring that null and its guard
+            // leaves all 191 tests passing, this one included. It has to --
+            // the only handler that returned null fed a list that is discarded
+            // on every execution reaching it, and the section and key handlers
+            // never returned null, so there was nothing to observe. That the
+            // loop cannot drop a span is enforced by Collapsed being total and
+            // by onGrid having exactly one add per iteration, which is a
+            // property of the type and the shape of the code rather than of any
+            // behaviour a test can reach.
             //
             // Swept over sections and keys as well as chords, because the
             // handler is shared and the chord path is the only one whose

@@ -166,7 +166,8 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * <p>It is a check and <b>not a guarantee</b>, and the difference is worth
      * stating because the reassuring version of this paragraph is what a caller
      * would act on. Two rewrites are caught: one leaving fewer chords than the
-     * count, and one putting the same chords back on the beat axis. A rewrite
+     * count, and one handing in any progression that is on the beat axis. A
+     * rewrite
      * that keeps at least as many chords and leaves them in seconds is
      * <em>not</em> caught -- swap {@code [C, G]} for {@code [D, E]} and a count
      * of one measured on the first rides along onto the second in silence. A
@@ -193,11 +194,18 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * usually because it is shorter than the counted beat it falls in, and it is
      * not the same thing: a chord of exactly one counted beat collapses when the
      * microsecond of overlap {@code ChordProgression} tolerates resolves its
-     * start forward onto a rounding midpoint, and one of exactly one 7/8 beat
-     * collapses when it straddles a meter change into 4/4, where both its ends
-     * fall inside a single quarter-note cell. In both, no chord in the
-     * progression is shorter than its counted beat and the progression is
-     * withdrawn regardless.
+     * start forward onto a rounding midpoint. No chord in that progression is
+     * shorter than its counted beat by any reading, and it is withdrawn
+     * regardless.
+     *
+     * <p>One example rather than two on purpose. The other candidate -- a chord
+     * of one 7/8 beat straddling a meter change into 4/4 -- turns on which unit
+     * counts as "its own", and {@link Quantizer} answers that the unit is the
+     * longest one the span touches, under which the chord <em>is</em> shorter
+     * than its unit. It would illustrate the point only under the reading that
+     * class explicitly rejects, and a paragraph whose job is to stop this fact
+     * being paraphrased wrongly should not re-open the ambiguity in its own
+     * second clause.
      *
      * <p>Zero on every score that came out on the beat axis, and the two are
      * exactly complementary: {@link Quantizer} does not discard a chord, so a
@@ -224,13 +232,20 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * first chord at 0.75 s   unplaceable 6 of 8
      * </pre>
      *
-     * <p>Nor is it a scale of how badly the pulse disagrees, though it does
-     * broadly rise with it -- 4, 5, 6, 6, 7 at 60, 40, 30, 24 and 15 BPM against
-     * that fixture. It is not even monotone in the disagreement once the phase
-     * is allowed to vary with it. An earlier draft of this paragraph said it
-     * "does not grow with the disagreement", which the numbers on the line above
-     * refute; the honest form is that it does not grow <em>in proportion</em>,
-     * and that phase moves it independently.
+     * <p>Nor is it a scale of how badly the pulse disagrees, though it does rise
+     * with it -- 4, 5, 6, 6, 7 at 60, 40, 30, 24 and 15 BPM against that
+     * fixture, where the disagreement runs from twofold to eightfold. It does
+     * not rise <em>in proportion</em>, and that is the whole of what can be said
+     * about the shape of it.
+     *
+     * <p>Two stronger versions of that sentence have been written here and both
+     * were refuted by execution -- "does not grow with the disagreement", which
+     * the row above contradicts, and "not even monotone once the phase is
+     * allowed to vary", which a sweep of 440 tempos at 90 phases each finds zero
+     * counterexamples to. The count is monotone non-decreasing in the
+     * disagreement even with the phase chosen adversarially. This note is here
+     * because the third version of a sentence is where the temptation is to
+     * write a fourth.
      *
      * <p>So what a caller may say from it is what it measures: that the harmony
      * could not be put on the beat axis, and that this many chord spans had no
