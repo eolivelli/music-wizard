@@ -127,18 +127,24 @@ final class LilyPondComplaints {
      * <p><b>It is not granted by default</b>, and after round 1 of review on
      * #164 it is not granted by the helper either: a caller that wants it names
      * it, so a suite cannot acquire a carve-out nothing it engraves can reach by
-     * picking the obviously-named assertion. <b>Exactly one call site names it</b>
-     * — {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne},
-     * the test that exists to reach it — and every other passes nothing. Round 2
-     * of review measured the rest: not one produces this line on 2.24.3 or on
-     * 2.26.0.
+     * picking the obviously-named assertion. <b>Exactly one call site that
+     * engraves a real page names it</b> —
+     * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne},
+     * the test that exists to reach it — and every other engraving site passes
+     * nothing. Round 2 of review measured the rest: not one produces this line
+     * on 2.24.3 or on 2.26.0. ({@link LilyPondComplaintsTest} names it freely,
+     * on {@link LilyPondRenderer.Result} values it made up. That is the point of
+     * it, and it engraves nothing.)
      *
-     * <p>How many "every other" is, is deliberately not written here. Rounds 1,
-     * 2 and 3 of review on #164 each found a call-site count in this file wrong,
-     * the last of them stale inside the commit that corrected it — the same
-     * commit added a twelfth site. A number that has to be re-derived on every
-     * edit is a claim that will be false again; the fact that survives edits is
-     * "one names it".
+     * <p>How many "every other" is, is deliberately not written here. It is a
+     * number this file has never once carried correctly: round 1 of review on
+     * #164 introduced it already wrong, round 2 found that and corrected it to a
+     * figure the same commit invalidated by adding a site, and round 3 found
+     * that. A number that has to be re-derived on every edit is a claim that
+     * will be false again; the fact that survives edits is "one engraving site
+     * names it". Round 4 then found the scope removed along with the number,
+     * which is why the words "that engraves" above are load-bearing rather than
+     * decorative.
      */
     static final String TOLERATED_COMPLAINT =
             "programming error: not enough space for tuplet number against beam";
@@ -189,7 +195,8 @@ final class LilyPondComplaints {
      * indent its diagnostics — so it is gone rather than kept as reassurance.
      *
      * @param tolerated complaint lines this caller accepts, matched in full;
-     *                  empty for every caller but {@link TupletEngravingIT}
+     *                  empty at every site that engraves but the one that
+     *                  reaches {@link #TOLERATED_COMPLAINT}
      */
     static void assertEngravedCleanly(String name, LilyPondRenderer.Result result,
                                       String... tolerated) {

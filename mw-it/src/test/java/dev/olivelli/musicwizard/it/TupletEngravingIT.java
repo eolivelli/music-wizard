@@ -313,8 +313,9 @@ class TupletEngravingIT {
         // the moments rather than for the prose is what removes the question.
         assertThat(failedBarChecksIn(result.output())).isEmpty();
         assertThat(result.pdf()).isPresent();
-        // The only call site in the module that names the tolerance, and the
-        // only one that reaches it. Round 2 of review on #164 stripped the
+        // The only call site that engraves and names the tolerance, and the only
+        // one that reaches it -- LilyPondComplaintsTest names it too, on Results
+        // it made up. Round 2 of review on #164 stripped the
         // argument from all six sites in this file and got exactly one failure,
         // here -- so the other five were carrying a carve-out for a line their
         // fixtures never produce, on either LilyPond version, which is the dead
