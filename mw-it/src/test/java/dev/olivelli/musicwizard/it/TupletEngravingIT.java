@@ -461,14 +461,15 @@ class TupletEngravingIT {
                 engraved(TOLERATED_COMPLAINT + " (and something else went wrong)")))
                 .isInstanceOf(AssertionError.class);
         // And the thing the ban exists for, beside the tolerated line rather
-        // than instead of it -- in both of the spellings LilyPond has for it,
-        // because the tolerance must not become version-sensitive by accident
-        // the way the assertions in #145 did.
+        // than instead of it. #145 added a second copy of this case in the older
+        // spelling, on the grounds that the tolerance must not go
+        // version-sensitive the way the assertions in that issue did. Round 2 of
+        // review showed it could not: this filter selects on the word "warning"
+        // and excludes one exact line, so it never reads the bar-check wording
+        // at all and no mutation can make the two spellings differ here. The
+        // copy is gone rather than kept as reassurance.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
-                .isInstanceOf(AssertionError.class);
-        assertThatThrownBy(() -> assertEngravedCleanly("an older bar check beside it",
-                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: barcheck failed at: 3/4")))
                 .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> assertEngravedCleanly("a real error",
                 engraved("part.ly:5:20: error: syntax error, unexpected '}'")))

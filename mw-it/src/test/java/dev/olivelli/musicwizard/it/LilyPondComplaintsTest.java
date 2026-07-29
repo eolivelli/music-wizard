@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  * <p>No LilyPond here on purpose. The engraving tests can only show the matcher
  * against whichever version is installed on the machine running them, which is
  * precisely the blind spot #145 lived in — green under 2.26 and red under 2.24,
- * with nothing anywhere saying the two differ. The fixtures below are verbatim
+ * with nothing anywhere saying the two differ. The fixtures below are real
  * output from both versions, so one run says the matcher handles both.
  *
  * <p>The other half matters at least as much. A matcher that is too generous
@@ -47,7 +47,13 @@ import org.junit.jupiter.api.Test;
  */
 class LilyPondComplaintsTest {
 
-    /** Verbatim from LilyPond 2.24.3, the version the {@code integration} job installs. */
+    /**
+     * LilyPond 2.24.3, the version the {@code integration} job installs. Every
+     * line is byte-exact, the trailing space included; the four progress lines
+     * between preprocessing and success are cut, because they say nothing about
+     * bar checks and their absence is what round 2 of review corrected the word
+     * "verbatim" to.
+     */
     private static final String OUTPUT_2_24 = """
             Processing `bar.ly'
             Parsing...
@@ -59,7 +65,7 @@ class LilyPondComplaintsTest {
             Success: compilation successfully completed
             """;
 
-    /** Verbatim from LilyPond 2.26.0, which is what Homebrew installs. */
+    /** The same run under LilyPond 2.26.0, which is what Homebrew installs, abridged alike. */
     private static final String OUTPUT_2_26 = """
             Processing `bar.ly'
             Parsing...
@@ -147,12 +153,16 @@ class LilyPondComplaintsTest {
     @Test
     @DisplayName("the words alone are not the diagnostic")
     void theWordsWithoutTheDiagnosticDoNotMatch() {
-        // Why the matcher insists on the "warning:" prefix and on the moment
-        // rather than looking for the phrase. LilyPond echoes file names and the
-        // offending line of source back at you, so the phrase can appear in
-        // output that contains no failed bar check at all -- and a test that
-        // matched it would pass on a file named after the bug it was written
-        // for.
+        // Why the matcher asks for the whole shape rather than for the phrase.
+        // LilyPond echoes file names and the offending line of source back at
+        // you, so the phrase turns up in output containing no failed bar check
+        // at all, and a test that matched it would pass on a file named after
+        // the bug it was written for. Round 2 of review pinned which half of the
+        // pattern does the work in each case, because the PR body had credited
+        // all four to one half: the first, second and fourth are rejected for
+        // not reporting a moment, and only the third -- a commented-out line of
+        // source, where everything else about the text is right -- needs the
+        // "warning:" prefix.
         assertThat(failedBarChecksIn("Processing `bar check failed.ly'")).isEmpty();
         assertThat(failedBarChecksIn("Converting to `barcheck failed at 3-4.pdf'...")).isEmpty();
         assertThat(failedBarChecksIn("  % barcheck failed at: 3/4 -- fixed in the next bar"))
