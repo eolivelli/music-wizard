@@ -91,20 +91,26 @@ public final class LilyPondRenderer {
      * {@code attenzione: bar check failed} again, and the integration suite went
      * silent again with it.
      *
-     * <p>So {@code LC_ALL} has to go, and its value has to be <em>kept</em>
-     * rather than dropped: it may be the only thing telling LilyPond that the
-     * filesystem is UTF-8, and removing it without carrying it forward breaks
-     * the non-ASCII filename all over again. It is moved into {@code LC_CTYPE},
-     * unconditionally rather than only when unset, because the effective
-     * character type before this method ran <em>was</em> {@code LC_ALL}'s value
-     * — an existing {@code LC_CTYPE} was already being overridden and preserving
-     * it would change how bytes are decoded rather than leave it alone.
+     * <p>So {@code LC_ALL} has to go — and everything it was covering has to be
+     * written out in its place, which is the part round 6 got wrong and round 7
+     * caught. {@code LC_ALL} does not merely set the character type; it
+     * <em>masks every category</em>, and removing it un-masks whatever the
+     * eleven individual variables happen to say. That matters because glibc's
+     * locale selection is all-or-nothing: one category naming a locale that is
+     * not installed collapses the child's whole locale to {@code C}, ctype
+     * included. An ambient {@code LC_ALL=it_IT.UTF-8 LC_TIME=de_DE.UTF-8} — the
+     * second harmless until the first is removed — brought round 4's broken
+     * filename straight back.
      *
-     * <p>The other categories {@code LC_ALL} was covering — numeric, time,
-     * collation — fall back to {@code LANG} or to {@code C}. Measured rather
-     * than assumed: the same score engraved under a full {@code it_IT.UTF-8} and
-     * under this shape produces PDFs that differ in 73 bytes, all of them the
-     * embedded timestamp.
+     * <p>Each category is therefore given {@code LC_ALL}'s own value, which is
+     * what was in force before. Unconditionally rather than only where unset,
+     * because a category that was already set was already being overridden, and
+     * preserving it would change the child's behaviour rather than leave it
+     * alone.
+     *
+     * <p>Measured rather than assumed: the same score engraved under a full
+     * {@code it_IT.UTF-8} and under this shape produces PDFs that differ in 73
+     * bytes, all of them the embedded timestamp.
      *
      * <p>{@code LANGUAGE} is left alone. gettext consults it first but ignores
      * it entirely once the messages locale is {@code C}, so clearing it changes
@@ -126,13 +132,31 @@ public final class LilyPondRenderer {
     static void speakEnglish(ProcessBuilder builder) {
         Map<String, String> environment = builder.environment();
         // An empty LC_ALL is not a setting -- POSIX has it fall through to the
-        // individual categories -- so it carries nothing forward.
+        // individual categories -- so it masks nothing and carries nothing.
         String everything = environment.remove("LC_ALL");
         if (everything != null && !everything.isEmpty()) {
-            environment.put("LC_CTYPE", everything);
+            for (String category : MASKED_BY_LC_ALL) {
+                environment.put(category, everything);
+            }
         }
         environment.put("LC_MESSAGES", "C");
     }
+
+    /**
+     * Every locale category {@code LC_ALL} masks, except the one being changed.
+     *
+     * <p>The first five are POSIX; the rest are glibc's, and they are here
+     * because glibc is what reads them — leaving one out re-exposes whatever the
+     * ambient environment set it to, and one uninstalled locale among them
+     * takes the whole child down to {@code C}.
+     *
+     * <p>{@code LC_MESSAGES} is deliberately absent: it is the one category this
+     * method is here to change, and {@link #speakEnglish} sets it afterwards.
+     */
+    private static final List<String> MASKED_BY_LC_ALL = List.of(
+            "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE", "LC_MONETARY",
+            "LC_PAPER", "LC_NAME", "LC_ADDRESS", "LC_TELEPHONE", "LC_MEASUREMENT",
+            "LC_IDENTIFICATION");
 
     /**
      * Engraves a source file, writing the PDF beside it.

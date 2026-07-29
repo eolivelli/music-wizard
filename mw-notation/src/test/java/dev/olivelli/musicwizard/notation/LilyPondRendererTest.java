@@ -89,22 +89,39 @@ class LilyPondRendererTest {
     }
 
     @Test
-    @DisplayName("the character type survives, because it is what decodes a file name")
-    void theCharacterTypeIsCarriedRatherThanDropped() {
+    @DisplayName("everything LC_ALL was covering is written out in its place, not just the ctype")
+    void everyMaskedCategoryIsCarriedRatherThanUnMasked() {
         // Round 5 of review found round 4 setting a C ctype and breaking
-        // canción.ly outright. Removing LC_ALL without carrying it forward
-        // breaks the same file the same way whenever LC_ALL was the only locale
-        // variable set, which is exactly what "export LC_ALL=..." in a profile
-        // produces -- so its value moves rather than vanishing.
+        // canción.ly outright, so round 6 carried LC_ALL forward into LC_CTYPE.
+        // Round 7 found that this is still the bug one category wide: LC_ALL
+        // masks every category, and glibc's locale selection is all-or-nothing,
+        // so one un-masked variable naming a locale that is not installed takes
+        // the whole child down to C -- ctype included, and canción.ly with it.
+        // An ambient "LC_ALL=it_IT.UTF-8 LC_TIME=de_DE.UTF-8" does exactly that,
+        // and the second half of it is inert until the first is removed.
         ProcessBuilder builder = new ProcessBuilder("true");
         Map<String, String> environment = builder.environment();
-        environment.remove("LANG");
-        environment.remove("LC_CTYPE");
         environment.put("LC_ALL", "es_ES.UTF-8");
+        environment.put("LC_TIME", "de_DE.UTF-8");
+        environment.put("LC_NUMERIC", "fr_FR.UTF-8");
+        environment.remove("LC_CTYPE");
 
         LilyPondRenderer.speakEnglish(builder);
 
-        assertThat(environment).containsEntry("LC_CTYPE", "es_ES.UTF-8");
+        // Every category POSIX and glibc define, bar the one being changed.
+        assertThat(environment)
+                .containsEntry("LC_CTYPE", "es_ES.UTF-8")
+                .containsEntry("LC_NUMERIC", "es_ES.UTF-8")
+                .containsEntry("LC_TIME", "es_ES.UTF-8")
+                .containsEntry("LC_COLLATE", "es_ES.UTF-8")
+                .containsEntry("LC_MONETARY", "es_ES.UTF-8")
+                .containsEntry("LC_PAPER", "es_ES.UTF-8")
+                .containsEntry("LC_NAME", "es_ES.UTF-8")
+                .containsEntry("LC_ADDRESS", "es_ES.UTF-8")
+                .containsEntry("LC_TELEPHONE", "es_ES.UTF-8")
+                .containsEntry("LC_MEASUREMENT", "es_ES.UTF-8")
+                .containsEntry("LC_IDENTIFICATION", "es_ES.UTF-8")
+                .containsEntry("LC_MESSAGES", "C");
     }
 
     @Test
@@ -146,6 +163,7 @@ class LilyPondRendererTest {
             assertThat(environment)
                     .as("LC_ALL was %s", lcAll == null ? "unset" : "empty")
                     .doesNotContainKey("LC_CTYPE")
+                    .doesNotContainKey("LC_TIME")
                     .containsEntry("LANG", "de_DE.UTF-8")
                     .containsEntry("LC_MESSAGES", "C");
         }
@@ -173,7 +191,11 @@ class LilyPondRendererTest {
         LilyPondRenderer renderer = new LilyPondRenderer(script);
 
         assertThat(renderer.render(source).output()).contains("LC_MESSAGES=[C]");
-        assertThat(renderer.version()).as("--version reads output too").isPresent();
+        // And --version, which parses output too. Round 7 found the previous
+        // assertion here -- that a version was present at all -- satisfied by
+        // any output whatsoever, so deleting the call in version() was killed by
+        // nothing.
+        assertThat(renderer.version()).contains("LC_MESSAGES=[C]");
     }
 
     @Test
