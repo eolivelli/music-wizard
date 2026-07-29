@@ -149,11 +149,13 @@ llm:
   enabled: true
 ```
 
-Only `analysis` and `notation.lilypondPath` reach anything today. Every other `notation` key is read, layered, and then read by
-nothing ([#129][i129]); so is `arrangement`, since `mw-arrange` holds no code
-yet; and the advisor is the section below. `render` warns when a notation
-setting is asked for and cannot be honoured — from the flag or from this file —
-rather than engraving the default chart in silence.
+Most of this is read, layered, and then read by nothing. `analysis` and
+`notation.lilypondPath` reach the pipeline; `analysis.skipSeparation` does not,
+and says so. Every other `notation` key is inert ([#129][i129]), as is all of
+`arrangement`, since `mw-arrange` holds no code yet, and `ml`; the advisor is
+the section below. `analyze` and `render` warn when one of these is asked for
+and cannot be honoured — from a flag or from this file — rather than producing
+the default output in silence.
 
 [i129]: https://github.com/eolivelli/music-wizard/issues/129
 

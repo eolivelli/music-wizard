@@ -412,6 +412,18 @@ class RenderPartsTest {
             // Not --no-pdf: the engraver is looked up on this path in real use,
             // and announcing it before discovering there is nothing to engrave is
             // the same defect as the parts line.
+            //
+            // Anchored on what the command DID print, not on its exit code. The
+            // first attempt at this asserted SOFTWARE -- and a render that throws
+            // on its first line exits SOFTWARE too, because that is what the
+            // exception handler returns, so the assertion was satisfied by the
+            // very failure it was added to exclude. An absence needs a positive
+            // companion, and here the companion has to be output rather than a
+            // status the failure path shares.
+            assertThat(render.out())
+                    .as("the command did not reach the point where it would announce")
+                    .contains("Parts      chords")
+                    .contains("Not written:");
             assertThat(render.out())
                     .doesNotContain("Output ")
                     .doesNotContain("Engraver");

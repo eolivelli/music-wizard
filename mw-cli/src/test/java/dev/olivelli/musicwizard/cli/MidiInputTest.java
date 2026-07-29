@@ -582,6 +582,10 @@ class MidiInputTest {
 
             CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
 
+            // The exit code anchors it. "The warning did not appear" is equally
+            // satisfied by the command dying before it would have, and this test
+            // passed against an analyze that threw on its first line.
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.err()).doesNotContain("no effect on a MIDI workspace");
         }
     }
