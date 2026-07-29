@@ -23,8 +23,10 @@ import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -53,6 +55,50 @@ class ExportGridTest {
 
     /** Largest numerator {@link TimeSignature} accepts. */
     private static final int MAX_NUMERATOR = 64;
+
+    /**
+     * Spans the sweep visits, pinned exactly.
+     *
+     * <p>An exact figure rather than a floor, because a sweep silently cut to a
+     * hundredth of itself passes {@code isGreaterThan}. Round 2 of review found
+     * two assertions here reading {@code isGreaterThan(1_000)} against real
+     * counts of 95,802 and 94,078.
+     */
+    private static final long EXPECTED_SPANS = 130_393;
+
+    /** Tuplet steps the sweep visits, pinned exactly. */
+    private static final long EXPECTED_TUPLET_STEPS = 95_802;
+
+    /** Bar fractions the sweep visits, pinned exactly. */
+    private static final long EXPECTED_BAR_FRACTIONS = 94_078;
+
+    private static int stepsPerBar(TimeSignature meter) {
+        return (int) Math.rint(meter.quarterBeatsPerBar() / LilyPondDuration.SHORTEST_QUARTERS);
+    }
+
+    /**
+     * Whether a span is one the sweep visits.
+     *
+     * <p>Every span of every bar up to 64 sixty-fourths, which is every meter
+     * of three quarter beats or fewer plus a good many longer ones. Above that
+     * the count is quadratic in a bar that reaches 4096 steps, so the sweep
+     * keeps the spans that touch a boundary — the bar line, the middle, the
+     * step after each — and drops the interior ones, which differ from their
+     * neighbours in nothing the splitter reads.
+     */
+    private static boolean worthChecking(int steps, int from, int to) {
+        if (steps <= 64) {
+            return true;
+        }
+        return isBoundary(steps, from) && isBoundary(steps, to);
+    }
+
+    private static boolean isBoundary(int steps, int step) {
+        return step <= 2 || step >= steps - 2
+                || Math.abs(step - steps / 2) <= 1
+                || Math.abs(step - steps / 4) <= 1
+                || Math.abs(step - 3 * steps / 4) <= 1;
+    }
 
     private static List<TimeSignature> everyMeter() {
         List<TimeSignature> meters = new ArrayList<>();
@@ -84,47 +130,46 @@ class ExportGridTest {
     }
 
     @Test
-    @DisplayName("every span the splitter can cut, in every meter, is a whole number of divisions")
-    void everySplitSpanIsExact() {
-        long checked = 0;
+    @DisplayName("the splitter never writes a value outside the fourteen, in any meter")
+    void theSplitterProducesNothingElse() {
+        // Round 2 of review pointed out what the first version of this test
+        // really proved: MetricSplitter returns NoteValue, whose constructor
+        // closes the domain to seven heads and a dot, so re-checking each
+        // returned value against unitsOf re-checks the fourteen above. The
+        // claim worth making is the other one -- that the splitter's *output*
+        // domain is those fourteen, so covering them covers it -- and that it
+        // never throws or returns an empty split for a span inside a bar.
+        Set<NoteValue> produced = new HashSet<>();
+        long spans = 0;
         for (TimeSignature meter : everyMeter()) {
-            double bar = meter.quarterBeatsPerBar();
-            // Whole 64ths only: that is the grid the splitter refuses to take a
-            // span off, so it is the whole of its input domain.
-            int steps = (int) Math.rint(bar / LilyPondDuration.SHORTEST_QUARTERS);
-            if (steps > 64) {
-                // A 64/1 bar is 256 quarter beats and 4096 sixty-fourths, and
-                // the span count is quadratic in that. Sampled at the ends and
-                // the middle instead, which is where a span behaves differently;
-                // the small meters below are swept whole.
-                for (int from : new int[] {0, 1, steps / 2 - 1, steps / 2, steps - 1}) {
-                    for (int to : new int[] {from + 1, from + 2, steps / 2, steps}) {
-                        if (to > from && to <= steps) {
-                            checked += check(meter, from, to);
-                        }
-                    }
-                }
-                continue;
-            }
+            int steps = stepsPerBar(meter);
             for (int from = 0; from < steps; from++) {
                 for (int to = from + 1; to <= steps; to++) {
-                    checked += check(meter, from, to);
+                    if (!worthChecking(steps, from, to)) {
+                        continue;
+                    }
+                    spans++;
+                    List<NoteValue> values = MetricSplitter.split(meter,
+                            from * LilyPondDuration.SHORTEST_QUARTERS,
+                            to * LilyPondDuration.SHORTEST_QUARTERS);
+                    assertThat(values).as("%s span %d..%d", meter, from, to).isNotEmpty();
+                    produced.addAll(values);
                 }
             }
         }
-        assertThat(checked).isGreaterThan(100_000);
-    }
-
-    private static long check(TimeSignature meter, int fromStep, int toStep) {
-        double unit = LilyPondDuration.SHORTEST_QUARTERS;
-        long checked = 0;
-        for (NoteValue value : MetricSplitter.split(meter, fromStep * unit, toStep * unit)) {
-            // The throw is the assertion: unitsOf refuses anything that is not
-            // a whole number of divisions, exactly.
-            ExportGrid.unitsOf(value.quarters());
-            checked++;
+        // Every value it can write, in exactly the fourteen everyNoteValueIsExact
+        // covers. Thirteen rather than fourteen because a dotted whole note is
+        // six quarter beats, which only a 12/8 or larger bar holds -- and it is
+        // in the set, so the sweep did reach one.
+        Set<NoteValue> named = new HashSet<>();
+        for (int denominator = 1; denominator <= LilyPondDuration.SHORTEST_DENOMINATOR;
+                denominator *= 2) {
+            named.add(new NoteValue(denominator, false));
+            named.add(new NoteValue(denominator, true));
         }
-        return checked;
+        assertThat(produced).isSubsetOf(named);
+        assertThat(produced).contains(new NoteValue(1, true), new NoteValue(64, false));
+        assertThat(spans).isEqualTo(EXPECTED_SPANS);
     }
 
     @Test
@@ -146,7 +191,7 @@ class ExportGridTest {
                 checked++;
             }
         }
-        assertThat(checked).isGreaterThan(1_000);
+        assertThat(checked).isEqualTo(EXPECTED_TUPLET_STEPS);
     }
 
     @Test
@@ -169,7 +214,7 @@ class ExportGridTest {
                 checked++;
             }
         }
-        assertThat(checked).isGreaterThan(1_000);
+        assertThat(checked).isEqualTo(EXPECTED_BAR_FRACTIONS);
     }
 
     @Test
@@ -180,11 +225,27 @@ class ExportGridTest {
         // is imported by every scorewriter without a word.
         assertThatThrownBy(() -> ExportGrid.unitsOf(1.0 / 1000))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not a whole number");
+                .hasMessageContaining("not a positive whole number");
         assertThatThrownBy(() -> ExportGrid.unitsOf(Double.NaN))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> ExportGrid.unitsOf(Double.POSITIVE_INFINITY))
                 .isInstanceOf(IllegalStateException.class);
+        // Zero and below are refused too, which LilyPondDuration.wholeNoteFraction
+        // has always done: a length of nothing is not a length, and the one class
+        // that exists so the two exports cannot disagree is the last place they
+        // should disagree about what is legal.
+        assertThatThrownBy(() -> ExportGrid.unitsOf(0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("positive");
+        assertThatThrownBy(() -> ExportGrid.unitsOf(-1))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> LilyPondDuration.wholeNoteFraction(0))
+                .isInstanceOf(IllegalArgumentException.class);
+        // And a length too long to count says so rather than throwing a bare
+        // arithmetic error from the cast.
+        assertThatThrownBy(() -> ExportGrid.unitsOf(1e12))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("positive whole number");
     }
 
     @Test

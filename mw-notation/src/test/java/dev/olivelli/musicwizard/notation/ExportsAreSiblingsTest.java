@@ -57,26 +57,49 @@ import org.junit.jupiter.api.Test;
  */
 class ExportsAreSiblingsTest {
 
-    /**
-     * Everything the PDF path is made of.
-     *
-     * <p>{@link LilyPondRenderer} runs the binary, {@link StaffNotation} and
-     * {@link ChordChart} write what it engraves, and {@link StaffLayout} and
-     * the four classes under it make the decisions they write. If any of them
-     * reaches an exporter, MusicXML or MIDI is on the route to a PDF.
-     */
-    private static final List<String> PDF_PATH = List.of(
-            "LilyPondRenderer", "StaffNotation", "ChordChart", "StaffLayout",
-            "StaffWriter", "MetricSplitter", "LilyPondDuration", "TupletBar", "TupletPlan",
-            "NoteValue", "StaffClef");
-
-    /** The two exports that must stay off it. */
+    /** The two exports that must stay off the route to a PDF. */
     private static final List<String> EXPORTS = List.of("MusicXmlExport", "MidiExport");
+
+    /**
+     * Classes that are neither an export nor on the route to a PDF.
+     *
+     * <p>One so far: {@link ExportGrid} holds the figure both exports count time
+     * in, and exists precisely so that sharing it does not make either an input
+     * to the other. It is checked separately.
+     */
+    private static final List<String> NEITHER = List.of("ExportGrid");
+
+    /**
+     * Everything on the route to a PDF: every class in the package that is not
+     * an export and not shared between them.
+     *
+     * <p><b>Derived rather than listed</b>, and that is the whole of round 2's
+     * finding. The list was eleven names somebody thought of, so a class added
+     * tomorrow — the one that needs a measure count and reaches for the
+     * exporter that already computes one, which is the case this test's javadoc
+     * names — was outside the check by default. A reviewer added exactly that
+     * class and the test passed. Now the default is the other way: a new file
+     * is on the route to a PDF unless it is deliberately classified.
+     */
+    private static List<String> pdfPath() {
+        List<String> path = sources()
+                .map(ExportsAreSiblingsTest::classNameOf)
+                .filter(name -> !EXPORTS.contains(name) && !NEITHER.contains(name))
+                .sorted()
+                .toList();
+        assertThat(path).as("no classes on the route to a PDF at all").isNotEmpty();
+        return path;
+    }
+
+    private static String classNameOf(Path source) {
+        String file = source.getFileName().toString();
+        return file.substring(0, file.length() - ".java".length());
+    }
 
     @Test
     @DisplayName("nothing on the route to a PDF mentions either export")
     void thePdfPathCannotReachAnExport() {
-        for (String onThePath : PDF_PATH) {
+        for (String onThePath : pdfPath()) {
             String source = codeOf(onThePath);
             for (String export : EXPORTS) {
                 assertThat(source)
@@ -102,6 +125,16 @@ class ExportsAreSiblingsTest {
         // producing two files that disagree about where a triplet falls.
         assertThat(codeOf("MusicXmlExport")).contains("ExportGrid");
         assertThat(codeOf("MidiExport")).contains("ExportGrid");
+        // And the shared class knows about neither of its readers, so it cannot
+        // become the route by which one reaches the other.
+        for (String export : EXPORTS) {
+            for (String shared : NEITHER) {
+                assertThat(codeOf(shared))
+                        .as("%s is shared between the exports and must not name %s",
+                                shared, export)
+                        .doesNotContain(export);
+            }
+        }
     }
 
     @Test
@@ -122,7 +155,12 @@ class ExportsAreSiblingsTest {
         // Every assertion above passes vacuously against an empty directory, so
         // this is what says the directory was found and holds the classes named.
         assertThat(sources().count()).isGreaterThan(10);
-        for (String name : Stream.concat(PDF_PATH.stream(), EXPORTS.stream()).toList()) {
+        // Every source is classified, so the partition cannot silently lose one.
+        List<String> classified = Stream.of(pdfPath(), EXPORTS, NEITHER)
+                .flatMap(List::stream).sorted().toList();
+        assertThat(classified).containsExactlyElementsOf(
+                sources().map(ExportsAreSiblingsTest::classNameOf).sorted().toList());
+        for (String name : Stream.concat(pdfPath().stream(), EXPORTS.stream()).toList()) {
             assertThat(codeOf(name))
                     .as("%s", name)
                     .contains("package dev.olivelli.musicwizard.notation;")
@@ -149,6 +187,14 @@ class ExportsAreSiblingsTest {
      * {@code "http://www.musicxml.org/dtds/partwise.dtd"}, and a stripper that
      * treated the {@code //} in it as a line comment would delete the rest of
      * that line and could hide the very reference this is looking for.
+     *
+     * <p>Text blocks are handled for the same reason one level up. Round 2 of
+     * review found that treating {@code """} as two ordinary quotes
+     * desynchronises everything after a block whose body holds an odd number of
+     * them: the "inside a literal" and "inside code" phases swap, and real code
+     * after it is deleted rather than read. No source in this package uses one
+     * yet, and a class holding a LilyPond or MusicXML template is the obvious
+     * next thing to.
      */
     private static String codeOf(String className) {
         return code(read(className));
@@ -159,7 +205,11 @@ class ExportsAreSiblingsTest {
         int i = 0;
         while (i < source.length()) {
             char c = source.charAt(i);
-            if (c == '"' || c == '\'') {
+            if (source.startsWith("\"\"\"", i)) {
+                int end = endOfTextBlock(source, i);
+                out.append(source, i, end);
+                i = end;
+            } else if (c == '"' || c == '\'') {
                 int end = endOfLiteral(source, i);
                 out.append(source, i, end);
                 i = end;
@@ -181,6 +231,29 @@ class ExportsAreSiblingsTest {
         return out.toString();
     }
 
+    /**
+     * The index just past a text block beginning at {@code start}.
+     *
+     * <p>A block ends at the first unescaped {@code """} after its opening
+     * delimiter. A {@code \"} inside it does not close anything, and a run of
+     * four quotes is a quote followed by the delimiter — which is why this
+     * scans rather than calling {@code indexOf}.
+     */
+    private static int endOfTextBlock(String source, int start) {
+        int i = start + 3;
+        while (i < source.length()) {
+            if (source.charAt(i) == '\\') {
+                i += 2;
+                continue;
+            }
+            if (source.startsWith("\"\"\"", i)) {
+                return i + 3;
+            }
+            i++;
+        }
+        return source.length();
+    }
+
     /** The index just past a string or character literal beginning at {@code start}. */
     private static int endOfLiteral(String source, int start) {
         char quote = source.charAt(start);
@@ -197,6 +270,33 @@ class ExportsAreSiblingsTest {
             }
         }
         return source.length();
+    }
+
+    @Test
+    @DisplayName("the comment stripper reads the Java it is given, including a text block")
+    void theStripperIsNotFooled() {
+        // Every one of these is a construct that has to survive intact or the
+        // architectural check above becomes unreliable in a way nobody would
+        // notice: it would pass, quietly, over a class that really does reach an
+        // export. The last two are round 2's finding.
+        assertThat(code("String url = \"http://x//y\"; MidiExport.g();"))
+                .as("a // inside a string is not a comment")
+                .contains("MidiExport");
+        assertThat(code("char quote = '\"'; MidiExport.g();"))
+                .as("a quote character literal does not open a string")
+                .contains("MidiExport");
+        assertThat(code("String s = \"ends with a backslash \\\\\"; MidiExport.g();"))
+                .as("an escaped backslash does not escape the closing quote")
+                .contains("MidiExport");
+        assertThat(code("/** {@link MidiExport} */ int x;"))
+                .as("a javadoc link is documentation, not a dependency")
+                .doesNotContain("MidiExport");
+        assertThat(code("String a = \"\"\"\n  one \" quote\n  \"\"\"; MidiExport.g();"))
+                .as("a text block with an odd quote in it must not swallow the code after it")
+                .contains("MidiExport");
+        assertThat(code("String a = \"\"\"\n  x\n  \"\"\";\n/** {@link MidiExport} */ int y;"))
+                .as("and must not leave a later comment unstripped either")
+                .doesNotContain("MidiExport");
     }
 
     private static Stream<Path> sources() {

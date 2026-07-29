@@ -629,7 +629,7 @@ class MusicXmlExportTest {
         assertThat(org.assertj.core.api.Assertions.catchThrowable(
                 () -> MusicXmlExport.divisionsOf(1.0 / 1000)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not a whole number");
+                .hasMessageContaining("not a positive whole number");
     }
 
     @Test

@@ -349,11 +349,14 @@ class MidiExportTest {
                 .withMessageContaining("outside what a MIDI tempo event can express");
 
         // Just above the boundary, which is what says the guard is at the edge
-        // rather than somewhere convenient.
+        // rather than somewhere convenient. The value is named rather than
+        // bounded: round 2 of review pointed out that reconstructing three bytes
+        // and asserting the result fits in three bytes is true by construction
+        // and asserts nothing. 60,000,000 microseconds a minute over 3.6 beats.
         Sequence slow = MidiExport.toSequence(score(TimeSignature.FOUR_FOUR, 3.6, voice));
         byte[] data = metaData(slow.getTracks()[0], 0x51, 0);
         int microseconds = ((data[0] & 0xFF) << 16) | ((data[1] & 0xFF) << 8) | (data[2] & 0xFF);
-        assertThat(microseconds).isPositive().isLessThanOrEqualTo(0xFFFFFF);
+        assertThat(microseconds).isEqualTo(16_666_667);
     }
 
     @Test

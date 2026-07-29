@@ -287,7 +287,7 @@ public final class MusicXmlExport {
                 + MUSICXML_VERSION + " Partwise//EN\""
                 + " \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
         try {
-            Marshaller marshaller = Context.INSTANCE.createMarshaller();
+            Marshaller marshaller = Context.get().createMarshaller();
             marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
             // The declaration is written above, with the DOCTYPE that has to
             // follow it; JAXB would otherwise emit a second one at the top of
@@ -339,18 +339,41 @@ public final class MusicXmlExport {
      */
     private static final class Context {
 
-        static final JAXBContext INSTANCE = create();
+        private static final JAXBContext CONTEXT;
+        private static final JAXBException FAILURE;
+
+        static {
+            JAXBContext built = null;
+            JAXBException failure = null;
+            try {
+                built = JAXBContext.newInstance(ScorePartwise.class);
+            } catch (JAXBException e) {
+                failure = e;
+            }
+            CONTEXT = built;
+            FAILURE = failure;
+        }
 
         private Context() {
         }
 
-        private static JAXBContext create() {
-            try {
-                return JAXBContext.newInstance(ScorePartwise.class);
-            } catch (JAXBException e) {
+        /**
+         * The context, or a complaint that names the cause every time.
+         *
+         * <p>The failure is held rather than thrown from the initializer.
+         * Throwing from one gives the first caller an
+         * {@code ExceptionInInitializerError} carrying the reason and every
+         * caller after it a bare {@code NoClassDefFoundError} carrying nothing —
+         * and a broken classpath is exactly the situation where the message is
+         * all anybody has. Round 2 of review.
+         */
+        static JAXBContext get() {
+            if (CONTEXT == null) {
                 throw new IllegalStateException(
-                        "the MusicXML bindings are not on the classpath or cannot be read", e);
+                        "the MusicXML bindings are not on the classpath or cannot be read",
+                        FAILURE);
             }
+            return CONTEXT;
         }
     }
 

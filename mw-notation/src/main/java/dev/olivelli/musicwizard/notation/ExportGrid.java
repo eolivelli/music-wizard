@@ -91,16 +91,34 @@ final class ExportGrid {
      * the throw says so rather than rounding it away — rounding would put the
      * measure out by exactly as much as the position was wrong.
      *
-     * @throws IllegalStateException if the length is not a whole number of units
+     * <p><b>Positive, too.</b> A length of zero or less is not a length, and
+     * {@link LilyPondDuration#wholeNoteFraction} has always refused one. Round 2
+     * of review pointed out that this did not, so a malformed {@link
+     * dev.olivelli.musicwizard.arrange.QuantizedScore} — one whose grids
+     * disagree with its own tempo map, which the model permits — failed on the
+     * LilyPond side with a clear message and on this one much later with a
+     * different one. The one class that exists so the two exports cannot
+     * disagree is the last place they should.
+     *
+     * <p>The upper bound is a ceiling on the answer rather than on the input:
+     * beyond it {@code (long) exact} would still be right and
+     * {@link Math#toIntExact} would throw a bare arithmetic error naming
+     * nothing. Nothing reaches it — no caller asks about more than one bar,
+     * which is at most 256 quarter beats — but a diagnostic that only holds
+     * while a caller behaves is not a diagnostic.
+     *
+     * @throws IllegalStateException if the length is not a positive whole number
+     *         of units, or is too long to count
      */
     static int unitsOf(double quarters) {
         double exact = quarters * PER_QUARTER;
-        if (!Double.isFinite(exact) || exact != Math.rint(exact)) {
+        if (!Double.isFinite(exact) || exact <= 0 || exact != Math.rint(exact)
+                || exact > Integer.MAX_VALUE) {
             throw new IllegalStateException(
                     "a length of " + quarters + " quarter beats is " + exact + " export grid"
-                            + " units, which is not a whole number of them; the exports divide a"
-                            + " quarter note " + PER_QUARTER + " ways");
+                            + " units, which is not a positive whole number of them; the exports"
+                            + " divide a quarter note " + PER_QUARTER + " ways");
         }
-        return Math.toIntExact((long) exact);
+        return (int) exact;
     }
 }
