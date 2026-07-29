@@ -894,13 +894,17 @@ class LilyPondRendererTest {
                     + "  p.ly:2:2: warning: bar check failed at: 7/8\n").failedBarChecks())
                     .as("the second line of an unrecognised echo must not skip either")
                     .contains("7/8");
-            // Too large: the diagnostic three lines below a recognised echo is
-            // outside any region, so its own echo is recognised and skipped --
-            // which a region of three lines would prevent, leaving the echo text
+            // Too large. This one has to open a region first, or the size
+            // cannot matter -- the first version of this case had two clean
+            // echoes in a row, so no region was ever opened and i + 3 survived
+            // it. Here the first echo is unrecognised, so a region opens, and
+            // the diagnostic three lines down sits just outside a two-line one
+            // and just inside a three-line one. Outside, its own echo is
+            // recognised and skipped; inside, it is not, and the echo's text is
             // reported.
-            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
-                    + "xxx\n"
-                    + "   | rest\n"
+            assertThat(said("p.ly:1:9: warning: bar check failed at: 3/4\n"
+                    + "zz\n"
+                    + "zz\n"
                     + "p.ly:2:4: warning: bar check failed at: 7/8\n"
                     + "yyy\n"
                     + "   | rest % a:1:2: warning: bar check failed at: 9/9\n").failedBarChecks())
