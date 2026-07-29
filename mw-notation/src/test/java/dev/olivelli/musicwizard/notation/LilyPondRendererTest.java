@@ -24,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -230,5 +232,129 @@ class LilyPondRendererTest {
         assertThat(result.succeeded()).isFalse();
         assertThat(result.pdf()).isEmpty();
         assertThat(result.output()).contains("it went wrong");
+    }
+
+    @Nested
+    @DisplayName("a bar that does not fill its meter")
+    class FailedBarChecks {
+
+        /** A result carrying nothing but the output, which is all the parse reads. */
+        private LilyPondRenderer.Result said(String output) {
+            return new LilyPondRenderer.Result(true, Optional.empty(), output);
+        }
+
+        @Test
+        @DisplayName("is reported even though LilyPond called the run a success")
+        void isVisibleOnAResultThatSucceeded() throws Exception {
+            assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+
+            // #156, end to end through the renderer and with no LilyPond: a
+            // failed bar check is a *warning*, so the engraver draws the short
+            // bar, writes a real PDF and exits zero. Before this, that fact
+            // lived in output() and nothing could ask for it, so RenderCommand
+            // -- which branches on succeeded() alone -- printed "Wrote
+            // chords.pdf" for a chart whose bars do not sum.
+            //
+            // The stand-in reproduces all three halves of that: the message,
+            // the PDF, and the zero. Measured against real LilyPond 2.26.0
+            // first, which said "bad.ly:2:42: warning: bar check failed at:
+            // 3/4", then "Success: compilation successfully completed", then
+            // exited 0 having written 28833 bytes of PDF.
+            Path script = tempDirectory.resolve("engraves-a-short-bar");
+            Files.writeString(script, """
+                    #!/bin/sh
+                    echo "part.ly:5:17: warning: bar check failed at: 3/4"
+                    echo "Success: compilation successfully completed"
+                    : > part.pdf
+                    exit 0
+                    """);
+            Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
+            Path source = tempDirectory.resolve("part.ly");
+            Files.writeString(source, "% a bar short\n");
+
+            LilyPondRenderer.Result result = new LilyPondRenderer(script).render(source);
+
+            assertThat(result.succeeded())
+                    .as("the PDF is real; succeeded() answers 'was one produced', not 'is it right'")
+                    .isTrue();
+            assertThat(result.pdf()).isPresent();
+            assertThat(result.failedBarChecks()).containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("is recognised in both of LilyPond's spellings of it")
+        void bothSpellingsAreRead() {
+            // #145: the message is one string in LilyPond's source and it was
+            // rewritten at 2.25.6. CI installs Ubuntu's 2.24.3 and says
+            // "barcheck"; Homebrew ships 2.26 and says "bar check". Reading one
+            // is being blind to the other, and blind looks exactly like correct.
+            assertThat(said("x.ly:5:17: warning: barcheck failed at: 3/4").failedBarChecks())
+                    .as("2.24.3, which is what the integration job installs")
+                    .containsExactly("3/4");
+            assertThat(said("x.ly:5:17: warning: bar check failed at: 3/4").failedBarChecks())
+                    .as("2.26.0, which is what Homebrew ships")
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("is every moment LilyPond named, in order and with repeats kept")
+        void everyMomentIsCarried() {
+            // 2.24.3 reports each failure; 2.25.6 onwards reports only the first
+            // per context. Neither count is asserted anywhere -- what is carried
+            // is whatever LilyPond said, so a caller can name the bars.
+            assertThat(said("""
+                    part.ly:5:17: warning: bar check failed at: 3/4
+                    part.ly:9:17: warning: barcheck failed at: 7/8
+                    part.ly:13:17: warning: bar check failed at: 3/4
+                    """).failedBarChecks())
+                    .containsExactly("3/4", "7/8", "3/4");
+        }
+
+        @Test
+        @DisplayName("is not read out of a line of source LilyPond quoted back")
+        void aQuotedSourceLineIsNotAComplaint() {
+            // LilyPond echoes the offending line after each diagnostic, so the
+            // phrase can appear in the output as *content* -- in a comment in
+            // the file being engraved, or in its name. The "warning:" prefix is
+            // what holds those out, and it is why the prefix is matched rather
+            // than the phrase alone.
+            assertThat(said("""
+                    Processing `bar check failed at: 3/4.ly'
+                    part.ly:2:3: note: % bar check failed at: 3/4 -- fixed in r12
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("is empty for a clean engraving, and for a run that never got that far")
+        void nothingIsInventedWhenLilyPondDidNotSayIt() {
+            assertThat(said("Success: compilation successfully completed\n").failedBarChecks())
+                    .isEmpty();
+            // The timeout and interrupt paths synthesise their own output.
+            // "LilyPond did not complain" and "LilyPond never ran" are both
+            // already reported by succeeded() == false; neither is a bar-check
+            // finding, and inventing one would be worse than saying nothing.
+            assertThat(said("LilyPond did not finish within 120 seconds").failedBarChecks())
+                    .isEmpty();
+        }
+
+        @Test
+        @DisplayName("does not go missing when LilyPond words the diagnostic as an error")
+        void aBenignDiagnosticIsNotPromotedToAWrongPage() {
+            // The other half of the decision, and the reason this is not "did
+            // LilyPond say anything". #136 is a tuplet-number placement
+            // complaint that LilyPond words as a programming error, is reachable
+            // from ordinary 4/4 in roughly one staff in eighty, and describes a
+            // page whose music is correct. #92 found benign diagnostics carrying
+            // "error:" too. Warning on those teaches a user to skip the line
+            // that matters.
+            assertThat(said("""
+                    programming error: not enough space for tuplet number against beam
+                    continuing, cross fingers
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .isEmpty();
+        }
     }
 }
