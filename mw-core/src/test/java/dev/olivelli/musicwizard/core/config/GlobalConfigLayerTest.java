@@ -28,6 +28,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -47,13 +48,19 @@ import org.junit.jupiter.api.parallel.ResourceLock;
  * README's own two-line example got {@code WorkspaceTest} failing on
  * {@code paperSize}, with nothing pointing at their own config and CI green.
  *
- * <p>Three of its tests write at the location the environment names, which no
- * {@code @TempDir} isolates. That location has two scopes and needs two locks:
- * the class-level {@code @ResourceLock} for other threads in this JVM, and a
- * {@link java.nio.channels.FileLock} for other JVMs sharing this module's
- * {@code target/}, since {@code XDG_CONFIG_HOME} is per module rather than per
- * process. Same shape of hazard as #36; both locks are this class paying its
- * own way rather than a fix for it.
+ * <p>One test writes at the location the environment names, which no
+ * {@code @TempDir} isolates, and one reads it. That location has two scopes and
+ * needs two locks: the class-level {@code @ResourceLock} for other threads in
+ * this JVM, and a {@link java.nio.channels.FileLock} for other JVMs sharing
+ * this module's {@code target/}, since {@code XDG_CONFIG_HOME} is per module
+ * rather than per process. Same shape of hazard as #36; both locks are this
+ * class paying its own way rather than a fix for it.
+ *
+ * <p>It is one test rather than three because review measured the cost:
+ * planting there in three tests failed 11 of 12 concurrent JVMs. Everything
+ * that can be asserted on {@code globalConfigFileLocation()} instead is, and
+ * only the assertion that a real file is read end to end still needs a real
+ * file.
  */
 @ResourceLock(GlobalConfigLayerTest.GLOBAL_CONFIG_ENVIRONMENT)
 class GlobalConfigLayerTest {
@@ -260,15 +267,19 @@ class GlobalConfigLayerTest {
         @Test
         @DisplayName("the loader-less create and open still layer the user's own config")
         void loaderLessFactoriesReadTheEnvironment() throws IOException {
-            withGlobalConfigInTheEnvironment("notation:\n  paperSize: letter\n", () -> {
-                Path root = tempDirectory.resolve("song.mwz");
-                Workspace created = Workspace.create(root, newSourceFile());
-                assertThat(created.effectiveConfig().notation().paperSize())
-                        .isEqualTo("letter");
+            // Asserts the location rather than a planted file's content. Both
+            // kill the mutants that switch these factories to
+            // withoutGlobalConfig(), and this way costs no write at the shared
+            // environment location -- which is the whole reason this class needs
+            // locking. That statedLayerIgnoresTheEnvironment reads a real file
+            // end to end is what makes the location assertion mean something.
+            Path root = tempDirectory.resolve("song.mwz");
+            Workspace created = Workspace.create(root, newSourceFile());
+            assertThat(created.configLoader().globalConfigFileLocation())
+                    .contains(ConfigLoader.globalConfigFile());
 
-                assertThat(Workspace.open(root).effectiveConfig().notation().paperSize())
-                        .isEqualTo("letter");
-            });
+            assertThat(Workspace.open(root).configLoader().globalConfigFileLocation())
+                    .contains(ConfigLoader.globalConfigFile());
         }
 
         /**
@@ -281,16 +292,18 @@ class GlobalConfigLayerTest {
         @Test
         @DisplayName("open uses the loader it is given, not the environment")
         void openUsesTheLoaderItIsGiven() throws IOException {
-            withGlobalConfigInTheEnvironment("notation:\n  paperSize: letter\n", () -> {
-                Path stated = writeGlobalConfig("notation:\n  paperSize: legal\n");
-                Path root = tempDirectory.resolve("song.mwz");
-                Workspace.create(root, newSourceFile(), ConfigLoader.withoutGlobalConfig());
+            Path stated = writeGlobalConfig("notation:\n  paperSize: legal\n");
+            Path root = tempDirectory.resolve("song.mwz");
+            Workspace.create(root, newSourceFile(), ConfigLoader.withoutGlobalConfig());
 
-                Workspace reopened = Workspace.open(root, ConfigLoader.withGlobalConfigFile(stated));
+            Workspace reopened = Workspace.open(root, ConfigLoader.withGlobalConfigFile(stated));
 
-                assertThat(reopened.effectiveConfig().notation().paperSize()).isEqualTo("legal");
-                assertThat(reopened.configLoader().globalConfigFileLocation()).contains(stated);
-            });
+            // Three-way without needing a file at the environment location:
+            // "legal" is what only the stated file says, ruling out "used no
+            // loader" (a4), and the location rules out "went to the environment
+            // anyway" -- which no longer needs a config planted there to detect.
+            assertThat(reopened.effectiveConfig().notation().paperSize()).isEqualTo("legal");
+            assertThat(reopened.configLoader().globalConfigFileLocation()).contains(stated);
         }
 
         /**
@@ -340,12 +353,63 @@ class GlobalConfigLayerTest {
         private void holdingTheEnvironmentLock(ThrowingBody body) throws IOException {
             Path lockFile = buildDirectory().resolve("global-config-environment.lock");
             Files.createDirectories(lockFile.getParent());
-            try (FileChannel channel = FileChannel.open(lockFile,
-                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    // Blocking rather than tryLock: a contended run must be
-                    // slow, not skipped. A skipped test reports as a pass.
-                    FileLock ignored = channel.lock()) {
+            try (FileChannel channel = openLockFile(lockFile);
+                    FileLock ignored = acquire(channel, lockFile)) {
                 body.run();
+            }
+        }
+
+        /**
+         * Opens the lock file, turning the one way that fails into a sentence
+         * naming its own remedy.
+         *
+         * <p>A leftover file this user cannot open — a container build as root
+         * over a bind-mounted checkout, then a build as the developer — would
+         * otherwise surface as {@code AccessDeniedException} on all four tests
+         * in this class, including the one whose whole job is to name the file
+         * that is causing trouble.
+         */
+        private FileChannel openLockFile(Path lockFile) throws IOException {
+            try {
+                return FileChannel.open(lockFile,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            } catch (IOException e) {
+                throw new IOException("cannot open the environment lock at " + lockFile
+                        + " -- delete it, or run mvn clean. It is only a lock; it holds"
+                        + " nothing worth keeping.", e);
+            }
+        }
+
+        /**
+         * Takes the lock, waiting for a peer JVM but not forever.
+         *
+         * <p>Waiting rather than skipping, because a skipped test reports as a
+         * pass and this class exists to catch something that otherwise passes
+         * silently. Bounded rather than {@code channel.lock()}, because there is
+         * no {@code forkedProcessTimeoutInSeconds} in any pom, so a peer wedged
+         * inside the lock would hang the suite with no diagnostic at all. The
+         * bound is generous: contention means another whole test JVM, and only
+         * a stuck one takes a minute.
+         */
+        private FileLock acquire(FileChannel channel, Path lockFile) throws IOException {
+            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+            while (true) {
+                FileLock lock = channel.tryLock();
+                if (lock != null) {
+                    return lock;
+                }
+                if (System.nanoTime() >= deadline) {
+                    // Fail rather than skip: see above.
+                    throw new IOException("another JVM has held the environment lock at "
+                            + lockFile + " for 60s. A test JVM sharing this module's"
+                            + " target/ is stuck, or a stale lock survived one.");
+                }
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted waiting for " + lockFile, e);
+                }
             }
         }
 
@@ -366,7 +430,8 @@ class GlobalConfigLayerTest {
          * developer who is not also a user. It fails for exactly the person the
          * issue is about — someone with a valid config and a build that has
          * stopped neutralising it — which is the population that otherwise gets
-         * no signal at all.
+         * no signal at all. It can still <i>error</i>, for one reason unrelated
+         * to config: an environment lock file it cannot open, which says so.
          *
          * <p>Takes the environment lock even though it only reads: the tests
          * above plant at the very location it asserts is absent, and without

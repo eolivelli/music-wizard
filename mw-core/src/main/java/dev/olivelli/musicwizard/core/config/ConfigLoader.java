@@ -96,13 +96,10 @@ public final class ConfigLoader {
      * {@code $XDG_CONFIG_HOME/music-wizard/config.yaml} or
      * {@code ~/.config/music-wizard/config.yaml}.
      *
-     * <p>This, {@link #globalConfigDirectory()} and {@link #globalConfigFile()}
-     * are the only places that resolve the <i>global config location</i> from
-     * the environment, so a test calling any of them gets whatever config the
-     * machine happens to carry. They
-     * are not the only environment reads in the class: {@link #findLilyPond}
-     * consults {@code PATH} and {@link #searchPrefixes} the home directory, for
-     * a different question — where a binary is, not what the user configured.
+     * <p>Environment-dependent, because it resolves through
+     * {@link #globalConfigDirectory()} — see there for the rule that decides
+     * whether any given call is. A test using this one gets whatever config the
+     * machine it runs on happens to carry.
      */
     public static ConfigLoader fromEnvironment() {
         return new ConfigLoader(globalConfigFile());
@@ -156,6 +153,20 @@ public final class ConfigLoader {
      * {@link #globalConfigFileLocation()} to ask a loader where it actually
      * looks; this is for telling the user where the tool would look, which is
      * what {@code mw doctor} wants.
+     *
+     * <p><b>This is the one method that resolves the global config location
+     * from the environment, and the rule follows from that: a call is
+     * environment-dependent exactly when its path reaches here.</b> Stated as a
+     * rule rather than as a list of such call sites because the list was
+     * written three times during review and was wrong all three — it missed
+     * {@link #searchPrefixes}, then {@link #globalConfigFile()}, then the
+     * no-argument constructor. A reader can settle the question by following
+     * the calls; a list only stays true until the next one is added.
+     *
+     * <p>Note the rule is about the <i>config location</i> specifically. The
+     * class reads the environment elsewhere for a different question — where a
+     * binary is, not what the user configured: {@link #findLilyPond} consults
+     * {@code PATH} and {@link #searchPrefixes} the home directory.
      */
     public static Path globalConfigDirectory() {
         String xdg = System.getenv("XDG_CONFIG_HOME");
