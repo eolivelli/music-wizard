@@ -86,20 +86,8 @@ import java.util.regex.Pattern;
  *
  * <p>Round 1 answered that by anchoring to the start of a line, on the reasoning
  * that an echo begins with the source's own text. <b>Round 2 measured that
- * reasoning and it is false.</b> LilyPond splits the echo <em>at the failing
- * column</em>: the part before the column is printed at column 0 and only the
- * remainder is indented. So an echo does begin at a line start, and a source
- * line carrying anything colon-digits-colon-digits-shaped in front of the phrase
- * walks straight through:
- *
- * <pre>
- * titled.ly:2:105: warning: bar check failed at: 3/4
- * \header { title = "a:1:2: warning: bar check failed at: 9/9" } \score { \new Staff { \time 4/4 c4 c4 c4
- * </pre>
- *
- * <p>Reported as {@code [3/4, 9/9"]} — a count that is wrong and a moment with a
- * stray quote in it. Which is this project's recorded pattern exactly: the first
- * fix reached the layer the bug was noticed at rather than the one it lived at.
+ * reasoning and it is false</b>, for the reason set out below: the first half of
+ * an echo is unindented whatever the column, so it begins at a line start too.
  *
  * <p>So the match is anchored at <em>both</em> ends. A diagnostic is generated
  * from a format string whose last token is the moment — {@code strings} on the
@@ -108,40 +96,22 @@ import java.util.regex.Pattern;
  * that line with it. Every diagnostic line in review round 2's captured corpus,
  * 2.24.3 and 2.26.0 alike, ends immediately after the moment.
  *
- * <p><b>Neither anchor closes the question, and round 3 showed why it cannot be
- * closed here at all.</b> LilyPond splits the echo into <em>two</em> lines — the
- * text before the failing column, then the text after it — and rounds 1 and 2
- * each reasoned about only one of them. The second fragment ends at the end of
- * the source line whatever the column was, so any engraved line whose <em>tail</em>
- * is diagnostic-shaped walks through both anchors. Measured on 2.26.0, one real
- * failure at column 42:
+ * <p><b>Neither anchor was enough, and the reason is the shape of the echo
+ * itself.</b> LilyPond splits it into <em>two</em> lines — the text before the
+ * failing column, then the text from it — and rounds 1 and 2 each reasoned about
+ * only one of them. The first begins at a line start whatever the column, and
+ * the second ends at the end of the source line whatever the column, so a line
+ * with a diagnostic-shaped head walked past the closing anchor and one with a
+ * diagnostic-shaped tail walked past the opening one. Both measured on 2.26.0,
+ * both reported as two moments for one real failure, and the second of them
+ * fabricated a moment with a stray quote in it: {@code [3/4, 9/9"]}.
  *
- * <pre>
- * tail.ly:2:42: warning: bar check failed at: 3/4
- * \score { \new Staff { \time 4/4 c4 c4 c4
- *                                          | c4 c4 c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
- * </pre>
- *
- * <p>reported as {@code [3/4, 9/9]}. The indentation is no defence, because the
- * {@code .*} in the location swallows it, and where the check fails at column 0
- * there is no indentation to swallow.
- *
- * <p>Three rounds have now tried to tell a diagnostic from an echo by the shape
- * of a line <em>in isolation</em>, and each time a fragment of source text was
- * shaped the same way. <b>It cannot be done that way</b>: an echo is arbitrary
- * user text, and any shape a diagnostic has, an echo can have. So this class no
- * longer claims to distinguish them. What it claims, and what is measured, is:
- *
- * <ul>
- * <li><b>It never under-reports</b> on any output 2.24.3 or 2.26.0 produces.
- *     That is the direction that matters, because a check that has silently
- *     stopped checking looks exactly like output that is correct.</li>
- * <li><b>It can over-report</b>, on an echoed line ending in a diagnostic shape.
- *     Not reachable from anything this project emits — {@link ChordChart} writes
- *     no {@code |} at all, and {@link StaffNotation} puts each bar on its own
- *     line ending in {@code  |} with no user-controlled text on it — and it
- *     becomes reachable when engraved lyrics do (#9).</li>
- * </ul>
+ * <p>The lesson was not that the anchors were in the wrong place. It was that
+ * <b>no test on the shape of a line in isolation can work</b>: an echo is
+ * arbitrary user text, so any shape a diagnostic has, an echo can have. Three
+ * rounds of tightening found three ways through, which is the point at which
+ * this project's own rule says to change the layer rather than make the edit
+ * again.
  *
  * <p><b>So the parse stopped trying to do it by shape at all.</b> The echo is
  * recognised by <em>where it is and how it is laid out</em>, which is a fact
