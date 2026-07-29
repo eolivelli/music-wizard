@@ -504,6 +504,29 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("is not skipped when the first line is merely short enough, but only when it fits")
+        void theWidthMustMatchExactlyRatherThanMerelyNotOverflow() {
+            // Why the width is compared with = and not <=. Leniency here means
+            // skipping *more*, and skipping is the only thing in this class that
+            // can lose a diagnostic -- so the loose form is loose in the unsafe
+            // direction, which is the opposite of how it reads.
+            //
+            // Synthetic, because LilyPond does not produce a short first echo
+            // line: the point is what happens if it ever did. Here a real
+            // diagnostic sits where the echo's first half would be, narrower
+            // than the column calls for. Exact declines to skip and reports both;
+            // <= treats it as an echo and swallows the second.
+            //
+            // Found by a sweep that loosened the comparison back and killed
+            // nothing, which is how the tab handling had been unreachable too.
+            assertThat(said("p.ly:1:51: warning: bar check failed at: 3/4\n"
+                    + "p.ly:1:1: warning: bar check failed at: 9/9\n"
+                    + " ".repeat(50) + "| rest\n").failedBarChecks())
+                    .as("50 spaces of indent, but a 43-wide line where 50 was called for")
+                    .containsExactly("3/4", "9/9");
+        }
+
+        @Test
         @DisplayName("is lost only where a column-1 diagnostic is followed by a blank line")
         void theOneShapeTheEchoSkipCanSwallow() {
             // The single under-report this design admits, recorded rather than
