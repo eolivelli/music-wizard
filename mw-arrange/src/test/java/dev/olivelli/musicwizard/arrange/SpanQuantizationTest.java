@@ -1015,7 +1015,7 @@ class SpanQuantizationTest {
             }
             Score score = new Score(Optional.empty(), Optional.empty(), tempoMap,
                     Optional.empty(), shortKeys, shortSections, List.of(),
-                    new ChordProgression(List.of(everyHalfSecond(0.0)), Confidence.CERTAIN),
+                    new ChordProgression(List.of(everyHalfSecond()), Confidence.CERTAIN),
                     Lyrics.empty(), 32.0);
 
             QuantizedScore quantized = Quantizer.quantize(score);
@@ -1267,14 +1267,16 @@ class SpanQuantizationTest {
 
     /**
      * #157's own fixture: eight chords a half-second apart, which is one per
-     * beat of material heard at 120, started at a chosen offset so that the same
-     * disagreement can be read at several phases.
+     * beat of material heard at 120.
+     *
+     * <p>Took an offset until round 10, for a multi-phase sweep whose figures
+     * were withdrawn for being unre-derivable. The parameter went with them
+     * rather than sitting here as the only evidence that the sweep ever existed.
      */
-    private static Chord[] everyHalfSecond(double offsetSeconds) {
+    private static Chord[] everyHalfSecond() {
         Chord[] chords = new Chord[8];
         for (int i = 0; i < chords.length; i++) {
-            chords[i] = chord(ROOTS.get(i % 4), offsetSeconds + i * 0.5,
-                    offsetSeconds + (i + 1) * 0.5);
+            chords[i] = chord(ROOTS.get(i % 4), i * 0.5, (i + 1) * 0.5);
         }
         return chords;
     }
