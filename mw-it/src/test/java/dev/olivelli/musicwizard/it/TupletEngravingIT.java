@@ -463,11 +463,22 @@ class TupletEngravingIT {
         // And the thing the ban exists for, beside the tolerated line rather
         // than instead of it. #145 added a second copy of this case in the older
         // spelling, on the grounds that the tolerance must not go
-        // version-sensitive the way the assertions in that issue did. Round 2 of
-        // review showed it could not: this filter selects on the word "warning"
-        // and excludes one exact line, so it never reads the bar-check wording
-        // at all and no mutation can make the two spellings differ here. The
-        // copy is gone rather than kept as reassurance.
+        // version-sensitive the way the assertions in that issue did. It is gone
+        // again, and the reasoning is worth more than the assertion was.
+        //
+        // Round 2 of review showed the filter cannot read the bar-check wording:
+        // it selects lines containing "warning" or "error" and excludes one
+        // exact string, and javap confirms no bar-check text in the method or
+        // either lambda. Round 3 then refuted the stronger form of that -- a
+        // mutant adding "&& !line.contains(\"barcheck\")" to the tolerance does
+        // make the two spellings differ, so it is mutations of the expressions
+        // this filter contains that cannot, not mutations at all.
+        //
+        // The copy still goes, because that mutant is killed by a real binary:
+        // under LilyPond 2.24 the bar check in
+        // bracketsAreEngravedWithTheDurationTheyClaim reaches this filter in the
+        // older spelling already, so the integration job covers it on the
+        // version where it matters and the synthetic copy only duplicated it.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
                 .isInstanceOf(AssertionError.class);

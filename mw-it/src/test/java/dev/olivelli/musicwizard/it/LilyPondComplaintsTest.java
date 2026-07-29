@@ -157,12 +157,15 @@ class LilyPondComplaintsTest {
         // LilyPond echoes file names and the offending line of source back at
         // you, so the phrase turns up in output containing no failed bar check
         // at all, and a test that matched it would pass on a file named after
-        // the bug it was written for. Round 2 of review pinned which half of the
-        // pattern does the work in each case, because the PR body had credited
-        // all four to one half: the first, second and fourth are rejected for
-        // not reporting a moment, and only the third -- a commented-out line of
-        // source, where everything else about the text is right -- needs the
-        // "warning:" prefix.
+        // the bug it was written for. Which part of the pattern does the work
+        // differs by case, and the two rounds of review it took to get this
+        // paragraph right are the argument for writing it down: the first two
+        // are rejected for reporting no moment; the third -- a commented-out
+        // line of source, where everything else about the text is right -- is
+        // the only one that needs the "warning:" prefix; and the fourth is
+        // rejected by neither, but by the spelling, because only the space
+        // between "bar" and "check" is optional and the one before "failed" is
+        // not.
         assertThat(failedBarChecksIn("Processing `bar check failed.ly'")).isEmpty();
         assertThat(failedBarChecksIn("Converting to `barcheck failed at 3-4.pdf'...")).isEmpty();
         assertThat(failedBarChecksIn("  % barcheck failed at: 3/4 -- fixed in the next bar"))

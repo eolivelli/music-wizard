@@ -58,10 +58,17 @@ import java.util.regex.Pattern;
  * per context, and that is exactly the kind of incidental detail this class
  * exists to stop the suite depending on.
  *
- * <p>The {@code warning:} prefix is required rather than incidental, and it is
- * what keeps this from matching a file name or a quoted line of source. It is
- * English because {@code LilyPondRenderer} pins the child's message locale;
- * read the {@code speakEnglish} javadoc there before assuming it always will be.
+ * <p>The {@code warning:} prefix is required rather than incidental, and what
+ * it keeps out is a <em>quoted line of source</em> — LilyPond echoes the
+ * offending line back at you, so a bar check that failed and was then fixed can
+ * sit in a comment in the file being engraved. A file merely <em>named</em>
+ * after the phrase is held out by the moment, not by the prefix; round 3 of
+ * review measured which half does the work in each case, after round 2
+ * corrected the same overclaim one file over and left this one standing.
+ *
+ * <p>The prefix is English because {@code LilyPondRenderer} pins the child's
+ * message locale; read the {@code speakEnglish} javadoc there before assuming
+ * it always will be.
  */
 final class LilyPondComplaints {
 
