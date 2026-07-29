@@ -34,13 +34,14 @@ import java.util.regex.Pattern;
  * one (#156).
  *
  * <p><b>Only this one.</b> LilyPond emits plenty of other diagnostics that do
- * not mean the page is wrong, and two of them are known to be reachable from
- * this project's own output: {@code programming error: not enough space for
- * tuplet number against beam} is a placement complaint about a page whose music
- * is correct (#136, measured in roughly one staff in eighty of ordinary 4/4),
- * and #92 found LilyPond writing benign diagnostics that contain the word
- * {@code error} too. Treating any diagnostic as fatal would therefore cry wolf
- * on correct output, which is how a warning stops being read at all.
+ * not mean the page is wrong. One is measured as reachable from this project's
+ * own output: {@code programming error: not enough space for tuplet number
+ * against beam} is a placement complaint about a page whose music is correct,
+ * and #136 found it in roughly one staff in eighty of ordinary 4/4. A reviewer
+ * on #92 separately established that LilyPond words benign diagnostics with
+ * {@code error} in them, without measuring how often this project's output
+ * reaches one. Treating any diagnostic as fatal would therefore cry wolf on
+ * correct output, which is how a warning stops being read at all.
  *
  * <p><b>LilyPond does not spell it the same way in every version, and that is
  * what #145 was.</b> The message is one string in the source, and it was
@@ -103,10 +104,11 @@ import java.util.regex.Pattern;
  * <p>What separates the two is the <em>end</em> of the line, not the start. A
  * diagnostic is generated from a format string whose last token is the moment,
  * so nothing follows it; an echo is a fragment of a source line, and the phrase
- * inside it is followed by whatever the rest of that line says. Every diagnostic
- * line captured across 2.24.3 and 2.26.0 ends immediately after the moment, and
- * the echo above continues with {@code " } \score {}. So the match is anchored
- * at both ends, and it is the closing anchor that does the work.
+ * inside it is followed by whatever the rest of that line says. The echo above
+ * continues past its {@code 9/9} with the rest of the {@code \header} line; every
+ * diagnostic line in review round 2's captured corpus, 2.24.3 and 2.26.0 alike,
+ * ends immediately after the moment. So the match is anchored at both ends, and
+ * it is the closing anchor that does the work.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
