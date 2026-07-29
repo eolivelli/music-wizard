@@ -278,8 +278,14 @@ class LilyPondRendererTest {
                 while (indent < fromColumn.length() && fromColumn.charAt(indent) == ' ') {
                     indent++;
                 }
+                // Code points, not chars, and tabs to eight-column stops --
+                // the same arithmetic LilyPond uses. Round 5 found this check
+                // counting chars, which meant it would have certified an
+                // astral-bearing fixture as real output while the parser
+                // disagreed with the engraver about it.
                 int printed = 0;
-                for (int c = 0; c < beforeColumn.length(); c++) {
+                for (int c = 0; c < beforeColumn.length();
+                        c += Character.charCount(beforeColumn.codePointAt(c))) {
                     printed = beforeColumn.charAt(c) == '\t' ? (printed / 8 + 1) * 8 : printed + 1;
                 }
                 assertThat(printed)
@@ -524,6 +530,103 @@ class LilyPondRendererTest {
                     + " ".repeat(50) + "| rest\n").failedBarChecks())
                     .as("50 spaces of indent, but a 43-wide line where 50 was called for")
                     .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("is not skipped when the second line is indented further than the column")
+        void theIndentMustMatchExactlyToo() {
+            // The sibling of the width comparison, and round 5 found it pinned
+            // by nothing: loosening this one to >= killed no test either. Same
+            // argument, same direction -- a looser indent test skips more, and
+            // skipping is the only thing here that can lose a diagnostic.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "      p.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("six spaces of indent where three were called for")
+                    .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("is not skipped when the second line is padded with a tab rather than spaces")
+        void theEchoPaddingIsSpacesAndNothingElse() {
+            // LilyPond pads the second half of an echo with spaces whatever the
+            // source held, so a tab there means this pair is not an echo.
+            // Round 5 found the spaces-only rule unpinned: widening it to
+            // Character.isWhitespace killed nothing, and it widens in the skip-
+            // more direction.
+            assertThat(said("p.ly:1:9: warning: bar check failed at: 3/4\n"
+                    + "xxxxxxxx\n"
+                    + "\tp.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("a tab is eight columns wide but is not how LilyPond pads")
+                    .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("does not fall over when the output stops in the middle of an echo")
+        void aTruncatedOutputIsReadRatherThanThrown() {
+            // The bounds guard, which round 5 found load-bearing rather than
+            // decorative: with it off by one this throws
+            // ArrayIndexOutOfBoundsException, and a killed or timed-out engraver
+            // is exactly what leaves a half-written echo behind. An exception
+            // here is worse than either failure this class chooses between,
+            // because it escapes render() after the files are on disk.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\nxxx\n")
+                    .failedBarChecks())
+                    .containsExactly("3/4");
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n").failedBarChecks())
+                    .containsExactly("3/4");
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4").failedBarChecks())
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("survives a column too large to be a number")
+        void anUnparseableColumnIsNotAnException() {
+            // Round 5 got a NumberFormatException out of the accessor with this,
+            // which escapes render() after the .txt, .ly and .pdf are written --
+            // neither of the two outcomes this class says it degrades between.
+            // A column nothing can parse is a column no layout can be checked
+            // against, so it counts as no column: no skip, and the echo is
+            // over-reported.
+            assertThat(said("x.ly:1:99999999999999: warning: bar check failed at: 3/4\n")
+                    .failedBarChecks())
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("counts a column the way LilyPond does when the line holds an astral character")
+        void aSupplementaryCharacterIsOneColumnAndNotTwo() {
+            // Round 5, and not an exotic case for this project of all projects:
+            // a \markup carrying a clef or a note glyph is outside the basic
+            // plane, so it is two chars in Java and one column to LilyPond. Real
+            // 2.26.0 output for `c4^"<treble clef>"` before the failing column --
+            // 45 columns, 46 Java chars -- reported [3/4, 9/9] while the same
+            // source with a same-width plain character reported [3/4].
+            //
+            // The fixture is the engraver's own, and engraverSaid checks the
+            // layout with the same code-point arithmetic, which is the other
+            // half of round 5's finding: the check could not have caught this
+            // while it counted chars.
+            assertThat(engraverSaid("""
+                    astral.ly:2:46: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4^"𝄞" c4 c4\s
+                                                                 | c1 | } } % a:1:2: warning: bar check failed at: 9/9
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("reads a moment followed by trailing whitespace, which the pattern allows on purpose")
+        void trailingWhitespaceAfterTheMomentIsTolerated() {
+            // Round 5 found the pattern's trailing \s* unpinned. It is there
+            // because a capture path may pad or a terminal may not, and dropping
+            // it would make this blind to a diagnostic that is otherwise perfect
+            // -- the direction that matters.
+            assertThat(said("p.ly:1:5: warning: bar check failed at: 3/4   \n").failedBarChecks())
+                    .containsExactly("3/4");
+            assertThat(said("p.ly:1:5: warning: bar check failed at: 3/4\t\n").failedBarChecks())
+                    .containsExactly("3/4");
         }
 
         @Test

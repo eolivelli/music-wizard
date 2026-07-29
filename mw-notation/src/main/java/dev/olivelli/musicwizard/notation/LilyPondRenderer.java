@@ -54,7 +54,9 @@ public final class LilyPondRenderer {
      * different questions and collapsing them would lose one of the answers.
      *
      * @param succeeded whether a PDF was produced at all
-     * @param pdf       the PDF, present exactly when {@code succeeded}
+     * @param pdf       the PDF; {@link #render} fills this in exactly when
+     *                  {@code succeeded}, but the record does not enforce it and
+     *                  tests build results that carry neither
      * @param output    everything LilyPond said, stdout and stderr interleaved
      */
     public record Result(boolean succeeded, Optional<Path> pdf, String output) {

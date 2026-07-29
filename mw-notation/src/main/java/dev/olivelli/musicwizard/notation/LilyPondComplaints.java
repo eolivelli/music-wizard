@@ -182,11 +182,28 @@ import java.util.regex.Pattern;
  * than drift — and {@code mw-it} engraves deliberately short bars on every
  * integration run, so such a change turns that suite red rather than quiet.
  *
- * <p>The echo skip adds no second way. For it to swallow a real diagnostic, that
- * diagnostic would have to sit two lines below another with no echo between
- * them, and be indented by exactly {@code C - 1} spaces — but a diagnostic line
- * begins with its own location, never with a space, so the only {@code C} that
- * could match is 1, which in turn requires the line between them to be blank.
+ * <p><b>The echo skip adds one, and it is narrower than it looks but wider than
+ * the first attempt to state it.</b> For the skip to swallow a real diagnostic,
+ * that diagnostic must sit two lines below another <em>with no echo between
+ * them</em> — which no observed LilyPond does, since a located diagnostic is
+ * always followed by its two echo lines — and must be indented by exactly
+ * {@code C - 1} spaces.
+ *
+ * <p>An earlier version of this paragraph derived from that "so the only
+ * {@code C} that could match is 1, since a diagnostic line begins with its own
+ * location, never with a space". <b>Review round 5 measured it and it is
+ * false.</b> LilyPond prints the location verbatim from the name it was handed,
+ * so a file called {@code "  short.ly"} produces {@code   short.ly:1:42:
+ * warning: ...} — a diagnostic line beginning with two spaces, and therefore a
+ * match at {@code C = 3}. Any {@code C} is reachable that way.
+ *
+ * <p>It stays as a stated residual rather than being closed, because the guard
+ * that would close it — refusing to skip a line that itself looks like a
+ * diagnostic — reopens both bypasses this design exists to fix: the second half
+ * of an echo <em>is</em> a whole-line match once its indentation is considered,
+ * which is exactly what made those bypasses possible. So the precondition is
+ * the honest defence and it is a strong one: it needs LilyPond to have stopped
+ * echoing, and a file name that begins with whitespace.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it
@@ -211,8 +228,15 @@ final class LilyPondComplaints {
             Pattern.CASE_INSENSITIVE);
 
     /**
-     * Every line break Java recognises, which is more than {@code String.lines}
-     * recognises and exactly what {@code (?m)$} recognised.
+     * Every line break Java recognises.
+     *
+     * <p>A strict superset of what {@code String.lines} breaks on, and — round 5
+     * of review caught the third revision of this comment asserting equality
+     * again — a strict superset of what {@code (?m)$} treated as an end of line
+     * too: {@code \R} also matches a vertical tab and a form feed, which
+     * {@code $} does not. Superset in both directions is the right way round.
+     * Splitting more finds more diagnostics, and this class prefers reporting
+     * one that was not there to missing one that was.
      */
     private static final Pattern LINE_BREAK = Pattern.compile("\\R");
 
@@ -226,8 +250,8 @@ final class LilyPondComplaints {
      * How far a tab advances, which is what makes a reported column and a count
      * of characters disagree.
      *
-     * <p>Eight because that is what LilyPond counts, measured: a line whose
-     * first 41 characters include four tabs was reported at column 52.
+     * <p>Eight because that is what LilyPond counts, measured: a line of 41
+     * characters holding three tabs was reported at column 52.
      */
     private static final int TAB_STOP = 8;
 
@@ -254,8 +278,8 @@ final class LilyPondComplaints {
         List<String> moments = new ArrayList<>();
         // Split on \R rather than with lines(), because they disagree and the
         // disagreement is in the direction that matters. lines() breaks only on
-        // \n, \r\n and \r; \R also breaks on U+0085, U+2028 and U+2029, which is
-        // what the (?m)$ this replaced did. Java's \s is ASCII-only, so under
+        // \n, \r\n and \r; \R also breaks on U+0085, U+2028 and U+2029, which
+        // (?m)$ treated as line ends as well. Java's \s is ASCII-only, so under
         // lines() a diagnostic terminated by one of those fails to match at all
         // and the moment is silently lost -- a blindness path introduced by the
         // rewrite rather than by anything LilyPond does. It emits none of them;
@@ -267,8 +291,7 @@ final class LilyPondComplaints {
                 continue;
             }
             moments.add(matcher.group(MOMENT));
-            if (matcher.group(COLUMN) != null
-                    && isEchoOf(lines, i + 1, Integer.parseInt(matcher.group(COLUMN)))) {
+            if (isEchoOf(lines, i + 1, columnOf(matcher))) {
                 i += 2;
             }
         }
@@ -303,15 +326,62 @@ final class LilyPondComplaints {
                 && leadingSpaces(lines.get(first + 1)) == upToColumn;
     }
 
-    /** How wide a string prints, which is not its length once it holds a tab. */
+    /**
+     * How far a string advances LilyPond's column counter.
+     *
+     * <p>Neither its length nor its character count. <b>Two things make a
+     * printed width differ from {@code String.length()}, and the first fix here
+     * reached only one of them.</b> A tab advances to the next
+     * {@link #TAB_STOP}; and a supplementary character — anything outside the
+     * basic plane — is two {@code char}s in Java and one column to LilyPond.
+     *
+     * <p>The second was found by review round 5 and is not exotic for this
+     * project of all projects: {@code \markup} carrying a clef or a note glyph
+     * is astral, and {@code c4^"𝄞"} before the failing column made every width
+     * after it one too large, so the echo was not recognised and its text was
+     * reported as a second failed bar check. Measured on 2.26.0 and 2.24.3
+     * alike, and in a random sweep every inversion found was a surrogate pair.
+     *
+     * <p>Counted in code points for that reason. Combining marks are
+     * deliberately <em>not</em> handled: LilyPond counts them as columns of
+     * their own, so counting code points is what agrees with it, and treating
+     * them as zero-width would reintroduce the divergence in the other
+     * direction.
+     */
     private static int printedWidth(String line) {
         int width = 0;
-        for (int i = 0; i < line.length(); i++) {
+        for (int i = 0; i < line.length(); i += Character.charCount(line.codePointAt(i))) {
             width = line.charAt(i) == '\t'
                     ? (width / TAB_STOP + 1) * TAB_STOP
                     : width + 1;
         }
         return width;
+    }
+
+    /**
+     * The column a diagnostic reported, or 0 when it named none this parse can
+     * use.
+     *
+     * <p>Zero for a column too large to be an {@code int} as well as for one
+     * that was absent, and that is not a detail: {@link Integer#parseInt} throws,
+     * and a {@link NumberFormatException} escaping here would leave the caller
+     * with neither an over-report nor a silence but an exception, after the
+     * files have already been written. Review round 5 produced one from
+     * {@code x.ly:1:99999999999999: warning: ...}. A column nothing can parse is
+     * a column this cannot check a layout against, so it is treated as no column
+     * at all — no skip, and the echo is over-reported, which is the direction
+     * everything else here degrades in.
+     */
+    private static int columnOf(Matcher diagnostic) {
+        String column = diagnostic.group(COLUMN);
+        if (column == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(column);
+        } catch (NumberFormatException tooManyDigits) {
+            return 0;
+        }
     }
 
     /**
