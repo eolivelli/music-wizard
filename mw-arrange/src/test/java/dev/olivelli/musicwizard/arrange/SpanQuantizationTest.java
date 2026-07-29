@@ -190,6 +190,82 @@ class SpanQuantizationTest {
 
             assertThat(beats(quantized)).containsExactly("F 0.0..3.0");
         }
+
+        @Test
+        @DisplayName("the chord kept on a beat is the one that sounded on it")
+        void aTieKeepsTheChordThatWasPlaying() {
+            // Every boundary here is exactly half a counted beat, which is what
+            // the audio path produces once --tempo halves the map's pulse
+            // against the tracked beats. Every one of them is therefore a tie,
+            // and Math.rint would break them to the even beat -- 0.5 down, 1.5
+            // up, 2.5 down -- so the chord kept on beat 1 would be the G that
+            // sounded on the "and" of it, and the C that sounded on the downbeat
+            // would be the one dropped.
+            Score score = chordsOnly(fourFour(),
+                    chord("C4", 0.00, 0.25), chord("G4", 0.25, 0.50),
+                    chord("A4", 0.50, 0.75), chord("F4", 0.75, 1.00),
+                    chord("C4", 1.00, 1.25), chord("G4", 1.25, 1.50),
+                    chord("A4", 1.50, 1.75), chord("F4", 1.75, 2.00));
+
+            List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+
+            assertThat(beats(quantized))
+                    .containsExactly("C 0.0..1.0", "A 1.0..2.0", "C 2.0..3.0", "A 3.0..4.0");
+        }
+
+        @Test
+        @DisplayName("a chord as long as its counted beat is always placed, at any offset")
+        void nothingAsLongAsItsOwnUnitIsEverDropped() {
+            // The bound on what the merge can take. Two positions less than a
+            // unit apart can share a rounding cell; two a unit or more apart
+            // cannot, whatever the offset. Swept over four hundred offsets in a
+            // simple, a compound and an odd meter, and over the eight bars a
+            // pair of chords can be placed in rather than only the first.
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT,
+                    new TimeSignature(7, 8), TimeSignature.THREE_FOUR)) {
+                TempoMap tempoMap = TempoMap.constant(BPM, meter);
+                double secondsPerUnit = meter.beatUnitQuarters() * 60 / BPM;
+                for (int step = 0; step < 100; step++) {
+                    double from = step * secondsPerUnit / 100
+                            + 4 * meter.quarterBeatsPerBar() * 60 / BPM;
+                    Score score = chordsOnly(tempoMap,
+                            chord("C4", from, from + secondsPerUnit),
+                            chord("G4", from + secondsPerUnit, from + 2 * secondsPerUnit));
+
+                    List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+
+                    assertThat(quantized).as("%s, offset %d of a unit", meter, step).hasSize(2);
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("across a meter change the unit that matters is the longer one")
+        void aMeterChangeToALongerBeatMovesTheBound() {
+            // Stated because the bound above is easy to over-claim. In 7/8 the
+            // counted beat is an eighth and in 4/4 it is a quarter, so a chord
+            // of exactly one 7/8 beat that straddles the change has both ends
+            // inside the quarter-note cell and goes. A chord as long as the
+            // *longer* of the two units survives.
+            // A 7/8 bar is 3.5 quarter beats, so the meter changes at quarter
+            // beat 3.5 and the chord below straddles it.
+            TempoMap tempoMap = TempoMap.constant(BPM, new TimeSignature(7, 8))
+                    .withMeterChange(1, TimeSignature.FOUR_FOUR);
+
+            Score straddling = chordsOnly(tempoMap,
+                    chord("C4", at(tempoMap, 0), at(tempoMap, 3.3)),
+                    chord("D4", at(tempoMap, 3.3), at(tempoMap, 3.8)),
+                    chord("F4", at(tempoMap, 3.8), at(tempoMap, 7.5)));
+            assertThat(beats(Quantizer.quantize(straddling).score().chords().chords()))
+                    .containsExactly("C 0.0..3.5", "F 3.5..7.5");
+
+            Score longer = chordsOnly(tempoMap,
+                    chord("C4", at(tempoMap, 0), at(tempoMap, 3.3)),
+                    chord("D4", at(tempoMap, 3.3), at(tempoMap, 4.3)),
+                    chord("F4", at(tempoMap, 4.3), at(tempoMap, 7.5)));
+            assertThat(beats(Quantizer.quantize(longer).score().chords().chords()))
+                    .containsExactly("C 0.0..3.5", "D 3.5..4.5", "F 4.5..7.5");
+        }
     }
 
     @Nested
@@ -296,6 +372,81 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("a key too short for a bar keeps its seconds rather than disappearing")
+        void anUnplaceableKeyIsNotDeleted() {
+            // Deleting it would engrave its music under the next key's
+            // signature: eight bars of six sharps over a passage that opened in
+            // C. It keeps its seconds, says it has no beats, and the score says
+            // so too.
+            TempoMap tempoMap = fourFour();
+            List<Key> keys = List.of(
+                    Key.ofSeconds(PitchSpelling.parse("C4"), Mode.MAJOR, 0, 0.8,
+                            Confidence.CERTAIN),
+                    Key.ofSeconds(PitchSpelling.parse("F#4"), Mode.MAJOR, 0.8, 8.0,
+                            Confidence.CERTAIN));
+            Score score = new Score(Optional.empty(), Optional.empty(), tempoMap,
+                    Optional.empty(), keys, List.of(), List.of(),
+                    ChordProgression.empty(), Lyrics.empty(), 8.0);
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(quantized.score().keys()).hasSize(2);
+            assertThat(quantized.score().keys().get(0).displayName()).isEqualTo("C major");
+            assertThat(quantized.score().keys().get(0).isQuantized()).isFalse();
+            assertThat(quantized.score().keys().get(0).startSeconds()).isEqualTo(0.0);
+            assertThat(quantized.score().keys().get(1).startBeat()).contains(0.0);
+            assertThat(quantized.isFullyQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a section too short for a bar keeps its seconds too")
+        void anUnplaceableSectionIsNotDeleted() {
+            Score score = sectionsOnly(fourFour(),
+                    section(0.0, 0.75), section(0.75, 8.0));
+
+            List<Section> quantized = Quantizer.quantize(score).score().sections();
+
+            assertThat(quantized).hasSize(2);
+            assertThat(quantized.get(0).isQuantized()).isFalse();
+            assertThat(quantized.get(1).startBeat()).contains(0.0);
+        }
+
+        @Test
+        @DisplayName("stale beats on a span that cannot be placed are taken off it")
+        void aCollapsedSpanDoesNotKeepBeatsFromNowhere() {
+            // Only a hand-assembled score reaches this -- anything this pass
+            // placed is a whole bar long and cannot collapse on a second run --
+            // but a section left carrying beats that sit on no bar line would
+            // publish a double bar the score does not have.
+            TempoMap tempoMap = fourFour();
+            Section stale = new Section(SectionKind.VERSE, "Verse", 0.0, 0.75,
+                    Optional.of(1.0), Optional.of(1.2), Optional.empty(), Confidence.CERTAIN);
+            Score score = new Score(Optional.empty(), Optional.empty(), tempoMap,
+                    Optional.empty(), List.of(), List.of(stale), List.of(),
+                    ChordProgression.empty(), Lyrics.empty(), 8.0);
+
+            List<Section> quantized = Quantizer.quantize(score).score().sections();
+
+            assertThat(quantized).hasSize(1);
+            assertThat(quantized.get(0).isQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a boundary exactly half a bar in goes forward, not to the even bar")
+        void aBarLineTieGoesForward() {
+            // Two ties in a row, one from an odd bar and one from an even. Under
+            // round-half-to-even they would go opposite ways.
+            Score score = sectionsOnly(fourFour(),
+                    section(1.0, 3.0), section(3.0, 8.0));
+
+            List<Section> quantized = Quantizer.quantize(score).score().sections();
+
+            assertThat(quantized.get(0).startBeat()).contains(4.0);
+            assertThat(quantized.get(0).endBeat()).contains(8.0);
+            assertThat(quantized.get(1).startBeat()).contains(8.0);
+        }
+
+        @Test
         @DisplayName("the grid may change for free at the bar the section is published at")
         void theGridPriorReadsThePublishedBar() {
             // Two bars of eighths then two of sixteenths, with the section
@@ -395,6 +546,12 @@ class SpanQuantizationTest {
             Score once = Quantizer.quantize(performance.score(chords, keys)).score();
             Score twice = Quantizer.quantize(once).score();
 
+            // Asserted before the comparisons below, which would otherwise hold
+            // for a pass that placed nothing at all: three lists of empty
+            // Optionals are equal to three lists of empty Optionals.
+            assertThat(once.chords().isQuantized()).isTrue();
+            assertThat(once.sections()).allSatisfy(s -> assertThat(s.isQuantized()).isTrue());
+            assertThat(once.keys()).allSatisfy(k -> assertThat(k.isQuantized()).isTrue());
             assertThat(twice.chords().chords()).isEqualTo(once.chords().chords());
             assertThat(twice.sections()).isEqualTo(once.sections());
             assertThat(twice.keys()).isEqualTo(once.keys());
@@ -424,6 +581,11 @@ class SpanQuantizationTest {
 
     private static TempoMap sixEight() {
         return TempoMap.constant(BPM, TimeSignature.SIX_EIGHT);
+    }
+
+    /** A quarter-beat position as the wall-clock time a fixture states it in. */
+    private static double at(TempoMap tempoMap, double quarterBeat) {
+        return tempoMap.beatsToSeconds(quarterBeat);
     }
 
     private static Chord chord(String root, double startSeconds, double endSeconds) {

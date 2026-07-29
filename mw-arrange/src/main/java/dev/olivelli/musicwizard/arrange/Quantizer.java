@@ -110,15 +110,54 @@ import java.util.function.ToDoubleFunction;
  *       of the finer one rather than a rival to it.
  * </ul>
  *
- * <p>Two spans whose boundaries snap together leave the second with no length,
- * and {@link Chord} and {@link Section} both refuse that. The pass
- * <em>merges</em> rather than rejects: the span is dropped, and because its
- * neighbours snapped to the very position it collapsed onto, the axis stays
- * exactly as continuous as it was. A chord too short to be given a beat of its
- * own is a chord an engraver would not print, and rejecting the score over one
- * would throw away the whole quantization for a blip. This is reachable in
- * compound time -- the audio estimator's spans are one quarter beat and a 6/8
- * beat is one and a half -- and essentially nowhere else.
+ * <h2>When a span has nowhere to go</h2>
+ *
+ * <p>A span whose two boundaries snap to the same position has no length, and
+ * {@link Chord}, {@link Section} and {@link Key} all refuse that. It happens
+ * only when the span is shorter than the unit it is being snapped to, which
+ * bounds what can be affected: <b>a chord as long as a counted beat, and a
+ * section or key as long as a bar, is always placed</b>. Two points less than a
+ * unit apart can share a rounding cell; two points a unit or more apart cannot.
+ *
+ * <p>Where the span crosses a meter change the unit that matters is the
+ * <em>longer</em> of the two, and that is a real edge rather than a caveat: in
+ * 7/8 followed by 4/4 the counted beat grows from an eighth to a quarter, so a
+ * chord of exactly one 7/8 beat straddling the change has both ends inside the
+ * quarter-note cell that follows it and is dropped. The bound stated above is
+ * therefore about the longest unit a span touches, not the first.
+ *
+ * <p>The pass does not reject the score over one -- that would throw away a
+ * whole quantization for a blip -- and what it does instead differs between the
+ * two kinds, for a reason rather than by oversight:
+ *
+ * <ul>
+ *   <li><b>A chord is dropped</b>, which is the <em>merge</em> the issue asks
+ *       for: its neighbours snapped onto the very position it collapsed to, so
+ *       the axis stays exactly as continuous as it was, and a chord too short to
+ *       be given a beat of its own is one an engraver would not print. Leaving
+ *       it in seconds is not available here.
+ *       {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
+ *       is one verdict for the whole progression, and every consumer of the beat
+ *       axis gates on it, so a single unplaceable chord would drop the entire
+ *       chart back onto the seconds route it is being lifted off.
+ *   <li><b>A section or a key keeps its seconds and is given no beats.</b>
+ *       Nothing reports a list of these as quantized or not in one verdict, so
+ *       there is nothing to poison, and {@link Score} is built to hold the
+ *       mixture -- {@code requireOrderedBeats} skips un-quantized spans by
+ *       design. Deleting them instead would be the more expensive answer by far:
+ *       a key of less than a bar is dropped and its music is then engraved under
+ *       the <em>next</em> key's signature, which is a page of accidentals that
+ *       were never played.
+ * </ul>
+ *
+ * <p>Where this is reachable is worth stating precisely, because the obvious
+ * answer is wrong. It is <em>not</em> compound time: the audio path builds its
+ * map with {@link dev.olivelli.musicwizard.core.model.TempoMap#fromBeatTimes},
+ * whose pulse is the meter's own counted beat, so a 6/8 chord span is already a
+ * dotted quarter. What does reach it is a supplied tempo that disagrees with the
+ * tracked pulse -- {@code --tempo 60} on a track heard at 120 leaves the chord
+ * boundaries a half beat apart in a map counting whole ones -- and any producer
+ * whose spans are finer than the meter's beat.
  *
  * <h2>What it does not touch</h2>
  *
@@ -183,15 +222,15 @@ public final class Quantizer {
         List<Section> sections = onGrid(score.sections(),
                 section -> bars.beatOf(section.startBeat(), section.startSeconds()),
                 section -> bars.beatOf(section.endBeat(), section.endSeconds()),
-                Section::quantizedTo, bars::snapToBarLine);
+                Section::quantizedTo, bars::snapToBarLine, Quantizer::inSecondsOnly);
         List<Key> keys = onGrid(score.keys(),
                 key -> bars.beatOf(key.startBeat(), key.startSeconds()),
                 key -> bars.beatOf(key.endBeat(), key.endSeconds()),
-                Key::quantizedTo, bars::snapToBarLine);
+                Key::quantizedTo, bars::snapToBarLine, Quantizer::inSecondsOnly);
         List<Chord> chords = onGrid(score.chords().chords(),
                 chord -> bars.beatOf(chord.startBeat(), chord.startSeconds()),
                 chord -> bars.beatOf(chord.endBeat(), chord.endSeconds()),
-                Chord::quantizedTo, bars::snapToCountedBeat);
+                Chord::quantizedTo, bars::snapToCountedBeat, Quantizer::dropped);
 
         SwingFeel swing = SwingFeel.STRAIGHT;
         List<NoteTrack> quantizedTracks = score.tracks();
@@ -244,6 +283,43 @@ public final class Quantizer {
         T at(T span, double startBeat, double endBeat);
     }
 
+    /** What becomes of a span whose boundaries snapped to the same position. */
+    @FunctionalInterface
+    private interface Collapsed<T> {
+        /** The span to keep in its place, or {@code null} to drop it. */
+        T instead(T span);
+    }
+
+    /** Drops it, which is what a chord that cannot be printed gets. */
+    private static <T> T dropped(T span) {
+        return null;
+    }
+
+    /**
+     * Strips any musical timing a collapsed span was carrying.
+     *
+     * <p>Reachable only from a hand-assembled score whose beats were already off
+     * the grid, since anything this pass placed is a whole unit long and cannot
+     * collapse on a second run. It is here so that the postcondition is
+     * unconditional: after this pass, a span either sits on the grid or carries
+     * no beats at all. Leaving the old pair in place would publish a bar line
+     * that no bar has.
+     */
+    private static Section inSecondsOnly(Section section) {
+        return section.isQuantized()
+                ? new Section(section.kind(), section.label(), section.startSeconds(),
+                        section.endSeconds(), Optional.empty(), Optional.empty(),
+                        section.repetitionGroup(), section.confidence())
+                : section;
+    }
+
+    private static Key inSecondsOnly(Key key) {
+        return key.isQuantized()
+                ? new Key(key.tonic(), key.mode(), key.startSeconds(), key.endSeconds(),
+                        Optional.empty(), Optional.empty(), key.confidence())
+                : key;
+    }
+
     /**
      * Puts a list of ordered, non-overlapping spans onto the beat axis.
      *
@@ -255,24 +331,29 @@ public final class Quantizer {
      * this can only be an equality -- but {@link Score} and
      * {@link dev.olivelli.musicwizard.core.model.ChordProgression} both admit a
      * microsecond of overlap in seconds, and a microsecond straddling a rounding
-     * boundary snaps to two positions a whole beat apart. Without this the pass
+     * boundary snaps to two positions a whole unit apart. Without this the pass
      * would emit exactly the beat-axis overlap that {@code Score} rejects and
      * that #59 records as still unchecked on a progression.
      *
-     * <p>The second is that a span left with no length is dropped rather than
-     * placed. That is the merge described on the class, and it is the only place
-     * anything is discarded: the neighbours either side snapped onto the position
-     * it collapsed to, so what the axis loses is a label, not a stretch of time.
+     * <p>The second is what happens to a span left with no length, which is the
+     * class's {@code Collapsed} decision and the only place anything is
+     * discarded. Note that {@code furthestEnd} does not advance past one either
+     * way: a collapsed span has no end to carry forward, and treating its start
+     * as one would push the next span off the position it snapped to.
      */
     private static <T> List<T> onGrid(List<T> spans, ToDoubleFunction<T> startBeat,
                                       ToDoubleFunction<T> endBeat, Placed<T> placed,
-                                      DoubleUnaryOperator snap) {
+                                      DoubleUnaryOperator snap, Collapsed<T> collapsed) {
         List<T> out = new ArrayList<>(spans.size());
         double furthestEnd = Double.NEGATIVE_INFINITY;
         for (T span : spans) {
             double start = Math.max(snap.applyAsDouble(startBeat.applyAsDouble(span)), furthestEnd);
             double end = snap.applyAsDouble(endBeat.applyAsDouble(span));
             if (end <= start) {
+                T instead = collapsed.instead(span);
+                if (instead != null) {
+                    out.add(instead);
+                }
                 continue;
             }
             out.add(placed.at(span, start, end));
@@ -415,11 +496,15 @@ public final class Quantizer {
      * of a bar: the containing bar is the one it sounds in, the published bar is
      * the one it is engraved at, and waiving the penalty at the first while
      * printing the double bar at the second is the same fact answered twice.
+     *
+     * <p>A section too short to be placed marks nothing, because it has no bar
+     * to mark -- and it costs nothing either: a section shorter than a bar is one
+     * whose neighbour snapped to the same bar line and marked it.
      */
     private static boolean[] sectionStarts(List<Section> sections, BarTable bars) {
         boolean[] starts = new boolean[bars.barCount()];
         for (Section section : sections) {
-            starts[bars.barOf(section.startBeat().orElseThrow())] = true;
+            section.startBeat().ifPresent(beat -> starts[bars.barOf(beat)] = true);
         }
         return starts;
     }
@@ -642,13 +727,31 @@ public final class Quantizer {
      * The same, left as a whole number of steps for the caller to scale once.
      *
      * <p>No bounds of its own, at either end. {@link BarTable#beatInBar} has
-     * already put the position inside the bar and {@code rint} is monotone, so
+     * already put the position inside the bar and rounding is monotone, so
      * neither bound could ever bind -- measured at zero over seven million
      * calls. This is the sixth guard in this class found to be shadowing the one
      * doing the work, and the fix for the fifth stopped one line short of it.
+     *
+     * <p>A position exactly halfway between two steps goes to the later one,
+     * and that is not the arbitrary half of an arbitrary choice. {@code rint},
+     * which this used to be, rounds a tie to the <em>even</em> step -- 0.5 down,
+     * 1.5 up, 2.5 down -- so the direction alternates with the step index. On a
+     * note that is invisible, because an exact tie needs a performance played to
+     * the tick. On a span it is systematic: a chord progression whose spans are
+     * exactly half a counted beat -- which is what the audio path produces once
+     * {@code --tempo} halves the map's pulse against the tracked beats -- puts
+     * every boundary on a tie, and alternating meant the chord kept on each beat
+     * was the one that sounded on the beat <em>after</em> it, so the chart named
+     * a harmony that never sounded there. Rounding a tie one way throughout
+     * keeps the survivor the chord that was playing.
      */
     private static double stepsWithin(double beatInBar, double step) {
-        return Math.rint(beatInBar / step);
+        // floor(x + 0.5) rather than Math.round, which would take a long and
+        // would need the position bounded; and rather than rint, whose tie rule
+        // is the defect above. Safe at the bottom because beatInBar is clamped
+        // non-negative, and at the top because the quotient here is at most the
+        // number of divisions in a bar.
+        return Math.floor(beatInBar / step + 0.5);
     }
 
     // ---------------------------------------------------------------- bar table
