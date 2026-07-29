@@ -365,9 +365,9 @@ class GlobalConfigLayerTest {
          *
          * <p>A leftover file this user cannot open — a container build as root
          * over a bind-mounted checkout, then a build as the developer — would
-         * otherwise surface as {@code AccessDeniedException} on all four tests
-         * in this class, including the one whose whole job is to name the file
-         * that is causing trouble.
+         * otherwise surface as a bare {@code AccessDeniedException} on both
+         * tests that take the lock, including the one whose whole job is to
+         * name the file that is causing trouble.
          */
         private FileChannel openLockFile(Path lockFile) throws IOException {
             try {
@@ -426,37 +426,67 @@ class GlobalConfigLayerTest {
          * suite says which file is at fault instead of failing an assertion
          * about paper sizes several classes away.
          *
-         * <p>Cannot fail in CI, which has no such file, and cannot fail for a
-         * developer who is not also a user. It fails for exactly the person the
-         * issue is about — someone with a valid config and a build that has
-         * stopped neutralising it — which is the population that otherwise gets
-         * no signal at all. It can still <i>error</i>, for one reason unrelated
-         * to config: an environment lock file it cannot open, which says so.
+         * <p>Two assertions, because absence alone is not the invariant. On a
+         * machine with no global config — CI, and any developer who is not also
+         * a user — absence holds whether or not the build isolates anything, so
+         * a suite that had stopped isolating would look identical. The first
+         * assertion is the one that fires everywhere: the location must be
+         * inside this module's {@code target/}, which is true only because the
+         * parent pom puts it there. Lose that block and CI says so.
          *
-         * <p>Takes the environment lock even though it only reads: the tests
-         * above plant at the very location it asserts is absent, and without
-         * the lock a concurrent JVM's plant reads here as a real global config.
+         * <p>This is the same argument {@link #acquire} makes about waiting
+         * rather than skipping, and it is why the sibling tests' {@code abort}
+         * is not enough on its own. An abort protects them from writing into a
+         * real {@code ~/.config}, which is right — but it means losing the pom
+         * block turns the regression test into a skip, and a skipped test
+         * reports as a pass. Review round 4 confirmed exactly that: both blocks
+         * deleted gave {@code Tests run: 327, Failures: 0, Skipped: 1} and
+         * BUILD SUCCESS.
+         *
+         * <p>An IDE run with no {@code XDG_CONFIG_HOME} therefore fails here.
+         * That is the intended answer rather than a cost: in that JVM the
+         * suite really is reading the developer's own config, and the message
+         * says what to set.
+         *
+         * <p>Takes the environment lock even though it only reads: a sibling
+         * plants at the very location it asserts is absent, and without the
+         * lock a concurrent JVM's plant reads here as a real global config.
          * Round 2 saw exactly that, once in twelve.
          */
         @Test
         @DisplayName("the test JVM must not be able to see a real global config")
         void theTestJvmSeesNoGlobalConfig() throws IOException {
             Path file = ConfigLoader.globalConfigFile();
+            Path buildDirectory = buildDirectory();
 
-            holdingTheEnvironmentLock(() ->
-                    assertThat(file)
-                            .withFailMessage("""
-                                    This test JVM can read a global config at %s, \
-                                    so any test that builds an effective config is \
-                                    reading it too and the suite depends on this \
-                                    machine (#133). If that path is under target/, \
-                                    a run died between planting and removing one, \
-                                    and deleting it is enough. Otherwise the \
-                                    build's XDG_CONFIG_HOME is not reaching this \
-                                    JVM: the parent pom points it under target/ for \
-                                    surefire and failsafe, and an IDE needs the \
-                                    same setting in its run configuration.""", file)
-                            .doesNotExist());
+            holdingTheEnvironmentLock(() -> {
+                // A plain path comparison rather than AssertJ's startsWith,
+                // which canonicalises and so requires the file to exist -- and
+                // the whole point here is that it must not.
+                assertThat(isUnderBuildDirectory(file))
+                        .withFailMessage("""
+                                The global config location for this test JVM is %s, \
+                                which is outside %s, so this JVM resolves the config \
+                                of whoever is running rather than an isolated one \
+                                (#133). Nothing here has failed yet only because \
+                                that file happens not to exist. The parent pom \
+                                points XDG_CONFIG_HOME under target/ for surefire \
+                                and failsafe; if that block is gone, restore it, and \
+                                an IDE needs the same setting in its run \
+                                configuration.""", file, buildDirectory)
+                        .isTrue();
+
+                assertThat(file)
+                        .withFailMessage("""
+                                This test JVM can read a global config at %s, so any \
+                                test that builds an effective config is reading it \
+                                too and the suite depends on this machine (#133). \
+                                The location is correctly isolated, so this is a \
+                                run that died between planting a config there and \
+                                removing it: deleting the file, or mvn clean, is \
+                                enough.""", file)
+                        .doesNotExist();
+            });
         }
 
         /**
@@ -473,7 +503,7 @@ class GlobalConfigLayerTest {
         private Path disposableEnvironmentConfigFile() {
             Path file = ConfigLoader.globalConfigFile();
             Path buildDirectory = buildDirectory();
-            if (!file.toAbsolutePath().normalize().startsWith(buildDirectory)) {
+            if (!isUnderBuildDirectory(file)) {
                 abort("XDG_CONFIG_HOME does not point under " + buildDirectory
                         + " (it resolves to " + file + "), so this test will not write there."
                         + " The build sets it in the parent pom; see #133.");
@@ -490,6 +520,18 @@ class GlobalConfigLayerTest {
         private Path buildDirectory() {
             return Path.of(System.getProperty("basedir", System.getProperty("user.dir")))
                     .resolve("target").toAbsolutePath().normalize();
+        }
+
+        /**
+         * Whether the build has isolated the global config location, which is
+         * the single question behind both the guard test's first assertion and
+         * the sibling tests' refusal to write. Component-wise, so a sibling
+         * directory named {@code target-something} cannot pass for
+         * {@code target}, and purely on the paths, so it does not depend on
+         * anything existing.
+         */
+        private boolean isUnderBuildDirectory(Path file) {
+            return file.toAbsolutePath().normalize().startsWith(buildDirectory());
         }
     }
 }

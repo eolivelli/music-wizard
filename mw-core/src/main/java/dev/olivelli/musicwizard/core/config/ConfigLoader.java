@@ -156,10 +156,17 @@ public final class ConfigLoader {
      *
      * <p><b>This is the one method that resolves the global config location
      * from the environment, and the rule follows from that: a call is
-     * environment-dependent exactly when its path reaches here.</b> Stated as a
-     * rule rather than as a list of such call sites because the list was
-     * written three times during review and was wrong all three — it missed
-     * {@link #searchPrefixes}, then {@link #globalConfigFile()}, then the
+     * environment-dependent exactly when the path from where its loader was
+     * constructed reaches here.</b> The qualifier is load-bearing, because
+     * resolution happens once at construction rather than per read. Nothing on
+     * the reading side — {@link #readGlobalLayer()},
+     * {@link #effectiveConfig(Path, MusicWizardConfig)},
+     * {@code Workspace.effectiveConfig} — calls this method at all, and every
+     * one of them is environment-dependent when handed a loader that did.
+     *
+     * <p>Stated as a rule rather than as a list of such call sites because the
+     * list was written three times during review and was wrong all three — it
+     * missed {@link #searchPrefixes}, then {@link #globalConfigFile()}, then the
      * no-argument constructor. A reader can settle the question by following
      * the calls; a list only stays true until the next one is added.
      *

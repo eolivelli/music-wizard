@@ -37,7 +37,12 @@ class ConfigLayeringTest {
     @TempDir
     Path tempDirectory;
 
-    private final ConfigLoader loader = new ConfigLoader();
+    // No global layer, so mw-core's rule has no exception: a test in this
+    // module states which config layer it means. This one never reads the
+    // global layer at all -- only readLayer(Path), write and yamlMapper -- but
+    // "harmless because of what it happens not to call" is the reasoning #133
+    // was filed about.
+    private final ConfigLoader loader = ConfigLoader.withoutGlobalConfig();
 
     @Nested
     @DisplayName("layering")
