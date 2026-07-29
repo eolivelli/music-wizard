@@ -833,15 +833,21 @@ class LilyPondRendererTest {
                     String tail = random.nextInt(3) == 0
                             ? " % a:1:2: warning: bar check failed at: 9/9"
                             : " | c4 c4";
-                    // The echo is well formed only most of the time. Round 7
-                    // found the first version of this generator degenerate:
-                    // every echo matched, so the skip fired every time, "nothing
-                    // was lost" was entailed by the population rather than
-                    // measured from it, and the whole test could not tell the
-                    // shipped design from "always skip two lines" -- which has
-                    // an unbounded residual. It now emits truncated echoes, and
-                    // echoes of one line and of none, so the layout test says no
-                    // as often as yes and the skip has somewhere to go wrong.
+                    // The echo is well formed only most of the time, and that
+                    // is the whole point. Round 7 found the first version of
+                    // this generator degenerate: every echo matched, so the
+                    // layout test fired 5033 times and returned false not once.
+                    // "Nothing was lost" was entailed by the population rather
+                    // than measured from it, and the test could not tell the
+                    // shipped design from "always skip two lines", which has an
+                    // unbounded residual.
+                    //
+                    // It now emits truncated echoes, echoes of one line, and
+                    // none at all. Counted over this same seed: the layout test
+                    // says yes 2207 times and no 2342, with 77 more below the
+                    // column floor -- so the skip has somewhere to go wrong. It
+                    // kills the always-skip mutant at trial 10, which the
+                    // previous version survived outright.
                     int shape = random.nextInt(6);
                     int width = shape == 0
                             ? Math.max(0, column - 1 - (1 + random.nextInt(4)))
