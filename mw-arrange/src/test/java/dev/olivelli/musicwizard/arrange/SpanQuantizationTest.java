@@ -866,6 +866,53 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("however many spans go in, that many come out, whatever collapses")
+        void everyKindOfSpanSurvivesInItsOwnNumber() {
+            // The totality of onGrid, which is what makes "nothing is ever
+            // deleted" a property of the code rather than a convention every
+            // caller has to keep. Before this PR the collapse handler could
+            // return null and the loop would skip the span; now there is no way
+            // to spell that, so the loop adds exactly one span per iteration.
+            //
+            // Swept over sections and keys as well as chords, because the
+            // handler is shared and the chord path is the only one whose
+            // behaviour this PR meant to change. At 60 BPM a bar is four seconds
+            // and a counted beat is one, so every span below is far shorter than
+            // the unit it is snapped to and most of them collapse.
+            //
+            // The three "and the collapses really happened" assertions are not
+            // ceremony: the first draft of this test used a 120 BPM map, where
+            // the chords are exactly one counted beat and nothing collapses at
+            // all, and the three size assertions passed on a pass that had
+            // nothing to decide. They caught it.
+            TempoMap tempoMap = TempoMap.constant(60, TimeSignature.FOUR_FOUR);
+            List<Section> shortSections = new ArrayList<>();
+            List<Key> shortKeys = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                shortSections.add(section(i * 0.375, (i + 1) * 0.375));
+                shortKeys.add(Key.ofSeconds(PitchSpelling.parse("C4"), Mode.MAJOR,
+                        i * 0.375, (i + 1) * 0.375, Confidence.CERTAIN));
+            }
+            Score score = new Score(Optional.empty(), Optional.empty(), tempoMap,
+                    Optional.empty(), shortKeys, shortSections, List.of(),
+                    new ChordProgression(List.of(everyHalfSecond(0.0)), Confidence.CERTAIN),
+                    Lyrics.empty(), 32.0);
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(quantized.score().sections()).hasSize(8);
+            assertThat(quantized.score().keys()).hasSize(8);
+            assertThat(quantized.score().chords().chords()).hasSize(8);
+            // And the collapses really happened, or the sizes above are the
+            // sizes of a pass that had nothing to decide.
+            assertThat(quantized.score().sections())
+                    .anySatisfy(s -> assertThat(s.isQuantized()).isFalse());
+            assertThat(quantized.score().keys())
+                    .anySatisfy(k -> assertThat(k.isQuantized()).isFalse());
+            assertThat(quantized.unplaceableChords()).isPositive();
+        }
+
+        @Test
         @DisplayName("stale beats on a span that cannot be placed are taken off it")
         void aCollapsedSpanDoesNotKeepBeatsFromNowhere() {
             // Only a hand-assembled score reaches this -- anything this pass
