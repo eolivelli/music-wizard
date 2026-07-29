@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.Section;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.List;
@@ -84,16 +85,23 @@ class QuantizerTest {
         }
 
         @Test
-        @DisplayName("chords, keys and sections keep their beats empty")
-        void onlyNotesAreQuantized() {
+        @DisplayName("sections gain beats too, and their seconds are left alone")
+        void sectionsAreQuantizedWithoutMovingTheirSeconds() {
             Performance performance = new Performance(fourFour(), 3);
             performance.section(0, 8).section(8, 16);
             performance.run(60, 0.5, Performance.evenly(4, 4.0, 8));
+            List<Section> before = performance.score().sections();
 
             Score quantized = Quantizer.quantize(performance.score()).score();
 
-            assertThat(quantized.sections()).allSatisfy(s -> assertThat(s.isQuantized()).isFalse());
+            assertThat(quantized.sections()).allSatisfy(s -> assertThat(s.isQuantized()).isTrue());
             assertThat(quantized.keys()).isEmpty();
+            for (int i = 0; i < before.size(); i++) {
+                assertThat(quantized.sections().get(i).startSeconds())
+                        .isEqualTo(before.get(i).startSeconds());
+                assertThat(quantized.sections().get(i).endSeconds())
+                        .isEqualTo(before.get(i).endSeconds());
+            }
         }
 
         @Test

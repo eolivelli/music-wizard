@@ -126,8 +126,20 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
         return new QuantizedScore(newScore, grids, swing);
     }
 
-    /** True when every track's notes carry musical timing. */
+    /**
+     * True when everything in the score that has a position carries musical
+     * timing: every track's notes, and every chord, section and key.
+     *
+     * <p>The spans are included rather than assumed, because for the whole of
+     * #91 they were the half that was missing and nothing said so. A caller
+     * asking this before engraving is asking whether the beat axis is the whole
+     * story, and a score whose notes are on it while its harmony is still in
+     * seconds is precisely the case where the answer is no.
+     */
     public boolean isFullyQuantized() {
-        return score.tracks().stream().allMatch(t -> t.isQuantized());
+        return score.tracks().stream().allMatch(t -> t.isQuantized())
+                && score.chords().isQuantized()
+                && score.sections().stream().allMatch(s -> s.isQuantized())
+                && score.keys().stream().allMatch(k -> k.isQuantized());
     }
 }

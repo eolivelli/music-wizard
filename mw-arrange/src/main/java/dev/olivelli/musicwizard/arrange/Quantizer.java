@@ -16,7 +16,9 @@
 
 package dev.olivelli.musicwizard.arrange;
 
+import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -26,6 +28,9 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Turns a performance into something a musician can read: chooses a grid per
@@ -69,13 +74,64 @@ import java.util.Objects;
  * that the melody is then still exactly on the grid, because the binary grids
  * are nested.
  *
+ * <h2>The spans: chords, sections and keys</h2>
+ *
+ * <p>These carry the same optional musical timing a {@link Note} does, and for
+ * the same reason, so leaving them in seconds while the notes moved onto the
+ * beat axis would leave two readers of one fact: everything that aligns harmony
+ * or structure to a bar -- the chord chart, chord-over-lyric placement, a key
+ * signature -- would be working from a second, independently rounded, answer to
+ * where beat three is.
+ *
+ * <p>They do <em>not</em> go onto the note grid, and that is the one design
+ * decision here worth arguing about.
+ *
+ * <ul>
+ *   <li><b>A section boundary and a key change go to the nearest bar line.</b>
+ *       Both are engraved there and nowhere else -- a rehearsal mark and a
+ *       double bar, a key signature -- so any finer position is a position the
+ *       notation stage would have to round away again, and rounding it twice is
+ *       how the two answers diverge. This class already <em>assumed</em> as much:
+ *       {@link #sectionStarts} has always waived the grid-change penalty at the
+ *       bar a section falls in, and now waives it at the bar the section is
+ *       published at, which is the same bar by construction rather than by
+ *       coincidence.
+ *   <li><b>A chord goes to the nearest counted beat</b> -- a quarter in 4/4, a
+ *       dotted quarter in 6/8. Not the bar's note grid: a chart does not change
+ *       harmony inside a subdivision, and a bar pulled onto a sextuplet grid by
+ *       a busy drum part would otherwise let a chord symbol land a sixth of a
+ *       beat in. The counted beat is also the unit both chord estimators already
+ *       decide over -- {@code SymbolicChordEstimator} takes exactly one decision
+ *       per counted beat, and the audio one is beat-synchronous -- so a chord
+ *       that arrives already aligned is snapped to the position it already had
+ *       rather than perturbed. And because every grid in
+ *       {@link GridResolution} divides the counted beat, a chord position is
+ *       always a position on the note grid too; the coarser axis is a sub-grid
+ *       of the finer one rather than a rival to it.
+ * </ul>
+ *
+ * <p>Two spans whose boundaries snap together leave the second with no length,
+ * and {@link Chord} and {@link Section} both refuse that. The pass
+ * <em>merges</em> rather than rejects: the span is dropped, and because its
+ * neighbours snapped to the very position it collapsed onto, the axis stays
+ * exactly as continuous as it was. A chord too short to be given a beat of its
+ * own is a chord an engraver would not print, and rejecting the score over one
+ * would throw away the whole quantization for a blip. This is reachable in
+ * compound time -- the audio estimator's spans are one quarter beat and a 6/8
+ * beat is one and a half -- and essentially nowhere else.
+ *
  * <h2>What it does not touch</h2>
  *
- * <p>The seconds. {@link Note} carries wall-clock and musical timing separately
- * precisely so that an un-quantized value cannot be mistaken for a quantized
- * one, and so that the approximation made here stays recoverable. Chords,
- * sections and keys keep their own optional beat fields empty; aligning those is
- * a separate decision with its own failure modes.
+ * <p>The seconds, on any of them. {@link Note} carries wall-clock and musical
+ * timing separately precisely so that an un-quantized value cannot be mistaken
+ * for a quantized one, and so that the approximation made here stays
+ * recoverable.
+ *
+ * <p>The shuffle, on a span. {@link SwingFeel} describes where an onset sits
+ * inside its beat, and a chord boundary has no such position to correct: it is
+ * where the harmony changed, not where a finger landed. De-swinging one would
+ * pull a change on the swung off-beat back towards the beat it is anticipating
+ * and then round it to the wrong side of it.
  */
 public final class Quantizer {
 
@@ -98,10 +154,15 @@ public final class Quantizer {
     }
 
     /**
-     * Quantizes every note in every track of a score.
+     * Quantizes every note in every track of a score, and puts its chords,
+     * sections and keys on the beat axis.
      *
-     * @throws IllegalArgumentException if the score's tempo map places a note
-     *         past {@value #MAX_BARS} bars
+     * <p>A score with no notes at all is still worth running through here, and
+     * that is not a degenerate case: the audio path produces chords long before
+     * it produces a note track, so a chord chart is exactly such a score.
+     *
+     * @throws IllegalArgumentException if the score's tempo map places its last
+     *         event past {@value #MAX_BARS} bars
      */
     public static QuantizedScore quantize(Score score, QuantizationSettings settings) {
         Objects.requireNonNull(score, "score");
@@ -109,45 +170,115 @@ public final class Quantizer {
 
         TempoMap tempoMap = score.tempoMap();
         List<Note> allNotes = score.tracks().stream().flatMap(t -> t.notes().stream()).toList();
-        if (allNotes.isEmpty()) {
+        if (allNotes.isEmpty() && score.chords().isEmpty()
+                && score.sections().isEmpty() && score.keys().isEmpty()) {
             return new QuantizedScore(score, List.of(), SwingFeel.STRAIGHT);
         }
 
-        BarTable bars = BarTable.spanning(tempoMap, allNotes);
-        SwingFeel swing = settings.detectSwing()
-                ? SwingDetector.detect(allNotes, bars)
-                : SwingFeel.STRAIGHT;
+        BarTable bars = BarTable.spanning(tempoMap, score, allNotes);
 
-        GridResolution[] perBar = chooseGrids(allNotes, score, bars, swing, settings);
+        // The structure goes first, because the grid decision below reads it: a
+        // section may change subdivision for free, and the bar it may do so at
+        // has to be the bar the section is published at.
+        List<Section> sections = onGrid(score.sections(),
+                section -> bars.beatOf(section.startBeat(), section.startSeconds()),
+                section -> bars.beatOf(section.endBeat(), section.endSeconds()),
+                Section::quantizedTo, bars::snapToBarLine);
+        List<Key> keys = onGrid(score.keys(),
+                key -> bars.beatOf(key.startBeat(), key.startSeconds()),
+                key -> bars.beatOf(key.endBeat(), key.endSeconds()),
+                Key::quantizedTo, bars::snapToBarLine);
+        List<Chord> chords = onGrid(score.chords().chords(),
+                chord -> bars.beatOf(chord.startBeat(), chord.startSeconds()),
+                chord -> bars.beatOf(chord.endBeat(), chord.endSeconds()),
+                Chord::quantizedTo, bars::snapToCountedBeat);
 
-        List<NoteTrack> quantizedTracks = new ArrayList<>(score.tracks().size());
-        boolean[] sounds = new boolean[bars.barCount()];
-        for (NoteTrack track : score.tracks()) {
-            List<Note> notes = new ArrayList<>(track.notes().size());
-            for (Note note : track.notes()) {
-                Note snapped = snap(note, bars, perBar, swing, settings);
-                // Which bar a note prints in is decided by where it was snapped
-                // to, not by where it was played. A downbeat rushed by ten
-                // milliseconds sounds in the previous bar and is printed in this
-                // one, and publishing by the played position would announce a
-                // grid for a bar with nothing in it.
-                //
-                // Every bar the note sounds through, not only the one it starts
-                // in. A note held across a bar that has no onset of its own
-                // still has to be engraved there -- tied, and its tail on that
-                // bar's grid, which the quantizer chose and then used to snap
-                // this very note. Publishing only onsets threw that decision
-                // away and left the tail with no resolution to print it at.
-                markSounding(sounds, bars, snapped);
-                notes.add(snapped);
+        SwingFeel swing = SwingFeel.STRAIGHT;
+        List<NoteTrack> quantizedTracks = score.tracks();
+        List<BarGrid> grids = List.of();
+        if (!allNotes.isEmpty()) {
+            swing = settings.detectSwing()
+                    ? SwingDetector.detect(allNotes, bars)
+                    : SwingFeel.STRAIGHT;
+
+            GridResolution[] perBar = chooseGrids(allNotes, sections, bars, swing, settings);
+
+            quantizedTracks = new ArrayList<>(score.tracks().size());
+            boolean[] sounds = new boolean[bars.barCount()];
+            for (NoteTrack track : score.tracks()) {
+                List<Note> notes = new ArrayList<>(track.notes().size());
+                for (Note note : track.notes()) {
+                    Note snapped = snap(note, bars, perBar, swing, settings);
+                    // Which bar a note prints in is decided by where it was
+                    // snapped to, not by where it was played. A downbeat rushed
+                    // by ten milliseconds sounds in the previous bar and is
+                    // printed in this one, and publishing by the played position
+                    // would announce a grid for a bar with nothing in it.
+                    //
+                    // Every bar the note sounds through, not only the one it
+                    // starts in. A note held across a bar that has no onset of
+                    // its own still has to be engraved there -- tied, and its
+                    // tail on that bar's grid, which the quantizer chose and
+                    // then used to snap this very note. Publishing only onsets
+                    // threw that decision away and left the tail with no
+                    // resolution to print it at.
+                    markSounding(sounds, bars, snapped);
+                    notes.add(snapped);
+                }
+                quantizedTracks.add(track.withNotes(notes));
             }
-            quantizedTracks.add(track.withNotes(notes));
+            grids = publishedGrids(sounds, bars, perBar);
         }
 
         Score quantized = new Score(score.title(), score.artist(), tempoMap, score.beatGrid(),
-                score.keys(), score.sections(), quantizedTracks, score.chords(), score.lyrics(),
-                score.durationSeconds());
-        return new QuantizedScore(quantized, publishedGrids(sounds, bars, perBar), swing);
+                keys, sections, quantizedTracks, score.chords().withChords(chords),
+                score.lyrics(), score.durationSeconds());
+        return new QuantizedScore(quantized, grids, swing);
+    }
+
+    // ---------------------------------------------------------------- spans
+
+    /** How a span of the model is handed the two beat positions it was given. */
+    @FunctionalInterface
+    private interface Placed<T> {
+        T at(T span, double startBeat, double endBeat);
+    }
+
+    /**
+     * Puts a list of ordered, non-overlapping spans onto the beat axis.
+     *
+     * <p>Two guards, and each earns its place against a case the other does not
+     * cover.
+     *
+     * <p>The first is that a start never precedes the furthest end already
+     * placed. Snapping is monotone, so for spans that genuinely do not overlap
+     * this can only be an equality -- but {@link Score} and
+     * {@link dev.olivelli.musicwizard.core.model.ChordProgression} both admit a
+     * microsecond of overlap in seconds, and a microsecond straddling a rounding
+     * boundary snaps to two positions a whole beat apart. Without this the pass
+     * would emit exactly the beat-axis overlap that {@code Score} rejects and
+     * that #59 records as still unchecked on a progression.
+     *
+     * <p>The second is that a span left with no length is dropped rather than
+     * placed. That is the merge described on the class, and it is the only place
+     * anything is discarded: the neighbours either side snapped onto the position
+     * it collapsed to, so what the axis loses is a label, not a stretch of time.
+     */
+    private static <T> List<T> onGrid(List<T> spans, ToDoubleFunction<T> startBeat,
+                                      ToDoubleFunction<T> endBeat, Placed<T> placed,
+                                      DoubleUnaryOperator snap) {
+        List<T> out = new ArrayList<>(spans.size());
+        double furthestEnd = Double.NEGATIVE_INFINITY;
+        for (T span : spans) {
+            double start = Math.max(snap.applyAsDouble(startBeat.applyAsDouble(span)), furthestEnd);
+            double end = snap.applyAsDouble(endBeat.applyAsDouble(span));
+            if (end <= start) {
+                continue;
+            }
+            out.add(placed.at(span, start, end));
+            furthestEnd = end;
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- grids
@@ -156,11 +287,12 @@ public final class Quantizer {
      * Scores every grid in every bar, then decodes the sequence under the
      * section prior.
      */
-    private static GridResolution[] chooseGrids(List<Note> notes, Score score, BarTable bars,
-                                                SwingFeel swing, QuantizationSettings settings) {
+    private static GridResolution[] chooseGrids(List<Note> notes, List<Section> sections,
+                                                BarTable bars, SwingFeel swing,
+                                                QuantizationSettings settings) {
         GridResolution[] candidates = GridResolution.values();
         return decode(costs(notes, bars, swing, settings, candidates), candidates,
-                sectionStarts(score, bars), settings.gridChangePenalty());
+                sectionStarts(sections, bars), settings.gridChangePenalty());
     }
 
     /**
@@ -277,11 +409,17 @@ public final class Quantizer {
      * change, so it is the one place the prior should not resist. Bar 0 is not
      * marked: there is no previous bar to leave, and {@link #decode} never
      * charges it.
+     *
+     * <p>Read from the sections <em>after</em> they have been placed, not from
+     * their seconds. The two differ whenever a boundary falls in the second half
+     * of a bar: the containing bar is the one it sounds in, the published bar is
+     * the one it is engraved at, and waiving the penalty at the first while
+     * printing the double bar at the second is the same fact answered twice.
      */
-    private static boolean[] sectionStarts(Score score, BarTable bars) {
+    private static boolean[] sectionStarts(List<Section> sections, BarTable bars) {
         boolean[] starts = new boolean[bars.barCount()];
-        for (Section section : score.sections()) {
-            starts[bars.barOf(bars.rawBeat(section.startSeconds()))] = true;
+        for (Section section : sections) {
+            starts[bars.barOf(section.startBeat().orElseThrow())] = true;
         }
         return starts;
     }
@@ -537,11 +675,34 @@ public final class Quantizer {
             this.meter = meter;
         }
 
-        /** A table long enough to hold every note's onset and stretched offset. */
-        static BarTable spanning(TempoMap tempoMap, List<Note> notes) {
+        /**
+         * A table long enough to hold everything in the score that has a
+         * position: every note's onset and stretched offset, and the end of
+         * every chord, section and key.
+         *
+         * <p>The spans are in it because they are quantized here too, and
+         * because they routinely outlast the notes -- a chord chart from the
+         * audio path has no note tracks at all, and a final chord ringing past
+         * the last transcribed note is ordinary. Sizing from the notes alone
+         * left such a score with a table too short to place its own harmony in,
+         * and {@link #barOf} would have clamped the whole tail into the last
+         * bar it did have.
+         */
+        static BarTable spanning(TempoMap tempoMap, Score score, List<Note> notes) {
             double lastBeat = 0;
             for (Note note : notes) {
                 lastBeat = Math.max(lastBeat, rawBeat(tempoMap, note.offsetSeconds()));
+            }
+            for (Chord chord : score.chords().chords()) {
+                lastBeat = Math.max(lastBeat,
+                        beatOf(tempoMap, chord.endBeat(), chord.endSeconds()));
+            }
+            for (Section section : score.sections()) {
+                lastBeat = Math.max(lastBeat,
+                        beatOf(tempoMap, section.endBeat(), section.endSeconds()));
+            }
+            for (Key key : score.keys()) {
+                lastBeat = Math.max(lastBeat, beatOf(tempoMap, key.endBeat(), key.endSeconds()));
             }
             // Bounded before converting, not after. TempoMap.toMusicalTime
             // rejects anything past bar Integer.MAX_VALUE with a message about
@@ -555,7 +716,7 @@ public final class Quantizer {
                     .min().orElseThrow();
             if (!(lastBeat / shortestBar <= MAX_BARS)) {
                 throw new IllegalArgumentException(
-                        "the tempo map places the last note beyond bar " + MAX_BARS
+                        "the tempo map places the last event beyond bar " + MAX_BARS
                                 + ", which is past the bar limit; the map is almost certainly"
                                 + " wrong rather than the music that long");
             }
@@ -608,6 +769,56 @@ public final class Quantizer {
         /** A wall-clock time as a raw, un-quantized position on the beat axis. */
         double rawBeat(double seconds) {
             return rawBeat(tempoMap, seconds);
+        }
+
+        /**
+         * Where a span boundary already is on the beat axis: the position it
+         * carries if it carries one, and otherwise its wall-clock time
+         * converted.
+         *
+         * <p>Preferring the carried value is not an optimisation. A MIDI import
+         * states its rhythm exactly and has produced beat-aligned chords since
+         * #115; converting those to seconds and back would put a rounding step
+         * between a value and itself, and re-quantizing an already-quantized
+         * score is meant to be a no-op rather than a slow drift.
+         */
+        static double beatOf(TempoMap tempoMap, Optional<Double> carried, double seconds) {
+            return carried.isPresent() ? carried.get() : rawBeat(tempoMap, seconds);
+        }
+
+        double beatOf(Optional<Double> carried, double seconds) {
+            return beatOf(tempoMap, carried, seconds);
+        }
+
+        /**
+         * The nearest counted beat, which is the finest position a chord symbol
+         * can take.
+         *
+         * <p>Measured inside the bar rather than from the origin, so the answer
+         * follows the meter: in 6/8 the counted beat is a dotted quarter and a
+         * bar holds two of them, not six. Building the position back up from the
+         * bar's own start keeps it bit-identical to the bar line the notation
+         * layer will draw, which subtracting from a global beat count would not.
+         */
+        double snapToCountedBeat(double beat) {
+            int bar = barOf(beat);
+            double unit = meter[bar].beatUnitQuarters();
+            return startBeat[bar] + stepsWithin(beatInBar(beat, bar), unit) * unit;
+        }
+
+        /**
+         * The nearest bar line, which is the only position a key change or a
+         * section boundary can take.
+         *
+         * <p>{@code beatsPerBar() * beatUnitQuarters()} equals
+         * {@code quarterBeatsPerBar()} to the last bit, so a boundary rounded up
+         * lands on exactly the double this table holds for the next bar rather
+         * than an ulp away from it.
+         */
+        double snapToBarLine(double beat) {
+            int bar = barOf(beat);
+            double barLength = meter[bar].quarterBeatsPerBar();
+            return startBeat[bar] + stepsWithin(beatInBar(beat, bar), barLength) * barLength;
         }
 
         /** The bar a position on the beat axis falls in, clamped to the table. */
