@@ -169,7 +169,7 @@ public final class ConfigLoader {
      * on its own, which is what {@code mw doctor} wants.
      *
      * <p>Stated one-directionally, and as a property rather than a list of call
-     * sites, because both other shapes were tried and failed. Four successive
+     * sites, because both other shapes were tried and failed. Three successive
      * lists were each wrong — missing {@link #searchPrefixes}, then
      * {@link #globalConfigFile()}, then the no-argument constructor — and the
      * biconditional that replaced them was false in one direction or the other

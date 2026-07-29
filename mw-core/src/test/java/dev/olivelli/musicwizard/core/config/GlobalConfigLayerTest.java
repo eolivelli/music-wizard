@@ -471,33 +471,35 @@ class GlobalConfigLayerTest {
                                 The global config location for this test JVM is %s, \
                                 which is outside %s, so this JVM resolves the config \
                                 of whoever is running rather than an isolated one \
-                                (#133). That file %s. The parent pom points \
-                                XDG_CONFIG_HOME under target/ for surefire and \
-                                failsafe; if that block is gone, restore it, and an \
-                                IDE needs the same setting in its run \
-                                configuration.""",
+                                (#133). That file %s. No test in this module will \
+                                have read it either way, because they all state \
+                                which config layer they mean; the ones that would \
+                                are in the modules driving whole commands. The \
+                                parent pom points XDG_CONFIG_HOME under target/ for \
+                                surefire and failsafe; if that block is gone, \
+                                restore it, and an IDE needs the same setting in \
+                                its run configuration.""",
                                 file, buildDirectory,
-                                // Reported rather than asserted. This assertion
-                                // does not look at existence, and short-circuits
-                                // before the one that does -- so stating either
-                                // answer as fact would be a diagnostic guessing,
-                                // and it would guess wrong for exactly the
-                                // developer #133 is about.
-                                Files.exists(file)
-                                        ? "exists, so tests here are reading it"
-                                        : "does not exist, which is the only reason"
-                                                + " nothing else has failed")
+                                // Reported, not asserted, and with no consequence
+                                // attached to either answer: this assertion does
+                                // not look at existence and short-circuits before
+                                // the one that does. Saying what follows from it
+                                // would be the diagnostic guessing -- which is how
+                                // the previous two versions of this message came
+                                // to be measurably false.
+                                Files.exists(file) ? "exists" : "does not exist")
                         .isTrue();
 
                 assertThat(file)
                         .withFailMessage("""
-                                This test JVM can read a global config at %s, so any \
-                                test that builds an effective config is reading it \
-                                too and the suite depends on this machine (#133). \
-                                The location is correctly isolated, so this is a \
-                                run that died between planting a config there and \
-                                removing it: deleting the file, or mvn clean, is \
-                                enough.""", file)
+                                A global config exists at %s. That location is \
+                                this module's isolated one -- the first assertion \
+                                just established it -- so the build is configured \
+                                correctly and a run died between planting a config \
+                                there and removing it. Deleting the file, or mvn \
+                                clean, is enough. What it would go on to affect is \
+                                left unsaid here on purpose: this test has not \
+                                measured it.""", file)
                         .doesNotExist();
             });
         }
