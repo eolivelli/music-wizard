@@ -460,33 +460,58 @@ class SpanQuantizationTest {
         void theCountIsOfCollapsesAndNotOfShortChords() {
             // The javadoc used to prescribe a sentence a caller might print --
             // "four of your eight chords are shorter than a beat at this tempo"
-            // -- from a number that does not measure that. Pinned here so the
-            // sentence cannot come back: in every row below all eight chords are
-            // shorter than their counted beat, and the count is never eight. It
-            // is not even monotone in the disagreement, which is what rules out
-            // reading it as a rough version of the right quantity: 30 and 24 BPM
-            // report the same 6 while the factor between pulse and harmony
-            // doubles.
-            List<String> measured = new ArrayList<>();
+            // -- from a number that does not measure that. Pinned as the
+            // property rather than as golden numbers: five memorised counts
+            // would change together the moment the clamp's phase behaviour did,
+            // and a reader could not tell whether the count had broken or merely
+            // moved. What must not change is that the two quantities differ.
             for (double tempo : List.of(60.0, 40.0, 30.0, 24.0, 15.0)) {
                 TempoMap tempoMap = TempoMap.constant(tempo, TimeSignature.FOUR_FOUR);
-                Score score = chordsOnly(tempoMap,
-                        chord("C4", 0.00, 0.50), chord("G4", 0.50, 1.00),
-                        chord("A4", 1.00, 1.50), chord("F4", 1.50, 2.00),
-                        chord("C4", 2.00, 2.50), chord("G4", 2.50, 3.00),
-                        chord("A4", 3.00, 3.50), chord("F4", 3.50, 4.00));
+                Score score = chordsOnly(tempoMap, everyHalfSecond(0.0));
 
                 QuantizedScore quantized = Quantizer.quantize(score);
 
-                assertThat(score.chords().chords()).allSatisfy(c -> assertThat(
-                        tempoMap.secondsToBeats(c.endSeconds())
-                                - tempoMap.secondsToBeats(c.startSeconds()))
-                        .as("every chord is shorter than a counted beat at %s BPM", tempo)
-                        .isLessThan(1.0));
-                measured.add((int) tempo + ":" + quantized.unplaceableChords());
+                long shorterThanTheirBeat = score.chords().chords().stream()
+                        .filter(c -> tempoMap.secondsToBeats(c.endSeconds())
+                                - tempoMap.secondsToBeats(c.startSeconds()) < 1.0)
+                        .count();
+                assertThat(shorterThanTheirBeat)
+                        .as("the fixture only tests anything if every chord is short at %s BPM",
+                                tempo)
+                        .isEqualTo(8);
+                assertThat(quantized.unplaceableChords())
+                        .as("the count at %s BPM is not the number of short chords", tempo)
+                        .isLessThan((int) shorterThanTheirBeat);
             }
 
-            assertThat(measured).containsExactly("60:4", "40:5", "30:6", "24:6", "15:7");
+            // And "fewer" is not a rule either -- two chords too short to place
+            // at all give a count equal to the number of short chords. So the
+            // relation is not an offset to be corrected for; the quantities are
+            // simply different, which is the whole point.
+            QuantizedScore bothTooShort = Quantizer.quantize(chordsOnly(fourFour(),
+                    chord("C4", 0.0, 0.01), chord("G4", 0.01, 0.02)));
+            assertThat(bothTooShort.unplaceableChords()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("the same disagreement gives a different count at a different phase")
+        void theCountMovesWithThePhaseAndNotOnlyTheDisagreement() {
+            // The mechanism the javadoc names for why the count is not a measure
+            // of the disagreement: the clamp resolves an overlapping boundary
+            // forward, so whether two short chords in a row leave the second one
+            // placeable depends on where in the beat the progression starts.
+            // Same tempo, same spans, same disagreement -- four phases, and one
+            // of them differs. An earlier version argued this from two tempos
+            // instead and got the arithmetic wrong: 30 and 24 BPM are a factor
+            // of four and five against the harmony, not a doubling.
+            TempoMap tempoMap = TempoMap.constant(40, TimeSignature.FOUR_FOUR);
+            List<Integer> counts = new ArrayList<>();
+            for (double offset : List.of(0.0, 0.25, 0.50, 0.75)) {
+                counts.add(Quantizer.quantize(chordsOnly(tempoMap, everyHalfSecond(offset)))
+                        .unplaceableChords());
+            }
+
+            assertThat(counts).containsExactly(5, 5, 5, 6);
         }
 
         @Test
@@ -1072,6 +1097,20 @@ class SpanQuantizationTest {
 
     /** Roots the sweeps cycle through, so a reordering would be visible. */
     private static final List<String> ROOTS = List.of("C4", "G4", "A4", "F4", "D4", "E4", "B4");
+
+    /**
+     * #157's own fixture: eight chords a half-second apart, which is one per
+     * beat of material heard at 120, started at a chosen offset so that the same
+     * disagreement can be read at several phases.
+     */
+    private static Chord[] everyHalfSecond(double offsetSeconds) {
+        Chord[] chords = new Chord[8];
+        for (int i = 0; i < chords.length; i++) {
+            chords[i] = chord(ROOTS.get(i % 4), offsetSeconds + i * 0.5,
+                    offsetSeconds + (i + 1) * 0.5);
+        }
+        return chords;
+    }
 
     /**
      * A chord with its beat fields taken off, which is the only thing the pass

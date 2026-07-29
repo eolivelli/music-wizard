@@ -928,6 +928,20 @@ class QuantizerTest {
             assertThatThrownBy(() -> withdrawn.withScore(noChords))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("must be between 0");
+
+            // And the gap in that check, pinned rather than left as a
+            // reassuring sentence. A rewrite that keeps as many chords and
+            // leaves them in seconds carries the old count along in silence, so
+            // the javadoc calls this a check and not a guarantee. Asserting the
+            // hole is what stops the javadoc drifting back into promising one.
+            QuantizedScore substituted = withdrawn.withScore(chordsOnly(tempoMap,
+                    Chord.ofSeconds(PitchSpelling.parse("D4"), ChordQuality.MAJOR, 0.0, 4.0,
+                            Confidence.CERTAIN),
+                    Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR, 4.0, 8.0,
+                            Confidence.CERTAIN)));
+            assertThat(substituted.unplaceableChords())
+                    .as("a count measured on chords that are no longer there, undetected")
+                    .isEqualTo(1);
         }
 
         @Test

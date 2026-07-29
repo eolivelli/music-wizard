@@ -415,18 +415,22 @@ public final class Quantizer {
     }
 
     /**
-     * What becomes of a span whose boundaries snapped to the same position.
+     * What a span whose boundaries snapped to the same position comes back as.
      *
-     * <p>Returning {@code null} leaves the span out of the list being built, and
-     * nothing published ever takes that route: a section or a key keeps its
-     * seconds and comes back, and the chord handler returns {@code null} into a
-     * list {@link #chordsOnGrid} then discards entirely in favour of the
-     * seconds. Worth saying because the signature still permits a discard and
-     * the class claims none happens -- what stops it is the caller, not this.
+     * <p>Total, and that is the point: there is no way to spell "leave it out",
+     * so {@link #onGrid} returns as many spans as it was given whatever any
+     * caller does. The class claims nothing is ever deleted, and this is what
+     * makes the claim structural rather than a convention every caller has to
+     * keep. It used to permit {@code null}; the one handler that returned it was
+     * the chord one, into a list that was discarded anyway, and the comment
+     * justifying the {@code null} described a mechanism -- {@code furthestEnd}
+     * advancing past an unpublished boundary -- that {@link #onGrid} does not
+     * have. A capability with no user and a false reason for existing is worse
+     * than no capability.
      */
     @FunctionalInterface
     private interface Collapsed<T> {
-        /** The span to keep in its place, or {@code null} to leave it out. */
+        /** The span to publish in place of the one that had no length. */
         T instead(T span);
     }
 
@@ -467,11 +471,16 @@ public final class Quantizer {
                 Chord::quantizedTo, bars::snapToCountedBeat,
                 chord -> {
                     unplaceable[0]++;
-                    // Dropped from this attempt, whose result is then thrown
-                    // away wholesale below. Returning the chord instead would
-                    // leave a half-placed list to be discarded anyway, and would
-                    // advance furthestEnd past a boundary that was not published.
-                    return null;
+                    // Stripped rather than left carrying beats, so that the list
+                    // this builds is well-formed even though the branch below
+                    // discards it: every chord in it either sits on the grid or
+                    // has no beats. Nothing observes the choice today -- a
+                    // collapse here means the list is thrown away -- and an
+                    // earlier version returned null with a comment claiming it
+                    // stopped furthestEnd advancing, which onGrid never does on
+                    // this branch. Better a value that is right for a reason
+                    // than one that is unobservable for a wrong one.
+                    return inSecondsOnly(chord);
                 });
         if (unplaceable[0] == 0) {
             return new PlacedChords(placed, 0);
@@ -568,9 +577,9 @@ public final class Quantizer {
      * is here for.
      *
      * <p><b>What happens to a span left with no length</b> is the caller's
-     * {@code Collapsed} decision -- kept in seconds for a section or a key, and
-     * for a chord withdrawn from a list {@link #chordsOnGrid} is about to
-     * discard whole. {@code furthestEnd} does not advance past one, and that is a
+     * {@code Collapsed} decision, and every caller keeps it: this method returns
+     * exactly as many spans as it was handed, always. {@code furthestEnd} does
+     * not advance past one, and that is a
      * decision rather than an accident: a collapsed span's snapped end can be a
      * long way <em>ahead</em> of the value carried -- two sections with a gap
      * between them, the second shorter than a bar, put it a whole bar ahead --
@@ -586,10 +595,7 @@ public final class Quantizer {
             double start = Math.max(snap.applyAsDouble(startBeat.applyAsDouble(span)), furthestEnd);
             double end = snap.applyAsDouble(endBeat.applyAsDouble(span));
             if (end <= start) {
-                T instead = collapsed.instead(span);
-                if (instead != null) {
-                    out.add(instead);
-                }
+                out.add(collapsed.instead(span));
                 continue;
             }
             out.add(placed.at(span, start, end));
