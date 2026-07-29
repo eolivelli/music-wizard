@@ -159,10 +159,13 @@ class SpanQuantizationTest {
             // underneath the progression, with the clamp that resolves the
             // tolerated overlap exercised in half the trials.
             //
-            // Not a restatement of the snapping rule: the placed position comes
-            // from max(snap(start), furthestEnd), so a boundary can be pushed
-            // past its own nearest beat by a neighbour, and that path has no
-            // rounding bound of its own to appeal to.
+            // What this sweep does NOT reach is the clamp. The overlap is
+            // present in half the trials but never resolved: a boundary
+            // perturbed by 0.4 microseconds straddles a rounding midpoint only
+            // by accident, so max(snap(start), furthestEnd) is an equality in
+            // all six thousand spans here -- counted by instrumenting onGrid,
+            // not assumed. An earlier comment claimed this sweep exercised the
+            // clamp; theBoundHoldsWhereTheClampMovesABoundary constructs it.
             java.util.Random random = new java.util.Random(20260729);
             List<TempoMap> maps = List.of(
                     TempoMap.constant(BPM, TimeSignature.FOUR_FOUR),
@@ -210,6 +213,62 @@ class SpanQuantizationTest {
             // nothing or by withdrawing everything.
             assertThat(placed).isGreaterThan(3000);
             assertThat(withdrawn).isGreaterThan(0);
+        }
+
+        @Test
+        @DisplayName("the bound holds where the clamp carries a start past its own beat")
+        void theBoundHoldsWhereTheClampMovesABoundary() {
+            // The half of the bound the random sweep cannot reach, constructed
+            // rather than hoped for. onGrid places a start at
+            // max(snap(start), furthestEnd), and for that max to be anything but
+            // an equality the previous span's end has to snap forward off a
+            // rounding midpoint while this span's start snaps back off it --
+            // which needs the two to straddle the midpoint, i.e. the microsecond
+            // of overlap ChordProgression tolerates, landing exactly there.
+            //
+            // The middle chord is two counted beats long rather than one, so it
+            // survives the clamp instead of collapsing: that is what leaves a
+            // placed symbol whose distance from its own sounding position can be
+            // measured. theToleratedOverlapIsTheOneExceptionToTheBound is the
+            // one-beat version, which goes.
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR,
+                    TimeSignature.SIX_EIGHT, new TimeSignature(7, 8),
+                    TimeSignature.THREE_FOUR)) {
+                TempoMap tempoMap = TempoMap.constant(BPM, meter);
+                double unit = meter.beatUnitQuarters();
+                // A rounding midpoint: half a unit past a bar line.
+                double midpointBeat = meter.quarterBeatsPerBar() * 2 + unit * 1.5;
+                double at = tempoMap.beatsToSeconds(midpointBeat);
+                double overlap = 4e-7;
+
+                Score score = chordsOnly(tempoMap,
+                        chord("C4", 0.0, at + overlap),
+                        chord("G4", at - overlap,
+                                tempoMap.beatsToSeconds(midpointBeat + 2 * unit)),
+                        chord("F4", tempoMap.beatsToSeconds(midpointBeat + 2 * unit),
+                                tempoMap.beatsToSeconds(midpointBeat + 6 * unit)));
+
+                QuantizedScore quantized = Quantizer.quantize(score);
+                assertThat(quantized.score().chords().isQuantized())
+                        .as("%s: the fixture only tests the bound if it places", meter)
+                        .isTrue();
+
+                Chord clamped = quantized.score().chords().chords().get(1);
+                double printed = clamped.startBeat().orElseThrow();
+                double heard = tempoMap.secondsToBeats(clamped.startSeconds());
+
+                // The clamp really moved it: the beat nearest its own start is
+                // the one below the midpoint, and it was published on the one
+                // above, because the C before it ended there.
+                assertThat(printed)
+                        .as("%s: the clamp carried the start a whole unit forward", meter)
+                        .isEqualTo(quantized.score().chords().chords().get(0)
+                                .endBeat().orElseThrow())
+                        .isGreaterThan(heard);
+                assertThat(printed - heard)
+                        .as("%s: and the bound is attained, not exceeded", meter)
+                        .isCloseTo(unit / 2, within(1e-6));
+            }
         }
 
         @Test
@@ -305,10 +364,12 @@ class SpanQuantizationTest {
             // does and does not establish: against a pulse that is exactly
             // constant, a correction above it leaves every span longer than a
             // counted beat and nothing collapses. That is a fact about this
-            // fixture, not about the pipeline -- on a drifting tracked pulse an
-            // upward correction is below plenty of the individual intervals and
-            // withdraws the chart most of the time. The class javadoc carries
-            // that measurement; this test does not claim it.
+            // fixture and not about the pipeline: a real tracked pulse is not
+            // constant, fromBeatTimes fits a segment per beat interval, and one
+            // supplied figure is then above some intervals and below others. How
+            // often that withdraws a chart is not measured anywhere in this
+            // repository, and the class javadoc no longer claims a figure for it
+            // -- three drafts of one did and each was refuted.
             List<Chord> spans = new ArrayList<>();
             double trackedBeat = 60.0 / BPM;
             for (int i = 0; i < 200; i++) {
@@ -590,11 +651,16 @@ class SpanQuantizationTest {
             // axis. An un-syncopated eighth-note anticipation sits exactly on
             // the midpoint of its rounding cell, and belongs on the beat ahead:
             // that is what a chart prints. Math.rint breaks a tie to the even
-            // step -- 2.5 down to beat 2, 6.5 down to beat 6 -- so under it half
-            // the anticipations in a progression come out a beat early, the half
-            // chosen by the parity of the beat index. Two of them here, one from
-            // an odd cell and one from an even, so a rule that alternates cannot
-            // pass by luck.
+            // step, sending 2.5 back to beat 2 and 6.5 back to beat 6, so a
+            // progression of anticipations comes out with symbols a beat early.
+            //
+            // Both boundaries here are the *same* case, and an earlier comment
+            // claimed otherwise -- that one came from an odd cell and one from
+            // an even, so an alternating rule could not pass by luck.
+            // snapToCountedBeat measures inside the bar, and in 4/4 both 2.5 and
+            // 6.5 reduce to a beatInBar of 2.5, so rint sends both backwards.
+            // aBarLineTieGoesForward is the test where that parity argument is
+            // true, because there 0.5 and 1.5 do go opposite ways.
             TempoMap tempoMap = fourFour();
             Score score = chordsOnly(tempoMap,
                     chord("C4", at(tempoMap, 0), at(tempoMap, 2.5)),
@@ -922,10 +988,11 @@ class SpanQuantizationTest {
             // the only handler that returned null fed a list that is discarded
             // on every execution reaching it, and the section and key handlers
             // never returned null, so there was nothing to observe. That the
-            // loop cannot drop a span is enforced by Collapsed being total and
-            // by onGrid having exactly one add per iteration, which is a
-            // property of the type and the shape of the code rather than of any
-            // behaviour a test can reach.
+            // loop cannot drop a span is not enforced by the type -- a handler
+            // can still return null and onGrid will add it. See Collapsed's own
+            // javadoc, which withdrew that claim: for the section and key
+            // handlers a null fails loudly in three tests, and for the chord one
+            // it is unobservable because chordsOnGrid discards the list.
             //
             // Swept over sections and keys as well as chords, because the
             // handler is shared and the chord path is the only one whose

@@ -145,11 +145,16 @@ import java.util.function.ToDoubleFunction;
  * rounding rule alone: {@link #onGrid} places a start at
  * {@code max(snap(start), furthestEnd)}, so a boundary can be pushed past its
  * own nearest beat by a neighbour, and that path has no rounding argument to
- * appeal to. {@code aPlacedSymbolStaysWithinHalfACountedBeat} sweeps a thousand
- * random progressions over four meters and a map that changes meter underneath
- * them, half of them carrying the tolerated overlap, and finds every placed
- * symbol inside the bound; rounding down instead of to nearest puts a symbol
- * 0.64 beats out and fails it.
+ * appeal to. Two tests between them, and it takes two:
+ * {@code aPlacedSymbolStaysWithinHalfACountedBeat} sweeps a thousand random
+ * progressions over four meters and a map that changes meter underneath them,
+ * and rounding down instead of to nearest puts a symbol 0.64 beats out and fails
+ * it -- but that sweep never reaches the clamp, because a boundary perturbed by
+ * 0.4 microseconds straddles a rounding midpoint only by accident, and the
+ * {@code max} is an equality in all six thousand of its spans. So
+ * {@code theBoundHoldsWhereTheClampMovesABoundary} constructs the case instead,
+ * where the clamp does carry a start a whole unit past its own nearest beat, and
+ * finds the bound attained exactly and not exceeded.
  *
  * <p>What #158 reported was the unbounded form of this, and it came from
  * somewhere else: a chord dropped for being too short left its position free,
@@ -285,8 +290,13 @@ import java.util.function.ToDoubleFunction;
  *       map is constant and the tracked pulse is not -- {@code fromBeatTimes}
  *       fits a segment per beat interval -- so each span is compared with its
  *       own interval, and one supplied figure is above some and below others.
- *       That ordinary corrections reach it, in either direction, is what
- *       {@code aSmallDownwardCorrectionCostsTheWholeBeatAxis} pins.
+ *       {@code aSmallDownwardCorrectionCostsTheWholeBeatAxis} pins the downward
+ *       half of that on an exactly constant pulse, where a one-BPM correction
+ *       withdraws a two-hundred-chord chart; the same test asserts that upward
+ *       corrections on that fixture are free, so it is evidence for the
+ *       mechanism and not for how far it reaches. How often a drifting pulse
+ *       reaches it in either direction is not measured in this repository, and
+ *       three drafts of a figure for it were each refuted.
  *   <li><b>MIDI, no override at all: reaches it.</b> {@code --tempo} is ignored
  *       on this path. {@code SymbolicChordEstimator} truncates its final span to
  *       the sounding length, so a piece not ending on a counted beat emits one
