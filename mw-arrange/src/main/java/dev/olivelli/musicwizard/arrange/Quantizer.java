@@ -257,57 +257,68 @@ import java.util.function.ToDoubleFunction;
  * boundaries a half beat apart in a map counting whole ones -- and any producer
  * whose spans are finer than the meter's beat.
  *
- * <p><b>How often the all-or-nothing is paid: the mechanism, and no bound.</b>
- * Four drafts of this paragraph each bounded the reachability and each was
- * refuted by running it -- "never isolated", "only a hand-built score", "one
- * hundred per cent below the tracked pulse and zero above it", and a rate of
- * {@code 1 - supplied/tracked}. They were not wrong at the edges; they were
- * wrong about which cases exist. So this states the mechanism, lists what has
- * actually been measured, and claims no bound at all.
+ * <p><b>How often the all-or-nothing is paid: the cases, and no bound.</b> Five
+ * drafts of this paragraph have described when this collapse is reached and each
+ * was refuted by running it -- "never isolated", "only a hand-built score",
+ * "one-sided", a rate of {@code 1 - supplied/tracked}, and a mechanism claimed
+ * to be exact that missed a case this class's own tests ship. So what follows
+ * lists what has been measured and claims no bound and no completeness.
  *
- * <p>The mechanism is exact and small: a chord collapses when both its
- * boundaries round to the same counted beat, which happens when the span is
- * shorter than <em>the counted beat it is measured against</em>, and at some
- * phases when it is a shade shorter than that beat rather than much shorter. A
- * span becomes short by being cut against one ruler and measured against
- * another. Everything below is a way for those two rulers to differ.
+ * <p>Two things reach it, and the second is the one the "exact" draft missed:
  *
  * <ul>
- *   <li><b>Audio, no override: not reached.</b> The map is built by
- *       {@code TempoMap.fromBeatTimes} over the same beats the spans were cut
- *       at, so the two rulers are the same one. Measured across meters, rubato
- *       amplitudes and a non-zero lead-in: nothing collapses.
- *   <li><b>Audio, {@code --tempo} below the tracked pulse: reached, commonly.</b>
- *       {@code AudioTranscriber} replaces the tracked tempo and keeps the tracked
- *       beats, so spans stay one tracked beat while the counted beat grows. On a
- *       constant tracked 120, a <b>one-BPM</b> correction collapses two spans in
- *       two hundred and withdraws all two hundred.
- *   <li><b>Audio, {@code --tempo} above the tracked pulse: also reached, once
- *       the pulse drifts.</b> This is the one an earlier draft called safe. It is
- *       safe only when the tracked pulse is exactly constant, because
- *       {@code fromBeatTimes} fits a segment per beat interval and "the tracked
- *       pulse" is then not a number: the comparison is against each span's own
- *       interval, and a correction above the median is below plenty of them.
- *       Over 200 drifting pulses with the user correcting strictly <em>upward</em>
- *       to the next whole BPM: <b>121 of 200 charts withdrawn at 0.5% drift per
- *       beat, 185 at 1%, 190 at 1.5%</b>.
- *   <li><b>MIDI, no override at all: reached.</b> {@code --tempo} is ignored on
- *       this path, so nothing the user does is involved.
- *       {@code SymbolicChordEstimator} truncates its final span to the sounding
- *       length, so a piece whose music does not end on a counted beat emits one
- *       final sub-beat span; if the harmony changes onto it, it is its own run
- *       and it collapses. Measured through the estimator's own entry point, with
- *       eight beats of C and a G on the tail: a tail of 0.5 beats or more is
- *       placed, and <b>0.4, 0.25 and 0.1 withdraw the whole progression</b>.
+ *   <li><b>Both boundaries round to the same counted beat.</b> The span is
+ *       shorter than the counted beat it is <em>measured against</em> -- which
+ *       it becomes by being cut against one ruler and measured against another,
+ *       the first three cases below.
+ *   <li><b>The clamp resolves a start onto the span's own snapped end.</b>
+ *       {@link #onGrid} takes {@code max(snap(start), furthestEnd)}, so a span
+ *       whose two boundaries round to <em>different</em> beats can still be left
+ *       with none. This needs no second ruler and no short span: measured on a
+ *       constant 120 map with spans cut at 120, a chord of exactly 1.000000
+ *       counted beats whose start carries the microsecond of overlap
+ *       {@code ChordProgression} tolerates snaps to beats 1 and 2, is clamped to
+ *       2, and goes. {@code theToleratedOverlapIsTheOneExceptionToTheBound} is
+ *       that case, and the class states its cost 300 lines below -- which is why
+ *       a draft calling the first bullet the whole mechanism was refutable from
+ *       inside this file.
  * </ul>
  *
- * <p>What the rate is, nobody here has established. It is not
- * {@code 1 - supplied/tracked}: that figure is per <em>tracked beat</em> and so
- * applies only to spans one tracked beat long. Measured at
- * {@code --tempo 100} against a tracked 120, one-beat spans collapse at 16.6%
- * and two-beat spans at <b>zero</b> -- a progression whose chords last two beats
- * pays nothing for a twenty-BPM correction. Exposure therefore scales with how
- * many one-beat spans a chart has, and one of them withdraws all the others.
+ * <p>Where the first bullet has been reached, measured:
+ *
+ * <ul>
+ *   <li><b>Audio, no override: not reached, and by construction rather than by
+ *       luck.</b> {@code ChordEstimator} takes every span boundary from the
+ *       tracked beat times, and {@code TempoMap.fromBeatTimes} anchors tracked
+ *       beat <i>i</i> at exactly that beat, so snapping is the identity on those
+ *       positions. Swept over eight meters, rubato to 45% and lead-ins to
+ *       4.4 seconds: nothing collapses.
+ *   <li><b>Audio with a supplied {@code --tempo}: reached, and the sign of the
+ *       correction is second-order.</b> What does it is a <em>constant</em>
+ *       supplied map read against a pulse that is not constant:
+ *       {@code fromBeatTimes} fits a segment per beat interval, so each span is
+ *       compared with its own interval and a single supplied figure is above
+ *       some and below others. Over 200 drifting pulses at 0.5% per beat, a
+ *       chart of <b>200 one-beat chords</b>, correcting to the reported figure
+ *       rounded down, to the reported figure itself, and rounded up: <b>193, 159
+ *       and 130 of 200 charts withdrawn</b>. The middle column is a user typing
+ *       back the number the run just printed, which is what
+ *       {@code AudioTranscriber} says the option is for.
+ *   <li><b>MIDI, no override at all: reached.</b> {@code --tempo} is ignored on
+ *       this path. {@code SymbolicChordEstimator} truncates its final span to
+ *       the sounding length, so a piece not ending on a counted beat emits one
+ *       sub-beat final span; if the harmony changes onto it, it collapses.
+ *       Through the estimator's own entry point, eight beats of C with a G on
+ *       the tail: 0.5 beats and above are placed, <b>0.4999 and below withdraw
+ *       the whole progression</b>.
+ * </ul>
+ *
+ * <p>None of those figures is a rate, and quoting them without their population
+ * would make them one. They are for a chart of 200 chords that change harmony on
+ * every beat; the same sweep over a 32-chord chart withdraws <b>none</b>, and
+ * over two-beat chords none at any length. Exposure grows with how many one-beat
+ * spans a chart has, because any one of them withdraws all the others -- and
+ * that, rather than any of the numbers, is what the all-or-nothing costs.
  *
  * <p>The ordering that follows from all of this is the useful part: <b>#173
  * should land before this pass is wired into the pipeline</b>. Per-chord
