@@ -443,10 +443,13 @@ class GlobalConfigLayerTest {
          * deleted gave {@code Tests run: 327, Failures: 0, Skipped: 1} and
          * BUILD SUCCESS.
          *
-         * <p>An IDE run with no {@code XDG_CONFIG_HOME} therefore fails here.
-         * That is the intended answer rather than a cost: in that JVM the
-         * suite really is reading the developer's own config, and the message
-         * says what to set.
+         * <p>An IDE run with no {@code XDG_CONFIG_HOME} therefore fails here,
+         * which is the intended answer rather than a cost — for the reason
+         * above, that the alternative is the regression test skipping silently.
+         * Not because the rest of {@code mw-core} would then read the
+         * developer's config: it would not, since every test in this module
+         * states which layer it means. The modules that would are the ones
+         * driving whole commands, and they are why the pom block exists.
          *
          * <p>Takes the environment lock even though it only reads: a sibling
          * plants at the very location it asserts is absent, and without the
@@ -468,12 +471,22 @@ class GlobalConfigLayerTest {
                                 The global config location for this test JVM is %s, \
                                 which is outside %s, so this JVM resolves the config \
                                 of whoever is running rather than an isolated one \
-                                (#133). Nothing here has failed yet only because \
-                                that file happens not to exist. The parent pom \
-                                points XDG_CONFIG_HOME under target/ for surefire \
-                                and failsafe; if that block is gone, restore it, and \
-                                an IDE needs the same setting in its run \
-                                configuration.""", file, buildDirectory)
+                                (#133). That file %s. The parent pom points \
+                                XDG_CONFIG_HOME under target/ for surefire and \
+                                failsafe; if that block is gone, restore it, and an \
+                                IDE needs the same setting in its run \
+                                configuration.""",
+                                file, buildDirectory,
+                                // Reported rather than asserted. This assertion
+                                // does not look at existence, and short-circuits
+                                // before the one that does -- so stating either
+                                // answer as fact would be a diagnostic guessing,
+                                // and it would guess wrong for exactly the
+                                // developer #133 is about.
+                                Files.exists(file)
+                                        ? "exists, so tests here are reading it"
+                                        : "does not exist, which is the only reason"
+                                                + " nothing else has failed")
                         .isTrue();
 
                 assertThat(file)

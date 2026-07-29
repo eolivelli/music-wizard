@@ -155,20 +155,26 @@ public final class ConfigLoader {
      * what {@code mw doctor} wants.
      *
      * <p><b>This is the one method that resolves the global config location
-     * from the environment, and the rule follows from that: a call is
-     * environment-dependent exactly when the path from where its loader was
-     * constructed reaches here.</b> The qualifier is load-bearing, because
-     * resolution happens once at construction rather than per read. Nothing on
-     * the reading side — {@link #readGlobalLayer()},
-     * {@link #effectiveConfig(Path, MusicWizardConfig)},
-     * {@code Workspace.effectiveConfig} — calls this method at all, and every
-     * one of them is environment-dependent when handed a loader that did.
+     * from the environment. Every environment-dependent resolution of that
+     * location reaches here — either directly, or through the construction of
+     * the loader being used.</b>
      *
-     * <p>Stated as a rule rather than as a list of such call sites because the
-     * list was written three times during review and was wrong all three — it
-     * missed {@link #searchPrefixes}, then {@link #globalConfigFile()}, then the
-     * no-argument constructor. A reader can settle the question by following
-     * the calls; a list only stays true until the next one is added.
+     * <p>Both halves are needed. Resolution happens once at construction rather
+     * than per read, so nothing on the reading side —
+     * {@link #readGlobalLayer()},
+     * {@link #effectiveConfig(Path, MusicWizardConfig)},
+     * {@code Workspace.effectiveConfig} — calls this method at all, yet each is
+     * environment-dependent when handed a loader that did. And some callers
+     * have no loader: {@link #globalConfigFile()} answers for the environment
+     * on its own, which is what {@code mw doctor} wants.
+     *
+     * <p>Stated one-directionally, and as a property rather than a list of call
+     * sites, because both other shapes were tried and failed. Four successive
+     * lists were each wrong — missing {@link #searchPrefixes}, then
+     * {@link #globalConfigFile()}, then the no-argument constructor — and the
+     * biconditional that replaced them was false in one direction or the other
+     * whichever way it was phrased. A reader can settle any particular call by
+     * following it here; what they cannot rely on is a list staying complete.
      *
      * <p>Note the rule is about the <i>config location</i> specifically. The
      * class reads the environment elsewhere for a different question — where a
