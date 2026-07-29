@@ -927,13 +927,24 @@ class LilyPondRendererTest {
             // nothing noticed: the last line of the output is then read as an
             // echo's second half that is not there.
             //
-            // Two lines after a diagnostic, exactly, is what an echo occupies.
-            // With only one line left there is no pair to recognise, so the line
-            // is read -- and here it is diagnostic-shaped, so it reports.
+            // With only one line left there is no pair to recognise, so the
+            // line is read -- and here it is diagnostic-shaped, so it reports.
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
                     + "  p.ly:9:9: warning: bar check failed at: 9/9").failedBarChecks())
                     .as("one line left is not an echo, so it is read rather than skipped")
                     .containsExactly("3/4", "9/9");
+            // And exactly two left *is* a pair, with the second the last line of
+            // the output and no terminator after it. The first version of this
+            // test asserted only the first case, where widening the guard
+            // changes nothing -- both forms refuse. This is the one that
+            // separates them: the strict form refuses a genuine echo and
+            // reports its text.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "   | rest % a:1:2: warning: bar check failed at: 9/9")
+                    .failedBarChecks())
+                    .as("the echo's second half may be the last line there is")
+                    .containsExactly("3/4");
         }
 
         @Test
