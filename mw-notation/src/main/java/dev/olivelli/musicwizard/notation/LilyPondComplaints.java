@@ -101,14 +101,56 @@ import java.util.regex.Pattern;
  * stray quote in it. Which is this project's recorded pattern exactly: the first
  * fix reached the layer the bug was noticed at rather than the one it lived at.
  *
- * <p>What separates the two is the <em>end</em> of the line, not the start. A
- * diagnostic is generated from a format string whose last token is the moment,
- * so nothing follows it; an echo is a fragment of a source line, and the phrase
- * inside it is followed by whatever the rest of that line says. The echo above
- * continues past its {@code 9/9} with the rest of the {@code \header} line; every
- * diagnostic line in review round 2's captured corpus, 2.24.3 and 2.26.0 alike,
- * ends immediately after the moment. So the match is anchored at both ends, and
- * it is the closing anchor that does the work.
+ * <p>So the match is anchored at <em>both</em> ends. A diagnostic is generated
+ * from a format string whose last token is the moment — {@code strings} on the
+ * 2.26.0 binary gives {@code bar check failed at: %s} — so nothing follows it,
+ * while an echo is a fragment of a source line and usually carries the rest of
+ * that line with it. Every diagnostic line in review round 2's captured corpus,
+ * 2.24.3 and 2.26.0 alike, ends immediately after the moment.
+ *
+ * <p><b>Neither anchor closes the question, and round 3 showed why it cannot be
+ * closed here at all.</b> LilyPond splits the echo into <em>two</em> lines — the
+ * text before the failing column, then the text after it — and rounds 1 and 2
+ * each reasoned about only one of them. The second fragment ends at the end of
+ * the source line whatever the column was, so any engraved line whose <em>tail</em>
+ * is diagnostic-shaped walks through both anchors. Measured on 2.26.0, one real
+ * failure at column 42:
+ *
+ * <pre>
+ * tail.ly:2:42: warning: bar check failed at: 3/4
+ * \score { \new Staff { \time 4/4 c4 c4 c4
+ *                                          | c4 c4 c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
+ * </pre>
+ *
+ * <p>reported as {@code [3/4, 9/9]}. The indentation is no defence, because the
+ * {@code .*} in the location swallows it, and where the check fails at column 0
+ * there is no indentation to swallow.
+ *
+ * <p>Three rounds have now tried to tell a diagnostic from an echo by the shape
+ * of a line <em>in isolation</em>, and each time a fragment of source text was
+ * shaped the same way. <b>It cannot be done that way</b>: an echo is arbitrary
+ * user text, and any shape a diagnostic has, an echo can have. So this class no
+ * longer claims to distinguish them. What it claims, and what is measured, is:
+ *
+ * <ul>
+ * <li><b>It never under-reports</b> on any output 2.24.3 or 2.26.0 produces.
+ *     That is the direction that matters, because a check that has silently
+ *     stopped checking looks exactly like output that is correct.</li>
+ * <li><b>It can over-report</b>, on an echoed line ending in a diagnostic shape.
+ *     Not reachable from anything this project emits — {@link ChordChart} writes
+ *     no {@code |} at all, and {@link StaffNotation} puts each bar on its own
+ *     line ending in {@code  |} with no user-controlled text on it — and it
+ *     becomes reachable when engraved lyrics do (#9).</li>
+ * </ul>
+ *
+ * <p>Closing it needs a reader that uses <em>where</em> a line is rather than
+ * what it looks like: the echo is the one or two lines immediately after a
+ * diagnostic. That is #169. It is not done here because every version of it
+ * costs a way to go blind — counting echo lines under-reports if LilyPond ever
+ * prints one instead of two, and binding to the file name we passed goes blind
+ * on an {@code \include}, which round 2's own corpus contains. Trading an
+ * unreachable over-report for a reachable silence would be the fix being worse
+ * than the bug, which is the mistake round 2 caught.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
@@ -125,13 +167,12 @@ import java.util.regex.Pattern;
  *     checking silently.</li>
  * </ul>
  *
- * <p><b>The residuals, stated rather than implied.</b> Over-reporting survives
- * where an echo fragment happens to end exactly at the phrase's moment, which
- * needs the bar check to fail at that precise column. And appending anything
- * after the moment in a future LilyPond would make this blind — the one
- * direction that matters, accepted here because the moment is the last token of
+ * <p><b>The one way this could go blind</b> is a future LilyPond that appends
+ * anything after the moment. Accepted, because the moment is the last token of
  * the format string in LilyPond's own source, so text after it would be a
- * deliberate change rather than drift.
+ * deliberate change rather than drift — and {@code mw-it} engraves deliberately
+ * short bars on every integration run, so such a change turns that suite red
+ * rather than quiet.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it

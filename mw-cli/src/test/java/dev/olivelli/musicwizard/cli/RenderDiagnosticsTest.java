@@ -155,9 +155,10 @@ class RenderDiagnosticsTest {
         // than one told plainly what is wrong.
         assertThat(render.exitCode()).as(render.all()).isZero();
         assertThat(render.out()).contains("Wrote ", "chords.pdf");
-        // The line #156 is about. Before this, the run ended at "Wrote
-        // .../chords.pdf" and said nothing more about a page whose music does
-        // not match the transcription.
+        // The line #156 is about. Without it the run ends at "Wrote
+        // .../chords.pdf" and says nothing more about a page whose music does
+        // not match the transcription. Present tense on purpose: no real run
+        // has produced one, for the reason the class javadoc gives.
         //
         // "check while" rather than "check": round 1 of review found that
         // contains("1 failed bar check") is satisfied by "1 failed bar checkS",

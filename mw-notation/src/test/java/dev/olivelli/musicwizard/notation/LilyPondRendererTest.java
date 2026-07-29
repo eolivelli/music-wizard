@@ -250,10 +250,12 @@ class LilyPondRendererTest {
 
             // #156, end to end through the renderer and with no LilyPond: a
             // failed bar check is a *warning*, so the engraver draws the short
-            // bar, writes a real PDF and exits zero. Before this, that fact
-            // lived in output() and nothing could ask for it, so RenderCommand
-            // -- which branches on succeeded() alone -- printed "Wrote
-            // chords.pdf" for a chart whose bars do not sum.
+            // bar, writes a real PDF and exits zero. The fact lived in output()
+            // and nothing could ask for it, so a caller branching on succeeded()
+            // alone -- which is what RenderCommand did -- had nothing to print
+            // about a page whose music does not match the score. No user had
+            // been handed such a chart, because the chord chart emits no bar
+            // checks; StaffNotation's output does, and only mw-it engraves it.
             //
             // The stand-in reproduces all three halves of that: the message,
             // the PDF, and the zero. Measured against real LilyPond 2.26.0
@@ -357,13 +359,57 @@ class LilyPondRendererTest {
                     .as("the unanchored form gives [3/4, 9/9\"], and the line-start anchor alone"
                             + " does not change that")
                     .containsExactly("3/4");
-            // What does separate them is the end of the line: a diagnostic is a
+            // What holds this one out is the end of the line: a diagnostic is a
             // format string whose last token is the moment, so nothing follows
             // it, while an echo fragment carries the rest of the source line.
             assertThat(said("part.ly:1:1: warning: bar check failed at: 1/2 % and more source\n")
                     .failedBarChecks())
                     .as("text after the moment means this was never a diagnostic line")
                     .isEmpty();
+        }
+
+        @Test
+        @DisplayName("is not read out of a phrase sitting mid-line, which is the start anchor's job")
+        void theStartAnchorIsLoadBearingToo() {
+            // Round 3 of review found the leading ^ killed by nothing: every
+            // echo fixture here happened to be rejected by the *end* anchor
+            // instead, so the pattern could have been simplified with a green
+            // build and a false positive reintroduced.
+            //
+            // This is the shape only the start anchor rejects -- an echoed line
+            // whose tail is the phrase but with no location in front of it, so
+            // the optional location group cannot absorb the text before it.
+            // Measured on real 2.26.0: shipped [3/4], and [3/4, 9/9] with the
+            // caret removed.
+            assertThat(said("""
+                    nocaret.ly:2:42: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4 | c4 | } } % see warning: bar check failed at: 9/9
+                    """).failedBarChecks())
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("over-reports an echoed line whose tail is diagnostic-shaped, and that is known")
+        void anEchoEndingInADiagnosticShapeIsStillCounted() {
+            // A recorded limitation, not an aspiration. Round 3 measured it
+            // against 2.26.0 with the check failing at column 42, nowhere near
+            // the phrase: LilyPond splits the echo into the text before the
+            // failing column and the text after it, and the second fragment ends
+            // at the end of the source line whatever the column was.
+            //
+            // Asserted so that the day someone closes it (#169, a reader that
+            // uses where a line is rather than what it looks like) they do so
+            // deliberately and this test flips, rather than discovering the
+            // behaviour for a fourth time. Unreachable from what this project
+            // emits: ChordChart writes no bar checks, and StaffNotation puts
+            // each bar on its own line with no user text on it.
+            assertThat(said("""
+                    tail.ly:2:42: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4
+                                                             | c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
+                    """).failedBarChecks())
+                    .as("known over-report; #169 is the reader that would close it")
+                    .containsExactly("3/4", "9/9");
         }
 
         @Test
