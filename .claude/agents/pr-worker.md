@@ -72,6 +72,14 @@ source tree rather than from any repository.
 Do all your work there, and remove the worktree **and its local repository**
 when you are finished. Never run `git checkout` in the shared clone.
 
+**Commit before you mutate.** Mutation testing works by editing the source and
+reverting it, and the revert is usually `git checkout -- <file>`, which discards
+*every* uncommitted change to that file — including the fix you were in the
+middle of writing. On this project an author reported a fix as landed that a
+mutation sweep had silently destroyed; a reviewer found it missing two rounds
+later. Commit first, so the revert restores your work rather than deleting it,
+and re-read the diff after any sweep.
+
 Branching from a stale `main` produces conflicts at merge time, review findings
 that were already fixed, and worst of all a "fix" for a bug somebody else
 already removed — so fetch first, and branch from `origin/main` rather than from
