@@ -144,13 +144,28 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>Closing it needs a reader that uses <em>where</em> a line is rather than
- * what it looks like: the echo is the one or two lines immediately after a
- * diagnostic. That is #169. It is not done here because every version of it
- * costs a way to go blind — counting echo lines under-reports if LilyPond ever
- * prints one instead of two, and binding to the file name we passed goes blind
- * on an {@code \include}, which round 2's own corpus contains. Trading an
- * unreachable over-report for a reachable silence would be the fix being worse
- * than the bug, which is the mistake round 2 caught.
+ * what it looks like: the echo is the two lines immediately after a diagnostic.
+ * That is #169, and the shape it should key on is measured rather than guessed —
+ * <b>LilyPond splits the echo at the reported column</b>, so the first line's
+ * length is exactly {@code column - 1} and the second is indented by that many
+ * spaces. A reader that skips only a pair matching the column the diagnostic
+ * itself reported can therefore fail <em>toward</em> today's behaviour rather
+ * than toward silence, which is the property that matters.
+ *
+ * <p>Two ways of writing that reader do <em>not</em> have the property, and are
+ * named so nobody reaches for them: skipping a fixed number of lines
+ * under-reports if LilyPond ever emits a different number, and binding the
+ * location to the file name passed to the binary goes blind on an
+ * {@code \include} — measured, {@code \include "part.ily"} reports
+ * {@code part.ily:1:42: warning: ...}, naming the included file and not the one
+ * handed over.
+ *
+ * <p>It is not done in this change, and that is a judgement rather than an
+ * impossibility: the over-report is unreachable from what this project emits,
+ * and the column invariant itself does not hold everywhere — LilyPond truncates
+ * the echo of a very long line, and counts a tab as more than one column — so
+ * such a reader closes the two shapes measured here and leaves those two
+ * over-reporting exactly as now.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
