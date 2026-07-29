@@ -440,10 +440,20 @@ public final class PitchSpeller {
      * reads. A note rushed against a chord change is spelled from the chord it
      * was played under rather than the one it will be printed under.
      *
-     * <p>The beat branch does not fire in the pipeline as it stands, because
-     * nothing quantizes a {@link ChordProgression} yet -- that is #103. Until it
-     * does, the guarantee above is the seconds one, which is weaker by exactly
-     * that rounding.
+     * <p>The beat branch fires as of #103: {@link Quantizer} now places a
+     * {@link ChordProgression} on the beat axis alongside the notes, so
+     * spelling a score it has been through takes the stronger guarantee. It
+     * still does not fire in the <em>pipeline</em>, for a different reason --
+     * nothing on the CLI path calls the quantizer at all yet -- so a score that
+     * reaches here straight from transcription is spelled from seconds, which is
+     * weaker by exactly that rounding.
+     *
+     * <p>A progression is quantized as one verdict, never partly, so the branch
+     * cannot see a mixture and the {@code orElseThrow}s below cannot fire. A
+     * {@link dev.olivelli.musicwizard.core.model.Key} list <em>can</em> be a
+     * mixture -- one too short to sit between two bar lines keeps its seconds --
+     * which is why {@code keyUnder} asks for all of them rather than for the one
+     * it wants.
      */
     private static Optional<Chord> chordUnder(Score score, Note note) {
         if (note.isQuantized() && score.chords().isQuantized() && !score.chords().isEmpty()) {

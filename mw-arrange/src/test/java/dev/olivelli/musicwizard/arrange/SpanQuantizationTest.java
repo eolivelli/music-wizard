@@ -91,10 +91,16 @@ class SpanQuantizationTest {
         @Test
         @DisplayName("in 6/8 the beat it lands on is the dotted quarter, not the quarter")
         void aCompoundBarCountsInDottedQuarters() {
-            // The audio estimator is beat-synchronous and a tracked beat is a
-            // quarter beat, so it can put a chord boundary at quarter beat 1 --
-            // the second of the six eighths, which is not a place harmony
-            // changes. The counted beat in 6/8 is one and a half quarters.
+            // Quarter beat 1 is the second of the six eighths, which is not a
+            // place harmony changes; the counted beat in 6/8 is one and a half
+            // quarters and this puts the change there.
+            //
+            // A hand-built boundary rather than one the audio path produces:
+            // TempoMap.fromBeatTimes takes the meter's own counted beat as the
+            // pulse, so a tracked beat in 6/8 is already a dotted quarter and
+            // that path cannot state this position. What can is a supplied
+            // --tempo disagreeing with the tracked pulse, or any other producer
+            // whose spans are finer than the meter's beat.
             Score score = chordsOnly(sixEight(),
                     chord("C4", 0.0, 0.5), chord("F4", 0.5, 1.5));
 
@@ -269,12 +275,17 @@ class SpanQuantizationTest {
         void theToleratedOverlapCostsOnlyTheMidpoints() {
             // The sweep above run a second time with a sub-microsecond overlap
             // injected into every span, which is the version that would have
-            // caught the over-claimed invariant. Counted rather than asserted
-            // away: the exception is real but it is exactly the offsets whose
-            // shared boundary sits on a rounding midpoint, one in a hundred, and
-            // nothing else moves.
+            // caught the over-claimed invariant.
+            //
+            // What is lost is stated as *which* offsets rather than as how many,
+            // because a count is satisfied by losing four of anything. And the
+            // rate is not one in a hundred: it is the single offset whose shared
+            // boundary lands on a rounding midpoint, so it tracks the sweep's own
+            // resolution -- 200 steps still loses one per meter, at step 100 --
+            // and a sweep with no such offset loses none. Measure zero, not one
+            // per cent.
             double overlap = 4e-7;
-            int lost = 0;
+            List<String> lost = new ArrayList<>();
             int swept = 0;
             for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT,
                     new TimeSignature(7, 8), TimeSignature.THREE_FOUR)) {
@@ -287,20 +298,29 @@ class SpanQuantizationTest {
                     // states it, which is what an estimator whose spans do not
                     // agree to the last bit produces.
                     double at = base + unit + step * unit / 100;
-                    Score score = chordsOnly(tempoMap,
+                    List<String> overlapping = beats(Quantizer.quantize(chordsOnly(tempoMap,
                             chord("C4", base, at + overlap),
                             chord("G4", at - overlap, at + unit - overlap),
-                            chord("F4", at + unit - overlap, base + 8 * unit));
+                            chord("F4", at + unit - overlap, base + 8 * unit)))
+                            .score().chords().chords());
+                    List<String> clean = beats(Quantizer.quantize(chordsOnly(tempoMap,
+                            chord("C4", base, at),
+                            chord("G4", at, at + unit),
+                            chord("F4", at + unit, base + 8 * unit)))
+                            .score().chords().chords());
                     swept++;
-                    if (Quantizer.quantize(score).score().chords().chords().size() < 3) {
-                        lost++;
+                    if (overlapping.size() < 3) {
+                        lost.add(meter + "#" + step);
+                    } else {
+                        // Nothing else moves: away from the midpoint the overlap
+                        // is invisible, position for position.
+                        assertThat(overlapping).as("%s, offset %d", meter, step).isEqualTo(clean);
                     }
                 }
             }
 
             assertThat(swept).isEqualTo(400);
-            assertThat(lost).as("one offset per meter, where the boundary is on a midpoint")
-                    .isEqualTo(4);
+            assertThat(lost).containsExactly("4/4#50", "6/8#50", "7/8#50", "3/4#50");
         }
 
         @Test

@@ -137,10 +137,12 @@ import java.util.function.ToDoubleFunction;
  *       that is exactly a unit long and lands on a rounding midpoint is then
  *       lost. Not a corner that better arithmetic removes: the alternative is
  *       publishing two spans that overlap on the beat axis, which {@code Score}
- *       rejects outright. Measured rather than feared -- of 400 unit-length
- *       spans swept across four meters,
- *       {@code theToleratedOverlapCostsOnlyTheMidpoints} counts how many are
- *       lost once a sub-microsecond overlap is injected into every one of them.
+ *       rejects outright. Measured rather than feared, and it is a measure-zero
+ *       set rather than a rate: with an overlap injected into every one of 400
+ *       unit-length spans across four meters,
+ *       {@code theToleratedOverlapCostsOnlyTheMidpoints} loses the single offset
+ *       per meter whose shared boundary lands on a rounding midpoint and finds
+ *       every other span placed exactly where it is placed without the overlap.
  * </ul>
  *
  * <p>The pass does not reject the score over one -- that would throw away a
@@ -349,10 +351,16 @@ public final class Quantizer {
      * microsecond of overlap in seconds, and a microsecond straddling a rounding
      * midpoint snaps to two positions a whole unit apart. Without this the pass
      * would emit exactly the beat-axis overlap that {@code Score} rejects and
-     * that #59 records as still unchecked on a progression. The furthest end
-     * rather than the previous one, for the reason
-     * {@code Score.requireOrderedBeats} gives: comparing against the immediately
-     * preceding span lets a nested one hide an overlap.
+     * that #59 records as still unchecked on a progression.
+     *
+     * <p>Called the furthest end, and it is the last <em>placed</em> one: a span
+     * is placed only when its end exceeds this value, so it never goes
+     * backwards. That is worth saying rather than borrowing
+     * {@code Score.requireOrderedBeats}' reasoning, which this looks like and is
+     * not. That method carries the furthest end because an <em>un-quantized</em>
+     * span between two overlapping ones would otherwise break the chain and hide
+     * the overlap; nothing here is un-quantized, because this is where the
+     * quantizing happens.
      *
      * <p>Clamping here rather than on the raw position before snapping is not a
      * choice between two behaviours. Snapping is monotone, so
@@ -369,9 +377,12 @@ public final class Quantizer {
      *
      * <p><b>What happens to a span left with no length</b> is the class's
      * {@code Collapsed} decision, and it is the only place anything is
-     * discarded. {@code furthestEnd} does not advance past one either way: a
-     * collapsed span has no end to carry forward, and its snapped end is at or
-     * behind the value already carried in any case.
+     * discarded. {@code furthestEnd} does not advance past one, and that is a
+     * decision rather than an accident: a collapsed span's snapped end can be a
+     * long way <em>ahead</em> of the value carried -- two sections with a gap
+     * between them, the second shorter than a bar, put it a whole bar ahead --
+     * so advancing would push the next span forward off a bar line it snapped to
+     * cleanly, on the strength of a boundary that was not published.
      */
     private static <T> List<T> onGrid(List<T> spans, ToDoubleFunction<T> startBeat,
                                       ToDoubleFunction<T> endBeat, Placed<T> placed,
