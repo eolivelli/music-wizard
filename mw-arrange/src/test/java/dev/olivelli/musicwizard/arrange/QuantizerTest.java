@@ -20,16 +20,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
-import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
-import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
-import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.Section;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -868,83 +865,6 @@ class QuantizerTest {
         }
 
         @Test
-        @DisplayName("a count of unplaceable chords cannot be paired with a placed progression")
-        void rejectAnUnplaceableCountThatContradictsTheScore() {
-            // The count and the beat axis are two readings of one fact, and the
-            // three-argument constructor makes it easy to build the pair by
-            // hand. A progression that lost a chord lost the beat axis with it,
-            // so a score reporting both is one whose two halves came from
-            // different passes -- the mistake withScore exists to prevent for
-            // the grids, in the one place a plain int does not prevent itself.
-            TempoMap tempoMap = fourFour();
-            Score placed = Quantizer.quantize(chordsOnly(tempoMap,
-                    Chord.ofSeconds(PitchSpelling.parse("C4"), ChordQuality.MAJOR, 0.0, 2.0,
-                            Confidence.CERTAIN))).score();
-            assertThat(placed.chords().isQuantized()).isTrue();
-
-            assertThatThrownBy(() ->
-                    new QuantizedScore(placed, List.of(), SwingFeel.STRAIGHT, 1))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("cannot also be on the beat axis");
-        }
-
-        @Test
-        @DisplayName("the count of unplaceable chords stays within the progression")
-        void rejectAnUnplaceableCountOutsideTheProgression() {
-            Score empty = Score.empty(fourFour(), 10);
-
-            assertThatThrownBy(() ->
-                    new QuantizedScore(empty, List.of(), SwingFeel.STRAIGHT, -1))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("must be between 0");
-            assertThatThrownBy(() ->
-                    new QuantizedScore(empty, List.of(), SwingFeel.STRAIGHT, 1))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("must be between 0");
-        }
-
-        @Test
-        @DisplayName("withScore carries the count, and refuses a score that invalidated it")
-        void withScoreCarriesTheUnplaceableCount() {
-            // The documented failure mode, pinned rather than left for a caller
-            // to discover. withScore is for a stage that transforms the notes
-            // without moving them, and such a stage leaves the progression
-            // alone; one that rewrites the harmony has invalidated a count
-            // measured on the old progression, and carrying it forward silently
-            // would report a fact about chords that are no longer there.
-            TempoMap tempoMap = fourFour();
-            QuantizedScore withdrawn = Quantizer.quantize(chordsOnly(tempoMap,
-                    Chord.ofSeconds(PitchSpelling.parse("C4"), ChordQuality.MAJOR, 0.0, 0.2,
-                            Confidence.CERTAIN),
-                    Chord.ofSeconds(PitchSpelling.parse("G4"), ChordQuality.MAJOR, 0.2, 2.0,
-                            Confidence.CERTAIN)));
-            assertThat(withdrawn.unplaceableChords()).isEqualTo(1);
-
-            // The ordinary case: the harmony is untouched, so the count rides
-            // along and nothing complains.
-            assertThat(withdrawn.withScore(withdrawn.score()).unplaceableChords()).isEqualTo(1);
-
-            Score noChords = Score.empty(tempoMap, 10);
-            assertThatThrownBy(() -> withdrawn.withScore(noChords))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("must be between 0");
-
-            // And the gap in that check, pinned rather than left as a
-            // reassuring sentence. A rewrite that keeps as many chords and
-            // leaves them in seconds carries the old count along in silence, so
-            // the javadoc calls this a check and not a guarantee. Asserting the
-            // hole is what stops the javadoc drifting back into promising one.
-            QuantizedScore substituted = withdrawn.withScore(chordsOnly(tempoMap,
-                    Chord.ofSeconds(PitchSpelling.parse("D4"), ChordQuality.MAJOR, 0.0, 4.0,
-                            Confidence.CERTAIN),
-                    Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR, 4.0, 8.0,
-                            Confidence.CERTAIN)));
-            assertThat(substituted.unplaceableChords())
-                    .as("a count measured on chords that are no longer there, undetected")
-                    .isEqualTo(1);
-        }
-
-        @Test
         @DisplayName("a re-spelled score keeps the grids and the feel it was quantized with")
         void withScoreKeepsTheDecisions() {
             Performance performance = new Performance(fourFour(), 48);
@@ -1089,14 +1009,6 @@ class QuantizerTest {
                 List.of(), sections,
                 List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN)),
                 ChordProgression.empty(), Lyrics.empty(), duration);
-    }
-
-    /** A score whose only content is a chord progression. */
-    private static Score chordsOnly(TempoMap tempoMap, Chord... chords) {
-        return new Score(Optional.empty(), Optional.empty(), tempoMap, Optional.empty(),
-                List.of(), List.of(), List.of(),
-                new ChordProgression(List.of(chords), Confidence.CERTAIN),
-                Lyrics.empty(), 32.0);
     }
 
     private static List<Double> onsetBeats(QuantizedScore quantized) {

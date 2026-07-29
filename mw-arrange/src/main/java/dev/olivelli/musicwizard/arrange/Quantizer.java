@@ -212,9 +212,10 @@ import java.util.function.ToDoubleFunction;
  *       is one verdict for the whole progression and every consumer of the beat
  *       axis gates on it, so there is no per-chord fallback to take: a single
  *       unplaceable chord either costs the whole chart its beat axis or costs
- *       itself. {@link QuantizedScore#unplaceableChords()} carries how many, so
- *       a caller with a user in front of it can say why the chart came out on
- *       the coarser route.
+ *       itself. Nothing further is published to say which happened: after this
+ *       pass a non-empty progression whose {@code isQuantized()} is false is one
+ *       that was withdrawn, so a caller with a user in front of it can say why
+ *       the chart came out on the coarser route.
  * </ul>
  *
  * <p>That the chord case falls this way and not the other is #157, and it
@@ -361,7 +362,7 @@ public final class Quantizer {
                 key -> bars.beatOf(key.startBeat(), key.startSeconds()),
                 key -> bars.beatOf(key.endBeat(), key.endSeconds()),
                 Key::quantizedTo, bars::snapToBarLine, Quantizer::inSecondsOnly);
-        PlacedChords chords = chordsOnGrid(score.chords().chords(), bars);
+        List<Chord> chords = chordsOnGrid(score.chords().chords(), bars);
 
         SwingFeel swing = SwingFeel.STRAIGHT;
         List<NoteTrack> quantizedTracks = score.tracks();
@@ -401,9 +402,9 @@ public final class Quantizer {
         }
 
         Score quantized = new Score(score.title(), score.artist(), tempoMap, score.beatGrid(),
-                keys, sections, quantizedTracks, score.chords().withChords(chords.chords()),
+                keys, sections, quantizedTracks, score.chords().withChords(chords),
                 score.lyrics(), score.durationSeconds());
-        return new QuantizedScore(quantized, grids, swing, chords.unplaceable());
+        return new QuantizedScore(quantized, grids, swing);
     }
 
     // ---------------------------------------------------------------- spans
@@ -435,17 +436,6 @@ public final class Quantizer {
     }
 
     /**
-     * A progression and how many of its chords could not be given a beat.
-     *
-     * <p>The two are not independent: the count is zero exactly when the chords
-     * carry beats, because one chord that cannot be placed takes the beat axis
-     * off all of them. {@link QuantizedScore} asserts that pairing rather than
-     * trusting it.
-     */
-    private record PlacedChords(List<Chord> chords, int unplaceable) {
-    }
-
-    /**
      * Puts a progression on the beat axis, or leaves the whole of it in seconds.
      *
      * <p>The all-or-nothing is forced by
@@ -455,22 +445,21 @@ public final class Quantizer {
      * worse answer than a chart placed by seconds, not a more approximate one.
      * The class javadoc argues that ranking; this is where it is spent.
      *
-     * <p>The count is of chords that <em>collapsed</em>, and it is worth being
-     * exact about that because the useful-sounding reading is a different
-     * quantity: it is not how many chords are shorter than their counted beat.
-     * {@link QuantizedScore#unplaceableChords()} carries the measurements and
-     * the warning to callers. No mechanism is offered for the difference here,
-     * deliberately -- two attempts to give one named the {@link #onGrid} clamp,
-     * and deleting the clamp changes the count in none of 320 swept cases.
+     * <p>Which of the two happened needs nothing carried alongside to say. After
+     * this pass a progression is either wholly on the beat axis or wholly off
+     * it, so a non-empty one whose {@code isQuantized()} is false is one that was
+     * withdrawn. An earlier draft published a count of the collapses too; it had
+     * no reader, and three attempts to describe what the number meant were each
+     * refuted by execution.
      */
-    private static PlacedChords chordsOnGrid(List<Chord> chords, BarTable bars) {
-        int[] unplaceable = {0};
+    private static List<Chord> chordsOnGrid(List<Chord> chords, BarTable bars) {
+        boolean[] collapsed = {false};
         List<Chord> placed = onGrid(chords,
                 chord -> bars.beatOf(chord.startBeat(), chord.startSeconds()),
                 chord -> bars.beatOf(chord.endBeat(), chord.endSeconds()),
                 Chord::quantizedTo, bars::snapToCountedBeat,
                 chord -> {
-                    unplaceable[0]++;
+                    collapsed[0] = true;
                     // Stripped rather than left carrying beats, so that the list
                     // this builds is well-formed even though the branch below
                     // discards it: every chord in it either sits on the grid or
@@ -482,11 +471,7 @@ public final class Quantizer {
                     // than one that is unobservable for a wrong one.
                     return inSecondsOnly(chord);
                 });
-        if (unplaceable[0] == 0) {
-            return new PlacedChords(placed, 0);
-        }
-        return new PlacedChords(chords.stream().map(Quantizer::inSecondsOnly).toList(),
-                unplaceable[0]);
+        return collapsed[0] ? chords.stream().map(Quantizer::inSecondsOnly).toList() : placed;
     }
 
     /**

@@ -190,7 +190,7 @@ class SpanQuantizationTest {
                     }
                     QuantizedScore quantized =
                             Quantizer.quantize(chordsOnly(tempoMap, spans.toArray(new Chord[0])));
-                    if (quantized.unplaceableChords() > 0) {
+                    if (!quantized.score().chords().isQuantized()) {
                         withdrawn++;
                         continue;
                     }
@@ -242,7 +242,7 @@ class SpanQuantizationTest {
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "D", "F");
             assertThat(quantized.score().chords().isQuantized()).isFalse();
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.isFullyQuantized()).isFalse();
         }
 
@@ -282,7 +282,7 @@ class SpanQuantizationTest {
             assertThat(quantized.score().chords().isQuantized()).isFalse();
             // Four of the eight, which is what a caller needs to tell a user
             // that the tempo they supplied is half the one the harmony moves at.
-            assertThat(quantized.unplaceableChords()).isEqualTo(4);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -299,7 +299,7 @@ class SpanQuantizationTest {
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "D", "G");
             assertThat(quantized.score().chords().chords().get(0).startSeconds()).isZero();
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -311,7 +311,7 @@ class SpanQuantizationTest {
             QuantizedScore quantized = Quantizer.quantize(score);
 
             assertThat(symbols(quantized.score().chords().chords())).containsExactly("D", "F");
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -332,7 +332,7 @@ class SpanQuantizationTest {
 
             QuantizedScore quantized = Quantizer.quantize(performance.score(chords));
 
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.score().tracks())
                     .allSatisfy(t -> assertThat(t.isQuantized()).isTrue());
@@ -367,7 +367,7 @@ class SpanQuantizationTest {
                     .containsExactly("C", "G");
             assertThat(quantized.score().chords().chords())
                     .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -383,8 +383,8 @@ class SpanQuantizationTest {
             // dropped the same chord would agree with each other just as
             // happily: what has to survive the second pass is the fallback, not
             // merely stability.
-            assertThat(once.unplaceableChords()).isEqualTo(1);
-            assertThat(twice.unplaceableChords()).isEqualTo(1);
+            assertThat(once.score().chords().isQuantized()).isFalse();
+            assertThat(twice.score().chords().isQuantized()).isFalse();
             assertThat(twice.score().chords().chords())
                     .isEqualTo(once.score().chords().chords());
         }
@@ -438,7 +438,7 @@ class SpanQuantizationTest {
                                 .as("chord %d of %d, %s", i, in.size(), tempoMap)
                                 .isEqualTo(withoutBeats(in.get(i)));
                     }
-                    if (out.unplaceableChords() > 0) {
+                    if (!out.score().chords().isQuantized()) {
                         withdrawn++;
                         assertThat(published).allSatisfy(
                                 c -> assertThat(c.isQuantized()).isFalse());
@@ -453,66 +453,6 @@ class SpanQuantizationTest {
             // exercising only the easy half.
             assertThat(placed).isGreaterThan(200);
             assertThat(withdrawn).isGreaterThan(200);
-        }
-
-        @Test
-        @DisplayName("the count is of collapses, and is not how much harmony is finer than the pulse")
-        void theCountIsOfCollapsesAndNotOfShortChords() {
-            // The javadoc used to prescribe a sentence a caller might print --
-            // "four of your eight chords are shorter than a beat at this tempo"
-            // -- from a number that does not measure that. Pinned as the
-            // property rather than as golden numbers: five memorised counts
-            // would change together the moment the clamp's phase behaviour did,
-            // and a reader could not tell whether the count had broken or merely
-            // moved. What must not change is that the two quantities differ.
-            for (double tempo : List.of(60.0, 40.0, 30.0, 24.0, 15.0)) {
-                TempoMap tempoMap = TempoMap.constant(tempo, TimeSignature.FOUR_FOUR);
-                Score score = chordsOnly(tempoMap, everyHalfSecond(0.0));
-
-                QuantizedScore quantized = Quantizer.quantize(score);
-
-                long shorterThanTheirBeat = score.chords().chords().stream()
-                        .filter(c -> tempoMap.secondsToBeats(c.endSeconds())
-                                - tempoMap.secondsToBeats(c.startSeconds()) < 1.0)
-                        .count();
-                assertThat(shorterThanTheirBeat)
-                        .as("the fixture only tests anything if every chord is short at %s BPM",
-                                tempo)
-                        .isEqualTo(8);
-                assertThat(quantized.unplaceableChords())
-                        .as("the count at %s BPM is not the number of short chords", tempo)
-                        .isLessThan((int) shorterThanTheirBeat);
-            }
-
-            // And "fewer" is not a rule either -- two chords too short to place
-            // at all give a count equal to the number of short chords. So the
-            // relation is not an offset to be corrected for; the quantities are
-            // simply different, which is the whole point.
-            QuantizedScore bothTooShort = Quantizer.quantize(chordsOnly(fourFour(),
-                    chord("C4", 0.0, 0.01), chord("G4", 0.01, 0.02)));
-            assertThat(bothTooShort.unplaceableChords()).isEqualTo(2);
-        }
-
-        @Test
-        @DisplayName("the same disagreement gives a different count at a different phase")
-        void theCountMovesWithThePhaseAndNotOnlyTheDisagreement() {
-            // Same tempo, same spans, same disagreement -- four starting
-            // offsets, and one of them counts differently. That is the whole
-            // claim: the count is not a function of the disagreement alone.
-            //
-            // No mechanism asserted, because two have been asserted here and
-            // both were wrong. The second blamed the onGrid clamp; deleting the
-            // clamp changes the count in none of 320 swept cases, while the
-            // deletion is live enough to fail four other tests. The first
-            // argued from two tempos and had the arithmetic wrong besides.
-            TempoMap tempoMap = TempoMap.constant(40, TimeSignature.FOUR_FOUR);
-            List<Integer> counts = new ArrayList<>();
-            for (double offset : List.of(0.0, 0.25, 0.50, 0.75)) {
-                counts.add(Quantizer.quantize(chordsOnly(tempoMap, everyHalfSecond(offset)))
-                        .unplaceableChords());
-            }
-
-            assertThat(counts).containsExactly(5, 5, 5, 6);
         }
 
         @Test
@@ -537,9 +477,9 @@ class SpanQuantizationTest {
                     placed.chords(), placed.lyrics(), placed.durationSeconds());
             QuantizedScore requantized = Quantizer.quantize(reread);
 
-            assertThat(requantized.unplaceableChords())
-                    .as("nothing collapses, so nothing warns")
-                    .isZero();
+            assertThat(requantized.score().chords().isQuantized())
+                    .as("nothing collapses, so the progression is placed and nothing warns")
+                    .isTrue();
             Chord last = requantized.score().chords().chords().get(3);
             double printed = last.startBeat().orElseThrow();
             double sounds = halved.secondsToBeats(last.startSeconds());
@@ -601,9 +541,9 @@ class SpanQuantizationTest {
                     // preserved for every input whatsoever, so hasSize(2) held
                     // even under a mutant that snapped chords to bar lines and
                     // collapsed every one of these.
-                    assertThat(quantized.unplaceableChords())
+                    assertThat(quantized.score().chords().isQuantized())
                             .as("%s, offset %d of a unit", meter, step)
-                            .isZero();
+                            .isTrue();
                     assertThat(quantized.score().chords().chords())
                             .as("%s, offset %d of a unit", meter, step).hasSize(2);
                 }
@@ -637,7 +577,7 @@ class SpanQuantizationTest {
 
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "G", "F");
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -687,7 +627,7 @@ class SpanQuantizationTest {
                     assertThat(symbols(overlapping.score().chords().chords()))
                             .as("%s, offset %d", meter, step)
                             .containsExactly("C", "G", "F");
-                    if (overlapping.unplaceableChords() > 0) {
+                    if (!overlapping.score().chords().isQuantized()) {
                         lost.add(meter + "#" + step);
                     } else {
                         // Nothing else moves: away from the midpoint the overlap
@@ -720,7 +660,7 @@ class SpanQuantizationTest {
                     chord("D4", at(tempoMap, 3.3), at(tempoMap, 3.8)),
                     chord("F4", at(tempoMap, 3.8), at(tempoMap, 7.5)));
             QuantizedScore quantized = Quantizer.quantize(straddling);
-            assertThat(quantized.unplaceableChords()).isEqualTo(1);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "D", "F");
 
@@ -929,7 +869,7 @@ class SpanQuantizationTest {
                     .anySatisfy(s -> assertThat(s.isQuantized()).isFalse());
             assertThat(quantized.score().keys())
                     .anySatisfy(k -> assertThat(k.isQuantized()).isFalse());
-            assertThat(quantized.unplaceableChords()).isPositive();
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test

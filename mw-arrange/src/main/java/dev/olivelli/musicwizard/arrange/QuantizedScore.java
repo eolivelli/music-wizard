@@ -41,15 +41,8 @@ import java.util.Optional;
  *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
  *              it does not apply to compound bars -- use {@link #swingIn(int)}
  *              rather than printing this over every system
- * @param unplaceableChords how many chords collapsed, meaning their two
- *              boundaries snapped to one position so they could not be given a
- *              beat of their own. Zero on anything that came out on the beat
- *              axis; non-zero only on a progression left entirely in seconds.
- *              <b>Not</b> a count of how much harmony is finer than the pulse --
- *              see {@link #unplaceableChords()}
  */
-public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
-                             int unplaceableChords) {
+public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) {
 
     public QuantizedScore {
         Objects.requireNonNull(score, "score");
@@ -62,32 +55,6 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
                                 + grids.get(i).bar() + " after bar " + grids.get(i - 1).bar());
             }
         }
-        if (unplaceableChords < 0 || unplaceableChords > score.chords().size()) {
-            throw new IllegalArgumentException(
-                    "unplaceableChords must be between 0 and the " + score.chords().size()
-                            + " chords in the progression, got: " + unplaceableChords);
-        }
-        // The count and the axis are two readings of one fact, and pairing a
-        // score with somebody else's count is the mistake withScore exists to
-        // prevent for the grids. A progression that lost a chord lost the beat
-        // axis with it: there is no half-placed progression to report.
-        if (unplaceableChords > 0 && score.chords().isQuantized()) {
-            throw new IllegalArgumentException(
-                    "a progression reporting " + unplaceableChords + " unplaceable chords"
-                            + " cannot also be on the beat axis; one unplaceable chord takes"
-                            + " the beat axis off the whole progression");
-        }
-    }
-
-    /**
-     * The three-argument form, for a stage that placed every chord it was given.
-     *
-     * <p>Which is every caller that is not {@link Quantizer} itself: a score
-     * whose chords are on the beat axis, or which has no chords, has nothing to
-     * report here.
-     */
-    public QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) {
-        this(score, grids, swing, 0);
     }
 
     /** The grid chosen for a bar, or empty when nothing sounds in that bar. */
@@ -155,106 +122,9 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * grids and the feel still describe the result. Rebuilding the record by
      * hand is legal and is one argument order away from pairing a score with
      * somebody else's grids.
-     *
-     * <p><b>It can throw</b>, for a score that changed the harmony rather than
-     * the notes: the count came from the old progression, and the constructor's
-     * validation is applied to the new one. That is deliberate rather than an
-     * oversight left visible -- clamping the count to zero instead would
-     * manufacture the claim that every chord was placed, about a progression
-     * sitting in seconds, which is worse than either alternative.
-     *
-     * <p>It is a check and <b>not a guarantee</b>, and the difference is worth
-     * stating because the reassuring version of this paragraph is what a caller
-     * would act on. Two rewrites are caught: one leaving fewer chords than the
-     * count, and one handing in any progression that is on the beat axis. A
-     * rewrite
-     * that keeps at least as many chords and leaves them in seconds is
-     * <em>not</em> caught -- swap {@code [C, G]} for {@code [D, E]} and a count
-     * of one measured on the first rides along onto the second in silence. A
-     * stage that rewrites harmony should build the record itself and state its
-     * own count. None does today: {@code spell} passes the progression through
-     * by reference.
-     *
-     * @throws IllegalArgumentException if the new score's progression has fewer
-     *         chords than this count, or is on the beat axis while this count is
-     *         non-zero
      */
     public QuantizedScore withScore(Score newScore) {
-        return new QuantizedScore(newScore, grids, swing, unplaceableChords);
-    }
-
-    /**
-     * How many chords collapsed, which is why the whole progression is still in
-     * seconds.
-     *
-     * <p><b>The canonical statement of what a withdrawal is</b>, referenced from
-     * elsewhere in this file rather than restated, because it has now been got
-     * wrong twice by being paraphrased. A chord <em>collapsed</em> when its two
-     * boundaries snapped to a single position, leaving it no length. That is
-     * usually because it is shorter than the counted beat it falls in, and it is
-     * not the same thing: a chord of exactly one counted beat collapses when the
-     * microsecond of overlap {@code ChordProgression} tolerates resolves its
-     * start forward onto a rounding midpoint. No chord in that progression is
-     * shorter than its counted beat by any reading, and it is withdrawn
-     * regardless.
-     *
-     * <p>One example rather than two on purpose. The other candidate -- a chord
-     * of one 7/8 beat straddling a meter change into 4/4 -- turns on which unit
-     * counts as "its own", and {@link Quantizer} answers that the unit is the
-     * longest one the span touches, under which the chord <em>is</em> shorter
-     * than its unit. It would illustrate the point only under the reading that
-     * class explicitly rejects, and a paragraph whose job is to stop this fact
-     * being paraphrased wrongly should not re-open the ambiguity in its own
-     * second clause.
-     *
-     * <p>Zero on every score that came out on the beat axis, and the two are
-     * exactly complementary: {@link Quantizer} does not discard a chord, so a
-     * progression it could not place completely it does not place at all. That
-     * is #157. The alternative -- dropping the short ones -- turns
-     * {@code --tempo 60} against material heard at 120 into a chart that names
-     * I-vi-I-vi where the music played I-V-vi-IV, silently.
-     *
-     * <p><b>What it is not</b> takes more saying than what it is, because the
-     * obvious reading is wrong and an earlier version of this javadoc printed
-     * it. This is <em>not</em> a count of the chords that are shorter than their
-     * counted beat, and a caller must not say "four of your eight chords are
-     * shorter than a beat at this tempo" from it. Only the chords whose
-     * boundaries actually landed on one position are counted, and the difference
-     * is not a constant offset: it turns on where in the beat the progression
-     * happens to start. The eight-chord fixture from #157, every chord of which
-     * is shorter than a counted beat at every tempo below, read against a
-     * supplied tempo of 40 BPM:
-     *
-     * <pre>
-     * first chord at 0.00 s   unplaceable 5 of 8
-     * first chord at 0.25 s   unplaceable 5 of 8
-     * first chord at 0.50 s   unplaceable 5 of 8
-     * first chord at 0.75 s   unplaceable 6 of 8
-     * </pre>
-     *
-     * <p>Nor is it a scale of how badly the pulse disagrees, though it does rise
-     * with it -- 4, 5, 6, 6, 7 at 60, 40, 30, 24 and 15 BPM against that
-     * fixture, where the disagreement runs from twofold to eightfold. It does
-     * not rise <em>in proportion</em>, and that is the whole of what can be said
-     * about the shape of it.
-     *
-     * <p>Two stronger versions of that sentence have been written here and both
-     * were refuted by execution -- "does not grow with the disagreement", which
-     * the row above contradicts, and "not even monotone once the phase is
-     * allowed to vary", which a sweep of 440 tempos at 90 phases each finds zero
-     * counterexamples to. The count is monotone non-decreasing in the
-     * disagreement even with the phase chosen adversarially. This note is here
-     * because the third version of a sentence is where the temptation is to
-     * write a fourth.
-     *
-     * <p>So what a caller may say from it is what it measures: that the harmony
-     * could not be put on the beat axis, and that this many chord spans had no
-     * beat of their own. A caller wanting to tell a user how badly the supplied
-     * tempo disagrees should measure that itself, from the spans and the map,
-     * where the question has an exact answer.
-     */
-    public int unplaceableChords() {
-        return unplaceableChords;
+        return new QuantizedScore(newScore, grids, swing);
     }
 
     /**
@@ -276,15 +146,11 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      *
      * <p>False is a legitimate answer for a score this class produced. A section
      * or key too short to sit between two bar lines keeps its seconds and no
-     * beats, and says so here; so does a whole progression withdrawn from the
-     * beat axis, and {@link #unplaceableChords()} is then the reason why and
-     * says what withdrawal means. Deliberately not restated here: this is the
-     * third place in this file that would describe the same fact, and the
-     * previous attempt at the third one got it wrong -- it said the progression
-     * is withdrawn "because one of its chords was shorter than a counted beat",
-     * which is the usual cause and not the condition, and is false for the two
-     * cases {@code theToleratedOverlapIsTheOneExceptionToTheBound} and
-     * {@code aMeterChangeToALongerBeatMovesTheBound} pin.
+     * beats, and says so here; so does a whole progression {@link Quantizer}
+     * could not place, which it withdraws entire rather than dropping the chord
+     * it could not give a beat to. After that pass the two cases are
+     * distinguishable without anything further being carried: a progression that
+     * is not empty and not quantized is one that was withdrawn.
      */
     public boolean isFullyQuantized() {
         return score.tracks().stream().allMatch(t -> t.isQuantized())
