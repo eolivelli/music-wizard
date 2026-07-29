@@ -72,10 +72,11 @@ import java.util.Optional;
  * @param stepsPerBracket steps under one bracket, the ratio's {@code actual}
  * @param bracketLength   one bracket's sounding length in quarter-note beats
  * @param writtenStep     one grid step as it is printed inside the bracket
- * @param ratio           the ratio as LilyPond spells it, e.g. {@code 3/2}
+ * @param normal          the ratio's {@code normal}: how many of the written
+ *                        value the bracket is played in
  */
 record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int divisions,
-                 int stepsPerBracket, double bracketLength, double writtenStep, String ratio) {
+                 int stepsPerBracket, double bracketLength, double writtenStep, int normal) {
 
     /**
      * The bar as a tuplet bar, or empty when its grid is the meter's natural
@@ -127,7 +128,18 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
         }
         return Optional.of(new TupletBar(grid.startBeat(), grid.timeSignature(),
                 grid.stepQuarters(), grid.divisions(), actual, bracketLength,
-                writtenStep, tuplet.get().toString()));
+                writtenStep, normal));
+    }
+
+    /**
+     * The ratio as LilyPond spells it, e.g. {@code 3/2}.
+     *
+     * <p>Derived from the two numbers rather than carried as a third field, so
+     * that a bracket's printed ratio and the {@code actual}/{@code normal} pair
+     * MusicXML wants cannot say different things.
+     */
+    String ratio() {
+        return stepsPerBracket + "/" + normal;
     }
 
     /** The next bar's downbeat in quarter-note beats. */
@@ -198,13 +210,14 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
     }
 
     /**
-     * The distance from a grid step to the bar line, as a LilyPond duration.
+     * The distance from a grid step to the bar line, as an exact fraction of a
+     * whole note.
      *
      * <p>What {@code \partial} needs, and the one length in a tuplet bar that
      * cannot be written as a note value plus a count of 64ths: a pickup entering
      * two triplet eighths before the bar line is two thirds of a quarter, and
-     * {@link LilyPondDuration#scaled} refuses it — correctly, since no whole
-     * number of 64ths is that long.
+     * {@link LilyPondDuration#wholeNoteFraction} refuses it — correctly, since
+     * no whole number of 64ths is that long.
      *
      * <p>Computed as an exact fraction of a whole note rather than from the
      * position, because the position is a third of a beat and the fraction is
@@ -212,9 +225,16 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
      * {@link #divisions} grid steps, so a run of {@code n} steps is
      * {@code n * numerator} over {@code denominator * divisions} whole notes,
      * with no division performed anywhere.
+     *
+     * <p>A fraction rather than a formatted duration because a second emitter
+     * now asks the same question and wants a different answer written: MusicXML
+     * marks a short opening bar rather than naming its length. The arithmetic is
+     * the part that is easy to get wrong, so it is the part that is shared.
+     *
+     * @return {@code {numerator, denominator}} in whole notes
      */
-    String scaledLengthToBarLine(int step) {
-        return LilyPondDuration.scaled((long) (divisions - step) * meter.numerator(),
-                (long) meter.denominator() * divisions);
+    long[] lengthToBarLine(int step) {
+        return new long[] {(long) (divisions - step) * meter.numerator(),
+                (long) meter.denominator() * divisions};
     }
 }

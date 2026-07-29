@@ -101,7 +101,7 @@ final class MetricSplitter {
      * @throws IllegalArgumentException if the span leaves the bar or does not
      *         land on the 64th-note grid
      */
-    static List<String> split(TimeSignature meter, double fromInBar, double toInBar) {
+    static List<NoteValue> split(TimeSignature meter, double fromInBar, double toInBar) {
         Objects.requireNonNull(meter, "meter");
         double barLength = meter.quarterBeatsPerBar();
         requireOnGrid(fromInBar, "fromInBar");
@@ -111,7 +111,7 @@ final class MetricSplitter {
                     "span " + fromInBar + ".." + toInBar + " leaves a " + meter + " bar,"
                             + " which holds " + barLength + " quarter beats");
         }
-        List<String> values = new ArrayList<>();
+        List<NoteValue> values = new ArrayList<>();
         emit(barTree(meter), fromInBar, toInBar,
                 meter.beatUnitQuarters(), meter.isCompound(), values);
         return values;
@@ -128,14 +128,14 @@ final class MetricSplitter {
     }
 
     private static void emit(Unit unit, double from, double to,
-                             double beatUnit, boolean compound, List<String> out) {
+                             double beatUnit, boolean compound, List<NoteValue> out) {
         if (!(to > from)) {
             return;
         }
         if (unit.children().isEmpty()) {
             // The shortest unit. The grid guarantees the span is the whole of it,
             // so a missing value here means the tree and the grid disagree.
-            out.add(LilyPondDuration.of(to - from).orElseThrow(() -> new IllegalStateException(
+            out.add(LilyPondDuration.valueOf(to - from).orElseThrow(() -> new IllegalStateException(
                     "no note value for " + (to - from) + " quarter beats at the shortest unit")));
             return;
         }
@@ -143,7 +143,7 @@ final class MetricSplitter {
         if (isNaturalLength(length, unit.childLength(), unit.children().size())
                 && mayStartHere(from, to, beatUnit, compound)
                 && LilyPondDuration.isSingleValue(length)) {
-            out.add(LilyPondDuration.of(length).orElseThrow());
+            out.add(LilyPondDuration.valueOf(length).orElseThrow());
             return;
         }
         List<Unit> children = unit.children();
@@ -162,7 +162,7 @@ final class MetricSplitter {
                 // by construction and is not re-asked here.
                 int last = longestRunFrom(children, index, to, child.start());
                 if (last >= 0) {
-                    out.add(LilyPondDuration.of(children.get(last).end() - child.start())
+                    out.add(LilyPondDuration.valueOf(children.get(last).end() - child.start())
                             .orElseThrow());
                     index = last + 1;
                     continue;

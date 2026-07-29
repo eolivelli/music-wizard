@@ -230,7 +230,8 @@ class TupletBarTest {
     void everyPickupLengthIsWritable() {
         for (TupletBar bar : everyTupletBar()) {
             for (int step = 0; step < bar.divisions(); step++) {
-                String duration = bar.scaledLengthToBarLine(step);
+                long[] fraction = bar.lengthToBarLine(step);
+                String duration = LilyPondDuration.scaled(fraction[0], fraction[1]);
                 assertThat(LilyPondNotes.quartersOf(duration))
                         .as("%s %s: from step %d of %d", bar.meter(), bar.ratio(), step,
                                 bar.divisions())

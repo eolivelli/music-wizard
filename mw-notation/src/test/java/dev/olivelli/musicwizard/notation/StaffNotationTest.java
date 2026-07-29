@@ -564,10 +564,10 @@ class StaffNotationTest {
         // sixteen, having survived nine rounds. It is the argument for the
         // number, so it is checked rather than asserted: one bar of 4/4 at 120
         // quarter-note BPM lasts two seconds.
-        double hours = StaffNotation.MAX_BARS * 4 / 120.0 / 60.0;
+        double hours = StaffLayout.MAX_BARS * 4 / 120.0 / 60.0;
         assertThat(hours)
                 .as("the ceiling is %d bars, which is %.1f hours of 4/4 at 120 BPM",
-                        StaffNotation.MAX_BARS, hours)
+                        StaffLayout.MAX_BARS, hours)
                 .isBetween(2.0, 2.5);
     }
 
