@@ -114,6 +114,27 @@ exactly like a test failure in the summary; on this project that silently turned
 10 of 25 mutants into false kills. Check that each claimed kill names the test
 that failed, and build with `-am` so siblings come from the source tree.
 
+**A mutation sweep is a piece of software, and its failures all look like
+results.** This project has now been misled by it four separate ways, each
+producing a confident number that was not measured:
+
+- a stale sibling resolved from a shared repository, so the mutant never built;
+- a stale sibling resolved from the agent's *own* isolated repository, because
+  something was `install`ed into it mid-sweep and the next `mvn -pl` run without
+  `-am` picked it up;
+- `git checkout --` reverting the mutation *and* an uncommitted fix, so the
+  suite then ran against code missing both;
+- a restored source file left with an older mtime than its `.class`, so Maven
+  skipped recompiling and fifteen "kills" ran against unmutated bytes.
+
+And once, three reported *survivors* were the harness silently failing to
+substitute at all — with the substitution asserted, all three died.
+
+So: assert that the mutation is present in the source before running, take
+final numbers from a clean rebuild, and treat a surprising survivor as a
+suspected harness fault before reporting it as a coverage gap. A sweep that
+cannot show its own mutation took effect has measured nothing.
+
 Review in your own worktree with your own local Maven repository —
 `-Dmaven.repo.local=<your worktree>/.m2` on every invocation — for the same
 reason the author does. A shared `~/.m2` carries another agent's installed
