@@ -295,41 +295,58 @@ class ProvenanceTest {
         }
 
         @Test
-        @DisplayName("one mistyped label costs more than all of them mistyped")
-        void aSingleMistypedLabelIsTheDamagingCase() {
-            // Backs the paragraph on Provenance.fromJson, because the intuitive
-            // reading of a forgiving reader is backwards. A label this build
-            // does not recognise reads as UNKNOWN, and what that costs depends
-            // on how many of them there are.
+        @DisplayName("a mistyped label costs whatever the score's other evidence says")
+        void aMistypedLabelCostsWhateverTheScoreElseSays() {
+            // Backs the table on Provenance.fromJson. A forgiving reader turns a
+            // misspelt label into UNKNOWN, and what that costs is neither "the
+            // value is not recorded" nor monotonic in the number of typos: it
+            // depends on what other evidence the score carries, and the polarity
+            // inverts between a score with a beat grid and one without.
+            //
+            // Both columns matter. The second is not hypothetical -- it is the
+            // shape a MIDI import plus --tempo produces once #98 lands, and the
+            // one aSuppliedTempoSurvivesWithoutABeatGrid exists for.
             BeatGrid grid = gridOf(pulses(0.2, 0.5, 24));
             assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
-                    .as("the grid must disagree with the correction, or this shows nothing")
+                    .as("the grid must disagree with the correction, or a column shows nothing")
                     .isCloseTo(120.0, within(1e-6));
 
-            // Intact: the correction is read and wins.
-            assertThat(Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid).estimatedTempo())
-                    .isEqualTo(60.0);
-
-            // One label lost. The map still records some provenance, so the
-            // proxy does not run -- and there is no supplied tempo left to
-            // find, so the answer comes from the grid and the correction is
-            // gone. This is the damaging case.
+            // The supplied label lost, the derived anchor surviving.
             TempoMap oneLost = new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 0.0, 300.0, Provenance.DERIVED),
                             new TempoMap.TempoSegment(1.0, 0.2, 60.0, Provenance.UNKNOWN)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
-            assertThat(Score.empty(oneLost, 12.0).withBeatGrid(grid).estimatedTempo())
-                    .isEqualTo(120.0);
-
-            // Every label lost. The map records nothing, the proxy runs, and it
-            // happens to get this one right. Benign, which is the opposite of
-            // what "more typos is worse" would suggest.
+            // Every label lost, which is what a pre-#120 file looks like too.
             TempoMap allLost = new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 0.0, 300.0),
                             new TempoMap.TempoSegment(1.0, 0.2, 60.0)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+
+            // With a grid: one typo discards the correction, because the map
+            // records some provenance so the proxy does not run and there is no
+            // supplied tempo left to find. All of them typed wrong happens to
+            // come out right, since the proxy runs and identifies the lead-in by
+            // position.
+            assertThat(Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid).estimatedTempo())
+                    .isEqualTo(60.0);
+            assertThat(Score.empty(oneLost, 12.0).withBeatGrid(grid).estimatedTempo())
+                    .isEqualTo(120.0);
             assertThat(Score.empty(allLost, 12.0).withBeatGrid(grid).estimatedTempo())
                     .isEqualTo(60.0);
+
+            // Without a grid the polarity inverts. One typo is harmless -- the
+            // surviving DERIVED label still says which segment is the anchor, so
+            // the fallback skips it and answers 60. All of them lost is the
+            // damaging case: nothing identifies the anchor, its 300 is averaged
+            // in, and 64 comes back -- a figure nobody supplied and the music
+            // never had.
+            assertThat(Score.empty(suppliedSixty(), 12.0).estimatedTempo()).isEqualTo(60.0);
+            assertThat(Score.empty(oneLost, 12.0).estimatedTempo()).isEqualTo(60.0);
+            assertThat(Score.empty(allLost, 12.0).estimatedTempo())
+                    .isCloseTo(64.0, within(1e-9));
+            assertThat(Score.empty(allLost, 12.0).estimatedTempo())
+                    .as("64 is not a tempo anything in this score states")
+                    .isNotIn(60.0, 120.0, 300.0);
         }
 
         @Test

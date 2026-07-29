@@ -137,22 +137,36 @@ public enum Provenance {
      * {@code PartRole}, where there is no "not recorded" reading and a null
      * would fail a component's own validation several frames later. #142.
      *
-     * <p>It swallows a misspelt label as well as a future one, and the cost of
-     * that is worth stating precisely, because the intuitive reading of it is
-     * backwards. A <em>single</em> mistyped label is the damaging case. On the
-     * map {@code --tempo 60} builds -- a derived anchor and a supplied 60, over
-     * a grid tracked at 120 -- mistyping only the supplied label leaves the map
-     * recording <em>some</em> provenance, so {@link Score#estimatedTempo()}
-     * neither finds a supplied tempo nor falls back to the shape proxy, and
-     * answers from the grid: the correction is discarded and 120 is reported.
-     * Mistyping <em>every</em> label is the benign one, since the map then
-     * records nothing, the proxy runs, and 60 comes back.
+     * <p>It swallows a misspelt label as well as a future one, and what that
+     * costs is worth tabulating rather than summarising, because it is neither
+     * "the value is not recorded" nor monotonic in the number of typos. On the
+     * map {@code --tempo 60} builds -- a {@link #DERIVED} anchor and a
+     * {@link #SUPPLIED} 60 -- {@link Score#estimatedTempo()} answers:
      *
-     * <p>So a typo does not degrade to "not recorded". It degrades to the beat
-     * grid, on the correction this project calls the highest-value action a user
-     * can take. Nothing this tool writes can produce one; a hand-edited file
-     * can, and {@code ProvenanceTest.aSingleMistypedLabelIsTheDamagingCase}
-     * pins both halves so this paragraph cannot quietly stop being true.
+     * <pre>
+     *   labels lost   with a beat grid at 120   with no beat grid
+     *   none                     60                     60
+     *   one (the supplied)      120                     60
+     *   all                      60                     64
+     * </pre>
+     *
+     * <p>Each wrong cell is wrong for its own reason. With a grid, losing one
+     * label leaves the map recording <em>some</em> provenance, so neither a
+     * supplied tempo nor the shape proxy answers and the grid does -- the
+     * correction is discarded. With no grid, losing <em>every</em> label sends
+     * the map to the proxy, which gives up, and the fallback then has no
+     * {@code DERIVED} label to tell it which segment is the anchor, so the
+     * anchor's 300 is averaged in and 64 comes back: a figure nobody supplied
+     * and the music never had. Losing every label with a grid, and losing one
+     * without, both happen to come out right.
+     *
+     * <p>So the honest summary is that a typo degrades to whatever the score's
+     * <em>other</em> evidence says, which on this particular correction is the
+     * highest-value action a user can take. Nothing this tool writes can produce
+     * one; a hand-edited file can, and
+     * {@code ProvenanceTest.aMistypedLabelCostsWhateverTheScoreElseSays} pins
+     * every cell of that table so this paragraph cannot quietly stop being
+     * true.
      *
      * <p>It also declines an ordinal, which Jackson would otherwise accept: a
      * bare {@code 2} used to read as {@code DECLARED} and now reads as
