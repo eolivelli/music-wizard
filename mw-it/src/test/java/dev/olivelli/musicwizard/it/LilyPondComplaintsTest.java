@@ -272,27 +272,32 @@ class LilyPondComplaintsTest {
                 TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         // And the thing the ban exists for, beside the tolerated line rather
-        // than instead of it. #145 added a second copy of this case in the older
-        // spelling, on the grounds that the tolerance must not go
-        // version-sensitive the way the assertions in that issue did. It is gone
-        // again, and the reasoning is worth more than the assertion was.
+        // than instead of it -- in both of LilyPond's spellings, which is #145's
+        // point and which #148's review rounds argued back and forth over.
         //
-        // Round 2 of review showed the filter cannot read the bar-check wording:
-        // it selects lines containing "warning" or "error" and excludes one
-        // exact string, and javap confirms no bar-check text in the method or
-        // either lambda. Round 3 then refuted the stronger form of that -- a
-        // mutant adding "&& !line.contains(\"barcheck\")" to the tolerance does
-        // make the two spellings differ, so it is mutations of the expressions
-        // this filter contains that cannot, not mutations at all.
-        //
-        // The copy still goes, because that mutant is killed by a real binary:
-        // under LilyPond 2.24 the bar check in
+        // Where that argument got to, and why the older spelling is back. Round
+        // 2 of #148 showed the filter cannot read the bar-check wording at all:
+        // it selects on "warning" or "error" and excludes exact strings, and
+        // javap confirms no bar-check text in the method or its lambdas. Round 3
+        // refuted the stronger form -- a mutant adding
+        // "&& !line.contains(\"barcheck\")" to the tolerance does make the two
+        // spellings differ -- and the copy was dropped anyway, on the grounds
+        // that a real binary kills that mutant: under 2.24
         // TupletEngravingIT.bracketsAreEngravedWithTheDurationTheyClaim reaches
-        // this filter in the older spelling already, so the integration job
-        // covers it on the version where it matters and the synthetic copy only
-        // duplicated it.
+        // this filter in the older spelling already.
+        //
+        // Round 2 of #164 measured what that is worth on the other version. The
+        // mutant is killed by three integration tests under 2.24.3 and by
+        // *nothing at all* under 2.26.0 -- so every developer on Homebrew
+        // LilyPond, which is what CLAUDE.md says most of them have, could widen
+        // the tolerance to swallow bar checks and see a green suite. One line
+        // here closes that, in the job everyone runs, on every machine.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4"),
+                TOLERATED_COMPLAINT))
+                .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> assertEngravedCleanly("the older spelling beside it",
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: barcheck failed at: 3/4"),
                 TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> assertEngravedCleanly("a real error",
