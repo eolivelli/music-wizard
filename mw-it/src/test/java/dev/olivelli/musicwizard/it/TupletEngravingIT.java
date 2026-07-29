@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -84,8 +85,7 @@ class TupletEngravingIT {
      *
      * <p>Every other line mentioning a warning or an error fails the test,
      * because that is what makes engraving worth doing at all: a bar that does
-     * not fill its meter is a {@code warning: bar check failed} and nothing else
-     * catches it.
+     * not fill its meter is a {@code warning:} line and nothing else catches it.
      *
      * <p>This one is different in kind and the difference is checkable rather
      * than asserted. It is a complaint about <em>spacing</em> — LilyPond cannot
@@ -272,7 +272,13 @@ class TupletEngravingIT {
                 .renderSource(tempDirectory.resolve("short/bar.ly"), source);
 
         assertThat(result.succeeded()).isTrue();
-        assertThat(result.output()).containsIgnoringCase("bar check failed");
+        // A bracket holding two eighths where three were promised leaves the bar
+        // a triplet eighth short, so the bar check fires at 11/12 rather than at
+        // 1. Asserting the moment is what says \tuplet was read as a duration
+        // scaler; asserting merely that LilyPond complained would not.
+        assertThat(failedBarChecksIn(result.output()))
+                .as("%s", result.output())
+                .contains("11/12");
         // And the one complaint this suite tolerates does not swallow it. A
         // tolerance is only worth having if the thing it was carved out of still
         // fails, so the carve-out is pointed at the failure it must not cover.
@@ -415,10 +421,14 @@ class TupletEngravingIT {
         // Round 4 rendered this page at 900 dpi and looked at both complaint
         // sites: the tuplet number is present and legible, placed above the
         // steep beam rather than inside it. Nothing missing, nothing colliding.
-        // Spelled the way LilyPond 2.26 spells it, with the space. Round 5 of
-        // review found this written "barcheck" -- a string LilyPond never emits,
-        // so the assertion could not have failed whatever the bar summed to.
-        assertThat(result.output()).doesNotContainIgnoringCase("bar check");
+        // Round 5 of review found this written "barcheck" and corrected it to
+        // "bar check", on the grounds that "barcheck" is a string LilyPond never
+        // emits. Both halves were half right and #145 is the other half: 2.26
+        // spells it with the space and 2.24 -- which is what the integration job
+        // installs -- without, so whichever of the two was written here, this
+        // assertion could not fail on one of the two versions in use. Asking for
+        // the moments rather than for the prose is what removes the question.
+        assertThat(failedBarChecksIn(result.output())).isEmpty();
         assertThat(result.pdf()).isPresent();
         assertEngravedCleanly("the tolerated case", result);
     }
@@ -451,9 +461,14 @@ class TupletEngravingIT {
                 engraved(TOLERATED_COMPLAINT + " (and something else went wrong)")))
                 .isInstanceOf(AssertionError.class);
         // And the thing the ban exists for, beside the tolerated line rather
-        // than instead of it.
+        // than instead of it -- in both of the spellings LilyPond has for it,
+        // because the tolerance must not become version-sensitive by accident
+        // the way the assertions in #145 did.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
+                .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> assertEngravedCleanly("an older bar check beside it",
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: barcheck failed at: 3/4")))
                 .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> assertEngravedCleanly("a real error",
                 engraved("part.ly:5:20: error: syntax error, unexpected '}'")))
