@@ -1,0 +1,144 @@
+{
+  "title" : null,
+  "artist" : null,
+  "tempoMap" : {
+    "segments" : [ {
+      "startBeat" : 0.0,
+      "startSeconds" : 0.0,
+      "beatsPerMinute" : 300.0
+    }, {
+      "startBeat" : 1.0,
+      "startSeconds" : 0.2,
+      "beatsPerMinute" : 60.0
+    } ],
+    "meterChanges" : [ {
+      "startBar" : 0,
+      "timeSignature" : {
+        "numerator" : 4,
+        "denominator" : 4
+      }
+    } ]
+  },
+  "beatGrid" : {
+    "beats" : [ {
+      "seconds" : 0.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 0.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 1.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 1.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 2.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 2.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 3.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 3.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 4.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 4.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 5.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 5.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 6.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 6.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 7.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 7.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 8.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 8.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 9.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 9.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    }, {
+      "seconds" : 10.2,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 10.7,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 11.2,
+      "downbeat" : false,
+      "positionInBar" : 2
+    }, {
+      "seconds" : 11.7,
+      "downbeat" : false,
+      "positionInBar" : 3
+    } ],
+    "beatConfidence" : {
+      "value" : 0.8
+    },
+    "downbeatConfidence" : {
+      "value" : 0.8
+    }
+  },
+  "keys" : [ ],
+  "sections" : [ ],
+  "tracks" : [ ],
+  "chords" : {
+    "chords" : [ ],
+    "confidence" : {
+      "value" : 0.0
+    }
+  },
+  "lyrics" : {
+    "lines" : [ ],
+    "language" : "und",
+    "confidence" : {
+      "value" : 0.0
+    }
+  },
+  "durationSeconds" : 12.0
+}

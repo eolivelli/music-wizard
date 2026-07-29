@@ -27,7 +27,9 @@ import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import java.nio.file.Path;
@@ -174,6 +176,17 @@ class MidiImportTest {
                 .tempo(120)
                 .part("Melody", 0).note(1, 1, 60).build();
         assertThat(TRANSCRIBER.transcribe(exact).tempoMap().initialTempo()).isEqualTo(120.0);
+        // And the figure a consumer actually reads is the stored one, not a
+        // re-derivation of it: estimatedTempo answers a declared map from the
+        // map, and a mean over a single segment has to come back bit-identical
+        // or the pipeline reports a tempo the file does not contain.
+        //
+        // An end-to-end pin, not a reproduction -- whether the round trip
+        // through beats and back loses a bit depends on the duration, and this
+        // fixture's does not. ProvenanceTest.aSingleSegmentWindowIsExact picks
+        // a duration where it does, and fails without the fix.
+        assertThat(TRANSCRIBER.transcribe(sequence).estimatedTempo())
+                .isEqualTo(MidiFixtures.storedTempo(140));
     }
 
     @Test
@@ -213,6 +226,50 @@ class MidiImportTest {
         // note is not at the origin.
         assertThat(score.tracks().get(0).notes().get(0).onsetSeconds())
                 .isEqualTo(1.0, within(1e-12));
+    }
+
+    @Test
+    @DisplayName("tells a tempo the file declares from the one substituted for it")
+    void declaredAndSubstitutedTempiAreLabelledApart() {
+        // The two produce the identical number, which is the whole difficulty:
+        // 120 read from a tempo event and 120 supplied by the specification are
+        // indistinguishable once the map is built. #117 had to hedge its output
+        // for exactly this. The importer is the only code that knows, so it
+        // records it.
+        Sequence declares = MidiFixtures.sequence()
+                .tempo(120)
+                .part("Melody", 0).note(1, 1, 60).build();
+        Sequence declaresNothing = MidiFixtures.sequence()
+                .timeSignature(4, 4)
+                .part("Melody", 0).note(2, 1, 60).build();
+
+        Score declared = TRANSCRIBER.transcribe(declares);
+        Score assumed = TRANSCRIBER.transcribe(declaresNothing);
+
+        assertThat(declared.tempoMap().initialTempo())
+                .as("the same figure either way, which is why the label is needed")
+                .isEqualTo(assumed.tempoMap().initialTempo());
+        assertThat(provenances(declared)).containsExactly(Provenance.DECLARED);
+        assertThat(provenances(assumed)).containsExactly(Provenance.ASSUMED);
+    }
+
+    @Test
+    @DisplayName("a file whose first tempo event is late declares only from there")
+    void aLateFirstTempoEventLeavesTheOpeningAssumed() {
+        // The mixed case, and the one a per-map label could not express: the
+        // first four beats are played at 120 because the specification says so,
+        // and the file states nothing until beat 4.
+        Sequence late = MidiFixtures.sequence()
+                .tempoAt(4, 60)
+                .part("Melody", 0).note(4, 1, 60).build();
+
+        assertThat(provenances(TRANSCRIBER.transcribe(late)))
+                .containsExactly(Provenance.ASSUMED, Provenance.DECLARED);
+    }
+
+    private static List<Provenance> provenances(Score score) {
+        return score.tempoMap().segments().stream()
+                .map(TempoMap.TempoSegment::provenance).toList();
     }
 
     @Test
