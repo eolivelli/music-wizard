@@ -532,6 +532,14 @@ class LilyPondRendererTest {
                     + " ".repeat(50) + "| rest\n").failedBarChecks())
                     .as("50 spaces of indent, but a 43-wide line where 50 was called for")
                     .containsExactly("3/4", "9/9");
+            // The other direction. Round 7 found >= killed only by a
+            // digit-formatting test in mw-cli, which is a fragile place for the
+            // skip-more direction of an invariant this javadoc calls exact.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "xxxxxxxx\n"
+                    + "   p.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("an eight-wide line where three was called for")
+                    .containsExactly("3/4", "9/9");
         }
 
         @Test
@@ -937,6 +945,15 @@ class LilyPondRendererTest {
             // has no echo to skip, which is the other half of why it is safe.
             assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
                     .containsExactly("7/8");
+            // And an absent column must mean "do not skip", not "column 1".
+            // Round 7 found that returning 1 for a missing column survived the
+            // whole suite while losing a real diagnostic -- the property is
+            // claimed in this class's javadoc and was pinned nowhere.
+            assertThat(said("warning: bar check failed at: 3/4\n"
+                    + "\n"
+                    + "p.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("no column means no layout to check, so nothing is skipped")
+                    .containsExactly("3/4", "9/9");
             assertThat(said("bad.ly:12: warning: bar check failed at: 5/4\n").failedBarChecks())
                     .containsExactly("5/4");
         }

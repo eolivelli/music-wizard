@@ -285,6 +285,28 @@ class RenderDiagnosticsTest {
     }
 
     @Test
+    @DisplayName("names exactly eight bars without an \"and 0 more\"")
+    void theCapDoesNotBiteAtTheBoundary() throws Exception {
+        assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+
+        // The boundary the cap is written on, which round 7 found unvisited:
+        // the tests either side of it use one moment and ten. Loosening the
+        // comparison to >= is invisible except at exactly eight, where the user
+        // would read "and 0 more".
+        String[] eight = new String[8];
+        for (int bar = 0; bar < eight.length; bar++) {
+            eight[bar] = "chords.ly:1:1: warning: bar check failed at: " + (bar + 1) + "/4";
+        }
+        Path workspace = workspaceEngravedBy("exactly-eight", engraverThatComplains(eight));
+
+        CliRunner.Result render = CliRunner.run("render", workspace.toString());
+
+        assertThat(render.err())
+                .contains("at 1/4, 2/4, 3/4, 4/4, 5/4, 6/4, 7/4, 8/4.")
+                .doesNotContain("more");
+    }
+
+    @Test
     @DisplayName("says nothing about bars when LilyPond did not complain about them")
     void aCleanEngravingIsNotWarnedAbout() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
