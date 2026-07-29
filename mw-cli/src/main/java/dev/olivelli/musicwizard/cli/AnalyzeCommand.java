@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
@@ -89,8 +90,17 @@ final class AnalyzeCommand implements Callable<Integer> {
      * the CLI, and the rule it would have to reproduce ("at tick 0", not
      * "anywhere") is precisely the kind of rule this project keeps teaching to
      * one of two places. So the claim is narrowed to one that holds for every
-     * file, and #119 asks the importer to report which values it defaulted, after
-     * which this can be tightened per row.
+     * file.
+     *
+     * <p>#120 landed while this was in review and made half of that answerable:
+     * {@link TempoMap.TempoSegment} now carries a {@link Provenance}, and
+     * {@code MidiTranscriber} marks a defaulted opening tempo {@code ASSUMED}
+     * where a declared one is {@code DECLARED}. So the <em>tempo</em> row could
+     * be tightened today. The meter row could not -- {@code MeterChange} carries
+     * no provenance -- and a block whose rows made claims of different strengths
+     * without saying which was which would be worse than one honest heading. #119
+     * is where the other half goes, and tightening both rows together is the
+     * change to make after it.
      *
      * <p>What is <em>not</em> weakened is the distinction that matters: nothing
      * under this heading was measured from audio.

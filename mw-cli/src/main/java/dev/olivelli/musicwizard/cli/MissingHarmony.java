@@ -40,8 +40,15 @@ import java.util.Objects;
  * this, and there is nowhere left for a fourth wording to appear.
  *
  * <p>What the answer may depend on is the <em>score</em>, and only the score.
- * Where the score came from is not knowable here and is not guessed at; see
- * #120.
+ * Where the score came from is not knowable here and is not guessed at.
+ *
+ * <p>#120 closed while this was in review, and it does <em>not</em> make it
+ * knowable, which is worth saying because the issue number alone would suggest
+ * otherwise. What it added is a {@code Provenance} on each tempo segment -- how
+ * that tempo was arrived at -- and not a record of what produced the score. A
+ * {@code DECLARED} opening tempo does imply a MIDI import today, and reading it
+ * that way would be a proxy for provenance rather than provenance, which is
+ * exactly the move that was wrong twice here already.
  *
  * <p>Neither branch names a cause any more, and #115 landing on main while this
  * change was in review is why. Until then a score with note tracks and no chords
@@ -92,7 +99,9 @@ final class MissingHarmony {
      * <p>The third was the {@code parts > 0} branch naming #115 as the missing
      * stage, which #115 landing made false. It is not replaced by a fourth guess:
      * telling a user <em>why</em> an estimator found nothing needs to know which
-     * estimator ran, which needs to know what produced the score, which is #120.
+     * estimator ran, which needs to know what produced the score, and #120 -- the
+     * issue that sounds like it answers that -- records how a tempo was arrived
+     * at instead. See the note on the class.
      */
     static String explain(Score score) {
         Objects.requireNonNull(score, "score");
