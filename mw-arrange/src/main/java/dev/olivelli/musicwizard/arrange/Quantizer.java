@@ -110,6 +110,29 @@ import java.util.function.ToDoubleFunction;
  *       of the finer one rather than a rival to it.
  * </ul>
  *
+ * <p><b>So the chord printed on a beat need not be the one sounding there</b>,
+ * and that is #158. It is worth saying outright because it does not follow from
+ * "each boundary goes to the nearest counted beat" without a moment's thought,
+ * and a reader who has not had that moment will believe the chart. A change
+ * heard in the second half of a beat is written on the beat it is approaching,
+ * so the symbol appears before the harmony does.
+ *
+ * <p>It is bounded, and the bound is the whole of why it is acceptable: a chord
+ * is printed <b>at most half a counted beat before it sounds</b>, and never at a
+ * beat whose own half-beat neighbourhood it does not reach. That is not a
+ * tolerated error but the point of the exercise -- a change heard 40 ms early
+ * against a downbeat belongs <em>on</em> the downbeat, and an eighth-note
+ * anticipation of beat three belongs on beat three. Preferring the chord
+ * actually sounding at the snapped position, which is the other rule available
+ * here, would forbid rounding a chord backwards at all and would print both of
+ * those a whole beat late.
+ *
+ * <p>What #158 reported was the unbounded form of this, and it came from
+ * somewhere else: a chord dropped for being too short left its position free,
+ * the next chord snapped back onto it, and the chart named a harmony that had
+ * not started. No chord is dropped any more, so no position is vacated for a
+ * later one to take.
+ *
  * <h2>When a span has nowhere to go</h2>
  *
  * <p>A span whose two boundaries snap to the same position has no length, and
@@ -146,19 +169,11 @@ import java.util.function.ToDoubleFunction;
  * </ul>
  *
  * <p>The pass does not reject the score over one -- that would throw away a
- * whole quantization for a blip -- and what it does instead differs between the
- * two kinds, for a reason rather than by oversight:
+ * whole quantization for a blip -- and <b>nothing is ever deleted</b>. What it
+ * does instead differs between the two kinds, for a reason rather than by
+ * oversight:
  *
  * <ul>
- *   <li><b>A chord is dropped</b>, which is the <em>merge</em> the issue asks
- *       for: its neighbours snapped onto the very position it collapsed to, so
- *       the axis stays exactly as continuous as it was, and a chord too short to
- *       be given a beat of its own is one an engraver would not print. Leaving
- *       it in seconds is not available here.
- *       {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
- *       is one verdict for the whole progression, and every consumer of the beat
- *       axis gates on it, so a single unplaceable chord would drop the entire
- *       chart back onto the seconds route it is being lifted off.
  *   <li><b>A section or a key keeps its seconds and is given no beats.</b>
  *       Nothing reports a list of these as quantized or not in one verdict, so
  *       there is nothing to poison, and {@link Score} is built to hold the
@@ -167,7 +182,30 @@ import java.util.function.ToDoubleFunction;
  *       a key of less than a bar is dropped and its music is then engraved under
  *       the <em>next</em> key's signature, which is a page of accidentals that
  *       were never played.
+ *   <li><b>A chord keeps its seconds too, and so does every other chord in the
+ *       progression</b>, which is the one place this pass is all-or-nothing.
+ *       {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
+ *       is one verdict for the whole progression and every consumer of the beat
+ *       axis gates on it, so there is no per-chord fallback to take: a single
+ *       unplaceable chord either costs the whole chart its beat axis or costs
+ *       itself. {@link QuantizedScore#unplaceableChords()} carries how many, so
+ *       a caller with a user in front of it can say why the chart came out on
+ *       the coarser route.
  * </ul>
+ *
+ * <p>That the chord case falls this way and not the other is #157, and it
+ * reverses what #147 decided, so the ranking is worth stating rather than
+ * assuming. Dropping is not a smaller version of falling back; it is a
+ * different kind of answer. Falling back costs <em>precision</em> -- the seconds
+ * route in {@code ChordChart} still prints every chord in order, and it is the
+ * route the audio path uses today regardless. Dropping costs
+ * <em>correctness</em>: at {@code --tempo 60} against material heard at 120,
+ * every chord is half a counted beat, every other one collapses, and a chart
+ * that played I-V-vi-IV is engraved as I-vi-I-vi with nothing to mark it. The
+ * justification dropping had -- "a chord too short to be given a beat of its own
+ * is one an engraver would not print" -- conflates a chord that is short in the
+ * <em>music</em> with one that is short in the <em>supplied pulse</em>, and one
+ * span carries no evidence about which it is. So the pass declines to guess.
  *
  * <p>Where this is reachable is worth stating precisely, because the obvious
  * answer is wrong. It is <em>not</em> compound time: the audio path builds its
@@ -177,6 +215,17 @@ import java.util.function.ToDoubleFunction;
  * tracked pulse -- {@code --tempo 60} on a track heard at 120 leaves the chord
  * boundaries a half beat apart in a map counting whole ones -- and any producer
  * whose spans are finer than the meter's beat.
+ *
+ * <p>Which bounds what the all-or-nothing costs, and it is a narrower bound than
+ * it looks: on this pipeline a collapse is never <em>isolated</em>. Both
+ * estimators emit spans of at least one counted beat -- {@code ChordEstimator}
+ * cuts at tracked beat times, {@code SymbolicChordEstimator} takes one decision
+ * per counted beat -- so against a map derived from those same beats nothing
+ * collapses at all, and against a pulse that disagrees by a factor a large
+ * fraction of the progression does. The beat axis is given up exactly when it
+ * could not have held the harmony anyway. What is genuinely paid for this is a
+ * hand-built score carrying one ornamental sub-beat chord, which now costs the
+ * whole progression its beat axis where it used to cost the ornament.
  *
  * <h2>What it does not touch</h2>
  *
@@ -246,10 +295,7 @@ public final class Quantizer {
                 key -> bars.beatOf(key.startBeat(), key.startSeconds()),
                 key -> bars.beatOf(key.endBeat(), key.endSeconds()),
                 Key::quantizedTo, bars::snapToBarLine, Quantizer::inSecondsOnly);
-        List<Chord> chords = onGrid(score.chords().chords(),
-                chord -> bars.beatOf(chord.startBeat(), chord.startSeconds()),
-                chord -> bars.beatOf(chord.endBeat(), chord.endSeconds()),
-                Chord::quantizedTo, bars::snapToCountedBeat, Quantizer::dropped);
+        PlacedChords chords = chordsOnGrid(score.chords().chords(), bars);
 
         SwingFeel swing = SwingFeel.STRAIGHT;
         List<NoteTrack> quantizedTracks = score.tracks();
@@ -289,9 +335,9 @@ public final class Quantizer {
         }
 
         Score quantized = new Score(score.title(), score.artist(), tempoMap, score.beatGrid(),
-                keys, sections, quantizedTracks, score.chords().withChords(chords),
+                keys, sections, quantizedTracks, score.chords().withChords(chords.chords()),
                 score.lyrics(), score.durationSeconds());
-        return new QuantizedScore(quantized, grids, swing);
+        return new QuantizedScore(quantized, grids, swing, chords.unplaceable());
     }
 
     // ---------------------------------------------------------------- spans
@@ -309,9 +355,51 @@ public final class Quantizer {
         T instead(T span);
     }
 
-    /** Drops it, which is what a chord that cannot be printed gets. */
-    private static <T> T dropped(T span) {
-        return null;
+    /**
+     * A progression and how many of its chords could not be given a beat.
+     *
+     * <p>The two are not independent: the count is zero exactly when the chords
+     * carry beats, because one chord that cannot be placed takes the beat axis
+     * off all of them. {@link QuantizedScore} asserts that pairing rather than
+     * trusting it.
+     */
+    private record PlacedChords(List<Chord> chords, int unplaceable) {
+    }
+
+    /**
+     * Puts a progression on the beat axis, or leaves the whole of it in seconds.
+     *
+     * <p>The all-or-nothing is forced by
+     * {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
+     * being one verdict, and the direction it falls in is #157: no chord is
+     * discarded, because a chart naming a progression that was never played is a
+     * worse answer than a chart placed by seconds, not a more approximate one.
+     * The class javadoc argues that ranking; this is where it is spent.
+     *
+     * <p>The count is of chords that collapsed, not of chords left in seconds --
+     * which is every chord once one has. A caller reporting this to a user wants
+     * to say "four of the eight chords are shorter than a counted beat at the
+     * tempo supplied", and the eight is {@code chords.size()}.
+     */
+    private static PlacedChords chordsOnGrid(List<Chord> chords, BarTable bars) {
+        int[] unplaceable = {0};
+        List<Chord> placed = onGrid(chords,
+                chord -> bars.beatOf(chord.startBeat(), chord.startSeconds()),
+                chord -> bars.beatOf(chord.endBeat(), chord.endSeconds()),
+                Chord::quantizedTo, bars::snapToCountedBeat,
+                chord -> {
+                    unplaceable[0]++;
+                    // Dropped from this attempt, whose result is then thrown
+                    // away wholesale below. Returning the chord instead would
+                    // leave a half-placed list to be discarded anyway, and would
+                    // advance furthestEnd past a boundary that was not published.
+                    return null;
+                });
+        if (unplaceable[0] == 0) {
+            return new PlacedChords(placed, 0);
+        }
+        return new PlacedChords(chords.stream().map(Quantizer::inSecondsOnly).toList(),
+                unplaceable[0]);
     }
 
     /**
@@ -337,6 +425,32 @@ public final class Quantizer {
                 ? new Key(key.tonic(), key.mode(), key.startSeconds(), key.endSeconds(),
                         Optional.empty(), Optional.empty(), key.confidence())
                 : key;
+    }
+
+    /**
+     * The same for a chord, applied to a whole progression at once.
+     *
+     * <p>Reachable exactly as narrowly as the two above -- from a hand-assembled
+     * score whose carried beats were already off the grid -- and it is worth
+     * saying which way that was checked, because the wider claim is the one that
+     * suggests itself and it is false. Re-quantizing a placed progression
+     * against a <em>corrected</em> tempo map does not reach this: a carried beat
+     * position wins over the seconds beside it, so the old positions are snapped
+     * again rather than re-derived, and nothing collapses. That is #171, and it
+     * is a different defect from this one.
+     *
+     * <p>Here so that the postcondition is unconditional: after this pass a
+     * chord either sits on the grid or carries no beats at all. Leaving the old
+     * pair on a progression that has been withdrawn from the beat axis would be
+     * the worst of both -- {@code isQuantized()} false, so no consumer reads
+     * them, and stale positions waiting for the next reader who does.
+     */
+    private static Chord inSecondsOnly(Chord chord) {
+        return chord.isQuantized()
+                ? new Chord(chord.root(), chord.quality(), chord.bass(), chord.startSeconds(),
+                        chord.endSeconds(), Optional.empty(), Optional.empty(),
+                        chord.confidence())
+                : chord;
     }
 
     /**
@@ -375,9 +489,10 @@ public final class Quantizer {
      * spans that overlap on the beat axis instead, which is the defect the guard
      * is here for.
      *
-     * <p><b>What happens to a span left with no length</b> is the class's
-     * {@code Collapsed} decision, and it is the only place anything is
-     * discarded. {@code furthestEnd} does not advance past one, and that is a
+     * <p><b>What happens to a span left with no length</b> is the caller's
+     * {@code Collapsed} decision -- kept in seconds for a section or a key, and
+     * for a chord withdrawn from a list {@link #chordsOnGrid} is about to
+     * discard whole. {@code furthestEnd} does not advance past one, and that is a
      * decision rather than an accident: a collapsed span's snapped end can be a
      * long way <em>ahead</em> of the value carried -- two sections with a gap
      * between them, the second shorter than a bar, put it a whole bar ahead --
@@ -787,13 +902,21 @@ public final class Quantizer {
      * which this used to be, rounds a tie to the <em>even</em> step -- 0.5 down,
      * 1.5 up, 2.5 down -- so the direction alternates with the step index.
      *
-     * <p>On a span that is systematic: a chord progression whose spans are
-     * exactly half a counted beat -- which is what the audio path produces once
-     * {@code --tempo} halves the map's pulse against the tracked beats -- puts
-     * every boundary on a tie, and alternating meant the chord kept on each beat
-     * was the one that sounded on the beat <em>after</em> it, so the chart named
-     * a harmony that never sounded there. Rounding a tie one way throughout
-     * keeps the survivor the chord that was playing.
+     * <p>On a chord boundary the tie is common rather than exotic, and going
+     * forward is the musically right direction rather than merely a consistent
+     * one. A change on the off-beat eighth before a downbeat sits exactly on the
+     * midpoint of its rounding cell, and it is an <em>anticipation</em> of the
+     * beat ahead: that is where a chart prints it. {@code rint} would send
+     * alternate ones backwards instead -- 2.5 down to beat 2, 6.5 down to beat 6
+     * -- so a progression of anticipations came out with half its symbols a beat
+     * early, the half decided by the parity of the beat index.
+     *
+     * <p>An earlier version of this paragraph took its evidence from a
+     * progression whose spans are exactly <em>half</em> a counted beat, which is
+     * what a {@code --tempo} disagreeing by a factor produces. That case no
+     * longer publishes any beats at all -- it is #157, and such a progression is
+     * now left in seconds rather than half-dropped -- so it can no longer be
+     * evidence for anything about rounding direction.
      *
      * <p>On a note it is rare rather than absent, and that distinction is worth
      * stating because the rule is shared and the decision to share it rests on

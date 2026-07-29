@@ -41,8 +41,14 @@ import java.util.Optional;
  *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
  *              it does not apply to compound bars -- use {@link #swingIn(int)}
  *              rather than printing this over every system
+ * @param unplaceableChords how many chords were shorter than the counted beat
+ *              they fall in, and so could not be given a beat of their own.
+ *              Zero on anything that came out on the beat axis; non-zero only
+ *              on a progression left entirely in seconds -- see
+ *              {@link #unplaceableChords()}
  */
-public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) {
+public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
+                             int unplaceableChords) {
 
     public QuantizedScore {
         Objects.requireNonNull(score, "score");
@@ -55,6 +61,32 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
                                 + grids.get(i).bar() + " after bar " + grids.get(i - 1).bar());
             }
         }
+        if (unplaceableChords < 0 || unplaceableChords > score.chords().size()) {
+            throw new IllegalArgumentException(
+                    "unplaceableChords must be between 0 and the " + score.chords().size()
+                            + " chords in the progression, got: " + unplaceableChords);
+        }
+        // The count and the axis are two readings of one fact, and pairing a
+        // score with somebody else's count is the mistake withScore exists to
+        // prevent for the grids. A progression that lost a chord lost the beat
+        // axis with it: there is no half-placed progression to report.
+        if (unplaceableChords > 0 && score.chords().isQuantized()) {
+            throw new IllegalArgumentException(
+                    "a progression reporting " + unplaceableChords + " unplaceable chords"
+                            + " cannot also be on the beat axis; one unplaceable chord takes"
+                            + " the beat axis off the whole progression");
+        }
+    }
+
+    /**
+     * The three-argument form, for a stage that placed every chord it was given.
+     *
+     * <p>Which is every caller that is not {@link Quantizer} itself: a score
+     * whose chords are on the beat axis, or which has no chords, has nothing to
+     * report here.
+     */
+    public QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) {
+        this(score, grids, swing, 0);
     }
 
     /** The grid chosen for a bar, or empty when nothing sounds in that bar. */
@@ -124,7 +156,32 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
      * somebody else's grids.
      */
     public QuantizedScore withScore(Score newScore) {
-        return new QuantizedScore(newScore, grids, swing);
+        return new QuantizedScore(newScore, grids, swing, unplaceableChords);
+    }
+
+    /**
+     * How many chords were too short to be given a beat of their own, which is
+     * why the whole progression is still in seconds.
+     *
+     * <p>Zero on every score that came out on the beat axis, and the two are
+     * exactly complementary: {@link Quantizer} does not discard a chord, so a
+     * progression it could not place completely it does not place at all. That
+     * is #157. The alternative -- dropping the short ones -- turns
+     * {@code --tempo 60} against material heard at 120 into a chart that names
+     * I-vi-I-vi where the music played I-V-vi-IV, silently.
+     *
+     * <p>Here so that it need not be silent. A caller with a user in front of it
+     * has everything it needs to explain the outcome: this count, against
+     * {@code score().chords().size()}, says how much of the harmony is finer
+     * than the pulse it was quantized against -- which on this pipeline means
+     * the supplied tempo disagrees with the material by a factor, because both
+     * chord estimators emit spans of at least one counted beat.
+     *
+     * <p>Not a general "how approximate is this" number. It counts only chords,
+     * only the collapse, and says nothing about how far anything moved.
+     */
+    public int unplaceableChords() {
+        return unplaceableChords;
     }
 
     /**
@@ -144,9 +201,11 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
      * story, and a score whose notes are on it while its harmony is still in
      * seconds is precisely the case where the answer is no.
      *
-     * <p>False is a legitimate answer for a score this class produced: a section
+     * <p>False is a legitimate answer for a score this class produced. A section
      * or key too short to sit between two bar lines keeps its seconds and no
-     * beats, and says so here.
+     * beats, and says so here; so does a whole progression withdrawn from the
+     * beat axis because one of its chords was shorter than a counted beat, and
+     * {@link #unplaceableChords()} is then the reason why.
      */
     public boolean isFullyQuantized() {
         return score.tracks().stream().allMatch(t -> t.isQuantized())
