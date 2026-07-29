@@ -43,7 +43,11 @@ import picocli.CommandLine.Option;
         })
 public final class MusicWizardCommand implements Runnable {
 
-    @Option(names = {"-v", "--verbose"}, description = "Log what each stage is doing.")
+    // What it actually does, which is not what it said. Each stage already
+    // reports itself on stdout whether or not this is set; the flag's only
+    // effect is the stack trace in the handler below.
+    @Option(names = {"-v", "--verbose"},
+            description = "Print a stack trace when a command fails.")
     boolean verbose;
 
     @Override
@@ -52,8 +56,17 @@ public final class MusicWizardCommand implements Runnable {
         CommandLine.usage(this, System.out);
     }
 
-    public static void main(String[] args) {
-        int exitCode = new CommandLine(new MusicWizardCommand())
+    /**
+     * The command line the {@code mw} binary runs, error handling included.
+     *
+     * <p>Separate from {@link #main} so that a test can execute a command the way
+     * a user does. It is the exception handler below that turns a refused input
+     * into one readable line, and a test that built its own {@code CommandLine}
+     * would get picocli's default handler and a stack trace instead -- proving
+     * nothing about what the tool actually prints.
+     */
+    static CommandLine commandLine() {
+        return new CommandLine(new MusicWizardCommand())
                 .setCaseInsensitiveEnumValuesAllowed(true)
                 .setExecutionExceptionHandler((exception, commandLine, parseResult) -> {
                     // Users get a readable message; the stack trace stays behind --verbose.
@@ -62,9 +75,11 @@ public final class MusicWizardCommand implements Runnable {
                         exception.printStackTrace(commandLine.getErr());
                     }
                     return CommandLine.ExitCode.SOFTWARE;
-                })
-                .execute(args);
-        System.exit(exitCode);
+                });
+    }
+
+    public static void main(String[] args) {
+        System.exit(commandLine().execute(args));
     }
 
     private static String rootMessage(Throwable throwable) {

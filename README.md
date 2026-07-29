@@ -73,8 +73,8 @@ brew install lilypond      # macOS, or Homebrew on Linux
 apt install lilypond       # Debian or Ubuntu
 ```
 
-Without LilyPond everything still runs — you get `.ly`, `.musicxml` and `.midi`
-files that you can engrave elsewhere.
+Without LilyPond everything still runs — you get the `.ly` source, which you can
+engrave elsewhere. MusicXML and MIDI export are planned and not written yet.
 
 Build and check your setup:
 
@@ -92,8 +92,30 @@ optional download rather than a bundled dependency — is tracked separately.
 ```sh
 mw init song.mp3 --title "Song" --artist "Artist"   # create a workspace
 mw analyze song.mwz                                  # work out what is played
-mw render song.mwz --parts voice,piano,bass,chords   # engrave the parts
+mw render song.mwz                                   # engrave what can be engraved
 mw info song.mwz                                     # what has been computed
+```
+
+`render` defaults to the parts that are implemented, which today is the chord
+chart. Ask for one that is not — `--parts voice` — and it says so and why,
+rather than listing it and writing nothing.
+
+**`init` also takes a Standard MIDI File.** The input is identified by its
+header rather than its extension, and a MIDI file is read symbolically rather
+than measured. `analyze` reports its tempo, meter and key under a heading saying
+where they came from — *from the file, or the MIDI default where it declares
+nothing*, because a file that declares no tempo is played at 120 in 4/4 by the
+specification and the import cannot tell the two apart ([#119][i119]).
+
+Its chords are the one thing that is *not* declared: a MIDI file states which
+notes sound, not what chord they spell, so the harmony is estimated from the
+notes. That is why the chord count is printed outside that heading and not
+under it.
+
+[i119]: https://github.com/eolivelli/music-wizard/issues/119
+
+```sh
+mw init song.mid && mw analyze song.mwz
 ```
 
 A **workspace** is a directory holding the recording and everything derived
@@ -105,7 +127,7 @@ song.mwz/
   source/            the untouched recording
   cache/             per-stage results, keyed by their inputs
   score/score.json   the transcription
-  out/               .ly, .musicxml, .midi and .pdf per part
+  out/               .txt, .ly and .pdf per part
 ```
 
 Results are cached per stage and keyed by the stage's inputs and parameters, so
@@ -128,7 +150,33 @@ llm:
   enabled: true
 ```
 
-## The Claude advisor (optional)
+Most of this is read, layered, and then read by nothing. What reaches the
+pipeline is `analysis`, apart from `skipSeparation`, and
+`notation.lilypondPath`.
+
+The keys that do nothing divide in two. `analyze` and `render` **warn** about
+`analysis.skipSeparation` and about every `notation` key but `lilypondPath`
+([#129][i129]) — from a flag or from this file — rather than producing the
+default output in silence. All of `arrangement` and `ml` is equally inert, since
+`mw-arrange` and `mw-ml` hold no code, and nothing warns about those: they have
+no flags, and no command to warn from yet ([#144][i144]). The advisor is the
+section below.
+
+[i144]: https://github.com/eolivelli/music-wizard/issues/144
+
+[i129]: https://github.com/eolivelli/music-wizard/issues/129
+
+
+## The Claude advisor (optional, and not built yet)
+
+**None of this section is implemented.** `mw-llm` holds no code; the config keys
+below are read and layered but reach nothing, and `analyze` and `doctor` both say
+so. It is recorded here as the design ([#11][i11]) rather than as behaviour — in
+particular the safety property below, that a suggestion is re-scored against the
+audio before being applied, is a guarantee about a mechanism that does not exist.
+
+[i11]: https://github.com/eolivelli/music-wizard/issues/11
+
 
 The pipeline is fully functional offline with no API key. If one is present and
 you enable it, Claude post-processes the *symbolic* results — it never sees

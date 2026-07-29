@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.arrange;
 
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.util.List;
 import java.util.Objects;
@@ -126,8 +127,31 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
         return new QuantizedScore(newScore, grids, swing);
     }
 
-    /** True when every track's notes carry musical timing. */
+    /**
+     * True when every note, chord, section and key carries musical timing.
+     *
+     * <p>Those four and no others, which is worth saying rather than writing
+     * "everything with a position": {@link Lyrics} carries the same optional
+     * beat fields on every word and is <em>not</em> included, because
+     * {@link Quantizer} does not place lyrics. Chord-over-lyric placement needs
+     * the chords first and is #9; the gap is #150. Naming the four is the honest
+     * form -- an accessor called "fully quantized" that quietly excluded a fifth
+     * kind is exactly the claim a later caller would believe.
+     *
+     * <p>The spans are included rather than assumed, because for the whole of
+     * #91 they were the half that was missing and nothing said so. A caller
+     * asking this before engraving is asking whether the beat axis is the whole
+     * story, and a score whose notes are on it while its harmony is still in
+     * seconds is precisely the case where the answer is no.
+     *
+     * <p>False is a legitimate answer for a score this class produced: a section
+     * or key too short to sit between two bar lines keeps its seconds and no
+     * beats, and says so here.
+     */
     public boolean isFullyQuantized() {
-        return score.tracks().stream().allMatch(t -> t.isQuantized());
+        return score.tracks().stream().allMatch(t -> t.isQuantized())
+                && score.chords().isQuantized()
+                && score.sections().stream().allMatch(s -> s.isQuantized())
+                && score.keys().stream().allMatch(k -> k.isQuantized());
     }
 }

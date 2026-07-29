@@ -37,10 +37,41 @@
     </dependency>    <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-    </dependency>  </dependencies>
+    </dependency>
+    <!--
+      Test only. The CLI's MIDI entry point is tested against real Standard MIDI
+      Files rather than mocks, because the entry point's whole job is deciding
+      what a file is and handing it to the right reader.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
+      <!--
+        The tests here run whole commands, and a command reads the user's global
+        config layer at $XDG_CONFIG_HOME/music-wizard/config.yaml. Left alone,
+        that makes the suite depend on the machine it runs on: a contributor who
+        is also a user, with the paperSize the README tells them to set, gets a
+        failure in RenderPartsTest with no visible cause. Pointed at a directory
+        under target/ that is never created, so the global layer is reliably
+        empty. The same hazard exists reactor-wide (mw-core fails first under the same
+        config) and belongs in the parent pom; that is #133, which this module
+        does not own the file to fix.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${project.build.directory}/no-global-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
       <!--
         The CLI is the one module a user actually runs, so it ships as a single
         executable jar. Without this, running the tool means reconstructing a
@@ -61,6 +92,21 @@
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>dev.olivelli.musicwizard.cli.MusicWizardCommand</mainClass>
+                  <manifestEntries>
+                    <!--
+                      Two things read this. `mw version` reported "(development
+                      build)" from every jar we have ever shipped, because
+                      nothing wrote the attribute; and the transcription cache
+                      keys on it, so without it a released build served the
+                      previous release's analysis for the same input. What it
+                      buys is bounded and worth stating: a version change
+                      invalidates the cache, so a rebuild at the same version,
+                      which is every SNAPSHOT build, still does not. Forcing a
+                      recompute is the answer there, and the reuse is announced
+                      on every cache hit rather than being silent.
+                    -->
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
                 </transformer>
                 <!-- Merge service files rather than letting one jar's win; the
                      audio SPI and Jackson both register services this way. -->

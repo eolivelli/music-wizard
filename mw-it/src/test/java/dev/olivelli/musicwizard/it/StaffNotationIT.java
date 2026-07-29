@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
@@ -49,9 +50,10 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>The assertion that matters is the absence of warnings. Every bar carries a
  * bar check, so a bar that does not fill its meter — the commonest way an
  * emitter goes wrong, and the one LilyPond will otherwise engrave without
- * complaint — shows up as {@code bar check failed} and fails here. The last test
- * in the file proves that check has teeth by engraving a bar that is a beat
- * short on purpose.
+ * complaint — shows up as a failed bar check and fails here. The last test in
+ * the file proves that check has teeth by engraving a bar that is a beat short
+ * on purpose; {@link LilyPondComplaints} is how that complaint is recognised
+ * without depending on which of its two spellings the installed LilyPond uses.
  */
 class StaffNotationIT {
 
@@ -182,7 +184,14 @@ class StaffNotationIT {
                 .renderSource(tempDirectory.resolve("short/bar.ly"), source);
 
         assertThat(result.succeeded()).isTrue();
-        assertThat(result.output()).containsIgnoringCase("bar check failed");
+        // The moment rather than the wording: LilyPond spells the complaint
+        // "barcheck" up to 2.25.5 and "bar check" after it, and #145 was this
+        // test pinning the second spelling while the integration job installs a
+        // version that uses the first. What it is really asserting is that the
+        // bar was counted and came to three quarters instead of four.
+        assertThat(failedBarChecksIn(result.output()))
+                .as("%s", result.output())
+                .contains("3/4");
     }
 
     /** Pages in a PDF, read from the page objects rather than from the trailer. */
