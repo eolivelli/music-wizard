@@ -36,8 +36,16 @@ import org.junit.jupiter.api.Test;
  * turns up in ordinary output would pass everything, which is silent, and
  * silent is the failure this suite keeps finding. So every line LilyPond emits
  * around a bar check is here as a case that must <em>not</em> match.
+ *
+ * <p><b>The one {@code Test} in a module of {@code IT}s</b>, and deliberately.
+ * Everything else here is slow or wants a binary, so it belongs to failsafe and
+ * to {@code -Pintegration}; this needs neither and takes a tenth of a second.
+ * Round 1 of review pointed out what leaving it under that profile would mean:
+ * the guard against the matcher rotting would live inside the job whose being
+ * unread for weeks is the whole subject of #145. It runs in {@code mvn verify}
+ * instead, which is the check people actually look at.
  */
-class LilyPondComplaintsIT {
+class LilyPondComplaintsTest {
 
     /** Verbatim from LilyPond 2.24.3, the version the {@code integration} job installs. */
     private static final String OUTPUT_2_24 = """
