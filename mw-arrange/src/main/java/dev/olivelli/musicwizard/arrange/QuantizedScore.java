@@ -41,11 +41,11 @@ import java.util.Optional;
  *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
  *              it does not apply to compound bars -- use {@link #swingIn(int)}
  *              rather than printing this over every system
- * @param unplaceableChords how many chords were shorter than the counted beat
- *              they fall in, and so could not be given a beat of their own.
- *              Zero on anything that came out on the beat axis; non-zero only
- *              on a progression left entirely in seconds -- see
- *              {@link #unplaceableChords()}
+ * @param unplaceableChords how many chords could not be given a beat of their
+ *              own, which is all but always for being shorter than the counted
+ *              beat they fall in. Zero on anything that came out on the beat
+ *              axis; non-zero only on a progression left entirely in seconds --
+ *              see {@link #unplaceableChords()}
  */
 public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
                              int unplaceableChords) {
@@ -173,9 +173,12 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * <p>Here so that it need not be silent. A caller with a user in front of it
      * has everything it needs to explain the outcome: this count, against
      * {@code score().chords().size()}, says how much of the harmony is finer
-     * than the pulse it was quantized against -- which on this pipeline means
-     * the supplied tempo disagrees with the material by a factor, because both
-     * chord estimators emit spans of at least one counted beat.
+     * than the pulse it was quantized against. What that <em>means</em> depends
+     * on where the score came from and is the caller's to say, not this
+     * accessor's -- from the audio or MIDI paths it points at a supplied tempo
+     * disagreeing with the material by a factor, since both chord estimators
+     * emit spans of at least one counted beat, but any producer with finer spans
+     * reaches it too and a hand-built score reaches it with a single ornament.
      *
      * <p>Not a general "how approximate is this" number. It counts only chords,
      * only the collapse, and says nothing about how far anything moved.
