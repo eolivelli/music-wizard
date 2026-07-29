@@ -199,10 +199,14 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     /**
      * A map with one constant tempo and one time signature from the start.
      *
-     * <p>The tempo's origin is {@link Provenance#UNKNOWN}: this factory is
-     * reached both by a user correction and by a fallback default, so it cannot
-     * label the value itself. A producer that knows should say so through
-     * {@link #constant(double, TimeSignature, Provenance)}.
+     * <p>The tempo's origin is {@link Provenance#UNKNOWN}, which is what this
+     * form is for: a caller assembling a map by hand -- a test, a fixture -- and
+     * saying so by omission rather than by picking a plausible-looking origin.
+     * <b>A producer must not use it</b>, because a map recording no provenance
+     * sends {@link Score#estimatedTempo()} back to the shape proxy kept for
+     * pre-#120 files; use {@link #constant(double, TimeSignature, Provenance)}.
+     * No main-source producer does today, and #143 records that nothing but
+     * review enforces it.
      */
     public static TempoMap constant(double beatsPerMinute, TimeSignature timeSignature) {
         return constant(beatsPerMinute, timeSignature, Provenance.UNKNOWN);

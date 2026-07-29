@@ -138,12 +138,21 @@ public enum Provenance {
      * would fail a component's own validation several frames later. #142.
      *
      * <p>It swallows a misspelt label as well as a future one, and the cost of
-     * that is worth stating plainly: a segment whose label is mistyped is not
-     * merely "not recorded". If every segment in a map is mistyped the map
-     * records no provenance at all, and {@link Score#estimatedTempo()} falls
-     * back to the shape proxy -- so a typo re-enables exactly the heuristic this
-     * field exists to retire, quietly. Nothing this tool writes can produce one;
-     * a hand-edited file can.
+     * that is worth stating precisely, because the intuitive reading of it is
+     * backwards. A <em>single</em> mistyped label is the damaging case. On the
+     * map {@code --tempo 60} builds -- a derived anchor and a supplied 60, over
+     * a grid tracked at 120 -- mistyping only the supplied label leaves the map
+     * recording <em>some</em> provenance, so {@link Score#estimatedTempo()}
+     * neither finds a supplied tempo nor falls back to the shape proxy, and
+     * answers from the grid: the correction is discarded and 120 is reported.
+     * Mistyping <em>every</em> label is the benign one, since the map then
+     * records nothing, the proxy runs, and 60 comes back.
+     *
+     * <p>So a typo does not degrade to "not recorded". It degrades to the beat
+     * grid, on the correction this project calls the highest-value action a user
+     * can take. Nothing this tool writes can produce one; a hand-edited file
+     * can, and {@code ProvenanceTest.aSingleMistypedLabelIsTheDamagingCase}
+     * pins both halves so this paragraph cannot quietly stop being true.
      *
      * <p>It also declines an ordinal, which Jackson would otherwise accept: a
      * bare {@code 2} used to read as {@code DECLARED} and now reads as

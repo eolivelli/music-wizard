@@ -114,8 +114,10 @@ class ProvenanceTest {
         @Test
         @DisplayName("a constant map says nothing about its tempo unless asked to")
         void aConstantMapIsUnknownByDefault() {
-            // Both a user correction and a fallback default reach this factory,
-            // so labelling it either way in the factory would be a guess.
+            // The unlabelled forms are for a caller that genuinely does not
+            // know -- a test, a hand-built fixture -- and no main-source
+            // producer uses them. #143 records that nothing but review enforces
+            // that, and why removing them was not worth the churn here.
             assertThat(provenances(TempoMap.constant(120, TimeSignature.FOUR_FOUR)))
                     .containsExactly(Provenance.UNKNOWN);
             assertThat(provenances(TempoMap.constantPulse(120, TimeSignature.SIX_EIGHT)))
@@ -290,6 +292,44 @@ class ProvenanceTest {
                     .isEqualTo(twoCorrections.averageTempoIgnoringLeadIn(10.0));
             // Neither the grid's 80 nor either supplied figure on its own.
             assertThat(score.estimatedTempo()).isNotIn(80.0, 120.0, 60.0);
+        }
+
+        @Test
+        @DisplayName("one mistyped label costs more than all of them mistyped")
+        void aSingleMistypedLabelIsTheDamagingCase() {
+            // Backs the paragraph on Provenance.fromJson, because the intuitive
+            // reading of a forgiving reader is backwards. A label this build
+            // does not recognise reads as UNKNOWN, and what that costs depends
+            // on how many of them there are.
+            BeatGrid grid = gridOf(pulses(0.2, 0.5, 24));
+            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
+                    .as("the grid must disagree with the correction, or this shows nothing")
+                    .isCloseTo(120.0, within(1e-6));
+
+            // Intact: the correction is read and wins.
+            assertThat(Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid).estimatedTempo())
+                    .isEqualTo(60.0);
+
+            // One label lost. The map still records some provenance, so the
+            // proxy does not run -- and there is no supplied tempo left to
+            // find, so the answer comes from the grid and the correction is
+            // gone. This is the damaging case.
+            TempoMap oneLost = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 300.0, Provenance.DERIVED),
+                            new TempoMap.TempoSegment(1.0, 0.2, 60.0, Provenance.UNKNOWN)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            assertThat(Score.empty(oneLost, 12.0).withBeatGrid(grid).estimatedTempo())
+                    .isEqualTo(120.0);
+
+            // Every label lost. The map records nothing, the proxy runs, and it
+            // happens to get this one right. Benign, which is the opposite of
+            // what "more typos is worse" would suggest.
+            TempoMap allLost = new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, 0.0, 300.0),
+                            new TempoMap.TempoSegment(1.0, 0.2, 60.0)),
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+            assertThat(Score.empty(allLost, 12.0).withBeatGrid(grid).estimatedTempo())
+                    .isEqualTo(60.0);
         }
 
         @Test

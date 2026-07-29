@@ -313,6 +313,29 @@ class TempoOverrideTest {
                 .as("the third must track many").isGreaterThan(2);
     }
 
+    @Test
+    @DisplayName("does not tell a user who typed a tempo that it was assumed")
+    void aTypedTempoIsNotAnnouncedAsAnAssumption() {
+        // The three-way branch made this structural: the "assuming 120" line
+        // lived where an override could not reach it. Collapsing the branch
+        // turned it into a runtime condition, and a condition asserted only in
+        // a comment is one a later edit deletes for free -- the message then
+        // tells someone who typed 90 that the tool assumed 90.
+        List<String> typed = new java.util.ArrayList<>();
+        new AudioTranscriber(typed::add).transcribe(tone(0.25),
+                new AudioTranscriber.Options(90.0, TimeSignature.FOUR_FOUR, null));
+        assertThat(typed).as("progress on a one-beat clip with --tempo 90")
+                .isNotEmpty()
+                .noneMatch(line -> line.contains("assuming"));
+
+        // And the message is still emitted when nothing was typed, or this
+        // would pass by having silenced it everywhere.
+        List<String> untyped = new java.util.ArrayList<>();
+        new AudioTranscriber(untyped::add).transcribe(tone(0.25),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+        assertThat(untyped).anyMatch(line -> line.contains("assuming 120 beats/min"));
+    }
+
     private static List<Provenance> provenances(Score score) {
         return score.tempoMap().segments().stream()
                 .map(TempoMap.TempoSegment::provenance).toList();
