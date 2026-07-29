@@ -149,13 +149,19 @@ llm:
   enabled: true
 ```
 
-Most of this is read, layered, and then read by nothing. `analysis` and
-`notation.lilypondPath` reach the pipeline; `analysis.skipSeparation` does not,
-and says so. Every other `notation` key is inert ([#129][i129]), as is all of
-`arrangement`, since `mw-arrange` holds no code yet, and `ml`; the advisor is
-the section below. `analyze` and `render` warn when one of these is asked for
-and cannot be honoured — from a flag or from this file — rather than producing
-the default output in silence.
+Most of this is read, layered, and then read by nothing. What reaches the
+pipeline is `analysis`, apart from `skipSeparation`, and
+`notation.lilypondPath`.
+
+The keys that do nothing divide in two. `analyze` and `render` **warn** about
+`analysis.skipSeparation` and about every `notation` key but `lilypondPath`
+([#129][i129]) — from a flag or from this file — rather than producing the
+default output in silence. All of `arrangement` and `ml` is equally inert, since
+`mw-arrange` and `mw-ml` hold no code, and nothing warns about those: they have
+no flags, and no command to warn from yet ([#144][i144]). The advisor is the
+section below.
+
+[i144]: https://github.com/eolivelli/music-wizard/issues/144
 
 [i129]: https://github.com/eolivelli/music-wizard/issues/129
 
