@@ -16,13 +16,23 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reading LilyPond's diagnostics for the one thing this suite asks it to check.
+ * Reading LilyPond's diagnostics, and deciding what counts as a clean run.
+ *
+ * <p>Two questions, and the module needs both. {@link #complaintsIn} is the
+ * broad one — every line LilyPond wrote that mentions a warning or an error —
+ * and it is what an engraving test asserts is empty. {@link #failedBarChecksIn}
+ * is the narrow one, for the tests that need to say <em>which</em> bar was
+ * short rather than merely that something was said.
  *
  * <p>A failed bar check is the complaint the engraving tests exist for: it is
  * how a bar that does not fill its meter — the commonest way an emitter goes
@@ -81,7 +91,91 @@ final class LilyPondComplaints {
     private static final Pattern FAILED_BAR_CHECK = Pattern.compile(
             "warning: bar ?check failed at: (\\S+)", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * The one complaint the tuplet suite tolerates, and the reasoning.
+     *
+     * <p>Every other line mentioning a warning or an error fails
+     * {@link #assertEngravedCleanly}, because that is what makes engraving worth
+     * doing at all: a bar that does not fill its meter is a {@code warning:}
+     * line and nothing else catches it.
+     *
+     * <p>This one is different in kind and the difference is checkable rather
+     * than asserted. It is a complaint about <em>spacing</em> — LilyPond cannot
+     * fit the little {@code 3} beside a steeply angled beam — raised from its
+     * own layout engine about its own output, not about the source it was given.
+     * The music is right, the bar sums, the PDF is produced and the exit status
+     * is zero. Nothing this emitter could write differently would avoid it
+     * without writing a different rhythm.
+     *
+     * <p>It is <b>reachable from ordinary material</b>, which is why this is a
+     * decision taken deliberately rather than a surprise taken later: round 3 of
+     * review on #92 ran real {@code Quantizer} output through the emitter and
+     * found it in about one stave in eighty, in 4/4, 3/4, 3/2 and 7/8 — four of
+     * the twelve meters this project targets. It needs partial sixteenth-triplet
+     * brackets among rests and ties, which is exactly what a quantized
+     * performance produces and exactly what a bar with every grid position
+     * filled does not.
+     * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne}
+     * drives review's own material through this emitter and engraves the result,
+     * so the constant is pinned to a case in the repository rather than to a
+     * memory of one — and to a case <em>this</em> emitter produces rather than to
+     * hand-copied LilyPond.
+     * {@link LilyPondComplaintsTest#theToleranceIsNarrowerThanTheWordItContains}
+     * pins how little it covers. See #136, which also records that the printed
+     * page is fine where it fires: the number is placed above the beam, not lost.
+     *
+     * <p>The tolerance is <b>not</b> granted by every caller. A chord chart has
+     * no beams and no tuplet numbers, so a suite that engraves one bans every
+     * complaint outright rather than carrying a carve-out nothing behind it can
+     * reach; see {@link EndToEndIT} and {@link StaffNotationIT}.
+     */
+    static final String TOLERATED_COMPLAINT =
+            "programming error: not enough space for tuplet number against beam";
+
     private LilyPondComplaints() {
+    }
+
+    /**
+     * Every line on which LilyPond complained, in the order it wrote them.
+     *
+     * <p>Selected case-insensitively on the two words LilyPond prefixes its
+     * diagnostics with, which is deliberately over-inclusive: being generous
+     * about what counts as a complaint can only produce a loud failure, while
+     * being stingy produces a silent pass, and a silent pass is the failure this
+     * module keeps finding. It also means a line quoting the offending source
+     * counts, which is fine — an engraving with nothing wrong quotes nothing.
+     */
+    static List<String> complaintsIn(String lilypondOutput) {
+        return lilypondOutput.lines()
+                .filter(line -> {
+                    String lower = line.toLowerCase(Locale.ROOT);
+                    return lower.contains("warning") || lower.contains("error");
+                })
+                .toList();
+    }
+
+    /**
+     * Fails on anything LilyPond complained about, bar {@link #TOLERATED_COMPLAINT}.
+     *
+     * <p>One helper rather than the same two lines at every call site, because
+     * the exception is a decision about what the tuplet suite means by "engraved
+     * cleanly" and a decision belongs in one place. It is here rather than in
+     * that suite so that the guard on how wide it is can run in {@code mvn
+     * verify} — a tolerance whose only test sits behind {@code -Pintegration}
+     * can widen without anyone noticing, which is #155 and, one class over, #148.
+     *
+     * <p>Matched exactly, where the selection above is case-insensitive. The two
+     * directions are deliberately different, for the reason
+     * {@link #complaintsIn} gives. Round 5 of review on #92 found a trailing
+     * {@code strip()} on the match inert — LilyPond does not indent its
+     * diagnostics — so it is gone rather than kept as reassurance.
+     */
+    static void assertEngravedCleanly(String name, LilyPondRenderer.Result result) {
+        assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+        List<String> complaints = complaintsIn(result.output()).stream()
+                .filter(line -> !line.equals(TOLERATED_COMPLAINT))
+                .toList();
+        assertThat(complaints).as("%s engraved with complaints", name).isEmpty();
     }
 
     /**

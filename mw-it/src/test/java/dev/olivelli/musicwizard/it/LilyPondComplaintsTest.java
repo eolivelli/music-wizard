@@ -16,14 +16,23 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.TOLERATED_COMPLAINT;
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.complaintsIn;
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.olivelli.musicwizard.notation.LilyPondRenderer;
+import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * What {@link LilyPondComplaints} does and does not count as a failed bar check.
+ * What {@link LilyPondComplaints} does and does not count as a complaint, and as
+ * a failed bar check.
  *
  * <p>No LilyPond here on purpose. The engraving tests can only show the matcher
  * against whichever version is installed on the machine running them, which is
@@ -37,13 +46,16 @@ import org.junit.jupiter.api.Test;
  * silent is the failure this suite keeps finding. So every line LilyPond emits
  * around a bar check is here as a case that must <em>not</em> match.
  *
- * <p><b>The one {@code Test} in a module of {@code IT}s</b>, and deliberately.
- * Everything else here is slow or wants a binary, so it belongs to failsafe and
- * to {@code -Pintegration}; this needs neither and takes a tenth of a second.
- * Round 1 of review pointed out what leaving it under that profile would mean:
- * the guard against the matcher rotting would live inside the job whose being
- * unread for weeks is the whole subject of #145. It runs in {@code mvn verify}
- * instead, which is the check people actually look at.
+ * <p><b>No {@code IT} in the name</b>, and deliberately. Everything an engraving
+ * test can say about the tolerance is said behind {@code -Pintegration}; this
+ * needs no binary and takes a tenth of a second. Round 1 of review on #148
+ * pointed out what leaving it under that profile would mean: the guard against
+ * the matcher rotting would live inside the job whose being unread for weeks is
+ * the whole subject of #145. A {@code *Test} that stops running fails
+ * {@code mvn verify}; an {@code *IT} that stops running reports
+ * {@code No tests to run} and {@code BUILD SUCCESS}. #155 moved
+ * {@link #theToleranceIsNarrowerThanTheWordItContains} here for the same reason
+ * one class over.
  */
 class LilyPondComplaintsTest {
 
@@ -173,5 +185,116 @@ class LilyPondComplaintsTest {
         // And the phrase run together with no space at all, which is neither
         // spelling and should not be treated as one.
         assertThat(failedBarChecksIn("bar.ly:5:17: warning: barcheckfailed at: 3/4")).isEmpty();
+    }
+
+    // ------------------------------------------------- what counts as a complaint
+
+    @Test
+    @DisplayName("a complaint is any line LilyPond wrote the word warning or error on")
+    void everyDiagnosticLineIsAComplaint() {
+        // Both spellings of the bar check, an error, and LilyPond's own
+        // internal grumbles -- every one of them has to be a complaint, because
+        // the engraving tests assert that the list is empty and each of these
+        // is a real line from a run that produced a page nobody wanted.
+        assertThat(complaintsIn(OUTPUT_2_24))
+                .containsExactly("bar.ly:5:17: warning: barcheck failed at: 3/4");
+        assertThat(complaintsIn(OUTPUT_2_26))
+                .containsExactly("bar.ly:5:17: warning: bar check failed at: 3/4");
+        assertThat(complaintsIn("""
+                x.ly:9:3: warning: skipping zero-duration score
+                x.ly:11:21: error: syntax error, unexpected SYMBOL
+                programming error: system with empty extent
+                fatal error: failed files: "x.ly"
+                """)).hasSize(4);
+        // Case, because LilyPond writes "Warning" nowhere today and a matcher
+        // that only handled the lower-case spelling would be one release away
+        // from reading nothing.
+        assertThat(complaintsIn("part.ly:5:20: WARNING: bar check failed at: 3/4")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a clean run has nothing to complain about, so the empty list means something")
+    void aCleanRunHasNoComplaints() {
+        // Byte-exact from a real chord-chart run, both versions -- this is what
+        // EndToEndIT asserts the flagship pipeline produces, and if any of these
+        // ordinary progress lines counted the assertion could never pass.
+        assertThat(complaintsIn("""
+                Processing `chords.ly'
+                Parsing...
+                Interpreting music...[8][16]
+                Preprocessing graphical objects...
+                Finding the ideal number of pages...
+                Fitting music on 1 page...
+                Drawing systems...
+                Converting to `chords.pdf'...
+                Success: compilation successfully completed
+                """)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the tolerance is exactly one line, and everything either side of it still fails")
+    void theToleranceIsNarrowerThanTheWordItContains() {
+        // Round 4 of review on #92 found nothing pinning the width: the filter
+        // could be widened to "any line containing the word error" and the whole
+        // suite stayed green, because the only negative fixture was a *warning*
+        // and the carve-out sits on the error side. So the width is asserted
+        // here, against the helper directly rather than through LilyPond -- a
+        // synthetic Result is the only way to say "a different programming
+        // error" without asking LilyPond to have one.
+        assertThatNoException().isThrownBy(() ->
+                assertEngravedCleanly("only the tolerated line", engraved(TOLERATED_COMPLAINT)));
+        assertThatNoException().isThrownBy(() ->
+                assertEngravedCleanly("nothing at all", engraved("Processing `part.ly'")));
+
+        // A different complaint of the same class. This is the one that matters:
+        // "programming error" is not the tolerated thing, the rest of the line
+        // is, and a filter keyed on the prefix would let every internal
+        // complaint LilyPond has through.
+        assertThatThrownBy(() -> assertEngravedCleanly("another programming error",
+                engraved("programming error: cyclic dependency: chain of aligned objects")))
+                .isInstanceOf(AssertionError.class);
+        // The tolerated text with anything else on the line, which is how a
+        // substring match would have been fooled.
+        assertThatThrownBy(() -> assertEngravedCleanly("more on the line",
+                engraved(TOLERATED_COMPLAINT + " (and something else went wrong)")))
+                .isInstanceOf(AssertionError.class);
+        // And the thing the ban exists for, beside the tolerated line rather
+        // than instead of it. #145 added a second copy of this case in the older
+        // spelling, on the grounds that the tolerance must not go
+        // version-sensitive the way the assertions in that issue did. It is gone
+        // again, and the reasoning is worth more than the assertion was.
+        //
+        // Round 2 of review showed the filter cannot read the bar-check wording:
+        // it selects lines containing "warning" or "error" and excludes one
+        // exact string, and javap confirms no bar-check text in the method or
+        // either lambda. Round 3 then refuted the stronger form of that -- a
+        // mutant adding "&& !line.contains(\"barcheck\")" to the tolerance does
+        // make the two spellings differ, so it is mutations of the expressions
+        // this filter contains that cannot, not mutations at all.
+        //
+        // The copy still goes, because that mutant is killed by a real binary:
+        // under LilyPond 2.24 the bar check in
+        // TupletEngravingIT.bracketsAreEngravedWithTheDurationTheyClaim reaches
+        // this filter in the older spelling already, so the integration job
+        // covers it on the version where it matters and the synthetic copy only
+        // duplicated it.
+        assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
+                .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> assertEngravedCleanly("a real error",
+                engraved("part.ly:5:20: error: syntax error, unexpected '}'")))
+                .isInstanceOf(AssertionError.class);
+        // A run that produced no page at all is not clean however quiet it was.
+        // LilyPond exits zero on a zero-duration score and writes nothing, so
+        // this is the half of the helper that catches an empty chart.
+        assertThatThrownBy(() -> assertEngravedCleanly("no page",
+                new LilyPondRenderer.Result(false, Optional.empty(), "")))
+                .isInstanceOf(AssertionError.class);
+    }
+
+    /** A successful engraving that said exactly these lines. */
+    private static LilyPondRenderer.Result engraved(String... output) {
+        return new LilyPondRenderer.Result(true, Optional.of(Path.of("part.pdf")),
+                String.join("\n", output) + "\n");
     }
 }

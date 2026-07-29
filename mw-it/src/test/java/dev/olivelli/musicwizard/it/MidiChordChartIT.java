@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.complaintsIn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
@@ -85,9 +86,20 @@ class MidiChordChartIT {
 
         assertThat(result.succeeded()).as("%s", result.output()).isTrue();
         // "skipping zero-duration score" is a warning rather than an error, so
-        // the engraver reports success and writes nothing. Naming it is the
-        // whole point of this assertion.
-        assertThat(result.output()).doesNotContainIgnoringCase("zero-duration");
+        // LilyPond reports success and writes nothing -- which is #115, and
+        // which the line above already catches: measured on 2.24.3 and 2.26.0,
+        // the empty chart this emitter writes for a score with no chords leaves
+        // no PDF behind, and LilyPondRenderer.Result.succeeded() is exit status
+        // *and* a file. So the assertion that used to stand here, naming
+        // "zero-duration", could not fail without succeeded() having failed
+        // first. #145's review flagged it as the suite's last version-pinned
+        // negative assertion with nothing showing it reachable, and it is
+        // replaced rather than kept: every complaint is banned, in whichever
+        // words the installed LilyPond uses, and EndToEndIT damages a bar of a
+        // chart of this same shape to show the ban has teeth.
+        assertThat(complaintsIn(result.output()))
+                .as("the chart engraved with complaints")
+                .isEmpty();
         Path pdf = result.pdf().orElseThrow();
         // An engraved page of chord symbols is tens of kilobytes; a blank one is
         // a couple.

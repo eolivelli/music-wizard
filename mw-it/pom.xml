@@ -17,14 +17,20 @@
     downloads, LilyPond invocation, the MIDI to audio to Score ground-truth loop
     -- which are named *IT and only run under -Pintegration.
 
-    Two are neither slow nor externally dependent and are named *Test, so
+    Three are neither slow nor externally dependent and are named *Test, so
     surefire runs them in the default build. MidiRoundTripTest exports a Score
-    through mw-notation and reads it back through mw-transcribe, which needs no
-    audio, no model and no binary; it is here because neither of those modules
-    may depend on the other -- mw-transcribe pulls in mw-ml, which the notation
-    layer is not allowed to see -- and this is the module that already depends
-    on both. LilyPondComplaintsTest reads LilyPond's diagnostics without running
-    it, and explains there why it belongs here.
+    through mw-notation and reads it back through mw-transcribe, and
+    StaffNotationOverloadTest reads what the emitter writes for a played
+    passage; both need audio, model and binary alike not at all, and both are
+    here because neither module may depend on the other -- mw-transcribe pulls
+    in mw-ml, which the notation layer is not allowed to see -- and this is the
+    module that already depends on both. LilyPondComplaintsTest reads LilyPond's
+    diagnostics without running it, and explains there why it belongs here.
+
+    The rule, from #148 and #155: a test that needs no LilyPond is named *Test,
+    whatever else is in the file it was written in. A *Test that stops running
+    fails `mvn verify`; an *IT that stops running reports "No tests to run" and
+    a successful build, which is how a guard goes quiet unnoticed.
 
     `mvn verify` stays fast, offline and binary-free either way.
   </description>
