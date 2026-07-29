@@ -184,14 +184,24 @@ import java.util.regex.Pattern;
  * they leaked because the region was bookkeeping hung off a branch rather than
  * a property of "an echo was due here and I did not find it".
  *
- * <p>The cost is that one unrecognised echo suppresses skipping for what follows
- * it, and a suppressed line extends the region again, so the suppression can run
- * on. That cannot lose anything: suppression only ever means more lines are
- * read, and a suppressed line cannot skip, so the cascade cannot reach round in
- * and enable one. Measured rather than only argued — 10 000 consecutive
- * diagnostics with no echo recognised keep all 10 000 moments, in 44 ms, and
- * 2 000 alternating between recognised and not keep all 2 000. What it costs is
- * over-reporting, which is the currency this class pays in.
+ * <p>The cost is bigger than "two lines", and worth stating plainly. One
+ * unrecognised echo suppresses skipping for what follows it; if a suppressed
+ * line is itself diagnostic-shaped it extends the region again, so on output
+ * where every echo carries diagnostic-shaped text the region walks forward with
+ * the diagnostics and never closes. Round 9 measured that: fifty diagnostics
+ * whose echoes all say something diagnostic-shaped report fifty moments cleanly,
+ * and report a hundred and one — fifty of them spurious — once a single
+ * truncated echo is put in front of them. It is not a two-line window.
+ *
+ * <p>What it cannot do is lose anything. Suppression only ever means more lines
+ * are read, and a suppressed line cannot itself skip, so a cascade cannot reach
+ * round and enable one; the only way to lose a moment here is a skip firing
+ * wrongly, and suppression strictly reduces skips. Measured as well as argued —
+ * 10 000 consecutive diagnostics with no echo recognised keep all 10 000
+ * moments, in 44 ms, and 2 000 alternating between recognised and not keep all
+ * 2 000, so the skip resumes rather than staying off. The trigger for the
+ * walking region is #169's truncation, and the currency it pays in is
+ * over-reporting.
  *
  * <p><b>And a skip needs a column of 2 or more.</b> At column 1 "indented by
  * {@code C - 1} spaces" is satisfied by any unindented line whatsoever, so a

@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import java.io.File;
@@ -916,6 +917,36 @@ class LilyPondRendererTest {
                         .as("trial %d%n%s", trial, output)
                         .isEqualTo(expected);
             }
+        }
+
+        @Test
+        @DisplayName("does not fall over when the echo would start past the end")
+        void theBoundsGuardHoldsAtEitherEnd() {
+            // Round 9 found the guard pinned in one direction only. Widening it
+            // to first + 2 degrades to over-reporting rather than throwing, so
+            // nothing noticed: the last line of the output is then read as an
+            // echo's second half that is not there.
+            //
+            // Two lines after a diagnostic, exactly, is what an echo occupies.
+            // With only one line left there is no pair to recognise, so the line
+            // is read -- and here it is diagnostic-shaped, so it reports.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "  p.ly:9:9: warning: bar check failed at: 9/9").failedBarChecks())
+                    .as("one line left is not an echo, so it is read rather than skipped")
+                    .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("hands back a list a caller cannot alter under the next reader")
+        void theMomentsAreNotTheParsersOwnList() {
+            // Derived on every call from output(), so two callers get two lists
+            // -- but a caller that could mutate one would still be surprising,
+            // and List.copyOf was pinned by nothing.
+            List<String> moments = said("p.ly:1:4: warning: bar check failed at: 3/4\n")
+                    .failedBarChecks();
+
+            assertThatThrownBy(() -> moments.add("9/9"))
+                    .isInstanceOf(UnsupportedOperationException.class);
         }
 
         @Test

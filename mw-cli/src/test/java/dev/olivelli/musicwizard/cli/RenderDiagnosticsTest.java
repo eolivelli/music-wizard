@@ -165,8 +165,13 @@ class RenderDiagnosticsTest {
         // so the singular branch was pinned by nothing.
         assertThat(render.err())
                 .contains("warning: LilyPond reported 1 failed bar check while")
-                .contains("chords.ly")
                 .contains("at 3/4.");
+        // The file's name, not its path. Round 9 found `contains("chords.ly")`
+        // satisfied either way, so naming the whole workspace path in a warning
+        // meant for a human would have gone unnoticed.
+        assertThat(render.err())
+                .contains("engraving chords.ly,")
+                .doesNotContain("engraving " + workspace);
         assertThat(render.err()).contains("does not add up to its time signature");
         // On stderr rather than stdout, because this command's last act is to
         // print the chart itself -- which is exactly the thing someone pipes to
