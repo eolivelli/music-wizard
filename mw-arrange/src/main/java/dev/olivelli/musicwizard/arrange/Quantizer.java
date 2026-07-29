@@ -117,15 +117,26 @@ import java.util.function.ToDoubleFunction;
  * heard in the second half of a beat is written on the beat it is approaching,
  * so the symbol appears before the harmony does.
  *
- * <p>It is bounded, and the bound is the whole of why it is acceptable: a chord
- * is printed <b>at most half a counted beat before it sounds</b>, and never at a
- * beat whose own half-beat neighbourhood it does not reach. That is not a
- * tolerated error but the point of the exercise -- a change heard 40 ms early
- * against a downbeat belongs <em>on</em> the downbeat, and an eighth-note
- * anticipation of beat three belongs on beat three. Preferring the chord
- * actually sounding at the snapped position, which is the other rule available
- * here, would forbid rounding a chord backwards at all and would print both of
- * those a whole beat late.
+ * <p>It is bounded, and the bound is the whole of why it is acceptable: a placed
+ * chord is printed <b>within half a counted beat of where the harmony changes</b>
+ * -- half the counted beat of the bar the change falls in, which is the unit it
+ * was rounded against and not the score's longest. That is not a tolerated error
+ * but the point of the exercise: a change heard 40 ms early against a downbeat
+ * belongs <em>on</em> the downbeat, and an eighth-note anticipation of beat
+ * three belongs on beat three. Preferring the chord actually sounding at the
+ * snapped position, which is the other rule available here, would forbid
+ * rounding a chord backwards at all and would print both of those a whole beat
+ * late.
+ *
+ * <p>Measured rather than reasoned, because the bound does not follow from the
+ * rounding rule alone: {@link #onGrid} places a start at
+ * {@code max(snap(start), furthestEnd)}, so a boundary can be pushed past its
+ * own nearest beat by a neighbour, and that path has no rounding argument to
+ * appeal to. {@code aPlacedSymbolStaysWithinHalfACountedBeat} sweeps a thousand
+ * random progressions over four meters and a map that changes meter underneath
+ * them, half of them carrying the tolerated overlap, and finds every placed
+ * symbol inside the bound; rounding down instead of to nearest puts a symbol
+ * 0.64 beats out and fails it.
  *
  * <p>What #158 reported was the unbounded form of this, and it came from
  * somewhere else: a chord dropped for being too short left its position free,

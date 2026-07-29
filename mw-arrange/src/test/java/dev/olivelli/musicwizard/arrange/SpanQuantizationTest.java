@@ -147,6 +147,72 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("a printed symbol is never further than half a counted beat from its change")
+        void aPlacedSymbolStaysWithinHalfACountedBeat() {
+            // The bound the class claims for #158, measured rather than argued.
+            // A chord symbol may be printed before the harmony arrives -- that
+            // is how an anticipation lands on the downbeat it anticipates -- and
+            // what makes it acceptable rather than a lie is that it cannot be
+            // printed further out than half the counted beat of the bar the
+            // change falls in. Prose asserting that is prose; this is the
+            // measurement, over four meters plus a map that changes meter
+            // underneath the progression, with the clamp that resolves the
+            // tolerated overlap exercised in half the trials.
+            //
+            // Not a restatement of the snapping rule: the placed position comes
+            // from max(snap(start), furthestEnd), so a boundary can be pushed
+            // past its own nearest beat by a neighbour, and that path has no
+            // rounding bound of its own to appeal to.
+            java.util.Random random = new java.util.Random(20260729);
+            List<TempoMap> maps = List.of(
+                    TempoMap.constant(BPM, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, TimeSignature.SIX_EIGHT),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8)),
+                    TempoMap.constant(BPM, TimeSignature.THREE_FOUR),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8))
+                            .withMeterChange(1, TimeSignature.FOUR_FOUR)
+                            .withMeterChange(3, TimeSignature.SIX_EIGHT));
+            int placed = 0;
+            int withdrawn = 0;
+            for (TempoMap tempoMap : maps) {
+                for (int trial = 0; trial < 200; trial++) {
+                    List<Chord> spans = new ArrayList<>();
+                    double at = random.nextDouble() * 0.5;
+                    for (int i = 0; i < 6; i++) {
+                        // Between about one and three counted beats at 120 BPM,
+                        // so most trials place and some do not.
+                        double next = at + 0.4 + random.nextDouble() * 1.1;
+                        // Half the trials hand the pass the microsecond of
+                        // overlap ChordProgression tolerates.
+                        double start = i > 0 && trial % 2 == 0 ? at - 4e-7 : at;
+                        spans.add(chord(i % 2 == 0 ? "C4" : "G4", start, next));
+                        at = next;
+                    }
+                    QuantizedScore quantized =
+                            Quantizer.quantize(chordsOnly(tempoMap, spans.toArray(new Chord[0])));
+                    if (quantized.unplaceableChords() > 0) {
+                        withdrawn++;
+                        continue;
+                    }
+                    for (Chord placedChord : quantized.score().chords().chords()) {
+                        double heard = tempoMap.secondsToBeats(placedChord.startSeconds());
+                        double unit = tempoMap.timeSignatureAtBar(
+                                tempoMap.toMusicalTime(heard).bar()).beatUnitQuarters();
+                        assertThat(Math.abs(placedChord.startBeat().orElseThrow() - heard))
+                                .as("%s printed at %s, heard at %s", placedChord.symbol(),
+                                        placedChord.startBeat().orElseThrow(), heard)
+                                .isLessThanOrEqualTo(unit / 2 + 1e-9);
+                        placed++;
+                    }
+                }
+            }
+            // Both populations stated, so the sweep cannot pass by placing
+            // nothing or by withdrawing everything.
+            assertThat(placed).isGreaterThan(3000);
+            assertThat(withdrawn).isGreaterThan(0);
+        }
+
+        @Test
         @DisplayName("a progression that gains beats is one the chart may bar from")
         void theProgressionReportsItselfQuantized() {
             Score score = chordsOnly(fourFour(),
