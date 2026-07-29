@@ -28,9 +28,12 @@
     diagnostics without running it, and explains there why it belongs here.
 
     The rule, from #148 and #155: a test that needs no LilyPond is named *Test,
-    whatever else is in the file it was written in. A *Test that stops running
-    fails `mvn verify`; an *IT that stops running reports "No tests to run" and
-    a successful build, which is how a guard goes quiet unnoticed.
+    whatever else is in the file it was written in. What that buys is which job
+    runs it -- every `mvn verify` and every CI job, rather than only the one
+    where someone remembered -Pintegration, which is the job #145 showed can
+    stay red and unread for weeks. It does not buy noticing a test that stops
+    running: failIfNoTests is not configured here, so a *Test that disappears is
+    as silent as an *IT that does.
 
     `mvn verify` stays fast, offline and binary-free either way.
   </description>

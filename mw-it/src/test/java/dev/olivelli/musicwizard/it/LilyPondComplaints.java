@@ -124,10 +124,11 @@ final class LilyPondComplaints {
      * pins how little it covers. See #136, which also records that the printed
      * page is fine where it fires: the number is placed above the beam, not lost.
      *
-     * <p>The tolerance is <b>not</b> granted by every caller. A chord chart has
-     * no beams and no tuplet numbers, so a suite that engraves one bans every
-     * complaint outright rather than carrying a carve-out nothing behind it can
-     * reach; see {@link EndToEndIT} and {@link StaffNotationIT}.
+     * <p><b>It is not granted by default</b>, and after round 1 of review on
+     * #164 it is not granted by the helper either: a caller that wants it names
+     * it, so a chord-chart suite cannot acquire a carve-out nothing it engraves
+     * can reach by picking the obviously-named assertion. Only
+     * {@link TupletEngravingIT} passes it.
      */
     static final String TOLERATED_COMPLAINT =
             "programming error: not enough space for tuplet number against beam";
@@ -155,25 +156,37 @@ final class LilyPondComplaints {
     }
 
     /**
-     * Fails on anything LilyPond complained about, bar {@link #TOLERATED_COMPLAINT}.
+     * Fails unless LilyPond produced a page and said nothing about it.
      *
-     * <p>One helper rather than the same two lines at every call site, because
-     * the exception is a decision about what the tuplet suite means by "engraved
-     * cleanly" and a decision belongs in one place. It is here rather than in
-     * that suite so that the guard on how wide it is can run in {@code mvn
-     * verify} — a tolerance whose only test sits behind {@code -Pintegration}
-     * can widen without anyone noticing, which is #155 and, one class over, #148.
+     * <p>One helper rather than the same two lines at each of nine call sites,
+     * and it is here rather than in an {@code *IT} so that the guard on how wide
+     * the tolerance is can run in {@code mvn verify} — a tolerance whose only
+     * test sits behind {@code -Pintegration} can widen without anyone noticing,
+     * which is #155 and, one class over, #148.
      *
-     * <p>Matched exactly, where the selection above is case-insensitive. The two
-     * directions are deliberately different, for the reason
-     * {@link #complaintsIn} gives. Round 5 of review on #92 found a trailing
-     * {@code strip()} on the match inert — LilyPond does not indent its
-     * diagnostics — so it is gone rather than kept as reassurance.
+     * <p><b>Tolerating nothing is the default, and anything tolerated is named
+     * at the call site.</b> Round 1 of review on #164 pointed out the hazard in
+     * the shape this replaced: a single helper carrying
+     * {@link #TOLERATED_COMPLAINT} silently, whose javadoc had to <em>ask</em>
+     * chord-chart callers not to use it. A carve-out nothing a suite engraves
+     * can reach is the dead carve-out #92 spent two review rounds avoiding, and
+     * an argument makes acquiring one a visible choice rather than a default.
+     *
+     * <p>Tolerated lines are matched exactly, where the selection in
+     * {@link #complaintsIn} is case-insensitive. The two directions are
+     * deliberately different, for the reason given there. Round 5 of review on
+     * #92 found a trailing {@code strip()} on the match inert — LilyPond does not
+     * indent its diagnostics — so it is gone rather than kept as reassurance.
+     *
+     * @param tolerated complaint lines this caller accepts, matched in full;
+     *                  empty for every caller but {@link TupletEngravingIT}
      */
-    static void assertEngravedCleanly(String name, LilyPondRenderer.Result result) {
+    static void assertEngravedCleanly(String name, LilyPondRenderer.Result result,
+                                      String... tolerated) {
         assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+        List<String> allowed = List.of(tolerated);
         List<String> complaints = complaintsIn(result.output()).stream()
-                .filter(line -> !line.equals(TOLERATED_COMPLAINT))
+                .filter(line -> !allowed.contains(line))
                 .toList();
         assertThat(complaints).as("%s engraved with complaints", name).isEmpty();
     }

@@ -51,11 +51,20 @@ import org.junit.jupiter.api.Test;
  * needs no binary and takes a tenth of a second. Round 1 of review on #148
  * pointed out what leaving it under that profile would mean: the guard against
  * the matcher rotting would live inside the job whose being unread for weeks is
- * the whole subject of #145. A {@code *Test} that stops running fails
- * {@code mvn verify}; an {@code *IT} that stops running reports
- * {@code No tests to run} and {@code BUILD SUCCESS}. #155 moved
+ * the whole subject of #145. Named this way it runs on every {@code mvn verify}
+ * and in every CI job; named {@code *IT} it would run only where a reviewer had
+ * remembered {@code -Pintegration}. #155 moved
  * {@link #theToleranceIsNarrowerThanTheWordItContains} here for the same reason
  * one class over.
+ *
+ * <p>What that does <em>not</em> buy is noticing a test that stops being run at
+ * all. Round 1 of review on #164 renamed {@link StaffNotationOverloadTest} to
+ * {@code *IT} and watched {@code mvn verify} report {@code Tests run: 21} and
+ * {@code BUILD SUCCESS}, one quieter than before: surefire's
+ * {@code failIfNoTests} is not configured anywhere in this build, so a
+ * {@code *Test} that disappears is exactly as silent as an {@code *IT} that
+ * does. The argument for the name is which job runs it, not what happens when
+ * nothing does.
  */
 class LilyPondComplaintsTest {
 
@@ -241,8 +250,8 @@ class LilyPondComplaintsTest {
         // here, against the helper directly rather than through LilyPond -- a
         // synthetic Result is the only way to say "a different programming
         // error" without asking LilyPond to have one.
-        assertThatNoException().isThrownBy(() ->
-                assertEngravedCleanly("only the tolerated line", engraved(TOLERATED_COMPLAINT)));
+        assertThatNoException().isThrownBy(() -> assertEngravedCleanly(
+                "only the tolerated line", engraved(TOLERATED_COMPLAINT), TOLERATED_COMPLAINT));
         assertThatNoException().isThrownBy(() ->
                 assertEngravedCleanly("nothing at all", engraved("Processing `part.ly'")));
 
@@ -251,12 +260,14 @@ class LilyPondComplaintsTest {
         // is, and a filter keyed on the prefix would let every internal
         // complaint LilyPond has through.
         assertThatThrownBy(() -> assertEngravedCleanly("another programming error",
-                engraved("programming error: cyclic dependency: chain of aligned objects")))
+                engraved("programming error: cyclic dependency: chain of aligned objects"),
+                TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         // The tolerated text with anything else on the line, which is how a
         // substring match would have been fooled.
         assertThatThrownBy(() -> assertEngravedCleanly("more on the line",
-                engraved(TOLERATED_COMPLAINT + " (and something else went wrong)")))
+                engraved(TOLERATED_COMPLAINT + " (and something else went wrong)"),
+                TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         // And the thing the ban exists for, beside the tolerated line rather
         // than instead of it. #145 added a second copy of this case in the older
@@ -279,17 +290,39 @@ class LilyPondComplaintsTest {
         // covers it on the version where it matters and the synthetic copy only
         // duplicated it.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
-                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4")))
+                engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4"),
+                TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> assertEngravedCleanly("a real error",
-                engraved("part.ly:5:20: error: syntax error, unexpected '}'")))
+                engraved("part.ly:5:20: error: syntax error, unexpected '}'"),
+                TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         // A run that produced no page at all is not clean however quiet it was.
         // LilyPond exits zero on a zero-duration score and writes nothing, so
         // this is the half of the helper that catches an empty chart.
         assertThatThrownBy(() -> assertEngravedCleanly("no page",
-                new LilyPondRenderer.Result(false, Optional.empty(), "")))
+                new LilyPondRenderer.Result(false, Optional.empty(), ""), TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
+    }
+
+    @Test
+    @DisplayName("a caller that asks for no tolerance gets none, including for the tolerated line")
+    void theToleranceIsNotGrantedUnlessItIsAskedFor() {
+        // Round 1 of review on #164 named the hazard this pins: while the
+        // tolerance was baked into the helper, the obviously-named assertion
+        // carried a carve-out for a tuplet-number spacing complaint to callers
+        // engraving chord charts, which have neither beams nor tuplet numbers.
+        // Six of the nine call sites now pass nothing, and this is what says
+        // that passing nothing means nothing -- a helper that kept the old
+        // default while accepting the argument would pass every other case in
+        // this class.
+        assertThatThrownBy(() -> assertEngravedCleanly(
+                "the tuplet carve-out, unasked-for", engraved(TOLERATED_COMPLAINT)))
+                .isInstanceOf(AssertionError.class);
+        // And more than one may be named, since the signature admits it.
+        assertThatNoException().isThrownBy(() -> assertEngravedCleanly("two named",
+                engraved(TOLERATED_COMPLAINT, "programming error: system with empty extent"),
+                TOLERATED_COMPLAINT, "programming error: system with empty extent"));
     }
 
     /** A successful engraving that said exactly these lines. */

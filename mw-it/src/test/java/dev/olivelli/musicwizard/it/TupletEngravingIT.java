@@ -115,7 +115,7 @@ class TupletEngravingIT {
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve("triplets/part.ly"), source);
-        assertEngravedCleanly("the triplet page", result);
+        assertEngravedCleanly("the triplet page", result, TOLERATED_COMPLAINT);
         Path pdf = result.pdf().orElseThrow();
         assertThat(pageCount(pdf)).isEqualTo(1);
         assertThat(Files.size(pdf)).as("an empty page").isGreaterThan(10_000);
@@ -157,7 +157,7 @@ class TupletEngravingIT {
         // And the one complaint this suite tolerates does not swallow it. A
         // tolerance is only worth having if the thing it was carved out of still
         // fails, so the carve-out is pointed at the failure it must not cover.
-        assertThatThrownBy(() -> assertEngravedCleanly("short bracket", result))
+        assertThatThrownBy(() -> assertEngravedCleanly("short bracket", result, TOLERATED_COMPLAINT))
                 .as("the tolerance swallowed a failed bar check")
                 .isInstanceOf(AssertionError.class);
     }
@@ -201,7 +201,7 @@ class TupletEngravingIT {
 
                 LilyPondRenderer.Result result = renderer.renderSource(
                         tempDirectory.resolve("meters/" + name + "/part.ly"), source);
-                assertEngravedCleanly(name, result);
+                assertEngravedCleanly(name, result, TOLERATED_COMPLAINT);
                 engraved++;
             }
         }
@@ -237,7 +237,7 @@ class TupletEngravingIT {
 
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve(engraved.name() + "/part.ly"), source);
-            assertEngravedCleanly(engraved.name(), result);
+            assertEngravedCleanly(engraved.name(), result, TOLERATED_COMPLAINT);
             assertThat(Files.size(result.pdf().orElseThrow()))
                     .as("%s is an empty page", engraved.name()).isGreaterThan(10_000);
         }
@@ -305,7 +305,7 @@ class TupletEngravingIT {
         // the moments rather than for the prose is what removes the question.
         assertThat(failedBarChecksIn(result.output())).isEmpty();
         assertThat(result.pdf()).isPresent();
-        assertEngravedCleanly("the tolerated case", result);
+        assertEngravedCleanly("the tolerated case", result, TOLERATED_COMPLAINT);
     }
 
     @Test
@@ -344,7 +344,7 @@ class TupletEngravingIT {
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve("names/" + name + ".ly"), source);
             assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
-            assertEngravedCleanly(name, result);
+            assertEngravedCleanly(name, result, TOLERATED_COMPLAINT);
             assertThat(result.pdf()).as("%s produced no page", name).isPresent();
         }
     }

@@ -39,7 +39,9 @@ import org.junit.jupiter.api.Test;
  * <p><b>No {@code IT} in the name.</b> It shells out to nothing, downloads
  * nothing and takes about fifteen milliseconds; it was behind
  * {@code -Pintegration} only because it was written inside a class named
- * {@code *IT}, which is #155. It is in {@code mw-it} rather than in
+ * {@code *IT}, which is #155. What the name buys is which job runs it, and not
+ * more than that — see {@link LilyPondComplaintsTest}, which records what round
+ * 1 of review on #164 measured about the rest. It is in {@code mw-it} rather than in
  * {@code mw-notation} for the reason {@link MidiRoundTripTest} gives: it needs
  * {@code MidiTranscriber}, and {@code mw-transcribe} pulls in {@code mw-ml},
  * which the notation layer is not allowed to see.

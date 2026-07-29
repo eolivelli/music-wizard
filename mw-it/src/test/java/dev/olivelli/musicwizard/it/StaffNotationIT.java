@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
@@ -139,16 +140,16 @@ class StaffNotationIT {
                     tempDirectory.resolve(engraved.name() + "/part.ly"),
                     StaffNotation.toLilyPond(engraved.score(), track));
 
-            assertThat(result.succeeded())
-                    .as("%s: %s", engraved.name(), result.output())
-                    .isTrue();
             // A failed bar check is a warning, not an error: LilyPond engraves
             // the wrong bar and carries on. Treating any warning as a failure is
             // what makes this test worth running.
-            assertThat(result.output())
-                    .as("%s engraved with complaints", engraved.name())
-                    .doesNotContainIgnoringCase("warning")
-                    .doesNotContainIgnoringCase("error");
+            //
+            // Through the shared helper since #164, having been the third copy
+            // of the same two lines -- and by the project's own rule, the place
+            // the third edit would go is the place the structure should change
+            // instead. Nothing tolerated: this file's staves are the plain ones,
+            // and the tuplet suite's carve-out has nothing here to apply to.
+            assertEngravedCleanly(engraved.name(), result);
 
             Path pdf = result.pdf().orElseThrow();
             assertThat(pageCount(pdf)).as("%s page count", engraved.name()).isEqualTo(1);
