@@ -418,16 +418,24 @@ public final class Quantizer {
     /**
      * What a span whose boundaries snapped to the same position comes back as.
      *
-     * <p>Total, and that is the point: there is no way to spell "leave it out",
-     * so {@link #onGrid} returns as many spans as it was given whatever any
-     * caller does. The class claims nothing is ever deleted, and this is what
-     * makes the claim structural rather than a convention every caller has to
-     * keep. It used to permit {@code null}; the one handler that returned it was
-     * the chord one, into a list that was discarded anyway, and the comment
-     * justifying the {@code null} described a mechanism -- {@code furthestEnd}
-     * advancing past an unpublished boundary -- that {@link #onGrid} does not
-     * have. A capability with no user and a false reason for existing is worse
-     * than no capability.
+     * <p>Meant to be total, and {@link #onGrid} treats it as such: it adds
+     * whatever comes back, once per span, so it returns as many spans as it was
+     * handed. It used to permit {@code null} explicitly, and the one handler
+     * that returned it was the chord one, into a list that was discarded anyway
+     * -- with a comment justifying the {@code null} by a mechanism
+     * ({@code furthestEnd} advancing past an unpublished boundary) that
+     * {@code onGrid} does not have. A capability with no user and a false reason
+     * for existing is worse than no capability, so it went.
+     *
+     * <p>What that does <em>not</em> buy is a guarantee from the compiler, and
+     * saying otherwise here was itself a claim execution refuted. A handler can
+     * still return {@code null}; nothing rejects it, {@code onGrid} adds it, and
+     * it fails later when {@link Score} is built. What catches that is three
+     * tests -- {@code anUnplaceableSectionIsNotDeleted},
+     * {@code aCollapsedSpanDoesNotKeepBeatsFromNowhere} and
+     * {@code everyKindOfSpanSurvivesInItsOwnNumber} all fail on a
+     * {@code NullPointerException} if one does. Loud, immediate, and not the
+     * type system.
      */
     @FunctionalInterface
     private interface Collapsed<T> {

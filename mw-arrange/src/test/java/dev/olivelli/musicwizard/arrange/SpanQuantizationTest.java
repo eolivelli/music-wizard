@@ -242,7 +242,6 @@ class SpanQuantizationTest {
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "D", "F");
             assertThat(quantized.score().chords().isQuantized()).isFalse();
-            assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.isFullyQuantized()).isFalse();
         }
 
@@ -279,9 +278,9 @@ class SpanQuantizationTest {
 
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "G", "A", "F", "C", "G", "A", "F");
-            assertThat(quantized.score().chords().isQuantized()).isFalse();
-            // Four of the eight, which is what a caller needs to tell a user
-            // that the tempo they supplied is half the one the harmony moves at.
+            // Withdrawn entire, which is the whole of the fix: the eight
+            // symbols above are the eight that were played, in the order they
+            // were played, and none of them carries a beat it cannot have.
             assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
@@ -332,7 +331,6 @@ class SpanQuantizationTest {
 
             QuantizedScore quantized = Quantizer.quantize(performance.score(chords));
 
-            assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.score().chords().isQuantized()).isFalse();
             assertThat(quantized.score().tracks())
                     .allSatisfy(t -> assertThat(t.isQuantized()).isTrue());
@@ -440,12 +438,32 @@ class SpanQuantizationTest {
                     }
                     if (!out.score().chords().isQuantized()) {
                         withdrawn++;
+                        // Not the negation of the guard: that says at least one
+                        // chord has no beats, this says none of them has any.
+                        // The all-or-nothing lives here, and a per-chord
+                        // fallback is killed by exactly this line.
                         assertThat(published).allSatisfy(
                                 c -> assertThat(c.isQuantized()).isFalse());
                     } else {
                         placed++;
-                        assertThat(published).allSatisfy(
-                                c -> assertThat(c.isQuantized()).isTrue());
+                        // And here the guard is all-or-nothing in the other
+                        // direction, so asserting every chord is quantized would
+                        // restate it -- ChordProgression.isQuantized() is
+                        // literally allMatch(Chord::isQuantized), so such an
+                        // assertion cannot fail. An earlier draft had exactly
+                        // that. What is worth checking instead is that the axis
+                        // the chords were placed on is usable: ordered, with no
+                        // overlap and no zero-length span.
+                        double previousEnd = Double.NEGATIVE_INFINITY;
+                        for (Chord chord : published) {
+                            double from = chord.startBeat().orElseThrow();
+                            double to = chord.endBeat().orElseThrow();
+                            assertThat(from).as("%s, ordered", tempoMap)
+                                    .isGreaterThanOrEqualTo(previousEnd);
+                            assertThat(to).as("%s, positive length", tempoMap)
+                                    .isGreaterThan(from);
+                            previousEnd = to;
+                        }
                     }
                 }
             }
