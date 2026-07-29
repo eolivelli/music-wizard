@@ -394,15 +394,19 @@ final class AnalyzeCommand implements Callable<Integer> {
         // to disambiguate a repeat -- so some of what is printed here was read
         // and some was constructed, and the heading above must not cover both.
         lines.add("Parts   " + partsLine(score));
+        // Outside the declared block, and that placement is now doing more work
+        // than when it was written. Until #115 landed a MIDI import produced no
+        // chords at all; SymbolicChordEstimator now runs on this path, so a MIDI
+        // score has an estimated harmony over declared tempo and meter. Keeping
+        // chords out of the block is what stops the one being read as the other
+        // -- and it needed no change when the estimator arrived, which is the
+        // test of whether the split was drawn in the right place.
+        //
+        // The empty wording comes from MissingHarmony rather than being written
+        // here: this line used to name #115 unconditionally, which was false for
+        // a file holding no notes and contradicted what render said about the
+        // same score.
         lines.add(score.chords().isEmpty()
-                // Not "0 spans", which reads as the result of looking. Nothing
-                // looked: a MIDI file states which notes sound, and naming the
-                // harmony they spell is a stage that does not exist yet.
-                //
-                // The reason itself comes from MissingHarmony rather than being
-                // written here, because this line used to name #115
-                // unconditionally -- which is false for a file holding no notes,
-                // and contradicted what render said about the same score.
                 ? "Chords  none, " + MissingHarmony.explain(score)
                 : "Chords  " + score.chords().size() + " spans");
         return lines;

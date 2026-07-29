@@ -102,15 +102,16 @@ rather than listing it and writing nothing.
 
 **`init` also takes a Standard MIDI File.** The input is identified by its
 header rather than its extension, and a MIDI file is read symbolically rather
-than measured: nothing about it is estimated from audio. `analyze` reports its
-tempo, meter and key under a heading saying where they came from — *from the
-file, or the MIDI default where it declares nothing*, because a file that
-declares no tempo is played at 120 in 4/4 by the specification and the import
-cannot tell the two apart ([#119][i119]). What a MIDI file does not carry at all
-is harmony: it states which notes sound, not what chord they spell, so a chord
-chart from one is not available yet ([#115][i115]).
+than measured. `analyze` reports its tempo, meter and key under a heading saying
+where they came from — *from the file, or the MIDI default where it declares
+nothing*, because a file that declares no tempo is played at 120 in 4/4 by the
+specification and the import cannot tell the two apart ([#119][i119]).
 
-[i115]: https://github.com/eolivelli/music-wizard/issues/115
+Its chords are the one thing that is *not* declared: a MIDI file states which
+notes sound, not what chord they spell, so the harmony is estimated from the
+notes. That is why the chord count is printed outside that heading and not
+under it.
+
 [i119]: https://github.com/eolivelli/music-wizard/issues/119
 
 ```sh

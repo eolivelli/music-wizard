@@ -331,8 +331,8 @@ class RenderPartsTest {
     class NoHarmony {
 
         @Test
-        @DisplayName("but with parts is a missing feature, and says which")
-        void notesWithoutHarmonyPointAtTheMissingStage() {
+        @DisplayName("but with parts says what it holds, and names no cause")
+        void notesWithoutHarmonyAreDescribedNotExplained() {
             Path workspace = workspaceWith("four", ChordProgression.empty(),
                     List.of(aPart("Piano"), aPart("Bass")));
 
@@ -342,7 +342,8 @@ class RenderPartsTest {
             assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out())
                     .contains("no chord progression, though it holds 2 part(s)")
-                    .contains("(#115)");
+                    .as("naming a cause the score cannot support")
+                    .doesNotContain("(#115)");
             // The empty chart is not written at all: a file saying "(no chords
             // were found)" is a file a user has to open to learn nothing.
             assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
@@ -397,6 +398,7 @@ class RenderPartsTest {
                     .doesNotContain("the analysis that produced it found no harmony")
                     .doesNotContain("nothing for harmony to be derived from")
                     .doesNotContain("nothing in it to engrave")
+                    .doesNotContain("not implemented yet (#115)")
                     .doesNotContain("recording")
                     .doesNotContain("audio")
                     .doesNotContain("MIDI file");

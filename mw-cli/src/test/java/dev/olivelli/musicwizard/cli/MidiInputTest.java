@@ -144,17 +144,52 @@ class MidiInputTest {
         }
 
         @Test
-        @DisplayName("absent harmony is reported as absent, not as nothing found")
-        void absentHarmonyIsNotZeroSpans() {
+        @DisplayName("estimated harmony is reported outside the declared block, not inside it")
+        void estimatedHarmonyIsNotReportedAsDeclared() {
+            // #115 landed while this change was in review, so a MIDI import now
+            // has chords -- estimated from its notes, over a tempo and meter the
+            // file declares. That is the mixture the summary's shape exists for,
+            // and it is the first input that actually tests it: the chord count
+            // must sit outside the heading that says where the figures came
+            // from, because nothing about it came from the file.
             Path workspace = imported(MidiFixtures.fourChordSong(), "four");
 
             CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+            Score score = Workspace.open(workspace).readScore().orElseThrow();
 
-            // "0 spans" would read as the result of looking, and nothing looked.
+            assertThat(score.chords().isEmpty())
+                    .as("the fixture must now have harmony for this to discriminate")
+                    .isFalse();
+            assertThat(analyze.out()).contains("Chords  " + score.chords().size() + " spans");
+            assertThat(summaryBlock(analyze.out()).lines().takeWhile(line -> !line.isBlank()))
+                    .as("an estimate quoted under the heading that says nothing was estimated")
+                    .noneSatisfy(line -> assertThat(line).contains("Chords"));
+        }
+
+        @Test
+        @DisplayName("a score with no harmony says so without naming a cause it cannot know")
+        void absentHarmonyNamesNoCause() {
+            // A drum-only file: SymbolicChordEstimator excludes percussion, so
+            // there are notes and no harmony. Before #115 this branch named #115
+            // as the missing stage; there is no single true cause to name now,
+            // since an estimator ran and found nothing.
+            Sequence drumsOnly = MidiFixtures.sequence()
+                    .name("Kit")
+                    .tempo(120)
+                    .timeSignature(4, 4)
+                    .part("Drum Kit", MidiFixtures.DRUM_CHANNEL)
+                    .note(1, 0.5, 42).note(2, 0.5, 38).note(3, 0.5, 42)
+                    .build();
+            Path workspace = imported(drumsOnly, "kit");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.out())
-                    .contains("Chords  none, though it holds 2 part(s); naming the harmony"
-                            + " a set of notes spells is not implemented yet (#115)")
-                    .doesNotContain("0 spans");
+                    .contains("Chords  none, though it holds 1 part(s)")
+                    .doesNotContain("0 spans")
+                    .as("naming a stage that has since landed")
+                    .doesNotContain("#115");
         }
 
         @Test
@@ -180,7 +215,7 @@ class MidiInputTest {
             assertThat(analyze.out())
                     .contains("Parts   none")
                     .contains("Chords  none, and no parts either")
-                    .as("naming a stage that could not produce chords for a file with no notes")
+                    .as("naming a cause this command cannot know")
                     .doesNotContain("(#115)");
             assertThat(render.out())
                     .as("the two commands disagree about the same score")

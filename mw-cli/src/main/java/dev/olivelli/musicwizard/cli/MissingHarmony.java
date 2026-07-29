@@ -43,16 +43,19 @@ import java.util.Objects;
  * Where the score came from is not knowable here and is not guessed at; see
  * #120.
  *
- * <p>That has a cost, and it is stated rather than glossed. The branch for a
- * score <em>with</em> note tracks names a cause, and the cause is right only
- * because every such score is a MIDI import today. When #8 lands, an audio
- * analysis with separated stems will take that branch, and the reason it has no
- * chords will be that the estimator ran over the mix and found none -- not that
- * symbolic harmony is unimplemented. An earlier draft of this paragraph claimed
- * the opposite, that both branches hold "including an audio analysis that
- * separated stems and estimated no chords", which is exactly the case that
- * falsifies it. Tracked as #125, due with #8, and answerable properly only by
- * #120.
+ * <p>Neither branch names a cause any more, and #115 landing on main while this
+ * change was in review is why. Until then a score with note tracks and no chords
+ * was always a MIDI import whose harmony nothing had estimated, so the branch
+ * for it named that missing stage. {@code SymbolicChordEstimator} now runs on
+ * the MIDI path, so a score with parts and no chords is one where an estimator
+ * ran and found nothing -- on either path, by different means, since audio
+ * chords come from the mix and symbolic ones from the notes. There is no single
+ * true cause left to name, and the fourth attempt at naming one would have been
+ * wrong the same way the first three were.
+ *
+ * <p>What is left is a description of the score, which is all this ever safely
+ * had. #125 tracked the surviving cause-claim as coming due with #8; #115 made
+ * it due sooner.
  */
 final class MissingHarmony {
 
@@ -62,10 +65,9 @@ final class MissingHarmony {
     /**
      * The explanation, as a clause a caller prefixes with a comma.
      *
-     * <p>A score with note tracks is one named stage short of a chart, and the
-     * stage is named. A score without them gets a statement of that fact and
-     * nothing more, and the restraint is the point -- this sentence has now been
-     * wrong twice by reaching past what it can know:
+     * <p>Both branches now state what the score holds and stop. The restraint is
+     * the point -- this sentence was wrong three times by reaching past what it
+     * can know, and the first two are worth keeping on the record:
      *
      * <ul>
      *   <li>"so there is nothing to engrave" was a claim about the whole score
@@ -87,18 +89,16 @@ final class MissingHarmony {
      * nothing but a {@link Score} is describing the score rather than explaining
      * it.
      *
-     * <p>The {@code parts > 0} branch does still explain, and is therefore the
-     * one that will need this applied to it -- see the note on the class. It is
-     * not fixed here because the correct answer for that branch is to know what
-     * produced the score (#120) rather than to find a fourth wording that guesses
-     * better.
+     * <p>The third was the {@code parts > 0} branch naming #115 as the missing
+     * stage, which #115 landing made false. It is not replaced by a fourth guess:
+     * telling a user <em>why</em> an estimator found nothing needs to know which
+     * estimator ran, which needs to know what produced the score, which is #120.
      */
     static String explain(Score score) {
         Objects.requireNonNull(score, "score");
         int parts = score.tracks().size();
         return parts == 0
                 ? "and no parts either"
-                : "though it holds " + parts + " part(s); naming the harmony a set of"
-                        + " notes spells is not implemented yet (#115)";
+                : "though it holds " + parts + " part(s)";
     }
 }
