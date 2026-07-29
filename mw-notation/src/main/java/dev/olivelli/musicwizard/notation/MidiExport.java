@@ -89,23 +89,17 @@ import javax.sound.midi.Track;
 public final class MidiExport {
 
     /**
-     * Ticks per quarter note in the written file.
+     * Ticks per quarter note in the written file, which is
+     * {@link ExportGrid#PER_QUARTER} because a MusicXML division is the same
+     * figure for the same reason. The derivation lives there.
      *
-     * <p>Divisible by everything the quantizer produces, which is the only
-     * requirement: 16 for the 64th-note grid, 3 for triplets, and their
-     * multiples for the finer tuplet grids. {@value} covers a 64th note (48
-     * ticks), a triplet 64th (16) and a duplet 64th of compound time (72), so
-     * every position and length the notation layer can name lands on a whole
-     * tick and nothing rounds.
-     *
-     * <p>It is also the number of MusicXML divisions per quarter that
-     * {@link MusicXmlExport} uses, and for exactly the same reasons — one figure
-     * derived twice would be two figures the day one of them moved.
-     *
-     * <p>A file header holds this in fifteen bits, so the ceiling is 32767 and
-     * this is well inside it.
+     * <p>What differs is what happens to a position that is not a whole number
+     * of them. This rounds, because a tick grid is what MIDI is: a tempo change
+     * is at a second rather than at a subdivision of a beat, and refusing one
+     * would refuse ordinary scores. Every position the <em>notation</em> layer
+     * can produce lands on a whole tick regardless.
      */
-    static final int TICKS_PER_QUARTER = MusicXmlExport.DIVISIONS_PER_QUARTER;
+    static final int TICKS_PER_QUARTER = ExportGrid.PER_QUARTER;
 
     private static final int META_TRACK_NAME = 0x03;
     private static final int META_TEMPO = 0x51;
@@ -141,8 +135,10 @@ public final class MidiExport {
      * one track per part. Type 0 would flatten them into one and a re-import
      * would have nothing to split the parts on.
      *
-     * @throws IllegalArgumentException if the score holds no notes, or holds a
-     *         note without musical timing
+     * @throws IllegalArgumentException if the score holds no notes, holds a
+     *         note without musical timing, or carries a tempo so slow that a
+     *         tempo event cannot express it — below about 3.58 BPM, which is
+     *         where whole microseconds per quarter note run out of three bytes
      */
     public static Sequence toSequence(Score score) {
         Objects.requireNonNull(score, "score");

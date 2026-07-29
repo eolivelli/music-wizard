@@ -64,7 +64,11 @@ import java.util.TreeMap;
  *
  * <p>Known limitations, each with an issue: overlapping notes are reduced to
  * block chords rather than split into voices (#93), a key change part-way
- * through is not written (#94), and percussion parts are refused (#95).
+ * through is not written (#94), percussion parts are refused (#95), and one
+ * averaged metronome mark is written for the whole staff rather than one per
+ * tempo change (#154) — which is the loss most likely to surprise, because a
+ * beat-tracked score always has a tempo map and the mark is then an average of
+ * something nobody plays.
  */
 final class StaffLayout {
 
@@ -680,6 +684,14 @@ final class StaffLayout {
      * 6/8 staff that is a marking 50% fast, because a 6/8 bar is counted in
      * dotted quarters — the same trap {@link ChordChart} documents, and the
      * reason the unit is carried rather than assumed to be a quarter.
+     *
+     * <p><b>One mark for the whole staff, from {@link Score#estimatedTempo()}.</b>
+     * A score whose tempo changes gets neither tempo printed: 120 for four beats
+     * and then 60 comes out as a single mark of 80, which is played nowhere in
+     * the piece. {@link MidiExport} writes every segment at its own tick, so the
+     * two exports of such a score disagree — which is #154, and is deliberately
+     * not fixed here because the answer needs a rule for how many marks a
+     * beat-tracked map should produce, not just a loop.
      */
     private static void writeTempo(StaffWriter writer, Score score, TimeSignature meter) {
         Optional<NoteValue> unit = LilyPondDuration.valueOf(meter.beatUnitQuarters());

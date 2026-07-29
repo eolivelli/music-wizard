@@ -315,6 +315,48 @@ class MidiExportTest {
     }
 
     @Test
+    @DisplayName("a note shorter than a tick is played briefly rather than dropped")
+    void subTickNotesSurviveAsOneTick() {
+        // Legal input: Note only requires a positive duration, so a caller who
+        // built one by hand rather than through the quantizer can reach this.
+        // A note-on and a note-off at the same tick is a note every reader
+        // discards -- including this project's importer -- so the floor is what
+        // keeps it from vanishing. Round 1 of review found the floor untested.
+        Note brief = new Note(0.5, 0.001, 60, 80, Optional.empty(),
+                Optional.of(0.0), Optional.of(1.0 / 4000), Confidence.CERTAIN);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(brief),
+                Confidence.CERTAIN);
+        Sequence sequence = MidiExport.toSequence(score(TimeSignature.FOUR_FOUR, 120, voice));
+
+        assertThat(noteEvents(sequence.getTracks()[1])).containsExactly(
+                new Played(0, NOTE_ON, 0, 60),
+                new Played(1, NOTE_OFF, 0, 60));
+    }
+
+    @Test
+    @DisplayName("a tempo too slow for a tempo event is refused rather than truncated")
+    void aTempoTheFormatCannotHoldIsRefused() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        // Microseconds per quarter note is three bytes, so the slowest tempo a
+        // file can name is 60,000,000 / 0xFFFFFF, about 3.576 BPM. TempoSegment
+        // permits anything positive, so a score can carry a slower one -- and
+        // truncating it to three bytes would write a tempo the score never had,
+        // silently and wildly wrong. Round 1 of review found this guard live
+        // and untested.
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> MidiExport.toSequence(
+                        score(TimeSignature.FOUR_FOUR, 3.0, voice)))
+                .withMessageContaining("outside what a MIDI tempo event can express");
+
+        // Just above the boundary, which is what says the guard is at the edge
+        // rather than somewhere convenient.
+        Sequence slow = MidiExport.toSequence(score(TimeSignature.FOUR_FOUR, 3.6, voice));
+        byte[] data = metaData(slow.getTracks()[0], 0x51, 0);
+        int microseconds = ((data[0] & 0xFF) << 16) | ((data[1] & 0xFF) << 8) | (data[2] & 0xFF);
+        assertThat(microseconds).isPositive().isLessThanOrEqualTo(0xFFFFFF);
+    }
+
+    @Test
     @DisplayName("an unquantized note is refused rather than placed by its seconds")
     void unquantizedNotesAreRefused() {
         NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice",

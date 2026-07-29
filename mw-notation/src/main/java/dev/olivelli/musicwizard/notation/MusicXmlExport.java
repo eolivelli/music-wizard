@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
 import jakarta.xml.bind.Marshaller;
 import java.io.StringWriter;
@@ -65,7 +66,6 @@ import org.audiveris.proxymusic.Tuplet;
 import org.audiveris.proxymusic.TypedText;
 import org.audiveris.proxymusic.Work;
 import org.audiveris.proxymusic.YesNo;
-import org.audiveris.proxymusic.util.Marshalling;
 
 /**
  * Exports a {@link Score} as MusicXML 4.0.
@@ -74,9 +74,12 @@ import org.audiveris.proxymusic.util.Marshalling;
  * LilyPond source is emitted straight from the domain model precisely because
  * the route through MusicXML and {@code musicxml2ly} is lossy, so this class is
  * not on the path to a PDF and nothing on that path may reach it. That holds by
- * construction rather than by intention: this class is referenced by no other
- * class in the package, and both it and {@link StaffNotation} are readers of
- * {@link StaffLayout} rather than of each other.
+ * construction rather than by intention: both this and {@link StaffNotation}
+ * are readers of {@link StaffLayout} rather than of each other, and nothing on
+ * the route to a PDF names either export. {@code ExportsAreSiblingsTest} checks
+ * that mechanically — round 1 of review on #151 found the same claim made in
+ * prose with a {@code grep} for evidence, and the grep returned four hits the
+ * claim said it would not.
  *
  * <p>Which means the two exports cannot disagree about the music. Where a held
  * note is cut by a bar line, which bars carry a tuplet bracket, which notes
@@ -105,53 +108,20 @@ import org.audiveris.proxymusic.util.Marshalling;
  *       time signature and the note values, which are both here.
  *   <li><b>Voices.</b> One voice per part, as on the LilyPond side: overlapping
  *       notes become block chords rather than separate voices. #93.
+ *   <li><b>Tempo changes.</b> One metronome mark for the whole part, averaged
+ *       across the tempo map, because that is what {@link StaffLayout} publishes
+ *       — so a MIDI export of the same score, which writes every segment, plays
+ *       a tempo this file does not print. #154.
  * </ul>
  */
 public final class MusicXmlExport {
 
     /**
-     * MusicXML divisions per quarter note.
-     *
-     * <p>MusicXML measures duration in integer divisions of a quarter note, so
-     * this number has to be divisible by every note length the layout can
-     * produce or the arithmetic silently drifts and measures stop adding up.
-     *
-     * <p>The two constraints, and they are the tight ones:
-     *
-     * <ul>
-     *   <li>The shortest plain value is a 64th, a sixteenth of a quarter, so 16
-     *       divides it. A dotted 64th would need 32, and the splitter never
-     *       produces one — its shortest metric unit <em>is</em> the 64th, so
-     *       there is nothing for a dot to add half of — but 32 costs nothing.
-     *   <li>A tuplet step is the awkward one. {@link TupletBar} refuses a grid
-     *       whose written value is shorter than a 64th, and a triplet's written
-     *       64th <em>sounds</em> for two thirds of one, so the shortest sounding
-     *       length is a 96th of a whole note: 24 divisions of a quarter. A
-     *       duplet in compound time goes the other way and needs 32.
-     * </ul>
-     *
-     * <p>So the least workable value is the lowest common multiple of 24 and 32,
-     * which is 96. {@value} is 96 times eight, taken for headroom rather than by
-     * necessity: it leaves room for a finer grid without another format change,
-     * and it is small enough that a four-thousand-bar score stays far inside
-     * {@code int}. The argument is not left to hold on its own —
-     * {@link #divisionsOf} rejects any length this cannot express exactly, and
-     * every measure is checked against its meter before it is written.
+     * MusicXML divisions per quarter note, which is
+     * {@link ExportGrid#PER_QUARTER} because a MIDI tick is the same figure for
+     * the same reason. The derivation lives there.
      */
-    static final int DIVISIONS_PER_QUARTER = 768;
-
-    /**
-     * How far a length may miss a whole number of divisions and still be taken
-     * as that number, in divisions.
-     *
-     * <p>Not slack: a third of a beat is not a representable double, so
-     * {@code (1.0 / 6) * 768} is 127.99999999999999 rather than 128, and an
-     * exact comparison would reject the one case tuplet support exists for. The
-     * bound is far below the smallest gap between two legitimately different
-     * lengths, which is one division, so nothing wrong can pass it — the
-     * relative error of a double is about 1e-16 and this allows 1e-6.
-     */
-    private static final double DIVISION_TOLERANCE = 1e-6;
+    static final int DIVISIONS_PER_QUARTER = ExportGrid.PER_QUARTER;
 
     /**
      * The MusicXML version this claims to be, in the {@code version} attribute
@@ -279,11 +249,10 @@ public final class MusicXmlExport {
     /**
      * The document as text.
      *
-     * <p>Marshalled through proxymusic's own JAXB context — {@link
-     * Marshalling#getContext} is public and is the binding this depends on —
-     * but <em>not</em> through {@code Marshalling.marshal}, and the reason is
-     * worth stating because using the library's own one-call convenience is
-     * otherwise obviously right.
+     * <p>Marshalled with plain JAXB over proxymusic's generated classes rather
+     * than through {@code Marshalling.marshal}, and the reason is worth stating
+     * because using the library's own one-call convenience is otherwise
+     * obviously right.
      *
      * <p>That call declares the document to be MusicXML <b>4.0.3</b>, in both
      * the {@code version} attribute and the DOCTYPE's public identifier. 4.0.3
@@ -306,8 +275,9 @@ public final class MusicXmlExport {
      * the same either way.
      *
      * <p>Nothing writes an {@code <encoding>} block, which is what keeps the
-     * output diffable: it carries the date the file was written, and a golden
-     * file containing one fails tomorrow.
+     * output diffable: it carries the date the file was written <em>and</em>
+     * the version of the library that wrote it, either of which makes a golden
+     * file fail on a day nobody changed anything.
      */
     private static String marshal(ScorePartwise partwise) {
         partwise.setVersion(MUSICXML_VERSION);
@@ -317,8 +287,7 @@ public final class MusicXmlExport {
                 + MUSICXML_VERSION + " Partwise//EN\""
                 + " \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
         try {
-            Marshaller marshaller =
-                    Marshalling.getContext(ScorePartwise.class).createMarshaller();
+            Marshaller marshaller = Context.INSTANCE.createMarshaller();
             marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
             // The declaration is written above, with the DOCTYPE that has to
             // follow it; JAXB would otherwise emit a second one at the top of
@@ -342,19 +311,47 @@ public final class MusicXmlExport {
     /**
      * A length in quarter-note beats as whole MusicXML divisions.
      *
+     * <p>Exact, with no tolerance, for the reason {@link ExportGrid#unitsOf}
+     * gives: rounding a length the layout could not hold would put the measure
+     * out by exactly as much as the length was wrong, and a measure that does
+     * not fill its meter is imported without complaint.
+     *
      * @throws IllegalStateException if the length is not a whole number of
-     *         divisions, which would put the measure out by that much
+     *         divisions
      */
     static int divisionsOf(double quarters) {
-        double exact = quarters * DIVISIONS_PER_QUARTER;
-        long rounded = Math.round(exact);
-        if (!Double.isFinite(exact) || Math.abs(exact - rounded) > DIVISION_TOLERANCE) {
-            throw new IllegalStateException(
-                    "a length of " + quarters + " quarter beats is " + exact + " MusicXML"
-                            + " divisions, which is not a whole number of them; the export"
-                            + " divides a quarter note " + DIVISIONS_PER_QUARTER + " ways");
+        return ExportGrid.unitsOf(quarters);
+    }
+
+    /**
+     * The JAXB context, built once.
+     *
+     * <p>A {@link JAXBContext} is expensive to build, is documented thread-safe,
+     * and is the only part of the marshalling that can be shared — a
+     * {@link Marshaller} is not thread-safe and one is made per export.
+     *
+     * <p>Built here rather than taken from {@code Marshalling.getContext},
+     * which round 1 of review found is a double-checked lock whose fast path
+     * reads a plain {@link java.util.HashMap} outside the monitor. Two threads
+     * first exporting at the same moment race on it, and a racing {@code
+     * HashMap} read does not merely return the wrong answer — it can spin. A
+     * class initializer costs nothing and cannot.
+     */
+    private static final class Context {
+
+        static final JAXBContext INSTANCE = create();
+
+        private Context() {
         }
-        return Math.toIntExact(rounded);
+
+        private static JAXBContext create() {
+            try {
+                return JAXBContext.newInstance(ScorePartwise.class);
+            } catch (JAXBException e) {
+                throw new IllegalStateException(
+                        "the MusicXML bindings are not on the classpath or cannot be read", e);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- writer

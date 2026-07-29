@@ -242,16 +242,44 @@ class MusicXmlExportTest {
     @Test
     @DisplayName("triplet eighths are a tuplet, not tied 64ths")
     void tripletEighths() {
-        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
-                note(0, thirds(1), "C4"), note(thirds(1), thirds(1), "D4"),
-                note(thirds(2), thirds(1), "E4"),
-                note(1, thirds(1), "F4"), note(1 + thirds(1), thirds(2), "G4"),
-                note(2, 2, "A4"));
-        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
-        QuantizedScore quantized = quantized(score, GridResolution.THIRD_BEAT);
+        // Note for note the fixture StaffNotationTest engraves as
+        // triplet-eighths.ly. Round 1 of review found a different four bars
+        // under the same name, so the one pair the PR pointed at as "the one
+        // worth reading side by side" was the one pair that could not be: a
+        // reader diffing them would conclude the emitters disagree.
+        List<Note> notes = new ArrayList<>();
+        // Bar 1: plain eighths, so the bracketed bars have something to be read
+        // against.
+        String[] scale = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"};
+        for (int i = 0; i < 8; i++) {
+            notes.add(note(i * 0.5, 0.5, scale[i]));
+        }
+        // Bar 2: four beats of triplet eighths, which is the case #92 is about.
+        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "D5", "C5"};
+        for (int i = 0; i < 12; i++) {
+            notes.add(note(4 + thirds(i), thirds(1), run[i]));
+        }
+        // Bar 3: the same grid, subdivided in only two of its four beats. The
+        // other two must come out as plain quarters -- a bracket says a beat was
+        // divided in three, and printing one round a beat that was not is as
+        // wrong as leaving it off the beat that was.
+        notes.add(note(8, thirds(1), "C4"));
+        notes.add(note(8 + thirds(1), thirds(2), "D4"));
+        notes.add(note(9, 1 + thirds(1), "E4"));
+        notes.add(note(10 + thirds(1), thirds(2), "F4"));
+        notes.add(note(11, 1, "G4"));
+        // Bar 4: a whole note on the same grid, which needs no bracket at all.
+        notes.add(note(12, 4, "C4"));
 
-        assertGolden("triplet-eighths", MusicXmlExport.toMusicXml(quantized, voice),
-                StaffNotation.toLilyPond(quantized, voice));
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice)
+                .withKeys(List.of(key("C4", Mode.MAJOR)))
+                .withMetadata("Triplet Practice", "Anonymous");
+        QuantizedScore plan = quantized(score, GridResolution.HALF_BEAT,
+                GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT);
+
+        assertGolden("triplet-eighths", MusicXmlExport.toMusicXml(plan, voice),
+                StaffNotation.toLilyPond(plan, voice));
     }
 
     @Test
