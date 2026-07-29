@@ -201,6 +201,15 @@ class RenderDiagnosticsTest {
         assertThat(warning).as("%s", transcript).isNotNegative();
         assertThat(warning).as("the warning must follow the files it is about%n%s", transcript)
                 .isGreaterThan(lastFileLine);
+        // And come before the chart this command prints last. That is the half
+        // that proves the transcript is a real interleaving rather than stdout
+        // followed by stderr: concatenating the two buffers would put the
+        // warning after the chart, and round 2 of review found exactly that
+        // mutant -- reorder the printing *and* degrade transcript() -- surviving.
+        int chart = transcript.indexOf("Tempo  ");
+        assertThat(chart).as("%s", transcript).isNotNegative();
+        assertThat(warning).as("the warning must not be buried after the chart%n%s", transcript)
+                .isLessThan(chart);
     }
 
     @Test
