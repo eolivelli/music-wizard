@@ -122,6 +122,42 @@ class MidiInputTest {
         }
 
         @Test
+        @DisplayName("init, analyze and render is a chain that ends in a chord chart")
+        void theWholeChainProducesAChart() {
+            // #114's "done when", as a chain rather than as three separately
+            // tested halves. Until #115 landed this could not pass; afterwards it
+            // passed only by composition -- MidiChordChartIT drives the
+            // transcriber and the emitter directly, and every render test with
+            // harmony in it plants the score by hand -- so nothing at any tier
+            // ran the three commands in order over a real MIDI file.
+            //
+            // --no-pdf because the fast suite must not shell out to LilyPond.
+            // The engraving half is MidiChordChartIT's; what this covers is that
+            // the commands hand off to each other.
+            Path source = fixture(MidiFixtures.fourChordSong(), "chain.mid");
+            Path workspace = workspaceOf("chain");
+
+            CliRunner.Result init = CliRunner.run(
+                    "init", source.toString(), "-w", workspace.toString());
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(init.exitCode()).as(init.all()).isZero();
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/chords.txt")).exists();
+            assertThat(workspace.resolve("out/chords.ly")).exists();
+            // Not the empty-chart placeholder, and not asserted chord by chord:
+            // which symbols come out is SymbolicChordEstimator's accuracy, which
+            // is its own module's to pin.
+            assertThat(render.out())
+                    .contains("Wrote")
+                    .doesNotContain("(no chords were found)")
+                    .doesNotContain("Nothing could be written.");
+        }
+
+        @Test
         @DisplayName("what the file declares is reported as declared, and not as found")
         void reportsProvenanceRatherThanDiscovery() {
             Path workspace = imported(MidiFixtures.fourChordSong(), "four");
