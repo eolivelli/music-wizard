@@ -32,8 +32,11 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class ChordChartTest {
 
@@ -257,6 +260,215 @@ class ChordChartTest {
         assertThat(String.join("", ChordChart.barLines(tracked)))
                 .contains("C").contains("G").contains("A")
                 .contains("F").contains("D").contains("E");
+    }
+
+    /**
+     * A quantized progression over a tempo that halves half-way through.
+     *
+     * <p>One chord to the bar throughout, which is what a reader should see. In
+     * seconds those bars are 2, 2, 8 and 8 seconds long against an average bar
+     * of 5, so a grid built from a single averaged bar length can neither place
+     * them nor count them.
+     */
+    private static Score quantizedAcrossATempoChange() {
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120),
+                        new TempoMap.TempoSegment(8, 4, 30)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MAJOR,
+                ChordQuality.MINOR, ChordQuality.MAJOR};
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 4; bar++) {
+            double from = bar * 4.0;
+            double to = from + 4.0;
+            chords.add(Chord.ofSeconds(root(roots[bar]), qualities[bar],
+                            map.beatsToSeconds(from), map.beatsToSeconds(to), Confidence.of(0.9))
+                    .quantizedTo(from, to));
+        }
+        return Score.empty(map, map.beatsToSeconds(16))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    @Test
+    @DisplayName("bars a quantized chart by its beats, so a tempo change does not crush it")
+    void barsAQuantizedChartByItsBeats() {
+        Score score = quantizedAcrossATempoChange();
+        assertThat(score.chords().isQuantized()).isTrue();
+
+        // Four bars, one chord each. Placing them by seconds against a single
+        // averaged bar length put C and G in bar 1, left bar 2 empty and pushed
+        // Am into bar 3 -- a chart that cannot be played against the recording.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | G           | Am          | F           |");
+    }
+
+    @Test
+    @DisplayName("gives each chord of a quantized chart the bars it actually holds")
+    void quantizedLilyPondSpansTheRightBars() {
+        String source = ChordChart.toLilyPond(quantizedAcrossATempoChange());
+
+        // One whole note each. By duration in seconds the last two chords run to
+        // more than a bar and a half of the averaged bar and are each written
+        // twice, giving a six-bar score for four bars of music.
+        assertThat(source).contains("c1 g1 a1:m f1 ");
+    }
+
+    /** Five chords over four bars of 4/4, so two of them share a bar. */
+    private static Score twoChordsInABar() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.A, NoteLetter.F, NoteLetter.G, NoteLetter.C};
+        ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MINOR, ChordQuality.MAJOR,
+                ChordQuality.MAJOR, ChordQuality.MAJOR};
+        double[] starts = {0, 2, 4, 6, 8};
+        double[] ends = {2, 4, 6, 8, 16};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < starts.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), qualities[i],
+                            map.beatsToSeconds(starts[i]), map.beatsToSeconds(ends[i]),
+                            Confidence.of(0.9))
+                    .quantizedTo(starts[i], ends[i]));
+        }
+        return Score.empty(map, map.beatsToSeconds(16))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    @Test
+    @DisplayName("engraves a chord that is half a bar as half a bar, not as a whole one")
+    void aChordShorterThanABarKeepsItsLength() {
+        Score score = twoChordsInABar();
+
+        // Two chords to the first two bars, one to the last two.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C Am        | F G         | C           | %           |");
+        // Four half notes and two whole notes: sixteen quarter beats, which is
+        // the four bars the chart shows. Written as five whole notes -- which is
+        // what a fixed duration gives -- LilyPond engraves six bars, and every
+        // symbol from bar 2 on sits against the wrong bar of the recording.
+        assertThat(ChordChart.toLilyPond(score)).contains("c2 a2:m f2 g2 c1*2 ");
+    }
+
+    /** One bar of one chord, quantized, so a quality can be engraved on its own. */
+    private static Score oneChord(ChordQuality quality, PitchSpelling bass) {
+        return oneChord(root(NoteLetter.C), quality, bass);
+    }
+
+    private static Score oneChord(PitchSpelling chordRoot, ChordQuality quality,
+                                  PitchSpelling bass) {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        Chord chord = new Chord(chordRoot, quality, Optional.ofNullable(bass),
+                0, 2, Optional.of(0.0), Optional.of(4.0), Confidence.of(0.9));
+        return Score.empty(map, 2)
+                .withChords(new ChordProgression(List.of(chord), Confidence.of(0.9)));
+    }
+
+    /**
+     * Every quality the model has, and what chordmode calls it.
+     *
+     * <p>The rows are listed rather than derived, because the whole point is to
+     * state independently what each quality should engrave as. What stops the
+     * list going stale is elsewhere and in two places: the emitter's switch has
+     * no {@code default}, so a new quality fails to compile, and
+     * {@code noQualityIsUnaccountedFor} fails if one is added without a row
+     * here. The tokens are not guesses: each was engraved with LilyPond
+     * 2.26.0 and the sounding pitches read back out of its MIDI, and every one
+     * matches {@code ChordQuality.intervals()}. {@code :m7.5-} prints as Bø and
+     * {@code :m7+} as a minor triad with the conventional major-seventh
+     * triangle.
+     *
+     * <p>This is what the switch used to get wrong. Four qualities collapsed
+     * onto {@code :m} and three onto {@code :dim}, which was harmless while only
+     * major, minor and no-chord could reach the emitter and became a chart that
+     * engraved a different chord than it printed as soon as #115 widened the
+     * vocabulary.
+     */
+    @ParameterizedTest(name = "{0} is engraved as c1{1}")
+    @CsvSource(nullValues = "-", value = {
+        "MAJOR,                    ''",
+        "MINOR,                    :m",
+        "DIMINISHED,               :dim",
+        "AUGMENTED,                :aug",
+        "SUSPENDED_SECOND,         :sus2",
+        "SUSPENDED_FOURTH,         :sus4",
+        "DOMINANT_SEVENTH,         :7",
+        "MAJOR_SEVENTH,            :maj7",
+        "MINOR_SEVENTH,            :m7",
+        "MINOR_MAJOR_SEVENTH,      :m7+",
+        "HALF_DIMINISHED_SEVENTH,  :m7.5-",
+        "DIMINISHED_SEVENTH,       :dim7",
+        "SIXTH,                    :6",
+        "MINOR_SIXTH,              :m6",
+    })
+    @DisplayName("engraves each chord quality as the chord it is")
+    void everyQualityHasItsOwnChordModeToken(ChordQuality quality, String modifier) {
+        assertThat(ChordChart.toLilyPond(oneChord(quality, null)))
+                .contains("c1" + (modifier == null ? "" : modifier) + " ");
+    }
+
+    @Test
+    @DisplayName("the quality table covers every quality the model can hold")
+    void noQualityIsUnaccountedFor() {
+        // The parameterized rows above minus N.C., which is engraved as a rest
+        // and has no root to modify. If this count moves, a quality was added
+        // and the table was not.
+        assertThat(ChordQuality.values()).hasSize(15);
+        assertThat(ChordChart.toLilyPond(oneChord(ChordQuality.NONE, null))).contains("r1 ");
+    }
+
+    @ParameterizedTest(name = "a chord rooted on {0} is engraved as {1}")
+    @CsvSource({"Eb4, ees1", "Bb4, bes1", "F#4, fis1", "C4, c1"})
+    @DisplayName("engraves an accidental in a chord root, not just in a bass")
+    void aRootKeepsItsAccidental(String spelling, String expected) {
+        // Dropping the accidental from a root is what a hand-rolled LilyPond
+        // note name does, and a chart in E flat then prints Eb and engraves E --
+        // three different chords on a four-bar page. The root and the bass are
+        // separate call sites, and until this test only the bass had one:
+        // everything else in this file is rooted on a natural C.
+        //
+        // The roots come from the file's own key signature by way of
+        // SymbolicChordEstimator, so any MIDI import in a flat or sharp key
+        // reaches this.
+        assertThat(ChordChart.toLilyPond(
+                        oneChord(PitchSpelling.parse(spelling), ChordQuality.MAJOR, null)))
+                .contains(expected + " ");
+    }
+
+    @Test
+    @DisplayName("engraves a slash chord over its bass, not in root position")
+    void aSlashChordKeepsItsBass() {
+        String source = ChordChart.toLilyPond(
+                oneChord(ChordQuality.MAJOR, PitchSpelling.parse("E4")));
+        // Dropping the bass printed a root-position C where the chart said C/E,
+        // which is a different instruction to whoever is playing the bass line.
+        assertThat(source).contains("c1/e ");
+
+        String flat = ChordChart.toLilyPond(
+                oneChord(ChordQuality.MINOR_SEVENTH, PitchSpelling.parse("Eb4")));
+        assertThat(flat).contains("c1:m7/ees ");
+    }
+
+    @Test
+    @DisplayName("a chord ending a few ticks past a bar line does not add a bar to the text")
+    void theChartAndTheEngravingRoundTheSameWay() {
+        // A piece whose last note-off is two MIDI ticks past bar 3. The
+        // engraving rounds that away, and the text used to count the bar it
+        // touched, so a chart claimed four bars where the page had three.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        double raggedEnd = 12 + 2 / 480.0;
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 0, 2, Confidence.of(0.9))
+                        .quantizedTo(0, 4),
+                Chord.ofSeconds(root(NoteLetter.F), ChordQuality.MAJOR, 2, 4, Confidence.of(0.9))
+                        .quantizedTo(4, 8),
+                Chord.ofSeconds(root(NoteLetter.D), ChordQuality.MINOR, 4,
+                                map.beatsToSeconds(raggedEnd), Confidence.of(0.9))
+                        .quantizedTo(8, raggedEnd));
+        Score score = Score.empty(map, map.beatsToSeconds(raggedEnd))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | F           | Dm          |");
+        assertThat(ChordChart.toLilyPond(score)).contains("c1 f1 d1:m ");
     }
 
     @Test
