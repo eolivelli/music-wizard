@@ -35,4 +35,34 @@
       <groupId>org.audiveris</groupId>
       <artifactId>proxymusic</artifactId>
     </dependency>  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!--
+            A hostile message locale for the test JVM, so that the check on
+            LilyPondRenderer wiring cannot pass by accident.
+
+            That test starts a stand-in binary and asserts it was handed
+            LC_MESSAGES=C. On a machine whose own LC_MESSAGES is already C (a
+            bare container, or a CI file that pins it after this very thread)
+            the child sees C whether or not the code under test ran, and round 8
+            of review found that deleting both call sites left the suite green
+            there. It is the third time on this branch that an assertion was
+            being satisfied by the parent environment rather than by the code.
+
+            Pinned here rather than left to the machine, so the poison is part of
+            the build and not a property of somebody's shell. LC_MESSAGES only:
+            it selects a message catalogue and nothing else, so an absent
+            it_IT.UTF-8 cannot change how this JVM decodes a file name.
+          -->
+          <environmentVariables>
+            <LC_MESSAGES>it_IT.UTF-8</LC_MESSAGES>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

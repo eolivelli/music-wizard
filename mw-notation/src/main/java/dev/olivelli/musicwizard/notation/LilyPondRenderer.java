@@ -70,9 +70,11 @@ public final class LilyPondRenderer {
      * keeping it current, in every language, for a string this project only
      * reads in order to know whether something went wrong.
      *
-     * <p><b>Two variables, and each one is here because a previous version got
-     * it wrong.</b> It took three rounds to land, and the two wrong answers are
-     * worth keeping because they are opposite mistakes about the same fact.
+     * <p><b>One variable removed and twelve written, and every one of them is
+     * here because a previous version got it wrong.</b> It took four attempts,
+     * and the three wrong answers are worth keeping because they are successive
+     * corrections of the same misreading: each fixed the layer the failure was
+     * noticed at rather than the one it lived at.
      *
      * <p>Round 4 set {@code LC_ALL}, {@code LANG} and {@code LC_MESSAGES} to
      * {@code C}. Round 5 found that this broke engraving outright for a file
@@ -90,6 +92,9 @@ public final class LilyPondRenderer {
      * individual category. A user with {@code LC_ALL=it_IT.UTF-8} got
      * {@code attenzione: bar check failed} again, and the integration suite went
      * silent again with it.
+     *
+     * <p>Round 6 then moved {@code LC_ALL} into {@code LC_CTYPE} — and round 7
+     * found that one category short, which is the paragraph below.
      *
      * <p>So {@code LC_ALL} has to go — and everything it was covering has to be
      * written out in its place, which is the part round 6 got wrong and round 7

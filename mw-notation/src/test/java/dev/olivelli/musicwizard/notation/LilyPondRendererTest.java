@@ -178,6 +178,17 @@ class LilyPondRendererTest {
         // green: the seam was tested and the wiring was not. A stand-in binary
         // that reports the locale it was started with is the only thing that can
         // see the difference without LilyPond.
+        //
+        // Round 8 then found this version of it inert on a machine whose own
+        // LC_MESSAGES is already C, because the child then reports C whether or
+        // not the code under test ran. The module's surefire configuration now
+        // gives this JVM a hostile LC_MESSAGES for exactly that reason, and the
+        // assertion below is only decisive because of it -- so if that block
+        // ever goes, this test stops meaning anything.
+        assertThat(System.getenv("LC_MESSAGES"))
+                .as("the surefire environmentVariables block in mw-notation/pom.xml is what"
+                        + " makes the rest of this test decisive")
+                .isNotEqualTo("C");
         Path script = tempDirectory.resolve("reports-locale");
         Files.writeString(script, """
                 #!/bin/sh
