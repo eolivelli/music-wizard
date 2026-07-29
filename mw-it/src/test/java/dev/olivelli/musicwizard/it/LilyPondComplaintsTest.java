@@ -292,6 +292,13 @@ class LilyPondComplaintsTest {
         // LilyPond, which is what CLAUDE.md says most of them have, could widen
         // the tolerance to swallow bar checks and see a green suite. One line
         // here closes that, in the job everyone runs, on every machine.
+        //
+        // The pair below is about width in the sense this test is named for --
+        // that neither spelling is special to the tolerance -- rather than about
+        // the matcher, which is eitherSpellingIsFound's subject. Round 3 of
+        // review noted a reader might look there first; they are different API
+        // surfaces and the mutant that widens this filter is invisible to that
+        // test.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4"),
                 TOLERATED_COMPLAINT))
@@ -319,10 +326,10 @@ class LilyPondComplaintsTest {
         // tolerance was baked into the helper, the obviously-named assertion
         // carried a carve-out for a tuplet-number spacing complaint to callers
         // engraving chord charts, which have neither beams nor tuplet numbers.
-        // Ten of the eleven call sites that engrave a real page now pass
-        // nothing, and this is what says that passing nothing means nothing -- a
-        // helper that kept the old default while accepting the argument would
-        // pass every other case in this class.
+        // Every call site that engraves but one now passes nothing, and this is
+        // what says that passing nothing means nothing -- a helper that kept the
+        // old default while accepting the argument would pass every other case
+        // in this class.
         assertThatThrownBy(() -> assertEngravedCleanly(
                 "the tuplet carve-out, unasked-for", engraved(TOLERATED_COMPLAINT)))
                 .isInstanceOf(AssertionError.class);
