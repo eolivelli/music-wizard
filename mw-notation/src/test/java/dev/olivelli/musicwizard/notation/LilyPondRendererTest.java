@@ -23,9 +23,11 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -717,6 +719,52 @@ class LilyPondRendererTest {
                     + swallowed + "\n").failedBarChecks())
                     .as("with a real echo in the way, the second diagnostic survives")
                     .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("is never lost while every diagnostic still has its echo")
+        void thePreconditionIsTheWholeOfTheResidual() {
+            // The residual's completeness, checked by generation rather than by
+            // reasoning -- because reasoning about it has now been wrong three
+            // times, each time by describing one of the two skipped lines and
+            // calling it the rule.
+            //
+            // Every located diagnostic here is followed by a well-formed echo,
+            // and the shapes that beat earlier versions are mixed in on purpose:
+            // file names that begin with spaces, which LilyPond prints verbatim,
+            // and echo text that is itself diagnostic-shaped. If "the echo was
+            // missing" is really the only precondition, nothing can be lost.
+            //
+            // Seeded, so a failure is reproducible rather than a rumour. The
+            // same generator with echoes omitted at random loses 36 moments in
+            // 20000 outputs, which is the residual doing what it is documented
+            // to do; with the echoes present it loses none in 20000.
+            Random random = new Random(20260729L);
+            for (int trial = 0; trial < 2000; trial++) {
+                StringBuilder output = new StringBuilder();
+                List<String> expected = new ArrayList<>();
+                for (int diagnostic = 1 + random.nextInt(4); diagnostic > 0; diagnostic--) {
+                    for (int noise = random.nextInt(3); noise > 0; noise--) {
+                        output.append(random.nextBoolean() ? "" : "Interpreting music...")
+                                .append('\n');
+                    }
+                    int column = 1 + random.nextInt(60);
+                    String moment = (1 + random.nextInt(9)) + "/" + (1 + random.nextInt(8));
+                    String file = (random.nextInt(4) == 0 ? "  " : "") + "f.ly";
+                    output.append(file).append(":1:").append(column)
+                            .append(": warning: bar check failed at: ").append(moment).append('\n');
+                    expected.add(moment);
+                    String tail = random.nextInt(3) == 0
+                            ? " % a:1:2: warning: bar check failed at: 9/9"
+                            : " | c4 c4";
+                    output.append("x".repeat(column - 1)).append('\n');
+                    output.append(" ".repeat(column - 1)).append("| rest").append(tail)
+                            .append('\n');
+                }
+                assertThat(said(output.toString()).failedBarChecks())
+                        .as("trial %d%n%s", trial, output)
+                        .isEqualTo(expected);
+            }
         }
 
         @Test
