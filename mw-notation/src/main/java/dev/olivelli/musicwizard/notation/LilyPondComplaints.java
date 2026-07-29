@@ -210,6 +210,12 @@ final class LilyPondComplaints {
             "(?:.*:(\\d+):(\\d+): |.*:\\d+: )?warning: bar ?check failed at: (\\S+)\\s*",
             Pattern.CASE_INSENSITIVE);
 
+    /**
+     * Every line break Java recognises, which is more than {@code String.lines}
+     * recognises and exactly what {@code (?m)$} recognised.
+     */
+    private static final Pattern LINE_BREAK = Pattern.compile("\\R");
+
     /** Where the column sits in {@link #FAILED_BAR_CHECK}, absent when unlocated. */
     private static final int COLUMN = 2;
 
@@ -246,9 +252,15 @@ final class LilyPondComplaints {
      */
     static List<String> failedBarChecksIn(String lilypondOutput) {
         List<String> moments = new ArrayList<>();
-        // splitWithDelimiters would keep the terminators; lines() drops them and
-        // handles \r\n, lone \r and the Unicode terminators the same way $ did.
-        List<String> lines = lilypondOutput.lines().toList();
+        // Split on \R rather than with lines(), because they disagree and the
+        // disagreement is in the direction that matters. lines() breaks only on
+        // \n, \r\n and \r; \R also breaks on U+0085, U+2028 and U+2029, which is
+        // what the (?m)$ this replaced did. Java's \s is ASCII-only, so under
+        // lines() a diagnostic terminated by one of those fails to match at all
+        // and the moment is silently lost -- a blindness path introduced by the
+        // rewrite rather than by anything LilyPond does. It emits none of them;
+        // the point is that not emitting them is not this class's to rely on.
+        List<String> lines = List.of(LINE_BREAK.split(lilypondOutput, -1));
         for (int i = 0; i < lines.size(); i++) {
             Matcher matcher = FAILED_BAR_CHECK.matcher(lines.get(i));
             if (!matcher.matches()) {

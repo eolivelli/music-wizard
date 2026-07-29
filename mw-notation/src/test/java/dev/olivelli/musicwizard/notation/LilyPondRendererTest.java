@@ -576,6 +576,62 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("is read whatever the location looks like, and with none at all")
+        void theLocationIsNotWhatIsBeingMatchedOn() {
+            // Restored: this test was deleted by accident when the echo tests
+            // around it were rewritten, and nothing noticed for two commits --
+            // the location handling was covered by it alone. Found by sweeping
+            // the location prefix and getting no kill where two rounds earlier
+            // there had been one.
+            //
+            // A file name may contain a space -- 2.26.0 prints "my song.ly:2:42:
+            // warning: bar check failed at: 3/4", measured -- so a pattern that
+            // read the location as a run of non-space would go silent on exactly
+            // the input it was written for.
+            assertThat(said("my song.ly:2:42: warning: bar check failed at: 3/4").failedBarChecks())
+                    .containsExactly("3/4");
+            assertThat(said("canción.ly:2:42: warning: bar check failed at: 5/8").failedBarChecks())
+                    .containsExactly("5/8");
+            // And with no location, and with a line but no column, so that a
+            // LilyPond dropping either makes this over-report rather than go
+            // blind. Neither shape occurs today -- round 2 of review confirmed
+            // every real diagnostic on 2.24.3 and 2.26.0 carries both numbers --
+            // and accepting them costs nothing. A diagnostic with no column also
+            // has no echo to skip, which is the other half of why it is safe.
+            assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .containsExactly("7/8");
+            assertThat(said("bad.ly:12: warning: bar check failed at: 5/4\n").failedBarChecks())
+                    .containsExactly("5/4");
+        }
+
+        @Test
+        @DisplayName("is read whatever ends the line, including terminators lines() ignores")
+        void everyLineTerminatorIsOne() {
+            // Found while checking the rewrite rather than by review, and it is a
+            // blindness path the rewrite introduced. Moving from one (?m) pattern
+            // over the whole output to a line-at-a-time walk changed which
+            // characters end a line: String.lines() breaks on \n, \r\n and \r
+            // only, while (?m)$ also treated U+0085, U+2028 and U+2029 as ends of
+            // line. Java's \s is ASCII-only, so under lines() a diagnostic
+            // terminated by one of those matched nothing at all and the moment
+            // was silently lost.
+            //
+            // Split on \R instead, which is the set (?m)$ used. LilyPond emits
+            // none of these; not emitting them is not this class's to rely on.
+            String diagnostic = "p.ly:1:5: warning: bar check failed at: 3/4";
+            for (String terminator : new String[] {
+                    "\n", "\r\n", "\r", "\u0085", "\u2028", "\u2029"}) {
+                assertThat(said(diagnostic + terminator + "and more output\n").failedBarChecks())
+                        .as("terminated by U+%04x", (int) terminator.charAt(0))
+                        .containsExactly("3/4");
+            }
+            // No terminator at all is not a line break, so the text runs on and
+            // the line is not a diagnostic. Over-reporting nothing, which is the
+            // right way round.
+            assertThat(said(diagnostic + "and more output").failedBarChecks()).isEmpty();
+        }
+
+        @Test
         @DisplayName("is not read out of a file merely named after the phrase")
         void aNameThatContainsThePhraseIsNotAComplaint() {
             assertThat(said("""
