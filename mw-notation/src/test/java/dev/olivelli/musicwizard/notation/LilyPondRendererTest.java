@@ -862,6 +862,53 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("recognises an echo at the column the floor is set at")
+        void theFloorLetsAColumnTwoEchoThrough()  {
+            // The floor is pinned from below by three tests and was pinned from
+            // above by none, so raising it to 3 changed nothing that anything
+            // noticed. Column 2 is the smallest echo there is: one character
+            // before the bar check, one space of padding after it.
+            assertThat(said("p.ly:1:2: warning: bar check failed at: 3/4\n"
+                    + "x\n"
+                    + " | rest % a:1:2: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("a column-2 echo is still an echo")
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("suspects exactly the two lines the echo should have occupied")
+        void theSuspectRegionIsTheEchoSizedOne() {
+            // The region's size was unpinned in both directions: i + 1 and i + 3
+            // both survived the suite. Too small and the second echo line can
+            // still drive a skip; too large and a diagnostic that was never part
+            // of any echo is silently barred from skipping, which costs
+            // over-reports rather than correctness but is not what the code says
+            // it does.
+            //
+            // Too small: with a region of one line, the *second* line of the
+            // unrecognised echo below skips the pair after it and eats the 7/8.
+            assertThat(said("p.ly:1:9: warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "x % a:1:3: warning: bar check failed at: 9/9\n"
+                    + "yy\n"
+                    + "  p.ly:2:2: warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .as("the second line of an unrecognised echo must not skip either")
+                    .contains("7/8");
+            // Too large: the diagnostic three lines below a recognised echo is
+            // outside any region, so its own echo is recognised and skipped --
+            // which a region of three lines would prevent, leaving the echo text
+            // reported.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "   | rest\n"
+                    + "p.ly:2:4: warning: bar check failed at: 7/8\n"
+                    + "yyy\n"
+                    + "   | rest % a:1:2: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("a diagnostic past the region keeps its own skip")
+                    .containsExactly("3/4", "7/8");
+        }
+
+        @Test
         @DisplayName("cannot be defended by refusing to skip a line that looks like a diagnostic")
         void theObviousGuardWouldReopenBothBypasses() {
             // Why the residual above is not simply closed. The guard that looks
