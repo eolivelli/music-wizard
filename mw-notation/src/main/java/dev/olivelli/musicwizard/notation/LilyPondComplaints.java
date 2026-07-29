@@ -413,6 +413,12 @@ final class LilyPondComplaints {
             if (i > suspectUntil && isEchoOf(lines, i + 1, columnOf(matcher))) {
                 i += 2;
             } else {
+                // Math.max is defensive rather than load-bearing, and that is
+                // an equivalent mutant a sweep will find: suspectUntil is
+                // written only here, always as i + 2, and i only ever moves
+                // forward, so a plain assignment can never shrink it. Kept
+                // because "the region never retreats" is the property meant,
+                // and a reader should not have to derive that it holds.
                 suspectUntil = Math.max(suspectUntil, i + 2);
             }
         }
