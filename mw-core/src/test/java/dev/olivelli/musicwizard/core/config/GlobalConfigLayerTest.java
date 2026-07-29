@@ -55,6 +55,12 @@ class GlobalConfigLayerTest {
     /** Guards the one location that is not per-test: the environment's own. */
     static final String GLOBAL_CONFIG_ENVIRONMENT = "global-config-environment";
 
+    /** A test body that may throw, so the plant-and-remove helper can wrap one. */
+    @FunctionalInterface
+    interface ThrowingBody {
+        void run() throws IOException;
+    }
+
     @TempDir
     Path tempDirectory;
 
@@ -216,10 +222,7 @@ class GlobalConfigLayerTest {
         @Test
         @DisplayName("a stated layer is unaffected by a config at the environment's location")
         void statedLayerIgnoresTheEnvironment() throws IOException {
-            Path environmentFile = disposableEnvironmentConfigFile();
-            Files.createDirectories(environmentFile.getParent());
-            Files.writeString(environmentFile, "notation:\n  paperSize: letter\n");
-            try {
+            withGlobalConfigInTheEnvironment("notation:\n  paperSize: letter\n", () -> {
                 assertThat(ConfigLoader.withoutGlobalConfig()
                         .effectiveConfig(null, null).notation().paperSize())
                         .isEqualTo("a4");
@@ -235,8 +238,82 @@ class GlobalConfigLayerTest {
                 assertThat(ConfigLoader.fromEnvironment()
                         .effectiveConfig(null, null).notation().paperSize())
                         .isEqualTo("letter");
+            });
+        }
+
+        /**
+         * The loader-less {@code Workspace} factories must keep reading the
+         * user's own config, because they are the ones the CLI uses:
+         * {@code InitCommand} creates that way and {@code analyze},
+         * {@code render} and {@code info} all open that way. Isolating the
+         * suite by quietly stopping them would delete the feature rather than
+         * isolate the tests, and nothing else in the suite would notice —
+         * round-1 review confirmed both of these survive as mutants without
+         * them.
+         */
+        @Test
+        @DisplayName("the loader-less create and open still layer the user's own config")
+        void loaderLessFactoriesReadTheEnvironment() throws IOException {
+            withGlobalConfigInTheEnvironment("notation:\n  paperSize: letter\n", () -> {
+                Path root = tempDirectory.resolve("song.mwz");
+                Workspace created = Workspace.create(root, newSourceFile());
+                assertThat(created.effectiveConfig().notation().paperSize())
+                        .isEqualTo("letter");
+
+                assertThat(Workspace.open(root).effectiveConfig().notation().paperSize())
+                        .isEqualTo("letter");
+            });
+        }
+
+        /**
+         * And the loader-taking {@code open} must actually use the loader it is
+         * given. Three-way rather than two: the expected {@code legal} is what
+         * only the stated file says, distinguishing "used the given loader"
+         * from "used none" ({@code a4}) and from "went to the environment
+         * anyway" ({@code letter}).
+         */
+        @Test
+        @DisplayName("open uses the loader it is given, not the environment")
+        void openUsesTheLoaderItIsGiven() throws IOException {
+            withGlobalConfigInTheEnvironment("notation:\n  paperSize: letter\n", () -> {
+                Path stated = writeGlobalConfig("notation:\n  paperSize: legal\n");
+                Path root = tempDirectory.resolve("song.mwz");
+                Workspace.create(root, newSourceFile(), ConfigLoader.withoutGlobalConfig());
+
+                Workspace reopened = Workspace.open(root, ConfigLoader.withGlobalConfigFile(stated));
+
+                assertThat(reopened.effectiveConfig().notation().paperSize()).isEqualTo("legal");
+                assertThat(reopened.configLoader().globalConfigFileLocation()).contains(stated);
+            });
+        }
+
+        /**
+         * Runs {@code body} with {@code yaml} planted exactly where the
+         * environment says the user's global config lives, and takes it away
+         * again — including the directories, so a run leaves the environment
+         * location as it found it: absent.
+         */
+        private void withGlobalConfigInTheEnvironment(String yaml, ThrowingBody body)
+                throws IOException {
+            Path file = disposableEnvironmentConfigFile();
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, yaml);
+            try {
+                body.run();
             } finally {
-                Files.deleteIfExists(environmentFile);
+                Files.deleteIfExists(file);
+                // Directories too: leaving them behind would mean a later run
+                // could not tell a stale config from a fresh one.
+                deleteIfEmpty(file.getParent());
+                deleteIfEmpty(file.getParent().getParent());
+            }
+        }
+
+        private void deleteIfEmpty(Path directory) throws IOException {
+            try {
+                Files.deleteIfExists(directory);
+            } catch (java.nio.file.DirectoryNotEmptyException e) {
+                // Something else put a file there; leave it alone.
             }
         }
 
@@ -261,9 +338,12 @@ class GlobalConfigLayerTest {
                             This test JVM can read a global config at %s, so any \
                             test that builds an effective config is reading it \
                             too and the suite depends on this machine (#133). \
-                            The build points XDG_CONFIG_HOME under target/ to \
-                            prevent that; if you are running from an IDE, set it \
-                            there as well.""", file)
+                            If that path is under target/, a run died between \
+                            planting and removing one, and deleting it is enough. \
+                            Otherwise the build's XDG_CONFIG_HOME is not reaching \
+                            this JVM: the parent pom points it under target/ for \
+                            surefire and failsafe, and an IDE needs the same \
+                            setting in its run configuration.""", file)
                     .doesNotExist();
         }
 
