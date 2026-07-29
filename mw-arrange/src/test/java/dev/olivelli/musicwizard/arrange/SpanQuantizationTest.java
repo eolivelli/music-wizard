@@ -390,6 +390,72 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("whatever goes in comes out: same chords, same order, only the beats differ")
+        void theProgressionIsNeverEditedOnlyAnnotated() {
+            // The whole of #157 in one property, and the one claim the rest of
+            // the argument rests on: this pass annotates a progression, it does
+            // not edit one. Everything else about the change is a judgement
+            // about which chart is less bad; this is the part that is simply
+            // true or not, so it is swept rather than reasoned.
+            //
+            // Deliberately hostile input: spans from a twentieth of a beat to
+            // three beats, so most trials collapse something; the tolerated
+            // overlap in a third of them; meters whose counted beat is a
+            // quarter, a dotted quarter and an eighth, and a map that changes
+            // between them underneath the progression.
+            java.util.Random random = new java.util.Random(157158);
+            List<TempoMap> maps = List.of(
+                    TempoMap.constant(BPM, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, TimeSignature.SIX_EIGHT),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8)),
+                    TempoMap.constant(60, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8))
+                            .withMeterChange(1, TimeSignature.FOUR_FOUR)
+                            .withMeterChange(2, TimeSignature.SIX_EIGHT));
+            int withdrawn = 0;
+            int placed = 0;
+            for (TempoMap tempoMap : maps) {
+                for (int trial = 0; trial < 300; trial++) {
+                    List<Chord> in = new ArrayList<>();
+                    double at = random.nextDouble() * 0.3;
+                    int count = 2 + random.nextInt(7);
+                    for (int i = 0; i < count; i++) {
+                        double next = at + 0.025 + random.nextDouble() * 1.5;
+                        double start = i > 0 && trial % 3 == 0 ? at - 4e-7 : at;
+                        in.add(chord(ROOTS.get(i % ROOTS.size()), start, next));
+                        at = next;
+                    }
+
+                    QuantizedScore out = Quantizer.quantize(
+                            chordsOnly(tempoMap, in.toArray(new Chord[0])));
+                    List<Chord> published = out.score().chords().chords();
+
+                    assertThat(published)
+                            .as("chord for chord, in order, seconds and all")
+                            .hasSameSizeAs(in);
+                    for (int i = 0; i < in.size(); i++) {
+                        assertThat(withoutBeats(published.get(i)))
+                                .as("chord %d of %d, %s", i, in.size(), tempoMap)
+                                .isEqualTo(withoutBeats(in.get(i)));
+                    }
+                    if (out.unplaceableChords() > 0) {
+                        withdrawn++;
+                        assertThat(published).allSatisfy(
+                                c -> assertThat(c.isQuantized()).isFalse());
+                    } else {
+                        placed++;
+                        assertThat(published).allSatisfy(
+                                c -> assertThat(c.isQuantized()).isTrue());
+                    }
+                }
+            }
+            // Both outcomes reached in quantity, so the sweep cannot pass by
+            // exercising only the easy half.
+            assertThat(placed).isGreaterThan(200);
+            assertThat(withdrawn).isGreaterThan(200);
+        }
+
+        @Test
         @DisplayName("the count is of collapses, and is not how much harmony is finer than the pulse")
         void theCountIsOfCollapsesAndNotOfShortChords() {
             // The javadoc used to prescribe a sentence a caller might print --
@@ -1002,6 +1068,18 @@ class SpanQuantizationTest {
                 .map(c -> c.symbol() + " " + c.startBeat().orElseThrow()
                         + ".." + c.endBeat().orElseThrow())
                 .toList();
+    }
+
+    /** Roots the sweeps cycle through, so a reordering would be visible. */
+    private static final List<String> ROOTS = List.of("C4", "G4", "A4", "F4", "D4", "E4", "B4");
+
+    /**
+     * A chord with its beat fields taken off, which is the only thing the pass
+     * is allowed to change about one.
+     */
+    private static Chord withoutBeats(Chord chord) {
+        return new Chord(chord.root(), chord.quality(), chord.bass(), chord.startSeconds(),
+                chord.endSeconds(), Optional.empty(), Optional.empty(), chord.confidence());
     }
 
     /**
