@@ -451,9 +451,19 @@ class SpanQuantizationTest {
                         // restate it -- ChordProgression.isQuantized() is
                         // literally allMatch(Chord::isQuantized), so such an
                         // assertion cannot fail. An earlier draft had exactly
-                        // that. What is worth checking instead is that the axis
-                        // the chords were placed on is usable: ordered, with no
-                        // overlap and no zero-length span.
+                        // that. What is checked instead is the invariant nothing
+                        // else checks: Score.requireOrderedBeats covers keys and
+                        // sections and *not* chords, which is #59, so a chord
+                        // progression with two spans overlapping on the beat
+                        // axis would be built without complaint. This is the
+                        // sweep-scale evidence for the class's claim that
+                        // carrying furthestEnd forward stops a microsecond of
+                        // overlap in seconds becoming a whole beat of it.
+                        //
+                        // Not what catches a deleted clamp -- that needs a
+                        // boundary landing on a rounding midpoint, which random
+                        // offsets do not reach and theToleratedOverlap tests
+                        // construct on purpose.
                         double previousEnd = Double.NEGATIVE_INFINITY;
                         for (Chord chord : published) {
                             double from = chord.startBeat().orElseThrow();
