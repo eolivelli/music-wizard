@@ -14,7 +14,10 @@
   <name>Music Wizard :: Integration Tests</name>
   <description>
     Slow, externally-dependent tests: model downloads, LilyPond invocation and
-    the MIDI to audio to Score ground-truth loop. Only run under -Pintegration.
+    the MIDI to audio to Score ground-truth loop. Only run under -Pintegration,
+    with one exception: a test that reads LilyPond's diagnostics without running
+    it is named *Test rather than *IT, so surefire runs it in the default build.
+    See LilyPondComplaintsTest, which explains why that one belongs there.
   </description>
 
   <properties>
