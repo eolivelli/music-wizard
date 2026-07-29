@@ -278,10 +278,55 @@ class SpanQuantizationTest {
 
             assertThat(symbols(quantized.score().chords().chords()))
                     .containsExactly("C", "G", "A", "F", "C", "G", "A", "F");
-            // Withdrawn entire, which is the whole of the fix: the eight
+            // Withdrawn entire, and asserted per chord rather than through
+            // isQuantized(), which is allMatch and so would only say that *some*
+            // chord has no beats. The claim is that none of them does: the eight
             // symbols above are the eight that were played, in the order they
-            // were played, and none of them carries a beat it cannot have.
-            assertThat(quantized.score().chords().isQuantized()).isFalse();
+            // were played, and not one carries a beat it cannot have.
+            assertThat(quantized.score().chords().chords())
+                    .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
+        }
+
+        @Test
+        @DisplayName("a one-BPM correction below the tracked pulse withdraws the whole chart")
+        void aSmallDownwardCorrectionCostsTheWholeBeatAxis() {
+            // The real price of the all-or-nothing, pinned because three drafts
+            // of the class javadoc described it as a hand-built score with an
+            // ornament and it is nothing of the kind.
+            //
+            // ChordEstimator cuts spans at *tracked* beat times, and a supplied
+            // --tempo replaces the tracked tempo while leaving the tracked beats
+            // alone. So a span is one tracked beat while the counted beat is the
+            // supplied one, and any tempo below the tracked pulse makes every
+            // span a shade short. Two of two hundred then collapse, and all two
+            // hundred are withdrawn.
+            //
+            // The asymmetry is the informative half: above the tracked pulse a
+            // span is longer than a counted beat and nothing collapses at all,
+            // so the exposure is entirely on downward corrections.
+            List<Chord> spans = new ArrayList<>();
+            double trackedBeat = 60.0 / BPM;
+            for (int i = 0; i < 200; i++) {
+                spans.add(chord(ROOTS.get(i % 4), i * trackedBeat, (i + 1) * trackedBeat));
+            }
+
+            for (double supplied : List.of(119.0, 116.0, 100.0)) {
+                QuantizedScore below = Quantizer.quantize(chordsOnly(
+                        TempoMap.constant(supplied, TimeSignature.FOUR_FOUR),
+                        spans.toArray(new Chord[0])));
+                assertThat(below.score().chords().chords()).hasSize(200);
+                assertThat(below.score().chords().isQuantized())
+                        .as("%s BPM against a tracked 120 withdraws the progression", supplied)
+                        .isFalse();
+            }
+            for (double supplied : List.of(121.0, 130.0, 240.0)) {
+                QuantizedScore above = Quantizer.quantize(chordsOnly(
+                        TempoMap.constant(supplied, TimeSignature.FOUR_FOUR),
+                        spans.toArray(new Chord[0])));
+                assertThat(above.score().chords().isQuantized())
+                        .as("%s BPM against a tracked 120 places every span", supplied)
+                        .isTrue();
+            }
         }
 
         @Test
@@ -470,6 +515,13 @@ class SpanQuantizationTest {
                             double to = chord.endBeat().orElseThrow();
                             assertThat(from).as("%s, ordered", tempoMap)
                                     .isGreaterThanOrEqualTo(previousEnd);
+                            // Evidence rather than a check, and labelled so:
+                            // Chord.quantizedTo and the canonical constructor
+                            // both refuse an end at or before the start, so a
+                            // chord violating this cannot be built to be
+                            // asserted on. Mutating the collapse guard to
+                            // "end < start" produces seventeen errors from
+                            // Chord, none of them here.
                             assertThat(to).as("%s, positive length", tempoMap)
                                     .isGreaterThan(from);
                             previousEnd = to;
@@ -853,7 +905,7 @@ class SpanQuantizationTest {
             // What this does NOT test, stated because the comment here used to
             // claim it did: the collapse handler's old ability to return null
             // and have onGrid skip the span. Restoring that null and its guard
-            // leaves all 191 tests passing, this one included. It has to --
+            // leaves the whole suite passing, this one included. It has to --
             // the only handler that returned null fed a list that is discarded
             // on every execution reaching it, and the section and key handlers
             // never returned null, so there was nothing to observe. That the

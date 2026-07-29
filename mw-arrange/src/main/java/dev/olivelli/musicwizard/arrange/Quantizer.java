@@ -257,21 +257,44 @@ import java.util.function.ToDoubleFunction;
  * boundaries a half beat apart in a map counting whole ones -- and any producer
  * whose spans are finer than the meter's beat.
  *
- * <p>Which bounds what the all-or-nothing costs, and it is a narrower bound than
- * it looks: on this pipeline a collapse is never <em>isolated</em>. Both
- * estimators emit spans of at least one counted beat -- {@code ChordEstimator}
- * cuts at tracked beat times, {@code SymbolicChordEstimator} takes one decision
- * per counted beat -- so against a map derived from those same beats nothing
- * collapses at all, and against a pulse that disagrees by a factor a large
- * fraction of the progression does. The beat axis is given up exactly when it
- * could not have held the harmony anyway.
+ * <p><b>What the all-or-nothing costs is not rare, and three earlier drafts of
+ * this paragraph said it was.</b> They argued that a collapse is never
+ * <em>isolated</em>, because both estimators emit spans of at least one counted
+ * beat. That is the wrong unit: {@code ChordEstimator} cuts its spans at
+ * <em>tracked</em> beat times, and a supplied {@code --tempo} replaces the
+ * tracked tempo while leaving the tracked beats alone (see
+ * {@code AudioTranscriber}). So the spans are one tracked beat while the counted
+ * beat is the supplied one, and any supplied tempo <em>below</em> the tracked
+ * one makes every span a shade short.
  *
- * <p>What is genuinely paid for this is a hand-built score carrying one
- * ornamental sub-beat chord, and the price is worth stating in full rather than
- * conceding in a clause, because it is the strongest argument against the
- * choice. Four beat-aligned chords at 120 BPM with one passing chord a tenth of
- * a second long -- {@code C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4} -- charted
- * through {@code ChordChart}:
+ * <p>The exposure that follows is one-sided and it is a rate rather than a
+ * corner. Measured on 200 estimator-shaped spans cut at a tracked 120:
+ *
+ * <pre>
+ * --tempo 121, 124, 130, 150, 240   all 200 placed
+ * --tempo 119, 116, 110, 100        none placed; the progression is withdrawn
+ * </pre>
+ *
+ * <p>Above the tracked pulse a span is longer than a counted beat and nothing
+ * collapses. Below it, the collapse rate per span is about
+ * {@code 1 - supplied/tracked}, so it is a near-certainty over the length of a
+ * chart: <b>a one-BPM downward correction collapses two spans in two hundred and
+ * withdraws all two hundred</b>. Correcting the tempo by hand is the
+ * highest-value action a user of this tool has, and this is what it costs on the
+ * commonest correction there is. Nothing here is a hand-built score.
+ *
+ * <p>That is the strongest argument against this decision and it is stronger
+ * than the fixture below, which is kept because it shows the shape at the layer
+ * a user reads. Both are latent while nothing calls this pass, and the ordering
+ * that follows is worth stating: <b>#173 should land before the quantizer is
+ * wired into the pipeline</b>. Per-chord placement leaves the two short spans in
+ * seconds and the other 198 on the beat axis, which is the outcome neither
+ * available answer gives.
+ *
+ * <p>The fixture, at the layer a user reads. Four beat-aligned chords at 120 BPM
+ * with one passing chord a tenth of a second long --
+ * {@code C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4} -- charted through
+ * {@code ChordChart}:
  *
  * <pre>
  * dropping (before)   | C A         | F C         |   the ornament G is gone
@@ -428,14 +451,29 @@ public final class Quantizer {
      * for existing is worse than no capability, so it went.
      *
      * <p>What that does <em>not</em> buy is a guarantee from the compiler, and
-     * saying otherwise here was itself a claim execution refuted. A handler can
-     * still return {@code null}; nothing rejects it, {@code onGrid} adds it, and
-     * it fails later when {@link Score} is built. What catches that is three
-     * tests -- {@code anUnplaceableSectionIsNotDeleted},
-     * {@code aCollapsedSpanDoesNotKeepBeatsFromNowhere} and
-     * {@code everyKindOfSpanSurvivesInItsOwnNumber} all fail on a
-     * {@code NullPointerException} if one does. Loud, immediate, and not the
-     * type system.
+     * two drafts of this paragraph have now overstated what it buys instead. A
+     * handler can still return {@code null}; nothing rejects it and
+     * {@code onGrid} adds it. What happens next differs by handler, and the
+     * difference is the whole of it:
+     *
+     * <ul>
+     *   <li>From {@link #inSecondsOnly(Section)} or {@link #inSecondsOnly(Key)}
+     *       it reaches {@link Score} and fails loudly --
+     *       {@code anUnplaceableSectionIsNotDeleted} and
+     *       {@code everyKindOfSpanSurvivesInItsOwnNumber} error on a
+     *       {@code NullPointerException}, and so does
+     *       {@code aCollapsedSpanDoesNotKeepBeatsFromNowhere} for the section
+     *       one.
+     *   <li>From the chord handler it is <b>unobservable</b>: that handler sets
+     *       the collapse flag before returning, so {@link #chordsOnGrid}
+     *       discards the list it went into. The whole suite passes. The previous
+     *       draft of this paragraph claimed those three tests caught it, which
+     *       is false for the one handler the paragraph is about.
+     * </ul>
+     *
+     * <p>So the invariant is kept by tests for two of the three, and by
+     * {@code chordsOnGrid} throwing the list away for the third. Not by the type
+     * system, in any of the three.
      */
     @FunctionalInterface
     private interface Collapsed<T> {
