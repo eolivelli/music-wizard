@@ -64,13 +64,21 @@ import picocli.CommandLine.Spec;
  *
  * <p>A file that was written and is <em>wrong</em> falls under the same rule,
  * and that is #156. LilyPond treats a bar that does not fill its meter as a
- * warning: it engraves the short bar, exits zero and writes a real PDF, so this
- * command used to print {@code Wrote .../chords.pdf} and say nothing else about
- * a page whose music does not match the transcription. It now names the bars, on
- * stderr, immediately after the list of files — and still exits zero, because
- * the other outputs are intact and a script losing all of them over a defect it
- * cannot act on is worse than one told plainly what is wrong. See
- * {@link #wrongBars}.
+ * warning: it engraves the short bar, exits zero and writes a real PDF, so a
+ * command that branches on the exit status alone can only print
+ * {@code Wrote .../chords.pdf} about a page whose music does not match the
+ * transcription. This one now names the bars, on stderr, immediately after the
+ * list of files — and still exits zero, because the other outputs are intact and
+ * a script losing all of them over a defect it cannot act on is worse than one
+ * told plainly what is wrong. See {@link #wrongBars}.
+ *
+ * <p><b>No user has been handed such a chart yet, and the claim is worth making
+ * carefully.</b> {@code ChordChart.toLilyPond} emits no {@code |} at all, so
+ * nothing this command engraves today can fail a bar check; the fact exists in
+ * {@code StaffNotation}'s output, which only {@code mw-it} engraves so far. What
+ * was wrong is that nothing shipped could read a fact the test suite bans
+ * outright — and it becomes user-visible with the first staff part (#8, #10) or
+ * with #160.
  */
 @Command(name = "render", description = "Generate sheet music from a workspace.")
 final class RenderCommand implements Callable<Integer> {
@@ -180,8 +188,9 @@ final class RenderCommand implements Callable<Integer> {
      * can be printed <em>after</em> the list of files written. A warning that the
      * PDF's bars do not sum is only useful next to the line saying the PDF was
      * written; printed before it, it reads as a reason the file is missing. That
-     * pairing is what #156 asked for, and {@code RenderPartsTest}'s
-     * {@code theWarningComesAfterTheFileItIsAbout} is what holds it — round 1 of
+     * pairing is what #156 asked for, and
+     * {@code RenderDiagnosticsTest.theWarningComesAfterTheFileItIsAbout} is what
+     * holds it — round 1 of
      * review found the ordering untestable through two separate capture buffers,
      * so moving the block back left every test green.
      *
@@ -430,12 +439,12 @@ final class RenderCommand implements Callable<Integer> {
      * What to tell the user about a PDF LilyPond wrote and then said was wrong.
      *
      * <p>This is #156. A failed bar check is a <em>warning</em> to LilyPond: it
-     * engraves the short bar, exits zero and writes a real PDF, so before this
-     * the command printed {@code Wrote .../chords.pdf} and stopped. The whole
-     * integration suite bans this one diagnostic on the grounds that it means
-     * the engraved music is wrong, and the shipped tool passed it over in
-     * silence — the project's own thesis pointed at its tests but not at its
-     * output.
+     * engraves the short bar, exits zero and writes a real PDF, so a caller that
+     * reads only {@code succeeded()} has nothing to print but
+     * {@code Wrote .../chords.pdf}. The whole integration suite bans this one
+     * diagnostic on the grounds that it means the engraved music is wrong, and
+     * the shipped tool had no way to read it — the project's own thesis pointed
+     * at its tests but not at its output.
      *
      * <p>Only this diagnostic, and not "LilyPond said something". #136 records a
      * tuplet-number placement complaint that LilyPond words as a {@code

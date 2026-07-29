@@ -331,14 +331,39 @@ class LilyPondRendererTest {
                     Success: compilation successfully completed
                     """).failedBarChecks())
                     .containsExactly("3/4");
-            // And the indented continuation of an echo, which is where a header
-            // string would land -- a title is escaped and quoted, never a line
-            // start, so it cannot pose as a diagnostic.
+        }
+
+        @Test
+        @DisplayName("is not read out of the half of an echo that starts at column 0")
+        void anEchoIsSplitAtTheFailingColumnAndItsFirstHalfIsNotIndented() {
+            // Round 2 of review found round 1's reasoning false, and this is the
+            // fixture that shows it. LilyPond does not print the echo as one
+            // indented block: it splits the source line *at the failing column*,
+            // prints everything before that column starting at column 0, and
+            // indents only the remainder. So an echo does begin at a line start,
+            // and anchoring there proves nothing on its own.
+            //
+            // Byte-exact 2.26.0 output for a one-line source whose title says the
+            // phrase. The previous version of this file asserted on an indented
+            // continuation instead and claimed a title "is escaped and quoted,
+            // never a line start, so it cannot pose as a diagnostic" -- both
+            // halves wrong, and it passed on its two leading spaces.
             assertThat(said("""
-                    part.ly:3:9: warning: bar check failed at: 1/2
-                      title = "x: warning: bar check failed at: 9/9"
+                    titled.ly:2:105: warning: bar check failed at: 3/4
+                    \\header { title = "a:1:2: warning: bar check failed at: 9/9" } \\score { \\new Staff { \\time 4/4 c4 c4 c4
+                                                                                                            | c1 | } }
+                    Success: compilation successfully completed
                     """).failedBarChecks())
-                    .containsExactly("1/2");
+                    .as("the unanchored form gives [3/4, 9/9\"], and the line-start anchor alone"
+                            + " does not change that")
+                    .containsExactly("3/4");
+            // What does separate them is the end of the line: a diagnostic is a
+            // format string whose last token is the moment, so nothing follows
+            // it, while an echo fragment carries the rest of the source line.
+            assertThat(said("part.ly:1:1: warning: bar check failed at: 1/2 % and more source\n")
+                    .failedBarChecks())
+                    .as("text after the moment means this was never a diagnostic line")
+                    .isEmpty();
         }
 
         @Test
@@ -352,11 +377,16 @@ class LilyPondRendererTest {
                     .containsExactly("3/4");
             assertThat(said("canción.ly:2:42: warning: bar check failed at: 5/8").failedBarChecks())
                     .containsExactly("5/8");
-            // And with no location, so that a future LilyPond dropping it makes
-            // this over-report rather than go blind. Blind is the failure this
-            // whole class exists to avoid: it looks exactly like correct output.
+            // And with no location, and with a line but no column, so that a
+            // LilyPond dropping either makes this over-report rather than go
+            // blind. Blind is the failure this whole class exists to avoid: it
+            // looks exactly like correct output. Neither shape occurs today --
+            // round 2 of review confirmed every real diagnostic on 2.24.3 and
+            // 2.26.0 carries both numbers -- and accepting them costs nothing.
             assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
                     .containsExactly("7/8");
+            assertThat(said("bad.ly:12: warning: bar check failed at: 5/4\n").failedBarChecks())
+                    .containsExactly("5/4");
         }
 
         @Test

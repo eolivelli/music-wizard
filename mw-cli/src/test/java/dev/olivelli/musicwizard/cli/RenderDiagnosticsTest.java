@@ -190,12 +190,17 @@ class RenderDiagnosticsTest {
         CliRunner.Result render = CliRunner.run("render", workspace.toString());
 
         String transcript = render.transcript();
-        int pdfLine = transcript.indexOf("chords.pdf");
+        // The last "Wrote " rather than the first mention of chords.pdf: the
+        // claim is that the warning follows the whole file list, and keying on a
+        // file name would also pass if a temp directory happened to be called
+        // after one.
+        int lastFileLine = transcript.lastIndexOf("Wrote ");
         int warning = transcript.indexOf("warning: LilyPond reported");
-        assertThat(pdfLine).as("%s", transcript).isNotNegative();
+        assertThat(transcript).contains("chords.pdf");
+        assertThat(lastFileLine).as("%s", transcript).isNotNegative();
         assertThat(warning).as("%s", transcript).isNotNegative();
-        assertThat(warning).as("the warning must follow the file it is about%n%s", transcript)
-                .isGreaterThan(pdfLine);
+        assertThat(warning).as("the warning must follow the files it is about%n%s", transcript)
+                .isGreaterThan(lastFileLine);
     }
 
     @Test

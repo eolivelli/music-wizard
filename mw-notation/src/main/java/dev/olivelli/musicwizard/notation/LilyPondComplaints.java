@@ -69,29 +69,67 @@ import java.util.regex.Pattern;
  * failure per context, which is exactly the kind of incidental detail nothing
  * here should depend on.
  *
- * <p><b>The match is anchored to the start of a line, and that is not
- * cosmetic.</b> LilyPond echoes the offending source line back after each
- * diagnostic, verbatim and with no prefix of its own — so a {@code warning:}
- * requirement alone does not hold the echo out, because an echo of a line
- * containing the phrase satisfies it. Round 1 of review on #156 measured
- * exactly that against 2.26.0:
+ * <p><b>What has to be held out is the echo, and it took two rounds to work out
+ * what actually holds it out.</b> LilyPond quotes the offending source line back
+ * after each diagnostic, verbatim and with no prefix of its own, so a {@code
+ * warning:} requirement alone does not exclude it: an echo of a line containing
+ * the phrase carries the prefix along with it. Round 1 of review on #156
+ * measured that against 2.26.0 —
  *
  * <pre>
  * echo.ly:2:83: warning: bar check failed at: 3/4
  * \score { \new Staff { \time 4/4 c4 c4 c4 %{ warning: bar check failed at: 99/9 %}
  * </pre>
  *
- * <p>One real failure, and an unanchored pattern reports two moments. The
- * echoed line begins with the source's own text, and a diagnostic begins with a
- * location or with {@code warning:} itself, so the line start is what separates
- * them.
+ * <p>— one real failure, two moments reported.
  *
- * <p>The location is matched as {@code anything:line:column: } rather than as a
- * run of non-space, because a file name may contain a space —
- * {@code my song.ly:2:42: warning: bar check failed at: 3/4} is what 2.26.0
- * prints, measured — and a pattern that stopped reading there would go silent on
- * the exact input it was written for. It is optional for the same reason: a
- * future LilyPond that drops the location must not make this blind.
+ * <p>Round 1 answered that by anchoring to the start of a line, on the reasoning
+ * that an echo begins with the source's own text. <b>Round 2 measured that
+ * reasoning and it is false.</b> LilyPond splits the echo <em>at the failing
+ * column</em>: the part before the column is printed at column 0 and only the
+ * remainder is indented. So an echo does begin at a line start, and a source
+ * line carrying anything colon-digits-colon-digits-shaped in front of the phrase
+ * walks straight through:
+ *
+ * <pre>
+ * titled.ly:2:105: warning: bar check failed at: 3/4
+ * \header { title = "a:1:2: warning: bar check failed at: 9/9" } \score { \new Staff { \time 4/4 c4 c4 c4
+ * </pre>
+ *
+ * <p>Reported as {@code [3/4, 9/9"]} — a count that is wrong and a moment with a
+ * stray quote in it. Which is this project's recorded pattern exactly: the first
+ * fix reached the layer the bug was noticed at rather than the one it lived at.
+ *
+ * <p>What separates the two is the <em>end</em> of the line, not the start. A
+ * diagnostic is generated from a format string whose last token is the moment,
+ * so nothing follows it; an echo is a fragment of a source line, and the phrase
+ * inside it is followed by whatever the rest of that line says. Every diagnostic
+ * line captured across 2.24.3 and 2.26.0 ends immediately after the moment, and
+ * the echo above continues with {@code " } \score {}. So the match is anchored
+ * at both ends, and it is the closing anchor that does the work.
+ *
+ * <p>The location is deliberately loose — {@code anything:line[:column]: },
+ * optional — and each part of that is a measured decision rather than a guess:
+ *
+ * <ul>
+ * <li><b>Not a run of non-space</b>, because a file name may contain a space.
+ *     {@code my song.ly:2:42: warning: bar check failed at: 3/4} is what 2.26.0
+ *     prints, and a pattern that stopped reading at the space would go silent on
+ *     the exact input it was written for.</li>
+ * <li><b>The column is optional</b>, and <b>so is the whole location</b>,
+ *     because a LilyPond that dropped either must make this over-report rather
+ *     than go blind. Neither shape occurs in any output either version produces
+ *     today; they cost nothing to accept and they remove two ways to stop
+ *     checking silently.</li>
+ * </ul>
+ *
+ * <p><b>The residuals, stated rather than implied.</b> Over-reporting survives
+ * where an echo fragment happens to end exactly at the phrase's moment, which
+ * needs the bar check to fail at that precise column. And appending anything
+ * after the moment in a future LilyPond would make this blind — the one
+ * direction that matters, accepted here because the moment is the last token of
+ * the format string in LilyPond's own source, so text after it would be a
+ * deliberate change rather than drift.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it
@@ -112,7 +150,7 @@ final class LilyPondComplaints {
      * because LilyPond has ever varied the case.
      */
     private static final Pattern FAILED_BAR_CHECK = Pattern.compile(
-            "(?m)^(?:.*:\\d+:\\d+: )?warning: bar ?check failed at: (\\S+)",
+            "(?m)^(?:.*:\\d+(?::\\d+)?: )?warning: bar ?check failed at: (\\S+)\\s*$",
             Pattern.CASE_INSENSITIVE);
 
     private LilyPondComplaints() {

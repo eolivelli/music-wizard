@@ -74,8 +74,11 @@ public final class LilyPondRenderer {
          * warning, so LilyPond draws the short bar, exits zero and hands over a
          * real PDF. A caller that only asks whether engraving succeeded is
          * therefore told nothing about whether the page is correct — which is
-         * how this tool came to print {@code Wrote .../chords.pdf} for a chart
-         * whose bars do not sum, with no other word to the user.
+         * why {@code RenderCommand} could print {@code Wrote .../chords.pdf}
+         * and nothing else about a chart whose bars do not sum. Nothing this
+         * tool engraves today can fail a bar check, because the chord chart
+         * emits no {@code |}; {@link StaffNotation} does, and #160 is about
+         * giving the chart the same.
          *
          * <p>Derived from {@link #output()} on each call rather than stored
          * beside it, so that the two cannot disagree. A stored copy would be a

@@ -66,9 +66,15 @@ final class CliRunner {
          * cannot record which was written first.
          *
          * <p>Order is faithful only to the granularity of a write. Both streams
-         * are auto-flushing and every caller here uses {@code println}, so a line
-         * is one write and lines cannot interleave within themselves; nothing in
-         * this suite runs the command on more than one thread.
+         * are auto-flushing and every command here uses {@code println}, so a
+         * line is one write and lines cannot interleave within themselves;
+         * nothing in this suite runs the command on more than one thread.
+         *
+         * <p><b>Picocli's own writers are the exception</b>, noted by round 2 of
+         * review: they are not auto-flushing, so usage text and the exception
+         * handler's output can land in the transcript later than they were
+         * written. Nothing asserts on the position of those, and this method
+         * should not be used to.
          */
         String transcript() {
             return interleaved;
