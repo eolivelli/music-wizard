@@ -1,0 +1,144 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.notation;
+
+import java.util.Optional;
+
+/**
+ * Converts a length in quarter-note beats into the duration token LilyPond
+ * writes after a pitch: {@code 4} for a quarter, {@code 8.} for a dotted eighth.
+ *
+ * <p>Only single note values are produced, undotted or singly dotted. Anything
+ * else — a length of five sixteenths, a double-dotted value, a triplet — is
+ * <em>not</em> a duration; it is a tie, and deciding where to put the tie is
+ * {@link MetricSplitter}'s job because it needs the meter. So this returns an
+ * empty optional rather than the nearest value, which would silently change the
+ * music.
+ *
+ * <p>Double dots are deliberately excluded. They are legal notation but they are
+ * also how a splitter that trusts them turns a seven-eighths note into a single
+ * unreadable symbol where two tied notes show the beat; the tie is the better
+ * answer often enough that supporting the symbol is not worth the cases where it
+ * is taken.
+ */
+final class LilyPondDuration {
+
+    /** Quarter notes in a whole note, which is the unit LilyPond names durations in. */
+    private static final double QUARTERS_PER_WHOLE = 4.0;
+
+    /** The shortest value named: a 64th note, or a sixteenth of a quarter. */
+    static final int SHORTEST_DENOMINATOR = 64;
+
+    /**
+     * The length of the shortest value, in quarter-note beats.
+     *
+     * <p>Also the grid the emitter snaps onto, so that every length reaching
+     * this class is a whole number of these.
+     */
+    static final double SHORTEST_QUARTERS = QUARTERS_PER_WHOLE / SHORTEST_DENOMINATOR;
+
+    /** How much a dot adds: half again. */
+    private static final double DOTTED = 1.5;
+
+    private LilyPondDuration() {
+    }
+
+    /**
+     * The token for a length, or empty when no single value has that length.
+     *
+     * @param quarters length in quarter-note beats
+     */
+    static Optional<String> of(double quarters) {
+        if (!Double.isFinite(quarters) || quarters <= 0) {
+            return Optional.empty();
+        }
+        Optional<String> plain = denominatorOf(quarters).map(String::valueOf);
+        if (plain.isPresent()) {
+            return plain;
+        }
+        return denominatorOf(quarters / DOTTED).map(d -> d + ".");
+    }
+
+    /**
+     * True when a length is a single note value.
+     *
+     * <p>Reads better than {@code of(q).isPresent()} at the two call sites that
+     * only ask the question.
+     */
+    static boolean isSingleValue(double quarters) {
+        return of(quarters).isPresent();
+    }
+
+    /**
+     * The LilyPond denominator for an undotted length, e.g. 8 for half a quarter.
+     *
+     * <p>Empty unless the length is exactly one of the named values: a power of
+     * two from a whole note down to a 64th. The comparison is exact because
+     * every length that gets here is dyadic — bar lengths are
+     * {@code numerator * 4 / denominator} with a power-of-two denominator, and
+     * the splitter only ever halves or thirds them, and a third of a dotted
+     * value is dyadic too. A tolerance would only let a rounding error through.
+     */
+    private static Optional<Integer> denominatorOf(double quarters) {
+        double denominator = QUARTERS_PER_WHOLE / quarters;
+        int rounded = (int) denominator;
+        if (rounded != denominator || rounded < 1 || rounded > SHORTEST_DENOMINATOR
+                || Integer.bitCount(rounded) != 1) {
+            return Optional.empty();
+        }
+        return Optional.of(rounded);
+    }
+
+    /**
+     * A length written as a duration times a factor, which is what
+     * {@code \partial} and a full-measure {@code R} need when the length is not
+     * a single value: a 5/4 bar is {@code 1*5/4}, five whole notes' worth of
+     * quarters over four.
+     *
+     * <p>Prefers the single value when there is one, because {@code \partial 4.}
+     * is what a musician recognises and {@code \partial 1*3/8} is not.
+     *
+     * @throws IllegalArgumentException if the length is not a whole number of
+     *         {@link #SHORTEST_QUARTERS}, since no duration can then express it
+     */
+    static String scaled(double quarters) {
+        Optional<String> single = of(quarters);
+        if (single.isPresent()) {
+            return single.get();
+        }
+        double units = quarters / SHORTEST_QUARTERS;
+        long wholeUnits = Math.round(units);
+        if (!Double.isFinite(quarters) || quarters <= 0 || wholeUnits != units) {
+            throw new IllegalArgumentException(
+                    "length " + quarters + " quarter beats is not a whole number of 1/"
+                            + SHORTEST_DENOMINATOR + " notes and cannot be written as a duration");
+        }
+        // Reduced so the common cases read the way an engraver writes them:
+        // 5/4 rather than 80/64. Both are accepted by LilyPond; only one is
+        // readable in a golden file.
+        long numerator = wholeUnits;
+        long denominator = SHORTEST_DENOMINATOR;
+        long divisor = gcd(numerator, denominator);
+        numerator /= divisor;
+        denominator /= divisor;
+        return denominator == 1 ? "1*" + numerator : "1*" + numerator + "/" + denominator;
+    }
+
+    private static long gcd(long a, long b) {
+        return b == 0 ? a : gcd(b, a % b);
+    }
+}
