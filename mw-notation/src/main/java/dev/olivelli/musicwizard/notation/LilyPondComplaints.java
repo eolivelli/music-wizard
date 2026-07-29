@@ -143,29 +143,44 @@ import java.util.regex.Pattern;
  *     becomes reachable when engraved lyrics do (#9).</li>
  * </ul>
  *
- * <p>Closing it needs a reader that uses <em>where</em> a line is rather than
- * what it looks like: the echo is the two lines immediately after a diagnostic.
- * That is #169, and the shape it should key on is measured rather than guessed —
- * <b>LilyPond splits the echo at the reported column</b>, so the first line's
- * length is exactly {@code column - 1} and the second is indented by that many
- * spaces. A reader that skips only a pair matching the column the diagnostic
- * itself reported can therefore fail <em>toward</em> today's behaviour rather
- * than toward silence, which is the property that matters.
+ * <p><b>So the parse stopped trying to do it by shape at all.</b> The echo is
+ * recognised by <em>where it is and how it is laid out</em>, which is a fact
+ * LilyPond states rather than one that has to be guessed from the text: it
+ * splits the offending source line at the column the diagnostic itself reports,
+ * printing the part before that column as one line and the part from it as
+ * another, indented to line up. Measured on 2.26.0, for a diagnostic reporting
+ * column {@code C}:
  *
- * <p>Two ways of writing that reader do <em>not</em> have the property, and are
- * named so nobody reaches for them: skipping a fixed number of lines
- * under-reports if LilyPond ever emits a different number, and binding the
- * location to the file name passed to the binary goes blind on an
- * {@code \include} — measured, {@code \include "part.ily"} reports
- * {@code part.ily:1:42: warning: ...}, naming the included file and not the one
- * handed over.
+ * <pre>
+ * line 1   the source up to C, so its printed width is C - 1
+ * line 2   C - 1 spaces, then the rest of the source line
+ * </pre>
  *
- * <p>It is not done in this change, and that is a judgement rather than an
- * impossibility: the over-report is unreachable from what this project emits,
- * and the column invariant itself does not hold everywhere — LilyPond truncates
- * the echo of a very long line, and counts a tab as more than one column — so
- * such a reader closes the two shapes measured here and leaves those two
- * over-reporting exactly as now.
+ * <p>{@link #failedBarChecksIn} therefore walks the output a line at a time and,
+ * after a diagnostic that named a column, skips the next two lines <em>only if
+ * they are that shape</em>. Anything else — one echo line, none, a truncated one
+ * — fails the test and is not skipped.
+ *
+ * <p><b>That asymmetry is the whole design.</b> The layout test can only
+ * <em>suppress</em> a match, never admit one, so every way it can be wrong lands
+ * on the behaviour this class had before it: over-reporting. It cannot go blind
+ * the way a test on the shape of a line can, which is why this is a change of
+ * layer rather than a fourth round of tightening the regex.
+ *
+ * <p>Two other ways of writing it were tried and rejected, and are named so
+ * nobody reaches for them. Skipping a fixed number of lines under-reports the
+ * moment LilyPond emits a different number. Binding the location to the file
+ * name passed to the binary goes blind on an {@code \include} — measured,
+ * {@code \include "part.ily"} reports {@code part.ily:1:42: warning: ...},
+ * naming the included file and not the one handed over.
+ *
+ * <p><b>What it still does not close</b>, measured rather than assumed: where
+ * LilyPond cannot reproduce that layout, the pair is not recognised and an echo
+ * whose text is diagnostic-shaped is still counted. It truncates the echo of a
+ * very long source line, and it counts a tab as advancing to the next
+ * eight-column stop. Neither is reachable from what this project emits —
+ * {@link ChordChart} writes no {@code |} at all and {@link StaffNotation} puts
+ * each bar on its own short, tab-free line — and #169 tracks the remainder.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
@@ -183,11 +198,17 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p><b>The one way this could go blind</b> is a future LilyPond that appends
- * anything after the moment. Accepted, because the moment is the last token of
- * the format string in LilyPond's own source, so text after it would be a
- * deliberate change rather than drift — and {@code mw-it} engraves deliberately
- * short bars on every integration run, so such a change turns that suite red
- * rather than quiet.
+ * anything after the moment, because the closing anchor would stop matching.
+ * Accepted, because the moment is the last token of the format string in
+ * LilyPond's own source, so text after it would be a deliberate change rather
+ * than drift — and {@code mw-it} engraves deliberately short bars on every
+ * integration run, so such a change turns that suite red rather than quiet.
+ *
+ * <p>The echo skip adds no second way. For it to swallow a real diagnostic, that
+ * diagnostic would have to sit two lines below another with no echo between
+ * them, and be indented by exactly {@code C - 1} spaces — but a diagnostic line
+ * begins with its own location, never with a space, so the only {@code C} that
+ * could match is 1, which in turn requires the line between them to be blank.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it
@@ -208,8 +229,23 @@ final class LilyPondComplaints {
      * because LilyPond has ever varied the case.
      */
     private static final Pattern FAILED_BAR_CHECK = Pattern.compile(
-            "(?m)^(?:.*:\\d+(?::\\d+)?: )?warning: bar ?check failed at: (\\S+)\\s*$",
+            "(?:.*:(\\d+):(\\d+): |.*:\\d+: )?warning: bar ?check failed at: (\\S+)\\s*",
             Pattern.CASE_INSENSITIVE);
+
+    /** Where the column sits in {@link #FAILED_BAR_CHECK}, absent when unlocated. */
+    private static final int COLUMN = 2;
+
+    /** Where the moment sits in {@link #FAILED_BAR_CHECK}. */
+    private static final int MOMENT = 3;
+
+    /**
+     * How far a tab advances, which is what makes a reported column and a count
+     * of characters disagree.
+     *
+     * <p>Eight because that is what LilyPond counts, measured: a line whose
+     * first 41 characters include four tabs was reported at column 52.
+     */
+    private static final int TAB_STOP = 8;
 
     private LilyPondComplaints() {
     }
@@ -222,13 +258,81 @@ final class LilyPondComplaints {
      * <p>Duplicates are kept. Two bars a beat short in the same place are two
      * defects, and a caller counting them is entitled to LilyPond's own count
      * rather than a de-duplicated one.
+     *
+     * <p>Line by line, and each line matched <em>whole</em>: a diagnostic is one
+     * line and nothing else. The two lines after a located diagnostic are skipped
+     * when they are that diagnostic's echo, which is what stops LilyPond quoting
+     * the offending source back being read as a second failure. See the class
+     * javadoc for why the echo is recognised by its layout rather than by what it
+     * says.
      */
     static List<String> failedBarChecksIn(String lilypondOutput) {
         List<String> moments = new ArrayList<>();
-        Matcher matcher = FAILED_BAR_CHECK.matcher(lilypondOutput);
-        while (matcher.find()) {
-            moments.add(matcher.group(1));
+        // splitWithDelimiters would keep the terminators; lines() drops them and
+        // handles \r\n, lone \r and the Unicode terminators the same way $ did.
+        List<String> lines = lilypondOutput.lines().toList();
+        for (int i = 0; i < lines.size(); i++) {
+            Matcher matcher = FAILED_BAR_CHECK.matcher(lines.get(i));
+            if (!matcher.matches()) {
+                continue;
+            }
+            moments.add(matcher.group(MOMENT));
+            if (matcher.group(COLUMN) != null
+                    && isEchoOf(lines, i + 1, Integer.parseInt(matcher.group(COLUMN)))) {
+                i += 2;
+            }
         }
         return List.copyOf(moments);
+    }
+
+    /**
+     * Whether the two lines at {@code first} are the echo of a diagnostic that
+     * reported {@code column}.
+     *
+     * <p>The test is on layout alone, and is deliberately the strict half of the
+     * decision: saying no leaves the lines to be read as ordinary output, which
+     * is what this class did before the echo was handled at all. Saying yes
+     * wrongly is the only way to lose a real diagnostic, and the class javadoc
+     * records why that needs a coincidence rather than a change of format.
+     *
+     * <p>The first line's width is compared with {@code <=} rather than {@code =}
+     * because a trailing space is the easiest thing in the world for a capture
+     * path to eat — a Java text block strips them silently, which is how review
+     * round 4 found this project's own fixture off by one — and being lenient
+     * here can only decline to report, never invent.
+     */
+    private static boolean isEchoOf(List<String> lines, int first, int column) {
+        if (first + 1 >= lines.size() || column < 1) {
+            return false;
+        }
+        int upToColumn = column - 1;
+        return printedWidth(lines.get(first).stripTrailing()) <= upToColumn
+                && leadingSpaces(lines.get(first + 1)) == upToColumn;
+    }
+
+    /** How wide a string prints, which is not its length once it holds a tab. */
+    private static int printedWidth(String line) {
+        int width = 0;
+        for (int i = 0; i < line.length(); i++) {
+            width = line.charAt(i) == '\t'
+                    ? (width / TAB_STOP + 1) * TAB_STOP
+                    : width + 1;
+        }
+        return width;
+    }
+
+    /**
+     * How many spaces a line starts with.
+     *
+     * <p>Spaces only, and not whitespace generally: LilyPond pads the second
+     * half of an echo with spaces whatever the source contained, so a tab here
+     * would mean this is not an echo.
+     */
+    private static int leadingSpaces(String line) {
+        int spaces = 0;
+        while (spaces < line.length() && line.charAt(spaces) == ' ') {
+            spaces++;
+        }
+        return spaces;
     }
 }

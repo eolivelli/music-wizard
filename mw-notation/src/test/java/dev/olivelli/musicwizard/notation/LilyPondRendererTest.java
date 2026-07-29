@@ -23,8 +23,11 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -243,6 +246,59 @@ class LilyPondRendererTest {
             return new LilyPondRenderer.Result(true, Optional.empty(), output);
         }
 
+        /**
+         * The same, for a fixture that is supposed to be real engraver output —
+         * and which checks that it still is.
+         *
+         * <p>Round 4 of review found three fixtures in this file claiming to be
+         * byte-exact 2.26.0 output while being off by as much as 17 columns, and
+         * columns are precisely what the echo is now recognised by. One of them
+         * had lost a single trailing space to a Java text block, which was enough
+         * that a working fix for the over-report still left this file green.
+         *
+         * <p>So the layout is asserted rather than trusted: after a diagnostic
+         * naming column C, the next line must print C - 1 wide and the one after
+         * must be indented by C - 1 spaces. A fixture that drifts fails here,
+         * saying so, instead of quietly testing nothing.
+         */
+        private LilyPondRenderer.Result engraverSaid(String output) {
+            List<String> lines = output.lines().toList();
+            Pattern located = Pattern.compile(
+                    "^.*:(\\d+):(\\d+): warning: bar ?check failed at: \\S+\\s*$");
+            int pairs = 0;
+            for (int i = 0; i + 2 < lines.size(); i++) {
+                Matcher diagnostic = located.matcher(lines.get(i));
+                if (!diagnostic.matches()) {
+                    continue;
+                }
+                int column = Integer.parseInt(diagnostic.group(2));
+                String beforeColumn = lines.get(i + 1);
+                String fromColumn = lines.get(i + 2);
+                int indent = 0;
+                while (indent < fromColumn.length() && fromColumn.charAt(indent) == ' ') {
+                    indent++;
+                }
+                assertThat(beforeColumn.length())
+                        .as("fixture is not real output: line after a column-%d diagnostic"
+                                + " should be %d wide%n[%s]", column, column - 1, beforeColumn)
+                        .isEqualTo(column - 1);
+                assertThat(indent)
+                        .as("fixture is not real output: the second echo line after a column-%d"
+                                + " diagnostic should be indented %d%n[%s]",
+                                column, column - 1, fromColumn)
+                        .isEqualTo(column - 1);
+                pairs++;
+                // Past the pair just verified, so the phrase *inside* the echo
+                // is not mistaken for a second diagnostic to check the layout
+                // of -- which is the very confusion the parser exists to avoid,
+                // and which this check walked straight into on its first run.
+                i += 2;
+            }
+            assertThat(pairs).as("no diagnostic-and-echo pair found in this fixture%n%s", output)
+                    .isPositive();
+            return said(output);
+        }
+
         @Test
         @DisplayName("is reported even though LilyPond called the run a success")
         void isVisibleOnAResultThatSucceeded() throws Exception {
@@ -315,124 +371,159 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("is not read out of the source line LilyPond echoes back")
         void anEchoedSourceLineIsNotASecondComplaint() {
-            // Round 1 of review found the previous version of this claiming more
-            // than it tested, and the claim was false. LilyPond echoes the
-            // offending line after each diagnostic *verbatim and with no prefix
-            // of its own*, so requiring "warning:" does not hold an echo out --
-            // an echo of a line containing the phrase carries the prefix along
-            // with it. Measured on 2.26.0: one real failure, two moments
-            // reported.
+            // LilyPond quotes the offending line back after each diagnostic,
+            // verbatim and with no prefix of its own, so an echo of a line
+            // containing the phrase carries the "warning:" along with it. Round 1
+            // of review measured that against 2.26.0 -- one real failure, two
+            // moments reported by the pattern this replaced.
             //
-            // This fixture is that output, byte for byte. The line start is what
-            // separates the two: a diagnostic begins with a location or with
-            // "warning:", an echo begins with the source's own text.
-            assertThat(said("""
-                    echo.ly:2:83: warning: bar check failed at: 3/4
-                    \\score { \\new Staff { \\time 4/4 c4 c4 c4 %{ warning: bar check failed at: 99/9 %}
-                                                                                     | c1 | }
+            // Every fixture in this class is now the engraver's own output,
+            // captured and pasted rather than typed. Round 4 found three of them
+            // claiming to be byte-exact while being off by as much as 17 columns,
+            // and columns are exactly what the echo is recognised by, so a
+            // hand-typed fixture cannot test the thing this file is about. The
+            // \s escapes are load-bearing: a text block strips trailing spaces,
+            // and the first echo line ends in one.
+            assertThat(engraverSaid("""
+                    echoComment.ly:2:83: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4 %{ warning: bar check failed at: 99/9 %}\s
+                                                                                                      | c1 | } \\layout {} }
                     Success: compilation successfully completed
                     """).failedBarChecks())
                     .containsExactly("3/4");
         }
 
         @Test
-        @DisplayName("is not read out of the half of an echo that starts at column 0")
-        void anEchoIsSplitAtTheFailingColumnAndItsFirstHalfIsNotIndented() {
-            // Round 2 of review found round 1's reasoning false, and this is the
-            // fixture that shows it. LilyPond does not print the echo as one
-            // indented block: it splits the source line *at the failing column*,
-            // prints everything before that column starting at column 0, and
-            // indents only the remainder. So an echo does begin at a line start,
-            // and anchoring there proves nothing on its own.
+        @DisplayName("is not read out of either half of the echo, wherever the check failed")
+        void bothHalvesOfTheEchoAreRecognisedAndSkipped() {
+            // The two shapes rounds 2 and 3 each found the previous fix missing,
+            // and the reason this class stopped trying to tell a diagnostic from
+            // an echo by what the line looks like. LilyPond splits the echo at
+            // the failing column: the part before it is printed at column 0 and
+            // the part from it is indented to line up.
             //
-            // Byte-exact 2.26.0 output for a one-line source whose title says the
-            // phrase. The previous version of this file asserted on an indented
-            // continuation instead and claimed a title "is escaped and quoted,
-            // never a line start, so it cannot pose as a diagnostic" -- both
-            // halves wrong, and it passed on its two leading spaces.
-            assertThat(said("""
-                    titled.ly:2:105: warning: bar check failed at: 3/4
-                    \\header { title = "a:1:2: warning: bar check failed at: 9/9" } \\score { \\new Staff { \\time 4/4 c4 c4 c4
-                                                                                                            | c1 | } }
+            // Round 3's shape -- the *second* half, which ends at the end of the
+            // source line whatever the column was. Real 2.26.0 output, check
+            // failing at column 42, phrase in a trailing comment.
+            assertThat(engraverSaid("""
+                    tail.ly:2:42: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4\s
+                                                             | c4 c4 c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
                     Success: compilation successfully completed
                     """).failedBarChecks())
-                    .as("the unanchored form gives [3/4, 9/9\"], and the line-start anchor alone"
-                            + " does not change that")
+                    .as("was [3/4, 9/9] until the echo was recognised by its layout")
                     .containsExactly("3/4");
-            // What holds this one out is the end of the line: a diagnostic is a
-            // format string whose last token is the moment, so nothing follows
-            // it, while an echo fragment carries the rest of the source line.
-            assertThat(said("part.ly:1:1: warning: bar check failed at: 1/2 % and more source\n")
-                    .failedBarChecks())
-                    .as("text after the moment means this was never a diagnostic line")
-                    .isEmpty();
+            // Round 4's shape -- the *first* half, with the phrase inside a ^"..."
+            // markup, which is ordinary LilyPond and is what engraved lyrics will
+            // emit (#9). Note the fabricated moment carried a stray quote: the
+            // user would have been shown `at 3/4, 9/9"`.
+            assertThat(engraverSaid("""
+                    firstHalf.ly:2:84: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4^"a:1:2: warning: bar check failed at: 9/9"
+                                                                                                       | c4 c4 c4 c4 | } }
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .as("was [3/4, 9/9\"] until the echo was recognised by its layout")
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("is still read when the diagnostics come one after another with their echoes")
+        void everyDiagnosticIsStillReadWhenEachHasAnEcho() {
+            // The other half of the echo skip, and the one that would make it a
+            // fix worse than the bug: skipping two lines after every diagnostic
+            // must not eat the next diagnostic. This is the 2.24.3 shape, which
+            // reports every failure rather than one per context, so the pairs
+            // come back to back. Widths are exactly what LilyPond produces --
+            // first line `column - 1` wide, second indented by the same.
+            assertThat(said("""
+                    p.ly:1:10: warning: bar check failed at: 2/4
+                    xxxxxxxxx
+                             | rest
+                    p.ly:1:20: warning: bar check failed at: 5/4
+                    xxxxxxxxxxxxxxxxxxx
+                                       | rest
+                    p.ly:1:30: warning: bar check failed at: 9/4
+                    xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                                                 | rest
+                    """).failedBarChecks())
+                    .containsExactly("2/4", "5/4", "9/4");
+        }
+
+        @Test
+        @DisplayName("is still read when there is no echo at all, or only half of one")
+        void aMissingOrMalformedEchoCostsNothing() {
+            // The property the whole design rests on: the layout test can only
+            // suppress a match, never admit one, so a LilyPond that changed how
+            // it echoes lands on this class's previous behaviour -- over-reporting
+            // -- and never on silence.
+            //
+            // No echo at all.
+            assertThat(said("""
+                    p.ly:1:10: warning: bar check failed at: 3/4
+                    p.ly:2:20: warning: bar check failed at: 7/8
+                    p.ly:3:30: warning: bar check failed at: 1/2
+                    """).failedBarChecks())
+                    .containsExactly("3/4", "7/8", "1/2");
+            // One echo line where there should be two, with a diagnostic-shaped
+            // line in the gap: the pair is not recognised, so the echo is
+            // over-reported -- and the real diagnostic after it is still read.
+            assertThat(said("""
+                    p.ly:1:10: warning: bar check failed at: 3/4
+                    p.ly:9:9: warning: bar check failed at: 9/9
+                    p.ly:2:20: warning: bar check failed at: 7/8
+                    """).failedBarChecks())
+                    .as("degrades to over-reporting, which is the safe direction")
+                    .containsExactly("3/4", "9/9", "7/8");
+        }
+
+        @Test
+        @DisplayName("is lost only where a column-1 diagnostic is followed by a blank line")
+        void theOneShapeTheEchoSkipCanSwallow() {
+            // The single under-report this design admits, recorded rather than
+            // left to be discovered. To lose a diagnostic it must be indented by
+            // exactly `column - 1` spaces -- and a diagnostic line begins with
+            // its own location, never a space, so the only column that can match
+            // is 1, which in turn needs the line between them to be blank.
+            //
+            // That is a compound of behaviours never observed together: at column
+            // 1 the real echo *is* an empty line followed by the source line, so
+            // reaching this needs LilyPond to have stopped echoing while still
+            // emitting the blank. Written down because "cannot happen" is the
+            // claim this file has had to retract three times.
+            assertThat(said("""
+                    p.ly:1:1: warning: bar check failed at: 3/4
+
+                    p.ly:2:20: warning: bar check failed at: 7/8
+                    """).failedBarChecks())
+                    .as("known under-report; the blank line is read as a column-1 echo")
+                    .containsExactly("3/4");
         }
 
         @Test
         @DisplayName("is not read out of a phrase sitting mid-line, which is the start anchor's job")
         void theStartAnchorIsLoadBearingToo() {
-            // Round 3 of review found the leading ^ killed by nothing: every
-            // echo fixture here happened to be rejected by the *end* anchor
-            // instead, so the pattern could have been simplified with a green
-            // build and a false positive reintroduced.
+            // Round 3 of review found the leading anchor killed by nothing: every
+            // echo fixture happened to be rejected by the closing anchor instead,
+            // so the pattern could have been simplified with a green build and a
+            // false positive reintroduced. This is the shape only whole-line
+            // matching rejects -- an echoed tail with no location in front of it,
+            // so the optional location group cannot absorb the text before it.
             //
-            // This is the shape only the start anchor rejects -- an echoed line
-            // whose tail is the phrase but with no location in front of it, so
-            // the optional location group cannot absorb the text before it.
-            // Measured on real 2.26.0: shipped [3/4], and [3/4, 9/9] with the
-            // caret removed.
-            assertThat(said("""
-                    nocaret.ly:2:42: warning: bar check failed at: 3/4
-                    \\score { \\new Staff { \\time 4/4 c4 c4 c4 | c4 | } } % see warning: bar check failed at: 9/9
+            // Real 2.26.0 output. Belt as well as braces now that the echo is
+            // skipped by layout: this is what happens if the layout test ever
+            // declines, which is the case above.
+            assertThat(engraverSaid("""
+                    noCaret.ly:2:42: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4\s
+                                                             | c4 | } } % see warning: bar check failed at: 9/9
+                    Success: compilation successfully completed
                     """).failedBarChecks())
                     .containsExactly("3/4");
-        }
-
-        @Test
-        @DisplayName("over-reports an echoed line whose tail is diagnostic-shaped, and that is known")
-        void anEchoEndingInADiagnosticShapeIsStillCounted() {
-            // A recorded limitation, not an aspiration. Round 3 measured it
-            // against 2.26.0 with the check failing at column 42, nowhere near
-            // the phrase: LilyPond splits the echo into the text before the
-            // failing column and the text after it, and the second fragment ends
-            // at the end of the source line whatever the column was.
-            //
-            // Asserted so that the day someone closes it (#169, a reader that
-            // uses where a line is rather than what it looks like) they do so
-            // deliberately and this test flips, rather than discovering the
-            // behaviour for a fourth time. Unreachable from what this project
-            // emits: ChordChart writes no bar checks, and StaffNotation puts
-            // each bar on its own line with no user text on it.
-            assertThat(said("""
-                    tail.ly:2:42: warning: bar check failed at: 3/4
-                    \\score { \\new Staff { \\time 4/4 c4 c4 c4
-                                                             | c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
-                    """).failedBarChecks())
-                    .as("known over-report; #169 is the reader that would close it")
-                    .containsExactly("3/4", "9/9");
-        }
-
-        @Test
-        @DisplayName("is read whatever the location looks like, and with none at all")
-        void theLocationIsNotWhatIsBeingMatchedOn() {
-            // A file name may contain a space -- 2.26.0 prints "my song.ly:2:42:
-            // warning: bar check failed at: 3/4", measured -- so a pattern that
-            // read the location as a run of non-space would go silent on exactly
-            // the input it was written for.
-            assertThat(said("my song.ly:2:42: warning: bar check failed at: 3/4").failedBarChecks())
-                    .containsExactly("3/4");
-            assertThat(said("canción.ly:2:42: warning: bar check failed at: 5/8").failedBarChecks())
-                    .containsExactly("5/8");
-            // And with no location, and with a line but no column, so that a
-            // LilyPond dropping either makes this over-report rather than go
-            // blind. Blind is the failure this whole class exists to avoid: it
-            // looks exactly like correct output. Neither shape occurs today --
-            // round 2 of review confirmed every real diagnostic on 2.24.3 and
-            // 2.26.0 carries both numbers -- and accepting them costs nothing.
-            assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
-                    .containsExactly("7/8");
-            assertThat(said("bad.ly:12: warning: bar check failed at: 5/4\n").failedBarChecks())
-                    .containsExactly("5/4");
+            // And text after the moment means the line was never a diagnostic.
+            assertThat(said("part.ly:1:1: warning: bar check failed at: 1/2 % and more source\n")
+                    .failedBarChecks())
+                    .isEmpty();
         }
 
         @Test
