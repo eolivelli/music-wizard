@@ -678,25 +678,73 @@ class LilyPondRendererTest {
         }
 
         @Test
-        @DisplayName("is lost only where a column-1 diagnostic is followed by a blank line")
-        void theOneShapeTheEchoSkipCanSwallow() {
-            // The single under-report this design admits, recorded rather than
-            // left to be discovered. To lose a diagnostic it must be indented by
-            // exactly `column - 1` spaces -- and a diagnostic line begins with
-            // its own location, never a space, so the only column that can match
-            // is 1, which in turn needs the line between them to be blank.
+        @DisplayName("is lost in either skipped line when LilyPond emitted no echo there")
+        void theShapesTheEchoSkipCanSwallow() {
+            // The residual, stated by execution because three attempts to state
+            // it by reasoning were each wrong -- and wrong the same way twice,
+            // by describing one of the two skipped lines and calling it the
+            // rule. They are tested differently: the first by its printed width
+            // alone, the second by its indentation alone.
             //
-            // That is a compound of behaviours never observed together: at column
-            // 1 the real echo *is* an empty line followed by the source line, so
-            // reaching this needs LilyPond to have stopped echoing while still
-            // emitting the blank. Written down because "cannot happen" is the
-            // claim this file has had to retract three times.
-            assertThat(said("""
-                    p.ly:1:1: warning: bar check failed at: 3/4
+            // First line. No indentation needed, no unusual file name, just a
+            // width of C-1. The 9/9 diagnostic below is 43 columns wide and the
+            // one above it reported column 44.
+            String swallowed = "x.ly:1:2: warning: bar check failed at: 9/9";
+            assertThat(said("p.ly:1:44: warning: bar check failed at: 3/4\n"
+                    + swallowed + "\n"
+                    + " ".repeat(43) + "| c4 c4 c4 | } }\n").failedBarChecks())
+                    .as("round 6: the first skipped line needs only the width")
+                    .containsExactly("3/4");
+            // Second line. Here the indentation is what has to match, which
+            // needs either a column of 1 -- where an echo's first half is an
+            // empty line, so a blank line stands in for it -- or a file name
+            // that begins with whitespace, which LilyPond prints verbatim.
+            assertThat(said("p.ly:1:1: warning: bar check failed at: 3/4\n"
+                    + "\n"
+                    + "p.ly:2:20: warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .as("round 5: column 1, so the blank line reads as the first half")
+                    .containsExactly("3/4");
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "   spaced.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("round 6: a file name beginning with whitespace, at any column")
+                    .containsExactly("3/4");
+            // And the one precondition all three share: LilyPond emitted no echo
+            // where one was due. Give them their echoes and nothing is lost.
+            assertThat(said("p.ly:1:44: warning: bar check failed at: 3/4\n"
+                    + " ".repeat(43) + "\n"
+                    + " ".repeat(43) + "| rest\n"
+                    + swallowed + "\n").failedBarChecks())
+                    .as("with a real echo in the way, the second diagnostic survives")
+                    .containsExactly("3/4", "9/9");
+        }
 
-                    p.ly:2:20: warning: bar check failed at: 7/8
-                    """).failedBarChecks())
-                    .as("known under-report; the blank line is read as a column-1 echo")
+        @Test
+        @DisplayName("cannot be defended by refusing to skip a line that looks like a diagnostic")
+        void theObviousGuardWouldReopenBothBypasses() {
+            // Why the residual above is not simply closed. The guard that looks
+            // free -- never skip a line that itself matches -- is measured and
+            // does not work, because *both* halves of a real echo are whole-line
+            // matches once the greedy location has absorbed the padding and the
+            // source text.
+            //
+            // These two lines are the echoes rounds 3 and 4 found bypasses in,
+            // and both would be exempted from skipping by that guard, putting
+            // the fabricated 9/9 back in front of a user. Asserted through the
+            // parser: each is skipped today, and neither could be if the guard
+            // existed.
+            assertThat(said("t.ly:1:42: warning: bar check failed at: 3/4\n"
+                    + "\\score { \\new Staff { \\time 4/4 c4 c4 c4 \n"
+                    + " ".repeat(41)
+                    + "| c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9\n")
+                    .failedBarChecks())
+                    .as("round 3's second half, which is a whole-line match")
+                    .containsExactly("3/4");
+            assertThat(said("f.ly:1:84: warning: bar check failed at: 3/4\n"
+                    + "\\score { \\new Staff { \\time 4/4 c4 c4 c4^\"a:1:2: warning: bar check"
+                    + " failed at: 9/9\"\n"
+                    + " ".repeat(83) + "| c4 | } }\n").failedBarChecks())
+                    .as("round 4's first half, which is also a whole-line match")
                     .containsExactly("3/4");
         }
 

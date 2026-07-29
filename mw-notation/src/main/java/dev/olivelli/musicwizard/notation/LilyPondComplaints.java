@@ -177,33 +177,55 @@ import java.util.regex.Pattern;
  *
  * <p><b>The one way this could go blind</b> is a future LilyPond that appends
  * anything after the moment, because the closing anchor would stop matching.
- * Accepted, because the moment is the last token of the format string in
- * LilyPond's own source, so text after it would be a deliberate change rather
- * than drift — and {@code mw-it} engraves deliberately short bars on every
- * integration run, so such a change turns that suite red rather than quiet.
+ * Accepted on likelihood: the moment is the last token of the format string in
+ * LilyPond's own source — {@code strings} on the 2.26.0 binary gives
+ * {@code bar check failed at: %s} — so text after it would be a deliberate
+ * change rather than drift.
  *
- * <p><b>The echo skip adds one, and it is narrower than it looks but wider than
- * the first attempt to state it.</b> For the skip to swallow a real diagnostic,
- * that diagnostic must sit two lines below another <em>with no echo between
- * them</em> — which no observed LilyPond does, since a located diagnostic is
- * always followed by its two echo lines — and must be indented by exactly
- * {@code C - 1} spaces.
+ * <p><b>Accepted on likelihood alone, and not because anything would notice.</b>
+ * An earlier version of this paragraph said {@code mw-it} engraves deliberately
+ * short bars on every integration run and so would turn red. Review round 6
+ * measured that and it is false: {@code mw-it} reads its own copy of this
+ * parser, which is unanchored and matched with {@code find()}, so it is immune
+ * to the very drift that would blind this one. Fed
+ * {@code bar.ly:5:17: warning: bar check failed at: 3/4 (context Staff)}, the
+ * {@code mw-it} parser returns {@code [3/4]} and this one returns nothing, and
+ * every integration assertion stays green. The residual is <em>undetected</em>
+ * until #159 collapses the two parsers into this one — which is the strongest
+ * argument for doing it, and is recorded there.
  *
- * <p>An earlier version of this paragraph derived from that "so the only
- * {@code C} that could match is 1, since a diagnostic line begins with its own
- * location, never with a space". <b>Review round 5 measured it and it is
- * false.</b> LilyPond prints the location verbatim from the name it was handed,
- * so a file called {@code "  short.ly"} produces {@code   short.ly:1:42:
- * warning: ...} — a diagnostic line beginning with two spaces, and therefore a
- * match at {@code C = 3}. Any {@code C} is reachable that way.
+ * <p><b>The echo skip adds one, and three attempts to state it have each been
+ * wrong in the same way.</b> Two lines are skipped and they are tested
+ * differently, so a residual described in terms of one of them describes half
+ * of it. The first is tested by its printed width alone; the second by its
+ * indentation alone.
  *
- * <p>It stays as a stated residual rather than being closed, because the guard
- * that would close it — refusing to skip a line that itself looks like a
- * diagnostic — reopens both bypasses this design exists to fix: the second half
- * of an echo <em>is</em> a whole-line match once its indentation is considered,
- * which is exactly what made those bypasses possible. So the precondition is
- * the honest defence and it is a strong one: it needs LilyPond to have stopped
- * echoing, and a file name that begins with whitespace.
+ * <ul>
+ * <li>Round 5 was told "only a column-1 diagnostic can be swallowed, since a
+ *     diagnostic never begins with a space". False: LilyPond prints the location
+ *     verbatim from the name it was handed, so a file called {@code "  short.ly"}
+ *     yields a diagnostic that does begin with spaces.</li>
+ * <li>Round 6 was told it also needs a whitespace-prefixed file name. Also
+ *     false, and false for the <em>first</em> of the two lines, which needs no
+ *     indentation at all — only a printed width of {@code C - 1}. Measured: a
+ *     43-column diagnostic sitting under a diagnostic that reported column 44 is
+ *     swallowed, ordinary file name and all.</li>
+ * </ul>
+ *
+ * <p>So the honest statement is the short one. <b>Any real diagnostic in either
+ * of the two lines after a located diagnostic can be lost, given the width or
+ * the indentation to match — and the one precondition is that LilyPond emitted
+ * no echo there.</b> Every located diagnostic 2.26.0 produces is followed by its
+ * echo, including from stdin and from music built in a Scheme function, so no
+ * trigger has been found; the defence is that precondition and nothing smaller.
+ *
+ * <p>It is not closed, and the guard that looks as though it would close it —
+ * refusing to skip a line that itself matches — is measured and does not work.
+ * <em>Both</em> echo halves are whole-line matches: the greedy {@code .*} in the
+ * location absorbs the padding and the source text, so round 3's
+ * {@code <spaces>| c4 … % a:1:2: warning: … 9/9} and round 4's
+ * {@code \score { … c4^"a:1:2: warning: … 9/9"} both return {@code true}. That
+ * guard would reopen both bypasses this design exists to fix.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it
