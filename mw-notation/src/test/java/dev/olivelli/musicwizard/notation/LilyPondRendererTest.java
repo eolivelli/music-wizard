@@ -631,6 +631,40 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("counts a combining mark as its own column, because LilyPond does")
+        void aCombiningMarkIsNotZeroWidth() {
+            // The half of the code-point decision that was asserted rather than
+            // measured when it was written, and is measured now. Treating a
+            // combining mark as zero width is the obvious "correct" thing to do
+            // and would be wrong here: LilyPond gives it a column of its own, so
+            // a code-point count is what agrees with the engraver and a grapheme
+            // count would reintroduce the divergence in the other direction.
+            //
+            // Measured on 2.26.0, column against code points, for the whole
+            // family that could have had its own layer:
+            //
+            //   plain ASCII          48 / 47      astral treble clef   46 / 45
+            //   NFC e-acute          46 / 45      NFD e + combining    47 / 46
+            //   zero-width joiner    48 / 47      variation selector   47 / 46
+            //   bidi mark            48 / 47      CJK wide             46 / 45
+            //
+            // Column is code points + 1 in every one, so none of normalisation,
+            // combining, joining, variation selection, bidi or East Asian width
+            // is a further layer here. This fixture is the NFD case, which is
+            // the one the claim was about, and the mark is written as a
+            // backslash-u escape: a raw combining character in source is
+            // invisible in a diff, which is the same reason CLAUDE.md bans
+            // raw control characters outright.
+            assertThat(engraverSaid("""
+                    combining.ly:2:47: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4^"e\u0301" c4 c4\s
+                                                                  | c1 | } } % a:1:2: warning: bar check failed at: 9/9
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .containsExactly("3/4");
+        }
+
+        @Test
         @DisplayName("reads a moment followed by trailing whitespace, which the pattern allows on purpose")
         void trailingWhitespaceAfterTheMomentIsTolerated() {
             // Round 5 found the pattern's trailing \s* unpinned. It is there

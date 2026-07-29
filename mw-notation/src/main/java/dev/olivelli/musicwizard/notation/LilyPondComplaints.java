@@ -342,11 +342,23 @@ final class LilyPondComplaints {
      * reported as a second failed bar check. Measured on 2.26.0 and 2.24.3
      * alike, and in a random sweep every inversion found was a surrogate pair.
      *
-     * <p>Counted in code points for that reason. Combining marks are
-     * deliberately <em>not</em> handled: LilyPond counts them as columns of
-     * their own, so counting code points is what agrees with it, and treating
-     * them as zero-width would reintroduce the divergence in the other
-     * direction.
+     * <p>Counted in code points for that reason, and code points are the whole
+     * of it — measured across every family that could have been a further
+     * layer, column against code points on 2.26.0:
+     *
+     * <pre>
+     * plain ASCII        48 / 47      astral treble clef  46 / 45
+     * NFC e-acute        46 / 45      NFD e + combining   47 / 46
+     * zero-width joiner  48 / 47      variation selector  47 / 46
+     * bidi mark          48 / 47      CJK wide            46 / 45
+     * </pre>
+     *
+     * <p>The column is code points plus one in every case, so normalisation,
+     * joining, variation selection, bidi and East Asian width are all
+     * irrelevant here. <b>Combining marks in particular are deliberately not
+     * treated as zero width</b>, which is the obvious "correct" thing to do and
+     * would be wrong: LilyPond gives one a column of its own, so counting
+     * graphemes would reintroduce the divergence in the other direction.
      */
     private static int printedWidth(String line) {
         int width = 0;
