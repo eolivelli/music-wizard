@@ -458,6 +458,14 @@ final class LilyPondComplaints {
      * a column this cannot check a layout against, so it is treated as no column
      * at all — no skip, and the echo is over-reported, which is the direction
      * everything else here degrades in.
+     *
+     * <p>Note for a later mutation sweep: since {@link #isEchoOf} refuses to skip
+     * below column 2, returning 0 and returning 1 from here are indistinguishable
+     * and a mutant swapping them is equivalent. It was <em>not</em> equivalent
+     * before that floor existed — round 7 of review measured it losing a real
+     * diagnostic — so the sentinel stays 0 with the reason written down, rather
+     * than being tidied into something that happens to work for a neighbouring
+     * reason.
      */
     private static int columnOf(Matcher diagnostic) {
         String column = diagnostic.group(COLUMN);
