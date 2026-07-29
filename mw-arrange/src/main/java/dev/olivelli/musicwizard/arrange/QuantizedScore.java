@@ -41,10 +41,11 @@ import java.util.Optional;
  *              {@link SwingFeel#STRAIGHT}. One verdict for the whole score, and
  *              it does not apply to compound bars -- use {@link #swingIn(int)}
  *              rather than printing this over every system
- * @param unplaceableChords how many chords could not be given a beat of their
- *              own, which is all but always for being shorter than the counted
- *              beat they fall in. Zero on anything that came out on the beat
- *              axis; non-zero only on a progression left entirely in seconds --
+ * @param unplaceableChords how many chords collapsed, meaning their two
+ *              boundaries snapped to one position so they could not be given a
+ *              beat of their own. Zero on anything that came out on the beat
+ *              axis; non-zero only on a progression left entirely in seconds.
+ *              <b>Not</b> a count of how much harmony is finer than the pulse --
  *              see {@link #unplaceableChords()}
  */
 public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
@@ -154,14 +155,28 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * grids and the feel still describe the result. Rebuilding the record by
      * hand is legal and is one argument order away from pairing a score with
      * somebody else's grids.
+     *
+     * <p><b>It can throw</b>, and only for a score that changed the harmony
+     * rather than the notes. {@link #unplaceableChords()} counts chords in the
+     * progression it was measured on, so handing in a score with fewer chords
+     * than that count -- or with the same chords put back on the beat axis --
+     * fails the same validation the constructor applies. That is deliberate
+     * rather than an oversight left visible: a stage that rewrites the harmony
+     * has invalidated the count, and carrying it forward silently would report a
+     * fact about a progression that is no longer there. Such a stage should
+     * build the record itself and say what its own count is. No caller does this
+     * today; {@code spell} passes the progression through untouched.
+     *
+     * @throws IllegalArgumentException if the new score's progression cannot
+     *         carry the count this one was built with
      */
     public QuantizedScore withScore(Score newScore) {
         return new QuantizedScore(newScore, grids, swing, unplaceableChords);
     }
 
     /**
-     * How many chords were too short to be given a beat of their own, which is
-     * why the whole progression is still in seconds.
+     * How many chords collapsed, which is why the whole progression is still in
+     * seconds.
      *
      * <p>Zero on every score that came out on the beat axis, and the two are
      * exactly complementary: {@link Quantizer} does not discard a chord, so a
@@ -170,18 +185,30 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing,
      * {@code --tempo 60} against material heard at 120 into a chart that names
      * I-vi-I-vi where the music played I-V-vi-IV, silently.
      *
-     * <p>Here so that it need not be silent. A caller with a user in front of it
-     * has everything it needs to explain the outcome: this count, against
-     * {@code score().chords().size()}, says how much of the harmony is finer
-     * than the pulse it was quantized against. What that <em>means</em> depends
-     * on where the score came from and is the caller's to say, not this
-     * accessor's -- from the audio or MIDI paths it points at a supplied tempo
-     * disagreeing with the material by a factor, since both chord estimators
-     * emit spans of at least one counted beat, but any producer with finer spans
-     * reaches it too and a hand-built score reaches it with a single ornament.
+     * <p><b>What it is not</b> takes more saying than what it is, because the
+     * obvious reading is wrong and an earlier version of this javadoc printed
+     * it. This is <em>not</em> a count of the chords that are shorter than their
+     * counted beat, and a caller must not say "four of your eight chords are
+     * shorter than a beat at this tempo" from it. Only the chords whose
+     * boundaries actually landed on one position are counted, which is fewer,
+     * depends on where in the beat the progression happens to start, and does
+     * not even grow with the disagreement. Measured on the eight-chord fixture
+     * from #157 at five supplied tempos, where all eight chords are shorter than
+     * a counted beat in every row:
      *
-     * <p>Not a general "how approximate is this" number. It counts only chords,
-     * only the collapse, and says nothing about how far anything moved.
+     * <pre>
+     * tempo 60   each chord 0.500 beats   unplaceable 4
+     * tempo 40   each chord 0.333 beats   unplaceable 5
+     * tempo 30   each chord 0.250 beats   unplaceable 6
+     * tempo 24   each chord 0.200 beats   unplaceable 6
+     * tempo 15   each chord 0.125 beats   unplaceable 7
+     * </pre>
+     *
+     * <p>So what a caller may say from it is what it measures: that the harmony
+     * could not be put on the beat axis, and that this many chord spans had no
+     * beat of their own. A caller wanting to tell a user how badly the supplied
+     * tempo disagrees should measure that itself, from the spans and the map,
+     * where the question has an exact answer.
      */
     public int unplaceableChords() {
         return unplaceableChords;

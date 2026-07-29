@@ -390,6 +390,75 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("the count is of collapses, and is not how much harmony is finer than the pulse")
+        void theCountIsOfCollapsesAndNotOfShortChords() {
+            // The javadoc used to prescribe a sentence a caller might print --
+            // "four of your eight chords are shorter than a beat at this tempo"
+            // -- from a number that does not measure that. Pinned here so the
+            // sentence cannot come back: in every row below all eight chords are
+            // shorter than their counted beat, and the count is never eight. It
+            // is not even monotone in the disagreement, which is what rules out
+            // reading it as a rough version of the right quantity: 30 and 24 BPM
+            // report the same 6 while the factor between pulse and harmony
+            // doubles.
+            List<String> measured = new ArrayList<>();
+            for (double tempo : List.of(60.0, 40.0, 30.0, 24.0, 15.0)) {
+                TempoMap tempoMap = TempoMap.constant(tempo, TimeSignature.FOUR_FOUR);
+                Score score = chordsOnly(tempoMap,
+                        chord("C4", 0.00, 0.50), chord("G4", 0.50, 1.00),
+                        chord("A4", 1.00, 1.50), chord("F4", 1.50, 2.00),
+                        chord("C4", 2.00, 2.50), chord("G4", 2.50, 3.00),
+                        chord("A4", 3.00, 3.50), chord("F4", 3.50, 4.00));
+
+                QuantizedScore quantized = Quantizer.quantize(score);
+
+                assertThat(score.chords().chords()).allSatisfy(c -> assertThat(
+                        tempoMap.secondsToBeats(c.endSeconds())
+                                - tempoMap.secondsToBeats(c.startSeconds()))
+                        .as("every chord is shorter than a counted beat at %s BPM", tempo)
+                        .isLessThan(1.0));
+                measured.add((int) tempo + ":" + quantized.unplaceableChords());
+            }
+
+            assertThat(measured).containsExactly("60:4", "40:5", "30:6", "24:6", "15:7");
+        }
+
+        @Test
+        @DisplayName("the bound does not cover a progression re-read against another map")
+        void theBoundDoesNotCoverACarriedProgression() {
+            // The carve-out on the class's half-beat bound, pinned so that
+            // deleting the words would fail rather than merely overstate. A
+            // carried beat wins over the seconds, so a placed progression read
+            // against a corrected --tempo keeps the positions it was given and
+            // the clock is never consulted: nothing collapses, nothing is
+            // reported, and the chords are printed a long way from where they
+            // sound. That is #171 rather than a corner of #158, and this test
+            // exists to stop the bound being read as covering it.
+            TempoMap fast = fourFour();
+            Score placed = Quantizer.quantize(chordsOnly(fast,
+                    chord("C4", 0.0, 1.0), chord("G4", 1.0, 2.0),
+                    chord("A4", 2.0, 3.0), chord("F4", 3.0, 4.0))).score();
+
+            TempoMap halved = TempoMap.constant(60, TimeSignature.FOUR_FOUR);
+            Score reread = new Score(placed.title(), placed.artist(), halved,
+                    placed.beatGrid(), placed.keys(), placed.sections(), placed.tracks(),
+                    placed.chords(), placed.lyrics(), placed.durationSeconds());
+            QuantizedScore requantized = Quantizer.quantize(reread);
+
+            assertThat(requantized.unplaceableChords())
+                    .as("nothing collapses, so nothing warns")
+                    .isZero();
+            Chord last = requantized.score().chords().chords().get(3);
+            double printed = last.startBeat().orElseThrow();
+            double sounds = halved.secondsToBeats(last.startSeconds());
+            assertThat(printed).isEqualTo(6.0);
+            assertThat(sounds).isEqualTo(3.0);
+            assertThat(printed - sounds)
+                    .as("three counted beats out, six times the bound the class states")
+                    .isEqualTo(3.0);
+        }
+
+        @Test
         @DisplayName("a change on a rounding midpoint is written on the beat it anticipates")
         void aChordChangeOnAMidpointGoesForward() {
             // The tie rule, pinned on a fixture that still reaches the beat

@@ -117,16 +117,29 @@ import java.util.function.ToDoubleFunction;
  * heard in the second half of a beat is written on the beat it is approaching,
  * so the symbol appears before the harmony does.
  *
- * <p>It is bounded, and the bound is the whole of why it is acceptable: a placed
- * chord is printed <b>within half a counted beat of where the harmony changes</b>
- * -- half the counted beat of the bar the change falls in, which is the unit it
- * was rounded against and not the score's longest. That is not a tolerated error
- * but the point of the exercise: a change heard 40 ms early against a downbeat
+ * <p>It is bounded, and the bound is the whole of why it is acceptable: <b>for a
+ * progression whose boundaries are stated in seconds</b>, a placed chord is
+ * printed <b>within half a counted beat of where the harmony changes</b> -- half
+ * the counted beat of the bar the change falls in, which is the unit it was
+ * rounded against and not the score's longest. That is not a tolerated error but
+ * the point of the exercise: a change heard 40 ms early against a downbeat
  * belongs <em>on</em> the downbeat, and an eighth-note anticipation of beat
  * three belongs on beat three. Preferring the chord actually sounding at the
  * snapped position, which is the other rule available here, would forbid
  * rounding a chord backwards at all and would print both of those a whole beat
  * late.
+ *
+ * <p>The qualifier is load-bearing and the bound is <em>false</em> without it.
+ * {@link BarTable#beatOf} prefers a beat position a chord already carries over
+ * the seconds beside it, so a progression this pass has already placed is
+ * re-snapped from its old positions and never consults the clock again. Read a
+ * progression placed at 120 against a corrected {@code --tempo 60} and every
+ * chord keeps the beats it was given: the last of four is printed at beat 6
+ * while sounding at beat 3, three counted beats out and six times this bound.
+ * Nothing here detects that, because from inside this pass the positions are
+ * self-consistent and in order. It is #171, and it is a defect of its own rather
+ * than a corner of this one -- but the bound below must not be read as covering
+ * it.
  *
  * <p>Measured rather than reasoned, because the bound does not follow from the
  * rounding rule alone: {@link #onGrid} places a start at
@@ -206,17 +219,33 @@ import java.util.function.ToDoubleFunction;
  *
  * <p>That the chord case falls this way and not the other is #157, and it
  * reverses what #147 decided, so the ranking is worth stating rather than
- * assuming. Dropping is not a smaller version of falling back; it is a
- * different kind of answer. Falling back costs <em>precision</em> -- the seconds
- * route in {@code ChordChart} still prints every chord in order, and it is the
- * route the audio path uses today regardless. Dropping costs
- * <em>correctness</em>: at {@code --tempo 60} against material heard at 120,
- * every chord is half a counted beat, every other one collapses, and a chart
- * that played I-V-vi-IV is engraved as I-vi-I-vi with nothing to mark it. The
- * justification dropping had -- "a chord too short to be given a beat of its own
- * is one an engraver would not print" -- conflates a chord that is short in the
- * <em>music</em> with one that is short in the <em>supplied pulse</em>, and one
- * span carries no evidence about which it is. So the pass declines to guess.
+ * assuming. Dropping costs <em>correctness</em>: at {@code --tempo 60} against
+ * material heard at 120, every chord is half a counted beat, every other one
+ * collapses, and a chart that played I-V-vi-IV is engraved as I-vi-I-vi with
+ * nothing to mark it. The justification dropping had -- "a chord too short to be
+ * given a beat of its own is one an engraver would not print" -- conflates a
+ * chord that is short in the <em>music</em> with one that is short in the
+ * <em>supplied pulse</em>, and one span carries no evidence about which it is.
+ * So the pass declines to guess, and what it publishes is a progression that is
+ * still the progression that was played.
+ *
+ * <p><b>What the fallback costs is not merely precision, and an earlier draft of
+ * this paragraph said it was.</b> The claim was that the seconds route in
+ * {@code ChordChart} still prints every chord in order. It does not: that route
+ * rounds each chord's start to a bar and rounds the bar count separately, then
+ * discards any chord landing past the count. Measured on the fixture above, the
+ * chart prints four of the eight chords, all in one bar, while the engraving
+ * emits eight whole notes for four seconds of music. That is #174, it is
+ * reachable today with no quantizer involved at all -- two chords whose second
+ * is under half a bar already lose the second -- and it is not this class's to
+ * fix.
+ *
+ * <p>So the honest form of the ranking is narrower. The pass hands on a
+ * progression that names what was played, in order, and every chord it was
+ * given; what a chart then makes of it is #174's business, and today it makes
+ * less of it than it should. The alternative hands on a progression that names
+ * a harmony nobody played, which no downstream fix can recover, because the
+ * evidence is gone.
  *
  * <p>Where this is reachable is worth stating precisely, because the obvious
  * answer is wrong. It is <em>not</em> compound time: the audio path builds its
@@ -239,25 +268,30 @@ import java.util.function.ToDoubleFunction;
  * <p>What is genuinely paid for this is a hand-built score carrying one
  * ornamental sub-beat chord, and the price is worth stating in full rather than
  * conceding in a clause, because it is the strongest argument against the
- * choice. Measured on an accelerando, eight bars of C G A F C G A F plus one
- * passing chord a fifth of a beat long:
+ * choice. Four beat-aligned chords at 120 BPM with one passing chord a tenth of
+ * a second long -- {@code C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4} -- charted
+ * through {@code ChordChart}:
  *
  * <pre>
- * ground truth        | C  | G  | A  | F  | C  | G  | A  | F  |
- * dropping (before)   | C  | G  | A  | F  | D  | G  | A  | F  |
- * withdrawing (now)   | C  | G  | %  | A  | F  | C D | G  | A  |  ...and a ninth bar
+ * dropping (before)   | C A         | F C         |   the ornament G is gone
+ * withdrawing (now)   | C           | G A F       |   the final C is gone
  * </pre>
  *
- * <p>So on that fixture the old answer looks <em>better</em>: eight bars with
- * one symbol wrong, against nine drifting ones with every symbol right. What
- * decides it is which kind of wrong survives being believed. The dropped chart
- * is internally consistent and states a harmony nobody played at a bar a reader
- * will trust; the withdrawn chart is visibly approximate, and its bars drift
- * only because {@code ChordChart}'s seconds route divides by one bar length from
- * {@code estimatedTempo()} -- which is the route every audio-path chart takes
- * today regardless. A reader can see the second is rough. Neither is right, and
- * #173 is the answer that is not a trade: per-chord quantization leaves the
- * ornament in seconds and the other eight chords on the beat axis.
+ * <p>So on that fixture the old answer is plainly <em>better</em>: it loses the
+ * ornament, where the new one loses a full-beat chord that was perfectly
+ * placeable and prints two more in a bar they do not sound in. That is not the
+ * fallback's doing -- every one of those five chords is in the progression this
+ * pass hands on, and #174 is what loses one of them again -- but a reader
+ * comparing the two charts is entitled to say the change made it worse, and
+ * today, at that layer, it did.
+ *
+ * <p>The reason to accept that is not that the new chart is better. It is that
+ * the two are wrong in kinds that recover differently. The dropped chart is
+ * internally consistent and states a harmony nobody played, and no later fix can
+ * recover the chord because the pass deleted it. The withdrawn chart is missing
+ * a chord that is still in the model, and #174 is a change to one method. And
+ * #173 is the answer that is not a trade at all: per-chord quantization leaves
+ * the ornament in seconds and the other four chords on the beat axis.
  *
  * <h2>What it does not touch</h2>
  *
@@ -408,10 +442,13 @@ public final class Quantizer {
      * worse answer than a chart placed by seconds, not a more approximate one.
      * The class javadoc argues that ranking; this is where it is spent.
      *
-     * <p>The count is of chords that collapsed, not of chords left in seconds --
-     * which is every chord once one has. A caller reporting this to a user wants
-     * to say "four of the eight chords are shorter than a counted beat at the
-     * tempo supplied", and the eight is {@code chords.size()}.
+     * <p>The count is of chords that <em>collapsed</em>, and it is worth being
+     * exact about that because the useful-sounding reading is a different
+     * quantity. It is not how many chords are shorter than their counted beat:
+     * the clamp in {@link #onGrid} resolves an overlapping boundary forward, so
+     * two short chords in a row can leave the second one placeable, and the
+     * count then depends on phase rather than on how badly the pulse disagrees.
+     * {@link QuantizedScore#unplaceableChords()} carries the measurement.
      */
     private static PlacedChords chordsOnGrid(List<Chord> chords, BarTable bars) {
         int[] unplaceable = {0};

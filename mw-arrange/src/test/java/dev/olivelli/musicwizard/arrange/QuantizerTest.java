@@ -904,6 +904,33 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("withScore carries the count, and refuses a score that invalidated it")
+        void withScoreCarriesTheUnplaceableCount() {
+            // The documented failure mode, pinned rather than left for a caller
+            // to discover. withScore is for a stage that transforms the notes
+            // without moving them, and such a stage leaves the progression
+            // alone; one that rewrites the harmony has invalidated a count
+            // measured on the old progression, and carrying it forward silently
+            // would report a fact about chords that are no longer there.
+            TempoMap tempoMap = fourFour();
+            QuantizedScore withdrawn = Quantizer.quantize(chordsOnly(tempoMap,
+                    Chord.ofSeconds(PitchSpelling.parse("C4"), ChordQuality.MAJOR, 0.0, 0.2,
+                            Confidence.CERTAIN),
+                    Chord.ofSeconds(PitchSpelling.parse("G4"), ChordQuality.MAJOR, 0.2, 2.0,
+                            Confidence.CERTAIN)));
+            assertThat(withdrawn.unplaceableChords()).isEqualTo(1);
+
+            // The ordinary case: the harmony is untouched, so the count rides
+            // along and nothing complains.
+            assertThat(withdrawn.withScore(withdrawn.score()).unplaceableChords()).isEqualTo(1);
+
+            Score noChords = Score.empty(tempoMap, 10);
+            assertThatThrownBy(() -> withdrawn.withScore(noChords))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be between 0");
+        }
+
+        @Test
         @DisplayName("a re-spelled score keeps the grids and the feel it was quantized with")
         void withScoreKeepsTheDecisions() {
             Performance performance = new Performance(fourFour(), 48);
