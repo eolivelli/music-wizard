@@ -234,9 +234,30 @@ import java.util.function.ToDoubleFunction;
  * per counted beat -- so against a map derived from those same beats nothing
  * collapses at all, and against a pulse that disagrees by a factor a large
  * fraction of the progression does. The beat axis is given up exactly when it
- * could not have held the harmony anyway. What is genuinely paid for this is a
- * hand-built score carrying one ornamental sub-beat chord, which now costs the
- * whole progression its beat axis where it used to cost the ornament.
+ * could not have held the harmony anyway.
+ *
+ * <p>What is genuinely paid for this is a hand-built score carrying one
+ * ornamental sub-beat chord, and the price is worth stating in full rather than
+ * conceding in a clause, because it is the strongest argument against the
+ * choice. Measured on an accelerando, eight bars of C G A F C G A F plus one
+ * passing chord a fifth of a beat long:
+ *
+ * <pre>
+ * ground truth        | C  | G  | A  | F  | C  | G  | A  | F  |
+ * dropping (before)   | C  | G  | A  | F  | D  | G  | A  | F  |
+ * withdrawing (now)   | C  | G  | %  | A  | F  | C D | G  | A  |  ...and a ninth bar
+ * </pre>
+ *
+ * <p>So on that fixture the old answer looks <em>better</em>: eight bars with
+ * one symbol wrong, against nine drifting ones with every symbol right. What
+ * decides it is which kind of wrong survives being believed. The dropped chart
+ * is internally consistent and states a harmony nobody played at a bar a reader
+ * will trust; the withdrawn chart is visibly approximate, and its bars drift
+ * only because {@code ChordChart}'s seconds route divides by one bar length from
+ * {@code estimatedTempo()} -- which is the route every audio-path chart takes
+ * today regardless. A reader can see the second is rough. Neither is right, and
+ * #173 is the answer that is not a trade: per-chord quantization leaves the
+ * ornament in seconds and the other eight chords on the beat axis.
  *
  * <h2>What it does not touch</h2>
  *
