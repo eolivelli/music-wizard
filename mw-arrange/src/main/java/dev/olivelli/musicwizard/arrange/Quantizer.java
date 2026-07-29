@@ -121,7 +121,13 @@ import java.util.function.ToDoubleFunction;
  * progression whose boundaries are stated in seconds</b>, a placed chord is
  * printed <b>within half a counted beat of where the harmony changes</b> -- half
  * the counted beat of the bar the change falls in, which is the unit it was
- * rounded against and not the score's longest. That is not a tolerated error but
+ * rounded against and not the score's longest. Plus, on the one path that
+ * reaches the clamp, the microsecond of overlap {@code ChordProgression}
+ * tolerates: that path is reachable <em>only</em> through such an overlap, so
+ * the displacement there is half a unit and the overlap, never less. Stated
+ * because a draft said "attained exactly and not exceeded" and used a
+ * two-sided tolerance wide enough to hide the difference. That is not a
+ * tolerated error but
  * the point of the exercise: a change heard 40 ms early against a downbeat
  * belongs <em>on</em> the downbeat, and an eighth-note anticipation of beat
  * three belongs on beat three. Preferring the chord actually sounding at the
@@ -153,8 +159,10 @@ import java.util.function.ToDoubleFunction;
  * 0.4 microseconds straddles a rounding midpoint only by accident, and the
  * {@code max} is an equality in all six thousand of its spans. So
  * {@code theBoundHoldsWhereTheClampMovesABoundary} constructs the case instead,
- * where the clamp does carry a start a whole unit past its own nearest beat, and
- * finds the bound attained exactly and not exceeded.
+ * where the clamp does carry a start a whole unit past its own nearest beat. It
+ * finds the displacement <em>exceeding</em> half a unit, by exactly the overlap
+ * the fixture had to inject to reach the clamp at all -- 8e-7 of a beat in every
+ * meter tried -- and asserts that rather than tolerating it.
  *
  * <p>What #158 reported was the unbounded form of this, and it came from
  * somewhere else: a chord dropped for being too short left its position free,

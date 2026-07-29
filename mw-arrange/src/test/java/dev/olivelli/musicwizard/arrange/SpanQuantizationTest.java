@@ -265,9 +265,19 @@ class SpanQuantizationTest {
                         .isEqualTo(quantized.score().chords().chords().get(0)
                                 .endBeat().orElseThrow())
                         .isGreaterThan(heard);
+                // Exceeded, not attained -- and by exactly the overlap the
+                // fixture had to inject to reach the clamp at all. A draft of
+                // this asserted isCloseTo(unit / 2, within(1e-6)), a two-sided
+                // window twenty times the excess, which reported the bound as
+                // met when it is not. The honest assertion is that the
+                // displacement is half a unit plus the overlap, exactly, which
+                // also pins that nothing else contributes to it.
+                double overlapBeats = tempoMap.secondsToBeats(at)
+                        - tempoMap.secondsToBeats(at - overlap);
                 assertThat(printed - heard)
-                        .as("%s: and the bound is attained, not exceeded", meter)
-                        .isCloseTo(unit / 2, within(1e-6));
+                        .as("%s: the clamp path exceeds half a counted beat", meter)
+                        .isGreaterThan(unit / 2)
+                        .isCloseTo(unit / 2 + overlapBeats, within(1e-12));
             }
         }
 
@@ -659,8 +669,13 @@ class SpanQuantizationTest {
             // an even, so an alternating rule could not pass by luck.
             // snapToCountedBeat measures inside the bar, and in 4/4 both 2.5 and
             // 6.5 reduce to a beatInBar of 2.5, so rint sends both backwards.
-            // aBarLineTieGoesForward is the test where that parity argument is
-            // true, because there 0.5 and 1.5 do go opposite ways.
+            //
+            // Nor is there anywhere for that argument to be true. floor(q + 0.5)
+            // and rint(q) differ only where q is a tie at an *even* step --
+            // floor gives k+1 always, rint gives k when k is even and k+1 when
+            // it is odd -- so an odd-step tie agrees under both rules by
+            // construction and pairing one with an even-step tie buys nothing.
+            // No fixture in this file can show two ties going opposite ways.
             TempoMap tempoMap = fourFour();
             Score score = chordsOnly(tempoMap,
                     chord("C4", at(tempoMap, 0), at(tempoMap, 2.5)),
@@ -1055,8 +1070,13 @@ class SpanQuantizationTest {
         @Test
         @DisplayName("a boundary exactly half a bar in goes forward, not to the even bar")
         void aBarLineTieGoesForward() {
-            // Two ties in a row, one from an odd bar and one from an even. Under
-            // round-half-to-even they would go opposite ways.
+            // Two ties in a row. An earlier comment called them a tie from an
+            // odd bar and one from an even, which rint would send opposite ways;
+            // it is measuring the wrong quantity. snapToBarLine rebuilds the
+            // position from the bar's own start, so stepsWithin sees beatInBar
+            // 2.0 over a step of 4.0 for both -- quotient 0.50 each time, which
+            // rint sends backwards in both cases. Two ties that go the same
+            // wrong way under rint, which is what makes them worth having.
             Score score = sectionsOnly(fourFour(),
                     section(1.0, 3.0), section(3.0, 8.0));
 
