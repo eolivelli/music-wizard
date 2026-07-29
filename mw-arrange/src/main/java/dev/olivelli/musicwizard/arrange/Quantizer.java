@@ -115,16 +115,33 @@ import java.util.function.ToDoubleFunction;
  * <p>A span whose two boundaries snap to the same position has no length, and
  * {@link Chord}, {@link Section} and {@link Key} all refuse that. It happens
  * only when the span is shorter than the unit it is being snapped to, which
- * bounds what can be affected: <b>a chord as long as a counted beat, and a
- * section or key as long as a bar, is always placed</b>. Two points less than a
- * unit apart can share a rounding cell; two points a unit or more apart cannot.
+ * bounds what can be affected: <b>in a list whose spans do not overlap, a chord
+ * as long as a counted beat, and a section or key as long as a bar, is always
+ * placed</b>. Two points less than a unit apart can share a rounding cell; two
+ * points a unit or more apart cannot.
  *
- * <p>Where the span crosses a meter change the unit that matters is the
- * <em>longer</em> of the two, and that is a real edge rather than a caveat: in
- * 7/8 followed by 4/4 the counted beat grows from an eighth to a quarter, so a
- * chord of exactly one 7/8 beat straddling the change has both ends inside the
- * quarter-note cell that follows it and is dropped. The bound stated above is
- * therefore about the longest unit a span touches, not the first.
+ * <p>Both qualifiers on that sentence are load-bearing and each was wrong in an
+ * earlier draft of it.
+ *
+ * <ul>
+ *   <li><b>The unit is the longest one the span touches</b>, not the one it
+ *       starts on. Where a span crosses a meter change into a longer beat -- 7/8
+ *       into 4/4, where the counted beat grows from an eighth to a quarter -- a
+ *       chord of exactly one 7/8 beat has both ends inside the quarter-note cell
+ *       that follows it, and goes.
+ *   <li><b>The spans must not overlap.</b> {@link Score} and
+ *       {@link dev.olivelli.musicwizard.core.model.ChordProgression} tolerate a
+ *       microsecond of overlap, and {@link #onGrid} resolves such a boundary to
+ *       the later of its two positions -- so a span handed in overlapping is
+ *       effectively a shade shorter here than it declares itself to be, and one
+ *       that is exactly a unit long and lands on a rounding midpoint is then
+ *       lost. Not a corner that better arithmetic removes: the alternative is
+ *       publishing two spans that overlap on the beat axis, which {@code Score}
+ *       rejects outright. Measured rather than feared -- of 400 unit-length
+ *       spans swept across four meters,
+ *       {@code theToleratedOverlapCostsOnlyTheMidpoints} counts how many are
+ *       lost once a sub-microsecond overlap is injected into every one of them.
+ * </ul>
  *
  * <p>The pass does not reject the score over one -- that would throw away a
  * whole quantization for a blip -- and what it does instead differs between the
@@ -323,23 +340,38 @@ public final class Quantizer {
     /**
      * Puts a list of ordered, non-overlapping spans onto the beat axis.
      *
-     * <p>Two guards, and each earns its place against a case the other does not
-     * cover.
+     * <p>Two decisions here, and the first is the only guard.
      *
-     * <p>The first is that a start never precedes the furthest end already
-     * placed. Snapping is monotone, so for spans that genuinely do not overlap
-     * this can only be an equality -- but {@link Score} and
+     * <p><b>A start never precedes the furthest end already placed.</b> Snapping
+     * is monotone, so for spans that genuinely do not overlap this can only ever
+     * be an equality -- but {@link Score} and
      * {@link dev.olivelli.musicwizard.core.model.ChordProgression} both admit a
      * microsecond of overlap in seconds, and a microsecond straddling a rounding
-     * boundary snaps to two positions a whole unit apart. Without this the pass
+     * midpoint snaps to two positions a whole unit apart. Without this the pass
      * would emit exactly the beat-axis overlap that {@code Score} rejects and
-     * that #59 records as still unchecked on a progression.
+     * that #59 records as still unchecked on a progression. The furthest end
+     * rather than the previous one, for the reason
+     * {@code Score.requireOrderedBeats} gives: comparing against the immediately
+     * preceding span lets a nested one hide an overlap.
      *
-     * <p>The second is what happens to a span left with no length, which is the
-     * class's {@code Collapsed} decision and the only place anything is
-     * discarded. Note that {@code furthestEnd} does not advance past one either
-     * way: a collapsed span has no end to carry forward, and treating its start
-     * as one would push the next span off the position it snapped to.
+     * <p>Clamping here rather than on the raw position before snapping is not a
+     * choice between two behaviours. Snapping is monotone, so
+     * {@code max(snap(a), snap(b))} and {@code snap(max(a, b))} are the same
+     * function -- checked over two million pairs, zero disagreements -- and a
+     * rewrite to the second form was reverted for being a refactor wearing a
+     * fix's clothes. What the clamp costs is real and is stated on the class:
+     * for a span handed in overlapping, the boundary resolves to the later of
+     * the two positions, so a span that is exactly one unit long and lands on a
+     * midpoint can still be lost. That is inherent to admitting the overlap at
+     * all, not to where the clamp sits: refusing to clamp would publish two
+     * spans that overlap on the beat axis instead, which is the defect the guard
+     * is here for.
+     *
+     * <p><b>What happens to a span left with no length</b> is the class's
+     * {@code Collapsed} decision, and it is the only place anything is
+     * discarded. {@code furthestEnd} does not advance past one either way: a
+     * collapsed span has no end to carry forward, and its snapped end is at or
+     * behind the value already carried in any case.
      */
     private static <T> List<T> onGrid(List<T> spans, ToDoubleFunction<T> startBeat,
                                       ToDoubleFunction<T> endBeat, Placed<T> placed,
@@ -498,8 +530,15 @@ public final class Quantizer {
      * printing the double bar at the second is the same fact answered twice.
      *
      * <p>A section too short to be placed marks nothing, because it has no bar
-     * to mark -- and it costs nothing either: a section shorter than a bar is one
-     * whose neighbour snapped to the same bar line and marked it.
+     * to mark. Where sections abut -- which is the ordinary case, and the only
+     * one the seconds-based version handled differently -- the bar it would have
+     * marked is the bar its neighbour snapped to and marked instead. Where they
+     * do not, {@code Score} permits a gap and permits the last section to be the
+     * short one, and then the waiver is genuinely lost and the decode charges
+     * for a subdivision change at a boundary a reader can see. That is a
+     * sub-bar section in a score with gaps between its sections, and it is a
+     * worse outcome than not placing it would be only if the grid actually
+     * flips there.
      */
     private static boolean[] sectionStarts(List<Section> sections, BarTable bars) {
         boolean[] starts = new boolean[bars.barCount()];
@@ -735,15 +774,29 @@ public final class Quantizer {
      * <p>A position exactly halfway between two steps goes to the later one,
      * and that is not the arbitrary half of an arbitrary choice. {@code rint},
      * which this used to be, rounds a tie to the <em>even</em> step -- 0.5 down,
-     * 1.5 up, 2.5 down -- so the direction alternates with the step index. On a
-     * note that is invisible, because an exact tie needs a performance played to
-     * the tick. On a span it is systematic: a chord progression whose spans are
+     * 1.5 up, 2.5 down -- so the direction alternates with the step index.
+     *
+     * <p>On a span that is systematic: a chord progression whose spans are
      * exactly half a counted beat -- which is what the audio path produces once
      * {@code --tempo} halves the map's pulse against the tracked beats -- puts
      * every boundary on a tie, and alternating meant the chord kept on each beat
      * was the one that sounded on the beat <em>after</em> it, so the chart named
      * a harmony that never sounded there. Rounding a tie one way throughout
      * keeps the survivor the chord that was playing.
+     *
+     * <p>On a note it is rare rather than absent, and that distinction is worth
+     * stating because the rule is shared and the decision to share it rests on
+     * the size of the effect. Measured over 5,040 fixtures -- nine meters, five
+     * tempos, eight subdivisions, one tick-exact and one un-jittered rendering
+     * plus twelve seeded human performances of each -- the two rules disagree on
+     * <b>311 of 131,040</b> note positions, in 60 fixtures, and on <b>0 of
+     * 20,254</b> published {@link BarGrid} entries. Every one of the 60 is
+     * tick-exact or un-jittered, and they are concentrated in the meters whose
+     * bar is not a power-of-two multiple of the grid step: 7/8, 3/4, 9/8 and
+     * 5/4. So a human performance does not reach a tie, but a MIDI import does,
+     * by construction -- and the direction is right where it does: straight
+     * eighths pulled onto a triplet grid alternate 2,1,2,1 steps under this rule
+     * where {@code rint} gave 2,1,1,2.
      */
     private static double stepsWithin(double beatInBar, double step) {
         // floor(x + 0.5) rather than Math.round, which would take a long and

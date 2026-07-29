@@ -127,6 +127,36 @@ class QuantizerTest {
     class Snapping {
 
         @Test
+        @DisplayName("a note written exactly between two grid steps is printed on the later one")
+        void aNoteOnATieGoesForward() {
+            // The note-side reader of the tie rule the spans share. It is
+            // otherwise pinned only by span tests, and a rule that two readers
+            // share and one pins is a rule that can be reverted for one of them
+            // by accident.
+            //
+            // Not reachable from a performance: measured over 5,040 fixtures the
+            // two tie rules disagree on 311 of 131,040 note positions and every
+            // one of them is a rendering played to the tick. A MIDI file is
+            // exactly that, so this fixture is written rather than played.
+            Performance performance = new Performance(fourFour(), 21);
+            for (int i = 0; i < 16; i++) {
+                performance.exact(60, i * 0.25, 0.25);
+            }
+            performance.exact(72, 0.125, 0.25);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score());
+
+            // Stated so the assertion below is about a tie rather than about
+            // whichever grid the bar happened to get: on a sixteenth grid, an
+            // eighth of a beat is exactly half a step.
+            assertThat(quantized.gridAtBar(0).orElseThrow().resolution())
+                    .isEqualTo(GridResolution.QUARTER_BEAT);
+            assertThat(quantized.score().tracks().get(0).notes().stream()
+                    .filter(n -> n.midiPitch() == 72).findFirst().orElseThrow()
+                    .onsetBeat()).contains(0.25);
+        }
+
+        @Test
         @DisplayName("a bar of eighths lands on the half beats")
         void eighthsLandOnHalfBeats() {
             Performance performance = new Performance(fourFour(), 5);

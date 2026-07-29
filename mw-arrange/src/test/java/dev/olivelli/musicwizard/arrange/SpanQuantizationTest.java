@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.arrange;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
@@ -237,6 +238,69 @@ class SpanQuantizationTest {
                     assertThat(quantized).as("%s, offset %d of a unit", meter, step).hasSize(2);
                 }
             }
+        }
+
+        @Test
+        @DisplayName("a tolerated overlap can still cost a span of exactly one unit")
+        void theToleratedOverlapIsTheOneExceptionToTheBound() {
+            // The limit of the invariant above, pinned rather than disclaimed.
+            // ChordProgression admits a microsecond of overlap, onGrid resolves
+            // it by taking the later position as the single boundary, and a
+            // chord that is exactly one beat long is then a microsecond short of
+            // one -- which is enough to lose it when it also lands on a rounding
+            // midpoint. 1.25 s is beat 2.5 at 120 BPM, the midpoint of the cell
+            // around beat 3.
+            Score score = chordsOnly(fourFour(),
+                    chord("C4", 0.0, 1.2500004),
+                    chord("G4", 1.2499996, 1.7499996),
+                    chord("F4", 1.7499996, 4.0));
+
+            assertThat(score.chords().chords().get(1).durationSeconds() * 2)
+                    .as("the chord that goes is exactly one beat long")
+                    .isCloseTo(1.0, within(1e-9));
+
+            List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+
+            assertThat(beats(quantized)).containsExactly("C 0.0..3.0", "F 3.0..8.0");
+        }
+
+        @Test
+        @DisplayName("and it costs only the offsets that land on a midpoint")
+        void theToleratedOverlapCostsOnlyTheMidpoints() {
+            // The sweep above run a second time with a sub-microsecond overlap
+            // injected into every span, which is the version that would have
+            // caught the over-claimed invariant. Counted rather than asserted
+            // away: the exception is real but it is exactly the offsets whose
+            // shared boundary sits on a rounding midpoint, one in a hundred, and
+            // nothing else moves.
+            double overlap = 4e-7;
+            int lost = 0;
+            int swept = 0;
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT,
+                    new TimeSignature(7, 8), TimeSignature.THREE_FOUR)) {
+                TempoMap tempoMap = TempoMap.constant(BPM, meter);
+                double unit = meter.beatUnitQuarters() * 60 / BPM;
+                double base = 4 * meter.quarterBeatsPerBar() * 60 / BPM;
+                for (int step = 0; step < 100; step++) {
+                    // The middle chord declares exactly one unit and has each of
+                    // its boundaries stated a shade earlier than the neighbour
+                    // states it, which is what an estimator whose spans do not
+                    // agree to the last bit produces.
+                    double at = base + unit + step * unit / 100;
+                    Score score = chordsOnly(tempoMap,
+                            chord("C4", base, at + overlap),
+                            chord("G4", at - overlap, at + unit - overlap),
+                            chord("F4", at + unit - overlap, base + 8 * unit));
+                    swept++;
+                    if (Quantizer.quantize(score).score().chords().chords().size() < 3) {
+                        lost++;
+                    }
+                }
+            }
+
+            assertThat(swept).isEqualTo(400);
+            assertThat(lost).as("one offset per meter, where the boundary is on a midpoint")
+                    .isEqualTo(4);
         }
 
         @Test
