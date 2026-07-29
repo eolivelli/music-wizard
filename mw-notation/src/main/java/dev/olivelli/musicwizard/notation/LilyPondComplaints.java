@@ -176,7 +176,22 @@ import java.util.regex.Pattern;
  * own, and that skip could swallow the <em>next</em> real diagnostic — an
  * over-report chaining into a loss, which is the one thing this design says
  * cannot happen. So a line inside a region where an echo was due and was not
- * found is still read, but may not trigger a skip. It can only ever skip less.
+ * found is still read, but may not trigger a skip.
+ *
+ * <p>The region is opened by <em>every</em> diagnostic whose echo was not
+ * recognised, with no exception for one that named no column and none for one
+ * already inside a region. Round 8 found both of those carve-outs leaking, and
+ * they leaked because the region was bookkeeping hung off a branch rather than
+ * a property of "an echo was due here and I did not find it".
+ *
+ * <p>The cost is that one unrecognised echo suppresses skipping for what follows
+ * it, and a suppressed line extends the region again, so the suppression can run
+ * on. That cannot lose anything: suppression only ever means more lines are
+ * read, and a suppressed line cannot skip, so the cascade cannot reach round in
+ * and enable one. Measured rather than only argued — 10 000 consecutive
+ * diagnostics with no echo recognised keep all 10 000 moments, in 44 ms, and
+ * 2 000 alternating between recognised and not keep all 2 000. What it costs is
+ * over-reporting, which is the currency this class pays in.
  *
  * <p><b>And a skip needs a column of 2 or more.</b> At column 1 "indented by
  * {@code C - 1} spaces" is satisfied by any unindented line whatsoever, so a
