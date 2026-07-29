@@ -325,9 +325,9 @@ class ProvenanceTest {
             // With a grid: one typo discards the correction, because the map
             // records some provenance so the proxy does not run and there is no
             // supplied tempo left to find. All of them typed wrong happens to
-            // come out right, since the proxy runs and identifies the lead-in by
-            // position -- a coincidence that holds only while the grid and the
-            // map still agree about where the first beat is, asserted below.
+            // come out right, since the proxy runs and exempts the lead-in
+            // positionally -- a coincidence that holds only while the grid's
+            // beats still line up with the map's, asserted below.
             assertThat(Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid).estimatedTempo())
                     .isEqualTo(60.0);
             assertThat(Score.empty(oneLost, 12.0).withBeatGrid(grid).estimatedTempo())
@@ -356,15 +356,20 @@ class ProvenanceTest {
                     .isNotCloseTo(64.0, within(1.0));
 
             // The one cell that is a coincidence rather than a design: the
-            // proxy identifies the lead-in as the segment starting where the
-            // grid's first beat does, so it survives only while the two agree.
-            // Move the grid a hand-edit off its map and the all-lost cell reads
-            // the grid's median too. Not a corruption anything produces -- it
-            // takes editing times as well as labels -- but the table is for the
-            // grid the map was built from, and this marks that boundary.
+            // proxy exempts the lead-in positionally -- the segment *before*
+            // the one starting where the grid's first beat does -- so it
+            // survives only while the grid's beats line up with the map's. Move
+            // the whole grid off its map and the all-lost cell reads the grid's
+            // median instead. Not a corruption anything produces, since it
+            // takes editing times as well as labels; the point is that the
+            // table is for the grid the map was built from, and this is where
+            // that boundary is.
             BeatGrid drifted = gridOf(pulses(0.25, 0.5, 24));
+            assertThat(drifted.medianTempo(TimeSignature.FOUR_FOUR))
+                    .as("the drifted grid still reads 120, so only its phase changed")
+                    .isCloseTo(120.0, within(1e-6));
             assertThat(Score.empty(allLost, 12.0).withBeatGrid(drifted).estimatedTempo())
-                    .isEqualTo(drifted.medianTempo(TimeSignature.FOUR_FOUR));
+                    .isEqualTo(120.0);
         }
 
         @Test
