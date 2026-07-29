@@ -65,6 +65,15 @@ This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
 
+One edge between non-core modules is new and worth naming: **`mw-notation`
+depends on `mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. It
+joins the ones the pipeline already had — `mw-dsp` on `mw-audio`, and
+`mw-transcribe` on all three of `mw-audio`, `mw-dsp` and `mw-ml`. The notation
+layer needs the quantizer's tuplet decision and cannot re-derive it — three
+onsets a third of a beat apart and three a half beat apart are both legal on the
+sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
+modules are purely symbolic, so this pulls no audio and no models into notation.
+
 ## Licensing — enforced, not aspirational
 
 Apache-2.0. The `maven-enforcer-plugin` bans GPL/AGPL artifacts outright, and CI
@@ -92,6 +101,16 @@ Discovery checks, in order: the `notation.lilypondPath` config key, `$PATH`,
 then — **on POSIX only** — Homebrew and `/usr/local` prefixes, because Homebrew
 installs outside a non-login shell's `PATH`, which is exactly how someone ends
 up with LilyPond installed and the tool unable to find it.
+
+**LilyPond is run with its message locale pinned to `C`.** The tool decides
+whether engraving went well by reading LilyPond's output, and LilyPond
+translates that output — a failed bar check is `attenzione: bar check failed` on
+an Italian machine, so a check reading it for "warning" stops reading it at all,
+silently. Pinning it costs a non-English user LilyPond's own complaints in their
+language. It took four attempts to pin only the message language and nothing
+else: `LC_ALL` masks eleven other categories, and setting or clearing them
+wrongly stops a file whose name is not ASCII from engraving at all. See
+`LilyPondRenderer.speakEnglish`, whose javadoc records all three wrong answers.
 
 Three rules that are easy to get wrong:
 

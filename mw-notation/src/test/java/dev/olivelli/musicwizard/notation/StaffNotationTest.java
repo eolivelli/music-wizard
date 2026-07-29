@@ -19,7 +19,12 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Mode;
@@ -99,6 +104,31 @@ class StaffNotationTest {
 
     private static Key key(String tonic, Mode mode) {
         return Key.ofSeconds(pitch(tonic), mode, 0, 60, Confidence.CERTAIN);
+    }
+
+    /**
+     * A quantizer verdict for a score: one grid per bar, in bar order.
+     *
+     * <p>Built by hand rather than by running {@link
+     * dev.olivelli.musicwizard.arrange.Quantizer}, so that these tests say what
+     * the emitter does with a given decision rather than what the quantizer
+     * happens to decide this week. The end-to-end proof that the two agree is in
+     * {@code mw-it}.
+     */
+    private static QuantizedScore quantized(Score score, GridResolution... perBar) {
+        List<BarGrid> grids = new ArrayList<>(perBar.length);
+        double startBeat = 0;
+        for (int bar = 0; bar < perBar.length; bar++) {
+            TimeSignature meter = score.tempoMap().timeSignatureAtBar(bar);
+            grids.add(new BarGrid(bar, startBeat, perBar[bar], meter));
+            startBeat += meter.quarterBeatsPerBar();
+        }
+        return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
+    /** A position or length of {@code steps} triplet eighths, in quarter beats. */
+    private static double thirds(double steps) {
+        return steps / 3.0;
     }
 
     // --------------------------------------------------------------- golden
@@ -214,6 +244,77 @@ class StaffNotationTest {
         Score score = score(TimeSignature.FOUR_FOUR, 120, piano);
 
         assertGolden("chords-and-overlaps", StaffNotation.toLilyPond(score, piano));
+    }
+
+    @Test
+    @DisplayName("a bar the quantizer put on a triplet grid is bracketed, and only where it needs it")
+    void tripletEighths() {
+        List<Note> notes = new ArrayList<>();
+        // Bar 1: plain eighths, so the bracketed bars have something to be read
+        // against.
+        String[] scale = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"};
+        for (int i = 0; i < 8; i++) {
+            notes.add(note(i * 0.5, 0.5, scale[i]));
+        }
+        // Bar 2: four beats of triplet eighths, which is the case #92 is about.
+        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "D5", "C5"};
+        for (int i = 0; i < 12; i++) {
+            notes.add(note(4 + thirds(i), thirds(1), run[i]));
+        }
+        // Bar 3: the same grid, subdivided in only two of its four beats. The
+        // other two must come out as plain quarters -- a bracket says a beat was
+        // divided in three, and printing one round a beat that was not is as
+        // wrong as leaving it off the beat that was.
+        notes.add(note(8, thirds(1), "C4"));
+        notes.add(note(8 + thirds(1), thirds(2), "D4"));
+        notes.add(note(9, 1 + thirds(1), "E4"));
+        notes.add(note(10 + thirds(1), thirds(2), "F4"));
+        notes.add(note(11, 1, "G4"));
+        // Bar 4: a whole note on the same grid, which needs no bracket at all.
+        notes.add(note(12, 4, "C4"));
+
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice)
+                .withKeys(List.of(key("C4", Mode.MAJOR)))
+                .withMetadata("Triplet Practice", "Anonymous");
+        QuantizedScore plan = quantized(score, GridResolution.HALF_BEAT,
+                GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT);
+
+        String source = StaffNotation.toLilyPond(plan, voice);
+        assertThat(source).contains(
+                "\\tuplet 3/2 { c'8 d'4 } e'4~ \\tuplet 3/2 { e'8 f'4 } g'4 |");
+        assertGolden("triplet-eighths", source);
+    }
+
+    @Test
+    @DisplayName("a duplet in compound time is bracketed the other way round")
+    void compoundDuplets() {
+        // 6/8 subdivides in three, so it is the halves that are the tuplet --
+        // two in the time of three. A grid anchored on the quarter rather than
+        // on the counted beat cannot say this at all.
+        List<Note> notes = new ArrayList<>();
+        String[] scale = {"C4", "D4", "E4", "F4", "G4", "A4"};
+        for (int i = 0; i < 6; i++) {
+            notes.add(note(i * 0.5, 0.5, scale[i]));
+        }
+        notes.add(note(3, 0.75, "C4"));
+        notes.add(note(3.75, 0.75, "D4"));
+        notes.add(note(4.5, 0.75, "E4"));
+        notes.add(note(5.25, 0.75, "F4"));
+        notes.add(note(6, 1.5, "A4"));
+        notes.add(note(7.5, 0.75, "G4"));
+        notes.add(note(8.25, 0.75, "F4"));
+
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+        Score score = score(TimeSignature.SIX_EIGHT, 180, voice);
+        QuantizedScore plan = quantized(score, GridResolution.THIRD_BEAT,
+                GridResolution.HALF_BEAT, GridResolution.HALF_BEAT);
+
+        String source = StaffNotation.toLilyPond(plan, voice);
+        assertThat(source)
+                .contains("\\tuplet 2/3 { c'8 d'8 } \\tuplet 2/3 { e'8 f'8 } |")
+                .contains("a'4. \\tuplet 2/3 { g'8 f'8 } |");
+        assertGolden("compound-duplets", source);
     }
 
     // ------------------------------------------------------------- meaning
@@ -563,6 +664,388 @@ class StaffNotationTest {
         assertBarsFillTheirMeter("dropped grace", source);
     }
 
+    // --------------------------------------------------------------- tuplets
+
+    /** One bar of triplet eighths, played as the quantizer would leave them. */
+    private static NoteTrack tripletBar(String... spellings) {
+        List<Note> notes = new ArrayList<>(spellings.length);
+        for (int i = 0; i < spellings.length; i++) {
+            notes.add(note(thirds(i), thirds(1), spellings[i]));
+        }
+        return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+    }
+
+    @Test
+    @DisplayName("the Score overload still snaps triplets away, because a Score cannot say otherwise")
+    void theScoreOverloadHasNoGridToRead() {
+        // The audio track produces a plain Score, and there is nothing in one to
+        // distinguish three onsets a third of a beat apart from three a half
+        // beat apart on a sixth-of-a-beat grid. So this overload keeps doing
+        // what it did -- badly, visibly, and without inventing a bracket -- and
+        // the fix is to hand the emitter the decision rather than to make it
+        // guess. Pinned so that a later tidy-up cannot quietly make it guess.
+        NoteTrack voice = tripletBar("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5",
+                "B4", "A4", "G4", "F4");
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String withoutGrids = StaffNotation.toLilyPond(score, voice);
+        assertThat(withoutGrids).doesNotContain("\\tuplet").contains("64");
+        assertBarsFillTheirMeter("no grids", withoutGrids);
+
+        String withGrids = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(withGrids)
+                .contains("\\tuplet 3/2 { c'8 d'8 e'8 } \\tuplet 3/2 { f'8 g'8 a'8 }")
+                .doesNotContain("64");
+        assertBarsFillTheirMeter("with grids", withGrids);
+    }
+
+    @Test
+    @DisplayName("a triplet bar nobody actually subdivided prints as plain quarters")
+    void aTripletGridWithNothingOnItGetsNoBrackets() {
+        // The quantizer decodes its grids with a Viterbi pass that resists
+        // changing subdivision inside a section, so a bar of plain quarters
+        // between two triplet bars is published on the triplet grid. Bracketing
+        // it because the grid says triplet would put a 3/2 round four quarter
+        // notes, which is not what was played and not what the grid claims --
+        // the grid says what the bar was measured against, not what it holds.
+        // Two bars on the same grid, one subdivided and one not, so this says
+        // where the bracket goes rather than only where it does not: an emitter
+        // that never brackets passes half of it.
+        List<Note> notes = new ArrayList<>(List.of(
+                note(0, 1, "C4"), note(1, 1, "D4"), note(2, 1, "E4"), note(3, 1, "F4")));
+        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "D5", "C5"};
+        for (int i = 0; i < 12; i++) {
+            notes.add(note(4 + thirds(i), thirds(1), run[i]));
+        }
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT), voice);
+        assertThat(source)
+                .contains("c'4 d'4 e'4 f'4 |")
+                .contains("\\tuplet 3/2 { c'8 d'8 e'8 } \\tuplet 3/2 { f'8 g'8 a'8 }");
+        assertThat(source.lines().filter(line -> line.contains("c'4 d'4 e'4 f'4")).toList())
+                .as("the unsubdivided bar carries no bracket of its own")
+                .allSatisfy(line -> assertThat(line).doesNotContain("\\tuplet"));
+        assertBarsFillTheirMeter("unsubdivided triplet grid", source);
+    }
+
+    @Test
+    @DisplayName("a note held across two triplet beats is one symbol, not two bracketed ones")
+    void aNoteAcrossPlainBeatsOfATripletBarIsNotCutAtTheBrackets() {
+        // \tuplet 3/2 { c4. } \tuplet 3/2 { c4.~ } is the same music and
+        // unreadable. A bracket is only cut where something inside it happens.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 2, "C4"), note(2, thirds(1), "D4"), note(2 + thirds(1), thirds(2), "E4"),
+                note(3, 1, "F4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains("c'2 \\tuplet 3/2 { d'8 e'4 } f'4 |");
+        assertBarsFillTheirMeter("held across brackets", source);
+    }
+
+    @Test
+    @DisplayName("a note leaving a bracket is cut at it, exactly as one entering it is")
+    void aBracketIsClosedByTheNoteThatLeavesItAsWellAsByTheOneThatEntersIt() {
+        // Round 1 of review found that the cut rule was only tested from one
+        // side. Every fixture that crossed a bracket boundary crossed it *into* a
+        // printed bracket, so the half of the rule that closes a bracket behind a
+        // note leaving it could be deleted and the whole repository stayed green
+        // -- while ordinary music came out as "\tuplet 3/2 { c'8 d'8 e'2 }": a
+        // triplet bracket drawn round a half note. It sums to 4/4, so no bar
+        // check catches it either, and held one beat further it throws instead.
+        //
+        // This bar crosses a boundary in both directions. The E leaves a printed
+        // bracket into a plain beat; the F enters a printed one from a plain beat.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(1), thirds(1), "D4"),
+                note(thirds(2), thirds(1) + 1, "E4"),
+                note(2, 1 + thirds(1), "F4"),
+                note(3 + thirds(1), thirds(2), "G4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains(
+                "\\tuplet 3/2 { c'8 d'8 e'8~ } e'4 f'4~ \\tuplet 3/2 { f'8 g'4 } |");
+        assertBarsFillTheirMeter("cut on both sides", source);
+    }
+
+    @Test
+    @DisplayName("a note held out of a bracket across two plain beats is one symbol")
+    void aNoteLeavingABracketIsNotStretchedInsideIt() {
+        // The same defect one beat further on, where it is no longer silent: the
+        // fragment reaches four grid steps, which is longer than a bracket, and
+        // there is no note value for it. A bracket cannot hold a whole bracket's
+        // worth of anything, so this is the shape that turns the miss above into
+        // an exception rather than a wrong page.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(1), thirds(1), "D4"),
+                note(thirds(2), thirds(1) + 3, "E4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains("\\tuplet 3/2 { c'8 d'8 e'8~ } e'2. |");
+        assertBarsFillTheirMeter("held out of a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a pickup inside a bracket fills its short bar in an odd meter too")
+    void aPartialBracketInAPickupStillSumsExactly() {
+        // Round 1 of review found the bar-length helper rejecting this: a
+        // bracket holding fewer notes than its ratio sums a hair under its meter
+        // in floating point, and LilyPond engraves it without a word. 4/4 happens
+        // to round the same way, so the pickup test above did not show it; 3/2
+        // does not.
+        // 3/2, so a counted beat is a half note and a triplet step is two thirds
+        // of a quarter. The pickup enters one step into the bar's second step,
+        // which makes the first bracket a partial one, and the bar then holds a
+        // whole bracket and a bracketed pair -- three different roundings, which
+        // is what it takes to make the double sum miss.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(2 * 2 / 3.0, 2 / 3.0, "C4"),
+                note(2, 10 / 3.0, "D4"),
+                note(6, 6, "C5"));
+        Score score = score(new TimeSignature(3, 2), 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT, GridResolution.BEAT), voice);
+        assertThat(source).contains("\\partial 1*7/6")
+                .contains("\\tuplet 3/2 { c'4 } d'2~ \\tuplet 3/2 { d'2 r4 } |");
+        assertBarsFillTheirMeter("partial bracket in a pickup", source);
+    }
+
+    @Test
+    @DisplayName("triplet sixteenths are two brackets to the beat, as they are written")
+    void sixthOfABeatIsTwoTripletsRatherThanOneSextuplet() {
+        // GridResolution says the ratio is 3/2 at every depth, because a
+        // sixteenth triplet is three sixteenths in the time of two rather than
+        // six in the time of four. So the bracket holds three notes and the beat
+        // holds two brackets, which is how the rhythm is printed.
+        List<Note> notes = new ArrayList<>();
+        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4"};
+        for (int i = 0; i < 6; i++) {
+            notes.add(note(i / 6.0, 1 / 6.0, run[i]));
+        }
+        notes.add(note(1, 3, "C5"));
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.SIXTH_BEAT), voice);
+        assertThat(source)
+                .contains("\\tuplet 3/2 { c'16 d'16 e'16 } \\tuplet 3/2 { f'16 g'16 a'16 } c''2.");
+        assertBarsFillTheirMeter("triplet sixteenths", source);
+    }
+
+    @Test
+    @DisplayName("a note tied out of a triplet bracket keeps its tie across the bar line")
+    void aTieLeavesABracketAndCrossesTheBarLine() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 3, "C4"),
+                note(3, thirds(1), "D4"),
+                // Starts on the last triplet eighth of bar one and runs into bar
+                // two, which is on a binary grid: the head is a bracketed eighth
+                // and the tail an ordinary half note.
+                note(3 + thirds(2), thirds(1) + 2, "E4"),
+                note(6, 2, "F4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT, GridResolution.HALF_BEAT), voice);
+        assertThat(source)
+                .contains("c'2. \\tuplet 3/2 { d'8 r8 e'8~ } |")
+                .contains("e'2 f'2 |");
+        assertBarsFillTheirMeter("tie out of a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a bar the grids say nothing about is engraved as it always was")
+    void aBarWithNoPublishedGridFallsBackToTheBinaryGrid() {
+        // The quantizer publishes one entry per bar a note sounds in, so a bar
+        // of silence has none. It must still be a bar of rest rather than an
+        // exception, because a QuantizedScore whose grids stop short is what a
+        // caller building a score up in stages hands over.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(1), thirds(2), "D4"),
+                note(1, 3, "E4"), note(8, 4, "G4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source)
+                .contains("\\tuplet 3/2 { c'8 d'4 } e'2. |")
+                .contains("R1 |")
+                .contains("g'1 |");
+        assertBarsFillTheirMeter("missing grid", source);
+    }
+
+    @Test
+    @DisplayName("a triplet position built by adding lengths lands on the grid, not beside it")
+    void positionsAreRebuiltOnTheGridRatherThanTrusted() {
+        // A third of a beat is not a representable double, so a note's offset --
+        // which the quantizer computes as onset plus length -- is not the
+        // position the same grid reaches by multiplication: (8 + 1/3) + 1/3 and
+        // 8 + 2/3 differ in the last bit. Left alone, the second note of every
+        // triplet starts an ulp after the first one ends and the emitter writes
+        // a rest of a millionth of a beat between them, or fails to write the
+        // bar at all.
+        double first = 8 + thirds(1);
+        assertThat(first + thirds(1))
+                .as("the fixture is only worth running while these differ")
+                .isNotEqualTo(8 + thirds(2));
+
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 8, "C4"),
+                note(8, thirds(1), "D4"), note(first, thirds(1), "E4"),
+                note(first + thirds(1), thirds(1), "F4"),
+                note(9, 3, "G4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(quantized(score, GridResolution.HALF_BEAT,
+                GridResolution.HALF_BEAT, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains("\\tuplet 3/2 { d'8 e'8 f'8 } g'2. |");
+        assertBarsFillTheirMeter("accumulated positions", source);
+    }
+
+    @Test
+    @DisplayName("a pickup that falls inside a triplet bracket still fills its short bar")
+    void aPickupInsideABracket() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(3 + thirds(1), thirds(1), "G4"), note(3 + thirds(2), thirds(1), "A4"),
+                note(4, 4, "C5"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT, GridResolution.BEAT), voice);
+        // Two triplet eighths is two thirds of a quarter beat, which is a sixth
+        // of a whole note and is not a whole number of 64ths -- the length-only
+        // form of \partial cannot write it at all.
+        assertThat(source).contains("\\partial 1*1/6").contains("\\tuplet 3/2 { g'8 a'8 } |");
+        assertBarsFillTheirMeter("pickup inside a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a chord in a triplet keeps its pitches together under the bracket")
+    void aChordInsideABracket() {
+        NoteTrack piano = track(PartRole.PIANO_RIGHT_HAND, "Piano",
+                note(0, thirds(1), "C4"), note(0, thirds(1), "E4"), note(0, thirds(1), "G4"),
+                note(thirds(1), thirds(2), "D4"),
+                note(1, 3, "C4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, piano);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), piano);
+        assertThat(source).contains("\\tuplet 3/2 { <c' e' g'>8 d'4 } c'2. |");
+        assertBarsFillTheirMeter("chord in a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a rest inside a triplet is bracketed with the notes it shares the beat with")
+    void aRestInsideABracket() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, thirds(1), "C4"), note(thirds(2), thirds(1), "E4"),
+                note(1, 3, "G4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+
+        String source = StaffNotation.toLilyPond(
+                quantized(score, GridResolution.THIRD_BEAT), voice);
+        assertThat(source).contains("\\tuplet 3/2 { c'8 r8 e'8 } g'2. |");
+        assertBarsFillTheirMeter("rest in a bracket", source);
+    }
+
+    @Test
+    @DisplayName("a grid list whose last entry is not its furthest still brackets the bars before it")
+    void theGridBoundIsTakenAcrossEveryEntryRatherThanTheLastOne() {
+        // QuantizedScore validates that its grids are ordered by bar and says
+        // nothing about their startBeats, so the furthest end is not necessarily
+        // the last entry's. Round 4 of review found nothing pinning that: reading
+        // the bound off the last entry left the whole reactor green.
+        //
+        // It matters because of blast radius rather than likelihood. A grid whose
+        // startBeat disagrees with its own tempo map used to misplace its own bar
+        // and nothing else; taken as the bound, it decides whether every bar in
+        // the piece gets looked up at all -- so one bad entry at the end would
+        // silently un-bracket the triplets three bars earlier, which is #92 back
+        // again in a corner nobody would look in.
+        // The note that makes the difference visible is one too short to write:
+        // on its bar's own grid its onset and offset land on the same step and
+        // it is dropped, exactly as dropsNotesTooShortToWrite drops one on the
+        // 64th grid. Reached with the bound too small it is never put on that
+        // grid at all, survives into the bar as a span of a twentieth of a beat,
+        // and asks for a note value of zero -- an IllegalStateException, in a bar
+        // whose own grid entry was perfectly good.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C4"),
+                note(4, thirds(1), "D4"), note(4 + thirds(1), thirds(1), "E4"),
+                note(4 + thirds(2), thirds(1), "F4"),
+                note(5.4, 0.05, "A4"),
+                note(6, 2, "G4"),
+                note(8, 4, "B4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice);
+        // Bar 2's entry claims to start at beat zero, which is a lie, and it is
+        // last in a list that is nonetheless correctly ordered by bar -- which is
+        // all QuantizedScore promises.
+        QuantizedScore misordered = new QuantizedScore(score, List.of(
+                new BarGrid(0, 0, GridResolution.BEAT, TimeSignature.FOUR_FOUR),
+                new BarGrid(1, 4, GridResolution.THIRD_BEAT, TimeSignature.FOUR_FOUR),
+                new BarGrid(2, 0, GridResolution.BEAT, TimeSignature.FOUR_FOUR)),
+                SwingFeel.STRAIGHT);
+
+        String source = StaffNotation.toLilyPond(misordered, voice);
+        assertThat(source).contains("\\tuplet 3/2 { d'8 e'8 f'8 } r4 g'2 |")
+                .doesNotContain("a'");
+        assertBarsFillTheirMeter("grid bound", source);
+    }
+
+    @Test
+    @DisplayName("both overloads refuse an impossible score the same way, with the same message")
+    void theTwoOverloadsFailIdentically() {
+        // Round 2 of review noticed the two diverging here. A note quantized past
+        // bar 2^31 makes TempoMap.toMusicalTime refuse outright, with a message
+        // about bar indices -- so asking the grid where such a note falls threw
+        // that instead of the emitter's own complaint, which says which part runs
+        // that far and that the beat axis is probably wrong. Unreachable in
+        // practice, at something like a century of music, and pinned anyway:
+        // "the two overloads fail differently" is the shape this project keeps
+        // paying for, and it costs one comparison to not have it.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
+        NoteTrack strays = track(PartRole.ACCOMPANIMENT, "Keys", note(1e10, 4, "E4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, strays);
+        QuantizedScore plan = quantized(score, GridResolution.THIRD_BEAT);
+
+        // The Score overload's failure is caught and asserted non-null first.
+        // Round 3 of review found that reading its message inline gave a
+        // NullPointerException the day it stopped throwing at all -- hiding the
+        // one thing that had actually changed behind the least informative
+        // failure there is.
+        Throwable withoutGrids = catchThrowable(() -> StaffNotation.toLilyPond(score, voice));
+        assertThat(withoutGrids)
+                .as("the Score overload no longer refuses this score, so there is nothing to match")
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> StaffNotation.toLilyPond(plan, voice))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"Keys\" runs that far, so look there rather than here")
+                .hasMessage(withoutGrids.getMessage());
+    }
+
+    @Test
+    @DisplayName("a percussion part is refused whichever overload is asked")
+    void refusesDrumsThroughTheQuantizedOverloadToo() {
+        NoteTrack drums = track(PartRole.DRUMS, "Drums", note(0, 1, "C4"));
+        Score score = score(TimeSignature.FOUR_FOUR, 120, drums);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> StaffNotation.toLilyPond(
+                        quantized(score, GridResolution.THIRD_BEAT), drums))
+                .withMessageContaining("DrumStaff");
+    }
+
     // --------------------------------------------------------------- helpers
 
     /**
@@ -573,27 +1056,33 @@ class StaffNotationTest {
      * each token from {@link LilyPondNotes}. This is the assertion that would
      * have caught a bar that is a sixteenth short, which LilyPond engraves
      * happily and no golden file would have questioned.
+     *
+     * <p>Compared as exact fractions rather than as doubles, and the difference
+     * is not academic: a tuplet bracket holding a partial group — which a pickup
+     * inside a bracket produces — sums a bit under its meter in floating point,
+     * and round 1 of review found that this helper therefore rejected output
+     * LilyPond engraves without a word. Loosening the comparison would have blunted
+     * the one check that survives a golden-file regeneration, so the arithmetic
+     * was made exact instead.
      */
     private static void assertBarsFillTheirMeter(String label, String source) {
-        double barLength = 0;
-        double expected = -1;
+        LilyPondNotes.Quarters barLength = LilyPondNotes.Quarters.ZERO;
+        LilyPondNotes.Quarters expected = null;
         int barNumber = 0;
         for (String rawLine : source.split("\n")) {
             String line = rawLine.trim();
             if (line.startsWith("\\time")) {
                 String meter = line.substring(line.lastIndexOf(' ') + 1);
                 String[] parts = meter.split("/");
-                barLength = Integer.parseInt(parts[0]) * 4.0 / Integer.parseInt(parts[1]);
+                barLength = new LilyPondNotes.Quarters(Integer.parseInt(parts[0]) * 4L,
+                        Integer.parseInt(parts[1]));
                 expected = barLength;
             } else if (line.startsWith("\\partial")) {
-                expected = LilyPondNotes.quartersOf(line.substring("\\partial ".length()));
+                expected = LilyPondNotes.exactQuartersOf(line.substring("\\partial ".length()));
             } else if (line.endsWith("|") && !line.startsWith("\\bar")) {
-                double sum = 0;
                 List<String> tokens = new ArrayList<>(LilyPondNotes.tokenize(line));
                 tokens.removeLast();
-                for (String token : tokens) {
-                    sum += LilyPondNotes.quartersOf(token);
-                }
+                LilyPondNotes.Quarters sum = LilyPondNotes.quartersOfBar(tokens);
                 barNumber++;
                 assertThat(sum)
                         .as("%s: bar %d (%s)", label, barNumber, line)

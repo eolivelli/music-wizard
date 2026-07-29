@@ -19,8 +19,63 @@
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-core</artifactId>
     </dependency>
+    <!--
+      The quantizer's per-bar grid decision, which cannot be recovered from the
+      positions it produced: three notes a third of a beat apart and three a
+      half beat apart are both legal on the sixth-of-a-beat grid, and only one
+      of them is a triplet. Symbolic only, and mw-arrange depends on nothing but
+      mw-core, so this does not pull audio or models into the notation layer.
+      See #92.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-arrange</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.audiveris</groupId>
       <artifactId>proxymusic</artifactId>
     </dependency>  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!--
+            A hostile message locale for the test JVM, so that the check on
+            LilyPondRenderer wiring cannot pass by accident.
+
+            That test starts a stand-in binary and asserts it was handed
+            LC_MESSAGES=C. On a machine whose own LC_MESSAGES is already C (a
+            bare container, or a CI file that pins it after this very thread)
+            the child sees C whether or not the code under test ran, and round 8
+            of review found that deleting both call sites left the suite green
+            there. It is the third time on this branch that an assertion was
+            being satisfied by the parent environment rather than by the code.
+
+            Pinned here rather than left to the machine, so the poison is part
+            of the build and not a property of somebody's shell.
+
+            POSIX, and the value matters as much as the variable. The first
+            version of this said it_IT.UTF-8 on the reasoning that LC_MESSAGES
+            selects a message catalogue and nothing else. Round 9 of review
+            measured the forked JVM and found sun.jnu.encoding collapsed to
+            ANSI_X3.4-1968, because glibc's locale selection is all or nothing
+            and it_IT.UTF-8 is not installed on most machines. That is
+            the same mechanism speakEnglish exists to work around, one process
+            out, and it made mw-notation the one module unable to hold a
+            non-ASCII file name, in the branch whose subject is that they must
+            keep engraving.
+
+            So the value has to be one that always resolves, and has to differ
+            from C so the assertion in LilyPondRendererTest can tell the two
+            apart. POSIX is both.
+          -->
+          <environmentVariables>
+            <LC_MESSAGES>POSIX</LC_MESSAGES>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
