@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
@@ -601,6 +602,45 @@ class MusicXmlExportTest {
                 () -> MusicXmlExport.divisionsOf(1.0 / 1000)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not a whole number");
+    }
+
+    @Test
+    @DisplayName("the document says which format it is, and says a version of that format")
+    void headerIdentifiesTheFormat() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        String xml = MusicXmlExport.toMusicXml(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(xml).startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<!DOCTYPE score-partwise PUBLIC"
+                + " \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\""
+                + " \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
+        // 4.0 and not proxymusic's 4.0.3, which is its own artifact version.
+        // MusicXML's versions are 1.0, 1.1, 2.0, 3.0, 3.1 and 4.0, and a reader
+        // that resolves the public identifier through a catalogue finds nothing
+        // under a DTD name that has never existed.
+        assertThat(parse(xml).getDocumentElement().getAttribute("version")).isEqualTo("4.0");
+        assertThat(xml).endsWith("\n");
+    }
+
+    @Test
+    @DisplayName("the schema check is alive, not a validator that quietly loaded nothing")
+    void theSchemaCheckCanFail() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        String valid = MusicXmlExport.toMusicXml(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+        assertValidMusicXml("valid", valid);
+
+        // "crotchet" is a quarter note everywhere except in MusicXML, whose
+        // note-type-value enumeration lists "quarter". Only the schema knows
+        // that -- so if this passed, the validator above would be checking
+        // nothing, which is exactly the failure a check nobody has seen fail
+        // hides. The schema not loading at all is the realistic way in: its
+        // xml and xlink references are unresolvable without the two stubs in
+        // src/test/resources/xsd.
+        String broken = valid.replace("<type>whole</type>", "<type>crotchet</type>");
+        assertThat(broken).isNotEqualTo(valid);
+        assertThatThrownBy(() -> assertValidMusicXml("broken", broken))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("not valid MusicXML 4.0");
     }
 
     // ---------------------------------------------------------------- checks
