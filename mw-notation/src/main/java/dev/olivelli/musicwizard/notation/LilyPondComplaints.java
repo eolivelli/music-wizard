@@ -199,9 +199,24 @@ import java.util.regex.Pattern;
  * wrongly, and suppression strictly reduces skips. Measured as well as argued —
  * 10 000 consecutive diagnostics with no echo recognised keep all 10 000
  * moments, in 44 ms, and 2 000 alternating between recognised and not keep all
- * 2 000, so the skip resumes rather than staying off. The trigger for the
- * walking region is #169's truncation, and the currency it pays in is
- * over-reporting.
+ * 2 000.
+ *
+ * <p><b>The skip does not resume, and an earlier version of this paragraph said
+ * it did.</b> "Keep all 2 000" is a containment result and cannot show a skip
+ * firing; round 10 measured the over-report instead and found the skip fires
+ * once, for the first diagnostic, and never again — the region boundary keeps
+ * landing on the next diagnostic, which re-extends it. Alternating recognised
+ * and truncated echoes with nothing between them, 2 000 real moments are
+ * reported as 2 999 or 4 999 depending on the echo's shape. It resumes only when
+ * a non-diagnostic line separates the blocks, and real output does not guarantee
+ * one: LilyPond prints {@code Interpreting music...} once, not between every
+ * diagnostic.
+ *
+ * <p>So the honest bound is that one truncated echo can double the reported
+ * count for the <em>rest</em> of the output, not for two lines. Still no loss —
+ * that part is argued above and measured — and still unreachable from what this
+ * project emits, since the trigger is #169's truncation. But the currency it
+ * pays in is over-reporting, and it pays a lot of it.
  *
  * <p><b>And a skip needs a column of 2 or more.</b> At column 1 "indented by
  * {@code C - 1} spaces" is satisfied by any unindented line whatsoever, so a

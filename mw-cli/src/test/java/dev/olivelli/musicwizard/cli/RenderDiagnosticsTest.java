@@ -166,12 +166,17 @@ class RenderDiagnosticsTest {
         assertThat(render.err())
                 .contains("warning: LilyPond reported 1 failed bar check while")
                 .contains("at 3/4.");
-        // The file's name, not its path. Round 9 found `contains("chords.ly")`
-        // satisfied either way, so naming the whole workspace path in a warning
-        // meant for a human would have gone unnoticed.
+        // The file's name, not its path -- in *both* places the message names
+        // it. Round 9 found `contains("chords.ly")` satisfied either way; round
+        // 10 then found the assertion written for that keying on the first
+        // interpolation only, so mutating the second survived. Two readers of
+        // one value in a single statement, which is this project's recorded
+        // failure mode inside the fix written for it.
         assertThat(render.err())
                 .contains("engraving chords.ly,")
-                .doesNotContain("engraving " + workspace);
+                .contains("report it with chords.ly attached")
+                .doesNotContain("engraving " + workspace)
+                .doesNotContain("with " + workspace);
         assertThat(render.err()).contains("does not add up to its time signature");
         // On stderr rather than stdout, because this command's last act is to
         // print the chart itself -- which is exactly the thing someone pipes to

@@ -948,6 +948,26 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("refuses to be built without the output it derives everything from")
+        void aResultCannotBeBuiltWithoutItsOutput() {
+            // Two production statements this PR added that no test could see --
+            // round 10's finding, and the same shape as round 9's: a fix with no
+            // regression test, here on new code rather than a change.
+            //
+            // Fail-fast is the reason, and it is worth being exact about it,
+            // because the PR said something else: requireNonNull(output) does
+            // not stop failedBarChecks() throwing, it moves the throw to the
+            // moment the bad Result is built, where the stack says who built it.
+            // requireNonNull(pdf) has nothing to do with the accessor at all.
+            assertThatThrownBy(() -> new LilyPondRenderer.Result(true, Optional.empty(), null))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("output");
+            assertThatThrownBy(() -> new LilyPondRenderer.Result(true, null, "out"))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("pdf");
+        }
+
+        @Test
         @DisplayName("hands back a list a caller cannot alter under the next reader")
         void theMomentsAreNotTheParsersOwnList() {
             // Derived on every call from output(), so two callers get two lists
@@ -976,14 +996,23 @@ class LilyPondRendererTest {
                     + "     p.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
                     .as("without a region the echo text skips and the 7/8 is lost")
                     .containsExactly("3/4", "9/9", "7/8");
-            // And the same shape with the echo one line further on, so the
-            // region's reach is what is being tested rather than its existence.
+            // And the region's *reach* for an unlocated diagnostic, which the
+            // assertion that used to sit here claimed to test and did not --
+            // round 10 found its detected set a strict subset of the one above,
+            // sensitive to no region mutant at all.
+            //
+            // This one separates the sizes: the diagnostic three lines down is
+            // outside a two-line region and inside a three-line one. Outside, it
+            // recognises its own echo and skips it; inside, it does not, and the
+            // echo's text is reported.
             assertThat(said("warning: bar check failed at: 3/4\n"
-                    + "xxx\n"
-                    + "   p.ly:9:9: warning: bar check failed at: 9/9\n"
-                    + "zzz\n"
-                    + "p.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
-                    .containsExactly("3/4", "9/9", "7/8");
+                    + "zz\n"
+                    + "zz\n"
+                    + "p.ly:2:4: warning: bar check failed at: 7/8\n"
+                    + "yyy\n"
+                    + "   | rest % a:1:2: warning: bar check failed at: 9/9\n").failedBarChecks())
+                    .as("an unlocated diagnostic's region reaches two lines, not three")
+                    .containsExactly("3/4", "7/8");
         }
 
         @Test
