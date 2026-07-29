@@ -16,7 +16,10 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
+import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
@@ -135,7 +138,7 @@ class EndToEndIT {
     }
 
     @Test
-    @DisplayName("LilyPond engraves the generated chart to a PDF")
+    @DisplayName("LilyPond engraves the generated chart to a PDF, without complaining about it")
     void engravesToPdf() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
@@ -148,9 +151,27 @@ class EndToEndIT {
         LilyPondRenderer.Result result =
                 new LilyPondRenderer(lilypond).renderSource(ly, ChordChart.toLilyPond(score));
 
-        assertThat(result.succeeded())
-                .as("LilyPond output: %s", result.output())
-                .isTrue();
+        // #153: the three assertions below this one were all this test had, and
+        // none of them reads what the engraver said. LilyPond writes a perfectly
+        // large PDF beginning "%PDF-" and exits zero for a chart it complained
+        // about, so on the output CLAUDE.md calls this project's strongest, the
+        // diagnostics were the one thing nothing looked at.
+        //
+        // What this catches and what it does not is worth being exact about,
+        // because round 1 of review on #164 found the first draft overclaiming
+        // it. It catches anything LilyPond says about the chart. It does *not*
+        // catch a bar of the wrong length, because ChordChart.toLilyPond emits
+        // no bar checks and no \time, so LilyPond never counts the bars: halving
+        // every chord in this chart engraves in silence under 2.24.3 and 2.26.0
+        // alike. That gap is #160 and is the emitter's to close, not this
+        // test's; engravingComplaintsAreNoticed says exactly which half of it
+        // this gate holds.
+        //
+        // No tolerance is passed. The one assertEngravedCleanly knows about is a
+        // spacing complaint about a tuplet number against a beam, and a chord
+        // chart has neither -- a carve-out with nothing behind it is the dead
+        // carve-out #92's review rounds spent two of themselves avoiding.
+        assertEngravedCleanly("the chord chart", result);
         Path pdf = result.pdf().orElseThrow();
         assertThat(Files.size(pdf)).isGreaterThan(1000);
         // A PDF, not an empty file with the right extension.
@@ -160,6 +181,58 @@ class EndToEndIT {
         }
         assertThat(new String(header, java.nio.charset.StandardCharsets.US_ASCII))
                 .isEqualTo("%PDF-");
+    }
+
+    @Test
+    @DisplayName("a complaint about this chart is noticed, so the clean engraving means something")
+    void engravingComplaintsAreNoticed() throws Exception {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        Score score = new AudioTranscriber().transcribe(
+                writeFourChordSong(), AudioTranscriber.Options.defaults());
+        String clean = ChordChart.toLilyPond(score);
+
+        // The emitter's own output with a bar broken, rather than hand-written
+        // LilyPond: engraving a hand-copied file pins LilyPond's behaviour and
+        // says nothing about ours. Round 4 of #92 made that distinction and it
+        // applies here unchanged.
+        //
+        // Two edits, and the second is the interesting one. Halving the first
+        // chord leaves the bar half short. The bar check is what makes LilyPond
+        // say so -- and it has to be added, because ChordChart.toLilyPond writes
+        // none. So what this test demonstrates is that the gate in
+        // engravesToPdf notices a complaint about a chart of this shape, not
+        // that a chart bar which does not sum produces one: round 1 of review on
+        // #164 halved every bar without adding a check and the flagship test
+        // passed, correctly, in silence. That is #160 and it belongs to the
+        // emitter. The same fact is why failedBarChecksIn(output).isEmpty() --
+        // the gate #153 proposed -- would be vacuous on an undamaged chart.
+        assertThat(clean).as("the emitter no longer opens the chart this way; "
+                + "the damage below would be a no-op and this test would pass for nothing")
+                .contains("c1 g1");
+        String damaged = clean.replace("c1 g1", "c2 | g1");
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve("damaged/chords.ly"), damaged);
+
+        // Exit zero, a real page, the right magic bytes -- every assertion
+        // engravesToPdf had before #153, passing on a chart that is wrong.
+        assertThat(result.succeeded()).as("%s", result.output()).isTrue();
+        assertThat(Files.size(result.pdf().orElseThrow())).isGreaterThan(1000);
+
+        // And the moment rather than the wording, so this survives both of
+        // LilyPond's spellings: the bar reached a half note where a whole was
+        // due. Asserting merely that something was said would not distinguish a
+        // counted bar from an unparsed one.
+        assertThat(failedBarChecksIn(result.output()))
+                .as("%s", result.output())
+                .contains("1/2");
+        // The gate itself, pointed at the damaged run: what engravesToPdf
+        // asserts of the clean one has to fail here or it is asserting nothing.
+        assertThatThrownBy(() -> assertEngravedCleanly("the damaged chart", result))
+                .as("%s", result.output())
+                .isInstanceOf(AssertionError.class);
     }
 
     @Test

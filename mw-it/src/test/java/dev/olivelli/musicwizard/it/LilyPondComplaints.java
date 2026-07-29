@@ -16,13 +16,23 @@
 
 package dev.olivelli.musicwizard.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reading LilyPond's diagnostics for the one thing this suite asks it to check.
+ * Reading LilyPond's diagnostics, and deciding what counts as a clean run.
+ *
+ * <p>Two questions, and the module needs both. {@link #complaintsIn} is the
+ * broad one — every line LilyPond wrote that mentions a warning or an error —
+ * and it is what an engraving test asserts is empty. {@link #failedBarChecksIn}
+ * is the narrow one, for the tests that need to say <em>which</em> bar was
+ * short rather than merely that something was said.
  *
  * <p>A failed bar check is the complaint the engraving tests exist for: it is
  * how a bar that does not fill its meter — the commonest way an emitter goes
@@ -81,7 +91,121 @@ final class LilyPondComplaints {
     private static final Pattern FAILED_BAR_CHECK = Pattern.compile(
             "warning: bar ?check failed at: (\\S+)", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * The one complaint the tuplet suite tolerates, and the reasoning.
+     *
+     * <p>Every other line mentioning a warning or an error fails
+     * {@link #assertEngravedCleanly}, because that is what makes engraving worth
+     * doing at all: a bar that does not fill its meter is a {@code warning:}
+     * line and nothing else catches it.
+     *
+     * <p>This one is different in kind and the difference is checkable rather
+     * than asserted. It is a complaint about <em>spacing</em> — LilyPond cannot
+     * fit the little {@code 3} beside a steeply angled beam — raised from its
+     * own layout engine about its own output, not about the source it was given.
+     * The music is right, the bar sums, the PDF is produced and the exit status
+     * is zero. Nothing this emitter could write differently would avoid it
+     * without writing a different rhythm.
+     *
+     * <p>It is <b>reachable from ordinary material</b>, which is why this is a
+     * decision taken deliberately rather than a surprise taken later: round 3 of
+     * review on #92 ran real {@code Quantizer} output through the emitter and
+     * found it in about one stave in eighty, in 4/4, 3/4, 3/2 and 7/8 — four of
+     * the twelve meters this project targets. It needs partial sixteenth-triplet
+     * brackets among rests and ties, which is exactly what a quantized
+     * performance produces and exactly what a bar with every grid position
+     * filled does not.
+     * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne}
+     * drives review's own material through this emitter and engraves the result,
+     * so the constant is pinned to a case in the repository rather than to a
+     * memory of one — and to a case <em>this</em> emitter produces rather than to
+     * hand-copied LilyPond.
+     * {@link LilyPondComplaintsTest#theToleranceIsNarrowerThanTheWordItContains}
+     * pins how little it covers. See #136, which also records that the printed
+     * page is fine where it fires: the number is placed above the beam, not lost.
+     *
+     * <p><b>It is not granted by default</b>, and after round 1 of review on
+     * #164 it is not granted by the helper either: a caller that wants it names
+     * it, so a suite cannot acquire a carve-out nothing it engraves can reach by
+     * picking the obviously-named assertion. <b>Exactly one call site that
+     * engraves a real page names it</b> —
+     * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne},
+     * the test that exists to reach it — and every other engraving site passes
+     * nothing. Round 2 of review measured the rest: not one produces this line
+     * on 2.24.3 or on 2.26.0. ({@link LilyPondComplaintsTest} names it freely,
+     * on {@link LilyPondRenderer.Result} values it made up. That is the point of
+     * it, and it engraves nothing.)
+     *
+     * <p>How many "every other" is, is deliberately not written here. It is a
+     * number this file has never once carried correctly: round 1 of review on
+     * #164 introduced it already wrong, round 2 found that and corrected it to a
+     * figure the same commit invalidated by adding a site, and round 3 found
+     * that. A number that has to be re-derived on every edit is a claim that
+     * will be false again; the fact that survives edits is "one engraving site
+     * names it". Round 4 then found the scope removed along with the number,
+     * which is why the words "that engraves" above are load-bearing rather than
+     * decorative.
+     */
+    static final String TOLERATED_COMPLAINT =
+            "programming error: not enough space for tuplet number against beam";
+
     private LilyPondComplaints() {
+    }
+
+    /**
+     * Every line on which LilyPond complained, in the order it wrote them.
+     *
+     * <p>Selected case-insensitively on the two words LilyPond prefixes its
+     * diagnostics with, which is deliberately over-inclusive: being generous
+     * about what counts as a complaint can only produce a loud failure, while
+     * being stingy produces a silent pass, and a silent pass is the failure this
+     * module keeps finding. It also means a line quoting the offending source
+     * counts, which is fine — an engraving with nothing wrong quotes nothing.
+     */
+    static List<String> complaintsIn(String lilypondOutput) {
+        return lilypondOutput.lines()
+                .filter(line -> {
+                    String lower = line.toLowerCase(Locale.ROOT);
+                    return lower.contains("warning") || lower.contains("error");
+                })
+                .toList();
+    }
+
+    /**
+     * Fails unless LilyPond produced a page and said nothing about it.
+     *
+     * <p>One helper rather than the same two lines at every site that engraves,
+     * and it is here rather than in an {@code *IT} so that the guard on how wide
+     * the tolerance is can run in {@code mvn verify} — a tolerance whose only
+     * test sits behind {@code -Pintegration} can widen without anyone noticing,
+     * which is #155 and, one class over, #148.
+     *
+     * <p><b>Tolerating nothing is the default, and anything tolerated is named
+     * at the call site.</b> Round 1 of review on #164 pointed out the hazard in
+     * the shape this replaced: a single helper carrying
+     * {@link #TOLERATED_COMPLAINT} silently, whose javadoc had to <em>ask</em>
+     * chord-chart callers not to use it. A carve-out nothing a suite engraves
+     * can reach is the dead carve-out #92 spent two review rounds avoiding, and
+     * an argument makes acquiring one a visible choice rather than a default.
+     *
+     * <p>Tolerated lines are matched exactly, where the selection in
+     * {@link #complaintsIn} is case-insensitive. The two directions are
+     * deliberately different, for the reason given there. Round 5 of review on
+     * #92 found a trailing {@code strip()} on the match inert — LilyPond does not
+     * indent its diagnostics — so it is gone rather than kept as reassurance.
+     *
+     * @param tolerated complaint lines this caller accepts, matched in full;
+     *                  empty at every site that engraves but the one that
+     *                  reaches {@link #TOLERATED_COMPLAINT}
+     */
+    static void assertEngravedCleanly(String name, LilyPondRenderer.Result result,
+                                      String... tolerated) {
+        assertThat(result.succeeded()).as("%s: %s", name, result.output()).isTrue();
+        List<String> allowed = List.of(tolerated);
+        List<String> complaints = complaintsIn(result.output()).stream()
+                .filter(line -> !allowed.contains(line))
+                .toList();
+        assertThat(complaints).as("%s engraved with complaints", name).isEmpty();
     }
 
     /**
