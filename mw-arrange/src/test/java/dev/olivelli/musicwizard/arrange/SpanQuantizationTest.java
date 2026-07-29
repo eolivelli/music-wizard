@@ -265,19 +265,22 @@ class SpanQuantizationTest {
                         .isEqualTo(quantized.score().chords().chords().get(0)
                                 .endBeat().orElseThrow())
                         .isGreaterThan(heard);
-                // Exceeded, not attained -- and by exactly the overlap the
-                // fixture had to inject to reach the clamp at all. A draft of
-                // this asserted isCloseTo(unit / 2, within(1e-6)), a two-sided
-                // window twenty times the excess, which reported the bound as
-                // met when it is not. The honest assertion is that the
-                // displacement is half a unit plus the overlap, exactly, which
-                // also pins that nothing else contributes to it.
-                double overlapBeats = tempoMap.secondsToBeats(at)
+                // Exceeded, not attained -- and by exactly the start's distance
+                // BELOW the rounding midpoint, which is not the same as the
+                // overlap this fixture injects. It injects symmetrically, so the
+                // span overlap is twice this, and an earlier version of these
+                // lines called the quantity "overlapBeats" and let the factor of
+                // two propagate into the class javadoc as a general law.
+                //
+                // Two drafts before that: isCloseTo(unit / 2, within(1e-6)), a
+                // two-sided window twenty times the excess, which reported the
+                // bound as met when it is not.
+                double belowMidpointBeats = tempoMap.secondsToBeats(at)
                         - tempoMap.secondsToBeats(at - overlap);
                 assertThat(printed - heard)
                         .as("%s: the clamp path exceeds half a counted beat", meter)
                         .isGreaterThan(unit / 2)
-                        .isCloseTo(unit / 2 + overlapBeats, within(1e-12));
+                        .isCloseTo(unit / 2 + belowMidpointBeats, within(1e-12));
             }
         }
 
@@ -670,12 +673,18 @@ class SpanQuantizationTest {
             // snapToCountedBeat measures inside the bar, and in 4/4 both 2.5 and
             // 6.5 reduce to a beatInBar of 2.5, so rint sends both backwards.
             //
-            // Nor is there anywhere for that argument to be true. floor(q + 0.5)
-            // and rint(q) differ only where q is a tie at an *even* step --
-            // floor gives k+1 always, rint gives k when k is even and k+1 when
-            // it is odd -- so an odd-step tie agrees under both rules by
-            // construction and pairing one with an even-step tie buys nothing.
-            // No fixture in this file can show two ties going opposite ways.
+            // floor(q + 0.5) and rint(q) differ only where q is a tie at an
+            // *even* step -- floor gives k+1 always, rint gives k when k is even
+            // and k+1 when it is odd -- so an odd-step tie agrees under both
+            // rules by construction, and this fixture's two ties, being the same
+            // step, cannot show a direction that alternates.
+            //
+            // A fixture could: snapToCountedBeat's quotient runs across the bar,
+            // so boundaries at beats 4.5 and 5.5 are steps 0 and 1 of bar 1, and
+            // under rint the first goes back to 4.0 while the second goes on to
+            // 6.0. A draft of this comment said no fixture in the file could,
+            // which is true only of aBarLineTieGoesForward's snapToBarLine, whose
+            // quotient never leaves [0, 1) and so only ever sees step 0.
             TempoMap tempoMap = fourFour();
             Score score = chordsOnly(tempoMap,
                     chord("C4", at(tempoMap, 0), at(tempoMap, 2.5)),
