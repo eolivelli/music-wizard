@@ -105,6 +105,19 @@ class MusicXmlExportTest {
      */
     private static final String UPDATE_PROPERTY = "mw.golden.update";
 
+    /**
+     * MusicXML goldens with no LilyPond twin, and why.
+     *
+     * <p>{@code two-parts} is a whole-score export, which MusicXML has and a
+     * LilyPond file in this project does not: {@link StaffNotation} writes one
+     * part per document. Its LilyPond side is the vocal part alone, so there is
+     * no single {@code .ly} that is the same music.
+     *
+     * <p>A list rather than a condition, so that a fixture whose golden simply
+     * was not written fails the pairing check instead of skipping it.
+     */
+    private static final List<String> UNPAIRED = List.of("two-parts");
+
     /** The MusicXML schema, inside the proxymusic jar. */
     private static final String MUSICXML_XSD = "META-INF/jaxb/xsd/musicxml.xsd";
 
@@ -242,60 +255,13 @@ class MusicXmlExportTest {
     @Test
     @DisplayName("triplet eighths are a tuplet, not tied 64ths")
     void tripletEighths() {
-        // Note for note the fixture StaffNotationTest engraves as
-        // triplet-eighths.ly. Round 1 of review found a different four bars
-        // under the same name, so the one pair the PR pointed at as "the one
-        // worth reading side by side" was the one pair that could not be: a
-        // reader diffing them would conclude the emitters disagree.
-        List<Note> notes = new ArrayList<>();
-        // Bar 1: plain eighths, so the bracketed bars have something to be read
-        // against.
-        String[] scale = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"};
-        for (int i = 0; i < 8; i++) {
-            notes.add(note(i * 0.5, 0.5, scale[i]));
-        }
-        // Bar 2: four beats of triplet eighths, which is the case #92 is about.
-        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "D5", "C5"};
-        for (int i = 0; i < 12; i++) {
-            notes.add(note(4 + thirds(i), thirds(1), run[i]));
-        }
-        // Bar 3: the same grid, subdivided in only two of its four beats. The
-        // other two must come out as plain quarters -- a bracket says a beat was
-        // divided in three, and printing one round a beat that was not is as
-        // wrong as leaving it off the beat that was.
-        notes.add(note(8, thirds(1), "C4"));
-        notes.add(note(8 + thirds(1), thirds(2), "D4"));
-        notes.add(note(9, 1 + thirds(1), "E4"));
-        notes.add(note(10 + thirds(1), thirds(2), "F4"));
-        notes.add(note(11, 1, "G4"));
-        // Bar 4: a whole note on the same grid, which needs no bracket at all.
-        notes.add(note(12, 4, "C4"));
+        // Not a copy of StaffNotationTest's four bars but the same object: round
+        // 2 of review reproduced round 1's finding against a copy in one edit.
+        Fixtures.Quantized fixture = Fixtures.tripletPractice();
 
-        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
-        Score score = score(TimeSignature.FOUR_FOUR, 120, voice)
-                .withKeys(List.of(key("C4", Mode.MAJOR)))
-                .withMetadata("Triplet Practice", "Anonymous");
-        QuantizedScore plan = quantized(score, GridResolution.HALF_BEAT,
-                GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT);
-
-        assertGolden("triplet-eighths", MusicXmlExport.toMusicXml(plan, voice),
-                StaffNotation.toLilyPond(plan, voice));
-    }
-
-    @Test
-    @DisplayName("a whole score exports as several parts sharing a bar grid")
-    void wholeScore() {
-        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
-                note(0, 2, "E4"), note(2, 2, "D4"), note(4, 4, "C4"));
-        // Enters in bar two and stops before the vocal does: both staves must
-        // still cover the same eight beats.
-        NoteTrack bass = track(PartRole.BASS, "Bass",
-                unspelled(4, 2, 36), unspelled(6, 1, 43));
-        Score score = score(TimeSignature.FOUR_FOUR, 120, voice, bass)
-                .withMetadata("Two Parts", null);
-
-        assertGolden("two-parts", MusicXmlExport.toMusicXml(score),
-                StaffNotation.toLilyPond(score, voice));
+        assertGolden("triplet-eighths",
+                MusicXmlExport.toMusicXml(fixture.plan(), fixture.voice()),
+                StaffNotation.toLilyPond(fixture.plan(), fixture.voice()));
     }
 
     // ------------------------------------------------------ what the spec says
@@ -913,6 +879,7 @@ class MusicXmlExportTest {
         assertThat(elements(document, "measure").size() / partCount(document))
                 .as("%s: the two emitters disagree about how many bars this is", name)
                 .isEqualTo(barCount(lilyPond));
+        assertPairedWithTheLilyPondGolden(name, lilyPond);
 
         if (Boolean.getBoolean(UPDATE_PROPERTY)) {
             Path target = goldenDirectory()
@@ -928,6 +895,50 @@ class MusicXmlExportTest {
             System.err.println("updated golden file " + target);
         }
         assertThat(actual).isEqualTo(readGolden(name));
+    }
+
+    /**
+     * The LilyPond golden of the same name is the same music.
+     *
+     * <p>This is what makes the pairing an invariant rather than a convention.
+     * Round 1 of review found {@code triplet-eighths.ly} and
+     * {@code triplet-eighths.musicxml} describing different music under one
+     * name; round 2 found that copying the fixture across had not fixed it,
+     * because one copy could still be edited. Comparing the LilyPond generated
+     * <em>here</em> against the golden {@code StaffNotationTest} committed
+     * closes it for every shared fixture at once, including any added later.
+     *
+     * <p>It also survives {@code -Dmw.golden.update}, which rewrites only the
+     * {@code .musicxml} files: a fixture edited on this side then fails here
+     * instead of quietly regenerating. It does <em>not</em> survive an update
+     * run of both classes together in one JVM, where {@code StaffNotationTest}
+     * may rewrite the {@code .ly} after this has read it — but the next
+     * ordinary run fails, which is what CI does, and update mode's documented
+     * contract is to read the diff.
+     *
+     * <p>{@link #UNPAIRED} is the escape, and it is a fixed list rather than
+     * "skip when the file is missing" — a missing golden would otherwise
+     * disable the check silently, which is the shape of the defect this exists
+     * to stop.
+     */
+    private static void assertPairedWithTheLilyPondGolden(String name, String lilyPond) {
+        if (UNPAIRED.contains(name)) {
+            return;
+        }
+        Optional<Path> golden = goldenDirectory().map(dir -> dir.resolve(name + ".ly"))
+                .filter(Files::isRegularFile);
+        assertThat(golden)
+                .as("%s has no LilyPond golden; either add one or list it in UNPAIRED"
+                        + " with a reason", name)
+                .isPresent();
+        try {
+            assertThat(lilyPond)
+                    .as("%s: this fixture and StaffNotationTest's have drifted apart, so the"
+                            + " two goldens of that name are different music", name)
+                    .isEqualTo(Files.readString(golden.get()));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static int partCount(Document document) {

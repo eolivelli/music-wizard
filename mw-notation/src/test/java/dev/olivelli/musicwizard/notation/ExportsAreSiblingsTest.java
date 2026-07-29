@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -91,9 +92,20 @@ class ExportsAreSiblingsTest {
         return path;
     }
 
+    /**
+     * A source file's class name, qualified by its package below {@code
+     * src/main/java}.
+     *
+     * <p>Qualified rather than simple, because {@link #sources} walks the whole
+     * tree: a class in a subpackage would otherwise be indistinguishable from
+     * one beside it here, and two files of the same simple name in different
+     * packages would collide silently.
+     */
     private static String classNameOf(Path source) {
-        String file = source.getFileName().toString();
-        return file.substring(0, file.length() - ".java".length());
+        Path relative = sourceRoot().relativize(source);
+        String name = relative.toString().replace(File.separatorChar, '.');
+        return name.substring(0, name.length() - ".java".length())
+                .replace(PACKAGE + ".", "");
     }
 
     @Test
@@ -299,16 +311,29 @@ class ExportsAreSiblingsTest {
                 .doesNotContain("MidiExport");
     }
 
+    /**
+     * Every source in the module, at any depth.
+     *
+     * <p>The whole tree rather than this package's own directory, and that is
+     * round 3's finding rather than tidiness: listing one directory let a class
+     * in {@code notation.internal} reach an exporter with the check passing over
+     * it. That is round 2's defect one level down — evidence covering the places
+     * somebody thought to look — and the fix is the same one, which is to make
+     * the default "checked" rather than "not looked at".
+     */
     private static Stream<Path> sources() {
         try {
-            return Files.list(sourceDirectory()).filter(path -> path.toString().endsWith(".java"));
+            return Files.walk(sourceRoot())
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
     private static String read(String className) {
-        return read(sourceDirectory().resolve(className + ".java"));
+        return read(sourceRoot().resolve(
+                (PACKAGE + "." + className).replace('.', File.separatorChar) + ".java"));
     }
 
     private static String read(Path file) {
@@ -319,18 +344,24 @@ class ExportsAreSiblingsTest {
         }
     }
 
+    /** The package the notation layer lives in, as a path below the source root. */
+    private static final String PACKAGE = "dev.olivelli.musicwizard.notation";
+
     /**
-     * Where this package's sources are.
+     * The module's source root.
      *
      * <p>Maven passes {@code -Dbasedir}; outside it the working directory is
      * the fallback. A missing directory is an assertion failure rather than a
      * skip, because a check that quietly stops running is worse than no check.
      */
-    private static Path sourceDirectory() {
+    private static Path sourceRoot() {
         String basedir = System.getProperty("basedir", System.getProperty("user.dir"));
         Path directory = Path.of(Optional.ofNullable(basedir).orElse("."),
-                "src", "main", "java", "dev", "olivelli", "musicwizard", "notation");
-        assertThat(directory).as("the notation sources are not where this expected them")
+                "src", "main", "java");
+        assertThat(directory).as("the module sources are not where this expected them")
+                .isDirectory();
+        assertThat(directory.resolve(PACKAGE.replace('.', File.separatorChar)))
+                .as("the notation package is not where this expected it")
                 .isDirectory();
         return directory;
     }
