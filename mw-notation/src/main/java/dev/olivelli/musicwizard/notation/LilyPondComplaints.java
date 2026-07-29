@@ -161,6 +161,10 @@ import java.util.regex.Pattern;
  * whose text is diagnostic-shaped is still counted. The case measured is a very
  * long source line, whose echo LilyPond truncates — 989 characters printed for a
  * column of 2842 — after which the layout no longer describes what was written.
+ * <b>A truncated echo is one line, not two</b>, which is why the suspect
+ * region is opened by every diagnostic rather than only by ones outside an
+ * existing region: a two-line region overshoots a one-line echo onto whatever
+ * follows it.
  * A genuine column-1 echo is the other, by the floor described below. Not
  * reachable from what this project emits: {@link ChordChart} writes no
  * {@code |} at all, and {@link StaffNotation} puts each bar on its own short
@@ -177,7 +181,10 @@ import java.util.regex.Pattern;
  * <p><b>And a skip needs a column of 2 or more.</b> At column 1 "indented by
  * {@code C - 1} spaces" is satisfied by any unindented line whatsoever, so a
  * blank line followed by a real diagnostic read as an echo and swallowed it.
- * Round 7's generator found essentially all of the remaining loss living there.
+ * Round 7's generator, whose columns ran 1 to 60 and whose file names began with
+ * spaces a quarter of the time, put every loss it found there. That is a
+ * statement about that population and not about the shape space: round 8 built
+ * one at column 3.
  * The floor costs a genuine column-1 echo, whose text is then over-reported —
  * measured, and the direction this class prefers.
  *
@@ -464,13 +471,16 @@ final class LilyPondComplaints {
      * at all — no skip, and the echo is over-reported, which is the direction
      * everything else here degrades in.
      *
-     * <p>Note for a later mutation sweep: since {@link #isEchoOf} refuses to skip
-     * below column 2, returning 0 and returning 1 from here are indistinguishable
-     * and a mutant swapping them is equivalent. It was <em>not</em> equivalent
-     * before that floor existed — round 7 of review measured it losing a real
-     * diagnostic — so the sentinel stays 0 with the reason written down, rather
-     * than being tidied into something that happens to work for a neighbouring
-     * reason.
+     * <p>Note for a later mutation sweep: {@link #isEchoOf} refuses to skip below
+     * column 2, and nothing else reads this value, so returning 0 and returning
+     * 1 are now indistinguishable and a mutant swapping them is equivalent.
+     *
+     * <p>That was claimed one commit too early and was wrong when it was made:
+     * the suspect region was then opened by an {@code else if (column >= 1)}
+     * that read the same value, so the swap lost a real diagnostic and round 8
+     * measured it doing so. Opening the region unconditionally is what makes the
+     * equivalence true — recorded this way round, because a note saying
+     * "equivalent" is exactly what stops the next sweep from looking.
      */
     private static int columnOf(Matcher diagnostic) {
         String column = diagnostic.group(COLUMN);
