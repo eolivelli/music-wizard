@@ -554,10 +554,16 @@ class LilyPondRendererTest {
             // Round 5 found the spaces-only rule unpinned: widening it to
             // Character.isWhitespace killed nothing, and it widens in the skip-
             // more direction.
-            assertThat(said("p.ly:1:9: warning: bar check failed at: 3/4\n"
-                    + "xxxxxxxx\n"
+            // Column 2, so one column of indent is called for and the line
+            // offers exactly one tab. Counting whitespace generally would make
+            // that a match and swallow the diagnostic; counting spaces does not.
+            // The first version of this test used a column of 9 against a single
+            // tab, where both rules say no -- it passed either way and pinned
+            // nothing, which is the mistake it was written to catch.
+            assertThat(said("p.ly:1:2: warning: bar check failed at: 3/4\n"
+                    + "x\n"
                     + "\tp.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
-                    .as("a tab is eight columns wide but is not how LilyPond pads")
+                    .as("a tab where one space of padding was called for is not padding")
                     .containsExactly("3/4", "9/9");
         }
 
@@ -570,6 +576,14 @@ class LilyPondRendererTest {
             // is exactly what leaves a half-written echo behind. An exception
             // here is worse than either failure this class chooses between,
             // because it escapes render() after the files are on disk.
+            // No trailing terminator, so the split really does stop one line
+            // short of what the echo test wants to read. With a terminator the
+            // split leaves an empty final element and the off-by-one is hidden,
+            // which is how the first version of this test passed against the
+            // mutant it was written for.
+            assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\nxxx")
+                    .failedBarChecks())
+                    .containsExactly("3/4");
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\nxxx\n")
                     .failedBarChecks())
                     .containsExactly("3/4");
