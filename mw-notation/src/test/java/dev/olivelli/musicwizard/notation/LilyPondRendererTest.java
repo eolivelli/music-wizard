@@ -181,13 +181,15 @@ class LilyPondRendererTest {
         //
         // Round 8 then found this version of it inert on a machine whose own
         // LC_MESSAGES is already C, because the child then reports C whether or
-        // not the code under test ran. The module's surefire configuration now
-        // gives this JVM a hostile LC_MESSAGES for exactly that reason, and the
-        // assertion below is only decisive because of it -- so if that block
-        // ever goes, this test stops meaning anything.
+        // not the code under test ran. The module's surefire configuration gives
+        // this JVM a non-C LC_MESSAGES for exactly that reason. Checked rather
+        // than assumed, because a build file losing that element would leave the
+        // assertion below true for the wrong reason on such a machine -- and
+        // true for the right reason everywhere else, which is how it would
+        // survive a review.
         assertThat(System.getenv("LC_MESSAGES"))
-                .as("the surefire environmentVariables block in mw-notation/pom.xml is what"
-                        + " makes the rest of this test decisive")
+                .as("mw-notation/pom.xml sets this for the test JVM; without it this test can"
+                        + " still pass on a machine whose own LC_MESSAGES is C")
                 .isNotEqualTo("C");
         Path script = tempDirectory.resolve("reports-locale");
         Files.writeString(script, """

@@ -53,13 +53,26 @@
             there. It is the third time on this branch that an assertion was
             being satisfied by the parent environment rather than by the code.
 
-            Pinned here rather than left to the machine, so the poison is part of
-            the build and not a property of somebody's shell. LC_MESSAGES only:
-            it selects a message catalogue and nothing else, so an absent
-            it_IT.UTF-8 cannot change how this JVM decodes a file name.
+            Pinned here rather than left to the machine, so the poison is part
+            of the build and not a property of somebody's shell.
+
+            POSIX, and the value matters as much as the variable. The first
+            version of this said it_IT.UTF-8 on the reasoning that LC_MESSAGES
+            selects a message catalogue and nothing else. Round 9 of review
+            measured the forked JVM and found sun.jnu.encoding collapsed to
+            ANSI_X3.4-1968, because glibc's locale selection is all or nothing
+            and it_IT.UTF-8 is not installed on most machines. That is
+            the same mechanism speakEnglish exists to work around, one process
+            out, and it made mw-notation the one module unable to hold a
+            non-ASCII file name, in the branch whose subject is that they must
+            keep engraving.
+
+            So the value has to be one that always resolves, and has to differ
+            from C so the assertion in LilyPondRendererTest can tell the two
+            apart. POSIX is both.
           -->
           <environmentVariables>
-            <LC_MESSAGES>it_IT.UTF-8</LC_MESSAGES>
+            <LC_MESSAGES>POSIX</LC_MESSAGES>
           </environmentVariables>
         </configuration>
       </plugin>
