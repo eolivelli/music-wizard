@@ -360,14 +360,19 @@ final class LilyPondComplaints {
                 continue;
             }
             moments.add(matcher.group(MOMENT));
-            if (i <= suspectUntil) {
-                continue;
-            }
-            int column = columnOf(matcher);
-            if (isEchoOf(lines, i + 1, column)) {
+            // One rule, not a condition per branch. Either this line's echo was
+            // recognised and is skipped, or it was not and the region it should
+            // have occupied becomes suspect -- whatever the column was, and
+            // whether or not this line is itself inside an earlier suspect
+            // region. Round 8 found both of those carve-outs leaking: a
+            // diagnostic with no column opened no region and its echo text then
+            // skipped a real diagnostic, and a diagnostic *inside* a region
+            // opened none either, so a one-line truncated echo let a two-line
+            // region overshoot onto the next one.
+            if (i > suspectUntil && isEchoOf(lines, i + 1, columnOf(matcher))) {
                 i += 2;
-            } else if (column >= 1) {
-                suspectUntil = i + 2;
+            } else {
+                suspectUntil = Math.max(suspectUntil, i + 2);
             }
         }
         return List.copyOf(moments);

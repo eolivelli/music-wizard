@@ -798,76 +798,66 @@ class LilyPondRendererTest {
         }
 
         @Test
-        @DisplayName("is never lost while every diagnostic still has its echo")
-        void thePreconditionIsTheWholeOfTheResidual() {
-            // The residual's completeness, checked by generation rather than by
-            // reasoning -- because reasoning about it has now been wrong three
-            // times, each time by describing one of the two skipped lines and
-            // calling it the rule.
+        @DisplayName("costs nothing while an echo is there at all, recognised or not")
+        void anEchoThatIsPresentNeverCostsAMoment() {
+            // Round 8 found the previous version of this passing on seed luck --
+            // 20 000 trials on the *same* seed failed, and 7 of 13 seeds failed
+            // at 2 000. The population had been made non-degenerate without
+            // re-deriving what was true of it: it emitted echoes that were
+            // absent or half-present, which is the documented residual, and then
+            // asserted no moment could be lost. Round 7's finding wearing a hat.
             //
-            // Every located diagnostic here is followed by a well-formed echo,
-            // and the shapes that beat earlier versions are mixed in on purpose:
-            // file names that begin with spaces, which LilyPond prints verbatim,
-            // and echo text that is itself diagnostic-shaped. If "the echo was
-            // missing" is really the only precondition, nothing can be lost.
+            // So this asserts an exact result over a population it can state
+            // exactly: one diagnostic per output, its echo always present, well
+            // formed or truncated. A recognised echo is skipped and contributes
+            // nothing; an unrecognised one is read, so whichever of its two
+            // lines carries diagnostic-shaped text is reported. Both answers
+            // come back from the layout test, so this kills "always skip two
+            // lines" -- which suppresses those reports -- rather than being
+            // unable to see it. Checked at 20 000 trials on nine other seeds.
             //
-            // Seeded, so a failure is reproducible rather than a rumour. The
-            // same generator with echoes omitted at random loses 36 moments in
-            // 20000 outputs, which is the residual doing what it is documented
-            // to do; with the echoes present it loses none in 20000.
+            // What is deliberately *not* here is interaction between
+            // diagnostics. An unrecognised echo suppresses skipping for what
+            // follows, which cascades and is tedious to predict; the shapes that
+            // matter are named directly by anUnrecognisedEchoCannotEat...,
+            // theShapesTheEchoSkipCanSwallow and aMissingOrMalformedEcho...,
+            // and trying to model the cascade here is how the previous two
+            // versions of this test came to assert things that were not true.
             Random random = new Random(20260729L);
-            for (int trial = 0; trial < 2000; trial++) {
-                StringBuilder output = new StringBuilder();
+            for (int trial = 0; trial < 20000; trial++) {
+                int column = 1 + random.nextInt(60);
+                String moment = (1 + random.nextInt(9)) + "/" + (1 + random.nextInt(8));
+                String file = (random.nextInt(4) == 0 ? "  " : "") + "f.ly";
+                boolean truncated = random.nextInt(3) == 0;
+                boolean shapedTail = random.nextInt(3) == 0;
+                int width = truncated
+                        ? Math.max(0, column - 1 - (1 + random.nextInt(4)))
+                        : column - 1;
+                String tail = shapedTail
+                        ? " % a:1:2: warning: bar check failed at: 9/9"
+                        : " | c4 c4";
+                String output = "Interpreting music...\n"
+                        + file + ":1:" + column + ": warning: bar check failed at: " + moment + "\n"
+                        + "x".repeat(width) + (truncated ? tail : "") + "\n"
+                        + " ".repeat(width) + "| rest" + (truncated ? "" : tail) + "\n"
+                        + "Success: compilation successfully completed\n";
+
                 List<String> expected = new ArrayList<>();
-                for (int diagnostic = 1 + random.nextInt(4); diagnostic > 0; diagnostic--) {
-                    for (int noise = random.nextInt(3); noise > 0; noise--) {
-                        output.append(random.nextBoolean() ? "" : "Interpreting music...")
-                                .append('\n');
-                    }
-                    int column = 1 + random.nextInt(60);
-                    String moment = (1 + random.nextInt(9)) + "/" + (1 + random.nextInt(8));
-                    String file = (random.nextInt(4) == 0 ? "  " : "") + "f.ly";
-                    output.append(file).append(":1:").append(column)
-                            .append(": warning: bar check failed at: ").append(moment).append('\n');
-                    expected.add(moment);
-                    String tail = random.nextInt(3) == 0
-                            ? " % a:1:2: warning: bar check failed at: 9/9"
-                            : " | c4 c4";
-                    // The echo is well formed only most of the time, and that
-                    // is the whole point. Round 7 found the first version of
-                    // this generator degenerate: every echo matched, so the
-                    // layout test fired 5033 times and returned false not once.
-                    // "Nothing was lost" was entailed by the population rather
-                    // than measured from it, and the test could not tell the
-                    // shipped design from "always skip two lines", which has an
-                    // unbounded residual.
-                    //
-                    // It now emits truncated echoes, echoes of one line, and
-                    // none at all. Counted over this same seed: the layout test
-                    // says yes 2207 times and no 2342, with 77 more below the
-                    // column floor -- so the skip has somewhere to go wrong. It
-                    // kills the always-skip mutant at trial 10, which the
-                    // previous version survived outright.
-                    int shape = random.nextInt(6);
-                    int width = shape == 0
-                            ? Math.max(0, column - 1 - (1 + random.nextInt(4)))
-                            : column - 1;
-                    if (shape != 4) {
-                        output.append("x".repeat(width)).append(shape == 0 ? tail : "")
-                                .append('\n');
-                    }
-                    if (shape != 4 && shape != 5) {
-                        output.append(" ".repeat(width)).append("| rest")
-                                .append(shape == 0 ? "" : tail).append('\n');
-                    }
+                expected.add(moment);
+                // Recognised only when the widths line up and the column clears
+                // the floor. Otherwise both echo lines are read, and whichever
+                // of them carries the shaped tail is a whole-line match -- the
+                // first when the echo is truncated, the second when it is not.
+                // The column-1 case is what caught the first version of this
+                // model: it is below the floor, so even a well-formed echo is
+                // read rather than skipped and its second line reports.
+                boolean recognised = !truncated && column >= 2;
+                if (!recognised && shapedTail) {
+                    expected.add("9/9");
                 }
-                // Containment, not equality: a truncated or absent echo is
-                // over-reported on purpose, and that is the documented
-                // direction. What must never happen is a real moment going
-                // missing.
-                assertThat(said(output.toString()).failedBarChecks())
+                assertThat(said(output).failedBarChecks())
                         .as("trial %d%n%s", trial, output)
-                        .containsAll(expected);
+                        .isEqualTo(expected);
             }
         }
 
