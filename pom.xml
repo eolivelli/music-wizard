@@ -279,15 +279,48 @@
             </compilerArgs>
           </configuration>
         </plugin>
+        <!--
+          Both test plugins run with XDG_CONFIG_HOME pointed at a directory
+          under target/ that nothing ever creates, so the global config layer is
+          empty in every forked test JVM.
+
+          This is a backstop, not the fix. The fix for #133 is that ConfigLoader
+          takes its global config location as an argument, so a test states
+          which layer it means instead of inheriting one; that is what mw-core's
+          own tests do. But a test that drives a whole command (mw-cli's, and
+          the integration tests) goes through the environment-reading path on
+          purpose, because exercising the real entry point is the point. Those
+          need the environment to be empty rather than to be the developer's.
+
+          Without it, a contributor who is also a user, with the two-line
+          paperSize example the README tells them to write, gets a failing test
+          naming a config assertion and no hint that their own ~/.config caused
+          it, while CI, which has no such file, stays green throughout.
+
+          XDG_CONFIG_HOME alone is enough: globalConfigDirectory() prefers it
+          over ~/.config whenever it is set and non-blank, so the home-directory
+          branch is never reached. Overriding user.home instead would reach far
+          past config into anything that resolves a cache or a toolchain.
+        -->
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${surefire.version}</version>
+          <configuration>
+            <environmentVariables>
+              <XDG_CONFIG_HOME>${project.build.directory}/no-global-config</XDG_CONFIG_HOME>
+            </environmentVariables>
+          </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-failsafe-plugin</artifactId>
           <version>${failsafe.version}</version>
+          <configuration>
+            <environmentVariables>
+              <XDG_CONFIG_HOME>${project.build.directory}/no-global-config</XDG_CONFIG_HOME>
+            </environmentVariables>
+          </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>

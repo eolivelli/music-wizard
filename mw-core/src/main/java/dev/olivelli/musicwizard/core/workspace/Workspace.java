@@ -103,8 +103,24 @@ public final class Workspace {
      * @param sourceFile the recording to import
      */
     public static Workspace create(Path root, Path sourceFile) {
+        return create(root, sourceFile, ConfigLoader.fromEnvironment());
+    }
+
+    /**
+     * As {@link #create(Path, Path)}, with the config loader given so the
+     * caller states which global config layer the workspace sits on.
+     *
+     * <p>The two-argument form uses the user's own, which is right for the CLI
+     * and wrong for a test: a test using it asserts against whatever the person
+     * running it happens to have in {@code ~/.config} (#133). Tests pass
+     * {@link ConfigLoader#withoutGlobalConfig()}, or
+     * {@link ConfigLoader#withGlobalConfigFile(Path)} when the global layer is
+     * the thing under test.
+     */
+    public static Workspace create(Path root, Path sourceFile, ConfigLoader configLoader) {
         Objects.requireNonNull(root, "root");
         Objects.requireNonNull(sourceFile, "sourceFile");
+        Objects.requireNonNull(configLoader, "configLoader");
         if (!Files.isRegularFile(sourceFile)) {
             throw new IllegalArgumentException("source file does not exist: " + sourceFile);
         }
@@ -112,7 +128,7 @@ public final class Workspace {
             throw new IllegalStateException("workspace already exists: " + root);
         }
 
-        Workspace workspace = new Workspace(root, new ConfigLoader());
+        Workspace workspace = new Workspace(root, configLoader);
         try {
             for (Path directory : new Path[] {
                     workspace.sourceDirectory(), workspace.cacheDirectory(),
@@ -164,11 +180,20 @@ public final class Workspace {
 
     /** Opens an existing workspace, validating its schema version. */
     public static Workspace open(Path root) {
+        return open(root, ConfigLoader.fromEnvironment());
+    }
+
+    /**
+     * As {@link #open(Path)}, with the config loader given. See
+     * {@link #create(Path, Path, ConfigLoader)} for why a test wants this one.
+     */
+    public static Workspace open(Path root, ConfigLoader configLoader) {
         Objects.requireNonNull(root, "root");
+        Objects.requireNonNull(configLoader, "configLoader");
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("not a workspace directory: " + root);
         }
-        Workspace workspace = new Workspace(root, new ConfigLoader());
+        Workspace workspace = new Workspace(root, configLoader);
         if (!Files.isRegularFile(workspace.descriptorFile())) {
             throw new IllegalArgumentException(
                     "not a workspace: no " + DESCRIPTOR_FILE + " in " + root);
@@ -354,9 +379,18 @@ public final class Workspace {
         }
     }
 
+    /** The loader this workspace layers its config with. */
+    public ConfigLoader configLoader() {
+        return configLoader;
+    }
+
     /**
-     * The effective configuration for this workspace: defaults, then the user's
-     * global config, then this workspace's own preferences, then any overrides.
+     * The effective configuration for this workspace: defaults, then the global
+     * config layer, then this workspace's own preferences, then any overrides.
+     *
+     * <p>The global layer is whichever one this workspace's {@link
+     * ConfigLoader} was built for — the user's own for a workspace opened the
+     * one-argument way, and only then.
      */
     public MusicWizardConfig effectiveConfig(MusicWizardConfig commandLineOverrides) {
         MusicWizardConfig workspaceLayer = readDescriptor().config();

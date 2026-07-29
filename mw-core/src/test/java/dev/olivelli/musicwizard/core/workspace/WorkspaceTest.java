@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,8 +46,23 @@ class WorkspaceTest {
         Files.writeString(sourceFile, "pretend this is audio");
     }
 
+    /**
+     * A workspace with no global config layer.
+     *
+     * <p>Explicitly none, rather than whatever the person running the suite has
+     * in {@code ~/.config/music-wizard/config.yaml}. The two-argument
+     * {@code Workspace.create} reads theirs, which is right for the CLI and is
+     * how a valid config used to fail this class's own
+     * {@code workspaceConfigOverridesDefaults} (#133).
+     */
     private Workspace newWorkspace() {
-        return Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile);
+        return Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile,
+                ConfigLoader.withoutGlobalConfig());
+    }
+
+    /** As {@link Workspace#open(Path)}, likewise with no global layer. */
+    private static Workspace reopen(Path root) {
+        return Workspace.open(root, ConfigLoader.withoutGlobalConfig());
     }
 
     @Nested
@@ -95,7 +111,8 @@ class WorkspaceTest {
         void refusesToOverwrite() {
             newWorkspace();
 
-            assertThatThrownBy(() -> Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile))
+            assertThatThrownBy(() -> Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile,
+                            ConfigLoader.withoutGlobalConfig()))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("already exists");
         }
@@ -104,7 +121,8 @@ class WorkspaceTest {
         @DisplayName("rejects a missing source file")
         void rejectsMissingSource() {
             assertThatThrownBy(() ->
-                    Workspace.create(tempDirectory.resolve("x.mwz"), tempDirectory.resolve("nope.mp3")))
+                    Workspace.create(tempDirectory.resolve("x.mwz"), tempDirectory.resolve("nope.mp3"),
+                            ConfigLoader.withoutGlobalConfig()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("does not exist");
         }
@@ -119,7 +137,7 @@ class WorkspaceTest {
         void roundTripsDescriptor() {
             Path root = newWorkspace().root();
 
-            Workspace reopened = Workspace.open(root);
+            Workspace reopened = reopen(root);
             assertThat(reopened.readDescriptor().sourceFileName()).isEqualTo("song.mp3");
             assertThat(reopened.readDescriptor().schemaVersion())
                     .isEqualTo(Workspace.CURRENT_SCHEMA_VERSION);
@@ -128,7 +146,7 @@ class WorkspaceTest {
         @Test
         @DisplayName("rejects a directory that is not a workspace")
         void rejectsNonWorkspace() {
-            assertThatThrownBy(() -> Workspace.open(tempDirectory))
+            assertThatThrownBy(() -> reopen(tempDirectory))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("not a workspace");
         }
@@ -141,7 +159,7 @@ class WorkspaceTest {
             Files.writeString(workspace.descriptorFile(),
                     yaml.replace("schemaVersion: 1", "schemaVersion: 99"));
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()))
+            assertThatThrownBy(() -> reopen(workspace.root()))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("upgrade Music Wizard");
         }
@@ -168,7 +186,7 @@ class WorkspaceTest {
             Files.setLastModifiedTime(abandoned,
                     FileTime.from(Instant.now().minus(Duration.ofDays(2))));
 
-            Workspace.open(workspace.root());
+            reopen(workspace.root());
 
             assertThat(abandoned).doesNotExist();
         }
@@ -190,7 +208,7 @@ class WorkspaceTest {
             Files.setLastModifiedTime(abandoned,
                     FileTime.from(Instant.now().minus(Duration.ofDays(2))));
 
-            Workspace.open(workspace.root());
+            reopen(workspace.root());
 
             assertThat(inFlight).exists();
             assertThat(abandoned).doesNotExist();
@@ -212,7 +230,7 @@ class WorkspaceTest {
                 return;
             }
 
-            assertThat(Workspace.open(workspace.root()).readDescriptor().sourceFileName())
+            assertThat(reopen(workspace.root()).readDescriptor().sourceFileName())
                     .isEqualTo("song.mp3");
         }
     }

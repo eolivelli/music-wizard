@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.core.workspace;
 
+import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -44,7 +45,7 @@ final class StagingCleanupProcess {
         String mode = args[0];
         Path root = Path.of(args[1]);
         Path source = Path.of(args[2]);
-        Workspace workspace = Workspace.create(root, source);
+        Workspace workspace = Workspace.create(root, source, ConfigLoader.withoutGlobalConfig());
         StageCache.Key key = StageCache.Key.forStage("stems");
 
         switch (mode) {
