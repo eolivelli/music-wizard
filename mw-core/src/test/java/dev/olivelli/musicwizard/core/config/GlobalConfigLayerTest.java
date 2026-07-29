@@ -23,8 +23,11 @@ import static org.junit.jupiter.api.Assumptions.abort;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig.NotationConfig;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -44,10 +47,13 @@ import org.junit.jupiter.api.parallel.ResourceLock;
  * README's own two-line example got {@code WorkspaceTest} failing on
  * {@code paperSize}, with nothing pointing at their own config and CI green.
  *
- * <p>The class holds a resource lock because one test writes at the location
- * the environment names, which is process-wide however isolated each test's
- * {@code @TempDir} is. That is the same shape of hazard as #36, and the lock is
- * this class paying its own way rather than a fix for it.
+ * <p>Three of its tests write at the location the environment names, which no
+ * {@code @TempDir} isolates. That location has two scopes and needs two locks:
+ * the class-level {@code @ResourceLock} for other threads in this JVM, and a
+ * {@link java.nio.channels.FileLock} for other JVMs sharing this module's
+ * {@code target/}, since {@code XDG_CONFIG_HOME} is per module rather than per
+ * process. Same shape of hazard as #36; both locks are this class paying its
+ * own way rather than a fix for it.
  */
 @ResourceLock(GlobalConfigLayerTest.GLOBAL_CONFIG_ENVIRONMENT)
 class GlobalConfigLayerTest {
@@ -296,16 +302,50 @@ class GlobalConfigLayerTest {
         private void withGlobalConfigInTheEnvironment(String yaml, ThrowingBody body)
                 throws IOException {
             Path file = disposableEnvironmentConfigFile();
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, yaml);
-            try {
+            holdingTheEnvironmentLock(() -> {
+                Files.createDirectories(file.getParent());
+                Files.writeString(file, yaml);
+                try {
+                    body.run();
+                } finally {
+                    Files.deleteIfExists(file);
+                    // Directories too: leaving them behind would mean a later
+                    // run could not tell a stale config from a fresh one.
+                    deleteIfEmpty(file.getParent());
+                    deleteIfEmpty(file.getParent().getParent());
+                }
+            });
+        }
+
+        /**
+         * Runs {@code body} with exclusive use of the environment's config
+         * location, against every other JVM sharing this module's
+         * {@code target/} as well as against every other thread in this one.
+         *
+         * <p>Two locks are needed because the location has two scopes and the
+         * class-level {@code @ResourceLock} only covers the narrower one.
+         * {@code XDG_CONFIG_HOME} is {@code ${project.build.directory}}-derived
+         * — one path per <i>module</i>, not per JVM — so two {@code mvn}
+         * invocations in the same checkout plant and delete in each other's
+         * windows. That is not theoretical: review round 2 measured it failing
+         * 7 of 12 concurrent JVMs once round 1 took the number of plant/delete
+         * windows from one to three, against 0 of 12 before. A {@link FileLock}
+         * is held by the JVM rather than the thread, which is exactly the
+         * complement of what {@code @ResourceLock} gives, so the pair covers
+         * both and neither covers both alone.
+         *
+         * <p>The lock file sits beside {@code no-global-config} rather than
+         * inside it, since that directory is what the callers delete.
+         */
+        private void holdingTheEnvironmentLock(ThrowingBody body) throws IOException {
+            Path lockFile = buildDirectory().resolve("global-config-environment.lock");
+            Files.createDirectories(lockFile.getParent());
+            try (FileChannel channel = FileChannel.open(lockFile,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    // Blocking rather than tryLock: a contended run must be
+                    // slow, not skipped. A skipped test reports as a pass.
+                    FileLock ignored = channel.lock()) {
                 body.run();
-            } finally {
-                Files.deleteIfExists(file);
-                // Directories too: leaving them behind would mean a later run
-                // could not tell a stale config from a fresh one.
-                deleteIfEmpty(file.getParent());
-                deleteIfEmpty(file.getParent().getParent());
             }
         }
 
@@ -327,24 +367,31 @@ class GlobalConfigLayerTest {
          * issue is about — someone with a valid config and a build that has
          * stopped neutralising it — which is the population that otherwise gets
          * no signal at all.
+         *
+         * <p>Takes the environment lock even though it only reads: the tests
+         * above plant at the very location it asserts is absent, and without
+         * the lock a concurrent JVM's plant reads here as a real global config.
+         * Round 2 saw exactly that, once in twelve.
          */
         @Test
         @DisplayName("the test JVM must not be able to see a real global config")
-        void theTestJvmSeesNoGlobalConfig() {
+        void theTestJvmSeesNoGlobalConfig() throws IOException {
             Path file = ConfigLoader.globalConfigFile();
 
-            assertThat(file)
-                    .withFailMessage("""
-                            This test JVM can read a global config at %s, so any \
-                            test that builds an effective config is reading it \
-                            too and the suite depends on this machine (#133). \
-                            If that path is under target/, a run died between \
-                            planting and removing one, and deleting it is enough. \
-                            Otherwise the build's XDG_CONFIG_HOME is not reaching \
-                            this JVM: the parent pom points it under target/ for \
-                            surefire and failsafe, and an IDE needs the same \
-                            setting in its run configuration.""", file)
-                    .doesNotExist();
+            holdingTheEnvironmentLock(() ->
+                    assertThat(file)
+                            .withFailMessage("""
+                                    This test JVM can read a global config at %s, \
+                                    so any test that builds an effective config is \
+                                    reading it too and the suite depends on this \
+                                    machine (#133). If that path is under target/, \
+                                    a run died between planting and removing one, \
+                                    and deleting it is enough. Otherwise the \
+                                    build's XDG_CONFIG_HOME is not reaching this \
+                                    JVM: the parent pom points it under target/ for \
+                                    surefire and failsafe, and an IDE needs the \
+                                    same setting in its run configuration.""", file)
+                            .doesNotExist());
         }
 
         /**
@@ -360,15 +407,24 @@ class GlobalConfigLayerTest {
          */
         private Path disposableEnvironmentConfigFile() {
             Path file = ConfigLoader.globalConfigFile();
-            Path buildDirectory = Path.of(
-                            System.getProperty("basedir", System.getProperty("user.dir")))
-                    .resolve("target").toAbsolutePath().normalize();
+            Path buildDirectory = buildDirectory();
             if (!file.toAbsolutePath().normalize().startsWith(buildDirectory)) {
                 abort("XDG_CONFIG_HOME does not point under " + buildDirectory
                         + " (it resolves to " + file + "), so this test will not write there."
                         + " The build sets it in the parent pom; see #133.");
             }
             return file;
+        }
+
+        /**
+         * This module's {@code target/}. Resolved without the abort guard, so
+         * the environment lock can be taken even in the state the guard exists
+         * to refuse — {@code theTestJvmSeesNoGlobalConfig} must fail there,
+         * not abort.
+         */
+        private Path buildDirectory() {
+            return Path.of(System.getProperty("basedir", System.getProperty("user.dir")))
+                    .resolve("target").toAbsolutePath().normalize();
         }
     }
 }

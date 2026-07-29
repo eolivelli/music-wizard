@@ -96,9 +96,10 @@ public final class ConfigLoader {
      * {@code $XDG_CONFIG_HOME/music-wizard/config.yaml} or
      * {@code ~/.config/music-wizard/config.yaml}.
      *
-     * <p>This and {@link #globalConfigDirectory()} are the only places that
-     * resolve the <i>global config location</i> from the environment, so a test
-     * calling either gets whatever config the machine happens to carry. They
+     * <p>This, {@link #globalConfigDirectory()} and {@link #globalConfigFile()}
+     * are the only places that resolve the <i>global config location</i> from
+     * the environment, so a test calling any of them gets whatever config the
+     * machine happens to carry. They
      * are not the only environment reads in the class: {@link #findLilyPond}
      * consults {@code PATH} and {@link #searchPrefixes} the home directory, for
      * a different question — where a binary is, not what the user configured.
