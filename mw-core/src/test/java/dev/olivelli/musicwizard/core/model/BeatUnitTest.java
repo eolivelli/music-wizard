@@ -437,6 +437,29 @@ class BeatUnitTest {
             return new TempoMap(built, List.of(new TempoMap.MeterChange(0, timeSignature)));
         }
 
+        /**
+         * The same map with every segment's provenance dropped.
+         *
+         * <p>The oracle above is the pre-change implementation kept verbatim, so
+         * its segments carry {@link Provenance#UNKNOWN} and the current ones do
+         * not. What this test is for is the <em>arithmetic</em>: that a
+         * quarter-beat meter still produces the same doubles, bit for bit. So
+         * the label is set aside here rather than copied into the oracle, which
+         * would have made a mislabelling look like unchanged arithmetic. The
+         * labels themselves are asserted in {@code ProvenanceTest}.
+         *
+         * <p>Rebuilt through the constructor, so the doubles are the identical
+         * values and not rounded copies of them.
+         */
+        private TempoMap withoutProvenance(TempoMap map) {
+            return new TempoMap(
+                    map.segments().stream()
+                            .map(s -> new TempoMap.TempoSegment(
+                                    s.startBeat(), s.startSeconds(), s.beatsPerMinute()))
+                            .toList(),
+                    map.meterChanges());
+        }
+
         @Test
         @DisplayName("every quarter-beat meter builds the map it built before")
         void quarterBeatMetersAreBitForBitIdentical() {
@@ -454,7 +477,7 @@ class BeatUnitTest {
                 for (List<Double> grid : grids) {
                     // Record equality on doubles is bitwise, so this is the strict
                     // comparison it needs to be and not a tolerance.
-                    assertThat(TempoMap.fromBeatTimes(grid, meter))
+                    assertThat(withoutProvenance(TempoMap.fromBeatTimes(grid, meter)))
                             .as("meter %s on grid %s", meter, grid)
                             .isEqualTo(asBefore(grid, meter));
                     checked++;

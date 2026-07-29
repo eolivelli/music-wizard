@@ -27,6 +27,7 @@ import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -329,15 +330,22 @@ public final class MidiTranscriber {
             }
             tempi.put(tick, 60_000_000.0 / microsecondsPerQuarter);
         });
+        // Whether the opening tempo is the file's or ours is decided here and
+        // recorded on the segment, because it cannot be recovered afterwards:
+        // 120 substituted for a file that declares nothing is the same number as
+        // 120 the file declares. #117 had to hedge its output for exactly this,
+        // and #119 is the request to carry it.
+        Provenance openingProvenance = Provenance.DECLARED;
         if (!tempi.containsKey(0L)) {
             tempi.put(0L, DEFAULT_TEMPO_BPM);
+            openingProvenance = Provenance.ASSUMED;
         }
 
         List<TempoMap.TempoSegment> segments = new ArrayList<>(tempi.size());
         double previousBeat = 0;
         double previousSeconds = 0;
         double previousTempo = tempi.get(0L);
-        segments.add(new TempoMap.TempoSegment(0, 0, previousTempo));
+        segments.add(new TempoMap.TempoSegment(0, 0, previousTempo, openingProvenance));
         for (Map.Entry<Long, Double> entry : tempi.tailMap(0L, false).entrySet()) {
             double beat = entry.getKey() / (double) ticksPerQuarter;
             double seconds = previousSeconds + (beat - previousBeat) * (60.0 / previousTempo);
@@ -367,7 +375,8 @@ public final class MidiTranscriber {
                         + " that is indistinguishable in time from the previous one");
                 continue;
             }
-            segments.add(new TempoMap.TempoSegment(beat, seconds, entry.getValue()));
+            segments.add(new TempoMap.TempoSegment(
+                    beat, seconds, entry.getValue(), Provenance.DECLARED));
             previousBeat = beat;
             previousSeconds = seconds;
             previousTempo = entry.getValue();

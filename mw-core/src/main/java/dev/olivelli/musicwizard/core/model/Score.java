@@ -214,23 +214,26 @@ public record Score(
      * <p>The order is:
      *
      * <ol>
-     *   <li><b>A map that states one tempo wins</b>, taken to mean a tempo
-     *       somebody supplied rather than one measured, because a supplied tempo
-     *       is a correction of the tracked one and ignoring it ignores the
-     *       instruction. "States one tempo" means every segment from the first
-     *       tracked beat onwards carries the same figure; a lead-in segment ahead
-     *       of that beat is exempt, because an anchored constant map spends it
-     *       stretching the pickup onto the first tracked pulse and its tempo is
-     *       an artefact of where that pulse fell rather than a claim about the
-     *       music.
-     *       <p>The shape is a <em>proxy</em> for provenance, not proof of it:
-     *       {@link TempoMap#fromBeatTimes} emits one segment per beat interval,
-     *       so it too states one tempo when the beats are perfectly regular, or
-     *       when there are only two of them. Both cases are harmless, because the
-     *       figure the map then states is the one the grid's median would report.
-     *       It stops being harmless if a caller uses the explicit-pulse overload,
-     *       where the two would differ. Carrying provenance rather than inferring
-     *       it is #73.
+     *   <li><b>A supplied tempo wins.</b> A tempo somebody typed is a correction
+     *       of the tracked one, and a correction that loses to the value it
+     *       corrects is not a correction. Which segments are supplied is read
+     *       from {@link TempoMap.TempoSegment#provenance()} rather than inferred
+     *       from the map's shape -- the whole point of #120. The lead-in of an
+     *       anchored override is {@link Provenance#DERIVED}, so it is skipped
+     *       because it says it is an artefact, not because it happens to sit
+     *       before the grid's first beat.
+     *       <p>Where several segments are supplied and disagree, no single
+     *       figure was supplied, and the map itself is the instruction:
+     *       {@link TempoMap#averageTempoIgnoringLeadIn(double)} answers instead.
+     *       Falling through to the beat grid there would answer a correction
+     *       with the thing being corrected, and the plain average would fold in
+     *       an anchoring lead-in the user did not ask for.
+     *   <li><b>Otherwise, for a map that records no provenance at all, the old
+     *       shape proxy.</b> A map that states one tempo from the first tracked
+     *       beat onwards is taken to be a correction. This is a guess, and it is
+     *       kept only for values that predate the field -- a {@code score.json}
+     *       written by an earlier build, or a map assembled by a caller that did
+     *       not say. For anything a current producer builds it never runs.
      *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
      *       one dropped beat does not skew it. Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
@@ -239,26 +242,89 @@ public record Score(
      *       -- 122 BPM for a 120 BPM source on this project's own fixture. That
      *       distortion is in the map itself and is not fixed here; see #69.
      *   <li><b>Otherwise the map's duration-weighted average</b>, which is all
-     *       that is left.
+     *       that is left -- taken over the segments that describe the music,
+     *       skipping a lead-in the map labels as an artefact of anchoring. See
+     *       {@link TempoMap#averageTempoIgnoringLeadIn(double)}: a clip that
+     *       tracks one lone beat is the reachable case, since its grid is too
+     *       short for a median and its map is a lead-in plus one segment.
      * </ol>
+     *
+     * <p>A {@link Provenance#DECLARED} map -- one imported from a MIDI file --
+     * deliberately does <em>not</em> short-circuit to its own opening tempo. A
+     * file that changes tempo states no single figure, and the weighted average
+     * is the honest summary of one that does. Since such a score carries no beat
+     * grid today (#98), the answer is the same either way -- but when #98 gives
+     * it a derived grid, a grid derived from the file must not be allowed to
+     * overrule the file, and this rule will need revisiting there rather than
+     * in the importer.
      *
      * <p>In quarter notes per minute, like every other tempo in the model. For
      * the figure a musician counts, pass it through
      * {@link TimeSignature#countedTempo(double)}.
      */
     public double estimatedTempo() {
-        double stated = statedConstantTempo();
-        if (!Double.isNaN(stated)) {
-            return stated;
+        double candidate = Double.NaN;
+        boolean anySupplied = false;
+        boolean suppliedAgree = true;
+        for (TempoMap.TempoSegment segment : tempoMap.segments()) {
+            if (segment.provenance() != Provenance.SUPPLIED) {
+                continue;
+            }
+            if (!anySupplied) {
+                anySupplied = true;
+                candidate = segment.beatsPerMinute();
+            } else if (segment.beatsPerMinute() != candidate) {
+                suppliedAgree = false;
+            }
+        }
+        if (anySupplied) {
+            // Disagreeing corrections state no single tempo, but they are still
+            // corrections: the map summarises itself rather than deferring to
+            // the grid, which is the evidence they were issued against.
+            return suppliedAgree
+                    ? candidate
+                    : tempoMap.averageTempoIgnoringLeadIn(durationSeconds);
+        }
+        if (recordsNoProvenance()) {
+            double stated = statedConstantTempo();
+            if (!Double.isNaN(stated)) {
+                return stated;
+            }
         }
         if (beatGrid.isPresent() && beatGrid.get().size() >= 2) {
             return beatGrid.get().medianTempo(tempoMap.initialTimeSignature());
         }
-        return tempoMap.averageTempo(durationSeconds);
+        return tempoMap.averageTempoIgnoringLeadIn(durationSeconds);
+    }
+
+    /**
+     * Whether no segment in the map says where its tempo came from.
+     *
+     * <p>The gate on the shape proxy. One recorded label is enough to retire it
+     * for the whole map: a producer that labelled anything has said more than
+     * the guess can, and applying the guess to the segments it did not label
+     * would mix an answer from evidence with an answer from shape.
+     */
+    private boolean recordsNoProvenance() {
+        for (TempoMap.TempoSegment segment : tempoMap.segments()) {
+            if (segment.provenance() != Provenance.UNKNOWN) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
      * The one tempo the map states, or {@code NaN} when it states none.
+     *
+     * <p><b>A proxy for provenance, kept only for maps that carry none.</b> It
+     * was the whole rule before #120 and is now the fallback for a score file
+     * written before segments recorded their origin. Two things it gets wrong
+     * and reading the label does not: a supplied map whose score carries no beat
+     * grid, where there is nothing to identify the lead-in against and this
+     * gives up; and a measured map that happens to state one tempo, which this
+     * reads as a correction. Neither is reachable for a map a current producer
+     * built, because such a map is never all-{@code UNKNOWN}.
      *
      * <p>A single-segment map states its only tempo. A longer one states a tempo
      * when every segment from the first tracked beat onwards agrees. Only a
