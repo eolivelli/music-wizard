@@ -174,13 +174,21 @@ import java.util.regex.Pattern;
  * {@code \include "part.ily"} reports {@code part.ily:1:42: warning: ...},
  * naming the included file and not the one handed over.
  *
+ * <p>The reported column is a <em>column</em> and not a character offset, so a
+ * tab advances to the next eight-column stop. Measured: a line of 41 characters
+ * holding three tabs is reported at column 52. Widths are compared as printed
+ * for that reason — a reader counting characters would see 41 against 51, fail
+ * to recognise a perfectly ordinary echo, and report its text as a second
+ * failure.
+ *
  * <p><b>What it still does not close</b>, measured rather than assumed: where
  * LilyPond cannot reproduce that layout, the pair is not recognised and an echo
- * whose text is diagnostic-shaped is still counted. It truncates the echo of a
- * very long source line, and it counts a tab as advancing to the next
- * eight-column stop. Neither is reachable from what this project emits —
- * {@link ChordChart} writes no {@code |} at all and {@link StaffNotation} puts
- * each bar on its own short, tab-free line — and #169 tracks the remainder.
+ * whose text is diagnostic-shaped is still counted. The case measured is a very
+ * long source line, whose echo LilyPond truncates — 989 characters printed for a
+ * column of 2842 — after which the layout no longer describes what was written.
+ * Not reachable from what this project emits: {@link ChordChart} writes no
+ * {@code |} at all, and {@link StaffNotation} puts each bar on its own short
+ * line. #169 tracks the remainder.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
@@ -295,18 +303,21 @@ final class LilyPondComplaints {
      * wrongly is the only way to lose a real diagnostic, and the class javadoc
      * records why that needs a coincidence rather than a change of format.
      *
-     * <p>The first line's width is compared with {@code <=} rather than {@code =}
-     * because a trailing space is the easiest thing in the world for a capture
-     * path to eat — a Java text block strips them silently, which is how review
-     * round 4 found this project's own fixture off by one — and being lenient
-     * here can only decline to report, never invent.
+     * <p>Both comparisons are exact, and the first is <em>not</em> forgiving
+     * about trailing space even though a trailing space is the easiest thing in
+     * the world for a capture path to eat — a Java text block strips them
+     * silently, which is how review round 4 found this project's own fixture off
+     * by one. Being forgiving there would be leniency in the direction that
+     * skips more, and skipping is the only thing here that can lose a
+     * diagnostic. Exact means that a path which ate the space stops recognising
+     * echoes and over-reports, which is the failure this class prefers.
      */
     private static boolean isEchoOf(List<String> lines, int first, int column) {
         if (first + 1 >= lines.size() || column < 1) {
             return false;
         }
         int upToColumn = column - 1;
-        return printedWidth(lines.get(first).stripTrailing()) <= upToColumn
+        return printedWidth(lines.get(first)) == upToColumn
                 && leadingSpaces(lines.get(first + 1)) == upToColumn;
     }
 

@@ -278,9 +278,13 @@ class LilyPondRendererTest {
                 while (indent < fromColumn.length() && fromColumn.charAt(indent) == ' ') {
                     indent++;
                 }
-                assertThat(beforeColumn.length())
+                int printed = 0;
+                for (int c = 0; c < beforeColumn.length(); c++) {
+                    printed = beforeColumn.charAt(c) == '\t' ? (printed / 8 + 1) * 8 : printed + 1;
+                }
+                assertThat(printed)
                         .as("fixture is not real output: line after a column-%d diagnostic"
-                                + " should be %d wide%n[%s]", column, column - 1, beforeColumn)
+                                + " should print %d wide%n[%s]", column, column - 1, beforeColumn)
                         .isEqualTo(column - 1);
                 assertThat(indent)
                         .as("fixture is not real output: the second echo line after a column-%d"
@@ -424,6 +428,28 @@ class LilyPondRendererTest {
                     Success: compilation successfully completed
                     """).failedBarChecks())
                     .as("was [3/4, 9/9\"] until the echo was recognised by its layout")
+                    .containsExactly("3/4");
+        }
+
+        @Test
+        @DisplayName("is recognised when the source line holds tabs, which LilyPond counts as columns")
+        void aTabbedSourceLineIsStillRecognisedAsAnEcho() {
+            // LilyPond reports a *column*, not a character offset, and it counts
+            // a tab as advancing to the next eight-column stop. Real 2.26.0
+            // output: the line before the column is 41 characters holding three
+            // tabs, and the diagnostic says column 52 -- so a reader comparing
+            // characters would see 41 against 51, decline to recognise the echo,
+            // and report the phrase in the trailing comment as a second failure.
+            //
+            // Round 4's sweep found this untested: with the width comparison
+            // loose, counting a tab as one column changed no result. It is exact
+            // now, so the expansion is load-bearing and this fixture proves it.
+            assertThat(engraverSaid("""
+                    tabs.ly:2:52: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4\tc4\tc4\tc4\s
+                                                                       | c4 c4 c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
                     .containsExactly("3/4");
         }
 
