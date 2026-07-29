@@ -698,14 +698,26 @@ class LilyPondRendererTest {
                     .as("round 6: the first skipped line needs only the width")
                     .containsExactly("3/4");
             // Second line. Here the indentation is what has to match, which
-            // needs either a column of 1 -- where an echo's first half is an
-            // empty line, so a blank line stands in for it -- or a file name
-            // that begins with whitespace, which LilyPond prints verbatim.
+            // needs a file name that begins with whitespace, since LilyPond
+            // prints it verbatim.
+            //
+            // Column 1 used to be the other way in, and is not any more: an
+            // indent of zero is satisfied by *any* unindented line, so column 1
+            // matched a blank line and the next real diagnostic and swallowed
+            // it. A skip now needs a column of 2 or more. Round 7's generator
+            // showed that essentially all the loss lived there -- with echoes
+            // absent or malformed at random it failed within 500 trials, always
+            // on this shape, and passes with the column floor in place. The cost
+            // is that a genuine column-1 echo is no longer recognised and its
+            // text may be over-reported, which is the direction this class
+            // prefers, and a bar check at column 1 means the bar line is the
+            // first thing on its source line -- which is not how anything here
+            // emits one.
             assertThat(said("p.ly:1:1: warning: bar check failed at: 3/4\n"
                     + "\n"
                     + "p.ly:2:20: warning: bar check failed at: 7/8\n").failedBarChecks())
-                    .as("round 5: column 1, so the blank line reads as the first half")
-                    .containsExactly("3/4");
+                    .as("column 1 no longer skips at all, so nothing is swallowed")
+                    .containsExactly("3/4", "7/8");
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
                     + "xxx\n"
                     + "   spaced.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
@@ -719,6 +731,62 @@ class LilyPondRendererTest {
                     + swallowed + "\n").failedBarChecks())
                     .as("with a real echo in the way, the second diagnostic survives")
                     .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("over-reports a genuine column-1 echo, which is what the column floor costs")
+        void aColumnOneEchoIsNoLongerRecognised() {
+            // The price of the column floor, paid deliberately and measured
+            // rather than assumed. At column 1 the echo's first half is an empty
+            // line and its second is unindented, so "indented by column - 1" is
+            // satisfied by any unindented line at all -- which is how a blank
+            // line and the next real diagnostic came to be read as an echo and
+            // swallowed. Refusing to skip below column 2 closes that, and the
+            // cost is here: a real column-1 echo is no longer recognised, so
+            // diagnostic-shaped text in it is reported.
+            //
+            // Real 2.26.0 output, and an over-report is the direction this class
+            // prefers. Not reachable from what this project emits either: a bar
+            // check at column 1 means the bar line is the first thing on its
+            // source line, and StaffNotation writes it at the end of one.
+            assertThat(engraverSaid("""
+                    col1.ly:3:1: warning: bar check failed at: 3/4
+
+                    | c1 | } } % a:1:2: warning: bar check failed at: 9/9
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .as("known over-report, and the reason the column floor is affordable")
+                    .containsExactly("3/4", "9/9");
+        }
+
+        @Test
+        @DisplayName("is not lost to an echo that was present but not recognised")
+        void anUnrecognisedEchoCannotEatTheNextDiagnostic() {
+            // Round 7, and the reason the residual's precondition had to become
+            // "no echo *this parser recognises*" rather than "no echo". An echo
+            // LilyPond truncates (#169) is present but fails the layout test, so
+            // it is read as a diagnostic in its own right -- the accepted
+            // over-report -- and its fabricated column then drove a skip that
+            // swallowed the *next* real diagnostic. An over-report chaining into
+            // a loss, which is the one thing this design says cannot happen.
+            //
+            // Closed by not letting a line inside an expected-but-missing echo
+            // trigger a skip of its own. That can only ever skip less, so it
+            // costs nothing: the fabricated moment is still reported.
+            assertThat(said("chords.ly:1:20: warning: bar check failed at: 3/4\n"
+                    + "xxxxx % a:1:1: warning: bar check failed at: 9/9\n"
+                    + "\n"
+                    + "chords.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .as("the 7/8 was lost and the fabricated 9/9 put in its place")
+                    .containsExactly("3/4", "9/9", "7/8");
+            // The same with a fabricated column that is not 1, so this cannot be
+            // passing by refusing column 1 alone.
+            assertThat(said("chords.ly:1:20: warning: bar check failed at: 3/4\n"
+                    + "xxxxx % a:1:6: warning: bar check failed at: 9/9\n"
+                    + "xxxxx\n"
+                    + "     chords.ly:2:30: warning: bar check failed at: 7/8\n")
+                    .failedBarChecks())
+                    .containsExactly("3/4", "9/9", "7/8");
         }
 
         @Test
@@ -757,13 +825,35 @@ class LilyPondRendererTest {
                     String tail = random.nextInt(3) == 0
                             ? " % a:1:2: warning: bar check failed at: 9/9"
                             : " | c4 c4";
-                    output.append("x".repeat(column - 1)).append('\n');
-                    output.append(" ".repeat(column - 1)).append("| rest").append(tail)
-                            .append('\n');
+                    // The echo is well formed only most of the time. Round 7
+                    // found the first version of this generator degenerate:
+                    // every echo matched, so the skip fired every time, "nothing
+                    // was lost" was entailed by the population rather than
+                    // measured from it, and the whole test could not tell the
+                    // shipped design from "always skip two lines" -- which has
+                    // an unbounded residual. It now emits truncated echoes, and
+                    // echoes of one line and of none, so the layout test says no
+                    // as often as yes and the skip has somewhere to go wrong.
+                    int shape = random.nextInt(6);
+                    int width = shape == 0
+                            ? Math.max(0, column - 1 - (1 + random.nextInt(4)))
+                            : column - 1;
+                    if (shape != 4) {
+                        output.append("x".repeat(width)).append(shape == 0 ? tail : "")
+                                .append('\n');
+                    }
+                    if (shape != 4 && shape != 5) {
+                        output.append(" ".repeat(width)).append("| rest")
+                                .append(shape == 0 ? "" : tail).append('\n');
+                    }
                 }
+                // Containment, not equality: a truncated or absent echo is
+                // over-reported on purpose, and that is the documented
+                // direction. What must never happen is a real moment going
+                // missing.
                 assertThat(said(output.toString()).failedBarChecks())
                         .as("trial %d%n%s", trial, output)
-                        .isEqualTo(expected);
+                        .containsAll(expected);
             }
         }
 

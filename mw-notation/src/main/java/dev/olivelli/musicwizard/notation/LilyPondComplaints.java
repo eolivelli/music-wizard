@@ -131,11 +131,16 @@ import java.util.regex.Pattern;
  * they are that shape</em>. Anything else — one echo line, none, a truncated one
  * — fails the test and is not skipped.
  *
- * <p><b>That asymmetry is the whole design.</b> The layout test can only
- * <em>suppress</em> a match, never admit one, so every way it can be wrong lands
- * on the behaviour this class had before it: over-reporting. It cannot go blind
- * the way a test on the shape of a line can, which is why this is a change of
- * layer rather than a fourth round of tightening the regex.
+ * <p><b>That asymmetry is most of the design.</b> The layout test can only
+ * <em>suppress</em> a match, never admit one, so a LilyPond that echoes
+ * differently, or not at all, lands on the behaviour this class had before it:
+ * over-reporting. That is why this is a change of layer rather than a fourth
+ * round of tightening the regex.
+ *
+ * <p>It is <em>most</em> and not all, because suppression is not free: skipping
+ * is the one thing here that can lose a real diagnostic, and review round 7
+ * found an over-report chaining into exactly that. The two guards below are what
+ * make the asymmetry hold rather than nearly hold, and neither is decoration.
  *
  * <p>Two other ways of writing it were tried and rejected, and are named so
  * nobody reaches for them. Skipping a fixed number of lines under-reports the
@@ -156,9 +161,25 @@ import java.util.regex.Pattern;
  * whose text is diagnostic-shaped is still counted. The case measured is a very
  * long source line, whose echo LilyPond truncates — 989 characters printed for a
  * column of 2842 — after which the layout no longer describes what was written.
- * Not reachable from what this project emits: {@link ChordChart} writes no
+ * A genuine column-1 echo is the other, by the floor described below. Not
+ * reachable from what this project emits: {@link ChordChart} writes no
  * {@code |} at all, and {@link StaffNotation} puts each bar on its own short
- * line. #169 tracks the remainder.
+ * line, ending in the bar check rather than starting with it. #169 tracks the
+ * remainder.
+ *
+ * <p><b>An unrecognised echo used to be worse than an over-report.</b> Read as a
+ * diagnostic in its own right, its fabricated column then drove a skip of its
+ * own, and that skip could swallow the <em>next</em> real diagnostic — an
+ * over-report chaining into a loss, which is the one thing this design says
+ * cannot happen. So a line inside a region where an echo was due and was not
+ * found is still read, but may not trigger a skip. It can only ever skip less.
+ *
+ * <p><b>And a skip needs a column of 2 or more.</b> At column 1 "indented by
+ * {@code C - 1} spaces" is satisfied by any unindented line whatsoever, so a
+ * blank line followed by a real diagnostic read as an echo and swallowed it.
+ * Round 7's generator found essentially all of the remaining loss living there.
+ * The floor costs a genuine column-1 echo, whose text is then over-reported —
+ * measured, and the direction this class prefers.
  *
  * <p>The location is deliberately loose — {@code anything:line[:column]: },
  * optional — and each part of that is a measured decision rather than a guess:
@@ -175,12 +196,18 @@ import java.util.regex.Pattern;
  *     checking silently.</li>
  * </ul>
  *
- * <p><b>The one way this could go blind</b> is a future LilyPond that appends
- * anything after the moment, because the closing anchor would stop matching.
- * Accepted on likelihood: the moment is the last token of the format string in
- * LilyPond's own source — {@code strings} on the 2.26.0 binary gives
- * {@code bar check failed at: %s} — so text after it would be a deliberate
- * change rather than drift.
+ * <p><b>Rewording the message blinds this, and there is more than one way to do
+ * it.</b> Measured against the shipped pattern, all of these read as nothing at
+ * all: a trailing context note ({@code … at: 3/4 (Staff)}), a location moved
+ * after the {@code warning:}, a bare {@code lilypond: warning:} prefix, a column
+ * range ({@code 5:17-19}), and a third rewording of the phrase itself
+ * ({@code failed at moment:}) — #145 was the second.
+ *
+ * <p>Accepted on likelihood, and on the shape of the string rather than on a
+ * hope: the moment is the last token of the format string in LilyPond's own
+ * source — {@code strings} on the 2.26.0 binary gives
+ * {@code bar check failed at: %s} — so any of those would be a deliberate change
+ * rather than drift.
  *
  * <p><b>Accepted on likelihood alone, and not because anything would notice.</b>
  * An earlier version of this paragraph said {@code mw-it} engraves deliberately
@@ -318,14 +345,29 @@ final class LilyPondComplaints {
         // rewrite rather than by anything LilyPond does. It emits none of them;
         // the point is that not emitting them is not this class's to rely on.
         List<String> lines = List.of(LINE_BREAK.split(lilypondOutput, -1));
+        // The last line of a region where an echo was due and was not found.
+        // Lines inside it are still read -- that is the over-report this class
+        // accepts -- but they may not trigger an echo skip of their own, because
+        // they are the likeliest lines in the whole output not to be diagnostics
+        // at all. Without this, an echo LilyPond had truncated was read as a
+        // diagnostic and its fabricated column then swallowed the *next* real
+        // one: an over-report chaining into a loss, which is the one thing this
+        // design says cannot happen. Review round 7.
+        int suspectUntil = -1;
         for (int i = 0; i < lines.size(); i++) {
             Matcher matcher = FAILED_BAR_CHECK.matcher(lines.get(i));
             if (!matcher.matches()) {
                 continue;
             }
             moments.add(matcher.group(MOMENT));
-            if (isEchoOf(lines, i + 1, columnOf(matcher))) {
+            if (i <= suspectUntil) {
+                continue;
+            }
+            int column = columnOf(matcher);
+            if (isEchoOf(lines, i + 1, column)) {
                 i += 2;
+            } else if (column >= 1) {
+                suspectUntil = i + 2;
             }
         }
         return List.copyOf(moments);
@@ -351,7 +393,7 @@ final class LilyPondComplaints {
      * echoes and over-reports, which is the failure this class prefers.
      */
     private static boolean isEchoOf(List<String> lines, int first, int column) {
-        if (first + 1 >= lines.size() || column < 1) {
+        if (first + 1 >= lines.size() || column < 2) {
             return false;
         }
         int upToColumn = column - 1;
