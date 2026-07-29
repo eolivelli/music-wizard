@@ -13,11 +13,20 @@
   <artifactId>mw-it</artifactId>
   <name>Music Wizard :: Integration Tests</name>
   <description>
-    Slow, externally-dependent tests: model downloads, LilyPond invocation and
-    the MIDI to audio to Score ground-truth loop. Only run under -Pintegration,
-    with one exception: a test that reads LilyPond's diagnostics without running
-    it is named *Test rather than *IT, so surefire runs it in the default build.
-    See LilyPondComplaintsTest, which explains why that one belongs there.
+    Tests that span modules. Mostly the slow, externally-dependent ones -- model
+    downloads, LilyPond invocation, the MIDI to audio to Score ground-truth loop
+    -- which are named *IT and only run under -Pintegration.
+
+    Two are neither slow nor externally dependent and are named *Test, so
+    surefire runs them in the default build. MidiRoundTripTest exports a Score
+    through mw-notation and reads it back through mw-transcribe, which needs no
+    audio, no model and no binary; it is here because neither of those modules
+    may depend on the other -- mw-transcribe pulls in mw-ml, which the notation
+    layer is not allowed to see -- and this is the module that already depends
+    on both. LilyPondComplaintsTest reads LilyPond's diagnostics without running
+    it, and explains there why it belongs here.
+
+    `mvn verify` stays fast, offline and binary-free either way.
   </description>
 
   <properties>

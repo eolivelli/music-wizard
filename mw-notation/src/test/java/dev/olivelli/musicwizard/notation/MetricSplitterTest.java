@@ -73,7 +73,7 @@ class MetricSplitterTest {
     })
     @DisplayName("common time splits the way a reader expects")
     void commonTime(double from, double to, String expected) {
-        assertThat(MetricSplitter.split(TimeSignature.FOUR_FOUR, from, to))
+        assertThat(splitTokens(TimeSignature.FOUR_FOUR, from, to))
                 .containsExactly(expected.split(","));
     }
 
@@ -97,7 +97,7 @@ class MetricSplitterTest {
     })
     @DisplayName("compound time keeps its two groups of three visible")
     void sixEight(double from, double to, String expected) {
-        assertThat(MetricSplitter.split(TimeSignature.SIX_EIGHT, from, to))
+        assertThat(splitTokens(TimeSignature.SIX_EIGHT, from, to))
                 .containsExactly(expected.split(","));
     }
 
@@ -106,8 +106,8 @@ class MetricSplitterTest {
     void threeFourAndSixEightDisagreeOnTheSameLength() {
         // Both bars hold three quarter beats. Only the grouping differs, and it
         // is the reason both meters exist.
-        assertThat(MetricSplitter.split(TimeSignature.THREE_FOUR, 0, 2)).containsExactly("2");
-        assertThat(MetricSplitter.split(TimeSignature.SIX_EIGHT, 0, 2)).containsExactly("4.", "8");
+        assertThat(splitTokens(TimeSignature.THREE_FOUR, 0, 2)).containsExactly("2");
+        assertThat(splitTokens(TimeSignature.SIX_EIGHT, 0, 2)).containsExactly("4.", "8");
     }
 
     @ParameterizedTest
@@ -150,7 +150,7 @@ class MetricSplitterTest {
         String[] parts = meter.split("/");
         TimeSignature signature =
                 new TimeSignature(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
-        assertThat(MetricSplitter.split(signature, from, to))
+        assertThat(splitTokens(signature, from, to))
                 .containsExactly(expected.split(","));
     }
 
@@ -182,7 +182,7 @@ class MetricSplitterTest {
         String[] parts = meter.split("/");
         TimeSignature signature =
                 new TimeSignature(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
-        assertThat(MetricSplitter.split(signature, from, to))
+        assertThat(splitTokens(signature, from, to))
                 .containsExactly(expected.split(","));
     }
 
@@ -190,31 +190,31 @@ class MetricSplitterTest {
     @DisplayName("a bar longer than a whole note ties rather than reaching for a breve")
     void irregularBars() {
         // Five quarters: a whole note and a quarter, not five tied quarters.
-        assertThat(MetricSplitter.split(FIVE_FOUR, 0, 5)).containsExactly("1", "4");
+        assertThat(splitTokens(FIVE_FOUR, 0, 5)).containsExactly("1", "4");
         // Seven eighths: a dotted half and an eighth, not seven tied eighths.
-        assertThat(MetricSplitter.split(SEVEN_EIGHT, 0, 3.5)).containsExactly("2.", "8");
+        assertThat(splitTokens(SEVEN_EIGHT, 0, 3.5)).containsExactly("2.", "8");
         // Twelve eighths are six quarters, which is a dotted whole note -- the
         // one bar length longer than a whole note that a single value reaches.
-        assertThat(MetricSplitter.split(TWELVE_EIGHT, 0, 6)).containsExactly("1.");
+        assertThat(splitTokens(TWELVE_EIGHT, 0, 6)).containsExactly("1.");
         // One beat short of it is not, and cuts at the middle of the bar.
-        assertThat(MetricSplitter.split(TWELVE_EIGHT, 0, 4.5)).containsExactly("2.", "4.");
+        assertThat(splitTokens(TWELVE_EIGHT, 0, 4.5)).containsExactly("2.", "4.");
     }
 
     @Test
     @DisplayName("a span that leaves the bar is a bug in the caller, not a long note")
     void rejectsSpansOutsideTheBar() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> MetricSplitter.split(TimeSignature.FOUR_FOUR, 0, 5))
+                .isThrownBy(() -> splitTokens(TimeSignature.FOUR_FOUR, 0, 5))
                 .withMessageContaining("leaves a 4/4 bar");
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> MetricSplitter.split(TimeSignature.FOUR_FOUR, -1, 2));
+                .isThrownBy(() -> splitTokens(TimeSignature.FOUR_FOUR, -1, 2));
     }
 
     @Test
     @DisplayName("a span off the grid is refused rather than rounded into the next note")
     void rejectsSpansOffTheGrid() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> MetricSplitter.split(TimeSignature.FOUR_FOUR, 0, 1.0 / 3))
+                .isThrownBy(() -> splitTokens(TimeSignature.FOUR_FOUR, 0, 1.0 / 3))
                 .withMessageContaining("whole number of 1/64");
     }
 
@@ -317,7 +317,7 @@ class MetricSplitterTest {
      */
     private static long checkSpan(TimeSignature meter, long from, long to) {
         long beat = units(meter.beatUnitQuarters());
-        List<String> values = MetricSplitter.split(meter, from * GRID, to * GRID);
+        List<String> values = splitTokens(meter, from * GRID, to * GRID);
 
         // A bar that does not fill its meter is the failure this whole class
         // exists to prevent, and LilyPond engraves one without complaint.
@@ -439,4 +439,19 @@ class MetricSplitterTest {
                 .isEqualTo(MAX_NUMERATOR * (Integer.numberOfTrailingZeros(MAX_DENOMINATOR) + 1));
     }
 
+
+    /**
+     * The split as LilyPond duration tokens.
+     *
+     * <p>{@link MetricSplitter} answers in {@link NoteValue}s, which is what
+     * lets one splitter serve both emitters; these assertions were written in
+     * LilyPond's spelling and are kept in it, because {@code 4.} is what a
+     * reader of this file can check against a score and {@code NoteValue[4,
+     * dotted]} is not.
+     */
+    private static List<String> splitTokens(TimeSignature meter, double from, double to) {
+        return MetricSplitter.split(meter, from, to).stream()
+                .map(NoteValue::lilyPondToken)
+                .toList();
+    }
 }

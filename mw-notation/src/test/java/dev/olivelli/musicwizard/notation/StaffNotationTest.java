@@ -249,40 +249,14 @@ class StaffNotationTest {
     @Test
     @DisplayName("a bar the quantizer put on a triplet grid is bracketed, and only where it needs it")
     void tripletEighths() {
-        List<Note> notes = new ArrayList<>();
-        // Bar 1: plain eighths, so the bracketed bars have something to be read
-        // against.
-        String[] scale = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"};
-        for (int i = 0; i < 8; i++) {
-            notes.add(note(i * 0.5, 0.5, scale[i]));
-        }
-        // Bar 2: four beats of triplet eighths, which is the case #92 is about.
-        String[] run = {"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "D5", "C5"};
-        for (int i = 0; i < 12; i++) {
-            notes.add(note(4 + thirds(i), thirds(1), run[i]));
-        }
-        // Bar 3: the same grid, subdivided in only two of its four beats. The
-        // other two must come out as plain quarters -- a bracket says a beat was
-        // divided in three, and printing one round a beat that was not is as
-        // wrong as leaving it off the beat that was.
-        notes.add(note(8, thirds(1), "C4"));
-        notes.add(note(8 + thirds(1), thirds(2), "D4"));
-        notes.add(note(9, 1 + thirds(1), "E4"));
-        notes.add(note(10 + thirds(1), thirds(2), "F4"));
-        notes.add(note(11, 1, "G4"));
-        // Bar 4: a whole note on the same grid, which needs no bracket at all.
-        notes.add(note(12, 4, "C4"));
-
-        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN);
-        Score score = score(TimeSignature.FOUR_FOUR, 120, voice)
-                .withKeys(List.of(key("C4", Mode.MAJOR)))
-                .withMetadata("Triplet Practice", "Anonymous");
-        QuantizedScore plan = quantized(score, GridResolution.HALF_BEAT,
-                GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT);
-
-        String source = StaffNotation.toLilyPond(plan, voice);
+        // The notes are in Fixtures because MusicXmlExportTest engraves the
+        // same four bars, and round 2 of review found a copy of them there that
+        // had already been allowed to drift. One fixture, two emitters.
+        Fixtures.Quantized fixture = Fixtures.tripletPractice();
+        String source = StaffNotation.toLilyPond(fixture.plan(), fixture.voice());
         assertThat(source).contains(
                 "\\tuplet 3/2 { c'8 d'4 } e'4~ \\tuplet 3/2 { e'8 f'4 } g'4 |");
+
         assertGolden("triplet-eighths", source);
     }
 
@@ -564,10 +538,10 @@ class StaffNotationTest {
         // sixteen, having survived nine rounds. It is the argument for the
         // number, so it is checked rather than asserted: one bar of 4/4 at 120
         // quarter-note BPM lasts two seconds.
-        double hours = StaffNotation.MAX_BARS * 4 / 120.0 / 60.0;
+        double hours = StaffLayout.MAX_BARS * 4 / 120.0 / 60.0;
         assertThat(hours)
                 .as("the ceiling is %d bars, which is %.1f hours of 4/4 at 120 BPM",
-                        StaffNotation.MAX_BARS, hours)
+                        StaffLayout.MAX_BARS, hours)
                 .isBetween(2.0, 2.5);
     }
 

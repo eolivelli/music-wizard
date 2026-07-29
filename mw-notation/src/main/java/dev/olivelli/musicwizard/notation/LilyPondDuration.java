@@ -63,14 +63,29 @@ final class LilyPondDuration {
      * @param quarters length in quarter-note beats
      */
     static Optional<String> of(double quarters) {
+        return valueOf(quarters).map(NoteValue::lilyPondToken);
+    }
+
+    /**
+     * The note value of a length, or empty when no single value has that length.
+     *
+     * <p>The format-independent form of {@link #of}, and the one every emitter
+     * but the LilyPond one wants: a {@link NoteValue} is a note head and a dot
+     * count, which MusicXML spells as two elements and LilyPond as one token.
+     * Both spellings therefore rest on the same decision about which symbol a
+     * length is, rather than on two conversions that could differ.
+     *
+     * @param quarters length in quarter-note beats
+     */
+    static Optional<NoteValue> valueOf(double quarters) {
         if (!Double.isFinite(quarters) || quarters <= 0) {
             return Optional.empty();
         }
-        Optional<String> plain = denominatorOf(quarters).map(String::valueOf);
+        Optional<Integer> plain = denominatorOf(quarters);
         if (plain.isPresent()) {
-            return plain;
+            return plain.map(d -> new NoteValue(d, false));
         }
-        return denominatorOf(quarters / DOTTED).map(d -> d + ".");
+        return denominatorOf(quarters / DOTTED).map(d -> new NoteValue(d, true));
     }
 
     /**
@@ -116,10 +131,26 @@ final class LilyPondDuration {
      *         {@link #SHORTEST_QUARTERS}, since no duration can then express it
      */
     static String scaled(double quarters) {
-        Optional<String> single = of(quarters);
-        if (single.isPresent()) {
-            return single.get();
-        }
+        long[] fraction = wholeNoteFraction(quarters);
+        return scaled(fraction[0], fraction[1]);
+    }
+
+    /**
+     * A length in quarter beats as an exact fraction of a whole note, as
+     * {@code {numerator, denominator}}.
+     *
+     * <p>The format-independent half of {@link #scaled(double)}. A pickup bar is
+     * the case: LilyPond needs it as a {@code \partial} duration and MusicXML
+     * needs only to know the bar is short, so the length is computed once here
+     * and spelled by whichever emitter wants it spelled. Kept as a fraction
+     * rather than a double because the tuplet case genuinely cannot be a double
+     * — see {@link TupletBar#lengthToBarLine} — and one return type for both
+     * keeps the two pickup paths from diverging.
+     *
+     * @throws IllegalArgumentException if the length is not a whole number of
+     *         {@link #SHORTEST_QUARTERS}, since no duration can then express it
+     */
+    static long[] wholeNoteFraction(double quarters) {
         double units = quarters / SHORTEST_QUARTERS;
         long wholeUnits = Math.round(units);
         if (!Double.isFinite(quarters) || quarters <= 0 || wholeUnits != units) {
@@ -127,7 +158,7 @@ final class LilyPondDuration {
                     "length " + quarters + " quarter beats is not a whole number of 1/"
                             + SHORTEST_DENOMINATOR + " notes and cannot be written as a duration");
         }
-        return scaled(wholeUnits, SHORTEST_DENOMINATOR);
+        return new long[] {wholeUnits, SHORTEST_DENOMINATOR};
     }
 
     /**
@@ -138,7 +169,7 @@ final class LilyPondDuration {
      * {@code 1*1/6} and is nothing else. A double cannot be asked that question
      * — a third of a beat is not representable and the fraction that produced it
      * is not recoverable from it — so the caller passes the fraction it already
-     * has. See {@link TupletBar#scaledLengthToBarLine}.
+     * has. See {@link TupletBar#lengthToBarLine}.
      *
      * @param numerator   whole notes, as a fraction's numerator
      * @param denominator that fraction's denominator, positive
