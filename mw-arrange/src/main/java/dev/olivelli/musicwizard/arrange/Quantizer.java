@@ -257,39 +257,64 @@ import java.util.function.ToDoubleFunction;
  * boundaries a half beat apart in a map counting whole ones -- and any producer
  * whose spans are finer than the meter's beat.
  *
- * <p><b>What the all-or-nothing costs is not rare, and three earlier drafts of
- * this paragraph said it was.</b> They argued that a collapse is never
- * <em>isolated</em>, because both estimators emit spans of at least one counted
- * beat. That is the wrong unit: {@code ChordEstimator} cuts its spans at
- * <em>tracked</em> beat times, and a supplied {@code --tempo} replaces the
- * tracked tempo while leaving the tracked beats alone (see
- * {@code AudioTranscriber}). So the spans are one tracked beat while the counted
- * beat is the supplied one, and any supplied tempo <em>below</em> the tracked
- * one makes every span a shade short.
+ * <p><b>How often the all-or-nothing is paid: the mechanism, and no bound.</b>
+ * Four drafts of this paragraph each bounded the reachability and each was
+ * refuted by running it -- "never isolated", "only a hand-built score", "one
+ * hundred per cent below the tracked pulse and zero above it", and a rate of
+ * {@code 1 - supplied/tracked}. They were not wrong at the edges; they were
+ * wrong about which cases exist. So this states the mechanism, lists what has
+ * actually been measured, and claims no bound at all.
  *
- * <p>The exposure that follows is one-sided and it is a rate rather than a
- * corner. Measured on 200 estimator-shaped spans cut at a tracked 120:
+ * <p>The mechanism is exact and small: a chord collapses when both its
+ * boundaries round to the same counted beat, which happens when the span is
+ * shorter than <em>the counted beat it is measured against</em>, and at some
+ * phases when it is a shade shorter than that beat rather than much shorter. A
+ * span becomes short by being cut against one ruler and measured against
+ * another. Everything below is a way for those two rulers to differ.
  *
- * <pre>
- * --tempo 121, 124, 130, 150, 240   all 200 placed
- * --tempo 119, 116, 110, 100        none placed; the progression is withdrawn
- * </pre>
+ * <ul>
+ *   <li><b>Audio, no override: not reached.</b> The map is built by
+ *       {@code TempoMap.fromBeatTimes} over the same beats the spans were cut
+ *       at, so the two rulers are the same one. Measured across meters, rubato
+ *       amplitudes and a non-zero lead-in: nothing collapses.
+ *   <li><b>Audio, {@code --tempo} below the tracked pulse: reached, commonly.</b>
+ *       {@code AudioTranscriber} replaces the tracked tempo and keeps the tracked
+ *       beats, so spans stay one tracked beat while the counted beat grows. On a
+ *       constant tracked 120, a <b>one-BPM</b> correction collapses two spans in
+ *       two hundred and withdraws all two hundred.
+ *   <li><b>Audio, {@code --tempo} above the tracked pulse: also reached, once
+ *       the pulse drifts.</b> This is the one an earlier draft called safe. It is
+ *       safe only when the tracked pulse is exactly constant, because
+ *       {@code fromBeatTimes} fits a segment per beat interval and "the tracked
+ *       pulse" is then not a number: the comparison is against each span's own
+ *       interval, and a correction above the median is below plenty of them.
+ *       Over 200 drifting pulses with the user correcting strictly <em>upward</em>
+ *       to the next whole BPM: <b>121 of 200 charts withdrawn at 0.5% drift per
+ *       beat, 185 at 1%, 190 at 1.5%</b>.
+ *   <li><b>MIDI, no override at all: reached.</b> {@code --tempo} is ignored on
+ *       this path, so nothing the user does is involved.
+ *       {@code SymbolicChordEstimator} truncates its final span to the sounding
+ *       length, so a piece whose music does not end on a counted beat emits one
+ *       final sub-beat span; if the harmony changes onto it, it is its own run
+ *       and it collapses. Measured through the estimator's own entry point, with
+ *       eight beats of C and a G on the tail: a tail of 0.5 beats or more is
+ *       placed, and <b>0.4, 0.25 and 0.1 withdraw the whole progression</b>.
+ * </ul>
  *
- * <p>Above the tracked pulse a span is longer than a counted beat and nothing
- * collapses. Below it, the collapse rate per span is about
- * {@code 1 - supplied/tracked}, so it is a near-certainty over the length of a
- * chart: <b>a one-BPM downward correction collapses two spans in two hundred and
- * withdraws all two hundred</b>. Correcting the tempo by hand is the
- * highest-value action a user of this tool has, and this is what it costs on the
- * commonest correction there is. Nothing here is a hand-built score.
+ * <p>What the rate is, nobody here has established. It is not
+ * {@code 1 - supplied/tracked}: that figure is per <em>tracked beat</em> and so
+ * applies only to spans one tracked beat long. Measured at
+ * {@code --tempo 100} against a tracked 120, one-beat spans collapse at 16.6%
+ * and two-beat spans at <b>zero</b> -- a progression whose chords last two beats
+ * pays nothing for a twenty-BPM correction. Exposure therefore scales with how
+ * many one-beat spans a chart has, and one of them withdraws all the others.
  *
- * <p>That is the strongest argument against this decision and it is stronger
- * than the fixture below, which is kept because it shows the shape at the layer
- * a user reads. Both are latent while nothing calls this pass, and the ordering
- * that follows is worth stating: <b>#173 should land before the quantizer is
- * wired into the pipeline</b>. Per-chord placement leaves the two short spans in
- * seconds and the other 198 on the beat axis, which is the outcome neither
- * available answer gives.
+ * <p>The ordering that follows from all of this is the useful part: <b>#173
+ * should land before this pass is wired into the pipeline</b>. Per-chord
+ * placement leaves the short spans in seconds and the rest on the beat axis,
+ * which is the outcome neither answer available here gives. Everything above is
+ * latent while nothing calls this pass, which is exactly why there is time to do
+ * it in that order.
  *
  * <p>The fixture, at the layer a user reads. Four beat-aligned chords at 120 BPM
  * with one passing chord a tenth of a second long --
@@ -458,12 +483,12 @@ public final class Quantizer {
      *
      * <ul>
      *   <li>From {@link #inSecondsOnly(Section)} or {@link #inSecondsOnly(Key)}
-     *       it reaches {@link Score} and fails loudly --
+     *       it reaches {@link Score} and fails loudly, on a
+     *       {@code NullPointerException}:
+     *       {@code everyKindOfSpanSurvivesInItsOwnNumber} errors for either,
      *       {@code anUnplaceableSectionIsNotDeleted} and
-     *       {@code everyKindOfSpanSurvivesInItsOwnNumber} error on a
-     *       {@code NullPointerException}, and so does
      *       {@code aCollapsedSpanDoesNotKeepBeatsFromNowhere} for the section
-     *       one.
+     *       handler, and {@code anUnplaceableKeyIsNotDeleted} for the key one.
      *   <li>From the chord handler it is <b>unobservable</b>: that handler sets
      *       the collapse flag before returning, so {@link #chordsOnGrid}
      *       discards the list it went into. The whole suite passes. The previous

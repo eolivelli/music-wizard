@@ -301,9 +301,14 @@ class SpanQuantizationTest {
             // span a shade short. Two of two hundred then collapse, and all two
             // hundred are withdrawn.
             //
-            // The asymmetry is the informative half: above the tracked pulse a
-            // span is longer than a counted beat and nothing collapses at all,
-            // so the exposure is entirely on downward corrections.
+            // The upward half is pinned too, and it is worth saying what it
+            // does and does not establish: against a pulse that is exactly
+            // constant, a correction above it leaves every span longer than a
+            // counted beat and nothing collapses. That is a fact about this
+            // fixture, not about the pipeline -- on a drifting tracked pulse an
+            // upward correction is below plenty of the individual intervals and
+            // withdraws the chart most of the time. The class javadoc carries
+            // that measurement; this test does not claim it.
             List<Chord> spans = new ArrayList<>();
             double trackedBeat = 60.0 / BPM;
             for (int i = 0; i < 200; i++) {
@@ -315,9 +320,16 @@ class SpanQuantizationTest {
                         TempoMap.constant(supplied, TimeSignature.FOUR_FOUR),
                         spans.toArray(new Chord[0])));
                 assertThat(below.score().chords().chords()).hasSize(200);
-                assertThat(below.score().chords().isQuantized())
-                        .as("%s BPM against a tracked 120 withdraws the progression", supplied)
-                        .isFalse();
+                // Per chord, not through isQuantized(), which is allMatch and
+                // so would be satisfied by one chord of the two hundred losing
+                // its beats. The claim is that none of them keeps any. Written
+                // the weak way first, in the same commit that removed exactly
+                // that weakness from aForcedTempoDoesNotRenameTheProgression --
+                // a fix that reached one reader of the verdict and not the
+                // other, which is this project's named dominant failure mode.
+                assertThat(below.score().chords().chords())
+                        .as("%s BPM against a tracked 120 withdraws every chord", supplied)
+                        .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
             }
             for (double supplied : List.of(121.0, 130.0, 240.0)) {
                 QuantizedScore above = Quantizer.quantize(chordsOnly(
@@ -520,8 +532,9 @@ class SpanQuantizationTest {
                             // both refuse an end at or before the start, so a
                             // chord violating this cannot be built to be
                             // asserted on. Mutating the collapse guard to
-                            // "end < start" produces seventeen errors from
-                            // Chord, none of them here.
+                            // "end < start" errors out of Chord, Section and
+                            // Key rather than failing here -- the count moves
+                            // with the suite, so it is not written down.
                             assertThat(to).as("%s, positive length", tempoMap)
                                     .isGreaterThan(from);
                             previousEnd = to;
