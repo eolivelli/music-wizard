@@ -311,16 +311,59 @@ class LilyPondRendererTest {
         }
 
         @Test
-        @DisplayName("is not read out of a line of source LilyPond quoted back")
-        void aQuotedSourceLineIsNotAComplaint() {
-            // LilyPond echoes the offending line after each diagnostic, so the
-            // phrase can appear in the output as *content* -- in a comment in
-            // the file being engraved, or in its name. The "warning:" prefix is
-            // what holds those out, and it is why the prefix is matched rather
-            // than the phrase alone.
+        @DisplayName("is not read out of the source line LilyPond echoes back")
+        void anEchoedSourceLineIsNotASecondComplaint() {
+            // Round 1 of review found the previous version of this claiming more
+            // than it tested, and the claim was false. LilyPond echoes the
+            // offending line after each diagnostic *verbatim and with no prefix
+            // of its own*, so requiring "warning:" does not hold an echo out --
+            // an echo of a line containing the phrase carries the prefix along
+            // with it. Measured on 2.26.0: one real failure, two moments
+            // reported.
+            //
+            // This fixture is that output, byte for byte. The line start is what
+            // separates the two: a diagnostic begins with a location or with
+            // "warning:", an echo begins with the source's own text.
+            assertThat(said("""
+                    echo.ly:2:83: warning: bar check failed at: 3/4
+                    \\score { \\new Staff { \\time 4/4 c4 c4 c4 %{ warning: bar check failed at: 99/9 %}
+                                                                                     | c1 | }
+                    Success: compilation successfully completed
+                    """).failedBarChecks())
+                    .containsExactly("3/4");
+            // And the indented continuation of an echo, which is where a header
+            // string would land -- a title is escaped and quoted, never a line
+            // start, so it cannot pose as a diagnostic.
+            assertThat(said("""
+                    part.ly:3:9: warning: bar check failed at: 1/2
+                      title = "x: warning: bar check failed at: 9/9"
+                    """).failedBarChecks())
+                    .containsExactly("1/2");
+        }
+
+        @Test
+        @DisplayName("is read whatever the location looks like, and with none at all")
+        void theLocationIsNotWhatIsBeingMatchedOn() {
+            // A file name may contain a space -- 2.26.0 prints "my song.ly:2:42:
+            // warning: bar check failed at: 3/4", measured -- so a pattern that
+            // read the location as a run of non-space would go silent on exactly
+            // the input it was written for.
+            assertThat(said("my song.ly:2:42: warning: bar check failed at: 3/4").failedBarChecks())
+                    .containsExactly("3/4");
+            assertThat(said("canción.ly:2:42: warning: bar check failed at: 5/8").failedBarChecks())
+                    .containsExactly("5/8");
+            // And with no location, so that a future LilyPond dropping it makes
+            // this over-report rather than go blind. Blind is the failure this
+            // whole class exists to avoid: it looks exactly like correct output.
+            assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .containsExactly("7/8");
+        }
+
+        @Test
+        @DisplayName("is not read out of a file merely named after the phrase")
+        void aNameThatContainsThePhraseIsNotAComplaint() {
             assertThat(said("""
                     Processing `bar check failed at: 3/4.ly'
-                    part.ly:2:3: note: % bar check failed at: 3/4 -- fixed in r12
                     Success: compilation successfully completed
                     """).failedBarChecks())
                     .isEmpty();

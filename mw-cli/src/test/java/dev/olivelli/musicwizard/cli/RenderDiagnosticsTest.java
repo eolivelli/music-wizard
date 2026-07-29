@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -157,8 +158,12 @@ class RenderDiagnosticsTest {
         // The line #156 is about. Before this, the run ended at "Wrote
         // .../chords.pdf" and said nothing more about a page whose music does
         // not match the transcription.
+        //
+        // "check while" rather than "check": round 1 of review found that
+        // contains("1 failed bar check") is satisfied by "1 failed bar checkS",
+        // so the singular branch was pinned by nothing.
         assertThat(render.err())
-                .contains("warning: LilyPond reported 1 failed bar check")
+                .contains("warning: LilyPond reported 1 failed bar check while")
                 .contains("chords.ly")
                 .contains("at 3/4.");
         assertThat(render.err()).contains("does not add up to its time signature");
@@ -166,6 +171,59 @@ class RenderDiagnosticsTest {
         // print the chart itself -- which is exactly the thing someone pipes to
         // a file, and the redirection must not take the warning with it.
         assertThat(render.out()).doesNotContain("failed bar check");
+    }
+
+    @Test
+    @DisplayName("says it after the line saying the PDF was written, not before")
+    void theWarningComesAfterTheFileItIsAbout() throws Exception {
+        assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+
+        // The property the Emitted record exists for, and until round 1 of
+        // review it was held by nothing: the two streams were captured into two
+        // buffers, so moving the warning block back above the file list -- the
+        // exact regression -- left every test green. A warning printed before
+        // "Wrote" reads as the reason a file is missing rather than as a fact
+        // about one that is there.
+        Path workspace = workspaceEngravedBy("ordering", engraverThatComplains(
+                "chords.ly:5:17: warning: bar check failed at: 3/4"));
+
+        CliRunner.Result render = CliRunner.run("render", workspace.toString());
+
+        String transcript = render.transcript();
+        int pdfLine = transcript.indexOf("chords.pdf");
+        int warning = transcript.indexOf("warning: LilyPond reported");
+        assertThat(pdfLine).as("%s", transcript).isNotNegative();
+        assertThat(warning).as("%s", transcript).isNotNegative();
+        assertThat(warning).as("the warning must follow the file it is about%n%s", transcript)
+                .isGreaterThan(pdfLine);
+    }
+
+    @Test
+    @DisplayName("counts the bars in digits every machine reads the same way")
+    void theCountIsNotLocalised() throws Exception {
+        assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
+
+        // Round 1 of review: String.format without a Locale localises %d, so on
+        // an ar_EG machine this sentence read "LilyPond reported ١٠ failed bar
+        // checks" with every other word in English. The same class of defect as
+        // LilyPondRenderer.speakEnglish, one process in, and the reason
+        // StaffNotation's tempo mark already carries Locale.ROOT.
+        String[] ten = new String[10];
+        for (int bar = 0; bar < ten.length; bar++) {
+            ten[bar] = "chords.ly:1:1: warning: bar check failed at: " + (bar + 1) + "/4";
+        }
+        Path workspace = workspaceEngravedBy("arabic-digits", engraverThatComplains(ten));
+
+        Locale original = Locale.getDefault();
+        CliRunner.Result render;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-EG"));
+            render = CliRunner.run("render", workspace.toString());
+        } finally {
+            Locale.setDefault(original);
+        }
+
+        assertThat(render.err()).contains("LilyPond reported 10 failed bar checks while");
     }
 
     @Test
@@ -183,7 +241,7 @@ class RenderDiagnosticsTest {
         CliRunner.Result render = CliRunner.run("render", workspace.toString());
 
         assertThat(render.exitCode()).as(render.all()).isZero();
-        assertThat(render.err()).contains("1 failed bar check").contains("at 7/8.");
+        assertThat(render.err()).contains("1 failed bar check while").contains("at 7/8.");
     }
 
     @Test
@@ -229,7 +287,9 @@ class RenderDiagnosticsTest {
 
         assertThat(render.exitCode()).as(render.all()).isZero();
         assertThat(render.out()).contains("chords.pdf");
-        assertThat(render.err()).doesNotContain("bar check").doesNotContain("bar checks");
+        // "bar check" alone, which subsumes the plural: round 1 of review noted
+        // the second clause could never fail independently.
+        assertThat(render.err()).doesNotContain("bar check");
     }
 
     @Test

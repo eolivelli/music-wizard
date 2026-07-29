@@ -180,16 +180,15 @@ final class RenderCommand implements Callable<Integer> {
      * can be printed <em>after</em> the list of files written. A warning that the
      * PDF's bars do not sum is only useful next to the line saying the PDF was
      * written; printed before it, it reads as a reason the file is missing. That
-     * pairing is what #156 asked for.
+     * pairing is what #156 asked for, and {@code RenderPartsTest}'s
+     * {@code theWarningComesAfterTheFileItIsAbout} is what holds it — round 1 of
+     * review found the ordering untestable through two separate capture buffers,
+     * so moving the block back left every test green.
      *
      * @param files    every file produced, in the order to report them
      * @param warnings complete lines, already worded for a user, no prefix
      */
     private record Emitted(List<Path> files, List<String> warnings) {
-
-        static Emitted of(List<Path> files) {
-            return new Emitted(files, List.of());
-        }
     }
 
     /** How one part is produced, once it is known that it can be. */
@@ -378,24 +377,50 @@ final class RenderCommand implements Callable<Integer> {
             Files.writeString(ly, ChordChart.toLilyPond(score));
             written.add(ly);
 
-            if (lilypond.isPresent()) {
-                LilyPondRenderer.Result result = new LilyPondRenderer(lilypond.get()).render(ly);
-                if (result.succeeded()) {
-                    written.add(result.pdf().orElseThrow());
-                    wrongBars(result, ly).ifPresent(warnings::add);
-                } else {
-                    // Reported, not thrown: the sources are still useful, and
-                    // losing them because the engraver failed would be worse.
-                    System.out.println();
-                    System.out.println("LilyPond could not engrave the chart:");
-                    result.output().lines().limit(10)
-                            .forEach(line -> System.out.println("  " + line));
-                }
-            }
+            Emitted engraved = engrave(lilypond, ly);
+            written.addAll(engraved.files());
+            warnings.addAll(engraved.warnings());
         } catch (IOException e) {
             throw new UncheckedIOException("could not write output", e);
         }
         return new Emitted(written, warnings);
+    }
+
+    /**
+     * Engraves one source and reports both the PDF and anything wrong with it.
+     *
+     * <p>Every emitter goes through here rather than calling
+     * {@link LilyPondRenderer} itself, and that is the point of the method
+     * existing: reading {@link LilyPondRenderer.Result#failedBarChecks()} is not
+     * something a future emitter should have to <em>remember</em> to do. Round 1
+     * of review named it — chords are the only part today, and #8 and #10 add
+     * three more, each of which would otherwise have its own copy of "render,
+     * add the PDF, and also check the bars", with the third copy the one that
+     * forgets. This project's recorded dominant failure mode is a fix that
+     * reaches one caller and misses another; removing the choice is what
+     * {@code Score.estimatedTempo()} came from.
+     *
+     * <p>The failure branch prints where it stands rather than returning a
+     * warning, and deliberately: it is not a warning about a file, it is the
+     * reason there is no file. Its output is LilyPond's own, quoted, and it
+     * belongs next to the engraver line rather than after a list it is not in.
+     */
+    private static Emitted engrave(Optional<Path> lilypond, Path ly) {
+        if (lilypond.isEmpty()) {
+            return new Emitted(List.of(), List.of());
+        }
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond.get()).render(ly);
+        if (!result.succeeded()) {
+            // Reported, not thrown: the sources are still useful, and losing
+            // them because the engraver failed would be worse.
+            System.out.println();
+            System.out.println("LilyPond could not engrave the chart:");
+            result.output().lines().limit(10)
+                    .forEach(line -> System.out.println("  " + line));
+            return new Emitted(List.of(), List.of());
+        }
+        return new Emitted(List.of(result.pdf().orElseThrow()),
+                wrongBars(result, ly).stream().toList());
     }
 
     /** How many failed bar checks are worth naming before the list stops being read. */
@@ -428,6 +453,17 @@ final class RenderCommand implements Callable<Integer> {
      * and a script that chains {@code render} would lose all of them over a
      * defect it cannot act on. It is the same posture a missing LilyPond binary
      * gets: emit what you can, say plainly what is wrong.
+     *
+     * <p><b>The count is how many times LilyPond complained, not how many bars
+     * are wrong, and the wording says so.</b> Round 1 of review measured 2.26.0
+     * on a score with three staves each short by a different amount: one
+     * warning, naming one moment, from the last staff — because {@code
+     * Timing_translator} lives at the {@code Score} level from 2.25.6 and
+     * reports once per context rather than once per failure. So the number is a
+     * floor. Saying "the bar at 3/4 is wrong" would be the overclaim this
+     * project treats as a defect in its own right on a tool whose output is
+     * estimates; "LilyPond reported N, at these moments, check the rest too" is
+     * what the evidence supports.
      */
     private static Optional<String> wrongBars(LilyPondRenderer.Result result, Path ly) {
         List<String> moments = result.failedBarChecks();
@@ -444,12 +480,18 @@ final class RenderCommand implements Callable<Integer> {
         if (moments.size() > MOMENTS_LISTED) {
             named += ", and " + (moments.size() - MOMENTS_LISTED) + " more";
         }
-        return Optional.of(String.format(
+        // Locale.ROOT, for the same reason StaffNotation's tempo mark carries it
+        // and LilyPondRenderer.speakEnglish exists one process out: %d is
+        // localised, so on an ar_EG machine this sentence read "LilyPond
+        // reported ١٠ failed bar checks" with the rest of it in English.
+        return Optional.of(String.format(Locale.ROOT,
                 "LilyPond reported %d failed bar %s while engraving %s, at %s.%n"
                         + "  A bar check fails when a bar does not add up to its time"
-                        + " signature, so the%n"
-                        + "  PDF was written but its music is wrong from that point in the"
-                        + " bar onwards.%n"
+                        + " signature, so the PDF%n"
+                        + "  was written but its music is wrong there. LilyPond may report"
+                        + " only the first%n"
+                        + "  such bar in a part, so treat that as a floor and check the rest"
+                        + " of the page.%n"
                         + "  The .txt and .ly are unaffected. This is a defect in the source"
                         + " this tool%n"
                         + "  emitted rather than in your recording; please report it with %s"

@@ -69,10 +69,29 @@ import java.util.regex.Pattern;
  * failure per context, which is exactly the kind of incidental detail nothing
  * here should depend on.
  *
- * <p>The {@code warning:} prefix is required rather than incidental, and what it
- * keeps out is a <em>quoted line of source</em>: LilyPond echoes the offending
- * line back at you, so a file that merely contains the phrase in a comment does
- * not count as having failed one.
+ * <p><b>The match is anchored to the start of a line, and that is not
+ * cosmetic.</b> LilyPond echoes the offending source line back after each
+ * diagnostic, verbatim and with no prefix of its own — so a {@code warning:}
+ * requirement alone does not hold the echo out, because an echo of a line
+ * containing the phrase satisfies it. Round 1 of review on #156 measured
+ * exactly that against 2.26.0:
+ *
+ * <pre>
+ * echo.ly:2:83: warning: bar check failed at: 3/4
+ * \score { \new Staff { \time 4/4 c4 c4 c4 %{ warning: bar check failed at: 99/9 %}
+ * </pre>
+ *
+ * <p>One real failure, and an unanchored pattern reports two moments. The
+ * echoed line begins with the source's own text, and a diagnostic begins with a
+ * location or with {@code warning:} itself, so the line start is what separates
+ * them.
+ *
+ * <p>The location is matched as {@code anything:line:column: } rather than as a
+ * run of non-space, because a file name may contain a space —
+ * {@code my song.ly:2:42: warning: bar check failed at: 3/4} is what 2.26.0
+ * prints, measured — and a pattern that stopped reading there would go silent on
+ * the exact input it was written for. It is optional for the same reason: a
+ * future LilyPond that drops the location must not make this blind.
  *
  * <p>The prefix is English because {@link LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming it
@@ -93,7 +112,8 @@ final class LilyPondComplaints {
      * because LilyPond has ever varied the case.
      */
     private static final Pattern FAILED_BAR_CHECK = Pattern.compile(
-            "warning: bar ?check failed at: (\\S+)", Pattern.CASE_INSENSITIVE);
+            "(?m)^(?:.*:\\d+:\\d+: )?warning: bar ?check failed at: (\\S+)",
+            Pattern.CASE_INSENSITIVE);
 
     private LilyPondComplaints() {
     }
