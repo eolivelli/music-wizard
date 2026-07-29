@@ -414,10 +414,19 @@ public final class Quantizer {
         T at(T span, double startBeat, double endBeat);
     }
 
-    /** What becomes of a span whose boundaries snapped to the same position. */
+    /**
+     * What becomes of a span whose boundaries snapped to the same position.
+     *
+     * <p>Returning {@code null} leaves the span out of the list being built, and
+     * nothing published ever takes that route: a section or a key keeps its
+     * seconds and comes back, and the chord handler returns {@code null} into a
+     * list {@link #chordsOnGrid} then discards entirely in favour of the
+     * seconds. Worth saying because the signature still permits a discard and
+     * the class claims none happens -- what stops it is the caller, not this.
+     */
     @FunctionalInterface
     private interface Collapsed<T> {
-        /** The span to keep in its place, or {@code null} to drop it. */
+        /** The span to keep in its place, or {@code null} to leave it out. */
         T instead(T span);
     }
 
