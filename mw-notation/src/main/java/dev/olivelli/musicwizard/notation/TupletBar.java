@@ -182,12 +182,16 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
      * <p>Always a single note value. A bracket is printed only where a note
      * boundary falls strictly inside it, so a run inside a printed bracket is
      * shorter than the bracket: one or two steps of a triplet, one of a duplet.
-     * One step is the value itself and two are the value above it, and the
-     * shortest step any legal meter can produce is a 64th — a denominator of 64
-     * gives the smallest counted beat, and the deepest tuplet grid quarters it
-     * in simple time and takes a sixth of it in compound.
-     * {@code TupletBarTest} checks that over every meter and grid, up to the
-     * whole bracket, rather than leaving it as an argument in a comment.
+     * One step is the value itself and two are the value above it.
+     *
+     * <p>The shortest step reaching here is a 64th exactly, and it comes from
+     * {@code SIXTH_BEAT} in a meter over sixteen — not from the denominator-64
+     * meters an earlier version of this paragraph cited, which produce a 256th
+     * and are refused by {@link #of} eight lines above. Round 10 of review
+     * caught that: a true conclusion resting on the arithmetic of cases that
+     * cannot get here. {@code TupletBarTest} checks the conclusion over every
+     * meter and grid, up to the whole bracket, which is why it survived a wrong
+     * justification.
      */
     double writtenLength(int steps) {
         return steps * writtenStep;
