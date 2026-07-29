@@ -168,10 +168,13 @@ public enum Provenance {
      * {@code DERIVED} label is doing exactly its job, and that cell is the only
      * assertion in this module standing between the anchor-skip and a widening
      * of it that would look like an improvement. Losing every label with the
-     * grid is a coincidence: the shape proxy exempts the lead-in positionally,
-     * by the rule spelled out on {@link Score#estimatedTempo()}, so that cell
-     * holds only while the grid's beats still line up with the map's. Move the
-     * grid off its map and it reads the grid's median instead. <b>The table is
+     * grid is a coincidence: the shape proxy -- step two of
+     * {@link Score#estimatedTempo()} -- exempts the lead-in by an exact match
+     * between a segment's start and the grid's first beat, so that cell holds
+     * only while the grid's beats still line up with the map's. Move the grid
+     * off its map and it reads the grid's median instead. Which segment the
+     * match exempts is not restated here; it is stated once, beside the code
+     * that does it, because restating it is how this paragraph got it backwards. <b>The table is
      * for the grid the map was built from</b>, and claims nothing for a grid
      * that has drifted from it.
      *
