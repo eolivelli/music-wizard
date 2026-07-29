@@ -862,6 +862,56 @@ class LilyPondRendererTest {
         }
 
         @Test
+        @DisplayName("suspects a region even for a diagnostic that named no column")
+        void anUnlocatedDiagnosticStillOpensARegion() {
+            // Round 9: the round-8 fix had no regression test at all, and both
+            // halves of it reverted clean with the whole reactor green. This is
+            // the first half. The previous code opened a region only when the
+            // diagnostic named a column, so an unlocated one left its echo free
+            // to skip -- and every test written for that fix opened with a
+            // *located* diagnostic, which the previous code already handled.
+            // The inputs never reached the branch that changed.
+            assertThat(said("warning: bar check failed at: 3/4\n"
+                    + "xxxxx % a:1:6: warning: bar check failed at: 9/9\n"
+                    + "xxxxx\n"
+                    + "     p.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .as("without a region the echo text skips and the 7/8 is lost")
+                    .containsExactly("3/4", "9/9", "7/8");
+            // And the same shape with the echo one line further on, so the
+            // region's reach is what is being tested rather than its existence.
+            assertThat(said("warning: bar check failed at: 3/4\n"
+                    + "xxx\n"
+                    + "   p.ly:9:9: warning: bar check failed at: 9/9\n"
+                    + "zzz\n"
+                    + "p.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
+                    .containsExactly("3/4", "9/9", "7/8");
+        }
+
+        @Test
+        @DisplayName("suspects a region even for a diagnostic already inside one")
+        void aDiagnosticInsideARegionStillOpensItsOwn() {
+            // Round 9, the second half of the same gap. The previous code
+            // skipped straight past a diagnostic sitting inside a region, so it
+            // opened none of its own -- which matters because a truncated echo
+            // on 2.26.0 is *one* line, so a two-line region overshoots it and
+            // the next diagnostic lands inside.
+            //
+            // This shape is inherently two diagnostics deep, and the only
+            // generator that produced multi-diagnostic outputs was rewritten to
+            // one-per-output in the same commit as the fix. The fix and the
+            // deletion of the coverage that could have caught it shipped
+            // together, which is worth more attention than the bug.
+            assertThat(said("p.ly:1:9: warning: bar check failed at: 3/4\n"
+                    + "xx\n"
+                    + "p.ly:1:9: warning: bar check failed at: 5/8\n"
+                    + "yy % e:1:44: warning: bar check failed at: 9/9\n"
+                    + "p.ly:2:4: warning: bar check failed at: 7/8\n"
+                    + " ".repeat(43) + "| rest\n").failedBarChecks())
+                    .as("the nested diagnostic must open a region too, or the 7/8 is lost")
+                    .containsExactly("3/4", "5/8", "9/9", "7/8");
+        }
+
+        @Test
         @DisplayName("recognises an echo at the column the floor is set at")
         void theFloorLetsAColumnTwoEchoThrough()  {
             // The floor is pinned from below by three tests and was pinned from
