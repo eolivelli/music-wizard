@@ -164,11 +164,20 @@ execution and label them `CONFIRMED` or `PLAUSIBLE`.
 
 Writing that pattern down here has not reduced how often it happens — four
 changes in a single night each shipped a first fix that reached one caller and
-missed another, and two used fixtures starting at `t=0.0`, where every tempo
-derivation agrees exactly and so nothing is tested. Both are now **mechanical
-checks the reviewer runs rather than judgement calls**: enumerate every reader
-of the value that changed, and re-run each new test against the code without its
-fix. See `.claude/agents/pr-reviewer.md`.
+missed another. So one thing is now a **mechanical check the reviewer runs
+rather than a judgement call**: enumerate every reader of the value that
+changed. See `.claude/agents/pr-reviewer.md`.
+
+A second check was tried and withdrawn: re-running every new test against the
+code without its fix. It was correct in principle — a fixture starting at
+`t=0.0` tests nothing about tempo, because every derivation agrees at the origin
+— but it cost far more than it returned. Reading the test finds the same thing,
+most reverts only confirmed what the reviewer already believed, and the revert
+itself (`git checkout -- <file>`, which discards *all* uncommitted changes to
+that file) destroyed half-written fixes repeatedly. It is now reserved for
+troubleshooting something genuinely hard to reproduce. Mutation sweeps were
+never required at all; they were a generalisation of that check, and they
+produced more false numbers than findings.
 
 Two further observations from the same night. When a fix needs the same edit in
 a *third* place, the structural change that removes the choice is cheaper than

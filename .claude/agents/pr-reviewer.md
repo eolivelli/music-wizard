@@ -74,12 +74,12 @@ shifts, and this is where reviews most often fail:
   test whose inputs never reach the changed branch passes for an unrelated
   reason and proves nothing — and it will keep passing after the bug returns.
 
-## Two checks to run mechanically, every round
+## The one check to run mechanically, every round
 
-Do not reason about these. Run them. Each has caught real defects on this
-project after a round that reasoned about them and concluded they were fine.
+Do not reason about this one. Run it. It has caught real defects on this project
+after a round that reasoned about it and concluded things were fine.
 
-**1. Enumerate every reader of the value that changed.** Grep for the accessor,
+**Enumerate every reader of the value that changed.** Grep for the accessor,
 the field, the config key — then open each call site and decide, one at a time,
 whether it needs the fix too. Do not stop at the one the bug report named.
 
@@ -94,46 +94,33 @@ NaN guard added at the consumer while the buffer that admitted the NaN kept
 admitting it. When a fix needs the same edit in a third place, stop asking for
 the third edit and ask for the structural change that removes the choice.
 
-**2. Run each new test against the code without its fix.** Revert the source
-hunk, keep the test, confirm it fails, restore. A test that passes both ways is
-not a regression test, however well it reads.
+## Judging a test — by reading it
 
-On this project one author's own regression suite passed 17 of 19 against the
-unfixed code. Two specific traps:
+**Read the test and trace its inputs.** That is normally enough, and it is what
+you should do. Two traps are worth knowing by name, because reading finds them
+and a green build never will:
 
 - **A fixture starting at `t = 0.0` proves nothing about tempo, phase or beat
-  alignment**, because every derivation agrees exactly at the origin. This has
-  now caught three separate changes on three separate issues, including one
-  written by an author who had read the warning.
+  alignment**, because every derivation agrees exactly at the origin.
 - **Asserting on a value the test itself initialised** passes for a reason that
   has nothing to do with the code under review.
 
-**A mutant that fails to compile is not a killed mutant.** A reactor build
-against a stale copy of an upstream module reports a build failure that looks
-exactly like a test failure in the summary; on this project that silently turned
-10 of 25 mutants into false kills. Check that each claimed kill names the test
-that failed, and build with `-am` so siblings come from the source tree.
+**Do not routinely revert the fix and re-run to see whether the test fails.**
+That was briefly required here and it did not earn its cost: the same judgement
+is almost always available by reading, and the revert itself destroyed
+uncommitted work repeatedly. Reach for it only when reading genuinely cannot
+settle the question — a test whose path through the code you cannot follow, or a
+defect that is hard to reproduce at all. When you do, commit first, because
+`git checkout -- <file>` discards *every* uncommitted change to that file and
+not only the one you meant.
 
-**A mutation sweep is a piece of software, and its failures all look like
-results.** This project has now been misled by it four separate ways, each
-producing a confident number that was not measured:
-
-- a stale sibling resolved from a shared repository, so the mutant never built;
-- a stale sibling resolved from the agent's *own* isolated repository, because
-  something was `install`ed into it mid-sweep and the next `mvn -pl` run without
-  `-am` picked it up;
-- `git checkout --` reverting the mutation *and* an uncommitted fix, so the
-  suite then ran against code missing both;
-- a restored source file left with an older mtime than its `.class`, so Maven
-  skipped recompiling and fifteen "kills" ran against unmutated bytes.
-
-And once, three reported *survivors* were the harness silently failing to
-substitute at all — with the substitution asserted, all three died.
-
-So: assert that the mutation is present in the source before running, take
-final numbers from a clean rebuild, and treat a surprising survivor as a
-suspected harness fault before reporting it as a coverage gap. A sweep that
-cannot show its own mutation took effect has measured nothing.
+**Mutation sweeps are optional and are not something to ask an author for.**
+Nobody is expected to run one. If one has been run, treat its output as a claim
+like any other: a sweep is software, and on this project its failures have all
+looked like results — stale sibling artifacts, mutations that silently never
+applied, and restored files whose mtime let Maven skip the recompile so the
+tests ran against unmutated bytes. A kill that does not name the test that
+failed is not a kill.
 
 Review in your own worktree with your own local Maven repository —
 `-Dmaven.repo.local=<your worktree>/.m2` on every invocation — for the same
