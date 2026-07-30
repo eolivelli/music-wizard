@@ -253,7 +253,7 @@ if grep -qF "${FAKE_LETHAL:-__none__}" "$FAKE_CLASS"; then
   </testcase>
   <testcase name="spareIsPositive" classname="fixture.WidgetTest">
     <system-out><![CDATA[a test that logs XML: <failure message="not a real one"/>
-<error>nor this</error>]]></system-out>
+and that logs the string </system-out> too, then <error>nor this</error>]]></system-out>
   </testcase>
 </testsuite>
 XML
@@ -267,7 +267,7 @@ cat >"$FAKE_REPORTS/TEST-fixture.WidgetTest.xml" <<'XML'
   <testcase name="limitIsSeven" classname="fixture.WidgetTest"/>
   <testcase name="spareIsPositive" classname="fixture.WidgetTest">
     <system-out><![CDATA[a test that logs XML: <failure message="not a real one"/>
-<error>nor this</error>]]></system-out>
+and that logs the string </system-out> too, then <error>nor this</error>]]></system-out>
   </testcase>
 </testsuite>
 XML
@@ -333,6 +333,11 @@ test_refuses_when_the_file_to_mutate_is_dirty() {
     fi
     if [ -s "$FAKE_MVN_LOG" ]; then
         fail "maven was invoked despite the refusal"
+    fi
+    # The worktree lock is taken before this check, so a refusal has to give it
+    # back; otherwise every refused run wedges the tree until --recover.
+    if [ -e "$REPO/.mutation-sweep-active" ]; then
+        fail "a refused run left the worktree lock behind"
     fi
 }
 
@@ -812,6 +817,123 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Review findings, round 2. Every one of these was a defect in a round-1 fix.
+# ---------------------------------------------------------------------------
+
+# mutate_by_hand -- leaves the fixture mutated with a backup, the way an
+# interrupted sweep would, but without running one.
+mutate_by_hand() {
+    cp "$FAKE_SRC" "$CASE_DIR/backup.orig"
+    perl -0777 -i -pe 's/LIMIT = 7/LIMIT = 99/' "$FAKE_SRC"
+}
+
+test_a_sentinel_that_cannot_be_read_is_not_a_clean_tree() {
+    setup_case unreadable-sentinel
+    # `sentinel_records` selects the lines it recognises. If a caller treats
+    # "recognised nothing" as "there was nothing", then a sentinel written by a
+    # different version of this file -- or one that cannot be read at all --
+    # makes --recover announce success, delete the evidence and leave the tree
+    # mutated. That is failure mode 1 again, arriving through the recovery path.
+    mutate_by_hand
+    {
+        printf '# mutation sweep from some other version\n'
+        printf '%s\t%s\n' 'fixmod/src/main/java/Widget.java' "$CASE_DIR/backup.orig"
+    } >"$REPO/.mutation-sweep-active"
+
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+
+    assert_status 4 "$STATUS" "sentinel in an unknown format"
+    assert_contains "$OUT" "unrecognised line in the sentinel" "sentinel in an unknown format"
+    assert_not_contains "$OUT" "tree restored" "sentinel in an unknown format"
+    if ! grep -qF 'LIMIT = 99' "$FAKE_SRC"; then
+        fail "the file was restored, so this fixture no longer tests anything"
+    fi
+    if [ ! -f "$REPO/.mutation-sweep-active" ]; then
+        fail "the sentinel was deleted even though nothing was restored"
+    fi
+}
+
+test_a_recycled_pid_does_not_wedge_the_worktree() {
+    setup_case recycled-pid
+    # A sentinel only outlives its process after a kill -9, a crash or a reboot,
+    # which is exactly when its pid is free to be reused. Deciding "a sweep is
+    # running" from `kill -0` alone then refuses both the next sweep *and*
+    # --recover, and the advice is to wait on a stranger's process.
+    mutate_by_hand
+    sleep 300 &
+    local stranger=$!
+    {
+        printf '# mutation sweep 19700101-000000-1 started\n'
+        printf 'run\t19700101-000000-1\t%s\n' "$stranger"
+        printf 'file\t%s\t%s\n' 'fixmod/src/main/java/Widget.java' "$CASE_DIR/backup.orig"
+    } >"$REPO/.mutation-sweep-active"
+
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+    kill "$stranger" 2>/dev/null
+    wait "$stranger" 2>/dev/null
+
+    assert_status 0 "$STATUS" "recovery under a recycled pid"
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "recovery refused because an unrelated process holds the recorded pid"
+    fi
+    if [ -e "$REPO/.mutation-sweep-active" ]; then
+        fail "the sentinel outlived a successful recovery"
+    fi
+}
+
+test_extra_maven_arguments_cannot_override_the_local_repository() {
+    setup_case mvn-arg-override
+    # Maven takes the last -Dmaven.repo.local on the command line, and extra
+    # arguments are appended after the harness's own, so this silently
+    # reinstates failure mode 4 while the harness's log line still shows the
+    # private repository.
+    sweep "${lethal_mutant_args[@]}" --mvn-arg "-Dmaven.repo.local=$HOME/.m2"
+    assert_status 2 "$STATUS" "--mvn-arg overriding the local repository"
+    assert_contains "$OUT" "cannot override" "--mvn-arg overriding the local repository"
+
+    sweep "${lethal_mutant_args[@]}" --mvn-arg "-pl other"
+    assert_status 2 "$STATUS" "--mvn-arg overriding the module list"
+
+    # And the shared repository stays refused however it is spelled.
+    sweep "${lethal_mutant_args[@]}" --maven-repo "$HOME/.m2/."
+    assert_status 2 "$STATUS" "the shared repository under another spelling"
+    assert_contains "$OUT" "shared local repository" "the shared repository under another spelling"
+}
+
+test_a_restore_that_fails_is_loud_and_keeps_the_sentinel() {
+    setup_case failed-restore
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=4
+
+    ( cd "$REPO" && "$HARNESS" --maven-repo "$CASE_DIR/m2" --no-baseline \
+        "${lethal_mutant_args[@]}" >"$CASE_DIR/sweep.out" 2>&1 ) &
+    local pid=$! waited=0
+    while [ "$waited" -lt 100 ] && ! grep -qF 'LIMIT = 99' "$FAKE_SRC" 2>/dev/null; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    # Take the backup away while the build is running: the closest a test can
+    # get to a restore that cannot succeed.
+    rm -rf "$REPO/target/mutation-sweep"
+    wait "$pid" 2>/dev/null
+    local status=$?
+    local out; out=$(cat "$CASE_DIR/sweep.out")
+
+    assert_status 4 "$status" "restore with the backup gone"
+    assert_contains "$out" "THE WORKING TREE IS STILL MUTATED" "restore with the backup gone"
+    if ! grep -qF 'LIMIT = 99' "$FAKE_SRC"; then
+        fail "the fixture was somehow restored, so this test proves nothing"
+    fi
+    if [ ! -f "$REPO/.mutation-sweep-active" ]; then
+        fail "the record of the mutated file was deleted along with the backup"
+    fi
+    # And recovery says so rather than claiming success.
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+    assert_status 4 "$STATUS" "recovery with the backup gone"
+    assert_contains "$OUT" "backup for" "recovery with the backup gone"
+    assert_not_contains "$OUT" "tree restored" "recovery with the backup gone"
+}
+
+# ---------------------------------------------------------------------------
 # The real thing: real Maven, real code, real test.
 # ---------------------------------------------------------------------------
 
@@ -885,6 +1007,10 @@ run_test only_build_output_surefire_directories_are_deleted
 run_test a_second_sweep_in_the_same_worktree_is_refused
 run_test a_path_beginning_with_a_hash_is_still_restored
 run_test the_fixtures_ignore_a_hostile_git_config
+run_test a_sentinel_that_cannot_be_read_is_not_a_clean_tree
+run_test a_recycled_pid_does_not_wedge_the_worktree
+run_test extra_maven_arguments_cannot_override_the_local_repository
+run_test a_restore_that_fails_is_loud_and_keeps_the_sentinel
 run_test a_real_mutant_in_real_code_is_killed
 
 say ""

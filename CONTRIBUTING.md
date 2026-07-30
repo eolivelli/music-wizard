@@ -136,11 +136,13 @@ number on this project, every one of them looking exactly like a result.
 | A substitution that matched nothing was reported as a surviving mutant | Counts occurrences before mutating and after restoring; a miss, or an ambiguous match, is an error |
 | A stale sibling made the mutant fail to *build*, and the summary counted it as killed | Always `-am` and an explicit non-shared `-Dmaven.repo.local`; a kill requires a named failing test in a surefire report from that build |
 
-One thing it does *not* preserve: surefire reports under `target/` are deleted
+One thing it does *not* preserve: surefire reports under `*/target/` are deleted
 before every build, so that any report found afterwards demonstrably came from
 that build rather than from the previous mutant. Nothing outside `*/target/` is
-touched, and only one sweep may run per worktree — two in one tree would read
-each other's reports, and a survivor would come back as a kill with a named
+deleted — the only files the harness writes are the mutants themselves and an
+untracked `.mutation-sweep-active` at the repository root. That file is also the
+worktree lock: a second concurrent sweep is refused, because two in one tree
+read each other's reports and a survivor then comes back as a kill with a named
 test.
 
 Two more things it does that are easy to skip by hand: it runs the suite
