@@ -101,6 +101,7 @@
     <enforcer.version>3.6.3</enforcer.version>
     <jar.plugin.version>3.5.1</jar.plugin.version>
     <shade.plugin.version>3.6.2</shade.plugin.version>
+    <exec.plugin.version>3.5.1</exec.plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -384,6 +385,49 @@
   </build>
 
   <profiles>
+    <!--
+      The mutation sweep harness (tools/mutation-sweep.sh) is the one piece of
+      this build that is not Java, and it is also the piece whose failures look
+      like results: a sweep that reverts an author's uncommitted fix, or counts
+      a build error as a killed mutant, reports a number nobody measured. Its
+      self-test reproduces each of those failures against a throwaway git
+      repository and a stub Maven, so it is fast (about two seconds), offline,
+      and touches nothing outside its own temporary directory, which is why it
+      belongs in `mvn verify` rather than behind -Pintegration. See #177.
+
+      POSIX only, and not inherited: this runs once, from the aggregator, not
+      once per module. Windows has never been exercised here at all (#33).
+    -->
+    <profile>
+      <id>mutation-sweep-selftest</id>
+      <activation>
+        <os><family>unix</family></os>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>${exec.plugin.version}</version>
+            <inherited>false</inherited>
+            <executions>
+              <execution>
+                <id>mutation-sweep-selftest</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>${project.basedir}/tools/mutation-sweep-test.sh</executable>
+                  <workingDirectory>${project.basedir}</workingDirectory>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
     <!--
       Slow tests: model downloads, LilyPond invocation, MIDI->audio->Score
       ground-truth loop. Off by default so `mvn verify` stays fast and offline.
