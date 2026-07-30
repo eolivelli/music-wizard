@@ -150,21 +150,32 @@ llm:
   enabled: true
 ```
 
-Most of this is read, layered, and then read by nothing. What reaches the
-pipeline is `analysis`, apart from `skipSeparation`, and
-`notation.lilypondPath`.
+Much of this is read, layered, and then read by nothing. What reaches the
+pipeline is `analysis`, apart from `skipSeparation`, plus
+`notation.lilypondPath` and `notation.transposeSemitones`.
+
+`transposeSemitones` — and `render --transpose` — moves the chord symbols, the
+printed key and the note spellings together, which is the part that has to be
+right: three semitones up from C major is E flat major written with flats, not D
+sharp major written with sharps ([#129][i129]). The saved transcription stays in
+its own key; only the rendered output moves.
 
 The keys that do nothing divide in two. `analyze` and `render` **warn** about
-`analysis.skipSeparation` and about every `notation` key but `lilypondPath`
-([#129][i129]) — from a flag or from this file — rather than producing the
-default output in silence. All of `arrangement` and `ml` is equally inert, since
-`mw-arrange` and `mw-ml` hold no code, and nothing warns about those: they have
-no flags, and no command to warn from yet ([#144][i144]). The advisor is the
-section below.
+`analysis.skipSeparation`, about `notation.paperSize` ([#180][i180]) and about
+`notation.capo` and `notation.accidentalPreference` ([#181][i181]) — from a flag
+or from this file — rather than producing the default output in silence. All of
+`arrangement` and `ml` is equally inert, since nothing on the CLI path calls
+`mw-arrange`'s quantizer or reaches `mw-ml` at all, and nothing warns about
+those: they have no flags, and no command to warn from yet ([#144][i144]). The
+advisor is the section below.
 
 [i144]: https://github.com/eolivelli/music-wizard/issues/144
 
 [i129]: https://github.com/eolivelli/music-wizard/issues/129
+
+[i180]: https://github.com/eolivelli/music-wizard/issues/180
+
+[i181]: https://github.com/eolivelli/music-wizard/issues/181
 
 
 ## The Claude advisor (optional, and not built yet)

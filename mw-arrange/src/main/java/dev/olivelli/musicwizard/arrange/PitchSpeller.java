@@ -381,8 +381,15 @@ public final class PitchSpeller {
                 Accidental.ofAlteration(alteration), midiPitch);
     }
 
-    /** Position of a written pitch on the line of fifths, C being zero. */
-    private static int fifthsOf(PitchSpelling spelling) {
+    /**
+     * Position of a written pitch on the line of fifths, C being zero.
+     *
+     * <p>Package-private rather than private because {@link Transposer} measures
+     * a piece's region of the line from its chord roots in exactly these units,
+     * and a second copy of {@link #LETTER_FIFTHS} in another class is the kind of
+     * duplicated table that drifts.
+     */
+    static int fifthsOf(PitchSpelling spelling) {
         return LETTER_FIFTHS[spelling.letter().diatonicStep()] + 7 * spelling.accidental().alteration();
     }
 
@@ -395,8 +402,15 @@ public final class PitchSpeller {
         throw new IllegalStateException("not a natural position on the line of fifths: " + naturalFifths);
     }
 
-    /** The accidental, as a semitone alteration, that makes a letter sound as a pitch class. */
-    private static int alterationFor(NoteLetter letter, int pitchClass) {
+    /**
+     * The accidental, as a semitone alteration, that makes a letter sound as a
+     * pitch class.
+     *
+     * <p>Package-private for {@link Transposer}, which asks the same question of
+     * a letter it reached by stepping up the diatonic ladder. The fold below is
+     * the part worth not copying.
+     */
+    static int alterationFor(NoteLetter letter, int pitchClass) {
         int raw = Math.floorMod(pitchClass - letter.naturalPitchClass(), 12);
         // Fold into -5..6 so that a letter a semitone above the target reads as a
         // flat rather than as eleven sharps. Which end keeps the tritone does not

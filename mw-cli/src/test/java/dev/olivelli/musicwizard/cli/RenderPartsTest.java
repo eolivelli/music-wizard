@@ -175,32 +175,51 @@ class RenderPartsTest {
     class InertOptions {
 
         @Test
-        @DisplayName("--transpose and --paper are named rather than silently discarded")
+        @DisplayName("--paper is named rather than silently discarded")
         void areReported() {
             // The worst variant of #82 and the one it did not name: --parts voice
             // writes nothing and says why, while --transpose -2 wrote every file,
-            // exited 0, and handed a singer a chart in the wrong key. Nothing
-            // reads either value (#129).
+            // exited 0, and handed a singer a chart in the wrong key. That half is
+            // now implemented (#129) and is exercised by RenderTransposeTest; the
+            // paper size is still discarded and is #180.
             Path workspace = audioWorkspace("song", fourChords());
 
             CliRunner.Result render = CliRunner.run("render", workspace.toString(),
-                    "--transpose", "-2", "--paper", "letter", "--no-pdf");
+                    "--paper", "letter", "--no-pdf");
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("the transposition, the paper size")
+                    .contains("the paper size")
                     .contains("no effect yet")
-                    .contains("#129");
+                    .contains("#180");
         }
 
         @Test
-        @DisplayName("every notation key but lilypondPath is covered, not only the two with flags")
+        @DisplayName("the transposition is not named any more, because it is honoured")
+        void theImplementedOptionIsNotWarnedAbout() {
+            // A warning that names something the tool now does is as misleading
+            // as one that never appeared: a user who reads it will hand-edit the
+            // chart that was already in the right key. This is the assertion that
+            // fails if the warning outlives the feature.
+            Path workspace = audioWorkspace("song", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--transpose", "-2", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err()).doesNotContain("no effect yet");
+        }
+
+        @Test
+        @DisplayName("every notation key that is still inert is covered, not only the one with a flag")
         void coverTheKeysWithNoFlagOfTheirOwn() {
             // capo and the accidental preference have no command-line flag, so
             // the config file is the only way to ask for them -- and they are as
-            // inert as the two that do. Widened into the warning in round 10 with
+            // inert as --paper is. Widened into the warning in round 10 with
             // no test in either direction, which is how two of the four newly
-            // warned keys went unexercised.
+            // warned keys went unexercised. They are #181, and the capo in
+            // particular is not transposition: it moves the printed symbols while
+            // the sounding pitch stays put.
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
                     new MusicWizardConfig.NotationConfig(null, null, null, 3,
@@ -214,7 +233,7 @@ class RenderPartsTest {
             assertThat(render.err())
                     .contains("the capo")
                     .contains("the accidental preference")
-                    .contains("#129");
+                    .contains("#181");
         }
 
         @Test
@@ -257,7 +276,7 @@ class RenderPartsTest {
             // that merely does not apply to this run; these apply to no run.
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, "letter", -2, null, null),
+                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(
@@ -265,25 +284,24 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("the transposition, the paper size")
+                    .contains("the paper size")
                     .contains("whether set on the command line or in the workspace config")
-                    .contains("#129");
+                    .contains("#180");
         }
 
         @Test
         @DisplayName("and the chart really is unchanged by them, which is why they warn")
         void reallyDoNothing() throws Exception {
-            // The warning is only honest if the claim behind it is true. If
-            // #129 lands and this starts failing, the warning is what to delete.
+            // The warning is only honest if the claim behind it is true. When
+            // #180 lands and this starts failing, the warning is what to delete.
             Path plain = audioWorkspace("plain", fourChords());
             Path shifted = audioWorkspace("shifted", fourChords());
 
             CliRunner.run("render", plain.toString(), "--no-pdf");
-            CliRunner.run("render", shifted.toString(),
-                    "--transpose", "5", "--paper", "letter", "--no-pdf");
+            CliRunner.run("render", shifted.toString(), "--paper", "letter", "--no-pdf");
 
             assertThat(java.nio.file.Files.readString(shifted.resolve("out/chords.ly")))
-                    .as("#129 has landed; delete the warning and this test")
+                    .as("#180 has landed; delete the warning and this test")
                     .isEqualTo(java.nio.file.Files.readString(plain.resolve("out/chords.ly")));
         }
     }
