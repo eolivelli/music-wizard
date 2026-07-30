@@ -427,8 +427,8 @@ public final class PitchSpeller {
      * classes, and it is what puts C flat in the octave above the B it sounds
      * as: C flat 4 sounds as MIDI 59, which is B 3.
      */
-    private static Optional<PitchSpelling> atOctave(NoteLetter letter, Accidental accidental,
-                                                    int midiPitch) {
+    static Optional<PitchSpelling> atOctave(NoteLetter letter, Accidental accidental,
+                                            int midiPitch) {
         int octave = Math.floorDiv(
                 midiPitch - 12 - letter.naturalPitchClass() - accidental.alteration(), 12);
         // The one gate, rather than one per caller. There are three routes to a

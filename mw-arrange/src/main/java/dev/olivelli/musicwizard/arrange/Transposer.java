@@ -26,6 +26,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -47,34 +48,56 @@ import java.util.Optional;
  * musician would accept, because the answer is E flat major. Pitch 61 is both C
  * sharp and D flat and the interval decides which.
  *
- * <p>So the shift is applied as a constant displacement along the <em>line of
+ * <p>So the shift is described as a displacement along the <em>line of
  * fifths</em>. Every written pitch has a position there -- F is -1, C is 0, G is
  * 1, and a sharp is seven steps up -- and adding one number to every position is
  * exactly what transposing by an interval does. Up a perfect fourth is -1 on
  * that line and up an augmented third is +11; both sound five semitones higher,
  * and the first is the one anybody means.
  *
- * <p>Which of them is meant is decided by the key. Of the candidate
- * displacements that sound right -- they differ by twelve, the length of one
- * turn of the circle of fifths -- this takes the one that leaves the target key
- * signature nearest to no accidentals at all. C major up five semitones gives F
+ * <p>Which of them is meant is decided by where the piece already sits on the
+ * line. Of the candidate displacements that sound right -- they differ by
+ * twelve, the length of one turn of the circle of fifths -- this takes the one
+ * that lands nearest the natural end of it. C major up five semitones gives F
  * major, one flat, rather than E sharp major with eleven sharps. Ties go to the
  * flat side, as they do in {@link PitchSpeller}: six semitones up from C major is
  * G flat rather than F sharp.
  *
- * <p>Because one displacement is applied to everything, the printed key
- * signature, the chord symbols and the note spellings cannot come out
- * disagreeing with each other. That is the reason for doing it this way rather
- * than shifting pitches and calling {@link PitchSpeller} on the result: spelling
- * from the new harmony would re-derive each decision independently, and a
- * chromatic note the source spelled deliberately would be re-guessed.
+ * <h2>What is displaced and what is re-derived</h2>
+ *
+ * <p>The two are not the same, and the first round of review on #129 is why.
+ *
+ * <p>A <b>key tonic</b> and a <b>note spelling</b> are displaced: the same number
+ * is added to their position on the line, so the interval between any two of them
+ * is written exactly as it was written before. A tonic comes from a MIDI key
+ * signature and means something; a note spelling comes from {@link PitchSpeller},
+ * which chose it from the chord and the key.
+ *
+ * <p>A <b>chord root</b> is re-derived instead: the sounding root moves, and the
+ * way it is written is decided afresh from the region of the line the piece lands
+ * in. That is because no chord root in this pipeline carries a considered
+ * spelling. {@code ChordEstimator} spells every black key as a sharp from a fixed
+ * table and says in its own javadoc that the key estimator re-spells the
+ * progression afterwards -- and that stage does not exist. {@code
+ * SymbolicChordEstimator} does better but still only chooses all-sharps or
+ * all-flats for the whole piece. Displacing those produced measurably wrong
+ * charts: a I-V-vi-IV in E flat, spelled by the audio path as {@code D# A# Cm G#}
+ * and moved up two, came out as {@code F C Ebbm Bb} -- an E double flat minor
+ * chord on an engraved page, exit 0. Roughly one audio chart in eighteen carried
+ * a double accidental and one in thirteen mixed sharps with flats, against a
+ * baseline of none, because a spelling that carries no intent was being read as
+ * intent.
+ *
+ * <p>Re-deriving costs a deliberately spelled chromatic root, of which this
+ * pipeline produces none: a Neapolitan written D flat in C major would come back
+ * as whatever the region prefers. That is a real loss and it is the smaller one.
  *
  * <h2>What it does not do</h2>
  *
  * <p>Timing, dynamics, lyrics, sections and the tempo map are untouched;
  * transposition is a pitch operation. A capo is <em>not</em> transposition -- it
  * changes the printed symbols while the sounding pitch stays put -- and is not
- * implemented (#129).
+ * implemented (#181).
  */
 public final class Transposer {
 
@@ -93,21 +116,23 @@ public final class Transposer {
     public static final int MAX_SEMITONES = 24;
 
     /**
-     * How much sharper a piece's chord roots sit than its key signature, on the
-     * line of fifths.
+     * Where a key's chord roots sit on the line of fifths, relative to its key
+     * signature.
      *
-     * <p>Only used when key detection has not run and the piece's region of the
-     * line has to be guessed from the symbols. A I-V-vi-IV in C has roots at 0,
-     * 1, 3 and -1, averaging 0.75, over a signature of 0; a ii-V-I in C averages
-     * 1.0 over the same signature. So the roots overstate the signature by about
-     * one fifth. This is the same relation {@code PitchSpeller}'s own
-     * {@code CHORD_ROOT_CENTRE_OFFSET} encodes, measured against a different
-     * origin.
+     * <p>Not the same as {@code PitchSpeller}'s centre, which is where a key's
+     * <em>notes</em> sit -- two fifths above the signature -- and using that one
+     * here spells a Neapolitan in C major as C sharp rather than D flat. Roots
+     * sit lower: a I-V-vi-IV in C is C(0), G(1), A(3), F(-1), averaging 0.75 over
+     * a signature of 0, and the borrowed roots a chart reaches for next are
+     * flatter still.
      *
-     * <p>Approximate on purpose, and it only has to be good enough to pick
-     * between candidates twelve apart.
+     * <p>Checked against the two decisions it actually settles, both in C major:
+     * at 0.75 the flat second comes out D flat (-5, distance 5.75) rather than C
+     * sharp (7, distance 6.25), and the raised fourth comes out F sharp (6,
+     * distance 5.25) rather than G flat (-6, distance 6.75). Both are what a
+     * chart wants. At 2.0 the first is wrong and at 0.0 the second is.
      */
-    private static final double ROOT_SHARPER_THAN_SIGNATURE = 1.0;
+    private static final double ROOT_CENTRE_OFFSET = 0.75;
 
     /** Diatonic steps in a perfect fifth, modulo the octave: C to G is four. */
     private static final int STEPS_PER_FIFTH = 4;
@@ -119,13 +144,45 @@ public final class Transposer {
      * How far either way to look for the displacement, in turns of the circle.
      *
      * <p>Three is generous. The winning displacement is the one putting the
-     * target signature within half a turn of zero, so it is within one turn of
-     * the source signature -- and a signature reaches double figures only for a
-     * key written with double accidentals.
+     * target region within half a turn of natural, so it is within one turn of
+     * the source region -- and a region reaches double figures only for a key
+     * written with double accidentals.
      */
     private static final int TURNS_SEARCHED = 3;
 
+    /**
+     * The band of the line of fifths a written pitch can occupy: F double flat at
+     * -15 through B double sharp at 19.
+     *
+     * <p>Used only as the range to search for a region, since a region outside
+     * the band could not be the home of any writable spelling.
+     */
+    private static final int MIN_FIFTHS = -15;
+    private static final int MAX_FIFTHS = 19;
+
     private Transposer() {
+    }
+
+    /**
+     * A transposed score, and any part the shift could not move.
+     *
+     * <p>The two travel together because a caller has to be able to report the
+     * second. A part is left out rather than half-moved: {@link Note} refuses a
+     * shift that leaves MIDI 0..127, which is the behaviour #57 chose
+     * deliberately, and the alternatives are all worse than a named absence.
+     * Leaving the one note where it was gives a page correct everywhere except
+     * there, which nobody would spot; dropping the note alone gives a melody with
+     * a silent hole in it.
+     *
+     * @param score       the moved score, without the parts named below
+     * @param partsLeftOut complete lines, already worded for a user, no prefix
+     */
+    public record Result(Score score, List<String> partsLeftOut) {
+
+        public Result {
+            Objects.requireNonNull(score, "score");
+            partsLeftOut = List.copyOf(Objects.requireNonNull(partsLeftOut, "partsLeftOut"));
+        }
     }
 
     /**
@@ -137,10 +194,9 @@ public final class Transposer {
      * transcription in the key it was analysed in.
      *
      * @param semitones the shift; zero returns the score unchanged
-     * @throws IllegalArgumentException if the shift exceeds {@link #MAX_SEMITONES},
-     *     or if it would move a note outside MIDI range -- see the note below
+     * @throws IllegalArgumentException if the shift exceeds {@link #MAX_SEMITONES}
      */
-    public static Score transpose(Score score, int semitones) {
+    public static Result transpose(Score score, int semitones) {
         Objects.requireNonNull(score, "score");
         if (semitones < -MAX_SEMITONES || semitones > MAX_SEMITONES) {
             throw new IllegalArgumentException("transposition must be within -"
@@ -148,83 +204,99 @@ public final class Transposer {
         }
         if (semitones == 0) {
             // Not merely an optimisation: a no-op must be exactly a no-op, and
-            // running the machinery below would re-derive every spelling from
-            // the estimated signature and could change one.
-            return score;
+            // running the machinery below would re-derive every chord root from
+            // the estimated region and could change one.
+            return new Result(score, List.of());
         }
-        int fifths = displacement(semitones, sourceSignature(score));
-        Shift shift = new Shift(semitones, fifths);
+        double region = sourceRegion(score);
+        Shift shift = new Shift(semitones, displacement(semitones, region), region);
 
         List<Key> keys = new ArrayList<>(score.keys().size());
         for (Key key : score.keys()) {
-            keys.add(new Key(shift.apply(key.tonic()), key.mode(),
+            keys.add(new Key(shift.displace(key.tonic()), key.mode(),
                     key.startSeconds(), key.endSeconds(),
                     key.startBeat(), key.endBeat(), key.confidence()));
         }
 
         List<Chord> chords = new ArrayList<>(score.chords().size());
         for (Chord chord : score.chords().chords()) {
-            chords.add(new Chord(shift.apply(chord.root()), chord.quality(),
-                    chord.bass().map(shift::apply),
+            if (chord.isNoChord()) {
+                // A rest has no root. Chord.noChord parks a placeholder there,
+                // and moving a placeholder would only invent a fact.
+                chords.add(chord);
+                continue;
+            }
+            chords.add(new Chord(shift.rederive(chord.root()), chord.quality(),
+                    chord.bass().map(shift::rederive),
                     chord.startSeconds(), chord.endSeconds(),
                     chord.startBeat(), chord.endBeat(), chord.confidence()));
         }
 
         List<NoteTrack> tracks = new ArrayList<>(score.tracks().size());
+        List<String> leftOut = new ArrayList<>();
         for (NoteTrack track : score.tracks()) {
-            tracks.add(track.withNotes(transposedNotes(track, shift)));
+            Optional<NoteTrack> moved = transposedTrack(track, shift, leftOut);
+            moved.ifPresent(tracks::add);
         }
 
-        return new Score(score.title(), score.artist(), score.tempoMap(), score.beatGrid(),
-                keys, score.sections(), tracks, score.chords().withChords(chords),
-                score.lyrics(), score.durationSeconds());
+        return new Result(new Score(score.title(), score.artist(), score.tempoMap(),
+                score.beatGrid(), keys, score.sections(), tracks,
+                score.chords().withChords(chords), score.lyrics(), score.durationSeconds()),
+                leftOut);
     }
 
     /**
-     * The notes of one track, moved.
+     * One track, moved, or empty when the shift cannot move all of it.
      *
-     * <p>{@link Note#transposedBy(int)} carries the MIDI range check, which is
-     * the behaviour #57 chose deliberately: a bass part holding a note above
-     * MIDI 115 cannot be moved up an octave, and the model refuses rather than
-     * guessing. The refusal is re-thrown here with the note named, because
-     * "transposing by 12 puts pitch 120 out of MIDI range" on its own does not
-     * tell a user which part to look at, and silently leaving that one note
-     * where it was would produce exactly the confidently-wrong page this change
-     * removes.
+     * <p>The refusal is scoped to the part rather than to the run, which round 1
+     * of review found the hard way: {@code render --parts chords --transpose 12}
+     * failed outright over a MIDI 120 note in an unclassified track that no
+     * implemented part would ever have engraved. Up an octave for a singer is the
+     * commonest request there is, and a MIDI file reaching past 115 is ordinary.
+     * The chart the user asked for is produced, and the part that could not come
+     * with it is named.
      */
-    private static List<Note> transposedNotes(NoteTrack track, Shift shift) {
+    private static Optional<NoteTrack> transposedTrack(NoteTrack track, Shift shift,
+                                                       List<String> leftOut) {
         List<Note> moved = new ArrayList<>(track.notes().size());
         for (Note note : track.notes()) {
-            Note shifted;
-            try {
-                shifted = note.transposedBy(shift.semitones());
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("cannot transpose by " + shift.semitones()
-                        + " semitones: the " + track.name() + " part holds MIDI pitch "
-                        + note.midiPitch() + " at " + String.format(java.util.Locale.ROOT,
-                                "%.3fs", note.onsetSeconds())
-                        + ", which the shift would move outside MIDI range 0..127", e);
+            int pitch = note.midiPitch() + shift.semitones();
+            if (pitch < 0 || pitch > 127) {
+                leftOut.add(String.format(Locale.ROOT,
+                        "the %s part was left out: it holds MIDI pitch %d at %.3fs, which %+d"
+                                + " semitones would move outside the playable range 0..127",
+                        track.name(), note.midiPitch(), note.onsetSeconds(), shift.semitones()));
+                return Optional.empty();
             }
+            Note shifted = note.transposedBy(shift.semitones());
             // Only where the source had one. An un-spelled note is one the
             // pipeline has not decided about yet, and inventing a spelling here
-            // would pre-empt PitchSpeller with a worse guess.
+            // would pre-empt PitchSpeller with a worse guess -- it has the
+            // sounding chord to consult and this does not.
             moved.add(note.spelling().isPresent()
-                    ? shifted.spelledAs(shift.apply(note.spelling().get()))
+                    ? shifted.spelledAs(shift.displace(note.spelling().get()))
                     : shifted);
         }
-        return moved;
+        return Optional.of(track.withNotes(moved));
     }
 
     /**
-     * One transposition: a sounding interval and its written form.
+     * One transposition: a sounding interval, its written form, and where it
+     * lands on the line of fifths.
      *
-     * @param semitones how far the pitch moves
-     * @param fifths    how far the written spelling moves along the line of fifths
+     * @param semitones    how far the pitch moves
+     * @param fifths       how far a displaced spelling moves along the line
+     * @param sourceRegion where the piece sat on the line before the shift
      */
-    private record Shift(int semitones, int fifths) {
+    private record Shift(int semitones, int fifths, double sourceRegion) {
+
+        /** Where the piece sits on the line of fifths after the shift. */
+        double targetRegion() {
+            return sourceRegion + fifths;
+        }
 
         /**
-         * How many letters up the diatonic ladder the spelling moves.
+         * How many letters up the diatonic ladder a displaced spelling moves.
          *
          * <p>Modulo seven, because the octave is recovered from the sounding
          * pitch rather than counted: that is what puts C flat in the octave above
@@ -234,55 +306,61 @@ public final class Transposer {
             return Math.floorMod(fifths * STEPS_PER_FIFTH, 7);
         }
 
-        /** True when the target key is written with flats, used only as a fallback. */
-        boolean prefersFlats() {
-            return fifths < 0;
-        }
-
         /**
-         * The written form of one pitch after the shift.
+         * A spelling moved by the interval, keeping how it was written.
          *
          * <p>The letter comes from the diatonic step count and the accidental is
          * then whatever makes that letter sound at the new pitch -- which is the
          * same displacement along the line of fifths, arrived at from the staff
          * side rather than the arithmetic side.
          *
-         * <p>An accidental no staff can carry falls back to a plain enharmonic.
-         * Three sharps on one note head is not printable and not readable, and
-         * the case needs a source spelling already at a double accidental
-         * <em>and</em> a piece whose key signature points the other way -- a
-         * B double sharp in a score detected as C flat major. Refusing to
-         * transpose over it would be worse than printing the enharmonic, since
-         * every other note on the page is fine.
+         * <p>Two things can make the answer unwritable, and both fall back to
+         * {@link #rederive}. An accidental beyond a double cannot be printed;
+         * round 1 of review found the other, which is that a legal spelling can
+         * land outside the octave band {@link PitchSpelling#parse} accepts --
+         * B sharp sounding as MIDI 0 sits in octave -2. {@code PitchSpeller}
+         * centralised that check in {@code atOctave} precisely so no route could
+         * skip it, and this is a new route, so it asks.
          */
-        PitchSpelling apply(PitchSpelling from) {
+        PitchSpelling displace(PitchSpelling from) {
             int pitch = from.midiPitch() + semitones;
             NoteLetter letter = NoteLetter.ofDiatonicStep(
                     from.letter().diatonicStep() + diatonicSteps());
             int alteration = PitchSpeller.alterationFor(letter, Math.floorMod(pitch, 12));
-            if (alteration < -2 || alteration > 2) {
-                return prefersFlats()
-                        ? PitchSpelling.ofMidiPitchFlat(pitch)
-                        : PitchSpelling.ofMidiPitchSharp(pitch);
+            if (alteration >= -2 && alteration <= 2) {
+                Optional<PitchSpelling> written = PitchSpeller.atOctave(
+                        letter, Accidental.ofAlteration(alteration), pitch);
+                if (written.isPresent()) {
+                    return written.get();
+                }
             }
-            // Exact: the pitch class of the letter and accidental already match
-            // the pitch, so this only recovers which octave holds it.
-            int octave = Math.floorDiv(
-                    pitch - 12 - letter.naturalPitchClass() - alteration, 12);
-            return new PitchSpelling(letter, Accidental.ofAlteration(alteration), octave);
+            return rederive(from);
+        }
+
+        /**
+         * A spelling moved by the interval, written afresh from where the piece
+         * lands.
+         *
+         * <p>What chord roots get, and what an unwritable displacement degrades
+         * to. The sounding pitch is the same either way; only the choice between
+         * its enharmonics differs, and this one asks the target region rather than
+         * the source spelling.
+         */
+        PitchSpelling rederive(PitchSpelling from) {
+            return PitchSpeller.onLineOfFifths(from.midiPitch() + semitones, targetRegion());
         }
     }
 
     /**
-     * How far along the line of fifths a shift of this many semitones moves the
-     * written spelling.
+     * How far along the line of fifths a shift of this many semitones moves a
+     * displaced spelling.
      *
      * <p>Seven fifths make an octave plus a semitone, so a displacement of
      * {@code d} sounds {@code 7d} semitones higher and the candidates for a shift
      * of {@code s} are the {@code d} with {@code 7d == s} modulo twelve. They lie
      * twelve apart -- one turn of the circle of fifths, which is where the two
      * spellings of a black key come from -- and the one taken is the one leaving
-     * the target signature closest to zero accidentals.
+     * the piece nearest the natural end of the line.
      *
      * <p>Whole octaves are excluded from that choice and pinned to zero. An
      * octave changes neither letter nor accidental, so a piece in C sharp major
@@ -290,7 +368,7 @@ public final class Transposer {
      * notice that D flat major is simpler and respell a page the user only asked
      * to move.
      */
-    private static int displacement(int semitones, double signature) {
+    private static int displacement(int semitones, double region) {
         if (semitones % 12 == 0) {
             return 0;
         }
@@ -299,7 +377,7 @@ public final class Transposer {
         double bestDistance = Double.MAX_VALUE;
         for (int turn = -TURNS_SEARCHED; turn <= TURNS_SEARCHED; turn++) {
             int candidate = base + FIFTHS_PER_TURN * turn;
-            double distance = Math.abs(signature + candidate);
+            double distance = Math.abs(region + candidate);
             // Strictly nearer, scanned flat to sharp, so an exact tie -- six
             // semitones from a natural key -- keeps the flatter side.
             if (distance < bestDistance) {
@@ -311,38 +389,89 @@ public final class Transposer {
     }
 
     /**
-     * Where the piece already sits on the circle of fifths, in sharps (positive)
-     * or flats (negative).
+     * Where the piece's chord roots already sit on the line of fifths.
      *
-     * <p>From the detected key when there is one, since that is the number the
-     * key signature is printed from and the target should be judged in the same
-     * units.
+     * <p>From the detected key when there is one. A key tonic is read from a MIDI
+     * key signature rather than guessed, so its signature is exact, and
+     * {@link Key#keySignatureAccidentals()} gets both modes right where averaging
+     * roots does not -- the roots of A minor average two fifths sharp of its
+     * signature of zero.
      *
-     * <p>Otherwise from the chord roots, which are already spelled -- the
-     * estimator chose them, and a user or the advisor may have corrected them --
-     * so their average position says which region of the line the piece lives in
-     * without committing to a tonic. With neither a key nor a chord there is
-     * nothing to go on and C major is assumed, which for a score holding only
-     * notes means the target is judged as though the source were natural. That
-     * is a real limitation rather than a rounding: it is only reachable before
-     * key detection runs, and it costs at most one turn of the circle.
+     * <p>Otherwise from the chord roots, and from their <em>sounding pitches</em>
+     * rather than from how they happen to be written. That is round 1's finding:
+     * on the audio path every black-key root is a sharp from a fixed table, so
+     * reading the spellings puts a piece in E flat at nine fifths sharp of where
+     * it is. Asking instead which region makes the whole set cheapest to write
+     * ignores the table entirely -- E flat's {@code D# A# Cm G#} and a properly
+     * spelled {@code Eb Bb Cm Ab} give the same answer, which is the point.
+     *
+     * <p>With neither a key nor a chord there is nothing to go on and the natural
+     * region is assumed. That is a real limitation rather than a rounding: a score
+     * holding only notes is judged as though it were in C, and it costs at most
+     * one turn of the circle.
      */
-    private static double sourceSignature(Score score) {
+    private static double sourceRegion(Score score) {
         Optional<Key> primary = score.primaryKey();
         if (primary.isPresent()) {
-            return primary.get().keySignatureAccidentals();
+            return primary.get().keySignatureAccidentals() + ROOT_CENTRE_OFFSET;
         }
-        double total = 0;
-        int counted = 0;
+        List<Integer> roots = new ArrayList<>();
         for (Chord chord : score.chords().chords()) {
-            if (chord.isNoChord()) {
-                // A no-chord span carries a placeholder root, so counting it
-                // would drag the average towards C whatever the piece is in.
-                continue;
+            if (!chord.isNoChord()) {
+                roots.add(chord.root().midiPitch());
             }
-            total += PitchSpeller.fifthsOf(chord.root());
-            counted++;
         }
-        return counted == 0 ? 0 : total / counted - ROOT_SHARPER_THAN_SIGNATURE;
+        return roots.isEmpty() ? 0 : cheapestRegion(roots);
+    }
+
+    /**
+     * The point on the line of fifths that the given sounding roots are cheapest
+     * to write from.
+     *
+     * <p>A miniature key finder, and deliberately no more than that. For each
+     * candidate region it asks {@link PitchSpeller#onLineOfFifths} how it would
+     * write each root there and sums how far the answers land from the region
+     * itself; the region where that total is smallest is the one the piece lives
+     * in. Ties go to the flatter candidate, since the scan runs flat to sharp and
+     * compares strictly.
+     *
+     * <p>Exhaustive over the band a writable spelling can occupy, which is
+     * thirty-five candidates against a handful of roots -- cheaper than the
+     * closed form would be worth. It does not distinguish major from minor and
+     * does not need to: what it is asked for is the region, and a key and its
+     * relative minor share one.
+     *
+     * <p><b>Cheapest, and then nearest natural.</b> The cost alone does not
+     * decide, because it repeats every twelve: move the region one whole turn of
+     * the circle and every root moves with it, so C major looks exactly as cheap
+     * written from -12, where its roots are D double flat and A double flat, as
+     * from 0. Scanning for the cheapest alone therefore returned the flattest of
+     * the equal minima, and a chart transposed by an octave -- where there is no
+     * displacement to cancel it -- came out as {@code Dbb Abb Bbbm Gbb}. Found by
+     * sweeping every key against every shift while fixing round 1's finding, not
+     * by any fixture; the ordinary shifts hide it, because the displacement is
+     * chosen from the same wrong region and lands back in the right place.
+     */
+    private static double cheapestRegion(List<Integer> roots) {
+        int best = 0;
+        double bestCost = Double.MAX_VALUE;
+        int bestMagnitude = Integer.MAX_VALUE;
+        for (int region = MIN_FIFTHS; region <= MAX_FIFTHS; region++) {
+            double cost = 0;
+            for (int pitch : roots) {
+                cost += Math.abs(
+                        PitchSpeller.fifthsOf(PitchSpeller.onLineOfFifths(pitch, region))
+                                - region);
+            }
+            int magnitude = Math.abs(region);
+            // Scanned flat to sharp and compared strictly, so a region equally
+            // cheap and equally far either way keeps the flatter one.
+            if (cost < bestCost || (cost == bestCost && magnitude < bestMagnitude)) {
+                bestCost = cost;
+                bestMagnitude = magnitude;
+                best = region;
+            }
+        }
+        return best;
     }
 }

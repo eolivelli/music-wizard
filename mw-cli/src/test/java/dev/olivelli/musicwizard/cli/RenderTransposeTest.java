@@ -180,24 +180,33 @@ class RenderTransposeTest {
         }
 
         @Test
-        @DisplayName("move the note tracks as well as the harmony")
-        void notesMoveToo() {
-            // Only chords are engraved today, so nothing on disk would show
-            // this. It is asserted through the saved-and-re-read score of a
-            // second render rather than left until #8 and #10 make it visible,
-            // because that is exactly when nobody will be looking for it.
-            Score withVoice = inCMajor().withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
-                    List.of(new Note(0.0, 1.0, 60, Note.DEFAULT_VELOCITY,
-                            Optional.of(PitchSpelling.parse("C4")),
-                            Optional.empty(), Optional.empty(), Confidence.CERTAIN)),
-                    Confidence.CERTAIN));
-            Path workspace = workspaceWith("song", withVoice);
+        @DisplayName("come out the same whichever way the analysis spelled its roots")
+        void theSpellingTheAnalysisChoseDoesNotReachThePage() {
+            // The audio path spells every black-key root as a sharp from a fixed
+            // table -- ChordEstimator.spell says so itself -- so a piece in E flat
+            // is saved as D#, A#, Cm, G#. Round 1 of review found the first
+            // version of this change reading that table as intent and engraving
+            // "Ebbm" on a real PDF at exit 0. Both workspaces below sound
+            // identical; both charts must read identical.
+            Path table = workspaceWith("table", baseScore(new ChordProgression(List.of(
+                    chord("D#4", ChordQuality.MAJOR, 0, 2),
+                    chord("A#4", ChordQuality.MAJOR, 2, 4),
+                    chord("C4", ChordQuality.MINOR, 4, 6),
+                    chord("G#4", ChordQuality.MAJOR, 6, 8)), Confidence.of(0.8))));
+            Path proper = workspaceWith("proper", baseScore(new ChordProgression(List.of(
+                    chord("Eb4", ChordQuality.MAJOR, 0, 2),
+                    chord("Bb4", ChordQuality.MAJOR, 2, 4),
+                    chord("C4", ChordQuality.MINOR, 4, 6),
+                    chord("Ab4", ChordQuality.MAJOR, 6, 8)), Confidence.of(0.8))));
 
-            CliRunner.Result render = CliRunner.run(
-                    "render", workspace.toString(), "--transpose", "3", "--no-pdf");
+            CliRunner.run("render", table.toString(), "--transpose", "2", "--no-pdf");
+            CliRunner.run("render", proper.toString(), "--transpose", "2", "--no-pdf");
 
-            assertThat(render.exitCode()).as(render.all()).isZero();
-            assertThat(render.out()).contains("Transpose  +3 semitones, C major to Eb major");
+            assertThat(table.resolve("out/chords.ly")).hasSameTextualContentAs(
+                    proper.resolve("out/chords.ly"));
+            assertThat(table.resolve("out/chords.txt")).content()
+                    .contains("| F", "| C", "| Dm", "| Bb")
+                    .doesNotContain("bb");
         }
     }
 
@@ -331,12 +340,14 @@ class RenderTransposeTest {
         }
 
         @Test
-        @DisplayName("a note it would push past MIDI 127 stops the run before anything is written")
-        void anUnmovableNoteStopsTheRun() {
+        @DisplayName("a note it would push past MIDI 127 costs that part, not the whole run")
+        void anUnmovablePartIsNamedAndTheChartIsStillWritten() throws Exception {
             // #57: the model refuses rather than guessing, and the caller decides
-            // what that means. Here it means the whole run fails, because
-            // engraving three files in the new key and leaving one note in the
-            // old one is the failure nobody would spot.
+            // what that means. The first answer here was to fail the run, and
+            // round 1 of review showed why that is wrong: chords are the only
+            // part anything can engrave, so the run died over a note that was
+            // never going to reach the page. Up an octave for a singer is the
+            // commonest request there is and MIDI files reach past 115 routinely.
             Score withHighNote = inCMajor().withTrack(new NoteTrack(PartRole.BASS, "Bass",
                     List.of(new Note(1.5, 1.0, 126, Note.DEFAULT_VELOCITY,
                             Optional.of(new PitchSpelling(NoteLetter.F, Accidental.SHARP, 9)),
@@ -347,12 +358,36 @@ class RenderTransposeTest {
             CliRunner.Result render = CliRunner.run(
                     "render", workspace.toString(), "--transpose", "3", "--no-pdf");
 
-            assertThat(render.exitCode()).isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
+            assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
                     .contains("Bass")
                     .contains("126")
-                    .contains("MIDI range");
-            assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
+                    .contains("0..127");
+            assertThat(Files.readString(workspace.resolve("out/chords.txt")))
+                    .contains("Key    Eb major")
+                    .contains("| Eb", "| Bb", "| Cm", "| Ab");
+        }
+
+        @Test
+        @DisplayName("and the notice comes after the files it does not apply to")
+        void theNoticeFollowsTheFileList() {
+            // The same pairing #156 asked for: a line about a part that is
+            // missing, printed before the list of files that were written, reads
+            // as a reason there are no files.
+            Score withHighNote = inCMajor().withTrack(new NoteTrack(PartRole.BASS, "Bass",
+                    List.of(new Note(1.5, 1.0, 126, Note.DEFAULT_VELOCITY,
+                            Optional.of(new PitchSpelling(NoteLetter.F, Accidental.SHARP, 9)),
+                            Optional.empty(), Optional.empty(), Confidence.CERTAIN)),
+                    Confidence.CERTAIN));
+            Path workspace = workspaceWith("song", withHighNote);
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--transpose", "3", "--no-pdf");
+
+            String transcript = render.transcript();
+            assertThat(transcript.indexOf("chords.ly"))
+                    .as(transcript)
+                    .isLessThan(transcript.indexOf("the Bass part was left out"));
         }
     }
 }

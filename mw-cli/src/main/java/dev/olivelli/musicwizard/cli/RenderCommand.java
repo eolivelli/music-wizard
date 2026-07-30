@@ -83,6 +83,15 @@ import picocli.CommandLine.Spec;
  * it lands in so that the one thing a user can check is on the page. The saved
  * transcription is not rewritten; {@code render} is a read-only view of it.
  *
+ * <p>A part the shift cannot move -- {@link
+ * dev.olivelli.musicwizard.core.model.Note} refuses one that would leave MIDI
+ * 0..127 -- is left out and named, rather than failing the run. Round 1 of review
+ * on #129 found the alternative: {@code --parts chords --transpose 12} died over
+ * a MIDI 120 note in an unclassified track that no implemented part would have
+ * engraved, and up an octave for a singer is the commonest request there is. It
+ * is the same rule as everything else here. Emit what you can, name what you
+ * cannot.
+ *
  * <p><b>No user has been handed such a chart yet, and the claim is worth making
  * carefully.</b> {@code ChordChart.toLilyPond} emits no {@code |} at all, so
  * nothing this command engraves today can fail a bar check; the fact exists in
@@ -258,11 +267,11 @@ final class RenderCommand implements Callable<Integer> {
         // for, one line further down the same command.
         Score analysed = workspace.readScore().orElseThrow(() -> new IllegalStateException(
                 "no transcription yet; run: mw analyze " + workspaceDirectory));
-        // Before anything is announced or written, for the same reason. A shift
-        // that cannot be applied -- a note it would push past MIDI 127 -- has to
-        // fail with nothing half-written rather than after some parts are on
-        // disk in one key and the rest were never attempted.
-        Score score = semitones == 0 ? analysed : Transposer.transpose(analysed, semitones);
+        // Before anything is announced or written, for the same reason: what can
+        // be produced is a property of the score that will be engraved, and after
+        // a shift that is not the one that was read.
+        Transposer.Result transposed = Transposer.transpose(analysed, semitones);
+        Score score = transposed.score();
 
         List<Part> producible = new ArrayList<>();
         List<String> notWritten = new ArrayList<>();
@@ -283,7 +292,13 @@ final class RenderCommand implements Callable<Integer> {
         }
 
         List<Path> written = new ArrayList<>();
-        List<String> warnings = new ArrayList<>();
+        // Seeded with the parts the shift could not move, which belong in the
+        // block after the file list for the reason that block exists: they
+        // qualify the output the user just got rather than replace it. None of
+        // them is producible today, so the line reads as notice rather than as
+        // loss -- and it stops being a notice the moment #8 or #10 lands, which
+        // is exactly when nobody would be looking for it.
+        List<String> warnings = new ArrayList<>(transposed.partsLeftOut());
         boolean chartWritten = false;
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
@@ -625,15 +640,19 @@ final class RenderCommand implements Callable<Integer> {
         // saying is that somebody asked for something other than what the tool
         // would have done anyway -- and asking for the default is not asking for
         // anything, since honouring it would produce the same chart.
+        // Each carries its own issue number rather than a shared list of them.
+        // Round 1 of review found a user who typed only --paper being pointed at
+        // an issue about the capo, which is exactly the kind of near-miss that
+        // teaches somebody to stop reading the line.
         List<String> ignored = new ArrayList<>();
         if (differs(notation.paperSize(), defaults.paperSize())) {
-            ignored.add("the paper size");
+            ignored.add("the paper size (#180)");
         }
         if (differs(notation.capo(), defaults.capo())) {
-            ignored.add("the capo");
+            ignored.add("the capo (#181)");
         }
         if (differs(notation.accidentalPreference(), defaults.accidentalPreference())) {
-            ignored.add("the accidental preference");
+            ignored.add("the accidental preference (#181)");
         }
         if (!ignored.isEmpty()) {
             // The claim is now narrower than it was, and deliberately: it used
@@ -644,8 +663,7 @@ final class RenderCommand implements Callable<Integer> {
             System.err.println("warning: " + String.join(", ", ignored)
                     + (ignored.size() == 1 ? " has" : " have")
                     + " no effect yet, whether set on the command line or in the workspace"
-                    + " config, so the chart is engraved as though it were unset"
-                    + " (#180, #181)");
+                    + " config, so the chart is engraved as though it were unset");
         }
     }
 

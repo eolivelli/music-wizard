@@ -56,11 +56,18 @@ import org.junit.jupiter.params.provider.CsvSource;
  */
 class TransposerTest {
 
+    /** The transposed score, for the majority of cases that expect no part to be lost. */
+    private static Score moved(Score score, int semitones) {
+        Transposer.Result result = Transposer.transpose(score, semitones);
+        assertThat(result.partsLeftOut()).as("a part was unexpectedly left out").isEmpty();
+        return result.score();
+    }
+
     @Nested
     @DisplayName("the key it lands in")
     class TargetKey {
 
-        @ParameterizedTest(name = "{0} by {1} is {2}")
+        @ParameterizedTest(name = "{0} by {2} is {3}")
         @CsvSource({
                 // The examples #129 and the module javadoc are written around.
                 "C4,  MAJOR,  5,  F4,  MAJOR",
@@ -85,10 +92,10 @@ class TransposerTest {
                                              String expectedTonic, Mode expectedMode) {
             Score score = scoreInKey(tonic, mode);
 
-            Key moved = Transposer.transpose(score, semitones).primaryKey().orElseThrow();
+            Key landed = moved(score, semitones).primaryKey().orElseThrow();
 
-            assertThat(moved.tonic()).isEqualTo(PitchSpelling.parse(expectedTonic));
-            assertThat(moved.mode()).isEqualTo(expectedMode);
+            assertThat(landed.tonic()).isEqualTo(PitchSpelling.parse(expectedTonic));
+            assertThat(landed.mode()).isEqualTo(expectedMode);
         }
 
         @Test
@@ -99,24 +106,23 @@ class TransposerTest {
             // six accidentals -- so something has to break the tie. It goes the
             // same way PitchSpeller's does, which is what keeps a chord symbol
             // and the note heads under it agreeing.
-            Key moved = Transposer.transpose(scoreInKey("C4", Mode.MAJOR), 6)
-                    .primaryKey().orElseThrow();
+            Key landed = moved(scoreInKey("C4", Mode.MAJOR), 6).primaryKey().orElseThrow();
 
-            assertThat(moved.tonic()).isEqualTo(PitchSpelling.parse("Gb4"));
-            assertThat(moved.keySignatureAccidentals()).isEqualTo(-6);
+            assertThat(landed.tonic()).isEqualTo(PitchSpelling.parse("Gb4"));
+            assertThat(landed.keySignatureAccidentals()).isEqualTo(-6);
         }
 
         @Test
-        @DisplayName("the printed signature moves with the tonic, not independently of it")
+        @DisplayName("the printed signature moves with the symbols, not independently of them")
         void theSignatureFollows() {
-            // The whole point of doing this on the line of fifths: one
-            // displacement is applied to everything, so the number of flats in
-            // the signature and the flats on the chord symbols cannot disagree.
-            Score moved = Transposer.transpose(scoreInKey("C4", Mode.MAJOR), 3);
+            // One displacement decides the tonic and one region decides the
+            // roots, and they are the same number, so the flats in the signature
+            // and the flats on the chord symbols cannot come out disagreeing.
+            Score landed = moved(scoreInKey("C4", Mode.MAJOR), 3);
 
-            assertThat(moved.primaryKey().orElseThrow().keySignatureAccidentals())
+            assertThat(landed.primaryKey().orElseThrow().keySignatureAccidentals())
                     .isEqualTo(-3);
-            assertThat(symbolsOf(moved)).containsExactly("Eb", "Bb", "Cm", "Ab");
+            assertThat(symbolsOf(landed)).containsExactly("Eb", "Bb", "Cm", "Ab");
         }
     }
 
@@ -127,16 +133,15 @@ class TransposerTest {
         @Test
         @DisplayName("I-V-vi-IV in C up a fourth is F, C, Dm, Bb")
         void theProjectsOwnProgression() {
-            Score moved = Transposer.transpose(scoreInKey("C4", Mode.MAJOR), 5);
-
-            assertThat(symbolsOf(moved)).containsExactly("F", "C", "Dm", "Bb");
+            assertThat(symbolsOf(moved(scoreInKey("C4", Mode.MAJOR), 5)))
+                    .containsExactly("F", "C", "Dm", "Bb");
         }
 
         @Test
         @DisplayName("keep their quality and their timing")
         void onlyThePitchMoves() {
             Score before = scoreInKey("C4", Mode.MAJOR);
-            Score after = Transposer.transpose(before, 7);
+            Score after = moved(before, 7);
 
             for (int i = 0; i < before.chords().size(); i++) {
                 Chord was = before.chords().chords().get(i);
@@ -147,6 +152,7 @@ class TransposerTest {
                 assertThat(is.startBeat()).isEqualTo(was.startBeat());
                 assertThat(is.endBeat()).isEqualTo(was.endBeat());
                 assertThat(is.confidence()).isEqualTo(was.confidence());
+                assertThat(is.root().midiPitch()).isEqualTo(was.root().midiPitch() + 7);
             }
             assertThat(after.chords().confidence()).isEqualTo(before.chords().confidence());
         }
@@ -162,25 +168,26 @@ class TransposerTest {
                             .withBass(PitchSpelling.parse("E3"))),
                     List.of(), List.of());
 
-            Chord moved = Transposer.transpose(score, 5).chords().chords().get(0);
+            Chord landed = moved(score, 5).chords().chords().get(0);
 
-            assertThat(moved.symbol()).isEqualTo("F/A");
-            assertThat(moved.bass().orElseThrow()).isEqualTo(PitchSpelling.parse("A3"));
+            assertThat(landed.symbol()).isEqualTo("F/A");
+            assertThat(landed.bass().orElseThrow()).isEqualTo(PitchSpelling.parse("A3"));
         }
 
         @Test
-        @DisplayName("a no-chord span stays a no-chord span")
+        @DisplayName("a no-chord span is left exactly as it was")
         void noChordIsUntouched() {
-            Score score = scoreOf(List.of(
-                    Chord.noChord(0, 2, Confidence.CERTAIN),
-                    Chord.ofSeconds(PitchSpelling.parse("C4"), ChordQuality.MAJOR,
-                            2, 4, Confidence.CERTAIN)),
-                    List.of(), List.of());
+            // Chord.noChord parks a placeholder C on a span that has no root at
+            // all. Moving a placeholder would invent a fact, and nothing prints
+            // it: the chart writes N.C. and the engraver writes a rest.
+            Chord rest = Chord.noChord(0, 2, Confidence.CERTAIN);
+            Score score = scoreOf(List.of(rest,
+                    chordAt("C4", ChordQuality.MAJOR, 2, 4)), List.of(), List.of());
 
-            Score moved = Transposer.transpose(score, 5);
+            Score landed = moved(score, 5);
 
-            assertThat(moved.chords().chords().get(0).isNoChord()).isTrue();
-            assertThat(symbolsOf(moved)).containsExactly("N.C.", "F");
+            assertThat(landed.chords().chords().get(0)).isEqualTo(rest);
+            assertThat(symbolsOf(landed)).containsExactly("N.C.", "F");
         }
 
         @Test
@@ -189,7 +196,7 @@ class TransposerTest {
             // The audio path has no key detection yet, so this is the branch the
             // shipped tool actually takes. A progression in F -- F, Bb, C, Dm --
             // moved up a fourth has to reach B flat, not A sharp, and the only
-            // evidence for that is the symbols themselves.
+            // evidence for that is the sounding roots themselves.
             Score score = scoreOf(List.of(
                     chordAt("F4", ChordQuality.MAJOR, 0, 2),
                     chordAt("Bb4", ChordQuality.MAJOR, 2, 4),
@@ -198,39 +205,160 @@ class TransposerTest {
                     List.of(), List.of());
 
             assertThat(score.primaryKey()).isEmpty();
-            assertThat(symbolsOf(Transposer.transpose(score, 5)))
+            assertThat(symbolsOf(moved(score, 5)))
                     .containsExactly("Bb", "Eb", "F", "Gm");
         }
 
         @Test
-        @DisplayName("a silent bar does not vote on which key the chart lands in")
-        void noChordDoesNotVoteOnTheKey() {
-            // Chord.noChord parks a C4 root on a span that has no root at all,
-            // so counting it would drag a heavily flat piece back towards
-            // natural. This fixture is chosen to sit either side of that: with
-            // the rest counted the four symbols come out in flats and without it
-            // in sharps, so a rest bar added to a chart would silently respell
-            // the whole page.
+        @DisplayName("a silent bar does not vote on where the piece sits")
+        void noChordDoesNotVoteOnTheRegion() {
+            // A rest carries a placeholder root, and reading it would be reading
+            // a fact that is not there.
             //
-            // The two answers are the same six-accidental key written two ways,
-            // which is honest about how much the estimate can be asked to
-            // decide. What it must not do is depend on how much silence the
-            // recording has in it.
-            List<Chord> withoutRest = List.of(
+            // Honest about its own strength: no fixture found so far tells the
+            // two apart. The region search compares whole spellings against a
+            // candidate region and one extra natural root moves that answer only
+            // at a boundary that also has to change the transposed spelling --
+            // four hundred thousand random progressions crossed with every shift
+            // produced none. So this pins a guarantee rather than catching a
+            // known break, and it would catch the estimator becoming sensitive
+            // to silence later.
+            List<Chord> voiced = List.of(
                     chordAt("Db4", ChordQuality.MAJOR, 2, 4),
                     chordAt("Ab4", ChordQuality.MAJOR, 4, 6),
                     chordAt("Bb4", ChordQuality.MINOR, 6, 8),
                     chordAt("Gb4", ChordQuality.MAJOR, 8, 10));
-            List<Chord> withRest = new ArrayList<>(withoutRest);
+            List<Chord> withRest = new ArrayList<>(voiced);
             withRest.add(0, Chord.noChord(0, 2, Confidence.CERTAIN));
 
-            List<String> rested = symbolsOf(Transposer.transpose(
-                    scoreOf(withRest, List.of(), List.of()), 5));
-            List<String> unrested = symbolsOf(Transposer.transpose(
-                    scoreOf(withoutRest, List.of(), List.of()), 5));
+            for (int semitones = -12; semitones <= 12; semitones++) {
+                if (semitones == 0) {
+                    continue;
+                }
+                List<String> rested = symbolsOf(
+                        moved(scoreOf(withRest, List.of(), List.of()), semitones));
+                assertThat(rested.subList(1, rested.size()))
+                        .as("shift %d", semitones)
+                        .isEqualTo(symbolsOf(moved(scoreOf(voiced, List.of(), List.of()),
+                                semitones)));
+            }
+        }
+    }
 
-            assertThat(rested.subList(1, rested.size())).isEqualTo(unrested);
-            assertThat(unrested).containsExactly("F#", "C#", "D#m", "B");
+    @Nested
+    @DisplayName("a chord root is written afresh rather than displaced")
+    class RootsAreRederived {
+
+        /**
+         * A I-V-vi-IV whose roots are spelled the way the pipeline really spells
+         * them: every black key a sharp, from a fixed table.
+         *
+         * <p>{@code ChordEstimator.spell} does exactly this and says in its own
+         * javadoc that the key estimator re-spells the progression afterwards --
+         * a stage that does not exist. So on the audio path a piece in E flat
+         * arrives here as {@code D# A# Cm G#}.
+         */
+        private static Score asTheAudioPathSpellsIt(int tonic) {
+            int[] degrees = {0, 7, 9, 5};
+            ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MAJOR,
+                    ChordQuality.MINOR, ChordQuality.MAJOR};
+            List<Chord> chords = new ArrayList<>();
+            for (int i = 0; i < degrees.length; i++) {
+                chords.add(Chord.ofSeconds(PitchSpelling.ofMidiPitchSharp(tonic + degrees[i]),
+                        qualities[i], i * 2.0, i * 2.0 + 2.0, Confidence.CERTAIN));
+            }
+            return scoreOf(chords, List.of(), List.of());
+        }
+
+        @ParameterizedTest(name = "by {0} semitones")
+        @CsvSource({"2", "5", "-1", "3", "6", "-7"})
+        @DisplayName("so the chart is the same whichever way its roots arrived spelled")
+        void theSpellingItArrivesWithDoesNotMatter(int semitones) {
+            // Round 1 of review, confirmed by execution: displacing these
+            // spellings read a fixed table as intent and produced F C Ebbm Bb
+            // for the second row -- an E double flat minor chord on an engraved
+            // page, exit 0. Both fixtures sound identical, so both charts must
+            // read identical.
+            Score sharpTable = asTheAudioPathSpellsIt(63);
+            Score properlySpelled = scoreOf(List.of(
+                    chordAt("Eb4", ChordQuality.MAJOR, 0, 2),
+                    chordAt("Bb4", ChordQuality.MAJOR, 2, 4),
+                    chordAt("C4", ChordQuality.MINOR, 4, 6),
+                    chordAt("Ab4", ChordQuality.MAJOR, 6, 8)),
+                    List.of(), List.of());
+
+            assertThat(symbolsOf(moved(sharpTable, semitones)))
+                    .isEqualTo(symbolsOf(moved(properlySpelled, semitones)));
+        }
+
+        @Test
+        @DisplayName("and no chart gains an accidental a chart cannot carry")
+        void noDoubleAccidentalsAnywhere() {
+            // The measurement round 1 made, run as an assertion. Before the fix
+            // one chart in eighteen over this sweep carried a double accidental
+            // and one in thirteen mixed sharps with flats, against a baseline of
+            // none for both -- the sharp table produces neither.
+            for (int tonic = 60; tonic < 72; tonic++) {
+                for (int semitones = -24; semitones <= 24; semitones++) {
+                    if (semitones == 0) {
+                        continue;
+                    }
+                    boolean sharp = false;
+                    boolean flat = false;
+                    for (Chord chord : moved(asTheAudioPathSpellsIt(tonic), semitones)
+                            .chords().chords()) {
+                        int alteration = chord.root().accidental().alteration();
+                        assertThat(Math.abs(alteration))
+                                .as("tonic %d shifted %d gave %s", tonic, semitones,
+                                        chord.symbol())
+                                .isLessThanOrEqualTo(1);
+                        sharp |= alteration > 0;
+                        flat |= alteration < 0;
+                    }
+                    assertThat(sharp && flat)
+                            .as("tonic %d shifted %d mixed sharps with flats", tonic, semitones)
+                            .isFalse();
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("an octave leaves the symbols exactly where they were")
+        void anOctaveIsStillTheSameChart() {
+            // Found by that sweep rather than by a fixture, and worth its own
+            // case. The region search's cost repeats every twelve -- C major is
+            // as cheap written from -12, where its roots are D double flat and A
+            // double flat, as from 0 -- so it used to return the flattest of the
+            // equal minima. Every ordinary shift hid it, because the displacement
+            // was chosen from the same wrong region and cancelled it; an octave
+            // is pinned to no displacement and has nothing to cancel with, so
+            // C G Am F an octave down came out as Dbb Abb Bbbm Gbb.
+            Score audio = asTheAudioPathSpellsIt(60);
+
+            for (int semitones : new int[] {12, -12, 24, -24}) {
+                assertThat(symbolsOf(moved(audio, semitones)))
+                        .as("shift %d", semitones)
+                        .containsExactly("C", "G", "Am", "F");
+            }
+        }
+
+        @Test
+        @DisplayName("a borrowed root keeps the side of the line a chart wants")
+        void borrowedRootsLandWhereAChartWantsThem() {
+            // What ROOT_CENTRE_OFFSET is calibrated on, and the reason it is not
+            // PitchSpeller's centre. In C major the flat second is D flat and the
+            // raised fourth is F sharp; judged from where a key's *notes* sit,
+            // two fifths sharper, the first comes out C sharp instead. Up two,
+            // both have to stay on the side they started.
+            Score score = scoreOf(List.of(
+                    chordAt("C4", ChordQuality.MAJOR, 0, 2),
+                    chordAt("Db4", ChordQuality.MAJOR, 2, 4),
+                    chordAt("G4", ChordQuality.MAJOR, 4, 6),
+                    chordAt("F#4", ChordQuality.MAJOR, 6, 8)),
+                    List.of(key("C4", Mode.MAJOR)), List.of());
+
+            assertThat(symbolsOf(moved(score, 2)))
+                    .containsExactly("D", "Eb", "A", "G#");
         }
     }
 
@@ -243,16 +371,16 @@ class TransposerTest {
         void pitchAndSpellingMoveTogether() {
             // E natural in C major, up three semitones, is G natural in E flat
             // major. Spelled from a pitch-class table it would come out as G
-            // either way; the case that separates the two is the B flat below.
+            // either way; the case that separates the two is the B below.
             Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
                     List.of(key("C4", Mode.MAJOR)),
                     List.of(spelled(0.0, 60, "C4"), spelled(1.0, 64, "E4"),
                             spelled(2.0, 71, "B4")));
 
-            List<Note> moved = Transposer.transpose(score, 3).tracks().get(0).notes();
+            List<Note> landed = moved(score, 3).tracks().get(0).notes();
 
-            assertThat(moved).extracting(Note::midiPitch).containsExactly(63, 67, 74);
-            assertThat(moved).extracting(n -> n.spelling().orElseThrow().displayName())
+            assertThat(landed).extracting(Note::midiPitch).containsExactly(63, 67, 74);
+            assertThat(landed).extracting(n -> n.spelling().orElseThrow().displayName())
                     .containsExactly("Eb4", "G4", "D5");
         }
 
@@ -261,14 +389,15 @@ class TransposerTest {
         void nothingIsInvented() {
             // Spelling is derived, and the pipeline derives it later, from the
             // transposed harmony. Guessing one here would pre-empt PitchSpeller
-            // with a worse answer -- it has no chord to consult and this does.
+            // with a worse answer -- it has the sounding chord to consult and
+            // this does not.
             Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
                     List.of(), List.of(Note.ofSeconds(0.0, 1.0, 60, Confidence.CERTAIN)));
 
-            Note moved = Transposer.transpose(score, 5).tracks().get(0).notes().get(0);
+            Note landed = moved(score, 5).tracks().get(0).notes().get(0);
 
-            assertThat(moved.midiPitch()).isEqualTo(65);
-            assertThat(moved.spelling()).isEmpty();
+            assertThat(landed.midiPitch()).isEqualTo(65);
+            assertThat(landed.spelling()).isEmpty();
         }
 
         @Test
@@ -279,7 +408,7 @@ class TransposerTest {
             Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
                     List.of(), List.of(before));
 
-            Note after = Transposer.transpose(score, 5).tracks().get(0).notes().get(0);
+            Note after = moved(score, 5).tracks().get(0).notes().get(0);
 
             assertThat(after.onsetSeconds()).isEqualTo(before.onsetSeconds());
             assertThat(after.durationSeconds()).isEqualTo(before.durationSeconds());
@@ -290,22 +419,55 @@ class TransposerTest {
         }
 
         @Test
-        @DisplayName("a note the shift would push past MIDI 127 fails with the part named")
-        void anUnmovableNoteIsRefusedByName() {
-            // #57 chose this: Note.transposedBy refuses rather than guessing,
-            // and the choice of what to do belongs to the caller. Leaving that
-            // one note where it was would produce a page correct everywhere
-            // except one note, which nobody would notice -- so the run stops,
-            // and it names the part and the moment so the user can find it.
+        @DisplayName("a part the shift cannot move is left out and named, not fatal")
+        void anUnmovablePartIsLeftOutAndNamed() {
+            // #57 chose the refusal: Note.transposedBy will not guess, and what
+            // that means is the caller's decision. Round 1 of review found the
+            // first answer here -- failing the whole run -- wrong, because
+            // render --parts chords then died over a note in a part no
+            // implemented emitter would ever have written. The chart is still
+            // produced and the part that could not come with it is named.
             Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
                     List.of(), List.of(spelled(2.5, 126, "F#9")));
 
-            assertThatThrownBy(() -> Transposer.transpose(score, 3))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Voice")
-                    .hasMessageContaining("126")
-                    .hasMessageContaining("2.500s")
-                    .hasMessageContaining("MIDI range");
+            Transposer.Result result = Transposer.transpose(score, 3);
+
+            assertThat(result.score().tracks()).isEmpty();
+            assertThat(symbolsOf(result.score())).containsExactly("Eb");
+            assertThat(result.partsLeftOut()).singleElement().asString()
+                    .contains("Voice")
+                    .contains("126")
+                    .contains("2.500s")
+                    .contains("+3 semitones")
+                    .contains("0..127");
+        }
+
+        @Test
+        @DisplayName("only the part that cannot move is left out")
+        void otherPartsSurvive() {
+            Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
+                    List.of(), List.of(spelled(0.0, 60, "C4")))
+                    .withTrack(new NoteTrack(PartRole.BASS, "Bass",
+                            List.of(spelled(2.5, 126, "F#9")), Confidence.CERTAIN));
+
+            Transposer.Result result = Transposer.transpose(score, 3);
+
+            assertThat(result.score().tracks()).singleElement()
+                    .extracting(NoteTrack::name).isEqualTo("Voice");
+            assertThat(result.partsLeftOut()).singleElement().asString().contains("Bass");
+        }
+
+        @Test
+        @DisplayName("and downwards too, not only past the top")
+        void theBottomOfTheRangeIsCheckedAsWell() {
+            Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
+                    List.of(), List.of(spelled(0.0, 1, "C#-1")));
+
+            Transposer.Result result = Transposer.transpose(score, -3);
+
+            assertThat(result.score().tracks()).isEmpty();
+            assertThat(result.partsLeftOut()).singleElement().asString()
+                    .contains("-3 semitones");
         }
     }
 
@@ -316,12 +478,15 @@ class TransposerTest {
         @Test
         @DisplayName("zero returns the very same score")
         void zeroIsExactlyNothing() {
-            // Identity, not equality. A no-op that ran the machinery would
-            // re-derive every spelling from the estimated signature and could
+            // Identity, not equality. A no-op that ran the machinery below would
+            // re-derive every chord root from the estimated region and could
             // change one, which is a page the user never asked to have altered.
             Score score = scoreInKey("C4", Mode.MAJOR);
 
-            assertThat(Transposer.transpose(score, 0)).isSameAs(score);
+            Transposer.Result result = Transposer.transpose(score, 0);
+
+            assertThat(result.score()).isSameAs(score);
+            assertThat(result.partsLeftOut()).isEmpty();
         }
 
         @ParameterizedTest(name = "by {0} semitones")
@@ -337,14 +502,14 @@ class TransposerTest {
                     List.of(key("C#4", Mode.MAJOR)),
                     List.of(spelled(0.0, 61, "C#4")));
 
-            Score moved = Transposer.transpose(score, semitones);
+            Score landed = moved(score, semitones);
 
-            assertThat(moved.primaryKey().orElseThrow().tonic().letter())
+            assertThat(landed.primaryKey().orElseThrow().tonic().letter())
                     .isEqualTo(NoteLetter.C);
-            assertThat(moved.primaryKey().orElseThrow().tonic().accidental())
+            assertThat(landed.primaryKey().orElseThrow().tonic().accidental())
                     .isEqualTo(Accidental.SHARP);
-            assertThat(symbolsOf(moved)).containsExactly("C#", "G#");
-            Note note = moved.tracks().get(0).notes().get(0);
+            assertThat(symbolsOf(landed)).containsExactly("C#", "G#");
+            Note note = landed.tracks().get(0).notes().get(0);
             assertThat(note.midiPitch()).isEqualTo(61 + semitones);
             assertThat(note.spelling().orElseThrow().letter()).isEqualTo(NoteLetter.C);
             assertThat(note.spelling().orElseThrow().accidental()).isEqualTo(Accidental.SHARP);
@@ -366,7 +531,7 @@ class TransposerTest {
         void theSourceIsNotMutated() {
             Score score = scoreInKey("C4", Mode.MAJOR);
 
-            Transposer.transpose(score, 5);
+            moved(score, 5);
 
             assertThat(symbolsOf(score)).containsExactly("C", "G", "Am", "F");
             assertThat(score.primaryKey().orElseThrow().tonic())
@@ -389,77 +554,82 @@ class TransposerTest {
                             Confidence.CERTAIN)), "en", Confidence.CERTAIN),
                     8.0);
 
-            Score moved = Transposer.transpose(score, 4);
+            Score landed = moved(score, 4);
 
-            assertThat(moved.title()).isEqualTo(score.title());
-            assertThat(moved.artist()).isEqualTo(score.artist());
-            assertThat(moved.tempoMap()).isEqualTo(score.tempoMap());
-            assertThat(moved.lyrics()).isEqualTo(score.lyrics());
-            assertThat(moved.durationSeconds()).isEqualTo(score.durationSeconds());
-            assertThat(moved.tracks().get(0).role()).isEqualTo(PartRole.LEAD_VOCAL);
-            assertThat(moved.tracks().get(0).name()).isEqualTo("Voice");
+            assertThat(landed.title()).isEqualTo(score.title());
+            assertThat(landed.artist()).isEqualTo(score.artist());
+            assertThat(landed.tempoMap()).isEqualTo(score.tempoMap());
+            assertThat(landed.lyrics()).isEqualTo(score.lyrics());
+            assertThat(landed.durationSeconds()).isEqualTo(score.durationSeconds());
+            assertThat(landed.tracks().get(0).role()).isEqualTo(PartRole.LEAD_VOCAL);
+            assertThat(landed.tracks().get(0).name()).isEqualTo("Voice");
         }
+    }
+
+    @Nested
+    @DisplayName("a displacement that cannot be written down")
+    class Unwritable {
 
         @Test
-        @DisplayName("an accidental no staff can carry falls back to a plain enharmonic")
+        @DisplayName("falls back to the region's own spelling when it needs a third accidental")
         void anUnprintableAccidentalDegrades() {
-            // Reachable, and only just: the source spelling has to be at a
-            // double accidental already and the key has to point the other way.
-            // A B double sharp in a piece detected as C flat major, moved up a
+            // Reachable, and only just: the source spelling has to be at a double
+            // accidental already and the key has to point the other way. A B
+            // double sharp in a score detected as C flat major, moved up a
             // semitone, wants a triple sharp -- and the target key is C major,
-            // where the note is a plain D. Refusing to transpose over it would
-            // be worse than printing the enharmonic, since every other note on
-            // the page is fine.
+            // where the note is a plain D. Refusing to transpose over it would be
+            // worse than writing the enharmonic, since every other note on the
+            // page is fine.
             Score score = scoreOf(List.of(chordAt("Cb4", ChordQuality.MAJOR, 0, 8)),
                     List.of(key("Cb4", Mode.MAJOR)),
                     List.of(spelled(0.0, 73, "B##4")));
 
-            Score moved = Transposer.transpose(score, 1);
+            Score landed = moved(score, 1);
 
-            assertThat(moved.primaryKey().orElseThrow().tonic())
+            assertThat(landed.primaryKey().orElseThrow().tonic())
                     .isEqualTo(PitchSpelling.parse("C4"));
-            Note note = moved.tracks().get(0).notes().get(0);
+            Note note = landed.tracks().get(0).notes().get(0);
             assertThat(note.midiPitch()).isEqualTo(74);
             assertThat(note.spelling().orElseThrow()).isEqualTo(PitchSpelling.parse("D5"));
         }
 
         @Test
-        @DisplayName("and it degrades to a flat one when the music is going that way")
-        void anUnprintableAccidentalDegradesFlatToo() {
-            // The mirror image, and it needs its own case because the fallback
-            // has to choose a side: a piece heading into flats that hits a triple
-            // flat must not come out spelled in sharps for that one note. F
-            // double flat in C sharp major, down a semitone, wants one; C major
-            // writes it D.
+        @DisplayName("and when the accidental is fine but the octave is not")
+        void anUnwritableOctaveDegradesToo() {
+            // Round 1 of review found this one. PitchSpeller centralised the
+            // octave-band check in atOctave so that no route to a spelling could
+            // skip it, and displacing one was a new route: B sharp sounding as
+            // MIDI 12 is legal, and an octave down it is B sharp in octave -2,
+            // which PitchSpelling.parse refuses. The accidental is a plain sharp,
+            // so nothing about the alteration catches it.
             Score score = scoreOf(List.of(chordAt("C#4", ChordQuality.MAJOR, 0, 8)),
                     List.of(key("C#4", Mode.MAJOR)),
-                    List.of(spelled(0.0, 63, "Fbb4")));
+                    List.of(new Note(0.0, 0.5, 12, Note.DEFAULT_VELOCITY,
+                            Optional.of(new PitchSpelling(NoteLetter.B, Accidental.SHARP, -1)),
+                            Optional.empty(), Optional.empty(), Confidence.CERTAIN)));
 
-            Score moved = Transposer.transpose(score, -1);
+            Note note = moved(score, -12).tracks().get(0).notes().get(0);
 
-            assertThat(moved.primaryKey().orElseThrow().tonic())
-                    .isEqualTo(PitchSpelling.parse("C4"));
-            Note note = moved.tracks().get(0).notes().get(0);
-            assertThat(note.midiPitch()).isEqualTo(62);
-            assertThat(note.spelling().orElseThrow()).isEqualTo(PitchSpelling.parse("D4"));
+            assertThat(note.midiPitch()).isZero();
+            assertThat(note.spelling().orElseThrow()).isEqualTo(PitchSpelling.parse("C-1"));
         }
 
         @Test
-        @DisplayName("every spelling it produces is one that can be written down and read back")
+        @DisplayName("so every spelling it produces can be written down and read back")
         void nothingUnwritableEscapes() {
-            // The octave is recovered from the sounding pitch, and C flat sounds
-            // in the octave below the one it is written in -- so a spelling can
-            // land outside the band PitchSpelling.parse accepts if the recovery
-            // is wrong. Swept rather than spot-checked, because the boundary is
-            // at the ends of the range where no musical fixture goes.
+            // Swept over the whole MIDI range rather than over a musical band,
+            // because both failures above live at the ends of it: the octave
+            // recovery is exact in the middle and the enharmonics only cross an
+            // octave boundary near 0 and 127.
             for (int semitones = -24; semitones <= 24; semitones++) {
                 if (semitones == 0) {
                     continue;
                 }
-                Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 8)),
-                        List.of(key("C4", Mode.MAJOR)), pitchesFrom(24, 96));
-                Score moved = Transposer.transpose(score, semitones);
-                for (Note note : moved.tracks().get(0).notes()) {
+                Score score = scoreOf(List.of(chordAt("C4", ChordQuality.MAJOR, 0, 800)),
+                        List.of(key("C4", Mode.MAJOR)),
+                        everyPitchFrom(Math.max(0, -semitones),
+                                Math.min(127, 127 - semitones)));
+                for (Note note : moved(score, semitones).tracks().get(0).notes()) {
                     PitchSpelling spelling = note.spelling().orElseThrow();
                     assertThat(spelling.midiPitch())
                             .as("shift %d spelled MIDI %d as %s",
@@ -469,14 +639,6 @@ class TransposerTest {
                             .as("shift %d produced an unparseable %s",
                                     semitones, spelling.displayName())
                             .isEqualTo(spelling);
-                    assertThat(Math.abs(spelling.accidental().alteration()))
-                            .as("shift %d needed %s", semitones, spelling.displayName())
-                            .isLessThanOrEqualTo(2);
-                }
-                for (Chord chord : moved.chords().chords()) {
-                    assertThat(chord.root().midiPitch() - 12 * 4)
-                            .as("shift %d moved a root out of a writable octave", semitones)
-                            .isBetween(-24, 127);
                 }
             }
         }
@@ -513,11 +675,11 @@ class TransposerTest {
                         ? List.of()
                         : List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes,
                                 Confidence.CERTAIN)),
-                new ChordProgression(chords, Confidence.of(0.8)), Lyrics.empty(), 16.0);
+                new ChordProgression(chords, Confidence.of(0.8)), Lyrics.empty(), 1000.0);
     }
 
     /** One note per MIDI pitch in a band, spelled the way C major spells it. */
-    private static List<Note> pitchesFrom(int lowest, int highest) {
+    private static List<Note> everyPitchFrom(int lowest, int highest) {
         List<Note> notes = new ArrayList<>();
         double at = 0.0;
         for (int pitch = lowest; pitch <= highest; pitch++) {
@@ -536,7 +698,7 @@ class TransposerTest {
     }
 
     private static Key key(String tonic, Mode mode) {
-        return Key.ofSeconds(PitchSpelling.parse(tonic), mode, 0, 16, Confidence.CERTAIN);
+        return Key.ofSeconds(PitchSpelling.parse(tonic), mode, 0, 1000, Confidence.CERTAIN);
     }
 
     private static Chord chordAt(String root, ChordQuality quality, double from, double to) {
