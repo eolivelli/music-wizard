@@ -67,6 +67,16 @@ SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/mw-sweep-selftest.XXXXXX")
 cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT
 
+# The fixtures make real git commits, and this runs inside `mvn verify` on
+# whatever machine a contributor happens to have. Their global config is not
+# ours to inherit: `commit.gpgsign = true` alone fails eleven of these tests
+# with "gpg: signing failed: No secret key", and the ssh-signing variant blocks
+# on a passphrase prompt that a Maven-spawned process has no terminal to answer.
+# `core.hooksPath` and `init.templateDir` are the same family.
+export GIT_CONFIG_GLOBAL="$SANDBOX/gitconfig"
+export GIT_CONFIG_SYSTEM=/dev/null
+: >"$GIT_CONFIG_GLOBAL"
+
 say()  { printf '%s\n' "$*"; }
 fail() {
     CURRENT_FAILED=1
@@ -168,7 +178,10 @@ EOF
     printf 'scratch\n' >"$dir/notes/scratch.txt"
     git -C "$dir" init -q
     git -C "$dir" add -A
+    # Belt as well as braces: GIT_CONFIG_GLOBAL above is the isolation, these
+    # are the two settings that would still break a commit if it leaked.
     git -C "$dir" -c user.email=selftest@example.com -c user.name=selftest \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null \
         commit -qm 'fixture'
 }
 
@@ -237,9 +250,11 @@ if grep -qF "${FAKE_LETHAL:-__none__}" "$FAKE_CLASS"; then
 <testsuite name="fixture.WidgetTest" tests="2" failures="1">
   <testcase name="limitIsSeven" classname="fixture.WidgetTest">
     <failure message="expected 7"/>
-    <system-out>an error occurred somewhere, which must not be read as one</system-out>
   </testcase>
-  <testcase name="spareIsPositive" classname="fixture.WidgetTest"/>
+  <testcase name="spareIsPositive" classname="fixture.WidgetTest">
+    <system-out><![CDATA[a test that logs XML: <failure message="not a real one"/>
+<error>nor this</error>]]></system-out>
+  </testcase>
 </testsuite>
 XML
     printf '[INFO] BUILD FAILURE\n'
@@ -250,7 +265,10 @@ cat >"$FAKE_REPORTS/TEST-fixture.WidgetTest.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="fixture.WidgetTest" tests="2" failures="0">
   <testcase name="limitIsSeven" classname="fixture.WidgetTest"/>
-  <testcase name="spareIsPositive" classname="fixture.WidgetTest"/>
+  <testcase name="spareIsPositive" classname="fixture.WidgetTest">
+    <system-out><![CDATA[a test that logs XML: <failure message="not a real one"/>
+<error>nor this</error>]]></system-out>
+  </testcase>
 </testsuite>
 XML
 printf '[INFO] BUILD SUCCESS\n'
@@ -292,6 +310,7 @@ sweep() {
 
 lethal_mutant_args=(--id lethal --file fixmod/src/main/java/Widget.java
                     --find 'LIMIT = 7' --replace 'LIMIT = 99')
+LETHAL_DEFAULT=("${lethal_mutant_args[@]}")
 
 # ---------------------------------------------------------------------------
 # Failure mode 1 -- the revert that ate the author's fix
@@ -505,13 +524,14 @@ test_a_kill_always_names_the_failing_test() {
 
     assert_status 0 "$STATUS" "killed mutant"
     assert_contains "$OUT" "KILLED by WidgetTest.limitIsSeven" "killed mutant"
-    assert_contains "$(cat "$CASE_DIR/report.tsv")" "WidgetTest.limitIsSeven" "report file"
-    # The stub plants the word "error" in captured stdout; a report reader that
-    # greps the whole body would invent a second failing test out of it.
-    local killers
-    killers=$(grep -c 'limitIsSeven' "$CASE_DIR/report.tsv")
-    if [ "$killers" -ne 1 ]; then
-        fail "expected exactly one killing test in the report, got $killers"
+    # The stub's passing test case logs literal XML -- `<failure .../>` inside a
+    # CDATA system-out, which surefire does not escape. A reader that scans the
+    # whole testcase body invents a second failing test out of it, so assert the
+    # killer field exactly rather than merely that it mentions the right test.
+    local killer
+    killer=$(awk -F'\t' 'NR == 2 { print $6 }' "$CASE_DIR/report.tsv")
+    if [ "$killer" != "WidgetTest.limitIsSeven" ]; then
+        fail "expected the report's killed_by field to be exactly 'WidgetTest.limitIsSeven', got '$killer'"
     fi
     assert_not_contains "$OUT" "+1 more" "system-out text must not be read as a failure"
 }
@@ -571,9 +591,14 @@ test_a_red_baseline_aborts_the_sweep() {
 # ---------------------------------------------------------------------------
 
 start_slow_sweep() {
-    # Run the harness in its own process group so the test can signal the
-    # harness and its Maven child together, which is what Ctrl-C does.
-    setsid "$HARNESS" --maven-repo "$CASE_DIR/m2" --no-baseline \
+    # Two things this launcher has to get right, both of which cost a wrong
+    # answer if skipped. `setsid` puts the harness in its own process group, so
+    # the test can signal it and its Maven child together, which is what Ctrl-C
+    # does. And a background job of a *non-interactive* shell inherits SIGINT
+    # set to SIG_IGN, which cannot then be trapped -- so without restoring the
+    # default disposition, a broken INT handler would look like a working one.
+    setsid perl -e '$SIG{INT} = "DEFAULT"; $SIG{HUP} = "DEFAULT"; exec @ARGV or die $!;' \
+        -- "$HARNESS" --maven-repo "$CASE_DIR/m2" --no-baseline \
         "${lethal_mutant_args[@]}" >"$CASE_DIR/sweep.out" 2>&1 &
     SWEEP_PID=$!
     local waited=0
@@ -588,30 +613,38 @@ start_slow_sweep() {
     return 1
 }
 
-test_sigterm_leaves_the_tree_clean() {
-    if ! command -v setsid >/dev/null 2>&1; then
-        setup_case sigterm >/dev/null 2>&1 || true
-        skip "setsid is not available, so the process group cannot be signalled"
-        return 0
-    fi
-    setup_case sigterm
+interrupt_case() {
+    local signal=$1
+    setup_case "sig$signal"
     export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
 
     start_slow_sweep || return 0
-    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    kill -"$signal" -"$SWEEP_PID" 2>/dev/null
     wait "$SWEEP_PID" 2>/dev/null
     local status=$?
 
     if [ "$status" -eq 0 ]; then
-        fail "an interrupted sweep must not exit 0"
+        fail "SIG$signal: an interrupted sweep must not exit 0"
     fi
     if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
-        fail "SIGTERM left the tree modified"
+        fail "SIG$signal left the tree modified"
     fi
     if [ -e "$REPO/.mutation-sweep-active" ]; then
-        fail "SIGTERM left the sentinel behind"
+        fail "SIG$signal left the sentinel behind"
     fi
-    assert_contains "$(cat "$CASE_DIR/sweep.out")" "tree restored" "interrupted sweep"
+    assert_contains "$(cat "$CASE_DIR/sweep.out")" "tree restored" "SIG$signal"
+}
+
+test_an_interrupt_leaves_the_tree_clean() {
+    if ! command -v setsid >/dev/null 2>&1; then
+        skip "setsid is not available, so the process group cannot be signalled"
+        return 0
+    fi
+    # All three trapped signals, because they are three separate handlers as far
+    # as a future edit is concerned, and Ctrl-C is the one people actually use.
+    interrupt_case INT
+    interrupt_case TERM
+    interrupt_case HUP
 }
 
 test_sigkill_is_loud_and_recoverable() {
@@ -659,6 +692,123 @@ test_sigkill_is_loud_and_recoverable() {
     # And now a normal sweep runs again.
     sweep "${lethal_mutant_args[@]}"
     assert_status 0 "$STATUS" "sweep after recovery"
+}
+
+# ---------------------------------------------------------------------------
+# Review findings, round 1. Each of these was a real defect in the harness.
+# ---------------------------------------------------------------------------
+
+test_only_build_output_surefire_directories_are_deleted() {
+    setup_case surefire-scope
+    # The harness deletes surefire reports before each build so that anything
+    # found afterwards demonstrably came from that build. The deletion was
+    # matched by name alone, so a directory called surefire-reports anywhere in
+    # the tree -- a golden-file fixture, say -- was destroyed along with the
+    # author's uncommitted edits to it, silently, on an exit-0 run.
+    mkdir -p "$REPO/fixmod/src/test/resources/surefire-reports"
+    printf 'golden\n' >"$REPO/fixmod/src/test/resources/surefire-reports/golden.xml"
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=selftest@example.com -c user.name=selftest \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm 'golden fixture'
+    printf 'golden, edited but not committed\n' \
+        >"$REPO/fixmod/src/test/resources/surefire-reports/golden.xml"
+    printf 'untracked\n' >"$REPO/fixmod/src/test/resources/surefire-reports/scratch.xml"
+
+    sweep "${lethal_mutant_args[@]}"
+    assert_status 0 "$STATUS" "sweep with a surefire-reports fixture in the source tree"
+
+    assert_file_is "$REPO/fixmod/src/test/resources/surefire-reports/golden.xml" \
+        "golden, edited but not committed" "a source-tree fixture directory"
+    assert_file_is "$REPO/fixmod/src/test/resources/surefire-reports/scratch.xml" \
+        "untracked" "an untracked file in a source-tree fixture directory"
+}
+
+test_a_second_sweep_in_the_same_worktree_is_refused() {
+    if ! command -v setsid >/dev/null 2>&1; then
+        skip "setsid is not available, so a concurrent sweep cannot be started"
+        return 0
+    fi
+    setup_case concurrent
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
+
+    start_slow_sweep || return 0
+    # Two sweeps in one tree read each other's surefire reports, so a survivor
+    # in the second is reported as a kill complete with a named test; and
+    # whichever finishes first deletes the sentinel, stranding the other's
+    # mutation with no record of it. The sentinel is the lock, taken with
+    # noclobber so that creating it is the check.
+    sweep --id second --file fixmod/src/main/java/Helper.java \
+          --find 'n + n' --replace 'n * 2'
+    local second_status=$STATUS second_out=$OUT
+
+    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    wait "$SWEEP_PID" 2>/dev/null
+
+    assert_status 2 "$second_status" "concurrent sweep"
+    assert_contains "$second_out" "another sweep is already running" "concurrent sweep"
+    assert_not_contains "$second_out" "KILLED" "concurrent sweep"
+    # And the first sweep's own restore was not disturbed by the second.
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "the first sweep did not restore its file: $(git -C "$REPO" status --porcelain -- fixmod)"
+    fi
+    if [ -e "$REPO/.mutation-sweep-active" ]; then
+        fail "the sentinel outlived both sweeps"
+    fi
+}
+
+test_a_path_beginning_with_a_hash_is_still_restored() {
+    if ! command -v setsid >/dev/null 2>&1; then
+        skip "setsid is not available, so the process group cannot be signalled"
+        return 0
+    fi
+    setup_case hash-path
+    # The sentinel's first column is a filesystem path, so it cannot use '#' as
+    # a comment marker: a module named "#experimental" produced a record
+    # indistinguishable from the header, and an interrupted sweep then decided
+    # there was nothing to restore, deleted the sentinel and exited quietly.
+    mkdir -p "$REPO/#odd/src/main/java"
+    cp "$REPO/fixmod/pom.xml" "$REPO/#odd/pom.xml"
+    cp "$FAKE_SRC" "$REPO/#odd/src/main/java/Widget.java"
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=selftest@example.com -c user.name=selftest \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm 'odd module'
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
+    export FAKE_SRC="$REPO/#odd/src/main/java/Widget.java"
+    lethal_mutant_args=(--id lethal --file '#odd/src/main/java/Widget.java'
+                        --find 'LIMIT = 7' --replace 'LIMIT = 99')
+
+    start_slow_sweep || { lethal_mutant_args=("${LETHAL_DEFAULT[@]}"); return 0; }
+    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    wait "$SWEEP_PID" 2>/dev/null
+    lethal_mutant_args=("${LETHAL_DEFAULT[@]}")
+
+    if [ -n "$(git -C "$REPO" status --porcelain -- '#odd')" ]; then
+        fail "a mutation in a path beginning with '#' was not restored"
+    fi
+    if [ -e "$REPO/.mutation-sweep-active" ]; then
+        fail "the sentinel was left behind"
+    fi
+    assert_contains "$(cat "$CASE_DIR/sweep.out")" "tree restored" "hash-prefixed path"
+}
+
+test_the_fixtures_ignore_a_hostile_git_config() {
+    setup_case hostile-config
+    # This suite runs inside `mvn verify` on a contributor's machine, and
+    # `commit.gpgsign = true` in their global config is enough to fail eleven of
+    # these tests with a message about a missing secret key. Nothing here is
+    # allowed to depend on whose machine it is.
+    cat >>"$GIT_CONFIG_GLOBAL" <<'EOF'
+[commit]
+    gpgsign = true
+[core]
+    hooksPath = /nonexistent/hooks
+EOF
+    local dir="$CASE_DIR/hostile-fixture"
+    if ! new_fixture "$dir" 2>"$CASE_DIR/fixture.err"; then
+        fail "the fixture could not be built under a hostile global git config"
+        sed 's/^/      | /' "$CASE_DIR/fixture.err"
+    fi
+    : >"$GIT_CONFIG_GLOBAL"
 }
 
 # ---------------------------------------------------------------------------
@@ -729,8 +879,12 @@ run_test a_kill_always_names_the_failing_test
 run_test maven_runs_with_am_and_a_private_local_repository
 run_test a_green_build_that_ran_no_tests_is_not_a_survivor
 run_test a_red_baseline_aborts_the_sweep
-run_test sigterm_leaves_the_tree_clean
+run_test an_interrupt_leaves_the_tree_clean
 run_test sigkill_is_loud_and_recoverable
+run_test only_build_output_surefire_directories_are_deleted
+run_test a_second_sweep_in_the_same_worktree_is_refused
+run_test a_path_beginning_with_a_hash_is_still_restored
+run_test the_fixtures_ignore_a_hostile_git_config
 run_test a_real_mutant_in_real_code_is_killed
 
 say ""

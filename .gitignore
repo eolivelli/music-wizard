@@ -1,4 +1,8 @@
 target/
+# One local Maven repository per worktree, as CONTRIBUTING.md asks for. Without
+# this every mutation sweep warns about it as uncommitted work, which is a
+# warning worth keeping rare.
+.m2/
 *.class
 *.jar
 *.war

@@ -102,7 +102,9 @@ Options:
   --replace TEXT      literal replacement
   --id NAME           name for the command-line mutant
   --count N           expected occurrences of --find (default 1)
-  --maven-repo DIR    local Maven repository (default: <repo root>/.m2)
+  --maven-repo DIR    local Maven repository (default: <repo root>/.m2). A
+                      relative path resolves against the current directory, not
+                      the repository root. ~/.m2 is refused.
   --pl MODULES        Maven -pl list; default is the module owning each mutant
   --test PATTERN      restrict surefire to matching tests (-Dtest=PATTERN)
   --mvn-arg ARG       extra Maven option, repeatable; options only, never goals
@@ -220,7 +222,18 @@ target_dir_of() {
 # -- where no trap can run -- recoverable rather than merely detectable.
 # ---------------------------------------------------------------------------
 
-sentinel_add() { printf '%s\t%s\n' "$1" "$2" >>"$SENTINEL"; }
+# Records are typed -- `file<TAB>path<TAB>backup` -- rather than distinguished
+# from the header by a leading '#'. The first column is a filesystem path, and a
+# path may legitimately begin with '#', in which case a comment-based format
+# reads a live record as a header and silently forgets a mutated file.
+sentinel_add() { printf 'file\t%s\t%s\n' "$1" "$2" >>"$SENTINEL"; }
+
+sentinel_records() {
+    if [ ! -f "$SENTINEL" ]; then
+        return 0
+    fi
+    grep '^file	' "$SENTINEL" || true
+}
 
 sentinel_drop() {
     local rel=$1 tmp
@@ -229,18 +242,26 @@ sentinel_drop() {
     fi
     tmp=$(mktemp "${TMPDIR:-/tmp}/mw-sweep-sentinel.XXXXXX")
     MW_REL="$rel" perl -ne '
-        my ($f) = split(/\t/, $_, 2);
-        print unless (defined $f && $f eq $ENV{MW_REL});
+        my ($kind, $f) = split(/\t/, $_, 3);
+        print unless (defined $kind && $kind eq "file" && defined $f && $f eq $ENV{MW_REL});
     ' "$SENTINEL" >"$tmp"
     cat "$tmp" >"$SENTINEL"
     rm -f "$tmp"
 }
 
 sentinel_has_entries() {
+    [ -n "$(sentinel_records)" ]
+}
+
+# Only ever remove a sentinel this run created. Another sweep's sentinel is the
+# only record that its files are mutated, and deleting it strands them.
+sentinel_release() {
     if [ ! -f "$SENTINEL" ]; then
-        return 1
+        return 0
     fi
-    grep -qv '^#' "$SENTINEL"
+    if grep -q "^run	$RUN_ID	" "$SENTINEL"; then
+        rm -f "$SENTINEL"
+    fi
 }
 
 # restore_file <repo-relative-path> <backup-path> -- byte-exact, verified twice.
@@ -250,9 +271,14 @@ restore_file() {
         log "[sweep] ERROR: the backup for $rel is missing: $backup"
         return 1
     fi
-    if ! cat "$backup" >"$abs"; then
-        log "[sweep] ERROR: could not write $rel"
-        return 1
+    # Skip the write when the file already matches: a mutation that could not be
+    # written leaves nothing to undo, and writing anyway would turn a harmless
+    # "the source is read-only" into "the tree is still mutated".
+    if ! cmp -s "$backup" "$abs"; then
+        if ! cat "$backup" >"$abs"; then
+            log "[sweep] ERROR: could not write $rel"
+            return 1
+        fi
     fi
     if ! cmp -s "$backup" "$abs"; then
         log "[sweep] ERROR: restoring $rel did not reproduce the backup byte for byte"
@@ -277,14 +303,17 @@ restore_all_from_sentinel() {
     if [ ! -f "$SENTINEL" ]; then
         return 0
     fi
-    while IFS=$'\t' read -r rel backup; do
-        case "$rel" in ''|'#'*) continue ;; esac
+    local kind
+    while IFS=$'\t' read -r kind rel backup; do
+        if [ "$kind" != "file" ] || [ -z "$rel" ]; then
+            continue
+        fi
         if restore_file "$rel" "$backup"; then
             note "restored $rel"
         else
             failed=1
         fi
-    done < <(grep -v '^#' "$SENTINEL" || true)
+    done < <(sentinel_records)
     if [ "$failed" -eq 0 ]; then
         rm -f "$SENTINEL"
         return 0
@@ -292,11 +321,25 @@ restore_all_from_sentinel() {
     return 1
 }
 
+# The pid that owns the sentinel, if it is still alive. A sweep holds the
+# sentinel for its whole run, so recovering under a live one would revert files
+# it is in the middle of measuring.
+sentinel_live_owner() {
+    local pid
+    if [ ! -f "$SENTINEL" ]; then
+        return 0
+    fi
+    pid=$(perl -ne 'print $2 if /^run\t([^\t]*)\t(\d+)/' "$SENTINEL")
+    if [ -n "$pid" ] && [ "$pid" != "$$" ] && kill -0 "$pid" 2>/dev/null; then
+        printf '%s\n' "$pid"
+    fi
+}
+
 on_exit() {
     local status=$?
     trap - EXIT INT TERM HUP
     if ! sentinel_has_entries; then
-        rm -f "$SENTINEL"
+        sentinel_release
         exit "$status"
     fi
     log ""
@@ -328,7 +371,11 @@ on_exit() {
 # one clock-granularity mistake away from attributing the previous mutant's
 # failure to this one -- the same family of bug as failure mode 2.
 clear_surefire_reports() {
-    find "$REPO_ROOT" -type d -name surefire-reports -prune -exec rm -rf {} + 2>/dev/null || true
+    # Scoped to `*/target/surefire-reports`, exactly like the reader below.
+    # `-name surefire-reports` alone would also match a directory of that name
+    # in src/test/resources, which is somebody's fixture and not ours to delete.
+    find "$REPO_ROOT" -type d -path '*/target/surefire-reports' -prune \
+        -exec rm -rf {} + 2>/dev/null || true
 }
 
 # run_maven <modules> <log-file> -- exit status is Maven's.
@@ -455,6 +502,9 @@ parse_mutants_file() {
     }
     while IFS= read -r line || [ -n "$line" ]; do
         lineno=$((lineno + 1))
+        # A CRLF file would otherwise fail with "no such file: ...Widget.java^M",
+        # which names the wrong problem convincingly enough to waste an hour.
+        line=${line%$'\r'}
         case "${line#"${line%%[![:space:]]*}"}" in
             ''|'#'*) continue ;;
         esac
@@ -497,6 +547,7 @@ RUN_BASELINE=1
 RECOVER=0
 EXTRA_MVN_ARGS=()
 BACKUP_DIR='(none)'
+RUN_ID='(none)'
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -557,6 +608,10 @@ if [ "$RECOVER" -eq 1 ]; then
         note "no sweep in progress; nothing to recover"
         exit "$EXIT_OK"
     fi
+    owner=$(sentinel_live_owner)
+    if [ -n "$owner" ]; then
+        die "$EXIT_REFUSED" "a sweep is still running in this worktree (pid $owner). Recovering now would revert a file it is measuring. Wait for it, or stop it first."
+    fi
     note "recovering from $SENTINEL"
     if restore_all_from_sentinel; then
         note "tree restored"
@@ -580,6 +635,10 @@ if [ -z "$MUTANTS_FILE" ] && [ "$CLI_ANY" -eq 0 ]; then
 fi
 
 if [ -f "$SENTINEL" ]; then
+    owner=$(sentinel_live_owner)
+    if [ -n "$owner" ]; then
+        die "$EXIT_REFUSED" "another sweep is already running in this worktree (pid $owner). Two sweeps in one tree mutate each other's files and read each other's surefire reports; run the second one in its own worktree."
+    fi
     log "[sweep] ERROR: a previous sweep did not finish. It left behind:"
     sed 's/^/[sweep]   /' "$SENTINEL" >&2
     die "$EXIT_REFUSED" "run 'tools/mutation-sweep.sh --recover' first"
@@ -627,6 +686,9 @@ for i in "${!MUT_IDS[@]}"; do
     if ! git -C "$REPO_ROOT" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
         die "$EXIT_REFUSED" "mutant '$id': $rel is not tracked by git, so there is no clean state to compare it against"
     fi
+    if [ ! -w "$REPO_ROOT/$rel" ]; then
+        die "$EXIT_REFUSED" "mutant '$id': $rel is not writable, so it can be mutated but not put back"
+    fi
 
     # Failure mode 1, and the refusal the whole harness is built around: if the
     # file already differs from HEAD then the author has work in it, and no
@@ -673,10 +735,21 @@ BACKUP_DIR="$REPO_ROOT/target/mutation-sweep/$RUN_ID"
 readonly BACKUP_DIR
 mkdir -p "$BACKUP_DIR"
 
+# The sentinel doubles as the worktree lock, and it is created with noclobber so
+# that creating it *is* the check. The `[ -f ]` test above gives the good
+# message; on its own it is a check-then-act race, and two sweeps that both got
+# past it would mutate one tree, read each other's surefire reports -- a
+# survivor becomes a kill, complete with a named test -- and the second to
+# finish would delete the sentinel out from under the first.
 trap on_exit EXIT INT TERM HUP
+if ! (set -o noclobber; : >"$SENTINEL") 2>/dev/null; then
+    trap - EXIT INT TERM HUP
+    die "$EXIT_REFUSED" "another sweep took $SENTINEL between the check and now. One sweep per worktree."
+fi
 {
-    printf '# mutation sweep %s started %s (pid %s)\n' "$RUN_ID" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$"
-    printf '# lines below are <file>\\t<backup>; restore with tools/mutation-sweep.sh --recover\n'
+    printf '# mutation sweep %s started %s\n' "$RUN_ID" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '# restore with tools/mutation-sweep.sh --recover\n'
+    printf 'run\t%s\t%s\n' "$RUN_ID" "$$"
 } >"$SENTINEL"
 
 note "repo:       $REPO_ROOT"
@@ -882,7 +955,7 @@ if [ -n "$REPORT_FILE" ]; then
     note "report written to $REPORT_FILE"
 fi
 
-rm -f "$SENTINEL"
+sentinel_release
 trap - EXIT INT TERM HUP
 
 if [ "$errored" -gt 0 ]; then
