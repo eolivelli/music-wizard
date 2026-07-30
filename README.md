@@ -54,11 +54,11 @@ to the nearest tracked beat — it says which beat begins a bar, not that a beat
 was missed — and it overrides the downbeat detector outright rather than being
 weighed against it.
 
-**It changes the saved score and not, yet, the engraved chart.** The chart
-anchors its bar lines on the first chord rather than on the detected downbeat,
-deliberately, and does not yet distinguish a downbeat a human supplied from one
-that was guessed ([#83][i83]). So today this option is worth setting for the
-score and for anything reading it, and will not move a bar line in the PDF.
+**It moves the bar lines on the page.** The chart draws its bars on the grid's
+downbeats, so nominating a different beat re-bars the text chart and the
+engraving alike ([#83][i83]). If the harmony then starts part-way into the first
+bar, the chart says so with an `N.C.` rather than quietly re-phasing itself onto
+the chords — which is how you can tell the downbeat is still wrong.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
