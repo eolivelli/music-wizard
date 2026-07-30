@@ -100,6 +100,18 @@ class TrackedPulseUnitTest {
             assertThat(grid.pulseQuarters()).as("%s", meter)
                     .hasValue(pulseTheMapWasBuiltWith(score.tempoMap()));
 
+            // The bars the grid marks are the ones that pulse builds: the
+            // downbeat spacing times the pulse is the meter's bar. Barring by
+            // the counted-beat count instead happens to give the same answer
+            // today and would not for a grid tracked at any other pulse.
+            List<Double> downbeats = grid.downbeatTimes();
+            assertThat(downbeats).as("%s downbeats", meter).hasSizeGreaterThan(1);
+            int spacing = grid.beatTimes().indexOf(downbeats.get(1))
+                    - grid.beatTimes().indexOf(downbeats.get(0));
+            assertThat(spacing * grid.pulseQuarters().orElseThrow())
+                    .as("%s bar", meter)
+                    .isEqualTo(meter.quarterBeatsPerBar());
+
             // And the two summaries of one performance land on one tempo. A
             // click every half second is 120 pulses a minute whatever the meter,
             // so the quarter-note tempo is 120 times what a pulse is worth.

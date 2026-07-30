@@ -145,6 +145,11 @@ public record BeatGrid(
      * tracked against, which is not always the one that built the grid: a beat
      * tracker phases bars from onset energy without ever being told what a bar
      * is worth.
+     *
+     * <p>This records a claim and can check only that it is a note value. It
+     * cannot check it against the bars the grid already marks, because a grid
+     * holds no meter -- so a pulse that contradicts them is caught when the
+     * grid meets a tempo map, in {@link Score}, and not before.
      */
     public BeatGrid withPulseQuarters(double pulseQuarters) {
         return new BeatGrid(
@@ -203,8 +208,11 @@ public record BeatGrid(
      *
      * <p>The resulting grid records the pulse it was built on -- the meter's
      * counted beat -- so a later reader is told rather than left to assume it.
-     * That is the same figure the assumption produced, so the tempo this grid
-     * reports is unchanged.
+     * {@link #medianTempo(TimeSignature)} therefore answers what it always did
+     * <em>when asked in this meter</em>, since the recorded figure is the one
+     * the assumption produced. Asked in another meter it now answers this
+     * grid's tempo rather than that meter's reading of its pulses, which is the
+     * point of #139 and a change from what it used to say.
      */
     public static BeatGrid ofTimes(
             List<Double> beatSeconds, TimeSignature timeSignature, Confidence confidence) {
@@ -238,19 +246,8 @@ public record BeatGrid(
                                    double pulseQuarters, Confidence confidence) {
         Objects.requireNonNull(timeSignature, "timeSignature");
         requirePulseQuarters(pulseQuarters);
-        double pulsesPerBar = timeSignature.quarterBeatsPerBar() / pulseQuarters;
-        long whole = Math.round(pulsesPerBar);
-        // A tolerance rather than an exact comparison: every pulse the model
-        // itself produces divides its bar exactly, but a caller is free to pass
-        // a third of a quarter note, and 4.0 / (1.0 / 3) is 12.000000000000002.
-        if (whole < 1 || Math.abs(pulsesPerBar - whole) > 1e-9 * Math.max(1.0, pulsesPerBar)) {
-            throw new IllegalArgumentException(
-                    "a pulse of " + pulseQuarters + " quarter notes does not divide a "
-                            + timeSignature + " bar, which is "
-                            + timeSignature.quarterBeatsPerBar()
-                            + " quarter notes, into a whole number of pulses");
-        }
-        return ofTimes(beatSeconds, (int) whole, confidence).withPulseQuarters(pulseQuarters);
+        return ofTimes(beatSeconds, timeSignature.pulsesPerBar(pulseQuarters), confidence)
+                .withPulseQuarters(pulseQuarters);
     }
 
     /** Just the beat times. */

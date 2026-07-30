@@ -388,7 +388,7 @@ class TempoOverrideTest {
         // falls in frame 0 lands here. Asserted through a recording as well as
         // directly, since it is reachable both ways.
         TempoMap atOrigin = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, 0.0, Provenance.SUPPLIED);
+                120, TimeSignature.FOUR_FOUR, 1.0, 0.0, Provenance.SUPPLIED);
         // The provenance travels the degenerate path too: a map that skipped the
         // anchor still has to say the tempo in it was supplied, or the one
         // recording whose first beat lands in frame 0 loses its correction.
@@ -407,14 +407,14 @@ class TempoOverrideTest {
         // more than a thrown map, so the phase is dropped rather than the
         // analysis.
         TempoMap unrepresentable = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, Double.MIN_VALUE, Provenance.SUPPLIED);
+                120, TimeSignature.FOUR_FOUR, 1.0, Double.MIN_VALUE, Provenance.SUPPLIED);
         assertThat(unrepresentable.segments()).hasSize(1);
         assertThat(unrepresentable.initialTempo()).isEqualTo(120.0);
 
         // And a negative anchor cannot be produced by a grid, but must not build
         // a map with a segment running backwards if one ever reaches it.
         assertThat(AudioTranscriber.constantPulseFrom(
-                        120, TimeSignature.FOUR_FOUR, -1.0, Provenance.SUPPLIED))
+                        120, TimeSignature.FOUR_FOUR, 1.0, -1.0, Provenance.SUPPLIED))
                 .isEqualTo(TempoMap.constantPulse(
                         120, TimeSignature.FOUR_FOUR, Provenance.SUPPLIED));
     }

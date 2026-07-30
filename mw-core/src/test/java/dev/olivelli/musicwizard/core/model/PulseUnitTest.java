@@ -214,6 +214,71 @@ class PulseUnitTest {
     }
 
     @Nested
+    @DisplayName("pulses per bar")
+    class PulsesPerBar {
+
+        @Test
+        @DisplayName("is the counted beat count exactly, when the pulse is the counted beat")
+        void agreesWithBeatsPerBarBitForBit() {
+            // The whole change rests on this: every producer today tracks at the
+            // counted beat, so deriving the bar length from the pulse instead of
+            // asking the meter must be the same number, for every legal meter and
+            // not merely for the ones a test happened to name.
+            int checked = 0;
+            for (int numerator = 1; numerator <= 64; numerator++) {
+                for (int denominator : new int[] {1, 2, 4, 8, 16, 32, 64}) {
+                    TimeSignature meter = new TimeSignature(numerator, denominator);
+                    assertThat(meter.pulsesPerBar(meter.beatUnitQuarters()))
+                            .as("%s", meter)
+                            .isEqualTo(meter.beatsPerBar());
+                    checked++;
+                }
+            }
+            // Counted, so a loop that filtered everything out cannot pass quietly.
+            assertThat(checked).isEqualTo(448);
+        }
+
+        @Test
+        @DisplayName("counts by the pulse, which is the point")
+        void countsByThePulse() {
+            assertThat(TimeSignature.FOUR_FOUR.pulsesPerBar(2.0)).isEqualTo(2);
+            assertThat(TimeSignature.FOUR_FOUR.pulsesPerBar(0.5)).isEqualTo(8);
+            assertThat(TimeSignature.SIX_EIGHT.pulsesPerBar(0.5)).isEqualTo(6);
+            assertThat(TimeSignature.SIX_EIGHT.pulsesPerBar(3.0)).isEqualTo(1);
+            // The tolerance earns its place here rather than in prose: a pulse a
+            // caller computed as 1.0/49 divides a 4/4 bar into 196.00000000000003.
+            assertThat(TimeSignature.FOUR_FOUR.pulsesPerBar(1.0 / 49)).isEqualTo(196);
+            assertThat(4.0 / (1.0 / 49)).isNotEqualTo(196.0);
+        }
+
+        @Test
+        @DisplayName("refuses a pulse a bar cannot be built from")
+        void refusesAPulseThatDoesNotDivide() {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(1.5))
+                    .withMessageContaining("does not divide");
+            // Longer than the bar: there is no bar left to bar.
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(8.0))
+                    .withMessageContaining("does not fit");
+            // And short enough to imply more pulses than an int can count, which
+            // must be refused rather than wrapped into a negative bar length.
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(1e-9))
+                    .withMessageContaining("does not fit");
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(Double.MIN_VALUE))
+                    .withMessageContaining("does not fit");
+            for (double bad : new double[] {Double.NaN, 0.0, -1.0, Double.POSITIVE_INFINITY}) {
+                assertThatIllegalArgumentException()
+                        .as("pulse %s", bad)
+                        .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(bad))
+                        .withMessageContaining("pulseQuarters");
+            }
+        }
+    }
+
+    @Nested
     @DisplayName("a pulse that is not a note value")
     class Validation {
 
@@ -268,6 +333,102 @@ class PulseUnitTest {
                 BeatGrid.ofTimes(pulses(0.4, 0.5, 4), TimeSignature.FOUR_FOUR, 2.0,
                         Confidence.of(0.8));
             }).doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    @DisplayName("a pulse that contradicts the bars the grid marks")
+    class ContradictsTheBars {
+
+        /** A grid barred every {@code pulsesPerBar} pulses, recording {@code pulse}. */
+        private static BeatGrid barredEvery(int pulsesPerBar, double pulse, int count) {
+            return BeatGrid.ofTimes(pulses(0.4, 0.5, count), pulsesPerBar, Confidence.of(0.9))
+                    .withPulseQuarters(pulse);
+        }
+
+        @Test
+        @DisplayName("is rejected where the grid meets the meter, since nowhere lower can")
+        void aPulseThatContradictsTheBarsIsRejected() {
+            // The route round the factory: a grid is barred for one pulse and
+            // then handed another, which withPulseQuarters cannot refuse because
+            // a grid holds no meter. Left alone this is #139's symptom again --
+            // the grid would report 180 where the map says 120.
+            BeatGrid lying = barredEvery(4, 1.5, 8);
+            assertThat(lying.medianTempo(TimeSignature.FOUR_FOUR)).isEqualTo(180.0);
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> Score.empty(
+                            TempoMap.constant(120.0, TimeSignature.FOUR_FOUR), 12.0)
+                            .withBeatGrid(lying))
+                    .withMessageContaining("6.0 quarter notes to the bar")
+                    .withMessageContaining("4/4 bar is 4.0");
+        }
+
+        @Test
+        @DisplayName("is rejected when it arrives through a file rather than a setter")
+        void deserializationIsCheckedToo() {
+            String json = ScoreJson.toJson(Score.empty(
+                            TempoMap.constant(120.0, TimeSignature.FOUR_FOUR), 12.0)
+                    .withBeatGrid(barredEvery(4, 1.0, 8)))
+                    .replace("\"pulseQuarters\" : 1.0", "\"pulseQuarters\" : 1.5");
+
+            assertThatThrownBy(() -> ScoreJson.fromJson(json))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .rootCause()
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("quarter notes to the bar");
+        }
+
+        @Test
+        @DisplayName("is not guessed at where the bar cycle was never observed")
+        void whatTheCheckDeclinesToJudge() {
+            TempoMap fourFour = TempoMap.constant(120.0, TimeSignature.FOUR_FOUR);
+
+            // A clip shorter than a bar shows a cycle that is observably wrong --
+            // the reason the pulse is stored rather than derived -- so a single
+            // downbeat is not evidence of anything and must not reject a score.
+            assertThatCode(() -> Score.empty(fourFour, 12.0)
+                    .withBeatGrid(barredEvery(4, 1.5, 3)))
+                    .doesNotThrowAnyException();
+
+            // A grid that records nothing is every grid written before #139.
+            assertThatCode(() -> Score.empty(fourFour, 12.0)
+                    .withBeatGrid(BeatGrid.ofTimes(pulses(0.4, 0.5, 8), 4, Confidence.of(0.9))))
+                    .doesNotThrowAnyException();
+
+            // Bars are not one length either side of a meter change, so the first
+            // cycle says nothing about the rest and the check stands down.
+            assertThatCode(() -> Score.empty(
+                    fourFour.withMeterChange(2, TimeSignature.THREE_FOUR), 12.0)
+                    .withBeatGrid(barredEvery(4, 1.5, 8)))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("accepts every grid the pulse-aware factory builds")
+        void theFactoryAndTheCheckAgree() {
+            // The two must not be able to disagree: a pulse TimeSignature.
+            // pulsesPerBar accepts for a meter has to survive meeting that meter
+            // in a Score, or a legitimate producer would be building scores that
+            // cannot be constructed.
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
+                    TimeSignature.SIX_EIGHT, new TimeSignature(9, 8), new TimeSignature(7, 8),
+                    new TimeSignature(5, 4), new TimeSignature(12, 8))) {
+                for (double pulse : new double[] {0.25, 0.5, meter.beatUnitQuarters()}) {
+                    int perBar;
+                    try {
+                        perBar = meter.pulsesPerBar(pulse);
+                    } catch (IllegalArgumentException notThisMeter) {
+                        continue;
+                    }
+                    BeatGrid grid = BeatGrid.ofTimes(
+                            pulses(0.4, 0.5, 2 * perBar + 1), meter, pulse, Confidence.of(0.9));
+                    assertThatCode(() -> Score.empty(
+                            TempoMap.constant(120.0, meter), 12.0).withBeatGrid(grid))
+                            .as("%s at %s quarter notes a pulse", meter, pulse)
+                            .doesNotThrowAnyException();
+                }
+            }
         }
     }
 
@@ -328,12 +489,14 @@ class PulseUnitTest {
         }
 
         @Test
-        @DisplayName("a pulse no note value could be is rejected on the way in")
+        @DisplayName("a pulse that is not a note value is rejected on the way in")
         void deserializationCannotSmuggleABadPulse() {
-            // Deserialization runs the compact constructor, so a hand-edited or
-            // corrupted file cannot produce a grid whose pulse the factories
-            // would have refused -- and a zero pulse is the specific one that
-            // would otherwise report an infinite tempo.
+            // Deserialization runs the compact constructor, so the bounds the
+            // factories enforce hold for a hand-edited file too -- a zero pulse
+            // is the one that would otherwise report an infinite tempo. The
+            // constructor cannot check the pulse against the bar the grid marks,
+            // because a grid holds no meter; that is Score's, and
+            // aPulseThatContradictsTheBarsIsRejected covers it.
             String json = ScoreJson.toJson(Score.empty(
                             TempoMap.fromBeatTimes(pulses(0.7, 1.0, 3), TimeSignature.FOUR_FOUR, 2.0),
                             12.0)

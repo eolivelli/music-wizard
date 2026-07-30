@@ -179,12 +179,15 @@ public final class AudioTranscriber {
         Objects.requireNonNull(audio, "audio");
         Options settings = options != null ? options : Options.defaults();
         TimeSignature meter = settings.timeSignatureOrDefault();
-        // What one tracked pulse is worth, named once. The tracker emits one
-        // pulse per counted beat, so this is the meter's beat unit -- but the
-        // map and the grid are built forty lines apart from the same pulses, and
-        // giving each its own expression of the figure is how the two come to
-        // describe tempi a factor apart (#139).
+        // What one tracked pulse is worth, named once, and how many of them fill
+        // a bar, derived from it rather than asked of the meter a second time.
+        // The tracker emits one pulse per counted beat, so today these are
+        // beatUnitQuarters() and beatsPerBar() exactly; the map, the grid and
+        // the downbeat phase are built up to a hundred lines apart from the same
+        // pulses, and giving each its own expression of the figure is how they
+        // come to describe bars and tempi a factor apart (#139).
         double pulseQuarters = meter.beatUnitQuarters();
+        int pulsesPerBar = meter.pulsesPerBar(pulseQuarters);
 
         progress.accept("detecting onsets");
         OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
@@ -264,7 +267,7 @@ public final class AudioTranscriber {
                 progress.accept("only one beat was tracked, which carries no tempo; assuming "
                         + (int) fallback.pulsesPerMinute() + " beats/min");
             }
-            tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
+            tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter, pulseQuarters,
                     beatTimes.get(0), fallback.provenance());
         }
 
@@ -278,15 +281,18 @@ public final class AudioTranscriber {
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.
         // DownbeatEstimator asks for "the assumed bar length in beats", and the
-        // beats it means are the tracked ones it is phasing.
+        // beats it means are the tracked ones it is phasing -- so it takes the
+        // count derived from the pulse, which is what stops a grid tracked at
+        // some other pulse from being barred at the counted beat's rate.
+        //
         // The pulse is recorded here rather than by BeatTracker, which phases
         // bars from onset energy and is never told what a bar is worth.
         BeatGrid grid = BeatTracker.toBeatGrid(beats,
                 settings.firstDownbeatSeconds() != null
                         ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(),
-                                meter.beatsPerBar())
+                                pulsesPerBar)
                         : DownbeatEstimator.estimate(
-                                beatTimes, chroma, envelope, meter.beatsPerBar()))
+                                beatTimes, chroma, envelope, pulsesPerBar))
                 .withPulseQuarters(pulseQuarters);
 
         progress.accept("estimating chords");
@@ -355,11 +361,17 @@ public final class AudioTranscriber {
      * in place of identifying the lead-in by its position.
      *
      * @param pulsesPerMinute  the counted tempo to hold throughout
+     * @param pulseQuarters    quarter notes in one tracked pulse, taken rather
+     *                         than re-derived from {@code meter}: the lead-in is
+     *                         rounded to whole <em>pulses</em>, so a caller
+     *                         tracking at some pulse other than the counted beat
+     *                         would otherwise land its first pulse off the grid
      * @param firstBeatSeconds when the first tracked pulse falls
      * @param provenance       where {@code pulsesPerMinute} came from
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
-                                      double firstBeatSeconds, Provenance provenance) {
+                                      double pulseQuarters, double firstBeatSeconds,
+                                      Provenance provenance) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
         TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);
@@ -368,7 +380,6 @@ public final class AudioTranscriber {
             // nothing to anchor: the constant map carries the phase as it is.
             return constant;
         }
-        double pulseQuarters = meter.beatUnitQuarters();
         double quarterBpm = constant.initialTempo();
         double pulseSeconds = 60.0 * pulseQuarters / quarterBpm;
 

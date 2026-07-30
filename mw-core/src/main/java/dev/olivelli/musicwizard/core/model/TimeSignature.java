@@ -109,6 +109,50 @@ public record TimeSignature(int numerator, int denominator) {
     }
 
     /**
+     * Tracked pulses in one bar, for a grid tracked at {@code pulseQuarters}
+     * quarter notes to the pulse.
+     *
+     * <p>{@link #beatsPerBar()} is this for the counted beat, and exactly this
+     * -- to the last bit, asserted over every legal signature rather than
+     * argued. This exists separately because a grid need not be tracked at the
+     * counted beat (#139): at half tempo a 4/4 bar takes two pulses rather than
+     * four, and barring by the counted-beat count would mark a downbeat every
+     * second bar. Anything that turns a pulse into a bar length comes here, so
+     * that the conversion is written once and cannot be made two ways.
+     *
+     * @throws IllegalArgumentException if the pulse is not finite and positive,
+     *         or does not divide this bar into a whole number of pulses -- a
+     *         grid tracked at such a pulse could not say where a bar begins
+     */
+    public int pulsesPerBar(double pulseQuarters) {
+        if (!Double.isFinite(pulseQuarters) || pulseQuarters <= 0) {
+            throw new IllegalArgumentException(
+                    "pulseQuarters must be finite and positive, got: " + pulseQuarters);
+        }
+        double pulses = quarterBeatsPerBar() / pulseQuarters;
+        // Bounded before rounding, so that a pulse small enough to imply more
+        // pulses than an int can count cannot wrap into a negative bar length.
+        if (!(pulses >= 1 && pulses <= Integer.MAX_VALUE)) {
+            throw new IllegalArgumentException(
+                    "a pulse of " + pulseQuarters + " quarter notes does not fit in a " + this
+                            + " bar, which is " + quarterBeatsPerBar()
+                            + " quarter notes: it would take " + pulses + " of them");
+        }
+        long whole = Math.round(pulses);
+        // A tolerance rather than an exact comparison. Every pulse the model
+        // itself produces divides its bar exactly -- both quantities are dyadic
+        // rationals -- but a caller may pass a pulse that is not, and 4.0
+        // divided by a computed 1.0/49 is 196.00000000000003.
+        if (Math.abs(pulses - whole) > 1e-9 * Math.max(1.0, pulses)) {
+            throw new IllegalArgumentException(
+                    "a pulse of " + pulseQuarters + " quarter notes does not divide a " + this
+                            + " bar, which is " + quarterBeatsPerBar()
+                            + " quarter notes, into a whole number of pulses");
+        }
+        return (int) whole;
+    }
+
+    /**
      * Converts a tempo in quarter notes per minute into this meter's counted
      * beats per minute -- the figure a metronome shows and the only one a reader
      * can act on.

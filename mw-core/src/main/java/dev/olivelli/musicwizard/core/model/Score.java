@@ -117,6 +117,69 @@ public record Score(
             throw new IllegalArgumentException(
                     "durationSeconds must be finite and positive, got: " + durationSeconds);
         }
+        requireGridPulseFitsTheBar(beatGrid, tempoMap);
+    }
+
+    /**
+     * Rejects a grid whose recorded pulse contradicts the bars it actually
+     * marks.
+     *
+     * <p>A grid says what one pulse is worth and marks which pulses begin a bar.
+     * Multiply the two and the answer has to be the meter's bar length, or the
+     * grid and the map describe bars of different sizes -- which is #139's
+     * symptom re-entering by a different door, since a grid can be handed a
+     * pulse after it was barred, or read from a file somebody edited.
+     *
+     * <p><b>Checked here because nowhere lower can.</b> A {@link BeatGrid} holds
+     * no meter, so the factory that bars from a pulse validates only what it is
+     * given; this is the one place holding the grid, the pulse and the meter at
+     * once.
+     *
+     * <p>Four things make it safe to throw on. It runs only for a grid that
+     * <em>records</em> a pulse, so no file written before #139 can reach it. It
+     * needs two consecutive downbeats, so a clip shorter than a bar -- which
+     * shows a bar cycle that is observably wrong -- is skipped rather than
+     * guessed at. It needs a map with a single meter, since bar lengths differ
+     * either side of a meter change and the first cycle would not describe the
+     * rest. And it reads the first complete cycle only, so the cost is one bar
+     * rather than a scan of a grid that on a long track holds a hundred
+     * thousand pulses.
+     */
+    private static void requireGridPulseFitsTheBar(
+            Optional<BeatGrid> beatGrid, TempoMap tempoMap) {
+        if (beatGrid.isEmpty() || beatGrid.get().pulseQuarters().isEmpty()
+                || tempoMap.meterChanges().size() != 1) {
+            return;
+        }
+        List<BeatGrid.Beat> beats = beatGrid.get().beats();
+        int firstDownbeat = -1;
+        int pulsesPerBar = -1;
+        for (int i = 0; i < beats.size() && pulsesPerBar < 0; i++) {
+            if (!beats.get(i).downbeat()) {
+                continue;
+            }
+            if (firstDownbeat < 0) {
+                firstDownbeat = i;
+            } else {
+                pulsesPerBar = i - firstDownbeat;
+            }
+        }
+        if (pulsesPerBar < 0) {
+            return;
+        }
+        double pulseQuarters = beatGrid.get().pulseQuarters().getAsDouble();
+        TimeSignature meter = tempoMap.initialTimeSignature();
+        double barQuarters = pulsesPerBar * pulseQuarters;
+        double expected = meter.quarterBeatsPerBar();
+        // The same tolerance TimeSignature.pulsesPerBar allows, so a pulse that
+        // method accepts for this meter cannot be rejected here.
+        if (Math.abs(barQuarters - expected) > 1e-9 * Math.max(1.0, expected)) {
+            throw new IllegalArgumentException(
+                    "the beat grid records a pulse of " + pulseQuarters
+                            + " quarter notes and bars every " + pulsesPerBar
+                            + " pulses, which is " + barQuarters + " quarter notes to the bar,"
+                            + " but the tempo map's " + meter + " bar is " + expected);
+        }
     }
 
     /**
