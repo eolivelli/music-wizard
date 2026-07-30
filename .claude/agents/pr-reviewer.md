@@ -121,7 +121,10 @@ uncommitted fix along with the mutation, a stale `.class` that made fifteen
 "kills" run against unmutated bytes, and three "survivors" that were
 substitutions which silently never applied.
 
-All four are now prevented by `tools/mutation-sweep.sh`, so:
+All four are prevented by `tools/mutation-sweep.sh`. Four, not all of them —
+review of that harness found a fifth (a mutant in a module the build never
+reached, reported as a survivor) which is now prevented too, and there is no
+reason to think the list is closed. So:
 
 - **A sweep not run through the harness is not evidence.** If an author quotes
   mutation numbers, ask which command produced them. Reproduce with the
@@ -129,6 +132,9 @@ All four are now prevented by `tools/mutation-sweep.sh`, so:
 - A `SURVIVED` line is a coverage gap; an `ERROR` or `BUILD-ERROR` line is the
   harness saying it measured nothing, and must not be summarised as either
   coverage or its absence.
+- A surprising survivor is still a suspected harness fault before it is a
+  coverage gap. The harness asserts far more than a hand-rolled loop, but it
+  does not take its numbers from a clean rebuild: it forces mtimes instead.
 - Every kill names the test that killed it. A kill with no named test is not a
   kill.
 

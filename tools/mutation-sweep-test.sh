@@ -894,10 +894,22 @@ test_extra_maven_arguments_cannot_override_the_local_repository() {
     sweep "${lethal_mutant_args[@]}" --mvn-arg "-pl other"
     assert_status 2 "$STATUS" "--mvn-arg overriding the module list"
 
-    # And the shared repository stays refused however it is spelled.
+    # And the shared repository stays refused however it is spelled. The second
+    # spelling matters more than it looks: abs_path gives up at the first
+    # component that does not exist, so `~/.m2/not-yet/..` used to compare
+    # unequal and then resolve back to the shared repository once Maven created
+    # the directory.
     sweep "${lethal_mutant_args[@]}" --maven-repo "$HOME/.m2/."
     assert_status 2 "$STATUS" "the shared repository under another spelling"
     assert_contains "$OUT" "shared local repository" "the shared repository under another spelling"
+
+    sweep "${lethal_mutant_args[@]}" --maven-repo "$HOME/.m2/does-not-exist-$$/.."
+    assert_status 2 "$STATUS" "the shared repository reached through a missing component"
+    assert_contains "$OUT" "shared local repository" "the shared repository reached through a missing component"
+
+    # A genuinely separate repository under the same parent is fine.
+    sweep "${lethal_mutant_args[@]}" --maven-repo "$CASE_DIR/m2-elsewhere"
+    assert_status 0 "$STATUS" "a private repository is not refused"
 }
 
 test_a_restore_that_fails_is_loud_and_keeps_the_sentinel() {
@@ -931,6 +943,246 @@ test_a_restore_that_fails_is_loud_and_keeps_the_sentinel() {
     assert_status 4 "$STATUS" "recovery with the backup gone"
     assert_contains "$OUT" "backup for" "recovery with the backup gone"
     assert_not_contains "$OUT" "tree restored" "recovery with the backup gone"
+}
+
+# ---------------------------------------------------------------------------
+# Review findings, round 3.
+# ---------------------------------------------------------------------------
+
+test_a_mutant_whose_module_ran_no_tests_is_not_a_survivor() {
+    setup_case unmeasured-module
+    # A fifth way to get a number nobody measured, and it arrives through two
+    # documented options. `--pl` builds a module that is not the mutant's, and
+    # `--test` can filter every test in the mutant's module away; either way the
+    # mutation is compiled by nothing and executed by nothing. Counting test
+    # cases repo-wide then finds plenty -- with `-am`, upstream modules always
+    # run theirs -- so the "nothing was measured" guard passes and the mutant is
+    # reported SURVIVED with exit 1, which the harness defines as "everything
+    # measured". That is a coverage gap that does not exist, which is precisely
+    # what a sweep is run to find.
+    mkdir -p "$REPO/othermod/src/main/java"
+    cp "$REPO/fixmod/pom.xml" "$REPO/othermod/pom.xml"
+    printf 'final class Other { static final int N = 1; }\n' \
+        >"$REPO/othermod/src/main/java/Other.java"
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=selftest@example.com -c user.name=selftest \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm 'a second module'
+
+    # The stub writes its reports under fixmod, so othermod has none: exactly
+    # the shape of a module the reactor never reached.
+    sweep --pl fixmod --id elsewhere --file othermod/src/main/java/Other.java \
+          --find 'N = 1' --replace 'N = 2'
+
+    assert_status 3 "$STATUS" "mutant in a module that ran no tests"
+    assert_not_contains "$OUT" "SURVIVED" "mutant in a module that ran no tests"
+    assert_contains "$OUT" "othermod" "mutant in a module that ran no tests"
+    assert_contains "$OUT" "ran no tests" "mutant in a module that ran no tests"
+    if [ -n "$(git -C "$REPO" status --porcelain -- othermod)" ]; then
+        fail "the tree was left dirty"
+    fi
+}
+
+test_an_unparseable_sentinel_can_be_cleared() {
+    setup_case wedged-sentinel
+    # Refusing to touch the files is right; refusing to tell anyone how to clear
+    # the *lock* wedges the worktree, because starting says "run --recover" and
+    # --recover cannot. This is the shape a crash during the sentinel rewrite
+    # leaves, and the shape an older checkout sees after a format change.
+    mutate_by_hand
+    {
+        printf '# mutation sweep\n'
+        printf 'run\t19700101-000000-1\t1\n'
+        printf 'file\t%s\t%s\n' 'fixmod/src/main/java/Widget.java' "$CASE_DIR/backup.orig"
+        printf 'file\tfixmod/src/main/java/Widg'
+    } >"$REPO/.mutation-sweep-active"
+
+    # Plain --recover restores what parses, keeps the sentinel, and says so.
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+    assert_status 4 "$STATUS" "partly corrupt sentinel"
+    assert_contains "$OUT" "cannot read" "partly corrupt sentinel"
+    assert_contains "$OUT" "re-run with --force" "partly corrupt sentinel"
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "the record that did parse was not acted on"
+    fi
+    if [ ! -f "$REPO/.mutation-sweep-active" ]; then
+        fail "a sentinel that was not fully understood was deleted anyway"
+    fi
+
+    # And --force sets it aside rather than deleting it, so the lock clears and
+    # the evidence survives.
+    OUT=$( cd "$REPO" && "$HARNESS" --recover --force 2>&1 ); STATUS=$?
+    assert_status 4 "$STATUS" "clearing a corrupt sentinel"
+    assert_contains "$OUT" "NOT known to be clean" "clearing a corrupt sentinel"
+    if [ -f "$REPO/.mutation-sweep-active" ]; then
+        fail "--force did not clear the lock"
+    fi
+    if ! ls "$REPO"/.mutation-sweep-active.unrecovered.* >/dev/null 2>&1; then
+        fail "--force deleted the sentinel instead of setting it aside"
+    fi
+
+    # The worktree works again.
+    rm -f "$REPO"/.mutation-sweep-active.unrecovered.*
+    sweep "${lethal_mutant_args[@]}"
+    assert_status 0 "$STATUS" "sweep after clearing the lock"
+}
+
+test_force_is_needed_to_recover_under_a_live_sweep() {
+    if ! command -v setsid >/dev/null 2>&1; then
+        skip "setsid is not available, so a live sweep cannot be started"
+        return 0
+    fi
+    setup_case force-recover
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
+
+    start_slow_sweep || return 0
+    # --force exists to override a safety refusal, so it needs a test of its own
+    # in both directions rather than a note that it was checked by hand.
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+    assert_status 2 "$STATUS" "recovery under a live sweep"
+    assert_contains "$OUT" "looks to be running" "recovery under a live sweep"
+    assert_contains "$OUT" "--force" "recovery under a live sweep"
+    if ! grep -qF 'LIMIT = 99' "$FAKE_SRC"; then
+        fail "the refused recovery reverted the running sweep's file anyway"
+    fi
+
+    OUT=$( cd "$REPO" && "$HARNESS" --recover --force 2>&1 ); STATUS=$?
+    assert_status 0 "$STATUS" "forced recovery"
+    assert_contains "$OUT" "restored 1 file(s)" "forced recovery"
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "--force did not restore the file"
+    fi
+
+    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    wait "$SWEEP_PID" 2>/dev/null
+
+    # And --force is refused where it has no meaning, rather than silently doing
+    # nothing and reading as though it did something.
+    sweep "${lethal_mutant_args[@]}" --force
+    assert_status 2 "$STATUS" "--force on a normal sweep"
+    assert_contains "$OUT" "only means anything with --recover" "--force on a normal sweep"
+}
+
+test_a_sentinel_corrupted_mid_run_is_not_released() {
+    if ! command -v setsid >/dev/null 2>&1; then
+        skip "setsid is not available, so the process group cannot be signalled"
+        return 0
+    fi
+    setup_case corrupt-mid-run
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
+
+    start_slow_sweep || return 0
+    # If "cannot read the sentinel" is treated as "there is nothing in it", the
+    # exit path releases the lock and deletes the record while the file is still
+    # mutated -- which is the recovery-path failure of round 2 arriving through
+    # the ordinary exit instead.
+    printf 'garbage this version cannot read\n' >>"$REPO/.mutation-sweep-active"
+    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    wait "$SWEEP_PID" 2>/dev/null
+    local status=$?
+    local out; out=$(cat "$CASE_DIR/sweep.out")
+
+    assert_status 4 "$status" "sentinel corrupted during a run"
+    assert_contains "$out" "cannot read" "sentinel corrupted during a run"
+    if [ ! -f "$REPO/.mutation-sweep-active" ]; then
+        fail "a sentinel that could not be read was released anyway"
+    fi
+    # The record that did parse is still acted on, so the file comes back.
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "the valid record was not restored: $(git -C "$REPO" status --porcelain -- fixmod)"
+    fi
+    rm -f "$REPO/.mutation-sweep-active"
+
+    # Second case: the sentinel is clobbered outright, so not even the record of
+    # what was mutated survives. There is then nothing to restore, and the only
+    # thing the harness owes is to say so instead of exiting quietly -- which is
+    # what it does if "could not read it" is allowed to mean "there was nothing
+    # in it".
+    setup_case corrupt-mid-run-total
+    export FAKE_MVN_MODE=slow FAKE_MVN_SLEEP=30
+    start_slow_sweep || return 0
+    printf 'nothing here is a record at all\n' >"$REPO/.mutation-sweep-active"
+    kill -TERM -"$SWEEP_PID" 2>/dev/null
+    wait "$SWEEP_PID" 2>/dev/null
+    status=$?
+    out=$(cat "$CASE_DIR/sweep.out")
+
+    assert_status 4 "$status" "sentinel clobbered during a run"
+    assert_contains "$out" "THE WORKING TREE IS STILL MUTATED" "sentinel clobbered during a run"
+    if ! grep -qF 'LIMIT = 99' "$FAKE_SRC"; then
+        fail "the file was restored from a record that no longer existed"
+    fi
+    if [ ! -f "$REPO/.mutation-sweep-active" ]; then
+        fail "an unreadable sentinel was released, so nothing records the mutated file"
+    fi
+}
+
+test_a_mutation_git_cannot_see_is_an_error() {
+    setup_case invisible-mutation
+    # A tracked symlink pointing outside the repository: the substitution writes
+    # through it, so the harness's own copy sees a change and git sees none.
+    # Without the independent git witness this reports as an ordinary result
+    # about a file that was never really mutated.
+    printf 'final class Outside {\n    static final int LIMIT = 7;\n}\n' >"$CASE_DIR/outside.java"
+    ln -s "$CASE_DIR/outside.java" "$REPO/fixmod/src/main/java/Linked.java"
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=selftest@example.com -c user.name=selftest \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm 'a symlinked source'
+
+    sweep --id through-a-link --file fixmod/src/main/java/Linked.java \
+          --find 'LIMIT = 7' --replace 'LIMIT = 99'
+
+    assert_status 3 "$STATUS" "mutation through a symlink out of the repository"
+    assert_contains "$OUT" "git does not see the mutation" "mutation through a symlink"
+    assert_not_contains "$OUT" "SURVIVED" "mutation through a symlink"
+    assert_not_contains "$OUT" "KILLED by" "mutation through a symlink"
+    assert_file_is "$CASE_DIR/outside.java" \
+        "$(printf 'final class Outside {\n    static final int LIMIT = 7;\n}')" \
+        "the file outside the repository"
+    if [ -e "$REPO/.mutation-sweep-active" ]; then
+        fail "the lock was not released"
+    fi
+}
+
+test_a_defunct_process_on_the_recorded_pid_is_not_a_sweep() {
+    setup_case zombie-pid
+    # A zombie has a readable but empty /proc/<pid>/cmdline, so a check that
+    # returns whatever /proc gave it never reaches the ps fallback -- in the one
+    # case the fallback exists for. The pid then reads as "cannot tell", which
+    # the caller treats as "a sweep is running", and the worktree is wedged.
+    mutate_by_hand
+    # A child that exits *after* its parent has exec'd into a sleep which never
+    # waits, so nothing reaps it. The delay matters: a child that exits
+    # immediately can be reaped before the exec happens, and then there is no
+    # zombie and the test skips. 30 seconds so it certainly outlives the run --
+    # a zombie that is reaped first makes this pass for the wrong reason.
+    ( ( sleep 0.3; exit 0 ) & exec sleep 30 ) &
+    local holder=$! zombie=''
+    local waited=0
+    while [ "$waited" -lt 100 ] && [ -z "$zombie" ]; do
+        zombie=$(ps -o pid=,stat= --ppid "$holder" 2>/dev/null | awk '$2 ~ /^Z/ { print $1; exit }')
+        [ -n "$zombie" ] && break
+        sleep 0.05
+        waited=$((waited + 1))
+    done
+    if [ -z "$zombie" ]; then
+        kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+        skip "could not produce a zombie process on this system"
+        return 0
+    fi
+    {
+        printf '# mutation sweep\n'
+        printf 'run\t19700101-000000-1\t%s\n' "$zombie"
+        printf 'file\t%s\t%s\n' 'fixmod/src/main/java/Widget.java' "$CASE_DIR/backup.orig"
+    } >"$REPO/.mutation-sweep-active"
+
+    OUT=$( cd "$REPO" && "$HARNESS" --recover 2>&1 ); STATUS=$?
+    kill "$holder" 2>/dev/null
+    wait "$holder" 2>/dev/null
+
+    assert_status 0 "$STATUS" "recovery with a zombie on the recorded pid"
+    if [ -n "$(git -C "$REPO" status --porcelain -- fixmod)" ]; then
+        fail "a defunct process on the recorded pid blocked recovery"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1011,6 +1263,12 @@ run_test a_sentinel_that_cannot_be_read_is_not_a_clean_tree
 run_test a_recycled_pid_does_not_wedge_the_worktree
 run_test extra_maven_arguments_cannot_override_the_local_repository
 run_test a_restore_that_fails_is_loud_and_keeps_the_sentinel
+run_test a_mutant_whose_module_ran_no_tests_is_not_a_survivor
+run_test an_unparseable_sentinel_can_be_cleared
+run_test force_is_needed_to_recover_under_a_live_sweep
+run_test a_sentinel_corrupted_mid_run_is_not_released
+run_test a_mutation_git_cannot_see_is_an_error
+run_test a_defunct_process_on_the_recorded_pid_is_not_a_sweep
 run_test a_real_mutant_in_real_code_is_killed
 
 say ""

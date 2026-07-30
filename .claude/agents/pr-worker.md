@@ -68,7 +68,7 @@ This is not theoretical either. On this project a mutation sweep run as
 mutants "failed to build" and were counted as killed — reported as full coverage
 until a reviewer re-ran it. Build with `-am` as well, so siblings come from your
 source tree rather than from any repository. (`tools/mutation-sweep.sh` does
-both for you and refuses to run against `~/.m2` at all.)
+both for you, and refuses the shared `~/.m2` however it is spelled.)
 
 Do all your work there, and remove the worktree **and its local repository**
 when you are finished. Never run `git checkout` in the shared clone.

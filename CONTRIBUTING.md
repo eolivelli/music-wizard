@@ -125,6 +125,12 @@ Each mutant is reported as `KILLED` and named with the test that killed it,
 1 some survived, 2 refused to start, 3 nothing trustworthy measured, 4 the tree
 was left modified.
 
+A survivor only counts as a coverage gap if the mutant's own module actually ran
+tests, so the harness checks that before it edits anything: a mutant in a module
+that `--pl` left out of the reactor, or whose tests `--test` filtered away, is an
+error rather than a survivor. With `-am` the upstream modules always run their
+own tests, which is exactly what makes the mistake invisible otherwise.
+
 **Do not run a sweep by hand.** Not as a matter of taste: the obvious four-line
 shell loop has produced six destroyed fixes and four distinct kinds of wrong
 number on this project, every one of them looking exactly like a result.

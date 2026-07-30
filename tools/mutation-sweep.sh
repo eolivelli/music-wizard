@@ -349,9 +349,14 @@ restore_all_from_sentinel() {
         return 0
     fi
     if ! records=$(sentinel_records); then
-        log "[sweep] ERROR: refusing to report this tree as clean from a sentinel this"
-        log "[sweep]        version cannot read. Its files, if any, are still mutated."
-        return 1
+        # Restore what can still be read, since a record that parses is a record
+        # worth acting on, but never report the tree as clean and never delete a
+        # sentinel we did not fully understand.
+        failed=1
+        records=$(sentinel_file_lines || true)
+        log "[sweep] ERROR: this sentinel contains lines this version cannot read, so the"
+        log "[sweep]        tree cannot be reported clean. Restoring the records that do"
+        log "[sweep]        parse; anything else in it is still mutated."
     fi
     if [ -n "$records" ]; then
         while IFS=$'\t' read -r kind rel backup; do
@@ -373,16 +378,35 @@ EOF
         note "restored $restored file(s)"
         return 0
     fi
+    note "restored $restored file(s), and the sentinel is being kept"
     return 1
+}
+
+# Best-effort form of sentinel_records: the well-formed records only, ignoring
+# whatever else is in the file. Only ever used *after* the strict form has
+# already refused, so that a partly-corrupt sentinel still gives back what it
+# can rather than nothing.
+sentinel_file_lines() {
+    if [ ! -r "$SENTINEL" ]; then
+        return 1
+    fi
+    grep '^file	[^	]*	' "$SENTINEL" || true
 }
 
 # process_command <pid> -- the process's command line, or nothing.
 process_command() {
+    local cmd=''
     if [ -r "/proc/$1/cmdline" ]; then
-        tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null || true
-        return 0
+        # A zombie, and a kernel thread, has a readable but *empty* cmdline. An
+        # unconditional return here made the ps fallback dead code on Linux in
+        # exactly the case it exists for, so a defunct process on a recycled pid
+        # read as "cannot tell", which reads as "a sweep is running".
+        cmd=$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null || true)
     fi
-    ps -o args= -p "$1" 2>/dev/null || true
+    if [ -z "$cmd" ]; then
+        cmd=$(ps -o args= -p "$1" 2>/dev/null || true)
+    fi
+    printf '%s' "$cmd"
 }
 
 # The pid that owns the sentinel, if a sweep is still running under it. A sweep
@@ -488,8 +512,13 @@ run_maven() {
     ( cd "$REPO_ROOT" && "${cmd[@]}" ) >>"$logfile" 2>&1
 }
 
+# surefire_reports [module] -- report files, repo-wide or for one module.
 surefire_reports() {
-    find "$REPO_ROOT" -path '*/target/surefire-reports/TEST-*.xml' 2>/dev/null
+    local root="$REPO_ROOT"
+    if [ -n "${1:-}" ]; then
+        root="$REPO_ROOT/$1"
+    fi
+    find "$root" -path '*/target/surefire-reports/TEST-*.xml' 2>/dev/null
 }
 
 # failing_tests -- names of failing test cases, one per line, deduplicated.
@@ -537,14 +566,20 @@ failing_tests() {
     ' "${reports[@]}" | sort -u
 }
 
-# tests_run -- how many test cases the build executed. Zero means the build
-# produced no evidence either way, whatever its exit status said.
+# tests_run [module] -- how many test cases the build executed, across the whole
+# reactor or in one module. Zero means the build produced no evidence either
+# way, whatever its exit status said.
+#
+# The per-module form is the one that matters. Counting repo-wide, a mutant in a
+# module the build never reached still sees plenty of tests -- with `-am` the
+# upstream modules always run theirs -- so the "nothing was measured" guard is
+# satisfied by somebody else's suite and the mutant is reported as a survivor.
 tests_run() {
     local -a reports=()
     local r
     while IFS= read -r r; do
         reports+=("$r")
-    done < <(surefire_reports)
+    done < <(surefire_reports "${1:-}")
     if [ "${#reports[@]}" -eq 0 ]; then
         printf '0\n'
         return 0
@@ -552,6 +587,9 @@ tests_run() {
     perl -0777 -ne '
         our $total;
         $total = 0 unless defined $total;
+        # As in failing_tests: captured output is not markup, and a test that
+        # prints a <testcase> element would otherwise be counted as one.
+        s{<!\[CDATA\[.*?\]\]>}{}gs;
         $total++ while /<testcase\b/g;
         END { print(($total || 0) . "\n") }
     ' "${reports[@]}"
@@ -668,6 +706,10 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+if [ "$FORCE" -eq 1 ] && [ "$RECOVER" -eq 0 ]; then
+    die "$EXIT_REFUSED" "--force only means anything with --recover. It never makes a sweep start over another one; run that in its own worktree."
+fi
+
 if [ "${#EXTRA_MVN_ARGS[@]}" -gt 0 ]; then
     for arg in "${EXTRA_MVN_ARGS[@]}"; do
         case "$arg" in
@@ -705,8 +747,27 @@ canonical_path() {
     MW_PATH="$1" perl -MFile::Spec -MCwd=abs_path -e '
         my $p = File::Spec->canonpath($ENV{MW_PATH});
         my $r = eval { abs_path($p) };
-        print((defined $r && length $r) ? $r : $p);
-        print "\n";
+        if (defined $r && length $r) { print "$r\n"; exit 0 }
+        # abs_path gives up as soon as one component does not exist, and
+        # canonpath does not resolve "..", so `~/.m2/not-yet/..` came through as
+        # a path that compares unequal to ~/.m2 and then resolves to it once
+        # Maven creates the directory. Resolve the part that does exist, then
+        # fold the rest lexically.
+        my ($vol, $dirs, $file) = File::Spec->splitpath($p);
+        my @parts = File::Spec->splitdir(File::Spec->catdir($dirs));
+        push @parts, $file if defined $file && length $file;
+        my @out;
+        for my $part (@parts) {
+            next if $part eq q{.};
+            if ($part eq q{..}) {
+                pop @out if @out && $out[-1] ne q{} && $out[-1] ne q{..};
+                next;
+            }
+            push @out, $part;
+        }
+        my $joined = File::Spec->catdir(@out);
+        my $real = eval { abs_path($joined) };
+        print(((defined $real && length $real) ? $real : $joined) . "\n");
     '
 }
 MAVEN_REPO=$(canonical_path "$MAVEN_REPO")
@@ -747,8 +808,30 @@ if [ "$RECOVER" -eq 1 ]; then
     fi
     log "[sweep] ERROR: recovery is incomplete. Every mutated file was clean before the"
     log "[sweep]        sweep started, so its original bytes are still in the git index:"
-    log "[sweep]        'git checkout --' on the files listed in $SENTINEL will restore"
-    log "[sweep]        them. Check first that you have no other uncommitted work in them."
+    log "[sweep]        'git checkout --' on the files below will restore them. Check"
+    log "[sweep]        first that you have no other uncommitted work in them."
+    log "[sweep]        Sentinel contents:"
+    awk '{ print "[sweep]     " $0 }' "$SENTINEL" >&2 2>/dev/null || true
+    if [ "$FORCE" -eq 1 ]; then
+        # Otherwise the worktree is wedged: starting says run --recover, and
+        # --recover cannot. Set the sentinel aside rather than delete it, so the
+        # record survives for whoever has to work out what was mutated, and say
+        # so loudly -- the lock is released but the tree is not known to be clean.
+        set_aside="$SENTINEL.unrecovered.$(date +%Y%m%d-%H%M%S)-$$"
+        if mv "$SENTINEL" "$set_aside"; then
+            log "[sweep]"
+            log "[sweep] --force: the lock is released and the sentinel moved to"
+            log "[sweep]   $set_aside"
+            log "[sweep] The tree is NOT known to be clean. Check the files listed above"
+            log "[sweep] before you commit anything."
+        else
+            log "[sweep] ERROR: could not move $SENTINEL aside"
+        fi
+    else
+        log "[sweep]"
+        log "[sweep] Nothing here can clear the lock on its own. Once you have restored"
+        log "[sweep] those files yourself, re-run with --force to set the sentinel aside."
+    fi
     exit "$EXIT_UNRESTORED"
 fi
 
@@ -778,10 +861,15 @@ if ! (set -o noclobber; : >"$SENTINEL") 2>/dev/null; then
         log "[sweep]          $(process_command "$owner")"
         log "[sweep]        Two sweeps in one tree mutate each other's files and read each"
         log "[sweep]        other's surefire reports, so a survivor comes back as a kill."
-        die "$EXIT_REFUSED" "run the second one in its own worktree"
+        log "[sweep]        Run the second one in its own worktree. If that pid has been"
+        log "[sweep]        recycled and is not a sweep, 'mutation-sweep.sh --recover --force'"
+        log "[sweep]        clears the lock."
+        exit "$EXIT_REFUSED"
     fi
     log "[sweep] ERROR: a previous sweep did not finish. It left behind:"
-    sed 's/^/[sweep]   /' "$SENTINEL" >&2 || true
+    # awk, not sed: a sentinel truncated mid-write has no trailing newline, and
+    # sed then runs the next message onto the end of its last line.
+    awk '{ print "[sweep]   " $0 }' "$SENTINEL" >&2 2>/dev/null || true
     die "$EXIT_REFUSED" "run 'tools/mutation-sweep.sh --recover' first"
 fi
 trap on_exit EXIT INT TERM HUP
@@ -808,8 +896,10 @@ command -v mvn >/dev/null 2>&1 || die "$EXIT_REFUSED" "mvn is not on PATH"
 command -v perl >/dev/null 2>&1 || die "$EXIT_REFUSED" "perl is not on PATH"
 
 MUT_MODULES=()
+MUT_OWNERS=()
 seen_ids=''
 all_modules=''
+all_owners=''
 for i in "${!MUT_IDS[@]}"; do
     id=${MUT_IDS[$i]}
     rel=${MUT_FILES[$i]}
@@ -849,19 +939,30 @@ for i in "${!MUT_IDS[@]}"; do
         exit "$EXIT_REFUSED"
     fi
 
+    # The module the mutated file belongs to, which is not necessarily the one
+    # passed to -pl. Everything that asks "did this mutation get measured?" has
+    # to ask about the owner; -pl only decides what gets built.
+    owner=$(module_of "$rel")
     if [ -n "$PL_OVERRIDE" ]; then
         mod=$PL_OVERRIDE
     else
-        mod=$(module_of "$rel")
+        mod=$owner
         if [ -z "$mod" ]; then
             die "$EXIT_REFUSED" "mutant '$id': $rel is not inside a Maven module; pass --pl"
         fi
     fi
     MUT_MODULES+=("$mod")
+    MUT_OWNERS+=("$owner")
     case ",$all_modules," in
         *",$mod,"*) ;;
         *) all_modules="${all_modules:+$all_modules,}$mod" ;;
     esac
+    if [ -n "$owner" ]; then
+        case ",$all_owners," in
+            *",$owner,"*) ;;
+            *) all_owners="${all_owners:+$all_owners,}$owner" ;;
+        esac
+    fi
 done
 
 # Uncommitted work elsewhere is safe -- nothing but the mutant files is ever
@@ -908,6 +1009,27 @@ if [ "$RUN_BASELINE" -eq 1 ]; then
         log "[sweep]        kill a mutant. Check --test and --pl. Log: $baseline_log"
         exit "$EXIT_HARNESS"
     fi
+    # And per module that owns a mutant, before anything is edited. A module the
+    # build never reached, or one whose tests --test filtered away, cannot kill
+    # anything -- but with `-am` the upstream modules run their own tests, so a
+    # repo-wide count says the run measured plenty and every mutant in the
+    # unreached module comes back as a survivor: a coverage gap that does not
+    # exist, which is the very thing a sweep is run to find.
+    saved_ifs=$IFS
+    IFS=','
+    for owner in $all_owners; do
+        owner_tests=$(tests_run "$owner")
+        if [ "$owner_tests" -eq 0 ]; then
+            IFS=$saved_ifs
+            log "[sweep] ERROR: the baseline ran no tests in $owner, which owns at least one"
+            log "[sweep]        mutant. Nothing there can be killed, and every mutant in it"
+            log "[sweep]        would be reported as a survivor. Check --pl and --test:"
+            log "[sweep]        -pl is currently '$all_modules'. Log: $baseline_log"
+            exit "$EXIT_HARNESS"
+        fi
+        note "  $owner: $owner_tests tests"
+    done
+    IFS=$saved_ifs
     note "baseline green: $baseline_tests tests"
 else
     warn "baseline skipped: a mutant 'killed' by an already-failing test is indistinguishable from a real kill"
@@ -1010,7 +1132,14 @@ for i in "${!MUT_IDS[@]}"; do
     mvn_status=0
     run_maven "$module" "$logfile" || mvn_status=$?
 
-    ran=$(tests_run)
+    # Counted in the module that owns the mutated file, not repo-wide: see the
+    # baseline check above for why the difference is the whole point.
+    owner=${MUT_OWNERS[$i]}
+    if [ -n "$owner" ]; then
+        ran=$(tests_run "$owner")
+    else
+        ran=$(tests_run)
+    fi
     failures=()
     while IFS= read -r line; do
         failures+=("$line")
@@ -1037,9 +1166,10 @@ for i in "${!MUT_IDS[@]}"; do
         tail -n 20 "$logfile" | sed 's/^/[sweep]   /' >&2
     elif [ "$ran" -eq 0 ]; then
         RES_STATUS[i]="ERROR"
-        RES_KILLER[i]="the build ran no tests"
+        RES_KILLER[i]="no tests ran in ${owner:-the reactor}"
         errored=$((errored + 1))
-        warn "  the build succeeded but ran no tests, so nothing was measured. Log: $logfile"
+        warn "  the build succeeded but ran no tests in ${owner:-the reactor}, so this"
+        warn "  mutant was not measured. It is NOT a survivor. Log: $logfile"
     else
         RES_STATUS[i]="SURVIVED"
         RES_KILLER[i]=""
