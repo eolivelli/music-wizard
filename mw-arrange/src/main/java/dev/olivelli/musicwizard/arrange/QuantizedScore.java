@@ -144,9 +144,13 @@ public record QuantizedScore(Score score, List<BarGrid> grids, SwingFeel swing) 
      * story, and a score whose notes are on it while its harmony is still in
      * seconds is precisely the case where the answer is no.
      *
-     * <p>False is a legitimate answer for a score this class produced: a section
+     * <p>False is a legitimate answer for a score this class produced. A section
      * or key too short to sit between two bar lines keeps its seconds and no
-     * beats, and says so here.
+     * beats, and says so here; so does a whole progression {@link Quantizer}
+     * could not place, which it withdraws entire rather than dropping the chord
+     * it could not give a beat to. After that pass the two cases are
+     * distinguishable without anything further being carried: a progression that
+     * is not empty and not quantized is one that was withdrawn.
      */
     public boolean isFullyQuantized() {
         return score.tracks().stream().allMatch(t -> t.isQuantized())

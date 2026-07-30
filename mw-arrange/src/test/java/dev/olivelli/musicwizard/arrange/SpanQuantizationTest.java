@@ -147,6 +147,144 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("a printed symbol is never further than half a counted beat from its change")
+        void aPlacedSymbolStaysWithinHalfACountedBeat() {
+            // The bound the class claims for #158, measured rather than argued.
+            // A chord symbol may be printed before the harmony arrives -- that
+            // is how an anticipation lands on the downbeat it anticipates -- and
+            // what makes it acceptable rather than a lie is that it cannot be
+            // printed further out than half the counted beat of the bar the
+            // change falls in. Prose asserting that is prose; this is the
+            // measurement, over four meters plus a map that changes meter
+            // underneath the progression, with the clamp that resolves the
+            // tolerated overlap exercised in half the trials.
+            //
+            // What this sweep does NOT reach is the clamp. The overlap is
+            // present in half the trials but never resolved: a boundary
+            // perturbed by 0.4 microseconds straddles a rounding midpoint only
+            // by accident, so max(snap(start), furthestEnd) is an equality in
+            // all six thousand spans here -- counted by instrumenting onGrid,
+            // not assumed. An earlier comment claimed this sweep exercised the
+            // clamp; theBoundHoldsWhereTheClampMovesABoundary constructs it.
+            java.util.Random random = new java.util.Random(20260729);
+            List<TempoMap> maps = List.of(
+                    TempoMap.constant(BPM, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, TimeSignature.SIX_EIGHT),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8)),
+                    TempoMap.constant(BPM, TimeSignature.THREE_FOUR),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8))
+                            .withMeterChange(1, TimeSignature.FOUR_FOUR)
+                            .withMeterChange(3, TimeSignature.SIX_EIGHT));
+            int placed = 0;
+            int withdrawn = 0;
+            for (TempoMap tempoMap : maps) {
+                for (int trial = 0; trial < 200; trial++) {
+                    List<Chord> spans = new ArrayList<>();
+                    double at = random.nextDouble() * 0.5;
+                    for (int i = 0; i < 6; i++) {
+                        // Between about one and three counted beats at 120 BPM,
+                        // so most trials place and some do not.
+                        double next = at + 0.4 + random.nextDouble() * 1.1;
+                        // Half the trials hand the pass the microsecond of
+                        // overlap ChordProgression tolerates.
+                        double start = i > 0 && trial % 2 == 0 ? at - 4e-7 : at;
+                        spans.add(chord(i % 2 == 0 ? "C4" : "G4", start, next));
+                        at = next;
+                    }
+                    QuantizedScore quantized =
+                            Quantizer.quantize(chordsOnly(tempoMap, spans.toArray(new Chord[0])));
+                    if (!quantized.score().chords().isQuantized()) {
+                        withdrawn++;
+                        continue;
+                    }
+                    for (Chord placedChord : quantized.score().chords().chords()) {
+                        double heard = tempoMap.secondsToBeats(placedChord.startSeconds());
+                        double unit = tempoMap.timeSignatureAtBar(
+                                tempoMap.toMusicalTime(heard).bar()).beatUnitQuarters();
+                        assertThat(Math.abs(placedChord.startBeat().orElseThrow() - heard))
+                                .as("%s printed at %s, heard at %s", placedChord.symbol(),
+                                        placedChord.startBeat().orElseThrow(), heard)
+                                .isLessThanOrEqualTo(unit / 2 + 1e-9);
+                        placed++;
+                    }
+                }
+            }
+            // Both populations stated, so the sweep cannot pass by placing
+            // nothing or by withdrawing everything.
+            assertThat(placed).isGreaterThan(3000);
+            assertThat(withdrawn).isGreaterThan(0);
+        }
+
+        @Test
+        @DisplayName("the bound holds where the clamp carries a start past its own beat")
+        void theBoundHoldsWhereTheClampMovesABoundary() {
+            // The half of the bound the random sweep cannot reach, constructed
+            // rather than hoped for. onGrid places a start at
+            // max(snap(start), furthestEnd), and for that max to be anything but
+            // an equality the previous span's end has to snap forward off a
+            // rounding midpoint while this span's start snaps back off it --
+            // which needs the two to straddle the midpoint, i.e. the microsecond
+            // of overlap ChordProgression tolerates, landing exactly there.
+            //
+            // The middle chord is two counted beats long rather than one, so it
+            // survives the clamp instead of collapsing: that is what leaves a
+            // placed symbol whose distance from its own sounding position can be
+            // measured. theToleratedOverlapIsTheOneExceptionToTheBound is the
+            // one-beat version, which goes.
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR,
+                    TimeSignature.SIX_EIGHT, new TimeSignature(7, 8),
+                    TimeSignature.THREE_FOUR)) {
+                TempoMap tempoMap = TempoMap.constant(BPM, meter);
+                double unit = meter.beatUnitQuarters();
+                // A rounding midpoint: half a unit past a bar line.
+                double midpointBeat = meter.quarterBeatsPerBar() * 2 + unit * 1.5;
+                double at = tempoMap.beatsToSeconds(midpointBeat);
+                double overlap = 4e-7;
+
+                Score score = chordsOnly(tempoMap,
+                        chord("C4", 0.0, at + overlap),
+                        chord("G4", at - overlap,
+                                tempoMap.beatsToSeconds(midpointBeat + 2 * unit)),
+                        chord("F4", tempoMap.beatsToSeconds(midpointBeat + 2 * unit),
+                                tempoMap.beatsToSeconds(midpointBeat + 6 * unit)));
+
+                QuantizedScore quantized = Quantizer.quantize(score);
+                assertThat(quantized.score().chords().isQuantized())
+                        .as("%s: the fixture only tests the bound if it places", meter)
+                        .isTrue();
+
+                Chord clamped = quantized.score().chords().chords().get(1);
+                double printed = clamped.startBeat().orElseThrow();
+                double heard = tempoMap.secondsToBeats(clamped.startSeconds());
+
+                // The clamp really moved it: the beat nearest its own start is
+                // the one below the midpoint, and it was published on the one
+                // above, because the C before it ended there.
+                assertThat(printed)
+                        .as("%s: the clamp carried the start a whole unit forward", meter)
+                        .isEqualTo(quantized.score().chords().chords().get(0)
+                                .endBeat().orElseThrow())
+                        .isGreaterThan(heard);
+                // Exceeded, not attained -- and by exactly the start's distance
+                // BELOW the rounding midpoint, which is not the same as the
+                // overlap this fixture injects. It injects symmetrically, so the
+                // span overlap is twice this, and an earlier version of these
+                // lines called the quantity "overlapBeats" and let the factor of
+                // two propagate into the class javadoc as a general law.
+                //
+                // Two drafts before that: isCloseTo(unit / 2, within(1e-6)), a
+                // two-sided window twenty times the excess, which reported the
+                // bound as met when it is not.
+                double belowMidpointBeats = tempoMap.secondsToBeats(at)
+                        - tempoMap.secondsToBeats(at - overlap);
+                assertThat(printed - heard)
+                        .as("%s: the clamp path exceeds half a counted beat", meter)
+                        .isGreaterThan(unit / 2)
+                        .isCloseTo(unit / 2 + belowMidpointBeats, within(1e-12));
+            }
+        }
+
+        @Test
         @DisplayName("a progression that gains beats is one the chart may bar from")
         void theProgressionReportsItselfQuantized() {
             Score score = chordsOnly(fourFour(),
@@ -158,66 +296,405 @@ class SpanQuantizationTest {
     }
 
     @Nested
-    @DisplayName("a chord with nowhere to go is merged, not rejected")
+    @DisplayName("a chord with nowhere to go costs the beat axis, never itself")
     class Collapse {
 
         @Test
-        @DisplayName("a chord shorter than the beat it falls in is dropped")
-        void aCollapsedChordIsDropped() {
+        @DisplayName("a chord shorter than the beat it falls in is not deleted")
+        void aCollapsedChordIsNotDeleted() {
             // Three one-quarter-beat spans in 6/8, where a counted beat is one
             // and a half. The middle one has both its boundaries rounded onto
-            // the same dotted quarter and cannot be given a length.
+            // the same dotted quarter and cannot be given a length -- so no
+            // chord here gets beats, and all three are still named.
+            Score score = chordsOnly(sixEight(),
+                    chord("C4", 0.0, 0.5), chord("D4", 0.5, 1.0), chord("F4", 1.0, 1.5));
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "D", "F");
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+            assertThat(quantized.isFullyQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("the seconds of a progression left off the beat axis are untouched")
+        void theFallbackKeepsTheSecondsExactly() {
+            // The pass's standing promise is that it adds musical timing and
+            // takes nothing away. Withdrawing the progression from the beat axis
+            // has to leave it exactly as it arrived, or the fallback is its own
+            // kind of loss.
             Score score = chordsOnly(sixEight(),
                     chord("C4", 0.0, 0.5), chord("D4", 0.5, 1.0), chord("F4", 1.0, 1.5));
 
             List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
 
-            assertThat(beats(quantized)).containsExactly("C 0.0..1.5", "F 1.5..3.0");
+            assertThat(quantized).isEqualTo(score.chords().chords());
         }
 
         @Test
-        @DisplayName("what is left is still contiguous where it was contiguous before")
-        void theNeighboursMeetWhereItCollapsed() {
-            Score score = chordsOnly(sixEight(),
-                    chord("C4", 0.0, 0.5), chord("D4", 0.5, 1.0), chord("F4", 1.0, 1.5));
+        @DisplayName("a forced tempo that disagrees by a factor does not rename the progression")
+        void aForcedTempoDoesNotRenameTheProgression() {
+            // #157, and the reason the ranking above falls the way it does.
+            // Material heard at 120 read against a supplied --tempo 60: every
+            // chord is half a counted beat, so every boundary is a tie and every
+            // other chord used to collapse and be dropped. The chart then named
+            // I-vi-I-vi over music playing I-V-vi-IV, with nothing to say so.
+            Score score = chordsOnly(TempoMap.constant(60, TimeSignature.FOUR_FOUR),
+                    chord("C4", 0.00, 0.50), chord("G4", 0.50, 1.00),
+                    chord("A4", 1.00, 1.50), chord("F4", 1.50, 2.00),
+                    chord("C4", 2.00, 2.50), chord("G4", 2.50, 3.00),
+                    chord("A4", 3.00, 3.50), chord("F4", 3.50, 4.00));
 
-            List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+            QuantizedScore quantized = Quantizer.quantize(score);
 
-            assertThat(quantized.get(0).endBeat()).isEqualTo(quantized.get(1).startBeat());
-            assertThat(Quantizer.quantize(score).score().chords().isQuantized()).isTrue();
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "G", "A", "F", "C", "G", "A", "F");
+            // Withdrawn entire, and asserted per chord rather than through
+            // isQuantized(), which is allMatch and so would only say that *some*
+            // chord has no beats. The claim is that none of them does: the eight
+            // symbols above are the eight that were played, in the order they
+            // were played, and not one carries a beat it cannot have.
+            assertThat(quantized.score().chords().chords())
+                    .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
         }
 
         @Test
-        @DisplayName("a collapsed first chord takes nothing with it")
-        void aCollapsedFirstChordIsDroppedToo() {
+        @DisplayName("a one-BPM correction below the tracked pulse withdraws the whole chart")
+        void aSmallDownwardCorrectionCostsTheWholeBeatAxis() {
+            // The real price of the all-or-nothing, pinned because three drafts
+            // of the class javadoc described it as a hand-built score with an
+            // ornament and it is nothing of the kind.
+            //
+            // ChordEstimator cuts spans at *tracked* beat times, and a supplied
+            // --tempo replaces the tracked tempo while leaving the tracked beats
+            // alone. So a span is one tracked beat while the counted beat is the
+            // supplied one, and any tempo below the tracked pulse makes every
+            // span a shade short. Two of two hundred then collapse, and all two
+            // hundred are withdrawn.
+            //
+            // The upward half is pinned too, and it is worth saying what it
+            // does and does not establish: against a pulse that is exactly
+            // constant, a correction above it leaves every span longer than a
+            // counted beat and nothing collapses. That is a fact about this
+            // fixture and not about the pipeline: a real tracked pulse is not
+            // constant, fromBeatTimes fits a segment per beat interval, and one
+            // supplied figure is then above some intervals and below others. How
+            // often that withdraws a chart is not measured anywhere in this
+            // repository, and the class javadoc no longer claims a figure for it
+            // -- three drafts of one did and each was refuted.
+            List<Chord> spans = new ArrayList<>();
+            double trackedBeat = 60.0 / BPM;
+            for (int i = 0; i < 200; i++) {
+                spans.add(chord(ROOTS.get(i % 4), i * trackedBeat, (i + 1) * trackedBeat));
+            }
+
+            for (double supplied : List.of(119.0, 116.0, 100.0)) {
+                QuantizedScore below = Quantizer.quantize(chordsOnly(
+                        TempoMap.constant(supplied, TimeSignature.FOUR_FOUR),
+                        spans.toArray(new Chord[0])));
+                assertThat(below.score().chords().chords()).hasSize(200);
+                // Per chord, not through isQuantized(), which is allMatch and
+                // so would be satisfied by one chord of the two hundred losing
+                // its beats. The claim is that none of them keeps any. Written
+                // the weak way first, in the same commit that removed exactly
+                // that weakness from aForcedTempoDoesNotRenameTheProgression --
+                // a fix that reached one reader of the verdict and not the
+                // other, which is this project's named dominant failure mode.
+                assertThat(below.score().chords().chords())
+                        .as("%s BPM against a tracked 120 withdraws every chord", supplied)
+                        .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
+            }
+            for (double supplied : List.of(121.0, 130.0, 240.0)) {
+                QuantizedScore above = Quantizer.quantize(chordsOnly(
+                        TempoMap.constant(supplied, TimeSignature.FOUR_FOUR),
+                        spans.toArray(new Chord[0])));
+                assertThat(above.score().chords().isQuantized())
+                        .as("%s BPM against a tracked 120 places every span", supplied)
+                        .isTrue();
+            }
+        }
+
+        @Test
+        @DisplayName("the chord at the downbeat is the one sounding there, not the next")
+        void theDownbeatKeepsTheChordThatSounds() {
+            // #158. C sounds at the downbeat and used to be dropped for being
+            // shorter than a beat, whereupon D snapped back onto the position it
+            // had vacated and the chart printed D over the downbeat's C.
+            Score score = chordsOnly(fourFour(),
+                    chord("C4", 0.0, 0.2), chord("D4", 0.2, 0.5), chord("G4", 0.5, 2.0));
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "D", "G");
+            assertThat(quantized.score().chords().chords().get(0).startSeconds()).isZero();
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a collapsed first chord costs the axis like any other")
+        void aCollapsedFirstChordIsKeptToo() {
             Score score = chordsOnly(sixEight(),
                     chord("D4", 0.0, 0.3), chord("F4", 0.3, 1.5));
 
-            List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+            QuantizedScore quantized = Quantizer.quantize(score);
 
-            assertThat(beats(quantized)).containsExactly("F 0.0..3.0");
+            assertThat(symbols(quantized.score().chords().chords())).containsExactly("D", "F");
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
-        @DisplayName("the chord kept on a beat is the one that sounded on it")
-        void aTieKeepsTheChordThatWasPlaying() {
-            // Every boundary here is exactly half a counted beat, which is what
-            // the audio path produces once --tempo halves the map's pulse
-            // against the tracked beats. Every one of them is therefore a tie,
-            // and Math.rint would break them to the even beat -- 0.5 down, 1.5
-            // up, 2.5 down -- so the chord kept on beat 1 would be the G that
-            // sounded on the "and" of it, and the C that sounded on the downbeat
-            // would be the one dropped.
-            Score score = chordsOnly(fourFour(),
-                    chord("C4", 0.00, 0.25), chord("G4", 0.25, 0.50),
-                    chord("A4", 0.50, 0.75), chord("F4", 0.75, 1.00),
-                    chord("C4", 1.00, 1.25), chord("G4", 1.25, 1.50),
-                    chord("A4", 1.50, 1.75), chord("F4", 1.75, 2.00));
+        @DisplayName("only the chords come off the beat axis; the notes and structure stay on it")
+        void theFallbackReachesTheChordsAndNothingElse() {
+            // The all-or-nothing is forced by ChordProgression.isQuantized()
+            // being one verdict, and that verdict covers chords alone. A pass
+            // that withdrew the notes or the sections as well would be treating
+            // an unplaceable chord as a failure of the whole quantization, which
+            // it is not.
+            TempoMap tempoMap = fourFour();
+            Performance performance = new Performance(tempoMap, 21);
+            performance.section(0, 8).section(8, 16);
+            performance.run(60, 0.5, Performance.evenly(4, 4.0, 8));
+            ChordProgression chords = new ChordProgression(List.of(
+                    chord("C4", 0.0, 0.2), chord("D4", 0.2, 0.5),
+                    chord("G4", 0.5, 8.0)), Confidence.CERTAIN);
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score(chords));
+
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+            assertThat(quantized.score().tracks())
+                    .allSatisfy(t -> assertThat(t.isQuantized()).isTrue());
+            assertThat(quantized.score().sections())
+                    .allSatisfy(s -> assertThat(s.isQuantized()).isTrue());
+            assertThat(quantized.grids()).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("stale beats on a withdrawn progression are taken off, not left behind")
+        void theFallbackStripsStaleBeats() {
+            // The mirror of aCollapsedSpanDoesNotKeepBeatsFromNowhere, and
+            // reachable the same single way: a hand-assembled score whose
+            // carried beats were already off the grid. Not from re-quantizing
+            // against a corrected tempo -- a carried position wins over the
+            // seconds beside it, so a progression this pass placed comes back
+            // through it unchanged whatever map it is read against, which is
+            // #171 rather than this.
+            //
+            // A progression left half on the beat axis would be the worst of
+            // both: isQuantized() false, so no consumer reads the beats, and
+            // beats sitting on positions that no longer mean anything for the
+            // next reader who does.
+            TempoMap tempoMap = fourFour();
+            Chord stale = chord("C4", 0.0, 1.0).quantizedTo(0.0, 0.3);
+            Chord alongside = chord("G4", 1.0, 2.0).quantizedTo(0.3, 1.0);
+            Score score = chordsOnly(tempoMap, stale, alongside);
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "G");
+            assertThat(quantized.score().chords().chords())
+                    .allSatisfy(c -> assertThat(c.isQuantized()).isFalse());
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a progression left in seconds stays exactly there on a second pass")
+        void theFallbackIsIdempotent() {
+            Score score = chordsOnly(sixEight(),
+                    chord("C4", 0.0, 0.5), chord("D4", 0.5, 1.0), chord("F4", 1.0, 1.5));
+
+            QuantizedScore once = Quantizer.quantize(score);
+            QuantizedScore twice = Quantizer.quantize(once.score());
+
+            // Stated rather than only compared, because two passes that both
+            // dropped the same chord would agree with each other just as
+            // happily: what has to survive the second pass is the fallback, not
+            // merely stability.
+            assertThat(once.score().chords().isQuantized()).isFalse();
+            assertThat(twice.score().chords().isQuantized()).isFalse();
+            assertThat(twice.score().chords().chords())
+                    .isEqualTo(once.score().chords().chords());
+        }
+
+        @Test
+        @DisplayName("whatever goes in comes out: same chords, same order, only the beats differ")
+        void theProgressionIsNeverEditedOnlyAnnotated() {
+            // The whole of #157 in one property, and the one claim the rest of
+            // the argument rests on: this pass annotates a progression, it does
+            // not edit one. Everything else about the change is a judgement
+            // about which chart is less bad; this is the part that is simply
+            // true or not, so it is swept rather than reasoned.
+            //
+            // Deliberately hostile input: spans from a twentieth of a beat to
+            // three beats, so most trials collapse something; the tolerated
+            // overlap in a third of them; meters whose counted beat is a
+            // quarter, a dotted quarter and an eighth, and a map that changes
+            // between them underneath the progression.
+            java.util.Random random = new java.util.Random(157158);
+            List<TempoMap> maps = List.of(
+                    TempoMap.constant(BPM, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, TimeSignature.SIX_EIGHT),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8)),
+                    TempoMap.constant(60, TimeSignature.FOUR_FOUR),
+                    TempoMap.constant(BPM, new TimeSignature(7, 8))
+                            .withMeterChange(1, TimeSignature.FOUR_FOUR)
+                            .withMeterChange(2, TimeSignature.SIX_EIGHT));
+            int withdrawn = 0;
+            int placed = 0;
+            for (TempoMap tempoMap : maps) {
+                for (int trial = 0; trial < 300; trial++) {
+                    List<Chord> in = new ArrayList<>();
+                    double at = random.nextDouble() * 0.3;
+                    int count = 2 + random.nextInt(7);
+                    for (int i = 0; i < count; i++) {
+                        double next = at + 0.025 + random.nextDouble() * 1.5;
+                        double start = i > 0 && trial % 3 == 0 ? at - 4e-7 : at;
+                        in.add(chord(ROOTS.get(i % ROOTS.size()), start, next));
+                        at = next;
+                    }
+
+                    QuantizedScore out = Quantizer.quantize(
+                            chordsOnly(tempoMap, in.toArray(new Chord[0])));
+                    List<Chord> published = out.score().chords().chords();
+
+                    assertThat(published)
+                            .as("chord for chord, in order, seconds and all")
+                            .hasSameSizeAs(in);
+                    for (int i = 0; i < in.size(); i++) {
+                        assertThat(withoutBeats(published.get(i)))
+                                .as("chord %d of %d, %s", i, in.size(), tempoMap)
+                                .isEqualTo(withoutBeats(in.get(i)));
+                    }
+                    if (!out.score().chords().isQuantized()) {
+                        withdrawn++;
+                        // Not the negation of the guard: that says at least one
+                        // chord has no beats, this says none of them has any.
+                        // The all-or-nothing lives here, and a per-chord
+                        // fallback is killed by exactly this line.
+                        assertThat(published).allSatisfy(
+                                c -> assertThat(c.isQuantized()).isFalse());
+                    } else {
+                        placed++;
+                        // And here the guard is all-or-nothing in the other
+                        // direction, so asserting every chord is quantized would
+                        // restate it -- ChordProgression.isQuantized() is
+                        // literally allMatch(Chord::isQuantized), so such an
+                        // assertion cannot fail. An earlier draft had exactly
+                        // that. What is checked instead is the invariant nothing
+                        // else checks: Score.requireOrderedBeats covers keys and
+                        // sections and *not* chords, which is #59, so a chord
+                        // progression with two spans overlapping on the beat
+                        // axis would be built without complaint. This is the
+                        // sweep-scale evidence for the class's claim that
+                        // carrying furthestEnd forward stops a microsecond of
+                        // overlap in seconds becoming a whole beat of it.
+                        //
+                        // Not what catches a deleted clamp -- that needs a
+                        // boundary landing on a rounding midpoint, which random
+                        // offsets do not reach and theToleratedOverlap tests
+                        // construct on purpose.
+                        double previousEnd = Double.NEGATIVE_INFINITY;
+                        for (Chord chord : published) {
+                            double from = chord.startBeat().orElseThrow();
+                            double to = chord.endBeat().orElseThrow();
+                            assertThat(from).as("%s, ordered", tempoMap)
+                                    .isGreaterThanOrEqualTo(previousEnd);
+                            // Evidence rather than a check, and labelled so:
+                            // Chord.quantizedTo and the canonical constructor
+                            // both refuse an end at or before the start, so a
+                            // chord violating this cannot be built to be
+                            // asserted on. Mutating the collapse guard to
+                            // "end < start" errors out of Chord, Section and
+                            // Key rather than failing here -- the count moves
+                            // with the suite, so it is not written down.
+                            assertThat(to).as("%s, positive length", tempoMap)
+                                    .isGreaterThan(from);
+                            previousEnd = to;
+                        }
+                    }
+                }
+            }
+            // Both outcomes reached in quantity, so the sweep cannot pass by
+            // exercising only the easy half.
+            assertThat(placed).isGreaterThan(200);
+            assertThat(withdrawn).isGreaterThan(200);
+        }
+
+        @Test
+        @DisplayName("the bound does not cover a progression re-read against another map")
+        void theBoundDoesNotCoverACarriedProgression() {
+            // The carve-out on the class's half-beat bound, pinned so that
+            // deleting the words would fail rather than merely overstate. A
+            // carried beat wins over the seconds, so a placed progression read
+            // against a corrected --tempo keeps the positions it was given and
+            // the clock is never consulted: nothing collapses, nothing is
+            // reported, and the chords are printed a long way from where they
+            // sound. That is #171 rather than a corner of #158, and this test
+            // exists to stop the bound being read as covering it.
+            TempoMap fast = fourFour();
+            Score placed = Quantizer.quantize(chordsOnly(fast,
+                    chord("C4", 0.0, 1.0), chord("G4", 1.0, 2.0),
+                    chord("A4", 2.0, 3.0), chord("F4", 3.0, 4.0))).score();
+
+            TempoMap halved = TempoMap.constant(60, TimeSignature.FOUR_FOUR);
+            Score reread = new Score(placed.title(), placed.artist(), halved,
+                    placed.beatGrid(), placed.keys(), placed.sections(), placed.tracks(),
+                    placed.chords(), placed.lyrics(), placed.durationSeconds());
+            QuantizedScore requantized = Quantizer.quantize(reread);
+
+            assertThat(requantized.score().chords().isQuantized())
+                    .as("nothing collapses, so the progression is placed and nothing warns")
+                    .isTrue();
+            Chord last = requantized.score().chords().chords().get(3);
+            double printed = last.startBeat().orElseThrow();
+            double sounds = halved.secondsToBeats(last.startSeconds());
+            assertThat(printed).isEqualTo(6.0);
+            assertThat(sounds).isEqualTo(3.0);
+            assertThat(printed - sounds)
+                    .as("three counted beats out, six times the bound the class states")
+                    .isEqualTo(3.0);
+        }
+
+        @Test
+        @DisplayName("a change on a rounding midpoint is written on the beat it anticipates")
+        void aChordChangeOnAMidpointGoesForward() {
+            // The tie rule, pinned on a fixture that still reaches the beat
+            // axis. An un-syncopated eighth-note anticipation sits exactly on
+            // the midpoint of its rounding cell, and belongs on the beat ahead:
+            // that is what a chart prints. Math.rint breaks a tie to the even
+            // step, sending 2.5 back to beat 2 and 6.5 back to beat 6, so a
+            // progression of anticipations comes out with symbols a beat early.
+            //
+            // Both boundaries here are the *same* case, and an earlier comment
+            // claimed otherwise -- that one came from an odd cell and one from
+            // an even, so an alternating rule could not pass by luck.
+            // snapToCountedBeat measures inside the bar, and in 4/4 both 2.5 and
+            // 6.5 reduce to a beatInBar of 2.5, so rint sends both backwards.
+            //
+            // floor(q + 0.5) and rint(q) differ only where q is a tie at an
+            // *even* step -- floor gives k+1 always, rint gives k when k is even
+            // and k+1 when it is odd -- so an odd-step tie agrees under both
+            // rules by construction, and this fixture's two ties, being the same
+            // step, cannot show a direction that alternates.
+            //
+            // A fixture could: snapToCountedBeat's quotient runs across the bar,
+            // so boundaries at beats 4.5 and 5.5 are steps 0 and 1 of bar 1, and
+            // under rint the first goes back to 4.0 while the second goes on to
+            // 6.0. A draft of this comment said no fixture in the file could,
+            // which is true only of aBarLineTieGoesForward's snapToBarLine, whose
+            // quotient never leaves [0, 1) and so only ever sees step 0.
+            TempoMap tempoMap = fourFour();
+            Score score = chordsOnly(tempoMap,
+                    chord("C4", at(tempoMap, 0), at(tempoMap, 2.5)),
+                    chord("G4", at(tempoMap, 2.5), at(tempoMap, 6.5)),
+                    chord("F4", at(tempoMap, 6.5), at(tempoMap, 12)));
 
             List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
 
             assertThat(beats(quantized))
-                    .containsExactly("C 0.0..1.0", "A 1.0..2.0", "C 2.0..3.0", "A 3.0..4.0");
+                    .containsExactly("C 0.0..3.0", "G 3.0..7.0", "F 7.0..12.0");
         }
 
         @Test
@@ -239,23 +716,37 @@ class SpanQuantizationTest {
                             chord("C4", from, from + secondsPerUnit),
                             chord("G4", from + secondsPerUnit, from + 2 * secondsPerUnit));
 
-                    List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+                    QuantizedScore quantized = Quantizer.quantize(score);
 
-                    assertThat(quantized).as("%s, offset %d of a unit", meter, step).hasSize(2);
+                    // Placement, not survival. Counting the chords used to be
+                    // the whole assertion, and it stopped meaning anything the
+                    // moment this pass stopped deleting chords: size is now
+                    // preserved for every input whatsoever, so hasSize(2) held
+                    // even under a mutant that snapped chords to bar lines and
+                    // collapsed every one of these.
+                    assertThat(quantized.score().chords().isQuantized())
+                            .as("%s, offset %d of a unit", meter, step)
+                            .isTrue();
+                    assertThat(quantized.score().chords().chords())
+                            .as("%s, offset %d of a unit", meter, step).hasSize(2);
                 }
             }
         }
 
         @Test
-        @DisplayName("a tolerated overlap can still cost a span of exactly one unit")
+        @DisplayName("a tolerated overlap can still cost a span of exactly one unit its beats")
         void theToleratedOverlapIsTheOneExceptionToTheBound() {
             // The limit of the invariant above, pinned rather than disclaimed.
             // ChordProgression admits a microsecond of overlap, onGrid resolves
             // it by taking the later position as the single boundary, and a
             // chord that is exactly one beat long is then a microsecond short of
-            // one -- which is enough to lose it when it also lands on a rounding
-            // midpoint. 1.25 s is beat 2.5 at 120 BPM, the midpoint of the cell
-            // around beat 3.
+            // one -- which is enough to collapse it when it also lands on a
+            // rounding midpoint. 1.25 s is beat 2.5 at 120 BPM, the midpoint of
+            // the cell around beat 3.
+            //
+            // What it costs is the progression's beat axis rather than the span
+            // itself, which is the safer of the two failures: the chart is
+            // placed by seconds and still names G where G sounded.
             Score score = chordsOnly(fourFour(),
                     chord("C4", 0.0, 1.2500004),
                     chord("G4", 1.2499996, 1.7499996),
@@ -265,9 +756,11 @@ class SpanQuantizationTest {
                     .as("the chord that goes is exactly one beat long")
                     .isCloseTo(1.0, within(1e-9));
 
-            List<Chord> quantized = Quantizer.quantize(score).score().chords().chords();
+            QuantizedScore quantized = Quantizer.quantize(score);
 
-            assertThat(beats(quantized)).containsExactly("C 0.0..3.0", "F 3.0..8.0");
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "G", "F");
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
         }
 
         @Test
@@ -284,6 +777,10 @@ class SpanQuantizationTest {
             // resolution -- 200 steps still loses one per meter, at step 100 --
             // and a sweep with no such offset loses none. Measure zero, not one
             // per cent.
+            //
+            // "Lost" now means the progression came back in seconds rather than
+            // a span came back not at all. The set is the same set: what the
+            // overlap reaches is unchanged, only what it costs.
             double overlap = 4e-7;
             List<String> lost = new ArrayList<>();
             int swept = 0;
@@ -298,23 +795,28 @@ class SpanQuantizationTest {
                     // states it, which is what an estimator whose spans do not
                     // agree to the last bit produces.
                     double at = base + unit + step * unit / 100;
-                    List<String> overlapping = beats(Quantizer.quantize(chordsOnly(tempoMap,
+                    QuantizedScore overlapping = Quantizer.quantize(chordsOnly(tempoMap,
                             chord("C4", base, at + overlap),
                             chord("G4", at - overlap, at + unit - overlap),
-                            chord("F4", at + unit - overlap, base + 8 * unit)))
-                            .score().chords().chords());
+                            chord("F4", at + unit - overlap, base + 8 * unit)));
                     List<String> clean = beats(Quantizer.quantize(chordsOnly(tempoMap,
                             chord("C4", base, at),
                             chord("G4", at, at + unit),
                             chord("F4", at + unit, base + 8 * unit)))
                             .score().chords().chords());
                     swept++;
-                    if (overlapping.size() < 3) {
+                    // Every chord survives at every offset, which is the part
+                    // that is no longer a trade-off at all.
+                    assertThat(symbols(overlapping.score().chords().chords()))
+                            .as("%s, offset %d", meter, step)
+                            .containsExactly("C", "G", "F");
+                    if (!overlapping.score().chords().isQuantized()) {
                         lost.add(meter + "#" + step);
                     } else {
                         // Nothing else moves: away from the midpoint the overlap
                         // is invisible, position for position.
-                        assertThat(overlapping).as("%s, offset %d", meter, step).isEqualTo(clean);
+                        assertThat(beats(overlapping.score().chords().chords()))
+                                .as("%s, offset %d", meter, step).isEqualTo(clean);
                     }
                 }
             }
@@ -340,8 +842,10 @@ class SpanQuantizationTest {
                     chord("C4", at(tempoMap, 0), at(tempoMap, 3.3)),
                     chord("D4", at(tempoMap, 3.3), at(tempoMap, 3.8)),
                     chord("F4", at(tempoMap, 3.8), at(tempoMap, 7.5)));
-            assertThat(beats(Quantizer.quantize(straddling).score().chords().chords()))
-                    .containsExactly("C 0.0..3.5", "F 3.5..7.5");
+            QuantizedScore quantized = Quantizer.quantize(straddling);
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+            assertThat(symbols(quantized.score().chords().chords()))
+                    .containsExactly("C", "D", "F");
 
             Score longer = chordsOnly(tempoMap,
                     chord("C4", at(tempoMap, 0), at(tempoMap, 3.3)),
@@ -496,6 +1000,63 @@ class SpanQuantizationTest {
         }
 
         @Test
+        @DisplayName("however many spans go in, that many come out, whatever collapses")
+        void everyKindOfSpanSurvivesInItsOwnNumber() {
+            // Size preservation across all three kinds of span, under a map that
+            // collapses most of them.
+            //
+            // What this does NOT test, stated because the comment here used to
+            // claim it did: the collapse handler's old ability to return null
+            // and have onGrid skip the span. Restoring that null and its guard
+            // leaves the whole suite passing, this one included. It has to --
+            // the only handler that returned null fed a list that is discarded
+            // on every execution reaching it, and the section and key handlers
+            // never returned null, so there was nothing to observe. That the
+            // loop cannot drop a span is not enforced by the type -- a handler
+            // can still return null and onGrid will add it. See Collapsed's own
+            // javadoc, which withdrew that claim: for the section and key
+            // handlers a null fails loudly in three tests, and for the chord one
+            // it is unobservable because chordsOnGrid discards the list.
+            //
+            // Swept over sections and keys as well as chords, because the
+            // handler is shared and the chord path is the only one whose
+            // behaviour this PR meant to change. At 60 BPM a bar is four seconds
+            // and a counted beat is one, so every span below is far shorter than
+            // the unit it is snapped to and most of them collapse.
+            //
+            // The three "and the collapses really happened" assertions are not
+            // ceremony: the first draft of this test used a 120 BPM map, where
+            // the chords are exactly one counted beat and nothing collapses at
+            // all, and the three size assertions passed on a pass that had
+            // nothing to decide. They caught it.
+            TempoMap tempoMap = TempoMap.constant(60, TimeSignature.FOUR_FOUR);
+            List<Section> shortSections = new ArrayList<>();
+            List<Key> shortKeys = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                shortSections.add(section(i * 0.375, (i + 1) * 0.375));
+                shortKeys.add(Key.ofSeconds(PitchSpelling.parse("C4"), Mode.MAJOR,
+                        i * 0.375, (i + 1) * 0.375, Confidence.CERTAIN));
+            }
+            Score score = new Score(Optional.empty(), Optional.empty(), tempoMap,
+                    Optional.empty(), shortKeys, shortSections, List.of(),
+                    new ChordProgression(List.of(everyHalfSecond()), Confidence.CERTAIN),
+                    Lyrics.empty(), 32.0);
+
+            QuantizedScore quantized = Quantizer.quantize(score);
+
+            assertThat(quantized.score().sections()).hasSize(8);
+            assertThat(quantized.score().keys()).hasSize(8);
+            assertThat(quantized.score().chords().chords()).hasSize(8);
+            // And the collapses really happened, or the sizes above are the
+            // sizes of a pass that had nothing to decide.
+            assertThat(quantized.score().sections())
+                    .anySatisfy(s -> assertThat(s.isQuantized()).isFalse());
+            assertThat(quantized.score().keys())
+                    .anySatisfy(k -> assertThat(k.isQuantized()).isFalse());
+            assertThat(quantized.score().chords().isQuantized()).isFalse();
+        }
+
+        @Test
         @DisplayName("stale beats on a span that cannot be placed are taken off it")
         void aCollapsedSpanDoesNotKeepBeatsFromNowhere() {
             // Only a hand-assembled score reaches this -- anything this pass
@@ -518,8 +1079,13 @@ class SpanQuantizationTest {
         @Test
         @DisplayName("a boundary exactly half a bar in goes forward, not to the even bar")
         void aBarLineTieGoesForward() {
-            // Two ties in a row, one from an odd bar and one from an even. Under
-            // round-half-to-even they would go opposite ways.
+            // Two ties in a row. An earlier comment called them a tie from an
+            // odd bar and one from an even, which rint would send opposite ways;
+            // it is measuring the wrong quantity. snapToBarLine rebuilds the
+            // position from the bar's own start, so stepsWithin sees beatInBar
+            // 2.0 over a step of 4.0 for both -- quotient 0.50 each time, which
+            // rint sends backwards in both cases. Two ties that go the same
+            // wrong way under rint, which is what makes them worth having.
             Score score = sectionsOnly(fourFour(),
                     section(1.0, 3.0), section(3.0, 8.0));
 
@@ -723,5 +1289,44 @@ class SpanQuantizationTest {
                 .map(c -> c.symbol() + " " + c.startBeat().orElseThrow()
                         + ".." + c.endBeat().orElseThrow())
                 .toList();
+    }
+
+    /** Roots the sweeps cycle through, so a reordering would be visible. */
+    private static final List<String> ROOTS = List.of("C4", "G4", "A4", "F4", "D4", "E4", "B4");
+
+    /**
+     * #157's own fixture: eight chords a half-second apart, which is one per
+     * beat of material heard at 120.
+     *
+     * <p>Took an offset until round 10, for a multi-phase sweep whose figures
+     * were withdrawn for being unre-derivable. The parameter went with them
+     * rather than sitting here as the only evidence that the sweep ever existed.
+     */
+    private static Chord[] everyHalfSecond() {
+        Chord[] chords = new Chord[8];
+        for (int i = 0; i < chords.length; i++) {
+            chords[i] = chord(ROOTS.get(i % 4), i * 0.5, (i + 1) * 0.5);
+        }
+        return chords;
+    }
+
+    /**
+     * A chord with its beat fields taken off, which is the only thing the pass
+     * is allowed to change about one.
+     */
+    private static Chord withoutBeats(Chord chord) {
+        return new Chord(chord.root(), chord.quality(), chord.bass(), chord.startSeconds(),
+                chord.endSeconds(), Optional.empty(), Optional.empty(), chord.confidence());
+    }
+
+    /**
+     * Just the symbols, in order, for the assertions about what the chart names.
+     *
+     * <p>Separate from {@link #beats} rather than folded into it, because a
+     * progression left in seconds has no beats to print and the interesting
+     * assertion about it is precisely that the harmony is all still there.
+     */
+    private static List<String> symbols(List<Chord> chords) {
+        return chords.stream().map(Chord::symbol).toList();
     }
 }
