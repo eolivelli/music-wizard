@@ -67,18 +67,25 @@ This is not theoretical either. On this project a mutation sweep run as
 `mvn -pl mw-dsp` resolved a stale `mw-audio` from the shared `~/.m2`, so ten
 mutants "failed to build" and were counted as killed — reported as full coverage
 until a reviewer re-ran it. Build with `-am` as well, so siblings come from your
-source tree rather than from any repository.
+source tree rather than from any repository. (`tools/mutation-sweep.sh` does
+both for you and refuses to run against `~/.m2` at all.)
 
 Do all your work there, and remove the worktree **and its local repository**
 when you are finished. Never run `git checkout` in the shared clone.
 
-**Commit before you mutate.** Mutation testing works by editing the source and
-reverting it, and the revert is usually `git checkout -- <file>`, which discards
-*every* uncommitted change to that file — including the fix you were in the
-middle of writing. On this project an author reported a fix as landed that a
-mutation sweep had silently destroyed; a reviewer found it missing two rounds
-later. Commit first, so the revert restores your work rather than deleting it,
-and re-read the diff after any sweep.
+**Run mutation sweeps through `tools/mutation-sweep.sh`, never by hand.**
+
+```sh
+tools/mutation-sweep.sh --maven-repo "$PWD/.m2" --mutants my-mutants.txt
+```
+
+Hand-rolled sweeps have given this project six destroyed fixes and four
+different kinds of number nobody measured, all after the hazards were written
+down here. The harness refuses to mutate a file you have uncommitted work in,
+reverts from a byte-exact copy rather than with `git checkout --`, proves the
+substitution applied, forces recompilation, and reports a kill only when it can
+name the test that failed. `tools/mutation-sweep-test.sh` is what keeps it
+honest. See CONTRIBUTING.md.
 
 Branching from a stale `main` produces conflicts at merge time, review findings
 that were already fixed, and worst of all a "fix" for a bug somebody else

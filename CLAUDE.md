@@ -199,6 +199,12 @@ output is estimates users act on, an overstated confidence is a defect.
   a false result here: a `mvn -pl mw-dsp` mutation sweep picked up a stale
   `mw-audio`, ten mutants failed to *build*, and the summary counted them as
   killed. Build with `-am` too, so siblings come from the source tree.
+- **Mutation sweeps go through `tools/mutation-sweep.sh`**, never a hand-rolled
+  loop. It refuses to mutate a file you have uncommitted work in, reverts from a
+  copy rather than with `git checkout --`, proves the substitution applied,
+  forces recompilation, and calls a mutant killed only when it can name the test
+  that failed. Hand-rolled sweeps produced six destroyed fixes and four kinds of
+  unmeasured number here before it existed (#177). See CONTRIBUTING.md.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.

@@ -90,6 +90,66 @@ page count.
 that downloads a model or shells out to LilyPond belongs in `mw-it` behind
 `-Pintegration`.
 
+## Mutation sweeps
+
+To find out whether a test suite would actually notice a change, break the code
+on purpose and see if anything goes red. Do it through the harness:
+
+```sh
+tools/mutation-sweep.sh --maven-repo "$PWD/.m2" \
+  --file mw-core/src/main/java/dev/olivelli/musicwizard/core/model/TempoMap.java \
+  --find 'beatSeconds.size() < 2' --replace 'beatSeconds.size() < 1'
+```
+
+or, for more than one, a mutants file:
+
+```
+mutant:  tempo-min-beats
+file:    mw-core/src/main/java/dev/olivelli/musicwizard/core/model/TempoMap.java
+find:    beatSeconds.size() < 2
+replace: beatSeconds.size() < 1
+
+mutant:  tempo-pulse-lower-bound
+file:    mw-core/src/main/java/dev/olivelli/musicwizard/core/model/TempoMap.java
+find:    pulseQuarters < 1.0 / 1024
+replace: pulseQuarters < 0
+```
+
+```sh
+tools/mutation-sweep.sh --maven-repo "$PWD/.m2" --mutants mutants.txt --report sweep.tsv
+```
+
+Each mutant is reported as `KILLED` and named with the test that killed it,
+`SURVIVED`, or — and this is the distinction that matters — `ERROR` /
+`BUILD-ERROR`, meaning the run measured nothing. Exit codes: 0 all killed,
+1 some survived, 2 refused to start, 3 nothing trustworthy measured, 4 the tree
+was left modified.
+
+**Do not run a sweep by hand.** Not as a matter of taste: the obvious four-line
+shell loop has produced six destroyed fixes and four distinct kinds of wrong
+number on this project, every one of them looking exactly like a result.
+
+| What went wrong | What the harness does |
+|---|---|
+| `git checkout --` reverted the mutation *and* the author's uncommitted fix, six times in one day | Runs no mutating git command at all. Refuses to mutate a file that is dirty; reverts from a byte-exact copy, verified against both the copy and git. Uncommitted work in every other file is untouched |
+| A restored file older than its `.class` made Maven skip recompiling, so fifteen "kills" ran against the previous mutant's bytes | Forces the source mtime past every timestamp under the module's `target/` before each build |
+| A substitution that matched nothing was reported as a surviving mutant | Counts occurrences before mutating and after restoring; a miss, or an ambiguous match, is an error |
+| A stale sibling made the mutant fail to *build*, and the summary counted it as killed | Always `-am` and an explicit non-shared `-Dmaven.repo.local`; a kill requires a named failing test in a surefire report from that build |
+
+Two more things it does that are easy to skip by hand: it runs the suite
+unmutated first, because a sweep against an already-red suite reports every
+mutant as killed; and it restores on `Ctrl-C`. A `kill -9` leaves an untracked
+`.mutation-sweep-active` file at the repository root naming the backups — the
+next sweep refuses to start until `tools/mutation-sweep.sh --recover` has undone
+it.
+
+The harness has its own tests, in `tools/mutation-sweep-test.sh`, which
+reproduce each of the four failures above against a throwaway git repository and
+a stub Maven and check that the harness now refuses or reports them. They run in
+`mvn verify` — about two seconds, offline. `--with-maven` adds a slower test
+that sweeps a real mutant in `TempoMap` with the real Maven, over a clone of the
+repository.
+
 ## Review process
 
 Every patch is reviewed for a **minimum of three rounds**:

@@ -115,25 +115,22 @@ exactly like a test failure in the summary; on this project that silently turned
 that failed, and build with `-am` so siblings come from the source tree.
 
 **A mutation sweep is a piece of software, and its failures all look like
-results.** This project has now been misled by it four separate ways, each
-producing a confident number that was not measured:
+results.** This project has been misled by hand-rolled sweeps four separate
+ways — a stale sibling that never built, a `git checkout --` that reverted an
+uncommitted fix along with the mutation, a stale `.class` that made fifteen
+"kills" run against unmutated bytes, and three "survivors" that were
+substitutions which silently never applied.
 
-- a stale sibling resolved from a shared repository, so the mutant never built;
-- a stale sibling resolved from the agent's *own* isolated repository, because
-  something was `install`ed into it mid-sweep and the next `mvn -pl` run without
-  `-am` picked it up;
-- `git checkout --` reverting the mutation *and* an uncommitted fix, so the
-  suite then ran against code missing both;
-- a restored source file left with an older mtime than its `.class`, so Maven
-  skipped recompiling and fifteen "kills" ran against unmutated bytes.
+All four are now prevented by `tools/mutation-sweep.sh`, so:
 
-And once, three reported *survivors* were the harness silently failing to
-substitute at all — with the substitution asserted, all three died.
-
-So: assert that the mutation is present in the source before running, take
-final numbers from a clean rebuild, and treat a surprising survivor as a
-suspected harness fault before reporting it as a coverage gap. A sweep that
-cannot show its own mutation took effect has measured nothing.
+- **A sweep not run through the harness is not evidence.** If an author quotes
+  mutation numbers, ask which command produced them. Reproduce with the
+  harness before accepting or disputing a figure.
+- A `SURVIVED` line is a coverage gap; an `ERROR` or `BUILD-ERROR` line is the
+  harness saying it measured nothing, and must not be summarised as either
+  coverage or its absence.
+- Every kill names the test that killed it. A kill with no named test is not a
+  kill.
 
 Review in your own worktree with your own local Maven repository —
 `-Dmaven.repo.local=<your worktree>/.m2` on every invocation — for the same
