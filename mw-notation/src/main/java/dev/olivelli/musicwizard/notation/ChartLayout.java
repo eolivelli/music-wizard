@@ -183,6 +183,13 @@ final class ChartLayout {
      * would send the bar walk below into a loop of some 10^17 iterations that no
      * user could interrupt. A guard against that is worth having, and worth
      * nothing if nothing can exercise it.
+     *
+     * <p>It guards the unusable, not the implausible. A <em>small</em> positive
+     * length passes and is honoured: {@code --tempo 1e7} really does mean a
+     * million-bar chart, and a million bars really are allocated. Nothing here
+     * says where the absurd begins, and #188 argues that a plausibility bound
+     * belongs on the option rather than on the chart -- truncating a chart to fit
+     * a limit would be #174 wearing a different hat.
      */
     static List<Bar> fromSeconds(Score score, double quarterSeconds) {
         List<Chord> chords = score.chords().chords();
@@ -343,21 +350,38 @@ final class ChartLayout {
      * <p>That detector was phased from onset energy. #27 rebuilt it to phase
      * from harmonic change, which is the evidence the old code was reaching past
      * it to use directly, and on the same four-chord fixture the two now agree
-     * exactly: every one of the sixteen chord changes lands on a detected
-     * downbeat to within 0.0000s, and {@code EndToEndIT.downbeatsAgreeWithChords}
-     * fails if that stops being true. Reaching past the grid is no longer using
-     * the better signal; it is ignoring the only signal a user can correct.
+     * exactly -- every one of the sixteen chord changes lands on a detected
+     * downbeat to within 0.0000s. Reaching past the grid is no longer using the
+     * better signal; it is ignoring the only signal a user can correct.
      *
      * <p>Which is what #83 was: {@code --first-downbeat} reached the model and
      * nothing downstream read it, so the correction CLAUDE.md calls the
      * highest-value action available to a user changed nothing on the page. It
      * does now, because the phase the chart is drawn on is the grid's.
      *
+     * <p><b>What is and is not guarded.</b>
+     * {@code EndToEndIT.downbeatsAgreeWithChords} holds each chord start within
+     * 0.06s of <em>some</em> downbeat, which is a tenth of a beat at 120 BPM and
+     * not the exact agreement measured above -- it would stay green on a
+     * detector that had degraded, and on one that marked every beat a downbeat.
+     * It is a floor, not a re-measurement. That floor is also one tier-1
+     * fixture, and #189 records what that leaves open: the detector reports a
+     * phase it says it cannot know for an anticipated chord change, and this
+     * reads the phase without reading the confidence beside it.
+     *
      * <p>The anchor is the latest downbeat at or before the first chord, so the
      * chart opens on a bar line and the harmony's offset within that first bar
      * is visible rather than absorbed. Where every downbeat follows the first
      * chord -- a grid that starts late -- the first is stepped back by whole
      * bars, which keeps the phase and the chart's beginning.
+     *
+     * <p>Exactly one downbeat is read. Everything after the first bar line is
+     * spaced at {@link Score#estimatedTempo()}, so the grid supplies a phase and
+     * the tempo supplies a rate; on a recording that drifts the later bar lines
+     * drift with it. That is #187, and it is a real limit rather than an
+     * oversight: the chart is headed with a tempo and its bars have to be
+     * countable at that tempo, which is what
+     * {@code ChordChartTest.headerAndBarsCannotDisagree} holds.
      */
     private static double firstBarStart(Score score, double barSeconds) {
         double firstChord = score.chords().chords().stream()

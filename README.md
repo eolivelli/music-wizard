@@ -54,14 +54,26 @@ to the nearest tracked beat — it says which beat begins a bar, not that a beat
 was missed — and it overrides the downbeat detector outright rather than being
 weighed against it.
 
-**It moves the bar lines on the page.** The chart draws its bars on the grid's
-downbeats, so nominating a different beat re-bars the text chart and the
-engraving alike ([#83][i83]). If the harmony then starts part-way into the first
-bar, the chart says so with an `N.C.` rather than quietly re-phasing itself onto
-the chords — which is how you can tell the downbeat is still wrong.
+**It moves the bar lines on the engraved page** ([#83][i83]). The chart's first
+bar line is the downbeat at or before the first chord, so nominating a different
+beat re-bars the PDF: the chords move within their bars, and a chord change
+landing mid-bar shows up as one.
+
+The text chart moves less, and it is worth knowing why before you compare two
+runs. It prints chord *names*, not lengths, so it can tell you the harmony
+starts part-way into the first bar — an `N.C.` appears — but not by how much
+([#186][i186]). Two different wrong downbeats can give the same `.txt` and
+different pages.
+
+Bar *spacing* still comes from the tempo, not from the rest of the grid: only
+the first bar line is read off a downbeat, and the ones after it are laid out at
+the tempo the chart prints ([#187][i187]). On a recording that drifts, the later
+bar lines drift with it.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
+[i186]: https://github.com/eolivelli/music-wizard/issues/186
+[i187]: https://github.com/eolivelli/music-wizard/issues/187
 
 ## Installing
 

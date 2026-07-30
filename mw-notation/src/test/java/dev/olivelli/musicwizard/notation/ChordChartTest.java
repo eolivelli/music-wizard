@@ -605,6 +605,24 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("never begins a line with a bar check")
+    void noEmittedLineBeginsWithABarCheck() {
+        // Not a style rule. LilyPondComplaints tells a diagnostic apart from
+        // LilyPond's echo of the offending source line partly by the echo's
+        // column, and a source line that *starts* with a bar check is the case
+        // it cannot resolve -- so its javadoc records that no emitter here
+        // produces one. That was trivially true of a chart writing no bar checks
+        // at all; #160 made it a property worth holding rather than a
+        // consequence of not having the feature.
+        for (Score score : List.of(fourChordSong(2), aWaltz(), aJig(),
+                twoChordsInABar(), quantizedAcrossATempoChange(), clickTrackPhasedAt(2),
+                eightChordsAtAForcedTempo())) {
+            assertThat(ChordChart.toLilyPond(score).lines().toList())
+                    .allSatisfy(line -> assertThat(line.trim()).doesNotStartWith("|"));
+        }
+    }
+
+    @Test
     @DisplayName("writes as many engraved bars as the text chart prints")
     void theTextAndTheEngravingCountTheSameBars() {
         // The two outputs are two readings of one layout now. Before that they
@@ -750,22 +768,37 @@ class ChordChartTest {
         // moved. --first-downbeat was honest in the model and invisible in every
         // artefact -- and CLAUDE.md calls correcting the downbeat by hand the
         // highest-value action a user has.
-        List<String> charts = new ArrayList<>();
+        //
+        // The engraving is where the phase becomes visible, and it is asserted
+        // separately from the text for a reason round 1 of review measured: the
+        // text chart prints chord *names* and not cell lengths, so it shows that
+        // the harmony starts inside the first bar and cannot show by how much.
+        // Phases 2 and 3 give the same text and different pages. Asserting the
+        // pair jointly would pass on the engraving alone and read as more than
+        // it proves. See #186.
+        List<String> engraved = new ArrayList<>();
         for (int phase = 0; phase < 4; phase++) {
-            charts.add(String.join("\n", ChordChart.barLines(clickTrackPhasedAt(phase)))
-                    + "\n" + ChordChart.toLilyPond(clickTrackPhasedAt(phase)));
+            engraved.add(ChordChart.toLilyPond(clickTrackPhasedAt(phase)));
         }
+        assertThat(engraved).doesNotHaveDuplicates();
 
-        assertThat(charts).doesNotHaveDuplicates();
         // In phase, the harmony fills its bars exactly; out of phase it does not,
         // and the chart says so rather than quietly re-phasing itself onto the
         // chords -- which is the only way a reader learns to reach for the flag.
         assertThat(ChordChart.barLines(clickTrackPhasedAt(0)))
                 .containsExactly("| C           | G           | A           | F           |");
+        assertThat(chordModeOf(engraved.get(0)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "c1 |", "g1 |", "a1 |", "f1 |");
         assertThat(ChordChart.barLines(clickTrackPhasedAt(2)).get(0))
                 .startsWith("| N.C. C");
-        for (int phase = 0; phase < 4; phase++) {
-            assertBarsFillTheirMeter(ChordChart.toLilyPond(clickTrackPhasedAt(phase)));
+        // Half a bar out: every chord straddles a bar line, which is what a
+        // reader has to see to know the phase is wrong. Four bars still, because
+        // the last half-bar of F does not fill more than half of a fifth one.
+        assertThat(chordModeOf(engraved.get(2)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "r2 c2 |", "c2 g2 |", "g2 a2 |",
+                        "a2 f2 |");
+        for (String source : engraved) {
+            assertBarsFillTheirMeter(source);
         }
     }
 

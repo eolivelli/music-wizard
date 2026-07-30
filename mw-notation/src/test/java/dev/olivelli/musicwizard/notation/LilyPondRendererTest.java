@@ -323,8 +323,10 @@ class LilyPondRendererTest {
             // and nothing could ask for it, so a caller branching on succeeded()
             // alone -- which is what RenderCommand did -- had nothing to print
             // about a page whose music does not match the score. No user had
-            // been handed such a chart, because the chord chart emits no bar
-            // checks; StaffNotation's output does, and only mw-it engraves it.
+            // been handed such a chart when this was written, because the chord
+            // chart emitted no bar checks and it is the only part mw render
+            // writes; #160 gave it some, so the case is now reachable through
+            // the shipped command rather than only through mw-it.
             //
             // The stand-in reproduces all three halves of that: the message,
             // the PDF, and the zero. Measured against real LilyPond 2.26.0

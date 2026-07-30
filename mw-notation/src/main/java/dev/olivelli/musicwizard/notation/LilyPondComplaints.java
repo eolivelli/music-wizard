@@ -166,10 +166,13 @@ import java.util.regex.Pattern;
  * existing region: a two-line region overshoots a one-line echo onto whatever
  * follows it.
  * A genuine column-1 echo is the other, by the floor described below. Not
- * reachable from what this project emits: {@link ChordChart} writes no
- * {@code |} at all, and {@link StaffNotation} puts each bar on its own short
- * line, ending in the bar check rather than starting with it. #169 tracks the
- * remainder.
+ * reachable from what this project emits, and the reason changed with #160
+ * without the conclusion changing: {@link ChordChart} now writes a {@code |}
+ * per bar where it used to write none, but puts it at the <em>end</em> of a
+ * short line, exactly as {@link StaffNotation} always has. No emitter produces
+ * a line beginning with a bar check, which is what a column-1 echo would need,
+ * and {@code ChordChartTest.noEmittedLineBeginsWithABarCheck} fails if one
+ * starts to. #169 tracks the remainder.
  *
  * <p><b>An unrecognised echo used to be worse than an over-report.</b> Read as a
  * diagnostic in its own right, its fabricated column then drove a skip of its

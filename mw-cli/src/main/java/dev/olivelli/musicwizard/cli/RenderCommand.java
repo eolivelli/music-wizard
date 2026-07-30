@@ -72,13 +72,13 @@ import picocli.CommandLine.Spec;
  * a script losing all of them over a defect it cannot act on is worse than one
  * told plainly what is wrong. See {@link #wrongBars}.
  *
- * <p><b>No user has been handed such a chart yet, and the claim is worth making
- * carefully.</b> {@code ChordChart.toLilyPond} emits no {@code |} at all, so
- * nothing this command engraves today can fail a bar check; the fact exists in
- * {@code StaffNotation}'s output, which only {@code mw-it} engraves so far. What
- * was wrong is that nothing shipped could read a fact the test suite bans
- * outright — and it becomes user-visible with the first staff part (#8, #10) or
- * with #160.
+ * <p><b>This is reachable through this command, and was not when it was
+ * written.</b> {@code ChordChart.toLilyPond} emitted no {@code |} at all, so
+ * nothing engraved here could fail a bar check and the fact existed only in
+ * {@code StaffNotation}'s output, which only {@code mw-it} engraved. #160 gave
+ * the chord chart a {@code \time} and a bar check per bar, so the one part this
+ * command writes today can now produce the warning it prints. A staff part
+ * (#8, #10) adds a second source of it rather than the first.
  */
 @Command(name = "render", description = "Generate sheet music from a workspace.")
 final class RenderCommand implements Callable<Integer> {
