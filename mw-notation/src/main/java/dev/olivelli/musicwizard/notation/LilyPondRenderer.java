@@ -46,8 +46,59 @@ public final class LilyPondRenderer {
         this.binary = Objects.requireNonNull(binary, "binary");
     }
 
-    /** The outcome of an engraving attempt. */
+    /**
+     * The outcome of an engraving attempt.
+     *
+     * <p>{@link #succeeded()} answers "did LilyPond run and produce a PDF", and
+     * deliberately nothing more. It is not "is the PDF right": those are
+     * different questions and collapsing them would lose one of the answers.
+     *
+     * @param succeeded whether a PDF was produced at all
+     * @param pdf       the PDF; {@link #render} fills this in exactly when
+     *                  {@code succeeded}, but the record does not enforce it and
+     *                  tests build results that carry neither
+     * @param output    everything LilyPond said, stdout and stderr interleaved
+     */
     public record Result(boolean succeeded, Optional<Path> pdf, String output) {
+
+        public Result {
+            Objects.requireNonNull(pdf, "pdf");
+            Objects.requireNonNull(output, "output");
+        }
+
+        /**
+         * The moments at which LilyPond reported a bar that did not fill its
+         * meter, in the order it reported them.
+         *
+         * <p><b>A non-empty list means the engraved music is wrong, and
+         * {@link #succeeded()} is still {@code true}.</b> That is not a
+         * contradiction, it is the whole point of #156: a failed bar check is a
+         * warning, so LilyPond draws the short bar, exits zero and hands over a
+         * real PDF. A caller that only asks whether engraving succeeded is
+         * therefore told nothing about whether the page is correct — which is
+         * why {@code RenderCommand} could print {@code Wrote .../chords.pdf}
+         * and nothing else about a chart whose bars do not sum. Nothing that
+         * <em>command</em> engraves today can fail a bar check, because the
+         * chord chart emits no {@code |} (#160); {@link StaffNotation} does emit
+         * them, which is why {@code mw-it} can engrave a short bar on purpose
+         * and why this accessor has something to read at all.
+         *
+         * <p>Derived from {@link #output()} on each call rather than stored
+         * beside it, so that the two cannot disagree. A stored copy would be a
+         * second reading of the same fact, and this project has paid for that
+         * shape more than once.
+         *
+         * <p>Empty for a run that never produced output to read — a timeout, an
+         * interrupt — because "LilyPond did not complain about the bars" and
+         * "LilyPond never got that far" are both correctly reported by
+         * {@code succeeded() == false}, and neither is a bar-check finding.
+         *
+         * @see LilyPondComplaints for which diagnostics are read and which are
+         *      deliberately not
+         */
+        public List<String> failedBarChecks() {
+            return LilyPondComplaints.failedBarChecksIn(output);
+        }
     }
 
     /**
