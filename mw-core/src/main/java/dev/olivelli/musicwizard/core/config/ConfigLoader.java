@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -37,6 +38,22 @@ import java.util.Optional;
  * <p>Precedence, weakest first: built-in defaults, then the user's global
  * config, then the workspace config, then anything passed on the command line.
  * Each layer only needs to state what it changes.
+ *
+ * <p><b>Where the global layer lives is a constructor argument, not something
+ * this class works out per read.</b> It used to resolve {@code XDG_CONFIG_HOME}
+ * or {@code ~/.config} inside {@link #readGlobalLayer()}, which made every
+ * caller — including every test that ever built an effective config — depend on
+ * the home directory of whoever ran it. That is not a hypothetical: a
+ * contributor who was also a user, with the two-line {@code paperSize} example
+ * the README tells them to write, got a failing {@code WorkspaceTest} naming a
+ * config assertion and nothing else, while CI stayed green (#133).
+ *
+ * <p>So pick one deliberately: {@link #fromEnvironment()} for the real user,
+ * {@link #withGlobalConfigFile(Path)} for a stated location, and
+ * {@link #withoutGlobalConfig()} for no global layer at all. Naming the choice
+ * also made the global layer testable for the first time — until #133 the only
+ * way to exercise a documented precedence rule was to write into the
+ * developer's home directory, so nothing did.
  */
 public final class ConfigLoader {
 
@@ -54,7 +71,66 @@ public final class ConfigLoader {
 
     private final ObjectMapper yamlMapper;
 
+    /**
+     * Where this loader's global layer lives, or null when it has none. Held
+     * rather than recomputed on each read, so a loader answers for one stated
+     * environment for its whole life and cannot be moved by an environment
+     * variable changing underneath it.
+     */
+    private final Path globalConfigFile;
+
+    /**
+     * A loader reading the global layer from the user's environment.
+     *
+     * <p>Equivalent to {@link #fromEnvironment()}, which is the form to prefer
+     * in new code because it says which environment it means. Kept because it
+     * is what the CLI's own commands construct, and their behaviour is the
+     * product feature this whole class exists to deliver.
+     */
     public ConfigLoader() {
+        this(globalConfigFile());
+    }
+
+    /**
+     * A loader whose global layer is the user's own, at
+     * {@code $XDG_CONFIG_HOME/music-wizard/config.yaml} or
+     * {@code ~/.config/music-wizard/config.yaml}.
+     *
+     * <p>Environment-dependent, because it resolves through
+     * {@link #globalConfigDirectory()} — see there for the rule that decides
+     * whether any given call is. A test using this one gets whatever config the
+     * machine it runs on happens to carry.
+     */
+    public static ConfigLoader fromEnvironment() {
+        return new ConfigLoader(globalConfigFile());
+    }
+
+    /**
+     * A loader whose global layer is the given file, which need not exist.
+     *
+     * <p>The file is taken as stated: no {@code XDG_CONFIG_HOME}, no
+     * {@code music-wizard} directory appended. A test pointing this at a
+     * {@code @TempDir} gets a global layer it controls, and one pointing it at
+     * a path it never creates gets a reliably empty one.
+     */
+    public static ConfigLoader withGlobalConfigFile(Path file) {
+        // Not null-tolerant on purpose: null would behave as withoutGlobalConfig,
+        // so an unset field would silently mean "no global layer" rather than
+        // saying so. Whoever wants none says so.
+        Objects.requireNonNull(file, "file");
+        return new ConfigLoader(file);
+    }
+
+    /**
+     * A loader with no global layer at all, so the effective config is defaults
+     * plus whatever the caller layers on top.
+     */
+    public static ConfigLoader withoutGlobalConfig() {
+        return new ConfigLoader((Path) null);
+    }
+
+    private ConfigLoader(Path globalConfigFile) {
+        this.globalConfigFile = globalConfigFile;
         YAMLFactory factory = new YAMLFactory()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
                 .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES);
@@ -71,6 +147,39 @@ public final class ConfigLoader {
     /**
      * The global config directory, honouring {@code XDG_CONFIG_HOME} where set
      * and falling back to {@code ~/.config}.
+     *
+     * <p>Answers for the environment, always — a loader built with
+     * {@link #withGlobalConfigFile(Path)} does not read here. Use
+     * {@link #globalConfigFileLocation()} to ask a loader where it actually
+     * looks; this is for telling the user where the tool would look, which is
+     * what {@code mw doctor} wants.
+     *
+     * <p><b>This is the one method that resolves the global config location
+     * from the environment. Every environment-dependent resolution of that
+     * location reaches here — either directly, or through the construction of
+     * the loader being used.</b>
+     *
+     * <p>Both halves are needed. Resolution happens once at construction rather
+     * than per read, so nothing on the reading side —
+     * {@link #readGlobalLayer()},
+     * {@link #effectiveConfig(Path, MusicWizardConfig)},
+     * {@code Workspace.effectiveConfig} — calls this method at all, yet each is
+     * environment-dependent when handed a loader that did. And some callers
+     * have no loader: {@link #globalConfigFile()} answers for the environment
+     * on its own, which is what {@code mw doctor} wants.
+     *
+     * <p>Stated one-directionally, and as a property rather than a list of call
+     * sites, because both other shapes were tried and failed. Three successive
+     * lists were each wrong — missing {@link #searchPrefixes}, then
+     * {@link #globalConfigFile()}, then the no-argument constructor — and the
+     * biconditional that replaced them was false in one direction or the other
+     * whichever way it was phrased. A reader can settle any particular call by
+     * following it here; what they cannot rely on is a list staying complete.
+     *
+     * <p>Note the rule is about the <i>config location</i> specifically. The
+     * class reads the environment elsewhere for a different question — where a
+     * binary is, not what the user configured: {@link #findLilyPond} consults
+     * {@code PATH} and {@link #searchPrefixes} the home directory.
      */
     public static Path globalConfigDirectory() {
         String xdg = System.getenv("XDG_CONFIG_HOME");
@@ -107,9 +216,26 @@ public final class ConfigLoader {
         }
     }
 
-    /** Reads the user's global config layer, if any. */
+    /**
+     * Where this loader reads its global layer from, or empty when it has none.
+     *
+     * <p>Note this is the loader's own location, which is only the user's when
+     * the loader was built from the environment. The static
+     * {@link #globalConfigFile()} always answers for the environment, so the
+     * two disagree for any loader that was given a location.
+     */
+    public Optional<Path> globalConfigFileLocation() {
+        return Optional.ofNullable(globalConfigFile);
+    }
+
+    /** Reads this loader's global config layer, if it has one. */
     public MusicWizardConfig readGlobalLayer() {
-        return readLayer(globalConfigFile());
+        // readLayer already treats an absent file as an empty layer, so the
+        // null case here is "this loader has no global layer", not "the file is
+        // missing" -- different questions with the same answer.
+        return globalConfigFile == null
+                ? MusicWizardConfig.empty()
+                : readLayer(globalConfigFile);
     }
 
     /**

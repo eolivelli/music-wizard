@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,7 +55,10 @@ class HardeningTest {
     }
 
     private Workspace newWorkspace() {
-        return Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile);
+        // No global config layer: explicitly none, rather than whatever the
+        // person running the suite has in ~/.config/music-wizard (#133).
+        return Workspace.create(tempDirectory.resolve("song.mwz"), sourceFile,
+                ConfigLoader.withoutGlobalConfig());
     }
 
     @Nested
@@ -620,7 +624,7 @@ class HardeningTest {
             Workspace workspace = newWorkspace();
             rewriteSourceName(workspace, name);
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("outside the workspace");
         }
@@ -644,7 +648,7 @@ class HardeningTest {
                 return; // Filesystem cannot make symlinks; nothing to assert.
             }
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("resolves outside the workspace");
         }
@@ -667,7 +671,7 @@ class HardeningTest {
             Files.writeString(workspace.descriptorFile(),
                     yaml.replaceFirst("sourceFileName: .*", "sourceFileName: sub/secret.pem"));
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("resolves outside the workspace");
         }
@@ -695,7 +699,7 @@ class HardeningTest {
             Files.writeString(workspace.descriptorFile(),
                     yaml.replaceFirst("sourceFileName: .*", "sourceFileName: shadow"));
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("source directory is a symbolic link");
         }
@@ -714,7 +718,8 @@ class HardeningTest {
                 return;
             }
 
-            Workspace workspace = Workspace.create(linkedParent.resolve("s.mwz"), sourceFile);
+            Workspace workspace = Workspace.create(linkedParent.resolve("s.mwz"), sourceFile,
+                    ConfigLoader.withoutGlobalConfig());
 
             assertThat(workspace.sourceFile()).isRegularFile();
             assertThat(workspace.sourceMatchesDigest()).isTrue();
@@ -735,7 +740,7 @@ class HardeningTest {
             Workspace workspace = newWorkspace();
             Files.writeString(workspace.descriptorFile(), "sourceFileName: song.mp3\n");
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()))
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("invalid schema version");
         }
@@ -746,7 +751,7 @@ class HardeningTest {
             Workspace workspace = newWorkspace();
             Files.writeString(workspace.descriptorFile(), "schemaVersion: 1\n");
 
-            assertThatThrownBy(() -> Workspace.open(workspace.root()).sourceFile())
+            assertThatThrownBy(() -> Workspace.open(workspace.root(), ConfigLoader.withoutGlobalConfig()).sourceFile())
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("names no source file");
         }
@@ -779,7 +784,7 @@ class HardeningTest {
             Path unreadable = tempDirectory.resolve("unreadable.mp3");
             Files.createDirectory(unreadable);
 
-            assertThatThrownBy(() -> Workspace.create(target, unreadable))
+            assertThatThrownBy(() -> Workspace.create(target, unreadable, ConfigLoader.withoutGlobalConfig()))
                     .isInstanceOf(IllegalArgumentException.class);
 
             assertThat(target).doesNotExist();
