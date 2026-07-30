@@ -672,8 +672,21 @@ class BeatUnitTest {
             assertThat(grid.medianTempo(TimeSignature.SIX_EIGHT)).isCloseTo(
                     TempoMap.fromBeatTimes(grid.beatTimes(), TimeSignature.SIX_EIGHT)
                             .initialTempo(), within(1e-9));
+            // Passing a meter this grid was not tracked in no longer changes its
+            // answer, because the grid records the pulse it was tracked at and
+            // the meter is only consulted when it does not (#139). Before that,
+            // this returned the pulse rate: 120 for pulses that are dotted
+            // quarters, which is the conflation one layer along.
+            assertThat(grid.pulseQuarters()).hasValue(1.5);
             assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
-                    .isEqualTo(grid.medianPulseRate());
+                    .isEqualTo(grid.medianTempo(TimeSignature.SIX_EIGHT));
+            // A grid that records nothing is still read through the meter, which
+            // is what every grid written before #139 needs.
+            BeatGrid unrecorded =
+                    BeatGrid.ofTimes(grid.beatTimes(), 2, Confidence.of(0.9));
+            assertThat(unrecorded.pulseQuarters()).isEmpty();
+            assertThat(unrecorded.medianTempo(TimeSignature.FOUR_FOUR))
+                    .isEqualTo(unrecorded.medianPulseRate());
         }
 
         /**

@@ -235,7 +235,13 @@ public record Score(
      *       written by an earlier build, or a map assembled by a caller that did
      *       not say. For anything a current producer builds it never runs.
      *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
-     *       one dropped beat does not skew it. Preferred over the map because
+     *       one dropped beat does not skew it, converted to quarter notes by the
+     *       pulse the grid itself records -- or, for a grid that records none,
+     *       by the meter's counted beat, which is what such a grid was tracked
+     *       at. Reading the meter for a grid that does say is #139: it answered
+     *       half the tempo for a grid tracked at half tempo, and the map built
+     *       from those very pulses said the other figure. Preferred over the map
+     *       because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
      *       tracked beat a whole beat of lead-in, and on a short clip that one
      *       crammed beat pulls the map's average measurably above the real tempo

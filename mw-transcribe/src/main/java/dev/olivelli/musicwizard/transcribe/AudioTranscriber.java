@@ -179,6 +179,12 @@ public final class AudioTranscriber {
         Objects.requireNonNull(audio, "audio");
         Options settings = options != null ? options : Options.defaults();
         TimeSignature meter = settings.timeSignatureOrDefault();
+        // What one tracked pulse is worth, named once. The tracker emits one
+        // pulse per counted beat, so this is the meter's beat unit -- but the
+        // map and the grid are built forty lines apart from the same pulses, and
+        // giving each its own expression of the figure is how the two come to
+        // describe tempi a factor apart (#139).
+        double pulseQuarters = meter.beatUnitQuarters();
 
         progress.accept("detecting onsets");
         OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
@@ -239,7 +245,7 @@ public final class AudioTranscriber {
         // worth estimating.
         TempoMap tempoMap;
         if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
-            tempoMap = TempoMap.fromBeatTimes(beatTimes, meter);
+            tempoMap = TempoMap.fromBeatTimes(beatTimes, meter, pulseQuarters);
         } else {
             // Everything else is the fallback -- a typed tempo, or a clip with
             // no interval to infer one from -- and both take the figure and its
@@ -273,12 +279,15 @@ public final class AudioTranscriber {
         // counted beat, and 6/8 counts two of them to a bar rather than six.
         // DownbeatEstimator asks for "the assumed bar length in beats", and the
         // beats it means are the tracked ones it is phasing.
+        // The pulse is recorded here rather than by BeatTracker, which phases
+        // bars from onset energy and is never told what a bar is worth.
         BeatGrid grid = BeatTracker.toBeatGrid(beats,
                 settings.firstDownbeatSeconds() != null
                         ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(),
                                 meter.beatsPerBar())
                         : DownbeatEstimator.estimate(
-                                beatTimes, chroma, envelope, meter.beatsPerBar()));
+                                beatTimes, chroma, envelope, meter.beatsPerBar()))
+                .withPulseQuarters(pulseQuarters);
 
         progress.accept("estimating chords");
         ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);

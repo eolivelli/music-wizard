@@ -1,0 +1,103 @@
+{
+  "title" : null,
+  "artist" : null,
+  "tempoMap" : {
+    "segments" : [ {
+      "startBeat" : 0.0,
+      "startSeconds" : 0.0,
+      "beatsPerMinute" : 257.14285714285717,
+      "provenance" : "DERIVED"
+    }, {
+      "startBeat" : 1.5,
+      "startSeconds" : 0.35,
+      "beatsPerMinute" : 180.0,
+      "provenance" : "MEASURED"
+    }, {
+      "startBeat" : 3.0,
+      "startSeconds" : 0.85,
+      "beatsPerMinute" : 179.99999999999997,
+      "provenance" : "MEASURED"
+    }, {
+      "startBeat" : 4.5,
+      "startSeconds" : 1.35,
+      "beatsPerMinute" : 180.0,
+      "provenance" : "MEASURED"
+    }, {
+      "startBeat" : 6.0,
+      "startSeconds" : 1.85,
+      "beatsPerMinute" : 180.0,
+      "provenance" : "MEASURED"
+    }, {
+      "startBeat" : 7.5,
+      "startSeconds" : 2.35,
+      "beatsPerMinute" : 180.0,
+      "provenance" : "MEASURED"
+    }, {
+      "startBeat" : 9.0,
+      "startSeconds" : 2.85,
+      "beatsPerMinute" : 180.0,
+      "provenance" : "MEASURED"
+    } ],
+    "meterChanges" : [ {
+      "startBar" : 0,
+      "timeSignature" : {
+        "numerator" : 6,
+        "denominator" : 8
+      }
+    } ]
+  },
+  "beatGrid" : {
+    "beats" : [ {
+      "seconds" : 0.35,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 0.85,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 1.35,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 1.85,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 2.35,
+      "downbeat" : true,
+      "positionInBar" : 0
+    }, {
+      "seconds" : 2.85,
+      "downbeat" : false,
+      "positionInBar" : 1
+    }, {
+      "seconds" : 3.35,
+      "downbeat" : true,
+      "positionInBar" : 0
+    } ],
+    "beatConfidence" : {
+      "value" : 0.8
+    },
+    "downbeatConfidence" : {
+      "value" : 0.8
+    }
+  },
+  "keys" : [ ],
+  "sections" : [ ],
+  "tracks" : [ ],
+  "chords" : {
+    "chords" : [ ],
+    "confidence" : {
+      "value" : 0.0
+    }
+  },
+  "lyrics" : {
+    "lines" : [ ],
+    "language" : "und",
+    "confidence" : {
+      "value" : 0.0
+    }
+  },
+  "durationSeconds" : 4.0
+}
