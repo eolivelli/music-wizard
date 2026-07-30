@@ -143,7 +143,16 @@ public record TimeSignature(int numerator, int denominator) {
         // itself produces divides its bar exactly -- both quantities are dyadic
         // rationals -- but a caller may pass a pulse that is not, and 4.0
         // divided by a computed 1.0/49 is 196.00000000000003.
-        if (Math.abs(pulses - whole) > 1e-9 * Math.max(1.0, pulses)) {
+        //
+        // Capped absolutely as well as scaled, because a relative tolerance
+        // reaches half a pulse at 5e8 pulses to the bar and then accepts
+        // everything: a pulse dividing a bar into 1000000000.5 was answered as
+        // 1000000001, which is not what this method says it does. No BeatGrid
+        // can reach that -- its pulse is bounded to [1/1024, 1024] and a bar to
+        // 256 quarter notes, so it tops out at 262144 pulses -- but this is
+        // public on a core type and the contract should hold for a caller that
+        // did not come through one.
+        if (Math.abs(pulses - whole) > Math.min(0.25, 1e-9 * Math.max(1.0, pulses))) {
             throw new IllegalArgumentException(
                     "a pulse of " + pulseQuarters + " quarter notes does not divide a " + this
                             + " bar, which is " + quarterBeatsPerBar()

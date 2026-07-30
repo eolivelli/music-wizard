@@ -141,18 +141,27 @@ public record Score(
      * shows a bar cycle that is observably wrong -- is skipped rather than
      * guessed at. It needs a map with a single meter, since bar lengths differ
      * either side of a meter change and the first cycle would not describe the
-     * rest. And it stops at the second downbeat, so a phased grid costs one bar
-     * rather than a scan of the hundred thousand pulses a long track holds; a
-     * grid with fewer than two downbeats is scanned in full and then skipped.
+     * rest. And it stops at the second downbeat, so a phased grid costs the
+     * pulses up to it -- two bars at worst, when the first downbeat is the last
+     * pulse of a bar -- rather than a scan of the hundred thousand pulses a long
+     * track holds; a grid with fewer than two downbeats is scanned in full and
+     * then skipped.
      *
      * <p>The bar length is asked of {@link TimeSignature#pulsesPerBar(double)}
-     * rather than multiplied out here. Comparing whole pulse counts is what
-     * makes "the factory and this cannot disagree" true by construction: an
-     * earlier version compared quarter notes against its own copy of the
-     * tolerance, and since that tolerance is relative, the two drifted apart
-     * wherever a bar holds more pulses than quarter notes -- a 6/8 grid at a
-     * pulse of 3/7 typed to nine decimals built happily and then could not be
-     * put in a score.
+     * rather than multiplied out here, and whole pulse counts are compared
+     * rather than quarter notes. That is what makes "the factory and this
+     * cannot disagree" true by construction.
+     *
+     * <p>An earlier version wrote the rule out a second time, comparing quarter
+     * notes against its own copy of the factory's relative tolerance. The two
+     * expressions are the <em>same test</em> for every bar of at least a quarter
+     * note -- and they still disagreed, because a relative tolerance either side
+     * of a multiplication does not round identically. A 6/8 grid at a pulse of
+     * 3/7 typed to nine decimals cleared the factory's edge by 3e-16 and missed
+     * this one's by 2.5e-16, so it built and then could not be put in a score.
+     * The lesson is not that the tolerances were far apart; it is that two
+     * expressions of one rule do not have to be far apart to disagree, so the
+     * rule is written once.
      */
     private static void requireGridPulseFitsTheBar(
             Optional<BeatGrid> beatGrid, TempoMap tempoMap) {

@@ -271,6 +271,18 @@ class PulseUnitTest {
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(1e12))
                     .withMessageContaining("does not fit");
+            // And a pulse so short that a relative tolerance would have grown to
+            // half a pulse and accepted anything: a pulse dividing a 4/4 bar
+            // exactly halfway between two counts was answered as the higher of
+            // them rather than refused. Nothing a
+            // BeatGrid can hold reaches this -- its pulse floor of 1/1024 caps a
+            // bar at 262144 pulses -- but the method is public and says it
+            // divides.
+            double halfwayBetweenTwoCounts = 4.0 / 1000000000.5;
+            assertThat(4.0 / halfwayBetweenTwoCounts).isEqualTo(1000000000.5);
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(halfwayBetweenTwoCounts))
+                    .withMessageContaining("does not divide");
             // And short enough to imply more pulses than an int can count, which
             // must be refused rather than wrapped into a negative bar length.
             assertThatIllegalArgumentException()
@@ -385,13 +397,17 @@ class PulseUnitTest {
         }
 
         @Test
-        @DisplayName("accepts a pulse the factory accepts, however it was rounded")
-        void theToleranceIsTheFactorysTolerance() {
-            // The round-1 version of this check compared quarter notes against
-            // its own copy of the factory's tolerance. Both tolerances are
-            // relative, so they parted company wherever a bar holds more pulses
-            // than quarter notes: 3/7 of a quarter note, typed to nine decimals,
-            // bars 6/8 into seven pulses and then could not be put in a score.
+        @DisplayName("accepts the pulse that sat on the edge of the old tolerance")
+        void theCheckAgreesWithTheFactoryAtTheToleranceEdge() {
+            // The round-1 version of this check wrote the factory's rule out a
+            // second time, in quarter notes rather than pulses. Algebraically the
+            // two are the same test for any bar of at least a quarter note -- and
+            // they still disagreed, because a relative tolerance either side of a
+            // multiplication does not round the same way. This pulse is that
+            // disagreement and there is no class of them: it clears the factory's
+            // edge by 3e-16 and missed the old check's by 2.5e-16, so it built and
+            // then could not be put in a score. Pinned as a boundary case, which
+            // is all it is.
             double sevenToTheBar = 0.428571429;
             assertThat(TimeSignature.SIX_EIGHT.pulsesPerBar(sevenToTheBar)).isEqualTo(7);
 
