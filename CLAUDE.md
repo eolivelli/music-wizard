@@ -18,6 +18,25 @@ mvn -pl mw-core test       # the module that matters most
 artifact is the shaded `mw-cli/target/mw.jar`. It is ~88 MB, almost entirely
 ONNX Runtime, FFmpeg natives and the Anthropic SDK.
 
+## The primary goal
+
+**Real commercial recordings, not synthetic fixtures.** Everything is judged
+against whether it moves that. The first tier-2 run — an actual 3:43 track —
+produced seven chord spans, five of them `N.C.`, one covering 169 consecutive
+seconds (#185). Measured over every frame, the flat no-chord template scores
+0.859 against the best possible triad's 0.713; on the synthetic fixture the same
+measurement gives +0.356 the other way. **The sign flips between synthetic and
+real**, which is why no constant in `ChordEstimator` can fix it.
+
+So: work that makes real audio work outranks work that polishes what already
+works on synthetic audio. NNLS chroma (#3) is the top item, because it is the
+stage that produces a chroma a template matcher can use on a real mix. A
+notation defect that only shows on material we cannot yet transcribe is real,
+but it is not urgent.
+
+Judge a change by what it does to a real recording. If that cannot be measured,
+say so rather than quoting the synthetic figure.
+
 ## Rules that are not obvious
 
 Break either of these and the output is subtly wrong rather than broken, which
