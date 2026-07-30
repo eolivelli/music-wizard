@@ -132,7 +132,7 @@ public record TimeSignature(int numerator, int denominator) {
         double pulses = quarterBeatsPerBar() / pulseQuarters;
         // Bounded before rounding, so that a pulse small enough to imply more
         // pulses than an int can count cannot wrap into a negative bar length.
-        if (!(pulses >= 1 && pulses <= Integer.MAX_VALUE)) {
+        if (!(pulses <= Integer.MAX_VALUE)) {
             throw new IllegalArgumentException(
                     "a pulse of " + pulseQuarters + " quarter notes does not fit in a " + this
                             + " bar, which is " + quarterBeatsPerBar()
@@ -148,6 +148,17 @@ public record TimeSignature(int numerator, int denominator) {
                     "a pulse of " + pulseQuarters + " quarter notes does not divide a " + this
                             + " bar, which is " + quarterBeatsPerBar()
                             + " quarter notes, into a whole number of pulses");
+        }
+        // Tested after the tolerance rather than before it, because a whole-bar
+        // pulse carrying a bit of rounding -- 4.000000000000001 quarter notes in
+        // 4/4 -- divides its bar into 0.9999999999999998 pulses, which is one
+        // pulse and not none. Ordered the other way this threw, and said the bar
+        // could not hold a pulse that is the bar.
+        if (whole < 1) {
+            throw new IllegalArgumentException(
+                    "a pulse of " + pulseQuarters + " quarter notes does not fit in a " + this
+                            + " bar, which is " + quarterBeatsPerBar()
+                            + " quarter notes: it would take " + pulses + " of them");
         }
         return (int) whole;
     }

@@ -257,9 +257,19 @@ class PulseUnitTest {
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(1.5))
                     .withMessageContaining("does not divide");
-            // Longer than the bar: there is no bar left to bar.
+            // Longer than the bar: half a pulse to the bar is not a whole number
+            // of them either.
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(8.0))
+                    .withMessageContaining("does not divide");
+            // But a pulse that is the whole bar to within a bit of rounding is
+            // one pulse, not none: 4.0 / 4.000000000000001 is 0.9999999999999998,
+            // and testing "at least one" before the tolerance rejected it.
+            assertThat(TimeSignature.FOUR_FOUR.pulsesPerBar(4.000000000000001)).isEqualTo(1);
+            assertThat(4.0 / 4.000000000000001).isLessThan(1.0);
+            // Long enough that the bar really does hold none of it.
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> TimeSignature.FOUR_FOUR.pulsesPerBar(1e12))
                     .withMessageContaining("does not fit");
             // And short enough to imply more pulses than an int can count, which
             // must be refused rather than wrapped into a negative bar length.
@@ -356,12 +366,40 @@ class PulseUnitTest {
             BeatGrid lying = barredEvery(4, 1.5, 8);
             assertThat(lying.medianTempo(TimeSignature.FOUR_FOUR)).isEqualTo(180.0);
 
+            // A dotted quarter cannot bar 4/4 at any count at all.
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> Score.empty(
                             TempoMap.constant(120.0, TimeSignature.FOUR_FOUR), 12.0)
                             .withBeatGrid(lying))
-                    .withMessageContaining("6.0 quarter notes to the bar")
-                    .withMessageContaining("4/4 bar is 4.0");
+                    .withMessageContaining("cannot bar the tempo map's 4/4 at all");
+
+            // And the other branch: a pulse that bars this meter, at a count the
+            // grid does not use. Two half notes fill a 4/4 bar; this grid marks
+            // one every four pulses, so its bars are twice the meter's.
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> Score.empty(
+                            TempoMap.constant(120.0, TimeSignature.FOUR_FOUR), 12.0)
+                            .withBeatGrid(barredEvery(4, 2.0, 8)))
+                    .withMessageContaining("bars every 4 pulses")
+                    .withMessageContaining("4/4 bar takes 2 of them");
+        }
+
+        @Test
+        @DisplayName("accepts a pulse the factory accepts, however it was rounded")
+        void theToleranceIsTheFactorysTolerance() {
+            // The round-1 version of this check compared quarter notes against
+            // its own copy of the factory's tolerance. Both tolerances are
+            // relative, so they parted company wherever a bar holds more pulses
+            // than quarter notes: 3/7 of a quarter note, typed to nine decimals,
+            // bars 6/8 into seven pulses and then could not be put in a score.
+            double sevenToTheBar = 0.428571429;
+            assertThat(TimeSignature.SIX_EIGHT.pulsesPerBar(sevenToTheBar)).isEqualTo(7);
+
+            BeatGrid grid = BeatGrid.ofTimes(pulses(0.4, 0.5, 15), TimeSignature.SIX_EIGHT,
+                    sevenToTheBar, Confidence.of(0.9));
+            assertThatCode(() -> Score.empty(
+                    TempoMap.constant(120.0, TimeSignature.SIX_EIGHT), 12.0).withBeatGrid(grid))
+                    .doesNotThrowAnyException();
         }
 
         @Test
@@ -372,11 +410,14 @@ class PulseUnitTest {
                     .withBeatGrid(barredEvery(4, 1.0, 8)))
                     .replace("\"pulseQuarters\" : 1.0", "\"pulseQuarters\" : 1.5");
 
+            // Over the whole chain rather than the root, because the root is the
+            // meter's own complaint that a dotted quarter does not divide 4/4 and
+            // the sentence naming the score is the one wrapped around it.
             assertThatThrownBy(() -> ScoreJson.fromJson(json))
                     .isInstanceOf(UncheckedIOException.class)
+                    .hasStackTraceContaining("cannot bar the tempo map's 4/4 at all")
                     .rootCause()
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("quarter notes to the bar");
+                    .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test

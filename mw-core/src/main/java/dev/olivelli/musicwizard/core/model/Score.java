@@ -141,9 +141,18 @@ public record Score(
      * shows a bar cycle that is observably wrong -- is skipped rather than
      * guessed at. It needs a map with a single meter, since bar lengths differ
      * either side of a meter change and the first cycle would not describe the
-     * rest. And it reads the first complete cycle only, so the cost is one bar
-     * rather than a scan of a grid that on a long track holds a hundred
-     * thousand pulses.
+     * rest. And it stops at the second downbeat, so a phased grid costs one bar
+     * rather than a scan of the hundred thousand pulses a long track holds; a
+     * grid with fewer than two downbeats is scanned in full and then skipped.
+     *
+     * <p>The bar length is asked of {@link TimeSignature#pulsesPerBar(double)}
+     * rather than multiplied out here. Comparing whole pulse counts is what
+     * makes "the factory and this cannot disagree" true by construction: an
+     * earlier version compared quarter notes against its own copy of the
+     * tolerance, and since that tolerance is relative, the two drifted apart
+     * wherever a bar holds more pulses than quarter notes -- a 6/8 grid at a
+     * pulse of 3/7 typed to nine decimals built happily and then could not be
+     * put in a score.
      */
     private static void requireGridPulseFitsTheBar(
             Optional<BeatGrid> beatGrid, TempoMap tempoMap) {
@@ -169,16 +178,21 @@ public record Score(
         }
         double pulseQuarters = beatGrid.get().pulseQuarters().getAsDouble();
         TimeSignature meter = tempoMap.initialTimeSignature();
-        double barQuarters = pulsesPerBar * pulseQuarters;
-        double expected = meter.quarterBeatsPerBar();
-        // The same tolerance TimeSignature.pulsesPerBar allows, so a pulse that
-        // method accepts for this meter cannot be rejected here.
-        if (Math.abs(barQuarters - expected) > 1e-9 * Math.max(1.0, expected)) {
+        int expectedPerBar;
+        try {
+            expectedPerBar = meter.pulsesPerBar(pulseQuarters);
+        } catch (IllegalArgumentException cannotBarThisMeter) {
+            throw new IllegalArgumentException(
+                    "the beat grid records a pulse of " + pulseQuarters
+                            + " quarter notes, which cannot bar the tempo map's " + meter
+                            + " at all: " + cannotBarThisMeter.getMessage(), cannotBarThisMeter);
+        }
+        if (expectedPerBar != pulsesPerBar) {
             throw new IllegalArgumentException(
                     "the beat grid records a pulse of " + pulseQuarters
                             + " quarter notes and bars every " + pulsesPerBar
-                            + " pulses, which is " + barQuarters + " quarter notes to the bar,"
-                            + " but the tempo map's " + meter + " bar is " + expected);
+                            + " pulses, but the tempo map's " + meter + " bar takes "
+                            + expectedPerBar + " of them");
         }
     }
 

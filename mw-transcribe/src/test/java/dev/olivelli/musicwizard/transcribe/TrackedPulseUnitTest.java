@@ -78,6 +78,29 @@ class TrackedPulseUnitTest {
     }
 
     @Test
+    @DisplayName("anchors a supplied tempo on whole pulses, not on whole counted beats")
+    void theOverrideMapAnchorsOnThePulseItIsGiven() {
+        // constantPulseFrom used to re-derive the pulse from the meter, which no
+        // test could distinguish while every caller tracked at the counted beat.
+        // Given a pulse of its own it agrees with the map built from the same
+        // pulses; re-deriving it would put the first tracked pulse at beat 1.0,
+        // half a pulse off the grid's own bar starts.
+        TempoMap supplied = AudioTranscriber.constantPulseFrom(
+                120, TimeSignature.FOUR_FOUR, 2.0, 0.7, Provenance.SUPPLIED);
+        TempoMap tracked = TempoMap.fromBeatTimes(
+                List.of(0.7, 1.7, 2.7), TimeSignature.FOUR_FOUR, 2.0);
+
+        assertThat(supplied.secondsToBeats(0.7)).isCloseTo(2.0, within(1e-9));
+        assertThat(supplied.secondsToBeats(0.7))
+                .isCloseTo(tracked.secondsToBeats(0.7), within(1e-9));
+        // The typed rate is untouched: it is counted beats of the meter, which is
+        // what a metronome shows, while the anchor is counted in tracked pulses.
+        // They are different quantities, which is exactly why one of them cannot
+        // stand in for the other.
+        assertThat(supplied.tempoAtBeat(2.0)).isCloseTo(120.0, within(1e-9));
+    }
+
+    @Test
     @DisplayName("records the meter's counted beat on the grid it builds")
     void theGridSaysWhatItWasTrackedAt() {
         assertThat(transcribeIn(TimeSignature.FOUR_FOUR).beatGrid().orElseThrow().pulseQuarters())

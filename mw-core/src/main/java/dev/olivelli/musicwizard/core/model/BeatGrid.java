@@ -148,8 +148,11 @@ public record BeatGrid(
      *
      * <p>This records a claim and can check only that it is a note value. It
      * cannot check it against the bars the grid already marks, because a grid
-     * holds no meter -- so a pulse that contradicts them is caught when the
-     * grid meets a tempo map, in {@link Score}, and not before.
+     * holds no meter. A pulse that contradicts them is caught when the grid
+     * meets a tempo map, in {@link Score} -- but only where the grid shows two
+     * downbeats to contradict and the map holds one meter, so this is a
+     * <em>claim</em> a caller should get right rather than one that will always
+     * be checked.
      */
     public BeatGrid withPulseQuarters(double pulseQuarters) {
         return new BeatGrid(
@@ -217,8 +220,12 @@ public record BeatGrid(
     public static BeatGrid ofTimes(
             List<Double> beatSeconds, TimeSignature timeSignature, Confidence confidence) {
         Objects.requireNonNull(timeSignature, "timeSignature");
-        return ofTimes(beatSeconds, timeSignature.beatsPerBar(), confidence)
-                .withPulseQuarters(timeSignature.beatUnitQuarters());
+        // Through the pulse-aware form rather than straight to beatsPerBar(),
+        // so that this file holds one route from a pulse to a bar length and not
+        // two. The count is identical -- pulsesPerBar(beatUnitQuarters()) is
+        // beatsPerBar() for all 448 legal signatures, asserted -- so no grid
+        // this ever built is barred differently.
+        return ofTimes(beatSeconds, timeSignature, timeSignature.beatUnitQuarters(), confidence);
     }
 
     /**
