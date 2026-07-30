@@ -712,6 +712,46 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("heads the chart with the meter of its own first bar")
+    void theHeaderNamesTheMeterTheChartOpensIn() {
+        // The header used to read initialTimeSignature(), which is the piece's
+        // meter and not the chart's. Where the harmony starts after a meter
+        // change the two differ, and the header was then naming a meter no bar
+        // of the chart is in -- and handing a reader a metronome mark 50% fast,
+        // because tempoLine reads the same meter to decide whether the counted
+        // beat is a quarter. That is the failure tempoLine exists to prevent,
+        // reached by the other door.
+        //
+        // Not reachable through MidiTranscriber today, because
+        // SymbolicChordEstimator spans from beat 0 and leading silence becomes
+        // an N.C. chord, so a chart always opens on the piece's bar 0. It is one
+        // estimator change away, and it is reachable through the public API now.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR)
+                .withMeterChange(1, TimeSignature.SIX_EIGHT);
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
+                                map.beatsToSeconds(4), map.beatsToSeconds(7), Confidence.of(0.9))
+                        .quantizedTo(4, 7),
+                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR,
+                                map.beatsToSeconds(7), map.beatsToSeconds(10), Confidence.of(0.9))
+                        .quantizedTo(7, 10));
+        Score score = Score.empty(map, map.beatsToSeconds(10))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        // Every bar of this chart is 6/8, so the header says 6/8 and qualifies
+        // the tempo: 120 quarter notes a minute is 80 dotted quarters. Off
+        // initialTimeSignature() it said 4/4 and printed an unqualified
+        // "Tempo  120 BPM" over bars a musician counts at 80 -- a metronome
+        // marking half again too fast.
+        assertThat(ChordChart.toText(score))
+                .contains("Meter  6/8")
+                .contains("Tempo  80 BPM (120 quarter notes/min)")
+                .doesNotContain("Meter  4/4");
+        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+                .containsExactly("\\time #'(3 3) 6/8", "c2. |", "g2. |");
+    }
+
+    @Test
     @DisplayName("states a meter change where it happens, and nowhere else")
     void aMeterChangeIsStatedOnceWhereItFalls() {
         // MIDI import emits meter changes (#66), and the quantized route bars by

@@ -40,10 +40,18 @@ import java.util.Optional;
  * nothing compared them.
  *
  * <p>So the bars are decided here, once, and both emitters spell what this
- * returns. The engraved page then carries a {@code |} bar check per bar
- * (#160), which makes LilyPond itself check that the durations in a bar sum to
- * the meter this class says that bar is in — the one contradiction the chart
- * could not previously produce.
+ * returns: where a bar line falls, which chords are in each bar, and how much of
+ * its bar each one fills. The engraved page then carries a {@code |} bar check
+ * per bar (#160), which makes LilyPond itself check that the durations in a bar
+ * sum to the meter this class says that bar is in — the one contradiction the
+ * chart could not previously produce.
+ *
+ * <p>Two things a reader might expect to follow from that do not, and both were
+ * found by review rather than reasoned about here. Whether a bar <em>names</em>
+ * its chord is decided twice, because {@code chordmode} cannot be told not to
+ * print a name and {@code chordChanges} has to be left to apply the same rule
+ * (see {@link Cell#named()}). And the text chart's {@code Meter} header states
+ * one meter where {@link Bar#meter()} can state several, which is #191.
  *
  * <p><b>A chord holds until the next one starts.</b> Cell boundaries are chord
  * <em>starts</em>, never ends, which is both how a chart is read and why no
@@ -78,10 +86,14 @@ final class ChartLayout {
      * @param chord          the chord sounding, or empty for the gap between the
      *                       first bar line and the first chord
      * @param lengthQuarters how much of its bar this cell fills, in quarter beats
-     * @param named          whether the chart names the chord here, which it does
-     *                       once per run: a cell continuing the chord of the
-     *                       previous cell is a {@code %} in the text and prints
-     *                       nothing on the page
+     * @param named          whether this cell begins a run of equal symbols, so
+     *                       that the text chart names the chord here and writes
+     *                       {@code %} for the cells after it. Read by the text
+     *                       chart alone: the page reaches the same answer
+     *                       through {@code chordChanges}, which is LilyPond's
+     *                       own copy of this rule and differs from it at a
+     *                       system break, where a held chord is correctly
+     *                       reprinted
      */
     record Cell(Optional<Chord> chord, double lengthQuarters, boolean named) {
 
@@ -287,11 +299,17 @@ final class ChartLayout {
                 double barEnd = barStarts.get(bar) + meters.get(bar).quarterBeatsPerBar();
                 double cut = Math.min(span.to(), barEnd);
                 String symbol = span.chord().map(Chord::symbol).orElse(ChordQuality.NONE.symbol());
-                // Named once per run of equal symbols, which is what the text
-                // chart's "%" has always meant and what chordChanges makes
-                // LilyPond do. Both emitters read this flag rather than deciding
-                // it, so the page and the text cannot disagree about which bar
-                // introduces a chord.
+                // The first cell of a run of equal symbols. That is what the
+                // text chart's "%" has always meant, and it is the rule
+                // chordChanges applies on the page -- but the page applies its
+                // own copy of it, because chordmode has no way to write a chord
+                // event that declines to print its name. So this is the text
+                // chart's flag, and the agreement between the two outputs is
+                // held by keeping two rules in step rather than by one reader.
+                // Round 2 of review found the comment here claiming otherwise.
+                // Where they legitimately part is a system break, at which
+                // LilyPond reprints a held chord and the text, having no
+                // systems, does not.
                 boolean namesIt = first && (!anyNamed || !symbol.equals(named));
                 cells.get(bar).add(new Cell(span.chord(), cut - at, namesIt));
                 if (namesIt) {
@@ -361,8 +379,8 @@ final class ChartLayout {
      *
      * <p><b>What is and is not guarded.</b>
      * {@code EndToEndIT.downbeatsAgreeWithChords} holds each chord start within
-     * 0.06s of <em>some</em> downbeat, which is a tenth of a beat at 120 BPM and
-     * not the exact agreement measured above -- it would stay green on a
+     * 0.06s of <em>some</em> downbeat, which is 0.12 of a quarter beat at 120
+     * BPM and not the exact agreement measured above -- it would stay green on a
      * detector that had degraded, and on one that marked every beat a downbeat.
      * It is a floor, not a re-measurement. That floor is also one tier-1
      * fixture, and #189 records what that leaves open: the detector reports a

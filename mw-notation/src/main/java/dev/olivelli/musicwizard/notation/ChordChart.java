@@ -55,13 +55,25 @@ public final class ChordChart {
             out.append('\n');
         }
 
-        out.append(tempoLine(score));
-        out.append("Meter  ").append(score.tempoMap().initialTimeSignature()).append('\n');
+        List<ChartLayout.Bar> bars = ChartLayout.of(score);
+        // The meter of the chart's own first bar, not the piece's. They differ
+        // only when the harmony starts after a meter change, and then it is the
+        // header that is wrong: it would name a meter no bar of the chart is in,
+        // and -- because tempoLine reads the same meter to decide whether the
+        // counted beat is a quarter -- hand a 6/8 chart a metronome mark 50%
+        // fast, which is the failure tempoLine exists to prevent, arriving by
+        // the other door. Round 2 of review found that; the header still names
+        // one meter where a chart can hold several, which is #191.
+        TimeSignature meter = bars.isEmpty()
+                ? score.tempoMap().initialTimeSignature()
+                : bars.get(0).meter();
+        out.append(tempoLine(score, meter));
+        out.append("Meter  ").append(meter).append('\n');
         score.primaryKey().ifPresent(key -> out.append("Key    ")
                 .append(key.displayName()).append('\n'));
         out.append('\n');
 
-        for (String line : barLines(score)) {
+        for (String line : linesOf(bars)) {
             out.append(line).append('\n');
         }
         return out.toString();
@@ -75,9 +87,8 @@ public final class ChordChart {
      * metronome marking 50% fast, because a 6/8 bar is counted in dotted
      * quarters. Identical in every x/4 meter, where the two coincide.
      */
-    private static String tempoLine(Score score) {
+    private static String tempoLine(Score score, TimeSignature meter) {
         double quarterBpm = score.estimatedTempo();
-        TimeSignature meter = score.tempoMap().initialTimeSignature();
         // Locale.ROOT, because this number is meant to be typed back in via
         // --tempo and picocli parses it with Double.valueOf. Under fr_FR the
         // chart would print "120,0", which that rejects; under ar_EG it would
@@ -99,8 +110,10 @@ public final class ChordChart {
      * cannot disagree about where a bar line falls or which chord is in it.
      */
     static List<String> barLines(Score score) {
-        List<ChartLayout.Bar> bars = ChartLayout.of(score);
+        return linesOf(ChartLayout.of(score));
+    }
 
+    private static List<String> linesOf(List<ChartLayout.Bar> bars) {
         List<String> lines = new ArrayList<>();
         StringBuilder line = new StringBuilder();
         int onThisLine = 0;
