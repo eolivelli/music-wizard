@@ -100,16 +100,33 @@ final class ChartLayout {
      * constant keeps a one-beat chord, since a third and a half of a bar clear
      * it.
      *
-     * <p>Measured over the five benchmarks in {@code samples/} through
-     * {@code tools/score-chart.py}, which is the harness the numbers in
-     * {@link #atHarmonicRhythm} come from. Every value from 0.25 to 0.4 gives the
-     * same chart on all five, so the setting sits in the middle of a plateau
-     * rather than on an edge; 0.3 is taken because it is the one value in that
-     * range that is not also an exact tie against a quarter of a 4/4 bar, and a
-     * decision resting on tie-breaking order is a decision waiting to move.
-     * Below the plateau -- 0.2 and under -- the chatter comes back <em>and</em>
-     * accuracy falls, which is the one part of the sweep worth remembering: the
-     * half-reduced chart is worse than either end.
+     * <p><b>This is a trade and not a free win, and two drafts of this paragraph
+     * said otherwise.</b> Round 1 of review swept the constant by recompiling and
+     * re-emitting all five charts, and corrected both halves of what was here:
+     *
+     * <ul>
+     *   <li>The band over which all five charts are identical is narrower than
+     *       was claimed, and 0.3 sits at its <em>upper edge</em> rather than in
+     *       its middle. Raising it a little changes what three of the five
+     *       recordings print.
+     *   <li>Lowering it does <em>not</em> cost accuracy, which is what the
+     *       previous draft asserted. It buys accuracy. At a cost low enough to
+     *       print about two chords a bar, per-bar root accuracy on
+     *       {@code blues-a-90bpm.mp3} is several points higher than it is here.
+     * </ul>
+     *
+     * <p>So what this constant buys is readability, and it is paid for on at
+     * least one benchmark in accuracy. That is the right trade for #212 --
+     * two chords a bar is the chatter the issue is about, and a chart nobody can
+     * read scores nothing in practice -- but it is a trade, and a maintainer
+     * moving this should expect the two columns to move against each other.
+     * Neither figure is quoted here because nothing committed reproduces a sweep
+     * over the constant; {@code tools/score-chart.py} measures the chart this
+     * value produces, not the ones others would.
+     *
+     * <p>0.3 rather than 0.25, which behaves identically on all five, because
+     * 0.25 is an exact tie against a quarter of a 4/4 bar and a decision resting
+     * on tie-breaking order is a decision waiting to move.
      */
     private static final double EXTRA_CHORD_COST = 0.3;
 
@@ -546,6 +563,19 @@ final class ChartLayout {
      * was named at and keep a later one carrying the same symbol. Deciding the
      * name first left such a bar naming nothing and the text chart writing
      * {@code %} for a chord it had never printed.
+     *
+     * <p><b>Every cell is rebuilt, including the ones whose answer does not
+     * change.</b> That is what makes this idempotent, and it has to be, because
+     * it runs twice -- once over the laid-out bars and again over the reduced
+     * ones. An earlier version only ever <em>set</em> the flag and returned an
+     * unchanged cell otherwise, so a bar the reduction handed back untouched kept
+     * a {@code named} decided against a predecessor that no longer existed.
+     * Round 1 of review measured the result on real output: five bars across the
+     * sample recordings where the text chart printed a chord change the engraved
+     * page did not, because {@code chordChanges} recomputes the same rule from
+     * the symbols it is given and reached the right answer. That is precisely the
+     * disagreement between the two outputs that this class exists to prevent,
+     * arriving through the flag instead of through a second derivation.
      */
     private static List<Bar> named(List<Bar> bars) {
         List<Bar> out = new ArrayList<>(bars.size());
@@ -553,9 +583,8 @@ final class ChartLayout {
         for (Bar bar : bars) {
             List<Cell> cells = new ArrayList<>(bar.cells().size());
             for (Cell cell : bar.cells()) {
-                cells.add(previous == null || !cell.symbol().equals(previous)
-                        ? new Cell(cell.chord(), cell.lengthQuarters(), true)
-                        : cell);
+                cells.add(new Cell(cell.chord(), cell.lengthQuarters(),
+                        previous == null || !cell.symbol().equals(previous)));
                 previous = cell.symbol();
             }
             out.add(new Bar(bar.meter(), bar.meterChanged(), List.copyOf(cells)));
@@ -608,12 +637,26 @@ final class ChartLayout {
      * It would have to read provenance out of {@code isQuantized()}, which is a
      * fact about the beat axis and not about where the chords came from, so
      * wiring {@code Quantizer} into the audio path -- which #212 weighed and
-     * which is a live option -- would silently switch the reduction off. There is
-     * also nothing to key on: 12% to 33% of the changes on each of the five
-     * benchmarks are closer together than a counted beat, which is exactly what a
-     * progression read at a wrong {@code --tempo} looks like too, so "faster than
-     * the beat" separates nothing. What is left is how much of its bar a chord
-     * holds, and that is what this reads.
+     * which is a live option -- would silently switch the reduction off. #213
+     * carries the provenance that would answer this properly.
+     *
+     * <p>The next thing to reach for is "reduce a bar only where the harmony is
+     * no faster than the counted beat", and it is a worse discriminator than it
+     * looks. Round 1 of review established why, and {@code tools/score-chart.py}
+     * now reports both halves of it per recording. Measured against the
+     * <em>tracked</em> beat grid, no change on any of the five benchmarks is
+     * faster than a beat, and that is structural rather than lucky:
+     * {@code ChordEstimator} takes both boundaries of every span from the tracked
+     * beat times. Measured against the tempo the chart prints -- which is the
+     * axis its bars are drawn on -- 12% to 24% of changes are. The whole of that
+     * difference is one constant bar length drifting against a recording that
+     * does not keep one, which is #187, #196 and #200, and it has nothing to do
+     * with how fast the harmony moves. So the signal a gate would read is mostly
+     * the chart's own grid error: it would decline to reduce a substantial
+     * minority of perfectly ordinary bars, which is where the chatter is, and it
+     * would still fire on a wrong {@code --tempo}, where the same drift is total
+     * rather than partial. What is left is how much of its bar a chord holds, and
+     * that is what this reads.
      *
      * <p><b>What it costs, and it is a reduction rather than a clean-up.</b>
      *
@@ -804,15 +847,22 @@ final class ChartLayout {
         return new Written(List.copyOf(out), covered);
     }
 
-    /** Every divisor of a positive count, ascending. */
+    /**
+     * Every divisor of a positive count, ascending.
+     *
+     * <p>Ascending is load-bearing rather than tidy: {@link #written} walks these
+     * in order and keeps the first of any equal-cost pair, so the order is what
+     * makes a tie go to the coarser chart.
+     */
     private static int[] divisorsOf(int count) {
-        List<Integer> divisors = new ArrayList<>();
+        int found = 0;
+        int[] divisors = new int[count];
         for (int candidate = 1; candidate <= count; candidate++) {
             if (count % candidate == 0) {
-                divisors.add(candidate);
+                divisors[found++] = candidate;
             }
         }
-        return divisors.stream().mapToInt(Integer::intValue).toArray();
+        return java.util.Arrays.copyOf(divisors, found);
     }
 
     /**

@@ -83,6 +83,7 @@ class HarmonicRhythmTest {
     private static final NoteLetter[] C_G_A = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
     private static final NoteLetter[] C_G_A_F =
             {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+    private static final NoteLetter[] C_G_C = {NoteLetter.C, NoteLetter.G, NoteLetter.C};
 
     @Test
     @DisplayName("a bar the estimator chattered in is written as the chord it mostly said")
@@ -146,23 +147,43 @@ class HarmonicRhythmTest {
     void everyWrittenBarFillsItsMeter() {
         // The reduction rewrites cell lengths, and a bar that no longer sums is
         // a bar LilyPond rejects -- which is the whole apparatus of #160 and
-        // #163. Asserted over the awkward divisions rather than one of them:
-        // a 4/4 bar written in halves, a 3/4 bar written in thirds, and a 5/4
-        // bar, whose only divisions are one slot and five.
+        // #163.
+        //
+        // Every fixture here is one the reduction actually rewrites, and the
+        // assertion below says so rather than trusting it. Round 1 of review
+        // found that was not true of the first draft: it named 3/4, 5/4 and 7/8
+        // as the awkward meters and then chose bars in them that came out of the
+        // reduction identical to what went in, so only the 4/4 case tested
+        // anything.
+        //
+        // Getting that wrong is easy because the layout has already snapped its
+        // chord positions onto a grid before any of this runs, and in most meters
+        // that grid is the same counted beat the slots are. A fixture whose
+        // boundaries the snapping alone tidies is inert here. The fifth is the
+        // one where the reduction genuinely invents a length: a half-beat chord
+        // between two others drags the layout grid below the counted beat, and
+        // the bar comes out as 3 + 2 where 2.5 + 0.5 + 2 went in.
         List<Score> scores = List.of(
-                bar(TimeSignature.FOUR_FOUR, C_G, 2, 2),
                 bar(TimeSignature.FOUR_FOUR, C_G_A, 1, 2, 1),
-                bar(TimeSignature.THREE_FOUR, C_G, 2, 1),
-                bar(TimeSignature.SIX_EIGHT, C_G, 1.5, 1.5),
-                bar(new TimeSignature(5, 4), C_G, 3, 2),
-                bar(new TimeSignature(7, 8), C_G, 2, 1.5));
+                bar(TimeSignature.THREE_FOUR, C_G_C, 1, 1, 1),
+                bar(TimeSignature.SIX_EIGHT, C_G, 1, 2),
+                bar(new TimeSignature(5, 4), C_G_C, 2, 1, 2),
+                bar(new TimeSignature(5, 4), C_G_A, 2.5, 0.5, 2),
+                bar(new TimeSignature(7, 8), C_G_C, 1.5, 0.5, 1.5));
         for (Score score : scores) {
             double meter = score.tempoMap().initialTimeSignature().quarterBeatsPerBar();
-            for (ChartLayout.Bar written : ChartLayout.of(score)) {
-                double sum = written.cells().stream()
+            List<ChartLayout.Bar> written = ChartLayout.of(score);
+            // The fixture has to reach the code under test, so say so rather than
+            // trusting it: a bar the reduction handed back untouched sums for a
+            // reason that has nothing to do with this.
+            assertThat(ChordChart.lilyPondOf(score, written))
+                    .as("a bar of %s the reduction rewrites", meter)
+                    .isNotEqualTo(ChordChart.lilyPondOf(score, ChartLayout.unreduced(score)));
+            for (ChartLayout.Bar bar : written) {
+                double sum = bar.cells().stream()
                         .mapToDouble(ChartLayout.Cell::lengthQuarters)
                         .sum();
-                assertThat(sum).as("%s in %s", written.cells(), meter).isEqualTo(meter);
+                assertThat(sum).as("%s in %s", bar.cells(), meter).isEqualTo(meter);
             }
         }
     }
@@ -195,5 +216,73 @@ class HarmonicRhythmTest {
         // Named once on the page too: chordChanges suppresses the repeats, so
         // the source carries three bars and one c.
         assertThat(ChordChart.toLilyPond(score)).contains("c1 |\n      c1 |\n      c1 |");
+    }
+
+    @Test
+    @DisplayName("a bar whose named cell the reduction drops does not leave the name behind")
+    void aDroppedNameIsRecomputedRatherThanKept() {
+        // Round 1 of review, and it reached real output: five bars across the
+        // five sample recordings printed a chord change in the text that the
+        // engraved page did not.
+        //
+        // The bar in the middle is laid out as C for three beats then G for one,
+        // so the *first* cell is the one that names -- and the reduction keeps
+        // that cell's chord and drops the G. A naming pass that only ever sets
+        // the flag then leaves the surviving C still marked named, and the text
+        // chart writes "C" where a reader is owed "%". The engraving reaches the
+        // other answer, because chordChanges recomputes the rule from the symbols
+        // it is handed. Reversing the middle bar to (G 1, C 3) hides the defect
+        // entirely, which is why the fixture is this way round.
+        Score score = bar(TimeSignature.FOUR_FOUR,
+                new NoteLetter[] {NoteLetter.C, NoteLetter.C, NoteLetter.G, NoteLetter.C},
+                4, 3, 1, 4);
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | %           | %           |");
+        assertThat(ChordChart.toLilyPond(score)).contains("c1 |\n      c1 |\n      c1 |");
+    }
+
+    @Test
+    @DisplayName("the two outputs name the same chords on every sample-shaped chart")
+    void theTextAndThePageNeverDisagreeAboutANameChange() {
+        // The property behind the two fixtures above, stated over the shapes
+        // rather than over an instance, because the defect it guards was found on
+        // real recordings and not on either fixture. Every arrangement of up to
+        // four cells over three symbols, in the meters the chart emits: the cells
+        // the text chart names have to be exactly the ones a reader of the page
+        // sees a new symbol at, which is what chordChanges prints.
+        NoteLetter[] alphabet = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
+        for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
+                TimeSignature.SIX_EIGHT, new TimeSignature(5, 4))) {
+            int beats = meter.beatsPerBar();
+            for (int shape = 0; shape < Math.pow(alphabet.length, 2 * beats); shape++) {
+                NoteLetter[] roots = new NoteLetter[2 * beats];
+                double[] lengths = new double[2 * beats];
+                int rest = shape;
+                for (int i = 0; i < roots.length; i++) {
+                    roots[i] = alphabet[rest % alphabet.length];
+                    rest /= alphabet.length;
+                    lengths[i] = meter.beatUnitQuarters();
+                }
+                assertNamesMatchTheChanges(bar(meter, roots, lengths));
+            }
+        }
+    }
+
+    /**
+     * Asserts that the cells the text chart names are exactly the cells at which
+     * the symbol changes, which is the rule {@code chordChanges} applies to the
+     * page.
+     */
+    private static void assertNamesMatchTheChanges(Score score) {
+        String previous = null;
+        for (ChartLayout.Bar bar : ChartLayout.of(score)) {
+            for (ChartLayout.Cell cell : bar.cells()) {
+                boolean changed = previous == null || !cell.symbol().equals(previous);
+                assertThat(cell.named())
+                        .as("%s after %s", cell.symbol(), previous)
+                        .isEqualTo(changed);
+                previous = cell.symbol();
+            }
+        }
     }
 }

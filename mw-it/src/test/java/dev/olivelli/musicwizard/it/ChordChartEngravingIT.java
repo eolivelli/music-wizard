@@ -183,14 +183,28 @@ class ChordChartEngravingIT {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
-    /** The same in 7/8, whose bar is three and a half quarters and divides only by seven. */
+    /**
+     * A 7/8 chart whose bars the reduction rewrites.
+     *
+     * <p>Three and a half quarters to a bar and seven counted beats, so the only
+     * divisions are one slot and seven, and a second chord has to hold most of
+     * the bar to be worth its place. Each bar here is laid out as three cells and
+     * written as one, so the length LilyPond is asked to check — seven eighths of
+     * a whole note, which no single note value names — is one this change
+     * computed rather than one it passed through.
+     *
+     * <p>Round 1 of review found the first draft of this fixture inert: its
+     * boundaries were tidied by the layout's own snapping before the reduction
+     * saw them, so it engraved the same page either way and tested nothing.
+     */
     private static Score aChatteringSevenEight() {
         TimeSignature meter = new TimeSignature(7, 8);
         double quarter = 0.5;
-        double[] lengths = {1.5, 0.5, 1, 0.5};
-        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C, NoteLetter.C,
-                NoteLetter.A, NoteLetter.F, NoteLetter.A, NoteLetter.A,
-                NoteLetter.G, NoteLetter.C, NoteLetter.G, NoteLetter.G};
+        double[] lengths = {1.5, 0.5, 1.5};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C,
+                NoteLetter.A, NoteLetter.F, NoteLetter.A,
+                NoteLetter.G, NoteLetter.C, NoteLetter.G,
+                NoteLetter.F, NoteLetter.A, NoteLetter.F};
         List<Chord> chords = new ArrayList<>();
         double at = 0;
         for (int i = 0; i < roots.length; i++) {

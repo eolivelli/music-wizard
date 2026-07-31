@@ -20,11 +20,27 @@ Both columns are reported per benchmark:
                filling most of it, which is what a reader takes from the bar --
                against the known cycle at its best rotation, exactly as
                score-samples.py scores the model.
+  short
+               the share of consecutive chord changes that are closer together
+               than one counted beat, on each of the two axes there are. This is
+               reported because the chart's reduction rule rests on it: see
+               `ChartLayout.atHarmonicRhythm`, which argues that "faster than the
+               counted beat" cannot separate a wrong `--tempo` from ordinary
+               chatter. The two axes disagree, and the disagreement is the point:
+
+                 tracked   against the beat grid the estimator itself used.
+                           Zero by construction -- `ChordEstimator` takes both
+                           boundaries of every span from the tracked beat times.
+                 chart     against `Score.estimatedTempo()`, which is the axis
+                           the chart's bars are actually on. Not zero, because
+                           a single constant bar length drifts against a
+                           recording's own beat (#187, #196, #200).
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]
 """
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -129,7 +145,37 @@ def render(jar: Path, mp3: Path, workspace: Path) -> str:
     return (workspace / "out" / "chords.ly").read_text()
 
 
-def score(name: str, lilypond: str, truth: str) -> None:
+def short_changes(workspace: Path) -> tuple[float, float]:
+    """Changes closer than a counted beat, as a share, on each of the two axes.
+
+    The chart's quarter length is read back out of the chart's own header rather
+    than recomputed, so this measures the axis the bars were actually drawn on
+    and not a second derivation of it.
+    """
+    doc = json.loads((workspace / "score" / "score.json").read_text())
+    starts = [c["startSeconds"] for c in doc.get("chords", {}).get("chords", [])]
+    beats = [b["seconds"] for b in doc.get("beatGrid", {}).get("beats", [])]
+    if len(starts) < 2 or len(beats) < 2:
+        return 0.0, 0.0
+
+    header = (workspace / "out" / "chords.txt").read_text()
+    quarter = 60.0 / float(re.search(r"^Tempo\s+(\d+)", header, re.M).group(1))
+
+    # On the tracked axis, "one counted beat" is the local beat interval the
+    # estimator was working in, which is what makes this the estimator's own
+    # question rather than the chart's.
+    def tracked_beats(a: float, b: float) -> int:
+        return sum(1 for t in beats if a < t <= b)
+
+    gaps = [(starts[i] - starts[i - 1]) for i in range(1, len(starts))]
+    on_chart = sum(1 for g in gaps if g < quarter)
+    on_tracked = sum(1 for i, g in enumerate(gaps)
+                     if tracked_beats(starts[i], starts[i + 1]) < 1)
+    return 100.0 * on_tracked / len(gaps), 100.0 * on_chart / len(gaps)
+
+
+def score(name: str, lilypond: str, truth: str,
+          short: tuple[float, float]) -> None:
     bars = bars_of(lilypond)
     printed = sum(len(bar) for bar in bars)
 
@@ -164,7 +210,8 @@ def score(name: str, lilypond: str, truth: str) -> None:
     n = max(len(bars), 1)
     print(f"  {name}: bars={len(bars)}  chords/bar {printed / n:.2f}"
           f"  root {root_ok}/{n} ({100 * root_ok / n:.1f}%)"
-          f"  root+quality {full_ok}/{n} ({100 * full_ok / n:.1f}%)")
+          f"  root+quality {full_ok}/{n} ({100 * full_ok / n:.1f}%)"
+          f"  short: tracked {short[0]:.1f}%, chart {short[1]:.1f}%")
 
 
 def main() -> None:
@@ -187,7 +234,7 @@ def main() -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "w.mwz"
             lilypond = render(jar, mp3, workspace)
-            score(name, lilypond, truth)
+            score(name, lilypond, truth, short_changes(workspace))
             if args.cycles:
                 text = (workspace / "out" / "chords.txt").read_text().splitlines()
                 for line in [ln for ln in text if ln.startswith("|")][:args.cycles]:

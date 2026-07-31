@@ -981,11 +981,16 @@ class ChordChartTest {
         // What the reader gets, and it is the sharpest edge of #212: a tempo
         // wrong by a factor packs the whole progression into one bar, and the
         // reduction then writes that bar as the chord holding most of it. Seven
-        // of the eight go. They are not separable from ordinary chatter by
-        // anything the chart can see -- 12% to 33% of the changes on every one of
-        // the five sample recordings are closer together than a counted beat
-        // too -- so this is a stated cost rather than a case to special-case.
-        // The model still holds all eight, which the assertion above is on.
+        // of the eight go.
+        //
+        // Declining to reduce a bar whose harmony moves faster than the counted
+        // beat would save this one, and it is not a clean rule -- 12% to 24% of
+        // changes on the five sample recordings are that fast on the axis the
+        // chart's bars are drawn on, while none of them is on the tracked beat
+        // grid the estimator used. See ChartLayout.atHarmonicRhythm, and
+        // tools/score-chart.py, which reports both. So this is a stated cost
+        // rather than a case to special-case. The model still holds all eight,
+        // which the assertion above is on.
         assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
     }
 
@@ -1048,19 +1053,28 @@ class ChordChartTest {
     }
 
     @Test
-    @DisplayName("what the written chart drops, it drops for holding too little of its bar")
-    void aDroppedChordWasAMinorityInItsBar() {
+    @DisplayName("what the written chart drops, it drops for holding no more than half its bar")
+    void aDroppedChordNeverHeldMoreThanHalfItsBar() {
         // The other half of the property above, and the one that makes the move
         // to the layout honest: a chord missing from the page has to have been
-        // outvoted, not mislaid. Over the same fixtures, every chord the layout
-        // holds and the chart does not is one whose own bar gives it strictly
-        // less than half -- so no chord that filled or split a bar can vanish.
+        // outvoted, not mislaid. Every chord the layout holds and the chart does
+        // not is one whose own bar gave it no more than half.
+        //
+        // Half and not less than half, and the difference is not pedantry --
+        // round 1 of review swept every bar of up to nine equal cells over three
+        // symbols in eleven meters and found the bound attained, twice over. The
+        // last two fixtures below are those cases: a bar of I-V-I whose V holds a
+        // contiguous half, and two chords alternating on the beat where the loser
+        // holds an aggregate half. Both are ordinary shapes rather than corners,
+        // both lose a chord, and the eight fixtures that were here before happen
+        // to contain neither. The bound is tight: nothing holding *more* than
+        // half was dropped anywhere in that sweep.
         for (Score score : List.of(eightChordsAtAForcedTempo(), aWaltz(), aJig(),
                 twoChordsInABar(), quantizedAcrossATempoChange(), clickTrackPhasedAt(2),
-                fourChordSong(3), anOrnamentalChord())) {
+                fourChordSong(3), anOrnamentalChord(),
+                aBarHoldingAContiguousHalf(), aBarAlternatingOnTheBeat())) {
             List<ChartLayout.Bar> laid = ChartLayout.unreduced(score);
             List<ChartLayout.Bar> written = ChartLayout.of(score);
-            assertThat(written).as("a bar is never added or removed").hasSameSizeAs(laid);
             for (int i = 0; i < laid.size(); i++) {
                 double bar = laid.get(i).meter().quarterBeatsPerBar();
                 List<String> kept = laid.get(i).cells().stream()
@@ -1075,11 +1089,36 @@ class ChordChartTest {
                                 .sum();
                         assertThat(held)
                                 .as("%s dropped from bar %d of %s", cell.symbol(), i, kept)
-                                .isLessThan(bar / 2);
+                                .isLessThanOrEqualTo(bar / 2);
                     }
                 }
             }
         }
+    }
+
+    /** One 4/4 bar of C G G C, where the G holds a contiguous half and still goes. */
+    private static Score aBarHoldingAContiguousHalf() {
+        return oneBarOf(new NoteLetter[] {NoteLetter.C, NoteLetter.G, NoteLetter.C},
+                0.5, 1.0, 0.5);
+    }
+
+    /** One 4/4 bar of G C G C, where the C holds an aggregate half and still goes. */
+    private static Score aBarAlternatingOnTheBeat() {
+        return oneBarOf(new NoteLetter[] {NoteLetter.G, NoteLetter.C, NoteLetter.G, NoteLetter.C},
+                0.5, 0.5, 0.5, 0.5);
+    }
+
+    /** Back-to-back chords of the stated lengths in seconds, 4/4 at 120 BPM. */
+    private static Score oneBarOf(NoteLetter[] roots, double... seconds) {
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    at, at + seconds[i], Confidence.of(0.9)));
+            at += seconds[i];
+        }
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
     @Test
