@@ -137,6 +137,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
     /**
      * Median rate of the tracked pulses, in pulses per minute.
      *
+     * <p><b>The typical length of one interval, which is not the rate the grid
+     * ran at.</b> The two coincide only on an even grid, and the difference is
+     * the whole of #200: use {@link #overallPulseRate()} to place anything
+     * counted in pulses, and this to describe what one pulse typically lasts.
+     *
      * <p>Deliberately not called a tempo. A grid holds pulses, and a pulse is a
      * quarter note only in simple time, so this is 1.5x under the quarter-note
      * tempo in 6/8 -- exactly the conflation that mis-barred compound meters in
@@ -162,10 +167,70 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
     /**
      * Median tempo in quarter notes per minute, the unit every other tempo in the
      * model is in.
+     *
+     * <p>The typical interval, not the rate: see {@link #medianPulseRate()} and
+     * {@link #overallTempo(TimeSignature)}.
      */
     public double medianTempo(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
         return medianPulseRate() * timeSignature.beatUnitQuarters();
+    }
+
+    /**
+     * The rate the grid actually ran at, in pulses per minute: its whole span
+     * divided by the number of pulses in it.
+     *
+     * <p><b>A rate per pulse index, which is what places anything counted in
+     * pulses.</b> Pulse {@code k} is at {@code first + k * 60 / this}, and that
+     * is exactly the arithmetic a bar line, a chart cell or a metronome does.
+     * {@link #medianPulseRate()} answers a different question -- how long one
+     * interval typically is -- and the two are equal only on an even grid.
+     *
+     * <p>The difference is not academic. On {@code samples/gmajorblues.mp3} the
+     * beat tracker emits 1281 pulses over 711s whose median interval is
+     * 0.563084s in <em>every</em> hundred-pulse window, because the tracker
+     * scores its pulses against one periodic template and the median reports
+     * that template. The pulses themselves keep up with the recording by
+     * shortening and lengthening around it, and end to end they run at 0.555211s
+     * -- 1.4% faster than the template says. Spacing bar lines at the median
+     * therefore walks away from the beats it is spacing: over that grid's 320
+     * downbeats it reaches 10.0s of drift against 2.2s, an rms of 5.4s against
+     * 0.93s (#200).
+     *
+     * <p><b>What is given up.</b> {@link #medianPulseRate()} is unmoved by a
+     * dropped or spurious pulse and this is not, because it is exactly the mean
+     * interval -- the differences telescope. The cost falls as the grid grows,
+     * because a dropped pulse leaves the span alone and takes one interval off
+     * the count, which is one part in {@code size() - 1}: measured, 5.3% on a
+     * 20-pulse grid, 0.50% on a 200-pulse one, and 0.08% on the 1281-pulse grid
+     * above, against the 1.4% bias it removes there. So this is the right answer
+     * for a grid long enough to place anything by, and the trade is genuinely
+     * open on a very short one. #205 records the statistic that would need
+     * neither concession, and why one recording is not enough evidence to
+     * choose it.
+     *
+     * @throws IllegalStateException if the grid holds fewer than two pulses,
+     *                               which carry no interval to measure
+     */
+    public double overallPulseRate() {
+        if (beats.size() < 2) {
+            throw new IllegalStateException("cannot infer tempo from fewer than two beats");
+        }
+        double span = beats.get(beats.size() - 1).seconds() - beats.get(0).seconds();
+        return 60.0 * (beats.size() - 1) / span;
+    }
+
+    /**
+     * The rate the grid actually ran at, in quarter notes per minute -- the unit
+     * every other tempo in the model is in.
+     *
+     * <p>What {@link Score#estimatedTempo()} answers with when nothing has
+     * corrected the tracked beats. See {@link #overallPulseRate()} for why it is
+     * this rather than the median.
+     */
+    public double overallTempo(TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return overallPulseRate() * timeSignature.beatUnitQuarters();
     }
 
     /** Index of the beat nearest a given time. */

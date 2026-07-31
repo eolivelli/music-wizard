@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -26,6 +27,7 @@ import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -345,6 +347,79 @@ class ChordChartTest {
         assertThat(String.join("", ChordChart.barLines(tracked)))
                 .contains("C").contains("G").contains("A")
                 .contains("F").contains("D").contains("E");
+    }
+
+    @Test
+    @DisplayName("spaces its bars at the rate the grid ran at, not at its typical interval")
+    void barsAreSpacedAtTheGridsRateNotItsMedianInterval() {
+        // #200. Every other fixture in this class has an even grid, on which the
+        // two figures are the same number, so none of them can say which the
+        // chart reads. This grid has the shape a tracked one has: most intervals
+        // on one periodic template, a minority shorter because the recording ran
+        // ahead of it. 28 of 0.5s and 12 of 0.4s, so the median is 0.5s and the
+        // 40 pulses span 18.8s -- a rate of 0.47s, 6% apart.
+        //
+        // GmajorBluesChartTest measures the same thing on eleven minutes of real
+        // timing, where the two are 1.4% apart and the chart holds to bar 114
+        // instead of bar 26. This is the fast half of it: no audio, no decode,
+        // and it fails for the same reason.
+        List<Double> pulses = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < 40; i++) {
+            pulses.add(at);
+            at += i % 10 < 3 ? 0.4 : 0.5;
+        }
+        pulses.add(at);
+        BeatGrid grid = BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR, Confidence.of(0.9));
+        List<Double> downbeats = grid.downbeatTimes();
+        assertThat(downbeats).hasSize(11);
+
+        // One chord per downbeat, cycling four roots so that every chord differs
+        // from its neighbour and each therefore names itself.
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < downbeats.size(); i++) {
+            chords.add(Chord.ofSeconds(root(roots[i % 4]), ChordQuality.MAJOR,
+                    downbeats.get(i),
+                    i + 1 < downbeats.size() ? downbeats.get(i + 1) : at + 0.5,
+                    Confidence.of(0.9)));
+        }
+        ChordProgression progression = new ChordProgression(chords, Confidence.of(0.9));
+
+        Score tracked = Score.empty(
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR), at + 0.5)
+                .withBeatGrid(grid)
+                .withChords(progression);
+        assertThat(tracked.estimatedTempo())
+                .as("the fixture discriminates only while these differ")
+                .isNotCloseTo(grid.medianTempo(TimeSignature.FOUR_FOUR), within(1.0));
+
+        // Eleven bars, one chord each, in order and with nothing carried over.
+        List<String> lines = ChordChart.barLines(tracked);
+        assertThat(String.join("", lines)).doesNotContain("%");
+        List<String> cells = Arrays.stream(String.join("", lines).split("\\|"))
+                .map(String::trim)
+                .filter(cell -> !cell.isEmpty())
+                .toList();
+        assertThat(cells).hasSize(11);
+        for (int i = 0; i < cells.size(); i++) {
+            assertThat(cells.get(i)).as("bar %d", i).isEqualTo(roots[i % 4].name());
+        }
+
+        // And at the median -- still reachable, because --tempo states a
+        // correction the chart is obliged to obey -- the same chords do not keep
+        // their bars: 6% of a bar per bar puts the fourth one in the third bar.
+        Score atTheMedian = Score.empty(
+                        new TempoMap(List.of(new TempoMap.TempoSegment(
+                                        0, 0.0, grid.medianTempo(TimeSignature.FOUR_FOUR),
+                                        Provenance.SUPPLIED)),
+                                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))),
+                        at + 0.5)
+                .withBeatGrid(grid)
+                .withChords(progression);
+        assertThat(String.join("", ChordChart.barLines(atTheMedian)))
+                .as("two chords in one bar, which is what spacing at the median does")
+                .contains("C G");
     }
 
     /**

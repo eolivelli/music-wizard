@@ -254,19 +254,24 @@ final class ChartLayout {
      * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
      * which moves a chord by at most an eighth of a quarter beat -- puts the
      * fourth chord in the wrong bar, where a step of one counted beat, moving a
-     * chord by at most half a beat, holds through the twenty-fifth chord and
-     * first misplaces the twenty-sixth. Eight times as far, and that is the
-     * whole of what this method is answering for.
+     * chord by at most half a beat, holds through the hundred-and-thirteenth
+     * chord and first misplaces the hundred-and-fourteenth. Thirty-eight times
+     * as far, and that is the whole of what this method is answering for.
      *
-     * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
-     * and 8 of review each found a different wrong story about whose it is, so
-     * this states the one measurement that bears on the ceiling and stops. The
-     * fourth downbeat is detected 0.18s early and the fifth is back within
-     * 0.012s -- one bad downbeat, and a grid narrower than it is wide trips over
-     * it. Past there the chart's bar length is wrong (#200) and the recording's
-     * beat does not keep to any single bar length (#187); the two run against
-     * each other rather than adding, and the measurements are on those issues
-     * where they can be corrected without touching this file.
+     * <p>Both figures were re-measured for #200 and one of them moved a long
+     * way, which is worth saying because it says what each is about. The
+     * sixteenth still fails at the fourth chord: the fourth downbeat is detected
+     * 0.18s early and the fifth is back within 0.012s, so a grid narrower than
+     * one bad downbeat is wide trips over it however well the bars are spaced.
+     * The counted beat used to fail at the twenty-sixth, and does not any more,
+     * because what ended the run there was not this grid at all -- it was the
+     * chart spacing its bars at the beat tracker's median interval rather than
+     * at the rate the grid ran at, 1.4% long and compounding (#200). This method
+     * chooses how far a chord may be moved; that chose where the bar was. What
+     * still ends the run at the hundred-and-fourteenth is neither: the
+     * recording's tracked beat keeps to no single bar length (#187), and no
+     * constant spacing can follow it. {@code GmajorBluesChartTest} measures all
+     * three.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
@@ -499,9 +504,12 @@ final class ChartLayout {
      * <p>Exactly one downbeat is read. Everything after the first bar line is
      * spaced at {@link Score#estimatedTempo()}, so the grid supplies a phase and
      * the tempo supplies a rate; on a recording that drifts the later bar lines
-     * drift with it. That is #187, and it is a real limit rather than an
-     * oversight: the chart is headed with a tempo and its bars have to be
-     * countable at that tempo, which is what
+     * drift with it. Since #200 that rate is, where nothing has corrected it,
+     * the rate the same grid ran at end to end rather than its median interval
+     * -- which removes the part of the drift that was the chart's own and leaves
+     * the part that is the grid's. That remainder is #187, and it is a real
+     * limit rather than an oversight: the chart is headed with a tempo and its
+     * bars have to be countable at that tempo, which is what
      * {@code ChordChartTest.headerAndBarsCannotDisagree} holds.
      */
     private static double firstBarStart(Score score, double barSeconds, double toleranceSeconds) {

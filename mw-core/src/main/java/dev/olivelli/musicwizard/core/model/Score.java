@@ -234,8 +234,19 @@ public record Score(
      *       kept only for values that predate the field -- a {@code score.json}
      *       written by an earlier build, or a map assembled by a caller that did
      *       not say. For anything a current producer builds it never runs.
-     *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
-     *       one dropped beat does not skew it. Preferred over the map because
+     *   <li><b>Otherwise the beat grid, if there is one.</b> The rate the grid
+     *       ran at, end to end -- {@link BeatGrid#overallTempo(TimeSignature)}.
+     *       This used to be the median interval, and the reason it is not is
+     *       #200: every reader of this figure places something at a whole number
+     *       of beats from a starting point, so what they need is a rate per beat
+     *       index, and the median of the intervals is not one. On the project's
+     *       one real recording the beat tracker reports the same median in every
+     *       window while its pulses run 1.4% faster than that, which walked the
+     *       chart's bar lines off the downbeats they were spaced from. The
+     *       robustness the median had is given up knowingly and costs one part
+     *       in {@code size() - 1} per dropped pulse; {@code overallPulseRate}
+     *       measures both sides of that trade.
+     *       <p>Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
      *       tracked beat a whole beat of lead-in, and on a short clip that one
      *       crammed beat pulls the map's average measurably above the real tempo
@@ -246,7 +257,7 @@ public record Score(
      *       skipping a lead-in the map labels as an artefact of anchoring. See
      *       {@link TempoMap#averageTempoIgnoringLeadIn(double)}: a clip that
      *       tracks one lone beat is the reachable case, since its grid is too
-     *       short for a median and its map is a lead-in plus one segment.
+     *       short to hold an interval and its map is a lead-in plus one segment.
      * </ol>
      *
      * <p>A {@link Provenance#DECLARED} map -- one imported from a MIDI file --
@@ -292,7 +303,7 @@ public record Score(
             }
         }
         if (beatGrid.isPresent() && beatGrid.get().size() >= 2) {
-            return beatGrid.get().medianTempo(tempoMap.initialTimeSignature());
+            return beatGrid.get().overallTempo(tempoMap.initialTimeSignature());
         }
         return tempoMap.averageTempoIgnoringLeadIn(durationSeconds);
     }
