@@ -72,11 +72,11 @@ largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
 blues the chart puts the first twenty-five changes in the right bar and every one
 after that in the wrong one.
 
-Two thirds of that is not the recording wandering — it is the tempo. The chart
-spaces its bars at the median tracked beat interval, which on this recording is
-1.4% longer than the grid's own end-to-end rate, and 1.4% a bar reaches half a
-bar in twenty-five of them ([#200][i200]). Correcting `--tempo` by hand is
-therefore worth as much here as correcting the downbeat.
+Two things cause that and they are not the same size on every recording, so it is
+worth knowing both: the bar lines are spaced at a tempo that is 1.4% long here
+([#200][i200]), and the recording's own beat does not keep to any single bar
+length ([#187][i187]). Correcting `--tempo` by hand is worth at least as much as
+correcting the downbeat.
 
 That figure is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises — chord recognition on that
