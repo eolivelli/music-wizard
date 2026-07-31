@@ -1024,6 +1024,47 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("keeps a chord heard just before the first downbeat out of the way of the rest")
+    void aChordHeardBeforeTheFirstDownbeatDoesNotShuntTheOthers() {
+        // The anchor may not move a chord further than the snapping will, and
+        // for one round it could. The chart anchored within half a counted beat
+        // of the first chord while snapping on a grid that can be much finer, so
+        // a first chord heard just before its downbeat anchored on that
+        // downbeat, snapped to a negative position, was clamped to zero, and
+        // pushed every chord behind it one grid step along -- into the next bar.
+        //
+        // Nine chords, the first heard 0.2s before the downbeat at 2.0s and the
+        // other eight inside the bar it opens. They changed on half beats, so
+        // the chart is drawn on half beats and the anchor may overshoot by only
+        // a quarter beat: too little to reach 2.0, so the chart opens at 0.0 and
+        // all nine keep their places. Under the mismatched tolerance the ninth
+        // was printed alone in a bar it does not sound in.
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 16; i++) {
+            beats.add(new BeatGrid.Beat(i * 0.5, i % 4 == 0, i % 4));
+        }
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.D, NoteLetter.E, NoteLetter.F,
+                NoteLetter.G, NoteLetter.A, NoteLetter.B, NoteLetter.C, NoteLetter.D};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < roots.length; i++) {
+            double from = 1.8 + i * 0.25;
+            chords.add(Chord.ofSeconds(root(roots[i]),
+                    i % 2 == 0 ? ChordQuality.MAJOR : ChordQuality.MINOR,
+                    from, from + 0.25, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8.0)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        // The ninth chord is heard at 3.8s, inside the bar that runs 2.0..4.0.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| N.C. C      | Dm E Fm G Am B Cm D|");
+        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "r1*7/8 c8 |",
+                        "d8:m e8 f8:m g8 a8:m b8 c8:m d8 |");
+    }
+
+    @Test
     @DisplayName("draws a chart on eighths when the chords change on eighths")
     void aChartChangingOnEighthsIsDrawnOnEighths() {
         // The other half of the same rule, and the reason it cannot simply be

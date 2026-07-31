@@ -205,25 +205,31 @@ final class ChartLayout {
         if (!(quarterSeconds > 0) || !Double.isFinite(quarterSeconds)) {
             return oneChordPerBar(chords, meter);
         }
-        double origin = firstBarStart(score, meter.quarterBeatsPerBar() * quarterSeconds);
-
-        double[] raw = new double[chords.size()];
-        double lastEnd = 0;
-        for (int i = 0; i < chords.size(); i++) {
-            raw[i] = (chords.get(i).startSeconds() - origin) / quarterSeconds;
-            lastEnd = Math.max(lastEnd, (chords.get(i).endSeconds() - origin) / quarterSeconds);
-        }
-        double grid = chartGrid(raw, meter);
+        // The grid first, because it is the one value that says how far a chord
+        // may be moved, and both the anchor and the snapping have to agree on
+        // it. They did not, for one round: the anchor was allowed half a counted
+        // beat while the snapping could be much finer, so a first chord heard
+        // just before its downbeat anchored on that downbeat, snapped to a
+        // negative position, and shunted every chord behind it a grid step along
+        // -- into the next bar, in the text as well as on the page. Read off the
+        // gaps between chords, which is a fact about the progression and not
+        // about where the chart happens to start, so it can be known first.
+        double grid = chartGrid(chords, quarterSeconds, meter);
+        double origin = firstBarStart(score, meter.quarterBeatsPerBar() * quarterSeconds,
+                grid * quarterSeconds / 2);
 
         double[] starts = new double[chords.size()];
+        double lastEnd = 0;
         for (int i = 0; i < chords.size(); i++) {
-            starts[i] = snap(raw[i], grid);
+            starts[i] = snap((chords.get(i).startSeconds() - origin) / quarterSeconds, grid);
+            lastEnd = Math.max(lastEnd,
+                    snap((chords.get(i).endSeconds() - origin) / quarterSeconds, grid));
         }
-        return assemble(chords, starts, snap(lastEnd, grid), grid, k -> meter);
+        return assemble(chords, starts, lastEnd, grid, k -> meter);
     }
 
     /**
-     * The coarsest grid on which no two of these chords land together.
+     * The coarsest grid no narrower than the closest two chord changes.
      *
      * <p>A chord boundary estimated from audio is not on any grid, and it has to
      * be put on one before a bar can hold a whole number of cells. Which grid is
@@ -231,7 +237,7 @@ final class ChartLayout {
      * off the chords rather than fixed: <b>the chart does not resolve a position
      * more finely than the chord changes themselves demonstrate.</b> A
      * progression changing once a bar is drawn on the beat, where a boundary
-     * detected a fifth of a beat early still lands on the beat it belongs to; one
+     * heard a fifth of a beat early still lands on the beat it belongs to; one
      * changing on off-beat eighths is drawn on eighths, because there it is the
      * eighths that are the evidence.
      *
@@ -239,9 +245,18 @@ final class ChartLayout {
      * wrong. On {@code samples/gmajorblues.mp3} -- a twelve-bar blues whose
      * detected downbeats wander by up to 0.18s against a 2.25s bar -- a
      * sixteenth grid put the fourth bar's chord in the third bar, because a
-     * sixteenth tolerates 0.06s. On the beat it tolerates 0.28s and the same
-     * chart runs eight times as far before the bar lines drift out from under it
-     * (#187, which is what finally stops it and is not this class's to fix).
+     * sixteenth tolerates a thirty-second of a bar either way and a beat
+     * tolerates an eighth of one. The same chart then ran to bar 27 rather than
+     * bar 3 before the bar lines drifted out from under it, which is #187 and is
+     * not this class's to fix.
+     *
+     * <p>Measured on <em>gaps</em> rather than on positions, which matters for
+     * two reasons beyond taste. It is a fact about the progression alone, so it
+     * is knowable before the chart has an origin -- and the origin needs it,
+     * because the anchor may not move a chord further than the snapping will.
+     * And a gap of at least one grid step guarantees two distinct positions
+     * after snapping, since {@code round(x + 1) == round(x) + 1} exactly, so
+     * above the floor no chord can land on another.
      *
      * <p>Bounded below by {@link LilyPondDuration#SHORTEST_QUARTERS}, since no
      * duration can name anything shorter, and above by
@@ -254,25 +269,22 @@ final class ChartLayout {
      * grid varying along it. That costs only how a duration reads, never where a
      * chord sits: a finer grid moves a chord less, not more.
      */
-    private static double chartGrid(double[] raw, TimeSignature meter) {
+    private static double chartGrid(List<Chord> chords, double quarterSeconds,
+                                    TimeSignature meter) {
+        double closest = Double.MAX_VALUE;
+        for (int i = 1; i < chords.size(); i++) {
+            closest = Math.min(closest,
+                    (chords.get(i).startSeconds() - chords.get(i - 1).startSeconds())
+                            / quarterSeconds);
+        }
         double finest = LilyPondDuration.SHORTEST_QUARTERS;
-        double coarsest = COARSEST_GRID_BEATS * meter.beatUnitQuarters();
-        for (double grid = coarsest; grid > finest; grid /= 2) {
-            if (Math.rint(grid / finest) * finest == grid && keepsChordsApart(raw, grid)) {
+        for (double grid = COARSEST_GRID_BEATS * meter.beatUnitQuarters();
+                grid > finest; grid /= 2) {
+            if (Math.rint(grid / finest) * finest == grid && closest >= grid) {
                 return grid;
             }
         }
         return finest;
-    }
-
-    /** Whether snapping to {@code grid} leaves every chord a position of its own. */
-    private static boolean keepsChordsApart(double[] raw, double grid) {
-        for (int i = 1; i < raw.length; i++) {
-            if (snap(raw[i], grid) == snap(raw[i - 1], grid)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
@@ -290,10 +302,20 @@ final class ChartLayout {
     private static List<Bar> assemble(List<Chord> chords, double[] starts, double end,
                                       double grid, BarRuler ruler) {
         // Strictly increasing, so that every chord gets a cell of its own. Two
-        // chords can snap onto one grid point -- the audio estimator can place a
-        // chord change a few milliseconds after the last -- and the alternative
-        // to nudging the second one along is printing a zero-length chord, which
-        // no duration can name, or dropping it, which is the defect being fixed.
+        // chords can snap onto one grid point -- when they are closer than the
+        // shortest value a duration can name, which is the one case chartGrid
+        // cannot answer by choosing a finer grid -- and the alternative to
+        // nudging the second one along is printing a zero-length chord, which no
+        // duration can name, or dropping it, which is the defect being fixed.
+        //
+        // The clamp holds an invariant rather than repairing anything: the
+        // seconds route anchors within half a grid of the first chord, so the
+        // first position rounds to zero at worst, and the beat route starts from
+        // the bar the first chord is in. Kept because a caller that broke that
+        // invariant would otherwise shunt every chord behind the first into the
+        // next bar -- which is what a mismatched anchor tolerance did, measured
+        // in round 4 of review -- and because a negative length would reach
+        // LilyPondDuration.scaled and throw.
         starts[0] = Math.max(0, starts[0]);
         for (int i = 1; i < starts.length; i++) {
             starts[i] = Math.max(starts[i], starts[i - 1] + grid);
@@ -445,6 +467,17 @@ final class ChartLayout {
      * chord -- a grid that starts late -- the first is stepped back by whole
      * bars, which keeps the phase and the chart's beginning.
      *
+     * <p>"At or before" is allowed to overshoot by {@code toleranceSeconds}, so
+     * that a chord heard a hair early anchors on the downbeat it belongs to
+     * rather than on the one a bar back. That tolerance is <em>half the grid the
+     * chart will snap to</em>, and it has to be exactly that: any wider and the
+     * first chord snaps to a negative position, which the caller clamps to zero
+     * and then pushes every chord behind it a grid step along, into the next
+     * bar. Round 4 of review measured that -- nine chords placed correctly
+     * became eight in one bar and one alone in the next. So the tolerance is a
+     * parameter rather than something derived here, because the only value that
+     * keeps the invariant is one this method cannot see.
+     *
      * <p>Exactly one downbeat is read. Everything after the first bar line is
      * spaced at {@link Score#estimatedTempo()}, so the grid supplies a phase and
      * the tempo supplies a rate; on a recording that drifts the later bar lines
@@ -453,7 +486,7 @@ final class ChartLayout {
      * countable at that tempo, which is what
      * {@code ChordChartTest.headerAndBarsCannotDisagree} holds.
      */
-    private static double firstBarStart(Score score, double barSeconds) {
+    private static double firstBarStart(Score score, double barSeconds, double toleranceSeconds) {
         double firstChord = score.chords().chords().stream()
                 .mapToDouble(Chord::startSeconds)
                 .min()
@@ -466,13 +499,7 @@ final class ChartLayout {
         if (downbeats.isEmpty() || !(barSeconds > 0)) {
             return firstChord;
         }
-        // Half a counted beat: a chord detected a hair before the downbeat it
-        // belongs to must anchor on that downbeat, not on the one a bar earlier.
-        // The coarsest grid chartGrid can choose, so this is as wide as the
-        // snapping below can be and no wider.
-        TimeSignature meter = score.tempoMap().initialTimeSignature();
-        double tolerance = barSeconds * COARSEST_GRID_BEATS * meter.beatUnitQuarters()
-                / (2 * meter.quarterBeatsPerBar());
+        double tolerance = toleranceSeconds;
         double anchor = Double.NaN;
         for (double downbeat : downbeats) {
             if (downbeat <= firstChord + tolerance) {
