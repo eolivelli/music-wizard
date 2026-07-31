@@ -251,14 +251,22 @@ final class ChartLayout {
      * and a known progression; it is not a figure for what the product
      * recognises, and it must not be quoted as one.
      *
-     * <p>Those downbeats drift steadily away from any constant-tempo grid --
-     * 0.18s by the fourth of them, 0.49s by the twenty-sixth and 10.0s by the
-     * last, against a bar of 2.2523s. A grid step of a sixteenth moves a chord
-     * by at most an eighth of a quarter beat, so the fourth chord already landed
-     * in the wrong bar; a step of one counted beat moves it by at most half a
-     * beat, and the same chart holds to the twenty-fifth. Eight times as far,
-     * and what stops it there is the drift itself, which is #187 and not this
-     * class's to fix.
+     * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
+     * which moves a chord by at most an eighth of a quarter beat -- puts the
+     * fourth chord in the wrong bar, where a step of one counted beat, moving a
+     * chord by at most half a beat, holds to the twenty-fifth. Eight times as
+     * far, and that is the whole of what this method is answering for.
+     *
+     * <p>What goes wrong at each end is <em>not</em> one phenomenon, and calling
+     * it drift was wrong twice over. The fourth downbeat is detected 0.18s early
+     * and the fifth is back within 0.01s: a single mis-detected downbeat, which
+     * only a grid finer than it is wide can trip over. The failure at the
+     * twenty-fifth is a tempo error compounding -- {@link Score#estimatedTempo()}
+     * takes the median tracked interval, 2.2523s to the bar, where the same
+     * grid's end-to-end rate is 2.2209s, and 1.4% a bar reaches half a bar in
+     * twenty-five of them (#200). Only what is left after those two is #187:
+     * against the grid's own best constant rate the downbeats still wander by up
+     * to 2.2s across the recording, and no single bar length can follow that.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it

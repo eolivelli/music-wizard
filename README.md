@@ -67,12 +67,16 @@ different pages.
 
 Bar *spacing* still comes from the tempo, not from the rest of the grid: only
 the first bar line is read off a downbeat, and the ones after it are laid out at
-the tempo the chart prints ([#187][i187]). **This is the chart's largest
-remaining error on real audio, and it is not subtle.** On an eleven minute
-twelve-bar blues, whose detected downbeats drift 0.49 s away from a constant
-2.25 s bar within twenty-six bars, the chart places the first twenty-five changes
-in the right bar and then starts getting them wrong. A steadier recording lasts
-longer; none lasts indefinitely.
+the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
+largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
+blues the chart puts the first twenty-five changes in the right bar and every one
+after that in the wrong one.
+
+Two thirds of that is not the recording wandering — it is the tempo. The chart
+spaces its bars at the median tracked beat interval, which on this recording is
+1.4% longer than the grid's own end-to-end rate, and 1.4% a bar reaches half a
+bar in twenty-five of them ([#200][i200]). Correcting `--tempo` by hand is
+therefore worth as much here as correcting the downbeat.
 
 That figure is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises — chord recognition on that
@@ -83,6 +87,7 @@ recording currently returns nothing but `N.C.` ([#3][i3]).
 [i186]: https://github.com/eolivelli/music-wizard/issues/186
 [i187]: https://github.com/eolivelli/music-wizard/issues/187
 [i3]: https://github.com/eolivelli/music-wizard/issues/3
+[i200]: https://github.com/eolivelli/music-wizard/issues/200
 
 ## Installing
 
