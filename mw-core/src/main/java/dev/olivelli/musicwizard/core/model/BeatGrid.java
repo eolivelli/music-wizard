@@ -267,8 +267,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * because two copies of a rate is how the two figures came to disagree in the
      * first place.
      *
-     * <p>The whole of what a grid demands of a beat time is checked, not only
-     * the ordering: finite, non-negative, and strictly increasing. Round 4 of
+     * <p>The whole of what a grid demands of a beat time is checked, on a copy
+     * taken once so that what is measured is what was checked: finite,
+     * non-negative, and strictly increasing. Round 4 of
      * review found this checking the ordering alone, which is the layer the
      * previous round had named rather than the layer the invariant lives at --
      * {@code overallPulseRate(List.of(0.0, POSITIVE_INFINITY))} returned 0.0 BPM,
@@ -290,31 +291,38 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
             throw new IllegalArgumentException(
                     "cannot infer tempo from fewer than two beats, got: " + pulseSeconds.size());
         }
-        // Two passes, in the order the grid checks in, not the order that reads
-        // most naturally. ofTimes builds every Beat before the canonical
-        // constructor looks at ordering, so on a list that is both out of order
-        // and holds a null the grid reports the null and a single fused pass
-        // would report the ordering. Round 6 of review found exactly that -- 442
-        // such lists out of 11100 -- and it is the choice being removed rather
-        // than the claim being narrowed, because "the two forms answer alike"
-        // is worth more than one fewer loop.
-        for (int i = 0; i < pulseSeconds.size(); i++) {
+        // Copied first, then validated, then measured -- all three off the copy,
+        // so every element is read exactly once. Validating the caller's list in
+        // place and measuring it afterwards checks something it may no longer
+        // be: round 7 of review passed a List whose get returned a different
+        // finite value after validation had read it and got -20 BPM out of a
+        // method whose whole job is refusing what a grid would refuse. ofTimes
+        // has never had the hole, because it reads each element once into a Beat.
+        //
+        // Read in the order the grid checks in, which is not the order that
+        // reads most naturally: ofTimes builds every Beat before the canonical
+        // constructor looks at ordering. So a list holding a null *after* a pair
+        // that is out of order must report the null, and a single fused pass
+        // reported the disorder -- 442 of the 11100 lists round 6 swept.
+        int pulses = pulseSeconds.size();
+        double[] times = new double[pulses];
+        for (int i = 0; i < pulses; i++) {
             double at = Objects.requireNonNull(pulseSeconds.get(i), "pulseSeconds[" + i + "]");
             if (!Double.isFinite(at) || at < 0) {
                 throw new IllegalArgumentException(
                         "beat time must be finite and non-negative, got: " + at);
             }
+            times[i] = at;
         }
-        for (int i = 1; i < pulseSeconds.size(); i++) {
-            if (!(pulseSeconds.get(i) > pulseSeconds.get(i - 1))) {
+        for (int i = 1; i < pulses; i++) {
+            if (!(times[i] > times[i - 1])) {
                 throw new IllegalArgumentException(
                         "beats must strictly increase in time; beat " + i + " at "
-                                + pulseSeconds.get(i) + "s does not follow beat " + (i - 1)
-                                + " at " + pulseSeconds.get(i - 1) + "s");
+                                + times[i] + "s does not follow beat " + (i - 1)
+                                + " at " + times[i - 1] + "s");
             }
         }
-        return overallPulseRate(pulseSeconds.get(0),
-                pulseSeconds.get(pulseSeconds.size() - 1), pulseSeconds.size());
+        return overallPulseRate(times[0], times[pulses - 1], pulses);
     }
 
     /** The one definition, so the two public forms cannot drift apart. */

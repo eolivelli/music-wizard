@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -294,6 +295,45 @@ class GridRateTest {
             // And the grid itself is legal, which is the fact that made the
             // first version of the mirror test false.
             assertThat(gridOf(List.of(0.5)).size()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("measures the times it validated, not whatever the list says afterwards")
+        void aListThatChangesUnderneathCannotGetPastTheCheck() {
+            // The one shape the table above cannot express, whatever rows are
+            // added to it: every row is a stable list, and this is a list that
+            // answers differently the second time it is asked. Round 7 of review
+            // found the previous version validating the caller's list in place
+            // and then measuring it again -- four separate reads of the same
+            // index -- and got -20 BPM out of the method whose whole job is
+            // refusing what a grid would refuse.
+            //
+            // ofTimes has never had the hole, because it reads each element once
+            // into a Beat, so the fix is to do the same rather than to add a
+            // check. Nothing reachable does this: the sole production caller
+            // hands over a freshly derived list on one thread. It is here
+            // because a public method in mw-core that says it enforces an
+            // invariant should enforce it.
+            List<Double> shifty = new AbstractList<>() {
+                private int reads;
+
+                @Override
+                public Double get(int index) {
+                    // Ordered and legal while being validated; reversed after,
+                    // which is what turned a checked list into a negative span.
+                    return reads++ < size() ? index * 0.5 : (size() - 1 - index) * 0.5;
+                }
+
+                @Override
+                public int size() {
+                    return 4;
+                }
+            };
+
+            assertThat(BeatGrid.overallPulseRate(shifty))
+                    .as("the rate of the times that were checked, which is 0 to 1.5s in four")
+                    .isCloseTo(120.0, within(1e-9))
+                    .isPositive();
         }
 
         /** A list that may hold nulls, which {@code List.of} refuses to. */
