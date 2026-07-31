@@ -55,8 +55,9 @@ public record MusicWizardConfig(
             /* Force a time signature, written as e.g. "4/4". */
             String timeSignatureOverride,
             /* Force where a bar begins, in seconds. Snapped to the nearest
-             * tracked beat, which then begins every bar in the saved score and
-             * the chart drawn from it (#83). */
+             * tracked beat, which then begins every bar in the saved score, and
+             * the first bar line of the chart drawn from it (#83). Later bar
+             * lines are spaced at the printed tempo, not off the grid (#187). */
             Double firstDownbeatSecondsOverride,
             /* Skip stem separation and analyse the mix directly. */
             Boolean skipSeparation) {

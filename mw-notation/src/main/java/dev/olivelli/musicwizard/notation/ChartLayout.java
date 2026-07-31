@@ -242,13 +242,23 @@ final class ChartLayout {
      * eighths that are the evidence.
      *
      * <p>This is not cosmetic, and a fixed sixteenth was measured getting it
-     * wrong. On {@code samples/gmajorblues.mp3} -- a twelve-bar blues whose
-     * detected downbeats wander by up to 0.18s against a 2.25s bar -- a
-     * sixteenth grid put the fourth bar's chord in the third bar, because a
-     * sixteenth tolerates a thirty-second of a bar either way and a beat
-     * tolerates an eighth of one. The same chart then ran to bar 27 rather than
-     * bar 3 before the bar lines drifted out from under it, which is #187 and is
-     * not this class's to fix.
+     * wrong. <b>The measurement supplies the chords rather than transcribing
+     * them, and that has to be said</b>: on {@code samples/gmajorblues.mp3}, an
+     * eleven-minute twelve-bar blues, chord recognition today returns one
+     * {@code N.C.} span covering the whole recording (#3). So the progression
+     * the sample documents was laid on the recording's own detected downbeats,
+     * one chord each. That measures this class's arithmetic against real timing
+     * and a known progression; it is not a figure for what the product
+     * recognises, and it must not be quoted as one.
+     *
+     * <p>Those downbeats drift steadily away from any constant-tempo grid --
+     * 0.18s by the fourth of them, 0.49s by the twenty-sixth and 10.0s by the
+     * last, against a bar of 2.2523s. A grid step of a sixteenth moves a chord
+     * by at most an eighth of a quarter beat, so the fourth chord already landed
+     * in the wrong bar; a step of one counted beat moves it by at most half a
+     * beat, and the same chart holds to the twenty-fifth. Eight times as far,
+     * and what stops it there is the drift itself, which is #187 and not this
+     * class's to fix.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
