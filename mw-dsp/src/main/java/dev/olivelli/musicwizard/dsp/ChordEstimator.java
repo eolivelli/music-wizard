@@ -60,10 +60,17 @@ import java.util.Objects;
  * end adds 27.7 on top of them, 58.9% to 86.6%, which is the only cell where it
  * is worth anything at all.
  *
- * <p>Not one of the three carries that 58.9 alone: replacing the flat template
- * and changing nothing else reaches 17.5%. They are reported together because
- * that is how they were measured and because separating them further would
- * suggest a decomposition the measurement does not support.
+ * <p>Not one of the three carries that 58.9 alone, and the decomposition is
+ * worth having because two review rounds went wrong for want of it. Over plain
+ * chroma: the flat template replaced and nothing else, 17.5%; add the seventh
+ * templates, 48.4%; add the sharpness, 58.9%. Over the NNLS fold the same three
+ * steps read 28.0%, 80.6% and 86.6%.
+ *
+ * <p>So the no-chord level is what makes the recording speak at all, the
+ * sevenths are the largest single step, and the sharpness is worth ten points
+ * that are easy to attribute to one of the other two. This is the one place
+ * that attribution is stated; {@link NnlsChroma} used to restate it and now
+ * links here instead, having been corrected three rounds running.
  *
  * <p>The surprising column is the first one, and it is why this class changed
  * at all: #3 called the front end the fix for #185, and measured alone against

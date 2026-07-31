@@ -50,10 +50,15 @@ import java.util.stream.IntStream;
  * template — the result is 0.3% of bars with the right root and 96.5% of
  * {@code samples/gmajorblues.mp3} still labelled N.C. A flat profile scores
  * highest exactly when a frame looks least like music, and sharpening the frame
- * does not stop that. Over plain chroma the estimator's two changes reach 58.9%,
- * and the two together 86.6%. So this stage is worth a great deal and worth it
- * only in company; the full table is on {@link ChordEstimator}, and
- * {@link #combined()} breaks this stage's own contribution down by register.
+ * does not stop that. So this stage is worth a great deal and worth it only in
+ * company.
+ *
+ * <p>How much, and how much belongs to which change, is on
+ * {@link ChordEstimator} and deliberately not restated here. That figure has now
+ * been corrected in three separate review rounds and each time a copy of it was
+ * left standing somewhere else; this file linking to the one place it is
+ * measured is cheaper than a fourth correction. {@link #combined()} breaks down
+ * what this stage contributes by register, which is the part that belongs here.
  *
  * <h2>Why a separate type rather than a mode of {@code Chroma}</h2>
  *
@@ -313,9 +318,8 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * <p>The fourth row is there because leaving it out would flatter this one.
      * Plain chroma through the same estimator scores 58.9%, so on this recording
      * the transcription step is worth about twenty-eight points rather than the
-     * whole difference — the rest belongs to the estimator's own two changes, its
-     * seventh templates and its no-chord model, without which the same chroma
-     * scores 32.5% and 1.0% respectively. What the transcription buys is
+     * whole difference; the rest belongs to {@link ChordEstimator}'s own changes,
+     * whose breakdown is on that class. What the transcription buys is
      * concentrated in the tonic, 32% against 88%, and it gives a little back on
      * the D7 bars. That trade is favourable here, and there is exactly one
      * recording's evidence that it is favourable anywhere (#193).

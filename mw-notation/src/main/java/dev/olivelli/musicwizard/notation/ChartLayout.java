@@ -269,13 +269,21 @@ final class ChartLayout {
      * changed, and both want re-taking.</b> Not the beat times -- those come out
      * byte-identical -- but the downbeat phase, which moved by one beat on this
      * recording, and with it the irregularity the sixteenth grid was tripping
-     * over. Re-taken during that change's review the sixteenth grid held far
-     * past the fourth chord, so "eight times as far" is not the gap any more. It
-     * is quoted here in the past tense rather than replaced because the
-     * replacement needs a harness that reproduces the original numbers first,
-     * and the point the figures support -- that a grid narrower than the timing
-     * error trips over it -- is about what a grid must survive rather than about
-     * what this recording happens to contain today.
+     * over. The comparison does not narrow, it inverts. Re-measured exactly as
+     * described above -- bars counted from the first downbeat, one chord per
+     * detected downbeat, through this class's own snap -- the sixteenth grid
+     * first misplaces the fourth chord before that change and the hundred and
+     * twelfth after it. The method is the right one: it reproduces the figure
+     * above on the unchanged code.
+     *
+     * <p>So on this recording the sixteenth grid is now the better of the two,
+     * and a maintainer re-taking this measurement will conclude the choice was
+     * wrong. The choice is still right, and the reason has to carry it now that
+     * the figure does not: a grid narrower than the timing error trips over it,
+     * which is a claim about what a grid must survive rather than about what one
+     * recording happens to contain. What that costs is a real gap in the
+     * evidence, and closing it wants a recording whose downbeats are still
+     * irregular rather than a re-run of this one.
      *
      * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
      * and 8 of review each found a different wrong story about whose it is, so
