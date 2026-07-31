@@ -19,3 +19,14 @@ file itself is gitignored; fetch it yourself for local testing:
 A7 A7 A7 A7
 D7 D7 A7 A7
 E7 D7 A7 E7
+
+blues-shuffle-a-106bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
+
+Blues shuffle in A at 106 BPM, 5:43. Same source channel and same licensing
+posture as blues-a-90bpm.mp3; fetch locally:
+  yt-dlp -x --audio-format mp3 -o samples/blues-shuffle-a-106bpm.mp3 \
+    https://www.youtube.com/watch?v=lFV6mqP7rfY
+Same 12-bar sequence as blues-a-90bpm.mp3, shuffled feel:
+A7 A7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
