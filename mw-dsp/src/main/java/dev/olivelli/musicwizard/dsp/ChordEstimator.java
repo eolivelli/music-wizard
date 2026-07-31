@@ -47,9 +47,9 @@ import java.util.Objects;
  * current ones:
  *
  * <pre>
- *                                        old vocabulary   sevenths and a
- *                                        and flat         fixed no-chord
- *                                        no-chord         level
+ *                                        all three at     all three at
+ *                                        their pre-#3     their current
+ *                                        values           values
  *   plain chroma                            0.0%             58.9%
  *   {@link NnlsChroma} combined             0.0%             86.6%
  * </pre>
