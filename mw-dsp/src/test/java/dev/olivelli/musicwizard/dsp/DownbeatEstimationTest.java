@@ -1448,11 +1448,12 @@ class DownbeatEstimationTest {
             // Beats without chroma is a state the pipeline can genuinely reach.
             // Since #3 the analysis window is 8192 samples, so a recording
             // shorter than about 0.37 s yields no frames while BeatTracker still
-            // finds pulses in it. Three beats, because the too-few-beats
-            // fallback above already catches two and it takes three to reach
-            // this branch -- which is exactly what the first test written for
-            // this bug got wrong, having been written from a stack trace whose
-            // clip happened to yield two.
+            // finds pulses in it. Four beats here, and at least three is the
+            // requirement: the too-few-beats fallback above catches anything
+            // under three, so a fixture with two never reaches this branch at
+            // all. That is exactly what the first test written for this bug got
+            // wrong, having been built from a stack trace whose clip yielded
+            // two.
             //
             // Here rather than only in EndToEndIT because that test is an *IT
             // and runs under -Pintegration alone. A guard against a
@@ -1475,8 +1476,12 @@ class DownbeatEstimationTest {
                     .isEqualTo(DownbeatEstimator.fromOnsets(beats, envelope, 4)
                             .confidence().value());
 
-            // And a beat-synchronous empty chroma, which is the other shape the
-            // fold can produce, takes the same branch rather than the validator.
+            // And an empty chroma that does call itself beat-synchronous takes
+            // the same branch rather than the validator. No path in the tree
+            // produces that shape -- beatSynchronous returns the chroma
+            // unchanged, frame rate intact, when it has no frames to fold -- so
+            // this is defence against a hand-built value rather than cover for a
+            // reachable one.
             assertThat(DownbeatEstimator.estimate(
                     beats, new Chroma(new double[0][], 0), envelope, 4).beatsPerBar())
                     .isEqualTo(4);

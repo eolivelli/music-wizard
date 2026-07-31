@@ -56,6 +56,29 @@ import org.junit.jupiter.api.Test;
  * repository (#204). That is a question about the file rather than about this
  * test, and it is the reason this comment mentions it: a gate that depends on a
  * committed binary should say where the binary stands.
+ *
+ * <p>This is the committed gate and not the whole picture, and the difference
+ * is large enough to say here. {@code tools/score-samples.py} scores the same
+ * question over every benchmark whose ground truth is known, three of which are
+ * local-only. Through the shipped CLI, with bars taken from the tracked beat
+ * grid rather than from this file's measured loop:
+ *
+ * <pre>
+ *   recording                     root    root+quality
+ *   gmajorblues.mp3               50.2%      48.9%
+ *   blues-a-90bpm.mp3             88.5%      83.2%
+ *   blues-shuffle-a-106bpm.mp3    50.7%       3.3%
+ *   blues-e-90bpm.mp3             48.7%       5.1%
+ *   bossa-cm.mp3                  14.2%       1.9%
+ * </pre>
+ *
+ * <p>Every one of those was 0.0% before #3, on a pipeline returning one N.C.
+ * span per recording, so the direction is not in doubt. The spread is, and two
+ * things in it are worth a maintainer's attention rather than a footnote: the
+ * gap between 50.2% here and the 86.6% this file measures is the beat grid
+ * drifting (#196), and the collapse of the quality column on two of the blues
+ * tracks is the estimator finding the right roots and calling their sevenths
+ * plain triads (#208).
  */
 class BluesLoopIT {
 
