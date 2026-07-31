@@ -144,9 +144,17 @@ public final class ChordEstimator {
      *
      * <p>A fixed level says something the flat template cannot: report a chord
      * when some chord actually fits, not when it fits better than a profile that
-     * grows stronger the less the frame looks like music. 0.60 is a little above
-     * the 0.5 a three-note template scores against a genuinely flat chroma by
-     * construction.
+     * grows stronger the less the frame looks like music.
+     *
+     * <p>How far above chance 0.60 sits depends on the template, and the same
+     * commit that set this level made that dependence worse. Against a genuinely
+     * flat chroma a three-note template scores sqrt(3/12) = 0.500 by
+     * construction and a four-note one sqrt(4/12) = 0.577, so the headroom is
+     * 0.100 for a triad and 0.023 for a seventh. That asymmetry also biases the
+     * vocabulary: on a frame carrying no harmony at all, a seventh clears this
+     * level before a triad does. It is not visible in the sweep below, whose
+     * flat top runs from 0.50 to 0.65, but it is the reason a single cosine
+     * level is the wrong shape of model rather than merely an untuned one.
      *
      * <p>This is what carries the change, and by more than the front end does.
      * Holding the chroma fixed at what {@link NnlsChroma} produces and varying

@@ -70,10 +70,11 @@ public final class NoteDictionary {
      * as its third, for 0.850. The absent note wins.
      *
      * <p>Enumerating every note from A0 to C4 against a C4-E4-G4 triad at 0.7
-     * confirms which one it is: C3 at 0.850, then F2 at 0.350 and C2 at 0.536,
-     * against a real note's 0.714. The winner is the octave below, not something
-     * further down — a lower note has more partials landing on the triad but
-     * each is worth less, and the product peaks immediately.
+     * confirms which one it is. In order: C3 0.850, C4 0.714 (the real note),
+     * C2 0.536, E3 and G3 0.500, F2 and A2 0.350, E2 0.245. The winner is the
+     * octave below, not something further down — a lower note has more partials
+     * landing on the triad but each is worth less, and the product peaks
+     * immediately.
      *
      * <p>That is not a hypothesis. Handed three pure sines at C4, E4 and G4 —
      * no partials, nothing below C4 in the signal at all — the dictionary at 0.7

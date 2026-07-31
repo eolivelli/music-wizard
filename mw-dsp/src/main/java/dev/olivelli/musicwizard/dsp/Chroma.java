@@ -230,9 +230,18 @@ public record Chroma(double[][] vectors, double frameRate) {
      * {@link Math#clamp} rejects outright. With the old 4096-sample window that
      * combination was unreachable, because anything long enough to hold two
      * pulses was long enough to hold a frame; at {@link NnlsChroma}'s 8192 it is
-     * reachable for any clip between about 0.305 and 0.371 seconds. The guard is
-     * here rather than at the call site because {@link NnlsChroma#beatSynchronous}
-     * reaches this same line by a different route.
+     * reachable for any clip between about 0.305 and 0.371 seconds <em>at the
+     * 22.05 kHz analysis rate</em>. The upper end is the window length and
+     * {@link NnlsChroma#windowSizeFor} rounds it to a power of two, so at 24 or
+     * 48 kHz the window is 0.683 s and the band is nearly twice as wide. The CLI
+     * only ever decodes at the analysis rate; the public extract does not.
+     *
+     * <p>The guard is here rather than at the call site because
+     * {@link NnlsChroma#beatSynchronous} reaches this same line by a different
+     * route — and it is only half the fix. Returning an empty chroma stops this
+     * method throwing and hands the emptiness downstream, where
+     * {@link DownbeatEstimator#estimate} has to know that beats without chroma
+     * is a state the pipeline can reach rather than a caller's mistake. It does.
      *
      * @param beatTimes beat instants in seconds, ascending
      * @return one chroma vector per inter-beat span, or this chroma unchanged

@@ -42,11 +42,18 @@ import java.util.Objects;
  *
  * <p>The kernel widens where it has to. At the resolutions used here — 2.69 Hz
  * per FFT bin at both 22.05 kHz/8192 and 44.1 kHz/16384 — one FFT bin is wider
- * than one grid bin below 141 Hz and narrower above it, so low down a bin's
+ * than one grid bin below 139.8 Hz and narrower above it, so low down a bin's
  * energy is shared between neighbours and high up several FFT bins fall inside
  * one grid bin and the kernel is a plain interpolation. The sharing only
- * actually begins below 71 Hz, because {@link #map} floors the half-width at one
- * grid bin and that floor binds between the two frequencies. {@link NoteDictionary} widens its
+ * actually begins below 69.9 Hz, because {@link #map} floors the half-width at
+ * one grid bin and that floor binds between the two frequencies.
+ *
+ * <p>Both figures come from {@link LogFrequencyAxis#fftBinWidthInBins}, which is
+ * the derivative {@code map} and {@link NoteDictionary} both call. Measuring a
+ * grid bin as the finite interval {@code f − f·2^(−1/36)} instead gives 141.1
+ * and 70.6, which is what an earlier revision of this comment said; the
+ * difference is a percent and the point is that the number should come from the
+ * function the code uses rather than from a plausible restatement of it. {@link NoteDictionary} widens its
  * partials by the same rule, so the modelled peak and the observed peak have
  * the same width at every frequency. Without that they diverge exactly where
  * the bass lives, and NNLS explains a wide observed peak with a chord's worth of
