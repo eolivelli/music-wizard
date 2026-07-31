@@ -41,7 +41,9 @@ import java.util.Objects;
  * deliberately crude, and crude turns out not to be the problem. On a real
  * recording with known changes this stage was returning one N.C. span for the
  * whole song (#185). Per-bar root accuracy on {@code samples/gmajorblues.mp3},
- * varying the front end and this class's two changes independently:
+ * varying the front end and this class's changes independently — the seventh
+ * templates, the no-chord level and the emission sharpness, which move together
+ * in the column below and are not separable into a single culprit:
  *
  * <pre>
  *                                        old vocabulary   sevenths and a
@@ -54,9 +56,14 @@ import java.util.Objects;
  * <p>Down the first column, a better front end on its own is worth three tenths
  * of a point — 0.0% to 0.3%, one N.C. span becoming 106 of them — because the
  * flat no-chord template swallows the recording whichever chroma it is handed.
- * Along the first row, these two changes on their own are worth 58.9. And the
- * front end adds 27.7 on top of them, 58.9% to 86.6%, which is the only cell
- * where it is worth anything at all.
+ * Along the first row, these changes on their own are worth 58.9. And the front
+ * end adds 27.7 on top of them, 58.9% to 86.6%, which is the only cell where it
+ * is worth anything at all.
+ *
+ * <p>Not one of the three carries that 58.9 alone: replacing the flat template
+ * and changing nothing else reaches 17.5%. They are reported together because
+ * that is how they were measured and because separating them further would
+ * suggest a decomposition the measurement does not support.
  *
  * <p>The surprising column is the first one, and it is why this class changed
  * at all: #3 called the front end the fix for #185, and measured alone against

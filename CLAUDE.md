@@ -29,18 +29,25 @@ measurement gives +0.356 the other way. **The sign flips between synthetic and
 real.**
 
 That was read as meaning no constant in `ChordEstimator` could fix it, and #3
-showed otherwise: replacing the flat no-chord template with a fixed level takes
-the same recording from 0.0% to 58.9% of bars correct on *plain* chroma, before
-any front-end change. The flat template scores highest exactly when a frame
-looks least like music, so it wins on a real mix whatever the chroma. The front
-end is worth another 27.7 points on top and neither half is the fix alone.
+showed otherwise. On `samples/gmajorblues.mp3` — a different recording, and the
+one with exactly known changes — the estimator's three changes together take
+*plain* chroma from 0.0% to 58.9% of bars correct, before any front end. The
+flat no-chord template scores highest exactly when a frame looks least like
+music, so it wins on a real mix whatever the chroma is.
+
+No single constant does it, though, and the first draft of this paragraph
+claimed one did. Replacing the flat template alone is worth 17.5%; adding
+dominant sevenths and raising the emission sharpness is what reaches 58.9%, and
+the NNLS front end adds 27.7 on top of that. The lesson is not "a constant can
+fix it" but "the emission model was wrong in a way the front end could not
+compensate for".
 
 So: work that makes real audio work outranks work that polishes what already
 works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
 every benchmark with known ground truth went from 0% of bars correct to between
 14% and 89%, and from one `N.C.` span per recording to none. What is now top is
 what that exposed: the beat grid drifts (#196), and dominant sevenths are found
-on one recording and called plain triads on two others (#208).
+on two of the five benchmarks and called plain triads on the other three (#208).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

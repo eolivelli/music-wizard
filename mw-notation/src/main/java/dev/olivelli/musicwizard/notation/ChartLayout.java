@@ -259,11 +259,23 @@ final class ChartLayout {
      * its original justification stopped applying.
      *
      * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
-     * which moves a chord by at most an eighth of a quarter beat -- puts the
+     * which moves a chord by at most an eighth of a quarter beat -- put the
      * fourth chord in the wrong bar, where a step of one counted beat, moving a
-     * chord by at most half a beat, holds through the twenty-fifth chord and
-     * first misplaces the twenty-sixth. Eight times as far, and that is the
+     * chord by at most half a beat, held through the twenty-fifth chord and
+     * first misplaced the twenty-sixth. Eight times as far, and that is the
      * whole of what this method is answering for.
+     *
+     * <p><b>Both figures were taken against a downbeat grid that #3 has since
+     * changed, and both want re-taking.</b> Not the beat times -- those come out
+     * byte-identical -- but the downbeat phase, which moved by one beat on this
+     * recording, and with it the irregularity the sixteenth grid was tripping
+     * over. Re-taken during that change's review the sixteenth grid held far
+     * past the fourth chord, so "eight times as far" is not the gap any more. It
+     * is quoted here in the past tense rather than replaced because the
+     * replacement needs a harness that reproduces the original numbers first,
+     * and the point the figures support -- that a grid narrower than the timing
+     * error trips over it -- is about what a grid must survive rather than about
+     * what this recording happens to contain today.
      *
      * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
      * and 8 of review each found a different wrong story about whose it is, so
