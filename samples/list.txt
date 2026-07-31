@@ -1,0 +1,10 @@
+# This directory contains a list of real mp3 files
+
+gmajorblues.mp3
+
+This is a simple Blues is G Major.
+It's 12 bars repeated many times.
+The sequence is: 
+G7 G7 G7 G7
+C7 C7 G7 G7
+D7 C7 G7 D7
