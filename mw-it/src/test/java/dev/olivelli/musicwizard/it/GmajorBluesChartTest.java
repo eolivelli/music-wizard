@@ -56,11 +56,18 @@ import org.junit.jupiter.api.Test;
  * them could say which one the chart was spacing its bars at.
  *
  * <p><b>The measurement supplies the chords rather than transcribing them.</b>
- * Chord recognition returns one {@code N.C.} span covering the whole recording
- * today (#3), so the progression the sample documents is laid on the recording's
+ * The progression {@code samples/list.txt} documents is laid on the recording's
  * own detected downbeats, one chord to each. What that measures is where this
  * project's bar arithmetic puts a chord whose intended bar is known; it is not a
  * figure for what the product recognises and must not be quoted as one.
+ *
+ * <p>The reason first given for supplying them was that chord recognition
+ * returned a single {@code N.C.} span covering the whole recording. That was
+ * true when this was written and is not now: since #3 the same file yields 740
+ * spans and no {@code N.C.} at all. The choice stands for the better reason
+ * {@code ChartLayout} gives -- a layout measurement wants a progression known to
+ * be right, not one that is 50% right -- so nothing here changed when its
+ * original justification stopped applying.
  *
  * <p><b>What it cannot reach.</b> The bar lines are still one downbeat and a
  * constant rate, so they can be no straighter than the tracked beat is. That
@@ -343,14 +350,19 @@ class GmajorBluesChartTest {
                 + "the reconstruction above is not quietly losing one").isEqualTo(320);
         assertThat(atTheMedian[2]).isEqualTo(320);
 
-        // Zero-based, where #200 counts chords from one: its 26 and its 114.
+        // Zero-based, where #200 counts chords from one: its 26, and 112 where
+        // it measured 114. The two differ because #3 moved this recording's
+        // downbeat phase by one beat after #200 was written; the beat times are
+        // byte-identical and every tempo figure above is unchanged, which is why
+        // only the placement literals moved. Re-measured on the merged tree
+        // rather than adjusted until they passed.
         assertThat(atTheMedian[0])
                 .as("the spacing before this change, still reachable through --tempo, "
                         + "so the fixture shows what it is measuring against")
                 .isEqualTo(25);
-        assertThat(atTheMedian[1]).isEqualTo(295);
-        assertThat(atTheGridsRate[0]).isEqualTo(113);
-        assertThat(atTheGridsRate[1]).isEqualTo(26);
+        assertThat(atTheMedian[1]).isEqualTo(294);
+        assertThat(atTheGridsRate[0]).isEqualTo(111);
+        assertThat(atTheGridsRate[1]).isEqualTo(31);
 
         // Also as inequalities, because the equalities are measurements of one
         // beat tracker and a change to it may legitimately move them. What must
@@ -371,7 +383,7 @@ class GmajorBluesChartTest {
                 .isEqualTo(114);
         assertThat(firstDocumentedSymbolMissing(
                 corrected(grid.medianTempo(TimeSignature.FOUR_FOUR))))
-                .isEqualTo(79);
+                .isEqualTo(81);
     }
 
     private static int firstDocumentedSymbolMissing(TempoMap map) {

@@ -79,8 +79,11 @@ length ([#187][i187]). Correcting `--tempo` by hand is worth at least as much as
 correcting the downbeat.
 
 That figure is the bar arithmetic measured on real *timing* with the chords
-supplied, not a figure for what the tool recognises — chord recognition on that
-recording currently returns nothing but `N.C.` ([#3][i3]).
+supplied, not a figure for what the tool recognises. Chord recognition on that
+recording used to return nothing but `N.C.`; since [#3][i3] it returns 740 spans
+and no `N.C.` at all, about half of them in the right bar with the right root.
+The chords were supplied anyway, because a layout measurement wants a
+progression known to be right rather than one that is half right.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84

@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -1209,20 +1210,21 @@ class DownbeatEstimationTest {
         }
 
         @Test
-        @DisplayName("a ragged chroma is refused evidence rather than read off the end")
+        @DisplayName("a ragged chroma cannot reach the novelty measure at all")
         void raggedChromaRowsAreNotNovel() {
-            // Chroma does not validate its row shapes, so comparing a twelve-bin
-            // vector with a shorter one indexed past the end of the shorter.
+            // This used to assert that harmonicNovelty scored a ragged chroma as
+            // zero rather than indexing off the end of the shorter row. Since #77
+            // the shape is a constructor invariant of Chroma, so the ragged case
+            // is refused a layer earlier and the guard inside the novelty measure
+            // is unreachable through it. The property is the same one -- nothing
+            // reads past the end of a chroma vector -- asserted where it is now
+            // enforced rather than where it used to be survived.
             double[][] spans = {new double[12], new double[6], new double[12]};
-            spans[0][0] = 1;
-            spans[1][0] = 1;
-            spans[2][0] = 1;
 
-            double[] novelty = DownbeatEstimator.harmonicNovelty(new Chroma(spans, 0));
-
-            for (double value : novelty) {
-                assertThat(value).isZero();
-            }
+            assertThatThrownBy(() -> new Chroma(spans, 0))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("vectors[1]")
+                    .hasMessageContaining("twelve pitch classes");
         }
 
         @Test
@@ -1433,6 +1435,56 @@ class DownbeatEstimationTest {
             assertThatIllegalArgumentException().isThrownBy(() ->
                     DownbeatEstimator.estimate(beats, new Chroma(new double[4][12], 100),
                             envelope, 4));
+        }
+
+        @Test
+        @DisplayName("falls back rather than rejecting a chroma with no frames at all")
+        void emptyChromaFallsBackToOnsets() {
+            // The regression gate for a crash that reached the CLI twice: once
+            // as Math.clamp with crossed bounds inside Chroma.beatSynchronous,
+            // and again -- after that was guarded -- as this class rejecting the
+            // empty chroma the guard now hands it.
+            //
+            // Beats without chroma is a state the pipeline can genuinely reach.
+            // Since #3 the analysis window is 8192 samples, so a recording
+            // shorter than about 0.37 s yields no frames while BeatTracker still
+            // finds pulses in it. Four beats here, and at least three is the
+            // requirement: the too-few-beats fallback above catches anything
+            // under three, so a fixture with two never reaches this branch at
+            // all. That is exactly what the first test written for this bug got
+            // wrong, having been built from a stack trace whose clip yielded
+            // two.
+            //
+            // Here rather than only in EndToEndIT because that test is an *IT
+            // and runs under -Pintegration alone. A guard against a
+            // CLI-reachable crash whose only cover is a job someone has to
+            // remember to run is one refactor away from coming back, and on this
+            // branch it has already come back once.
+            List<Double> beats = List.of(0.0, 0.5, 1.0, 1.5);
+            OnsetEnvelope envelope = new OnsetEnvelope(new double[300], 100);
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
+                    beats, new Chroma(new double[0][], 100), envelope, 4);
+
+            assertThat(estimate.beatsPerBar()).isEqualTo(4);
+            assertThat(estimate.phase()).isBetween(0, 3);
+            // The onset-only floor, unscaled: no harmony was seen, so none is
+            // claimed. Identical to what fromOnsets gives for the same input,
+            // which is the point -- the fallback is the existing answer for "no
+            // harmonic evidence", not a new one invented for this case.
+            assertThat(estimate.confidence().value())
+                    .isEqualTo(DownbeatEstimator.fromOnsets(beats, envelope, 4)
+                            .confidence().value());
+
+            // And an empty chroma that does call itself beat-synchronous takes
+            // the same branch rather than the validator. No path in the tree
+            // produces that shape -- beatSynchronous returns the chroma
+            // unchanged, frame rate intact, when it has no frames to fold -- so
+            // this is defence against a hand-built value rather than cover for a
+            // reachable one.
+            assertThat(DownbeatEstimator.estimate(
+                    beats, new Chroma(new double[0][], 0), envelope, 4).beatsPerBar())
+                    .isEqualTo(4);
         }
 
         @Test

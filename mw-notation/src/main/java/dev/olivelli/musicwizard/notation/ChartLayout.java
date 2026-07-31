@@ -243,44 +243,84 @@ final class ChartLayout {
      *
      * <p>This is not cosmetic, and a fixed sixteenth was measured getting it
      * wrong. <b>The measurement supplies the chords rather than transcribing
-     * them, and that has to be said</b>: on {@code samples/gmajorblues.mp3}, an
-     * eleven-minute twelve-bar blues, chord recognition today returns one
-     * {@code N.C.} span covering the whole recording (#3). So the progression
-     * the sample documents was laid on the recording's own detected downbeats,
-     * one chord each. That measures this class's arithmetic against real timing
-     * and a known progression; it is not a figure for what the product
-     * recognises, and it must not be quoted as one.
+     * them, and that has to be said</b>: it laid the progression that
+     * {@code samples/list.txt} documents for {@code samples/gmajorblues.mp3} on
+     * that recording's own detected downbeats, one chord each. That measures
+     * this class's arithmetic against real timing and a known progression; it is
+     * not a figure for what the product recognises, and it must not be quoted as
+     * one.
+     *
+     * <p>The reason originally given for supplying them was that chord
+     * recognition returned one {@code N.C.} span covering the whole recording.
+     * That was true and is not: since #3 the same file yields 740 spans and no
+     * {@code N.C.} at all. The caveat above stands anyway and stands for a
+     * better reason — a layout measurement wants a progression known to be
+     * right, not one that is 50% right — so the method here did not change when
+     * its original justification stopped applying.
      *
      * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
-     * which moves a chord by at most an eighth of a quarter beat -- puts the
+     * which moves a chord by at most an eighth of a quarter beat -- put the
      * fourth chord in the wrong bar, where a step of one counted beat, moving a
-     * chord by at most half a beat, holds through the hundred-and-thirteenth
-     * chord and first misplaces the hundred-and-fourteenth. Thirty-eight times
-     * as far, and that is the whole of what this method is answering for.
+     * chord by at most half a beat, held through the twenty-fifth chord and
+     * first misplaced the twenty-sixth. Eight times as far, and that is the
+     * whole of what this method is answering for.
      *
-     * <p>Both figures were re-measured for #200 and one of them moved a long
-     * way, which is worth saying because it says what each is about.
+     * <p><b>Both figures were taken against a downbeat grid that #3 has since
+     * changed, and both want re-taking.</b> Not the beat times -- those come out
+     * byte-identical -- but the downbeat phase, which moved by one beat on this
+     * recording, and with it the irregularity the sixteenth grid was tripping
+     * over. The comparison does not narrow and it does not invert: it collapses.
+     * Re-measured exactly as described above -- bars from the first downbeat,
+     * one chord per detected downbeat, through this class's own snap and its own
+     * {@code quarterNoteSeconds} -- the sixteenth grid first misplaces the
+     * fourth chord before that change and the twenty-fifth after it, against a
+     * counted beat that first misplaces the twenty-sixth either way.
      *
-     * <p>The sixteenth still fails at the fourth chord, and it fails on
-     * something this method cannot help: <b>one downbeat detected early</b>. The
-     * third and fourth inter-downbeat gaps of that recording are 2.0666s and
-     * 2.4439s where their neighbours are about 2.25s, so the fourth downbeat
-     * arrives early and the fifth is back where it belongs -- the pair still sums
-     * to two bars. That leaves the fourth chord at 11.85 quarter beats where its
-     * bar line is at 12. A sixteenth rounds it to 11.75, the wrong side of the
-     * line; a whole counted beat rounds it to 12. The figures are stated at the
-     * spacing this class now uses; at the median the same chord sat at 11.68 and
-     * the same two grids answered the same way, which is the point -- the cause
-     * is in the downbeats, not in the spacing.
+     * <p>Both original figures reproduce on the unchanged code, which is what
+     * makes the pair worth stating, and the quarter length has to be this
+     * class's own for them to. Before #200 {@code quarterNoteSeconds} gave
+     * 0.5631s here; fitting a bar length to the downbeats instead gives 0.5546s,
+     * and at that value the counted beat was already known to read in the
+     * hundreds rather than 26.
      *
-     * <p>The counted beat used to fail at the twenty-sixth chord and does not any
-     * more, because what ended the run there was never this grid: it was the
-     * chart spacing its bars at the beat tracker's median interval rather than at
-     * the rate the grid ran at, 1.4% long and compounding (#200). This method
-     * chooses how far a chord may be moved; that chose where the bar was. What
-     * ends the run at the hundred-and-fourteenth is neither: the recording's
-     * tracked beat keeps to no single bar length (#187), and no constant spacing
-     * follows it. {@code GmajorBluesChartTest} measures all three.
+     * <p><b>#200 has since made 0.5546s the value this class uses</b>, since
+     * {@link Score#estimatedTempo()} now answers with the rate the grid ran at
+     * rather than its median interval. So that prediction is no longer a
+     * prediction, and the comparison this whole passage is about has finished
+     * collapsing. Re-measured on the merged tree, one chord per detected
+     * downbeat, through this class's own snap:
+     *
+     * <pre>
+     *   quarter 0.5631s (before #200)   sixteenth 25   counted beat  26
+     *   quarter 0.5552s (now)           sixteenth 117  counted beat 112
+     * </pre>
+     *
+     * <p>The counted beat is now marginally the <em>worse</em> of the two on this
+     * recording, by five chords out of 320. <b>So there is no longer any figure
+     * here that supports the choice this method makes, and it should not be
+     * presented as though there were.</b> What is left is the argument, which
+     * has not changed and does not depend on the recording: a grid narrower than
+     * the timing error trips over it, and a chord may be moved at most as far as
+     * the evidence for its position is soft. Closing the gap wants a recording
+     * whose downbeats are still irregular, not a re-run of this one -- and it
+     * wants it more than before, because #3 removed the irregularity and #200
+     * removed the drift that was standing in for it.
+     *
+     * <p>Which of the two original figures did the validating is still the part
+     * worth keeping, for whoever takes that on. The 4 reproduced at every quarter
+     * length from 0.554 to 0.572, being one local irregularity, so agreeing with
+     * it demonstrated nothing; the 26 held only in a narrow band about the wrong
+     * value. A harness checked against the 4 alone is one checked against
+     * something that could not have failed.
+     *
+     * <p>What ended the run at 26 was never this grid. The recording's beats ran
+     * 0.5583s over the hundred from the first downbeat to chord 26 and 0.5552s
+     * over the whole recording, against an estimate of 0.5631s, so by chord 26
+     * the bar lines had walked off the music by 0.86 of a beat whatever the grid
+     * did -- past the half beat a counted-beat grid can absorb. That was #200,
+     * and it is fixed; what ends the run at 112 now is #187, the recording's beat
+     * keeping to no single bar length, which no constant spacing can follow.
+     * {@code GmajorBluesChartTest} measures both ends of that.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it

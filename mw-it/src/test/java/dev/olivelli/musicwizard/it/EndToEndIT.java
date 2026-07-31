@@ -137,6 +137,56 @@ class EndToEndIT {
     }
 
     @Test
+    @DisplayName("a clip between the two analysis window lengths still transcribes")
+    void aClipBetweenTheTwoWindowLengthsStillTranscribes() {
+        // The whole pipeline over the gap #3 opened between two window lengths.
+        // NnlsChroma analyses at 8192 samples -- 0.371 s at the analysis rate,
+        // twice the plain front end's window -- so a clip in this band yields no
+        // chroma frames at all while BeatTracker still tracks two pulses in it.
+        // Chroma.beatSynchronous then built a clamp whose bounds crossed and
+        // threw IllegalArgumentException out of transcribe().
+        //
+        // Covered here as well as in mw-dsp because this is the level a user
+        // reaches it from: the CLI on a very short file, which is exactly what
+        // someone does first when trying the tool out.
+        // Swept over click rates as well as lengths, and that is the point
+        // rather than thoroughness for its own sake. The first version of this
+        // test used one click rate, 40 ms, and passed while the pipeline still
+        // threw for 129 other combinations in the same band.
+        //
+        // The reason is the opposite of unlucky, which is what makes it worth
+        // writing down. Reaching the downbeat stage at all needs three tracked
+        // beats -- two is caught by an earlier fallback -- and at 0.34 s only
+        // five click periods out of eighty-six between 30 and 200 ms yield
+        // three. 40 ms was not a bad draw; almost any single rate would have
+        // been. A test written from one stack trace inherits that stack trace's
+        // blind spot, and the sweep is what removes it.
+        int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
+        for (double seconds : new double[] {0.30, 0.32, 0.34, 0.36, 0.37}) {
+            for (double clickSeconds : new double[] {0.032, 0.040, 0.062, 0.100}) {
+                float[] clicks = new float[(int) (seconds * rate)];
+                for (int i = 0; i < clicks.length; i += (int) (clickSeconds * rate)) {
+                    clicks[i] = 1;
+                }
+                Path source = tempDirectory.resolve(
+                        String.format("gap-%.0f-%.0f.wav", seconds * 1000, clickSeconds * 1000));
+                SignalFactory.writeWav(source, clicks, rate);
+
+                Score score = new AudioTranscriber().transcribe(
+                        source, AudioTranscriber.Options.defaults());
+
+                // Nothing to say about the harmony of a third of a second of
+                // clicks, and saying nothing is the correct outcome rather than
+                // a degraded one.
+                assertThat(score.chords().isEmpty())
+                        .as("%.2f s of clicks every %.0f ms", seconds, clickSeconds * 1000)
+                        .isTrue();
+                assertThat(score.beatGrid()).isPresent();
+            }
+        }
+    }
+
+    @Test
     @DisplayName("LilyPond engraves the generated chart to a PDF, without complaining about it")
     void engravesToPdf() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);

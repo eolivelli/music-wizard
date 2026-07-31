@@ -1097,7 +1097,11 @@ class ChordChartTest {
         // Which grid the seconds route snaps to is a claim about how precisely
         // an estimate is worth believing, and a fixed sixteenth claimed too
         // much. Measured on samples/gmajorblues.mp3, where one downbeat -- the
-        // fourth -- is detected 0.18s early against a 2.25s bar: at that
+        // fourth -- was detected 0.18s early against a 2.25s bar. Past tense
+        // since #3: the beat times are unchanged but the downbeat phase moved a
+        // beat and that recording's worst deviation fell to 0.017s, so it no
+        // longer demonstrates the case. See ChartLayout, which carries the
+        // measurement and says the same thing at more length. At that
         // recording's tempo a sixteenth grid moves a chord by at most 0.070s, so
         // that chord printed in the previous bar, where a beat grid moves it by
         // up to 0.282s and it does not. Both tolerances are that recording's;

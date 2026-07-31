@@ -265,7 +265,12 @@ public final class DownbeatEstimator {
      * @param beatTimes   the tracked beats, in seconds and ascending
      * @param chroma      beat-synchronous chroma over exactly those beats, so that
      *                    {@code chroma.frameCount() == beatTimes.size() - 1};
-     *                    required at every bar length but one
+     *                    required at every bar length but one, and not required
+     *                    of a chroma with no frames at all — that means "no
+     *                    harmony was heard", which a recording shorter than one
+     *                    analysis window genuinely produces, and it takes the
+     *                    same onset fallback as too few beats rather than being
+     *                    rejected
      * @param envelope    the onset envelope the beats were tracked from
      * @param beatsPerBar the assumed bar length; not inferred
      */
@@ -292,6 +297,26 @@ public final class DownbeatEstimator {
             // cannot produce a beat-synchronous chroma from fewer than two beats
             // and would otherwise make a one-beat recording throw rather than
             // fall back.
+            return fromOnsets(beatTimes, envelope, beatsPerBar);
+        }
+        if (chroma.frameCount() == 0) {
+            // No chroma at all, which is a state the pipeline can genuinely
+            // reach rather than a caller's mistake: a recording shorter than one
+            // analysis window yields no frames, while the beat tracker still
+            // finds pulses in it. Since #3 that window is 8192 samples, twice
+            // what it was, so the band where the two disagree is real — roughly
+            // 0.3 to 0.4 seconds at the analysis rate.
+            //
+            // Same answer as too-few-beats above and for the same reason: there
+            // is no harmonic evidence, so the accent decides alone. Falling back
+            // rather than throwing, because "we could not hear any harmony" is
+            // not an error in the argument, it is a fact about the recording.
+            //
+            // This is deliberately narrower than tolerating any mismatch. A
+            // chroma that has frames but the wrong number of them is a caller
+            // error and still throws below, because scoring the wrong spans
+            // against the wrong beats lands on a plausible-looking but arbitrary
+            // phase, which is the failure this class exists to remove.
             return fromOnsets(beatTimes, envelope, beatsPerBar);
         }
         // A chroma that does not line up with these beats would score the wrong
@@ -647,8 +672,12 @@ public final class DownbeatEstimator {
 
     private static double cosine(double[] a, double[] b) {
         if (a.length != b.length) {
-            // Chroma does not validate its row shapes, so a ragged one would
-            // otherwise index off the end of the shorter row.
+            // Unreachable through Chroma since #77: its constructor now rejects a
+            // frame that is not twelve values wide, so harmonicNovelty -- the
+            // only caller, and one that takes a Chroma -- cannot be handed a
+            // ragged one. Kept because it costs one comparison and because this
+            // is a private helper that a future caller could reach with two
+            // arrays of its own.
             return Double.NaN;
         }
         double dot = 0;

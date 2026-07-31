@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
+import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -284,8 +285,32 @@ public final class AudioTranscriber {
         // harmonic change rather than from onset energy. The order stays acyclic:
         // chroma needs the beats, the downbeat phase needs the chroma, and chord
         // estimation needs neither the phase nor the grid.
+        //
+        // NNLS rather than the plain fold, because the plain fold does not work
+        // on records. Measured over every frame of samples/gmajorblues.mp3 that
+        // carries any energy -- 15,305 of 15,321, #185's probe -- plain chroma
+        // matched a flat profile better
+        // than it matched the best of all twenty-four triads -- 0.882 against
+        // 0.691, a margin of -0.191 -- so "no chord" was the maximum-likelihood
+        // answer for the whole recording, and that is what came out: a single
+        // N.C. span covering all 711 seconds. Through NNLS the same probe gives
+        // +0.151 on the treble register and +0.038 on the sum of the two used
+        // here; on a second full mix, -0.146 becomes +0.172.
+        //
+        // Both registers, not the treble alone: the two fail on different chords
+        // and adding them takes per-bar root accuracy on that recording from
+        // 42.7% to 86.6%. The margin figures above rank the two the other way
+        // round, which is worth knowing rather than smoothing over -- #185's
+        // probe asks whether a frame looks like some triad, and the sum looks
+        // less like one while naming the right one more often. See
+        // NnlsChroma.combined for the per-chord breakdown.
         progress.accept("extracting chroma");
-        Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
+        // combined() before beatSynchronous(), and the order is not cosmetic --
+        // see NnlsChroma.combined. Beat-synchronising first normalises each
+        // register separately, which makes every beat half treble and half bass
+        // whatever they actually contained; on this recording that ordering
+        // scores 77.7% where this one scores 86.6%.
+        Chroma chroma = NnlsChroma.extract(audio).combined().beatSynchronous(beatTimes);
 
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.

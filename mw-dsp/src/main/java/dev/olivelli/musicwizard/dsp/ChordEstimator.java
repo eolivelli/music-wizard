@@ -38,41 +38,167 @@ import java.util.Objects;
  * amount of template tuning.
  *
  * <p>Templates are binary — a chord tone is 1, everything else 0 — which is
- * deliberately crude. The known improvement is NNLS approximate transcription,
- * which strips the bass partials that otherwise masquerade as upper chord tones;
- * that is a separate, larger piece of work.
+ * deliberately crude, and crude turns out not to be the problem. On a real
+ * recording with known changes this stage was returning one N.C. span for the
+ * whole song (#185). Per-bar root accuracy on {@code samples/gmajorblues.mp3},
+ * varying the front end and all three of this class's changes together — the
+ * seventh templates, the no-chord level and the emission sharpness, which the
+ * left column holds at their pre-#3 values and the right column at their
+ * current ones:
  *
- * <p>The vocabulary is limited to major and minor triads plus "no chord".
- * Recognition accuracy falls off sharply beyond triads, so offering sevenths
- * here would mostly produce confident nonsense.
+ * <pre>
+ *                                        all three at     all three at
+ *                                        their pre-#3     their current
+ *                                        values           values
+ *   plain chroma                            0.0%             58.9%
+ *   {@link NnlsChroma} combined             0.0%             86.6%
+ * </pre>
+ *
+ * <p>Down the first column, a better front end on its own is worth <em>nothing
+ * whatever</em>: both cells are one N.C. span covering 99.9% of the recording,
+ * bit for bit the same answer, because the flat no-chord template swallows it
+ * whichever chroma it is handed. Along the first row, these changes on their own
+ * are worth 58.9. And the front end adds 27.7 on top of them, 58.9% to 86.6%,
+ * which is the only cell where it is worth anything at all.
+ *
+ * <p>Not one of the three carries that 58.9 alone, and the decomposition is
+ * worth having because two review rounds went wrong for want of it. Over plain
+ * chroma: the flat template replaced and nothing else, 17.5%; add the seventh
+ * templates, 48.4%; add the sharpness, 58.9%. Over the NNLS fold the same three
+ * steps read 28.0%, 80.6% and 86.6%.
+ *
+ * <p>So the no-chord level is what makes the recording speak at all, the
+ * sevenths are the largest single step, and the sharpness is worth ten points
+ * that are easy to attribute to one of the other two. This is the one place the
+ * decomposition is measured; {@link NnlsChroma} used to restate it and now links
+ * here instead, having been corrected three rounds running, and {@code
+ * CLAUDE.md} carries a two-line summary that defers here for the rest.
+ *
+ * <p>The surprising column is the first one, and it is why this class changed
+ * at all: #3 called the front end the fix for #185, and measured alone against
+ * the estimator it was written for, the front end does not fix it.
+ *
+ * <p>The vocabulary is major and minor triads and dominant sevenths on all
+ * twelve roots, plus "no chord".
  */
 public final class ChordEstimator {
 
     /**
-     * Probability of staying on the same chord between frames.
+     * Probability of staying on the same chord between beats.
      *
-     * <p>High because chords last for beats, not frames. Lower it and the
-     * output chatters; raise it much further and genuine changes are missed.
+     * <p>High because chords last for several beats. Lower it and the output
+     * chatters; raise it much further and genuine changes are missed.
+     *
+     * <p>Left at 0.6 after trying to raise it. On {@code samples/gmajorblues.mp3}
+     * the accuracy cost is monotone in this value and the chatter benefit is
+     * slight, so there is no trade worth making:
+     *
+     * <pre>
+     *   self-transition   per-bar root accuracy   chord spans over 711 s
+     *        0.6                 86.6%                    740
+     *        0.8                 85.7%                    684
+     *        0.9                 85.4%                    642
+     *        0.95                83.4%                    604
+     *        0.98                82.8%                    565
+     * </pre>
+     *
+     * <p>Worth recording because an earlier revision of this change did set it
+     * to 0.9, on a measurement taken before {@link NnlsChroma#combined()} was
+     * being folded in the right order. Against the wrong ordering 0.9 improved
+     * both columns; against the right one it improves neither enough. The
+     * constant is the same as it was, and the reason it is the same is not.
+     *
+     * <p>740 spans over 314 bars is 2.4 chords a bar, which is far more than
+     * this music contains. The chatter is real and is not addressed here: it
+     * wants the chart to snap changes to beats or bars, which is a notation
+     * decision rather than an estimation one.
      */
     private static final double SELF_TRANSITION = 0.6;
 
     /**
      * Sharpness of the emission distribution.
      *
-     * <p>Needed because cosine similarity is a very flat score: across all
-     * twenty-five templates it spans roughly 0.65 to 0.97, so the log-likelihood
-     * gap between the right chord and a flat no-chord profile is only about
-     * 0.36 per frame. The cost of changing chord is log(0.6) versus
-     * log(0.4/24), a penalty of about 3.58. On a sixteen-bar progression that is
-     * fifteen changes costing 53.7 against a total likelihood gain of 22.8 --
-     * so the decoder correctly concludes that sitting on "no chord" for the
-     * whole song scores better, and returns exactly that.
+     * <p>Needed because cosine similarity is a very flat score: across all the
+     * templates it spans roughly 0.5 to 1.0, so the log-likelihood gap between
+     * the right chord and the wrong one is small per frame, while the cost of
+     * changing chord is log(0.6) against log(0.4/36), a penalty of about 4.0.
+     * Left unsharpened the transition prior silently overwhelms the evidence and
+     * the decoder sits on one state for the whole recording -- which is exactly
+     * what it used to do.
      *
-     * <p>Raising the exponent widens the emission range until it is commensurate
-     * with the transition costs. This is the temperature of the model, and
-     * without it the transition prior silently overwhelms the evidence.
+     * <p>Raised from 20 to 50 with the front end change, and measured rather
+     * than reasoned. On {@code samples/gmajorblues.mp3}, per-bar root accuracy
+     * against the known cycle and the number of chord spans over 711 seconds:
+     *
+     * <pre>
+     *   sharpness   root accuracy   root+quality   spans
+     *       20          80.6%          80.6%        440
+     *       35          85.4%          85.4%        645
+     *       50          86.6%          86.3%        740
+     *       80          85.0%          82.8%        837
+     *      120          84.4%          81.2%        898
+     * </pre>
+     *
+     * <p>A real peak at 50 rather than a plateau, and the fall on either side
+     * has different causes: below it the transition prior is still winning
+     * arguments the evidence should win, and above it the evidence is sharp
+     * enough to chase noise, which shows up first in the quality column.
      */
-    private static final double EMISSION_SHARPNESS = 20.0;
+    private static final double EMISSION_SHARPNESS = 50.0;
+
+    /**
+     * The similarity the no-chord state is credited with, against which every
+     * template has to compete.
+     *
+     * <p>This replaces scoring no-chord as a flat template, which is the defect
+     * #185 is about. Cosine against a flat profile is high whenever the chroma
+     * is <em>spread</em>, and the chroma of a real mix folded naively is very
+     * spread: measured over all 15,305 frames of a 711-second recording, plain
+     * chroma scored 0.882 against the flat profile and 0.691 against the best of
+     * all twenty-four triads. No chord could beat "no chord", so the whole song
+     * came back as one N.C. span.
+     *
+     * <p>A fixed level says something the flat template cannot: report a chord
+     * when some chord actually fits, not when it fits better than a profile that
+     * grows stronger the less the frame looks like music.
+     *
+     * <p>How far above chance 0.60 sits depends on the template, and the same
+     * commit that set this level made that dependence worse. Against a genuinely
+     * flat chroma a three-note template scores sqrt(3/12) = 0.500 by
+     * construction and a four-note one sqrt(4/12) = 0.577, so the headroom is
+     * 0.100 for a triad and 0.023 for a seventh. That asymmetry also biases the
+     * vocabulary: on a frame carrying no harmony at all, a seventh clears this
+     * level before a triad does. It is not visible in the sweep below, whose
+     * flat top runs from 0.50 to 0.65, but it is the reason a single cosine
+     * level is the wrong shape of model rather than merely an untuned one.
+     *
+     * <p>This is what carries the change, and by more than the front end does.
+     * Holding the chroma fixed at what {@link NnlsChroma} produces and varying
+     * only this, per-bar root accuracy on {@code samples/gmajorblues.mp3} is
+     * 1.0% with the flat template and 86.6% with a fixed level -- the flat
+     * template still swallows 95.8% of the recording as N.C. even on a chroma
+     * that NNLS has sharpened. So #3 alone does not fix #185; it needed this
+     * too. The level itself is not delicate over its working range: 0.50, 0.60
+     * and 0.65 all give exactly the same 86.6%. It falls off a cliff shortly
+     * afterwards -- 80.9% at 0.70 with 8.0% N.C., and 20.7% at 0.75 with 77.7%
+     * N.C. -- so 0.60 is placed to leave room before that edge rather than
+     * because 0.65 measured worse.
+     *
+     * <p><b>What this does not do, stated because it is easy to assume it
+     * does.</b> 0.60 is not, on real material, much of a threshold. Measured
+     * over every beat span, the best of the thirty-six templates clears it on
+     * 100% of spans of the blues and 98% of a second full-mix recording -- and
+     * on plain chroma, 100% and 97.1%. So the state is close to an off switch on
+     * both front ends rather than a discriminator, and what actually keeps the
+     * two recordings honest is that it fires at all on the quiet passages of the
+     * second one (2.1% of its duration). #185's warning that removing no-chord
+     * outright would put a chord over every drum fill is therefore only
+     * half-answered here: digital silence is caught by
+     * {@link #SILENCE_THRESHOLD}, and a quiet or percussive passage is caught
+     * only weakly. A no-chord model that reads energy and flatness rather than a
+     * cosine level is #195.
+     */
+    private static final double NO_CHORD_SIMILARITY = 0.60;
 
     /**
      * Chroma energy below which a span is treated as having no chord.
@@ -119,10 +245,33 @@ public final class ChordEstimator {
         return toProgression(path, templates, beatTimes, similarity);
     }
 
-    /** Major and minor triads on all twelve roots, plus a no-chord state. */
+    /**
+     * Major and minor triads and dominant sevenths on all twelve roots, plus a
+     * no-chord state.
+     *
+     * <p>The sevenths are not a luxury. On {@code samples/gmajorblues.mp3},
+     * whose changes are entirely dominant sevenths, adding them takes per-bar
+     * root accuracy from 32.5% to 86.6%, and recall on the C7 and D7 bars from
+     * nothing at all -- 0% each -- to 96% and 68%. A triad-only vocabulary does
+     * not merely mislabel a seventh as a triad: asked to explain D-F#-A-C with
+     * three notes it prefers an unrelated root altogether, which is why the
+     * figure without them is far below even the 58.3% that writing G7 in every
+     * bar of this particular cycle would score.
+     *
+     * <p>The confusion this introduces is real and is worth naming, because a
+     * dominant seventh shares three of its four notes with the major triad on
+     * the same root. Two things keep it in check. A four-note template only wins
+     * if the seventh is actually present, since cosine divides by the template's
+     * own norm -- a pure major triad scores 1.00 against the major template and
+     * 0.87 against the seventh. And the tier-0 and tier-1 fixtures, whose chords
+     * are synthesised triads with no seventh in them at all, still come back as
+     * triads; {@code ChordEstimationTest} and {@code EndToEndIT} assert exactly
+     * that and would fail if a seventh were winning too easily.
+     */
     private static List<Template> buildTemplates() {
-        List<Template> templates = new ArrayList<>(25);
-        for (ChordQuality quality : new ChordQuality[] {ChordQuality.MAJOR, ChordQuality.MINOR}) {
+        List<Template> templates = new ArrayList<>(37);
+        for (ChordQuality quality : new ChordQuality[] {ChordQuality.MAJOR, ChordQuality.MINOR,
+                ChordQuality.DOMINANT_SEVENTH}) {
             for (int root = 0; root < 12; root++) {
                 double[] profile = new double[12];
                 for (int interval : quality.intervals()) {
@@ -132,11 +281,10 @@ public final class ChordEstimator {
                 templates.add(new Template(root, quality, profile));
             }
         }
-        // No-chord is modelled as a flat profile, so it wins only when the
-        // chroma itself is flat -- which is what silence and percussion look like.
-        double[] flat = new double[12];
-        java.util.Arrays.fill(flat, 1.0 / 12);
-        templates.add(new Template(0, ChordQuality.NONE, flat));
+        // No-chord carries no profile: it is scored at a fixed level rather than
+        // matched, so the array here is never read. See NO_CHORD_SIMILARITY for
+        // why a flat profile was the wrong model.
+        templates.add(new Template(0, ChordQuality.NONE, new double[12]));
         return templates;
     }
 
@@ -154,15 +302,19 @@ public final class ChordEstimator {
 
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
+                boolean noChord = template.quality() == ChordQuality.NONE;
                 if (energy < SILENCE_THRESHOLD) {
                     // Nothing sounding: only the no-chord state is plausible.
-                    out[frame][t] = template.quality() == ChordQuality.NONE ? 1.0 : 1e-9;
-                    continue;
+                    out[frame][t] = noChord ? 1.0 : 1e-9;
+                } else if (noChord) {
+                    // A level to clear, not a shape to match.
+                    out[frame][t] = NO_CHORD_SIMILARITY;
+                } else {
+                    // Raw cosine, in 0 to 1. Cosine rather than a dot product so
+                    // a loud frame is not automatically a better match than a
+                    // quiet one. Sharpening happens once, in estimate().
+                    out[frame][t] = cosine(vector, template.profile());
                 }
-                // Raw cosine, in 0 to 1. Cosine rather than a dot product so a
-                // loud frame is not automatically a better match than a quiet
-                // one. Sharpening happens once, in estimate().
-                out[frame][t] = cosine(vector, template.profile());
             }
         }
         return out;
@@ -248,10 +400,32 @@ public final class ChordEstimator {
             for (int frame = spanStart; frame < i; frame++) {
                 total += similarity[frame][path[spanStart]];
             }
-            // Cosine against a triad template is around 0.65 even for an
+            // Cosine against a chord template is around 0.65 even for an
             // unrelated chord, so the useful range is roughly 0.65 to 1. Rescaled
             // to span 0 to 1 rather than reporting a number that never drops
             // below two thirds.
+            //
+            // A no-chord span's confidence is the mean over its beats of two
+            // very different scores, and it can land anywhere between them. A
+            // beat that won on NO_CHORD_SIMILARITY contributes 0.60, below the
+            // bottom of this range, and so contributes zero confidence: nothing
+            // was clearly sounding and there is no chord there to be confident
+            // about. A beat that won on SILENCE_THRESHOLD contributes 1.0, which
+            // is not a stray number attached to a non-statement -- the recording
+            // really is silent and "no chord" really is certain.
+            //
+            // Viterbi merges consecutive no-chord beats into one span, so a
+            // silent lead-in running into a quiet passage reports the average of
+            // the two, and a reader cannot tell from the number which kind of
+            // "no chord" they have. That is a defect in what this reports rather
+            // than in what it decides; #201.
+            //
+            // Two earlier drafts of this comment were wrong about it, each in
+            // the way the fix before it had been: the first said a no-chord span
+            // always reports zero, which the silence branch falsifies, and the
+            // second said it reports one of exactly two values, which merging
+            // falsifies. Both stopped at the layer the previous mistake was
+            // noticed in.
             double mean = total / (i - spanStart);
             double confidence = Math.clamp((mean - 0.65) / 0.35, 0, 1);
 
