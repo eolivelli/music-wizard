@@ -346,7 +346,8 @@ class FirstDownbeatOverrideTest {
         // negative and `decided` exactly zero; through NNLS over both registers
         // the same click track leaves a residue -- a broadband click does
         // produce some note activations, and they no longer tie to the last bit
-        // -- so the product comes out around 6e-4 instead of 0. The claim this
+        // -- so the product comes out around 8e-4 instead of 0, which lifts the
+        // confidence 2.1e-4 above its floor. The claim this
         // test makes is unchanged and is about the ordering below; the tolerance
         // is loosened to the scale of that residue rather than to the scale of
         // double arithmetic, so a real drift would still fail it.
@@ -364,7 +365,7 @@ class FirstDownbeatOverrideTest {
         // four is worth: BASE_CONFIDENCE is that count plus a deliberate margin
         // for the bars having to start somewhere.
         assertThat(worstSnap).isCloseTo(0.5, within(1e-9));
-        assertThat(estimated).isCloseTo(0.35, within(1e-3));
+        assertThat(estimated).isCloseTo(0.35, within(5e-4));
 
         // A request outside the tracked range rests on nothing at all, and in
         // this meter it ranks below the estimator's own least-supported answer.

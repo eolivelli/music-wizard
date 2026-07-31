@@ -367,12 +367,20 @@ public final class ChordEstimator {
             // to span 0 to 1 rather than reporting a number that never drops
             // below two thirds.
             //
-            // A no-chord span scores NO_CHORD_SIMILARITY, which is below the
-            // bottom of that range, so it reports zero confidence. That reads
-            // oddly at first and is the honest answer: the span carries no claim
-            // about a chord, so there is no chord to be confident about, and the
-            // alternative -- a high confidence attached to "N.C." -- would put a
-            // number next to a non-statement.
+            // A no-chord span reports one of exactly two confidences, and which
+            // one says something worth reading. A span that won on
+            // NO_CHORD_SIMILARITY scores below the bottom of this range and so
+            // reports zero: nothing was clearly sounding, and there is no chord
+            // there to be confident about. A span that won on SILENCE_THRESHOLD
+            // scores 1.0 and reports full confidence, which is not a stray
+            // number attached to a non-statement -- the recording really is
+            // silent there and "no chord" really is certain.
+            //
+            // An earlier draft of this comment claimed a no-chord span always
+            // reports zero. It does not: a quiet opening comes back as N.C. at
+            // confidence 1.000, because the silence branch writes 1.0 into this
+            // same array. The fix reached the branch the defect was noticed in
+            // and not the other one that writes the same value.
             double mean = total / (i - spanStart);
             double confidence = Math.clamp((mean - 0.65) / 0.35, 0, 1);
 

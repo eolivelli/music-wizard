@@ -280,7 +280,7 @@ public final class AudioTranscriber {
         //
         // Both registers, not the treble alone: the two fail on different chords
         // and adding them takes per-bar root accuracy on that recording from
-        // 40.8% to 75.5%. The margin figures above rank the two the other way
+        // 42.7% to 86.6%. The margin figures above rank the two the other way
         // round, which is worth knowing rather than smoothing over -- #185's
         // probe asks whether a frame looks like some triad, and the sum looks
         // less like one while naming the right one more often. See

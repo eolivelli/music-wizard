@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -149,21 +150,21 @@ class NnlsChromaTest {
             NnlsChroma fromHigh = NnlsChroma.extract(high);
 
             // Asymmetric bounds, and the asymmetry is the finding rather than a
-            // convenience. A high note is placed confidently: nothing below it
+            // convenience. A high note is placed confidently -- nothing below it
             // has partials that could account for it, so essentially none of its
-            // energy reaches the bass. A low note is not, because placing it
-            // depends on its upper partials, and those are exactly what
-            // NoteDictionary.PARTIAL_ROLL_OFF was lowered to stop trusting -- the
-            // change that made a chord's pitch classes right made a bass note's
-            // octave much less certain. At 0.70 this ratio was 8.2; it is now
-            // about 1.5, which still puts the note on the right side of the line
-            // and no longer by a margin worth calling separation.
+            // energy reaches the bass, and the measured ratio is 671. A low note
+            // is not, because placing it depends on its upper partials, and
+            // those are exactly what NoteDictionary.PARTIAL_ROLL_OFF was lowered
+            // to stop trusting: the change that made a chord's pitch classes
+            // right made a bass note's octave much less certain. Measured here,
+            // the ratio falls from 10.6 at a roll-off of 0.70 to 2.43 at the
+            // shipped 0.50.
             //
-            // Pinned as a floor rather than a range so that the bass register
+            // Pinned as floors rather than ranges so that the bass register
             // getting better again -- which is what #194 would do -- does not
             // fail a test whose point is that it must not get worse.
-            assertThat(energy(fromLow.bass())).isGreaterThan(1.3 * energy(fromLow.treble()));
-            assertThat(energy(fromHigh.treble())).isGreaterThan(10 * energy(fromHigh.bass()));
+            assertThat(energy(fromLow.bass())).isGreaterThan(2.0 * energy(fromLow.treble()));
+            assertThat(energy(fromHigh.treble())).isGreaterThan(400 * energy(fromHigh.bass()));
         }
 
         @Test
@@ -193,6 +194,17 @@ class NnlsChromaTest {
             // would make this a test of those instead of of the correction.
             assertThat(corrected[0]).isCloseTo(reference[0], within(0.05));
             assertThat(argMax(corrected)).isZero();
+
+            // The gap the correction closes, asserted directly rather than left
+            // for the tolerance above to imply. Without this the test passes on
+            // a front end that ignores the offset entirely: argMax is C either
+            // way, and at an offset of a quarter semitone the uncorrected
+            // reading is already inside the 0.05 tolerance. Measured at a third
+            // of a semitone: 0.567 uncorrected against 0.631 corrected.
+            double[] uncorrected = meanChroma(NnlsChroma.extract(spectrogram, 0).treble());
+            assertThat(corrected[0] - uncorrected[0])
+                    .as("what telling the front end the truth about tuning is worth")
+                    .isGreaterThan(0.04);
 
             // And the offset is one the estimator can actually find, which is
             // what makes the correction available without being told.
@@ -253,13 +265,20 @@ class NnlsChromaTest {
             AudioBuffer audio = new AudioBuffer(signal, RATE);
             List<Double> beats = BeatTracker.track(OnsetEnvelope.fromAudio(audio)).beatTimes();
 
+            // Through combined(), which is what AudioTranscriber uses. Asserting
+            // this of treble() instead -- as an earlier draft did -- leaves the
+            // composition the pipeline actually runs uncovered at unit level,
+            // and it is a composition that has already been wrong once.
             ChordProgression chords = ChordEstimator.estimate(
-                    NnlsChroma.extract(audio).beatSynchronous(beats).treble(), beats);
+                    NnlsChroma.extract(audio).combined().beatSynchronous(beats), beats);
 
             assertThat(chords.chords()).extracting(Chord::symbol)
                     .startsWith("C", "G", "Am", "F", "C", "G", "Am", "F");
             assertThat(chords.size()).isBetween(14, 18);
-            assertThat(chords.confidence().value()).isGreaterThan(0.5);
+            // 0.753 measured. The treble register alone reaches 0.916 on this
+            // fixture, where nothing is playing below A3 at all, so the floor is
+            // set for the fold that carries less of it rather than more.
+            assertThat(chords.confidence().value()).isGreaterThan(0.6);
         }
 
         @Test
@@ -313,26 +332,37 @@ class NnlsChromaTest {
         @Test
         @DisplayName("folding the registers before and after beat-synchronising differ")
         void foldingBeforeAndAfterAreNotTheSame() {
-            // The trap NnlsChroma.combined warns about, pinned so that a future
-            // reordering of the pipeline has to argue with a test.
+            // Why combined() refuses a beat-synchronous input, demonstrated
+            // rather than asserted. The refusal itself is the test below; this
+            // one shows what it is refusing, and has to build the wrong answer
+            // by hand because the API no longer will.
             //
             // beatSynchronous scales each span to sum to one. Fold first and
-            // that happens once; beat-synchronise first and it happens to each
-            // register separately, so the sum is half treble and half bass in
-            // every beat regardless of what they held. Here the signal is
-            // entirely in the treble -- a C4-E4-G4 triad, nothing below A3 -- so
-            // the wrong order promotes whatever the bass register invented to an
-            // equal share.
+            // that happens once; fold second and it happens to each register
+            // separately, so the sum is half treble and half bass in every beat
+            // regardless of what they held. Here the signal is entirely in the
+            // treble -- a harmonic C4, nothing below A3 -- so the wrong order
+            // promotes whatever the bass register invented to an equal share.
             AudioBuffer audio = new AudioBuffer(
                     harmonicNote(SignalFactory.midiToHz(60), 6, 3.0), RATE);
             List<Double> beats = List.of(0.5, 1.0, 1.5, 2.0, 2.5);
 
             NnlsChroma nnls = NnlsChroma.extract(audio);
             double[] foldedFirst = meanChroma(nnls.combined().beatSynchronous(beats));
-            double[] syncedFirst = meanChroma(nnls.beatSynchronous(beats).combined());
+
+            NnlsChroma synced = nnls.beatSynchronous(beats);
+            double[][] byHand = new double[synced.treble().frameCount()][12];
+            for (int frame = 0; frame < byHand.length; frame++) {
+                for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                    byHand[frame][pitchClass] = synced.treble().vectors()[frame][pitchClass]
+                            + synced.bass().vectors()[frame][pitchClass];
+                }
+            }
+            double[] syncedFirst = meanChroma(new Chroma(byHand, 0));
 
             // Both name C, so neither is nonsense and the difference is one of
-            // proportion rather than of answer.
+            // proportion rather than of answer -- which is why it went unnoticed
+            // through four measurement harnesses.
             assertThat(argMax(foldedFirst)).isZero();
 
             // Folding first keeps the C dominant; synchronising first dilutes it
@@ -348,6 +378,25 @@ class NnlsChromaTest {
                 }
             }
             return best;
+        }
+
+        @Test
+        @DisplayName("refuses to fold registers that are already beat-synchronous")
+        void refusesToFoldRegistersThatAreAlreadyBeatSynchronous() {
+            // The other half of foldingBeforeAndAfterAreNotTheSame: that test
+            // says the two orders differ, this one says the worse of them cannot
+            // be reached. Documenting it was not enough -- four of the
+            // measurement harnesses written for this change took the wrong
+            // order, and BluesLoopIT's accuracy floors still passed with it.
+            AudioBuffer audio = new AudioBuffer(
+                    SignalFactory.clickTrack(120, 8, RATE), RATE);
+            List<Double> beats = BeatTracker.track(OnsetEnvelope.fromAudio(audio)).beatTimes();
+
+            NnlsChroma folded = NnlsChroma.extract(audio).beatSynchronous(beats);
+
+            assertThatThrownBy(folded::combined)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already beat-synchronous");
         }
 
         @Test

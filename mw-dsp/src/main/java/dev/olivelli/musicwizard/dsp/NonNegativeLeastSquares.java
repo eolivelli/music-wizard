@@ -44,7 +44,7 @@ import java.util.Objects;
  * {@code Eᵀy} are formed once and everything after that works in
  * {@code columns} dimensions only. {@code EᵀE} depends solely on the dictionary,
  * so it is computed once per instance and reused across every frame; only
- * {@code Eᵀy} is per-frame. On the 261×85 dictionary this front end uses, that
+ * {@code Eᵀy} is per-frame. On the 262×77 dictionary this front end uses, that
  * is the difference between a solve costing tens of thousands of multiplies and
  * one costing millions.
  *

@@ -86,13 +86,13 @@ public final class NoteDictionary {
      * <pre>
      *   roll-off   triad keeps   A1 keeps   A1 bass    blues    blues
      *              its 3 notes   its own    / treble   root     root+quality
-     *     0.70        0.310       0.720       8.15     72.0%      60.8%
-     *     0.60        0.489       0.490       2.93     78.3%      75.5%
-     *     0.55        0.589       0.395       2.12     83.4%      82.2%
-     *     0.50        0.682       0.321       1.53     86.6%      86.3%
-     *     0.45        0.764       0.268       1.20     85.4%      85.0%
-     *     0.40        0.833       0.233       0.99     85.0%      85.0%
-     *     0.30        0.930       0.194       0.75     85.4%      85.4%
+     *     0.70        0.310       0.720      10.62     72.0%      60.8%
+     *     0.60        0.489       0.490       4.76     78.3%      75.5%
+     *     0.55        0.589       0.395       3.40     83.4%      82.2%
+     *     0.50        0.682       0.321       2.40     86.6%      86.3%
+     *     0.45        0.764       0.268       1.87     85.4%      85.0%
+     *     0.40        0.833       0.233       1.53     85.0%      85.0%
+     *     0.30        0.930       0.194       1.11     85.4%      85.4%
      * </pre>
      *
      * <p>0.50 is taken as the setting, where accuracy peaks on both columns.
@@ -102,8 +102,8 @@ public final class NoteDictionary {
      * be traded.
      *
      * <p>What this costs is stated rather than buried: at 0.70 a low A kept 72%
-     * of its activation on itself and eight times as much energy in the bass
-     * register as in the treble, and at 0.50 those are 32% and 1.5. The
+     * of its activation on itself and ten times as much energy in the bass
+     * register as in the treble, and at 0.50 those are 32% and 2.4. The
      * <em>pitch class</em> survives — which is why chord accuracy improves — but
      * the octave often does not, so {@link NnlsChroma#bass()} is a good deal
      * weaker than it was and naming a bass note from it is not yet safe (#194).

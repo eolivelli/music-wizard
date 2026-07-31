@@ -318,11 +318,25 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * less to say — which on this recording means promoting a bass register that
      * never once names the C7 to an equal vote in every beat.
      *
-     * <p>{@code NnlsChromaTest.foldingBeforeAndAfterAreNotTheSame} pins this, so
-     * that a future reordering has to argue with a test rather than with a
-     * comment.
+     * <p>So the wrong order is refused rather than documented. A comment could
+     * not have helped: both orders compile, both return a plausible chroma, and
+     * four of this change's own measurement harnesses took the wrong one before
+     * two of them disagreed loudly enough to be noticed. The two tests that pin
+     * it — {@code foldingBeforeAndAfterAreNotTheSame} and
+     * {@code refusesToFoldRegistersThatAreAlreadyBeatSynchronous} — record what
+     * the difference is and that it cannot be reached.
+     *
+     * @throws IllegalStateException if the registers have already been
+     *     beat-synchronised, since folding them then is almost certainly not
+     *     what the caller means
      */
     public Chroma combined() {
+        if (treble.isBeatSynchronous()) {
+            throw new IllegalStateException(
+                    "the registers are already beat-synchronous, so adding them now would give"
+                            + " each an equal share of every beat whatever it held;"
+                            + " call combined() first and beatSynchronous() on the result");
+        }
         double[][] out = new double[treble.frameCount()][12];
         for (int frame = 0; frame < out.length; frame++) {
             for (int pitchClass = 0; pitchClass < 12; pitchClass++) {

@@ -58,46 +58,53 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
     /**
      * Half-width of the whitening window, in semitones either side.
      *
-     * <p>An octave in total, and the least well determined number in this front
-     * end. Two requirements bracket it and then disagree about where inside the
-     * bracket to sit.
+     * <p>An octave in total. Two requirements bracket it. It has to be wide
+     * relative to how far one peak is smeared, which at the bottom of the range
+     * is about ±2 semitones — otherwise a peak is divided by its own spread and
+     * whitening flattens the very thing it is protecting. And it has to be
+     * narrow relative to the spectral envelope it removes, or it stops following
+     * it.
      *
-     * <p>It has to be wide relative to how far one peak is smeared, which at the
-     * bottom of the range is about ±2 semitones — otherwise a peak is divided by
-     * its own spread and whitening flattens the very thing it is protecting. And
-     * it has to be narrow relative to the spectral envelope it removes, or it
-     * stops following it.
-     *
-     * <p>Between those, the evidence points both ways, so the figure is quoted
-     * rather than asserted. Sweeping the half-width from 3 to 36 semitones,
-     * against a single harmonic C4, a harmonic C2, a C4-E4-G4 triad, and the
-     * frame-level margin of #185 on a 3:43 commercial recording:
+     * <p>Inside that bracket the measurement is decisive, which it was not
+     * always. Swept at the shipped {@link NoteDictionary#PARTIAL_ROLL_OFF} over
+     * the combined fold the pipeline uses — the frame-level margin of #185 on
+     * {@code samples/gmajorblues.mp3} and on a second full mix, and per-bar
+     * accuracy on the first against its known cycle:
      *
      * <pre>
-     *   half-width   C4's share    C2's share    triad's chord    margin on
-     *   (semitones)  of its own    of its own    tones as a       the real
-     *                treble chroma bass chroma   share            recording
-     *        3          0.66          0.78          0.81           +0.225
-     *        6          0.73          0.88          0.84           +0.214
-     *       12          0.85          0.96          0.88           +0.196
-     *       24          0.88          0.97          0.90           +0.201
-     *       36          0.91          0.95          0.92           +0.202
+     *   half-width   blues     second-mix   blues     blues
+     *   (semitones)  margin    margin       root      root+quality
+     *        3        +0.027     +0.153     86.9%       86.0%
+     *        6        +0.038     +0.172     86.6%       86.3%
+     *        9        +0.042     +0.169     76.8%       76.8%
+     *       12        +0.050     +0.167     71.3%       71.3%
+     *       24        +0.066     +0.166     67.2%       66.6%
+     *       36        +0.065     +0.168     65.9%       65.6%
      * </pre>
      *
-     * <p>Wider is cleanly better on every synthetic fixture and slightly worse
-     * on the recording. The mechanism is legible: a note's partials are 12, 7, 5
-     * and 4 semitones apart, so a window wider than that normalises them against
-     * each other and preserves the geometric roll-off {@link NoteDictionary}
-     * models, while a narrow one levels them and leaves a residual that NNLS
-     * spends on a spurious note at the fifth. A narrow window, meanwhile,
-     * follows a real mix's envelope more closely, and a real mix's envelope is
-     * the thing that actually varies.
+     * <p>Six is chosen because it wins: the best margin on the second recording
+     * and the best root-plus-quality accuracy on the first, with only three
+     * close to it and everything from nine upward far behind. The physical
+     * bracket and the measurement agree rather than having to be traded, which
+     * is the comfortable case.
      *
-     * <p>Six is chosen as the point that satisfies the physical bracket with
-     * room to spare while giving up 5% of the best margin measured. It is not
-     * chosen because it won: on one recording, a difference between +0.225 and
-     * +0.214 is not a result. Calibrating this on a tier-2 corpus rather than on
-     * one file is issue #193.
+     * <p>The mechanism for the collapse above six is legible. A note's partials
+     * are 12, 7, 5 and 4 semitones apart, so a window wider than that normalises
+     * them against each other and flattens the geometric roll-off
+     * {@link NoteDictionary} models — and once the observed roll-off no longer
+     * matches the modelled one, NNLS spends the residual on notes that are not
+     * there, which is the failure {@code PARTIAL_ROLL_OFF} exists to prevent.
+     *
+     * <p>Worth recording, because it is the reason this javadoc was rewritten:
+     * the table that stood here previously was measured at a partial roll-off of
+     * 0.70 and read the other way round — wider was better on synthetic
+     * fixtures and slightly worse on a recording, and six was described as
+     * "giving up 5% of the best margin measured". None of that survives the
+     * roll-off change. It was a table in one file made stale by a constant in
+     * another, which is this project's recurring failure and was caught here by
+     * review rather than by anything mechanical.
+     *
+     * <p>Two recordings is still not a corpus (#193).
      */
     private static final int WHITENING_HALF_WIDTH_SEMITONES = 6;
 
