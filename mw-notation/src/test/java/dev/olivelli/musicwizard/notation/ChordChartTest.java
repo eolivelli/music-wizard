@@ -57,6 +57,13 @@ class ChordChartTest {
      * \time} a failure instead of something a {@code contains} walks past --
      * which is how #64, #160 and #174 all survived a suite that read the
      * emitter's output.
+     *
+     * <p>{@code \mark} lines are dropped rather than returned: they are
+     * {@link SectionLayout}'s annotation of where a repeat starts (#218) and
+     * carry no bar-check or duration arithmetic of their own, so a test built
+     * to read {@code \time} and bar-check lines should not have to know they
+     * can be interleaved with a third kind of line that means neither. Marks
+     * get their own assertions in {@code namesRepeatedLinesInTheEngraving}.
      */
     private static List<String> chordModeOf(String source) {
         int open = source.indexOf("\\chordmode {");
@@ -64,6 +71,7 @@ class ChordChartTest {
         return Arrays.stream(source.substring(source.indexOf('\n', open) + 1, close).split("\n"))
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
+                .filter(line -> !line.startsWith("\\mark "))
                 .toList();
     }
 
@@ -175,6 +183,66 @@ class ChordChartTest {
         String first = ChordChart.barLines(fourChordSong(2)).get(0);
 
         assertThat(first).doesNotContain("C G");
+    }
+
+    // -------------------------------------------------------------- #218 --
+
+    @Test
+    @DisplayName("labels a returning four-bar line in the text chart, once")
+    void labelsARepeatedLineInTheText() {
+        String text = ChordChart.toText(fourChordSong(2));
+
+        assertThat(text).contains("Section A");
+        // One announcement, not two: the second line is the same four bars
+        // continuing, and #212 is exactly what re-stating it on every line
+        // would repeat -- for chords instead of sections.
+        assertThat(text.split("Section A", -1)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("prints the section label immediately before the line it opens")
+    void labelPrecedesItsLine() {
+        List<String> lines = ChordChart.toText(fourChordSong(2)).lines().toList();
+        int labelAt = lines.indexOf("Section A");
+
+        assertThat(labelAt).isGreaterThanOrEqualTo(0);
+        assertThat(lines.get(labelAt + 1)).startsWith("| C");
+    }
+
+    @Test
+    @DisplayName("labels nothing when the chart never repeats a line")
+    void noLabelWithoutARepeat() {
+        assertThat(ChordChart.toText(fourChordSong(1))).doesNotContain("Section");
+    }
+
+    @Test
+    @DisplayName("does not let section labels shift barLines' own indexing")
+    void barLinesIsUnaffectedBySections() {
+        // barLines is what earlier tests in this file index and count
+        // one-for-one against ChartLayout's bars; a label line slipped in here
+        // would move every one of those indices for any chart with a repeat.
+        assertThat(ChordChart.barLines(fourChordSong(2))).hasSize(2)
+                .noneMatch(line -> line.contains("Section"));
+    }
+
+    @Test
+    @DisplayName("marks the engraving at the same line a repeat is detected on")
+    void marksTheEngravingWhereTextLabels() {
+        String source = ChordChart.toLilyPond(fourChordSong(2));
+
+        assertThat(source).contains("\\mark \"Section A\"");
+        // Exactly once, matching the text chart's single announcement.
+        assertThat(source.split("\\\\mark", -1)).hasSize(2);
+        // Before the bar it decorates, not after -- LilyPond attaches \mark
+        // to the music that follows it, so a mark written after the first
+        // bar's notes would land on the second bar instead.
+        assertThat(source.indexOf("\\mark \"Section A\"")).isLessThan(source.indexOf("c1"));
+    }
+
+    @Test
+    @DisplayName("marks nothing in the engraving when the chart never repeats")
+    void engravingUnmarkedWithoutARepeat() {
+        assertThat(ChordChart.toLilyPond(fourChordSong(1))).doesNotContain("\\mark");
     }
 
     @Test

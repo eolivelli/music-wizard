@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -73,7 +74,7 @@ public final class ChordChart {
                 .append(key.displayName()).append('\n'));
         out.append('\n');
 
-        for (String line : linesOf(bars)) {
+        for (String line : annotatedLinesOf(bars)) {
             out.append(line).append('\n');
         }
         return out.toString();
@@ -136,6 +137,27 @@ public final class ChordChart {
     }
 
     /**
+     * {@link #linesOf}, with a bare section-label line inserted before any
+     * line {@link SectionLayout} says opens one.
+     *
+     * <p>Kept separate from {@link #linesOf} rather than folded into it,
+     * because {@link #barLines} hands its result straight to tests that count
+     * and index bar lines one-for-one against {@link ChartLayout}'s bars --
+     * inserting label lines there would shift every one of those indices for
+     * a chart with any detected repeat.
+     */
+    private static List<String> annotatedLinesOf(List<ChartLayout.Bar> bars) {
+        List<String> barLines = linesOf(bars);
+        List<Optional<String>> labels = SectionLayout.labelsPerLine(bars, BARS_PER_LINE);
+        List<String> out = new ArrayList<>(barLines.size() + labels.size());
+        for (int i = 0; i < barLines.size(); i++) {
+            labels.get(i).ifPresent(out::add);
+            out.add(barLines.get(i));
+        }
+        return out;
+    }
+
+    /**
      * Renders the chart as LilyPond source.
      *
      * <p>Emitted directly from the model rather than by converting MusicXML,
@@ -161,7 +183,20 @@ public final class ChordChart {
         out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
         out.append("    \\chordmode {\n");
 
-        for (ChartLayout.Bar bar : ChartLayout.of(score)) {
+        List<ChartLayout.Bar> bars = ChartLayout.of(score);
+        List<Optional<String>> sectionLabels = SectionLayout.labelsPerLine(bars, BARS_PER_LINE);
+        for (int i = 0; i < bars.size(); i++) {
+            ChartLayout.Bar bar = bars.get(i);
+            // One \mark per printed line, at the same boundary and under the
+            // same label the text chart uses -- SectionLayout is the one
+            // reader of "where does a repeat start", so the two outputs read
+            // it rather than each deriving their own answer and risking the
+            // #174 failure mode of disagreeing about a boundary.
+            if (i % BARS_PER_LINE == 0) {
+                sectionLabels.get(i / BARS_PER_LINE)
+                        .ifPresent(label -> out.append("      \\mark \"")
+                                .append(escape(label)).append("\"\n"));
+            }
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }
