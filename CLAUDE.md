@@ -26,13 +26,21 @@ produced seven chord spans, five of them `N.C.`, one covering 169 consecutive
 seconds (#185). Measured over every frame, the flat no-chord template scores
 0.859 against the best possible triad's 0.713; on the synthetic fixture the same
 measurement gives +0.356 the other way. **The sign flips between synthetic and
-real**, which is why no constant in `ChordEstimator` can fix it.
+real.**
+
+That was read as meaning no constant in `ChordEstimator` could fix it, and #3
+showed otherwise: replacing the flat no-chord template with a fixed level takes
+the same recording from 0.0% to 58.9% of bars correct on *plain* chroma, before
+any front-end change. The flat template scores highest exactly when a frame
+looks least like music, so it wins on a real mix whatever the chroma. The front
+end is worth another 27.7 points on top and neither half is the fix alone.
 
 So: work that makes real audio work outranks work that polishes what already
-works on synthetic audio. NNLS chroma (#3) is the top item, because it is the
-stage that produces a chroma a template matcher can use on a real mix. A
-notation defect that only shows on material we cannot yet transcribe is real,
-but it is not urgent.
+works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
+every benchmark with known ground truth went from 0% of bars correct to between
+14% and 89%, and from one `N.C.` span per recording to none. What is now top is
+what that exposed: the beat grid drifts (#196), and dominant sevenths are found
+on one recording and called plain triads on two others (#208).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.
@@ -269,8 +277,10 @@ layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
 tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
 Four review rounds on `mw-core`.
 
-Still missing: key detection, NNLS chroma (#3), the whole symbolic/notation
-track (#1), separation and melody (#8), lyrics (#9), piano (#10), advisor (#11).
+Still missing: key detection, the whole symbolic/notation track (#1),
+separation and melody (#8), lyrics (#9), piano (#10), advisor (#11). NNLS chroma
+(#3) has landed; `tools/score-samples.py` is the standing measurement of what it
+is worth.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
 `design-gap` issues before treating it as frozen — especially #4 (no beat unit,

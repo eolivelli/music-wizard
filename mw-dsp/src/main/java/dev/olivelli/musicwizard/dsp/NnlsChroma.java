@@ -329,7 +329,7 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * it gives the partials of everything below it somewhere to go at the top of
      * the grid without contributing a pitch class of its own.
      *
-     * <h2>Call this before {@link #beatSynchronous(List)}, not after</h2>
+     * <h4>Call this before {@link #beatSynchronous(List)}, not after</h4>
      *
      * <p>The two orderings are not the same computation and the difference is
      * easy to miss, because both compile and both return a plausible chroma.

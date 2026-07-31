@@ -243,13 +243,20 @@ final class ChartLayout {
      *
      * <p>This is not cosmetic, and a fixed sixteenth was measured getting it
      * wrong. <b>The measurement supplies the chords rather than transcribing
-     * them, and that has to be said</b>: on {@code samples/gmajorblues.mp3}, an
-     * eleven-minute twelve-bar blues, chord recognition today returns one
-     * {@code N.C.} span covering the whole recording (#3). So the progression
-     * the sample documents was laid on the recording's own detected downbeats,
-     * one chord each. That measures this class's arithmetic against real timing
-     * and a known progression; it is not a figure for what the product
-     * recognises, and it must not be quoted as one.
+     * them, and that has to be said</b>: it laid the progression that
+     * {@code samples/list.txt} documents for {@code samples/gmajorblues.mp3} on
+     * that recording's own detected downbeats, one chord each. That measures
+     * this class's arithmetic against real timing and a known progression; it is
+     * not a figure for what the product recognises, and it must not be quoted as
+     * one.
+     *
+     * <p>The reason originally given for supplying them was that chord
+     * recognition returned one {@code N.C.} span covering the whole recording.
+     * That was true and is not: since #3 the same file yields 740 spans and no
+     * {@code N.C.} at all. The caveat above stands anyway and stands for a
+     * better reason — a layout measurement wants a progression known to be
+     * right, not one that is 50% right — so the method here did not change when
+     * its original justification stopped applying.
      *
      * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
      * which moves a chord by at most an eighth of a quarter beat -- puts the
@@ -261,9 +268,22 @@ final class ChartLayout {
      * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
      * and 8 of review each found a different wrong story about whose it is, so
      * this states the one measurement that bears on the ceiling and stops. The
-     * fourth downbeat is detected 0.18s early and the fifth is back within
+     * fourth downbeat was detected 0.18s early and the fifth was back within
      * 0.012s -- one bad downbeat, and a grid narrower than it is wide trips over
-     * it. Past there the chart's bar length is wrong (#200) and the recording's
+     * it.
+     *
+     * <p>Past tense, and the figure needs re-taking before it is leaned on
+     * again. #3 changed what {@link dev.olivelli.musicwizard.core.model.BeatGrid}
+     * this recording produces: the beat times are byte-identical, but the
+     * downbeat phase moved by one beat, and over the same window the worst
+     * deviation from a uniform bar fell from 0.152s to 0.017s. So the bad
+     * downbeat this argument rests on is no longer there to trip over, and a
+     * maintainer re-running the measurement today would wrongly conclude the
+     * grid choice was unjustified. The choice is still the right one -- it is
+     * about what a grid must survive, not about what this recording happens to
+     * contain -- but it now wants a recording that still exhibits the defect.
+     *
+     * <p>Past there the chart's bar length is wrong (#200) and the recording's
      * beat does not keep to any single bar length (#187); the two run against
      * each other rather than adding, and the measurements are on those issues
      * where they can be corrected without touching this file.
