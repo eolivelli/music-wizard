@@ -463,11 +463,17 @@ class NnlsChromaTest {
         @Test
         @DisplayName("refuses registers at different frame rates")
         void refusesRegistersAtDifferentFrameRates() {
-            // What makes combined()'s guard sound rather than lucky. It asks the
-            // treble whether the pair is beat-synchronous, and "beat-synchronous"
-            // is exactly "frameRate == 0" -- so without this a pair could
-            // disagree, and combined() would fold a beat-synchronous bass into a
-            // frame-rate treble without complaint.
+            // What makes combined()'s guard answer the question it asks. It asks
+            // the treble whether the pair is beat-synchronous, and
+            // "beat-synchronous" is exactly "frameRate == 0" -- so without this a
+            // pair could disagree, and combined() would fold a beat-synchronous
+            // bass into a frame-rate treble without complaint.
+            //
+            // Not the same as the guard being complete. A chroma with no frames
+            // is returned from beatSynchronous with its frame rate intact, so it
+            // reads as not-beat-synchronous and combined() lets it through in
+            // either order. That is harmless -- both orders give no frames -- but
+            // it is a case the guard does not cover rather than one it decides.
             Chroma framed = new Chroma(new double[2][12], 10);
             Chroma folded = new Chroma(new double[2][12], 0);
 

@@ -71,7 +71,8 @@ public final class NoteDictionary {
      *
      * <p>Enumerating every note from A0 to C4 against a C4-E4-G4 triad at 0.7
      * confirms which one it is. In order: C3 0.850, C4 0.714 (the real note),
-     * C2 0.536, E3 and G3 0.500, F2 and A2 0.350, E2 0.245. The winner is the
+     * C2 0.536, E3 and G3 0.500, F2 and A2 0.350, E2 and G2 0.245, then G#1,
+     * D#2, F1, A1 and C1 below 0.18. The winner is the
      * octave below, not something further down — a lower note has more partials
      * landing on the triad but each is worth less, and the product peaks
      * immediately.

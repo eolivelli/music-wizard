@@ -265,7 +265,12 @@ public final class DownbeatEstimator {
      * @param beatTimes   the tracked beats, in seconds and ascending
      * @param chroma      beat-synchronous chroma over exactly those beats, so that
      *                    {@code chroma.frameCount() == beatTimes.size() - 1};
-     *                    required at every bar length but one
+     *                    required at every bar length but one, and not required
+     *                    of a chroma with no frames at all — that means "no
+     *                    harmony was heard", which a recording shorter than one
+     *                    analysis window genuinely produces, and it takes the
+     *                    same onset fallback as too few beats rather than being
+     *                    rejected
      * @param envelope    the onset envelope the beats were tracked from
      * @param beatsPerBar the assumed bar length; not inferred
      */

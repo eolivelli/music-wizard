@@ -104,7 +104,21 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      */
     private static final double WINDOW_SECONDS = 0.37;
 
-    /** Hop as a fraction of the window: eight gives about 46 ms at any rate. */
+    /**
+     * Hop as a fraction of the window.
+     *
+     * <p>An eighth, so the hop inherits {@link #windowSizeFor}'s rounding to a
+     * power of two and is therefore <em>not</em> a constant number of
+     * milliseconds: 46 ms at 11.025, 22.05 and 44.1 kHz, 64 ms at 8, 16 and 32
+     * kHz, and 85 ms at 24, 48 and 96 kHz. An earlier revision of this comment
+     * said "about 46 ms at any rate", which is true at three rates of nine and
+     * was the same oversight as the band in {@link Chroma#beatSynchronous}: one
+     * reader of {@code windowSizeFor} corrected and the other, in this file, not.
+     *
+     * <p>The pipeline only ever analyses at 22.05 kHz, so 46 ms is what it
+     * actually runs at; the spread matters to a caller using
+     * {@link #extract(AudioBuffer)} on audio at its own rate.
+     */
     private static final int HOPS_PER_WINDOW = 8;
 
     /** Bins per semitone on the analysis grid. */

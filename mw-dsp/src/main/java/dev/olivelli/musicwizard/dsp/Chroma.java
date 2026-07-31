@@ -230,11 +230,26 @@ public record Chroma(double[][] vectors, double frameRate) {
      * {@link Math#clamp} rejects outright. With the old 4096-sample window that
      * combination was unreachable, because anything long enough to hold two
      * pulses was long enough to hold a frame; at {@link NnlsChroma}'s 8192 it is
-     * reachable for any clip between about 0.305 and 0.371 seconds <em>at the
-     * 22.05 kHz analysis rate</em>. The upper end is the window length and
-     * {@link NnlsChroma#windowSizeFor} rounds it to a power of two, so at 24 or
-     * 48 kHz the window is 0.683 s and the band is nearly twice as wide. The CLI
-     * only ever decodes at the analysis rate; the public extract does not.
+     * reachable for any clip between about 0.302 and 0.371 seconds <em>at the
+     * 22.05 kHz analysis rate</em>.
+     *
+     * <p>The width is rate-dependent and not by the factor it looks like. Only
+     * the upper edge follows the window; the lower edge is the beat tracker's
+     * minimum for two pulses and barely moves. Measured by sweeping length at
+     * one millisecond:
+     *
+     * <pre>
+     *   rate      window            band                 width
+     *   22.05 kHz  8192 (0.372 s)   0.302 – 0.371 s      0.070 s
+     *   44.1  kHz 16384 (0.372 s)   0.276 – 0.371 s      0.096 s
+     *   24    kHz 16384 (0.683 s)   0.294 – 0.682 s      0.389 s
+     *   48    kHz 32768 (0.683 s)   0.272 – 0.682 s      0.411 s
+     * </pre>
+     *
+     * <p>So nearly six times as wide at 48 kHz, not twice, and 44.1 kHz is not
+     * unaffected either. {@link NnlsChroma#windowSizeFor} rounds to a power of
+     * two, which is why the rates pair up the way they do. The CLI only ever
+     * decodes at the analysis rate; the public extract does not.
      *
      * <p>The guard is here rather than at the call site because
      * {@link NnlsChroma#beatSynchronous} reaches this same line by a different

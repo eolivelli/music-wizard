@@ -1438,6 +1438,51 @@ class DownbeatEstimationTest {
         }
 
         @Test
+        @DisplayName("falls back rather than rejecting a chroma with no frames at all")
+        void emptyChromaFallsBackToOnsets() {
+            // The regression gate for a crash that reached the CLI twice: once
+            // as Math.clamp with crossed bounds inside Chroma.beatSynchronous,
+            // and again -- after that was guarded -- as this class rejecting the
+            // empty chroma the guard now hands it.
+            //
+            // Beats without chroma is a state the pipeline can genuinely reach.
+            // Since #3 the analysis window is 8192 samples, so a recording
+            // shorter than about 0.37 s yields no frames while BeatTracker still
+            // finds pulses in it. Three beats, because the too-few-beats
+            // fallback above already catches two and it takes three to reach
+            // this branch -- which is exactly what the first test written for
+            // this bug got wrong, having been written from a stack trace whose
+            // clip happened to yield two.
+            //
+            // Here rather than only in EndToEndIT because that test is an *IT
+            // and runs under -Pintegration alone. A guard against a
+            // CLI-reachable crash whose only cover is a job someone has to
+            // remember to run is one refactor away from coming back, and on this
+            // branch it has already come back once.
+            List<Double> beats = List.of(0.0, 0.5, 1.0, 1.5);
+            OnsetEnvelope envelope = new OnsetEnvelope(new double[300], 100);
+
+            DownbeatEstimator.Estimate estimate = DownbeatEstimator.estimate(
+                    beats, new Chroma(new double[0][], 100), envelope, 4);
+
+            assertThat(estimate.beatsPerBar()).isEqualTo(4);
+            assertThat(estimate.phase()).isBetween(0, 3);
+            // The onset-only floor, unscaled: no harmony was seen, so none is
+            // claimed. Identical to what fromOnsets gives for the same input,
+            // which is the point -- the fallback is the existing answer for "no
+            // harmonic evidence", not a new one invented for this case.
+            assertThat(estimate.confidence().value())
+                    .isEqualTo(DownbeatEstimator.fromOnsets(beats, envelope, 4)
+                            .confidence().value());
+
+            // And a beat-synchronous empty chroma, which is the other shape the
+            // fold can produce, takes the same branch rather than the validator.
+            assertThat(DownbeatEstimator.estimate(
+                    beats, new Chroma(new double[0][], 0), envelope, 4).beatsPerBar())
+                    .isEqualTo(4);
+        }
+
+        @Test
         @DisplayName("refuses to phase bars with no beats or no meter")
         void rejectsEmptyInput() {
             OnsetEnvelope envelope = new OnsetEnvelope(new double[300], 100);

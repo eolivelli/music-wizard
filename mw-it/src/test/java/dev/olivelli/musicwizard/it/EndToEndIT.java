@@ -152,11 +152,15 @@ class EndToEndIT {
         // Swept over click rates as well as lengths, and that is the point
         // rather than thoroughness for its own sake. The first version of this
         // test used one click rate, 40 ms, and passed while the pipeline still
-        // threw for 129 other combinations in the same band -- because 40 ms is
-        // the one rate here that yields exactly two beats, and it takes three
-        // for the downbeat stage to be asked anything at all. A fix aimed at the
-        // stack trace on screen reached one consumer of "beats but no chroma"
-        // and not the other.
+        // threw for 129 other combinations in the same band.
+        //
+        // The reason is the opposite of unlucky, which is what makes it worth
+        // writing down. Reaching the downbeat stage at all needs three tracked
+        // beats -- two is caught by an earlier fallback -- and at 0.34 s only
+        // five click periods out of eighty-six between 30 and 200 ms yield
+        // three. 40 ms was not a bad draw; almost any single rate would have
+        // been. A test written from one stack trace inherits that stack trace's
+        // blind spot, and the sweep is what removes it.
         int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
         for (double seconds : new double[] {0.30, 0.32, 0.34, 0.36, 0.37}) {
             for (double clickSeconds : new double[] {0.032, 0.040, 0.062, 0.100}) {
