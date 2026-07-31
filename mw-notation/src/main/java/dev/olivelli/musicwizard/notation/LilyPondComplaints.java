@@ -165,7 +165,7 @@ import java.util.regex.Pattern;
  * region is opened by every diagnostic rather than only by ones outside an
  * existing region: a two-line region overshoots a one-line echo onto whatever
  * follows it.
- *  * A genuine column-1 echo is the other, by the floor described below. Not
+ * A genuine column-1 echo is the other, by the floor described below. Not
  * reachable from the <em>music</em> this project emits, and the reason changed
  * with #160 without the conclusion changing: {@link ChordChart} now writes a
  * {@code |} per bar where it used to write none, but puts it at the <em>end</em>

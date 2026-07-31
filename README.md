@@ -67,8 +67,12 @@ different pages.
 
 Bar *spacing* still comes from the tempo, not from the rest of the grid: only
 the first bar line is read off a downbeat, and the ones after it are laid out at
-the tempo the chart prints ([#187][i187]). On a recording that drifts, the later
-bar lines drift with it.
+the tempo the chart prints ([#187][i187]). **This is the chart's largest
+remaining error on real audio, and it is not subtle.** Measured on an eleven
+minute twelve-bar blues whose detected downbeats wander by up to 0.18 s against a
+2.25 s bar, the chart prints the first twenty-six bars correctly and then starts
+putting changes in the wrong bar. A steadier recording lasts longer; none lasts
+indefinitely.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84

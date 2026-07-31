@@ -994,14 +994,54 @@ class ChordChartTest {
     }
 
     @Test
-    @DisplayName("gives two chords landing on one grid point a cell each")
-    void twoChordsOnOneGridPointBothSurvive() {
-        // Snapping to a printable grid can put two chord changes on the same
-        // position, and the choice there is between nudging the second along and
-        // printing a zero-length chord no duration can name. Dropping it is not
-        // one of the choices: this is exactly the shape of the defect being
-        // fixed, and a chord chart that silently loses a chord is worse than one
-        // that prints a sixteenth where a thirty-second was heard.
+    @DisplayName("draws a chart on the beat when the chords only ever change on one")
+    void aChartChangingOnceABarIsDrawnOnTheBeat() {
+        // Which grid the seconds route snaps to is a claim about how precisely
+        // an estimate is worth believing, and a fixed sixteenth claimed too
+        // much. Measured on samples/gmajorblues.mp3, whose detected downbeats
+        // wander by up to 0.18s against a 2.25s bar: a sixteenth tolerates
+        // 0.06s, so the fourth bar's chord printed in the third bar. A beat
+        // tolerates 0.28s.
+        //
+        // This fixture is that shape in miniature: four chords a bar apart at
+        // 120 BPM, the third detected 0.16s early -- 0.32 of a beat, which a
+        // sixteenth grid rounds to 0.25 of a beat before its bar line and a
+        // beat grid puts on the bar line where it belongs.
+        double[] starts = {0.0, 2.0, 3.84, 6.0};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < starts.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR, starts[i],
+                    i + 1 < starts.length ? starts[i + 1] : 8.0, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | G           | A           | F           |");
+        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "c1 |", "g1 |", "a1 |", "f1 |");
+    }
+
+    @Test
+    @DisplayName("draws a chart on eighths when the chords change on eighths")
+    void aChartChangingOnEighthsIsDrawnOnEighths() {
+        // The other half of the same rule, and the reason it cannot simply be
+        // "snap to the beat": here the off-beat positions are the evidence, not
+        // noise, and rounding them to the beat would collapse the eight chords
+        // #174 exists to keep onto four positions.
+        Score score = eightChordsAtAForcedTempo();
+
+        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "c8 g8 a8 f8 c8 g8 a8 f8 |");
+    }
+
+    @Test
+    @DisplayName("resolves two chords a hair apart rather than putting them in one place")
+    void twoChordsAHairApartGetACellEach() {
+        // C, then G 20ms later, then Am. On the beat those are one position, so
+        // the grid drops until they are three -- here to the shortest value a
+        // duration can name, which resolves 31ms at 120 BPM.
         List<Chord> chords = List.of(
                 Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 0, 0.98,
                         Confidence.of(0.9)),
@@ -1012,11 +1052,35 @@ class ChordChartTest {
         Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 2.0)
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
-        // G and Am both snap to 2.0 quarter beats; G keeps that and Am is nudged
-        // to the next sixteenth.
         assertThat(ChordChart.barLines(score)).containsExactly("| C G Am      |");
         assertThat(chordModeOf(ChordChart.toLilyPond(score)))
-                .containsExactly("\\time #'(1 1 1 1) 4/4", "c2 g16 a1*7/16:m |");
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "c1*31/64 g64 a2:m |");
+    }
+
+    @Test
+    @DisplayName("gives two chords closer than any duration a cell each anyway")
+    void twoChordsCloserThanTheShortestValueBothSurvive() {
+        // Below the shortest value a duration can name there is no grid left to
+        // drop to, and the choice is between nudging the second along and
+        // printing a zero-length chord no duration can name. Dropping it is not
+        // one of the choices: that is the defect #174 is, and a chart that
+        // silently loses a chord is worse than one that prints a 64th where a
+        // 128th was heard.
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 0, 1.99,
+                        Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR, 1.99, 2.0,
+                        Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.A), ChordQuality.MINOR, 2.0, 4.0,
+                        Confidence.of(0.9)));
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 4.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        // G and Am both land on quarter beat 4 even at a 64th; Am is nudged to
+        // the next one. All three are printed, which is the whole property.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | G Am        |");
+        assertBarsFillTheirMeter(ChordChart.toLilyPond(score));
     }
 
     @ParameterizedTest(name = "a quarter note lasting {0} seconds")
