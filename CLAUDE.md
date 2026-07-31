@@ -263,3 +263,11 @@ track (#1), separation and melody (#8), lyrics (#9), piano (#10), advisor (#11).
 `mw-core` passed round 4 once its three blockers landed, but see the open
 `design-gap` issues before treating it as frozen — especially #4 (no beat unit,
 so compound meters mis-bar) and #5 (notation-facing gaps).
+
+
+## Sample files
+
+The directory "./samples" contains a selection of real mp3 files that are 
+expected to work.
+The file samples/list.txt contains a description of the contents of each file.
+This is the ultimate reference test set to evaluate the quality of the results
