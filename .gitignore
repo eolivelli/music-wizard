@@ -33,3 +33,8 @@ samples/blues-a-90bpm.mp3
 samples/blues-shuffle-a-106bpm.mp3
 samples/blues-e-90bpm.mp3
 samples/bossa-cm.mp3
+
+# Commercial recordings for local evaluation only — never committed.
+# Only the descriptive list.txt is tracked.
+uncommitted/*
+!uncommitted/list.txt
