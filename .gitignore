@@ -26,3 +26,7 @@ models/
 # Logs
 *.log
 logs/
+
+# Local-only test audio: standard YouTube license, not redistributable.
+# Committed samples must be our own or permissively licensed.
+samples/blues-a-90bpm.mp3

@@ -8,3 +8,14 @@ The sequence is:
 G7 G7 G7 G7
 C7 C7 G7 G7
 D7 C7 G7 D7
+
+blues-a-90bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
+
+A blues backing track in A at 90 BPM, 5:04. Not redistributable, so the
+file itself is gitignored; fetch it yourself for local testing:
+  yt-dlp -x --audio-format mp3 -o samples/blues-a-90bpm.mp3 \
+    https://www.youtube.com/watch?v=Z3euxRLOQec
+12 bars repeated, slow change, E7 turnaround:
+A7 A7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
