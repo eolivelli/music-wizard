@@ -108,6 +108,24 @@ class SectionLayoutTest {
     }
 
     @Test
+    @DisplayName("re-announces a section after a one-off line that never repeats")
+    void reannouncesAfterAnUnrelatedInterruption() {
+        // A section returning after a bridge that itself never recurs is
+        // exactly what a reader most wants flagged -- and it is the case
+        // that would silently break if a stale "previous label" survived the
+        // interruption: the C in the middle carries no label of its own, so
+        // without resetting what counts as "previous", the second A would
+        // wrongly read as a continuation of the first rather than a return.
+        List<ChartLayout.Bar> bars = List.of(
+                bar(NoteLetter.C), bar(NoteLetter.G), bar(NoteLetter.C));
+
+        List<Optional<String>> labels = SectionLayout.labelsPerLine(bars, 1);
+
+        assertThat(labels).containsExactly(
+                Optional.of("Section A"), Optional.empty(), Optional.of("Section A"));
+    }
+
+    @Test
     @DisplayName("tells two bars with the same root but a different quality apart")
     void qualityIsPartOfTheSignature() {
         List<ChartLayout.Bar> bars = List.of(
