@@ -240,12 +240,13 @@ public record Score(
      *       #200: every reader of this figure places something at a whole number
      *       of beats from a starting point, so what they need is a rate per beat
      *       index, and the median of the intervals is not one. On the project's
-     *       one real recording the beat tracker reports the same median in every
-     *       window while its pulses run 1.4% faster than that, which walked the
-     *       chart's bar lines off the downbeats they were spaced from. The
-     *       robustness the median had is given up knowingly and costs one part
-     *       in {@code size() - 1} per dropped pulse; {@code overallPulseRate}
-     *       measures both sides of that trade.
+     *       one real recording the beat tracker reports the same median in ten
+     *       of twelve hundred-pulse windows while its pulses run 1.4% faster
+     *       than that, which walked the chart's bar lines off the downbeats they
+     *       were spaced from. The robustness the median had is given up
+     *       knowingly, and it is given up for a partly mistracked recording as
+     *       well as for a dropped pulse; {@link BeatGrid#overallPulseRate()}
+     *       states what each costs, and #205 what would cost neither.
      *       <p>Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
      *       tracked beat a whole beat of lead-in, and on a short clip that one

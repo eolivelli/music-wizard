@@ -259,19 +259,28 @@ final class ChartLayout {
      * as far, and that is the whole of what this method is answering for.
      *
      * <p>Both figures were re-measured for #200 and one of them moved a long
-     * way, which is worth saying because it says what each is about. The
-     * sixteenth still fails at the fourth chord: the fourth downbeat is detected
-     * 0.18s early and the fifth is back within 0.012s, so a grid narrower than
-     * one bad downbeat is wide trips over it however well the bars are spaced.
-     * The counted beat used to fail at the twenty-sixth, and does not any more,
-     * because what ended the run there was not this grid at all -- it was the
-     * chart spacing its bars at the beat tracker's median interval rather than
-     * at the rate the grid ran at, 1.4% long and compounding (#200). This method
+     * way, which is worth saying because it says what each is about.
+     *
+     * <p>The sixteenth still fails at the fourth chord, and it fails on
+     * something this method cannot help: <b>one downbeat detected early</b>. The
+     * third and fourth inter-downbeat gaps of that recording are 2.0666s and
+     * 2.4439s where their neighbours are about 2.25s, so the fourth downbeat
+     * arrives early and the fifth is back where it belongs -- the pair still sums
+     * to two bars. That leaves the fourth chord at 11.85 quarter beats where its
+     * bar line is at 12. A sixteenth rounds it to 11.75, the wrong side of the
+     * line; a whole counted beat rounds it to 12. The figures are stated at the
+     * spacing this class now uses; at the median the same chord sat at 11.68 and
+     * the same two grids answered the same way, which is the point -- the cause
+     * is in the downbeats, not in the spacing.
+     *
+     * <p>The counted beat used to fail at the twenty-sixth chord and does not any
+     * more, because what ended the run there was never this grid: it was the
+     * chart spacing its bars at the beat tracker's median interval rather than at
+     * the rate the grid ran at, 1.4% long and compounding (#200). This method
      * chooses how far a chord may be moved; that chose where the bar was. What
-     * still ends the run at the hundred-and-fourteenth is neither: the
-     * recording's tracked beat keeps to no single bar length (#187), and no
-     * constant spacing can follow it. {@code GmajorBluesChartTest} measures all
-     * three.
+     * ends the run at the hundred-and-fourteenth is neither: the recording's
+     * tracked beat keeps to no single bar length (#187), and no constant spacing
+     * follows it. {@code GmajorBluesChartTest} measures all three.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it

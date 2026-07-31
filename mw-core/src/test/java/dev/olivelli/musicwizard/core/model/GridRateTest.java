@@ -165,12 +165,14 @@ class GridRateTest {
         @Test
         @DisplayName("pays for a dropped pulse in proportion to how short the grid is")
         void aDroppedPulseCostsOnePartInTheGridsLength() {
-            // The concession, executable rather than asserted in prose. The
+            // The first concession, executable rather than asserted in prose. The
             // median is unmoved by a dropped pulse and this is not, because it
             // is exactly the mean interval -- and the mean of n-1 intervals loses
             // one of them. What that costs is one part in n-1, so the objection
-            // is real on a clip and negligible on a recording.
-            for (int pulses : new int[] {20, 200, 2000}) {
+            // is real on a clip and negligible on a recording. Six pulses is
+            // about three seconds, and reachable: estimatedTempo reads the grid
+            // from two pulses up.
+            for (int pulses : new int[] {6, 12, 20, 200, 2000}) {
                 List<Double> even = new ArrayList<>();
                 for (int i = 0; i < pulses; i++) {
                     even.add(i * 0.5);
@@ -186,6 +188,42 @@ class GridRateTest {
                         .as("%d pulses, rate", pulses)
                         .isCloseTo(120.0 * (pulses - 2) / (pulses - 1.0), within(1e-9));
             }
+        }
+
+        @Test
+        @DisplayName("pays for a partly mistracked recording however long the grid is")
+        void anOctaveErrorOverPartOfAGridIsNotBoundedByItsLength() {
+            // The second concession, and the one that does not shrink -- so it is
+            // asserted rather than left to the sentence above, which bounds only
+            // the first. A stretch tracked an octave out moves this by the
+            // fraction it covers, and moves the median not at all. Round 1 of
+            // review found the javadoc claiming the whole trade fell away with
+            // length, on the strength of the dropped-pulse case alone.
+            //
+            // Not hypothetical: BeatTracker re-estimates the tempo per window and
+            // its own javadoc says the autocorrelation peak "is prone to landing
+            // an octave out". It is bounded by nothing measured here, because
+            // gmajorblues.mp3 contains no such run -- its longest interval is
+            // 1.40x its median, nowhere near 2x. #205.
+            List<Double> partlyDoubled = new ArrayList<>();
+            double at = 0;
+            for (int i = 0; i < 80; i++) {
+                partlyDoubled.add(at);
+                at += 0.5;
+            }
+            for (int i = 0; i < 40; i++) {
+                partlyDoubled.add(at);
+                at += 0.25;
+            }
+            partlyDoubled.add(at);
+            BeatGrid grid = gridOf(partlyDoubled);
+
+            assertThat(grid.medianPulseRate())
+                    .as("right for the four fifths of the duration that is tracked right")
+                    .isCloseTo(120.0, within(1e-9));
+            assertThat(grid.overallPulseRate())
+                    .as("right nowhere: 120 for 40s then 240 for 10s averages to 144")
+                    .isCloseTo(144.0, within(1e-9));
         }
     }
 

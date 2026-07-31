@@ -17,15 +17,15 @@
     downloads, LilyPond invocation, the MIDI to audio to Score ground-truth loop
     -- which are named *IT and only run under -Pintegration.
 
-    Three are neither slow nor externally dependent and are named *Test, so
-    surefire runs them in the default build. MidiRoundTripTest exports a Score
-    through mw-notation and reads it back through mw-transcribe, and
-    StaffNotationOverloadTest reads what the emitter writes for a played
-    passage; both need audio, model and binary alike not at all, and both are
-    here because neither module may depend on the other -- mw-transcribe pulls
-    in mw-ml, which the notation layer is not allowed to see -- and this is the
-    module that already depends on both. LilyPondComplaintsTest reads LilyPond's
-    diagnostics without running it, and explains there why it belongs here.
+    Four are named *Test, so surefire runs them in the default build.
+    MidiRoundTripTest exports a Score through mw-notation and reads it back
+    through mw-transcribe, and StaffNotationOverloadTest reads what the emitter
+    writes for a played passage; both need audio, model and binary alike not at
+    all, and both are here because neither module may depend on the other --
+    mw-transcribe pulls in mw-ml, which the notation layer is not allowed to see
+    -- and this is the module that already depends on both. LilyPondComplaintsTest
+    reads LilyPond's diagnostics without running it, and explains there why it
+    belongs here.
 
     The rule, from #148 and #155: a test that needs no LilyPond is named *Test,
     whatever else is in the file it was written in. What that buys is which job
@@ -35,7 +35,19 @@
     running: failIfNoTests is not configured here, so a *Test that disappears is
     as silent as an *IT that does.
 
-    `mvn verify` stays fast, offline and binary-free either way.
+    The fourth, GmajorBluesChartTest, is the one that needed this paragraph
+    rewritten rather than the one that fitted it (#200). It decodes an 11 MB mp3
+    the repository carries and tracks its beats: no LilyPond, no model and no
+    network, but neither fast nor binary-free. It costs about five seconds and
+    needs a 512 MB heap where everything else here runs in 256 MB. It is here
+    anyway, and named so that every job runs it, because it is the project's
+    only tier-2 gate -- CLAUDE.md ranks real recordings above synthetic
+    fixtures, and #200 is a defect that eleven minutes of real timing showed
+    immediately and every synthetic fixture in the repository was blind to.
+
+    So the rule as amended: a test that needs no LilyPond, no model download and
+    no network is named *Test. `mvn verify` stays offline. It is no longer
+    binary-free, and the price of that is stated above rather than discovered.
   </description>
 
   <properties>

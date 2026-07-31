@@ -322,7 +322,8 @@ class GmajorBluesChartTest {
     private static int firstDocumentedSymbolMissing(TempoMap map) {
         List<List<String>> bars = barsOf(
                 ChordChart.toLilyPond(chartOf(documentedProgression(), map)));
-        for (int k = 0; k < grid.downbeatTimes().size(); k++) {
+        int chords = grid.downbeatTimes().size();
+        for (int k = 0; k < chords; k++) {
             String expected = TWELVE_BARS[k % 12].name().toLowerCase(Locale.ROOT);
             if (k >= bars.size() || !bars.get(k).contains(expected)) {
                 return k;

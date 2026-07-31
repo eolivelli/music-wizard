@@ -140,7 +140,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p><b>The typical length of one interval, which is not the rate the grid
      * ran at.</b> The two coincide only on an even grid, and the difference is
      * the whole of #200: use {@link #overallPulseRate()} to place anything
-     * counted in pulses, and this to describe what one pulse typically lasts.
+     * counted in pulses, and this only to describe what one pulse typically
+     * lasts. <b>Nothing outside tests reads this today</b>, and the reason to
+     * check before making something the first is that it used to be read by
+     * {@link Score#estimatedTempo()}, where being 1.4% out put the twenty-sixth
+     * chord of a real recording in the wrong bar.
      *
      * <p>Deliberately not called a tempo. A grid holds pulses, and a pulse is a
      * quarter note only in simple time, so this is 1.5x under the quarter-note
@@ -187,27 +191,37 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * interval typically is -- and the two are equal only on an even grid.
      *
      * <p>The difference is not academic. On {@code samples/gmajorblues.mp3} the
-     * beat tracker emits 1281 pulses over 711s whose median interval is
-     * 0.563084s in <em>every</em> hundred-pulse window, because the tracker
-     * scores its pulses against one periodic template and the median reports
-     * that template. The pulses themselves keep up with the recording by
-     * shortening and lengthening around it, and end to end they run at 0.555211s
-     * -- 1.4% faster than the template says. Spacing bar lines at the median
-     * therefore walks away from the beats it is spacing: over that grid's 320
-     * downbeats it reaches 10.0s of drift against 2.2s, an rms of 5.4s against
-     * 0.93s (#200).
+     * beat tracker emits 1281 pulses over 711s, and the median interval of ten
+     * of its twelve hundred-pulse windows is the same 0.563084s -- the other two
+     * give 0.568889s -- because the tracker scores its pulses against one
+     * periodic template and the median mostly reports that template back. The
+     * pulses themselves keep up with the recording by shortening and lengthening
+     * around it, and end to end they run at 0.555211s: 1.4% faster than the
+     * template says. Spacing bar lines at the median therefore walks away from
+     * the beats it is spacing -- over that grid's 320 downbeats it reaches 10.0s
+     * of drift against 2.2s, an rms of 5.4s against 0.93s (#200).
      *
-     * <p><b>What is given up.</b> {@link #medianPulseRate()} is unmoved by a
-     * dropped or spurious pulse and this is not, because it is exactly the mean
-     * interval -- the differences telescope. The cost falls as the grid grows,
-     * because a dropped pulse leaves the span alone and takes one interval off
-     * the count, which is one part in {@code size() - 1}: measured, 5.3% on a
-     * 20-pulse grid, 0.50% on a 200-pulse one, and 0.08% on the 1281-pulse grid
-     * above, against the 1.4% bias it removes there. So this is the right answer
-     * for a grid long enough to place anything by, and the trade is genuinely
-     * open on a very short one. #205 records the statistic that would need
-     * neither concession, and why one recording is not enough evidence to
-     * choose it.
+     * <p><b>What is given up, on a short grid.</b> {@link #medianPulseRate()} is
+     * unmoved by a dropped or spurious pulse and this is not, because it is
+     * exactly the mean interval -- the differences telescope. A dropped pulse
+     * leaves the span alone and takes one interval off the count, so it costs one
+     * part in {@code size() - 1} and the cost falls as the grid grows: measured,
+     * 20% on a 6-pulse clip, 9.1% on 12, 5.3% on 20, 0.50% on 200, and 0.08% on
+     * the 1281-pulse grid above -- against the 1.4% bias it removes there. So
+     * this is the right answer for a grid long enough to place anything by, and
+     * the trade is genuinely open on a clip of a few seconds.
+     *
+     * <p><b>What is given up whatever the length.</b> A grid that is tracked an
+     * octave out for <em>part</em> of a recording, which
+     * {@code BeatTracker.tempoOf}'s own javadoc says the autocorrelation peak is
+     * prone to, moves this by the affected fraction and does not move the median
+     * at all: 80 intervals of 0.5s followed by 40 of 0.25s give a median of 120
+     * BPM, right for four fifths of the duration, and a rate of 144, right
+     * nowhere. That cost does not shrink with length, and it is not bounded by
+     * anything measured here -- {@code gmajorblues.mp3} contains no such run, its
+     * longest interval being 1.40x its median. #205 records the statistic that
+     * would concede neither this nor the dropped pulse, and why one recording is
+     * not enough evidence to choose it.
      *
      * @throws IllegalStateException if the grid holds fewer than two pulses,
      *                               which carry no interval to measure

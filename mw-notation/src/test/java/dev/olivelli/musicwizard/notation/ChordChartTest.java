@@ -352,27 +352,36 @@ class ChordChartTest {
     @Test
     @DisplayName("spaces its bars at the rate the grid ran at, not at its typical interval")
     void barsAreSpacedAtTheGridsRateNotItsMedianInterval() {
-        // #200. Every other fixture in this class has an even grid, on which the
-        // two figures are the same number, so none of them can say which the
-        // chart reads. This grid has the shape a tracked one has: most intervals
-        // on one periodic template, a minority shorter because the recording ran
-        // ahead of it. 28 of 0.5s and 12 of 0.4s, so the median is 0.5s and the
-        // 40 pulses span 18.8s -- a rate of 0.47s, 6% apart.
+        // #200. Every other fixture in this class rides on an even grid, on
+        // which the median interval and the rate the grid ran at are the same
+        // number, so none of them can say which one the chart reads.
         //
-        // GmajorBluesChartTest measures the same thing on eleven minutes of real
-        // timing, where the two are 1.4% apart and the chart holds to bar 114
-        // instead of bar 26. This is the fast half of it: no audio, no decode,
-        // and it fails for the same reason.
+        // This grid has the shape a tracked one has: most intervals on one
+        // periodic template, a minority shorter because the recording ran ahead
+        // of it. 112 of 0.5s and 8 of 0.4s, spread one in fifteen, so the median
+        // is the template's 0.5s while the 120 pulses span 59.2s -- a rate of
+        // 0.493s, 1.35% faster. Deliberately close to the 1.4% measured on
+        // samples/gmajorblues.mp3, and deliberately spread rather than bunched:
+        // a bunched minority puts the second chord in the wrong bar through a
+        // phase error in one bar, which is not the defect. The defect is
+        // accumulation, so the fixture has to be right at the start and wrong
+        // later, as the recording is.
+        //
+        // GmajorBluesChartTest measures this on eleven minutes of real timing,
+        // where the chart holds to bar 114 instead of bar 26. This is the fast
+        // half of it: no audio, no decode, and it fails for the same reason.
         List<Double> pulses = new ArrayList<>();
         double at = 0;
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 120; i++) {
             pulses.add(at);
-            at += i % 10 < 3 ? 0.4 : 0.5;
+            at += i % 15 == 7 ? 0.4 : 0.5;
         }
         pulses.add(at);
         BeatGrid grid = BeatGrid.ofTimes(pulses, TimeSignature.FOUR_FOUR, Confidence.of(0.9));
         List<Double> downbeats = grid.downbeatTimes();
-        assertThat(downbeats).hasSize(11);
+        assertThat(downbeats).hasSize(31);
+        assertThat(grid.medianPulseRate()).isCloseTo(120.0, within(1e-9));
+        assertThat(grid.overallPulseRate()).isCloseTo(121.6216, within(0.0001));
 
         // One chord per downbeat, cycling four roots so that every chord differs
         // from its neighbour and each therefore names itself.
@@ -391,24 +400,16 @@ class ChordChartTest {
                 .withBeatGrid(grid)
                 .withChords(progression);
         assertThat(tracked.estimatedTempo())
-                .as("the fixture discriminates only while these differ")
-                .isNotCloseTo(grid.medianTempo(TimeSignature.FOUR_FOUR), within(1.0));
+                .as("the chart is barred at the grid's rate, which is what it reads")
+                .isEqualTo(grid.overallTempo(TimeSignature.FOUR_FOUR));
 
-        // Eleven bars, one chord each, in order and with nothing carried over.
-        List<String> lines = ChordChart.barLines(tracked);
-        assertThat(String.join("", lines)).doesNotContain("%");
-        List<String> cells = Arrays.stream(String.join("", lines).split("\\|"))
-                .map(String::trim)
-                .filter(cell -> !cell.isEmpty())
-                .toList();
-        assertThat(cells).hasSize(11);
-        for (int i = 0; i < cells.size(); i++) {
-            assertThat(cells.get(i)).as("bar %d", i).isEqualTo(roots[i % 4].name());
-        }
+        // Thirty-one bars, one chord each, in order and nothing carried over.
+        assertThat(barCellsOf(tracked)).containsExactlyElementsOf(expected(roots, 31));
 
         // And at the median -- still reachable, because --tempo states a
-        // correction the chart is obliged to obey -- the same chords do not keep
-        // their bars: 6% of a bar per bar puts the fourth one in the third bar.
+        // correction the chart is obliged to obey -- the same chords lose their
+        // bars, but only once the 1.35% has had nine bars to add up. The first
+        // nine are identical either way, which is why nothing short caught this.
         Score atTheMedian = Score.empty(
                         new TempoMap(List.of(new TempoMap.TempoSegment(
                                         0, 0.0, grid.medianTempo(TimeSignature.FOUR_FOUR),
@@ -417,9 +418,30 @@ class ChordChartTest {
                         at + 0.5)
                 .withBeatGrid(grid)
                 .withChords(progression);
-        assertThat(String.join("", ChordChart.barLines(atTheMedian)))
-                .as("two chords in one bar, which is what spacing at the median does")
-                .contains("C G");
+        List<String> median = barCellsOf(atTheMedian);
+        assertThat(median.subList(0, 9)).isEqualTo(expected(roots, 31).subList(0, 9));
+        assertThat(median.get(9))
+                .as("the tenth bar takes on the eleventh chord, and the chart is a bar "
+                        + "short from there on")
+                .isEqualTo("G A");
+        assertThat(median).hasSize(30);
+    }
+
+    /** What each bar of a text chart names, one entry per bar. */
+    private static List<String> barCellsOf(Score score) {
+        return Arrays.stream(String.join("", ChordChart.barLines(score)).split("\\|"))
+                .map(String::trim)
+                .filter(cell -> !cell.isEmpty())
+                .toList();
+    }
+
+    /** {@code count} bars of one chord each, cycling {@code roots}. */
+    private static List<String> expected(NoteLetter[] roots, int count) {
+        List<String> bars = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            bars.add(roots[i % roots.length].name());
+        }
+        return bars;
     }
 
     /**
