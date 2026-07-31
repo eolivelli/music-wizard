@@ -336,12 +336,21 @@ class FirstDownbeatOverrideTest {
         BeatGrid estimatedGrid = grid(null, TimeSignature.FOUR_FOUR);
         double beatConfidence = estimatedGrid.beatConfidence().value();
 
-        // The estimator lands on exactly its own floor here, and the mechanism is
-        // worth naming rather than guessing at: a click track does have chroma
-        // novelty, but it is around 1e-6 and the phases are indistinguishable, so
-        // the accent decides -- and it decides for a phase the harmony did not
-        // prefer, which makes the margin negative and `decided` exactly zero.
-        // This is the estimator claiming as little as it can claim.
+        // The estimator lands on its own floor here, give or take a rounding
+        // error, and the mechanism is worth naming rather than guessing at: a
+        // click track does have chroma novelty, but it is minute and the phases
+        // are all but indistinguishable, so the accent effectively decides.
+        //
+        // "All but", since #3. Through the plain fold the phase the accent chose
+        // was one the harmony positively did not prefer, so the margin was
+        // negative and `decided` exactly zero; through NNLS over both registers
+        // the same click track leaves a residue -- a broadband click does
+        // produce some note activations, and they no longer tie to the last bit
+        // -- so the product comes out around 8e-4 instead of 0, which lifts the
+        // confidence 2.1e-4 above its floor. The claim this
+        // test makes is unchanged and is about the ordering below; the tolerance
+        // is loosened to the scale of that residue rather than to the scale of
+        // double arithmetic, so a real drift would still fail it.
         double estimated = estimatedGrid.downbeatConfidence().value() / beatConfidence;
         // A request exactly halfway between two pulses: this code claiming as
         // little as it can claim, which is one candidate of two.
@@ -356,7 +365,7 @@ class FirstDownbeatOverrideTest {
         // four is worth: BASE_CONFIDENCE is that count plus a deliberate margin
         // for the bars having to start somewhere.
         assertThat(worstSnap).isCloseTo(0.5, within(1e-9));
-        assertThat(estimated).isCloseTo(0.35, within(1e-9));
+        assertThat(estimated).isCloseTo(0.35, within(5e-4));
 
         // A request outside the tracked range rests on nothing at all, and in
         // this meter it ranks below the estimator's own least-supported answer.

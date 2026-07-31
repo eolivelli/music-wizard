@@ -26,13 +26,28 @@ produced seven chord spans, five of them `N.C.`, one covering 169 consecutive
 seconds (#185). Measured over every frame, the flat no-chord template scores
 0.859 against the best possible triad's 0.713; on the synthetic fixture the same
 measurement gives +0.356 the other way. **The sign flips between synthetic and
-real**, which is why no constant in `ChordEstimator` can fix it.
+real.**
+
+That was read as meaning no constant in `ChordEstimator` could fix it, and #3
+showed otherwise. On `samples/gmajorblues.mp3` — a different recording, and the
+one with exactly known changes — the estimator's three changes together take
+*plain* chroma from 0.0% to 58.9% of bars correct, before any front end. The
+flat no-chord template scores highest exactly when a frame looks least like
+music, so it wins on a real mix whatever the chroma is.
+
+No single constant does it, though, and the first draft of this paragraph
+claimed one did — three changes reach 58.9% and the largest of them alone
+reaches 17.5%. `ChordEstimator` carries the decomposition and is the only place
+it is measured; do not restate it here, because this figure has already gone
+stale in four separate files. The lesson is not "a constant can fix it" but
+"the emission model was wrong in a way the front end could not compensate for".
 
 So: work that makes real audio work outranks work that polishes what already
-works on synthetic audio. NNLS chroma (#3) is the top item, because it is the
-stage that produces a chroma a template matcher can use on a real mix. A
-notation defect that only shows on material we cannot yet transcribe is real,
-but it is not urgent.
+works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
+every benchmark with known ground truth went from 0% of bars correct to between
+14% and 89%, and from one `N.C.` span per recording to none. What is now top is
+what that exposed: the beat grid drifts (#196), and dominant sevenths are found
+on two of the five benchmarks and called plain triads on the other three (#208).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.
@@ -269,8 +284,10 @@ layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
 tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
 Four review rounds on `mw-core`.
 
-Still missing: key detection, NNLS chroma (#3), the whole symbolic/notation
-track (#1), separation and melody (#8), lyrics (#9), piano (#10), advisor (#11).
+Still missing: key detection, the whole symbolic/notation track (#1),
+separation and melody (#8), lyrics (#9), piano (#10), advisor (#11). NNLS chroma
+(#3) has landed; `tools/score-samples.py` is the standing measurement of what it
+is worth.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
 `design-gap` issues before treating it as frozen — especially #4 (no beat unit,
