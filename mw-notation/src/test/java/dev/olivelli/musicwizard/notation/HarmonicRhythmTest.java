@@ -350,7 +350,7 @@ class HarmonicRhythmTest {
         for (int i = 0; i < written.size(); i++) {
             List<ChartLayout.Cell> before = laid.get(i).cells();
             List<ChartLayout.Cell> after = written.get(i).cells();
-            if (i > 0 && handedBack(before, after)
+            if (i > 0 && carriedItsCellsThrough(before)
                     && !after.get(0).symbol().equals(laidPrevious)
                     && after.get(0).symbol().equals(writtenPrevious)) {
                 return true;
@@ -362,22 +362,27 @@ class HarmonicRhythmTest {
     }
 
     /**
-     * Whether the reduction returned a bar as it found it, compared on what it
-     * decides -- the chords and their lengths. Not on {@code named}, which both
-     * passes rewrite and which is the very thing under test.
+     * Whether the reduction returned this bar's cells rather than building new
+     * ones, which is what lets a flag from the first naming pass reach the
+     * second at all.
+     *
+     * <p>A bar of one cell, because that is {@code written}'s early return and
+     * every other route through it constructs fresh cells with the flag cleared.
+     * There are two further pass-through routes -- the lead-in bar, and a meter
+     * offering no nameable division -- and neither can arise here: no fixture in
+     * this class has a gap before its first chord, and the second is unreachable
+     * from any meter the model admits.
+     *
+     * <p>Deliberately not "the written cells equal the laid ones", which was the
+     * first version and which round 4 of review showed is a <em>superset</em>:
+     * a bar genuinely rewritten into cells that happen to match by value gets
+     * new cells with a cleared flag and cannot strand anything. On this
+     * population the two definitions gave the same count, so the guard was sound
+     * by coincidence rather than by construction -- which is exactly what the
+     * guard exists to stop being true of the sweep it guards.
      */
-    private static boolean handedBack(List<ChartLayout.Cell> before,
-                                      List<ChartLayout.Cell> after) {
-        if (before.size() != after.size()) {
-            return false;
-        }
-        for (int i = 0; i < before.size(); i++) {
-            if (!before.get(i).chord().equals(after.get(i).chord())
-                    || before.get(i).lengthQuarters() != after.get(i).lengthQuarters()) {
-                return false;
-            }
-        }
-        return true;
+    private static boolean carriedItsCellsThrough(List<ChartLayout.Cell> before) {
+        return before.size() < 2;
     }
 
     /**

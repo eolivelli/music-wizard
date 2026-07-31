@@ -6,11 +6,13 @@
 asks the question a reader of the page asks: how many chords are printed in a
 bar, and is the one a reader takes away from that bar the right one.
 
-The two differ in a way worth keeping visible. The chart's bar lines are its
-own -- one downbeat for phase and `Score.estimatedTempo()` for rate -- so on a
-recording whose beat drifts they walk away from the recording's downbeats
-(#187, #196, #200). A chart score is therefore never better than the model
-score and the gap is the drift, not the harmony.
+The two differ in a way worth keeping visible. On the audio path the chart's
+bar lines are its own -- one downbeat for phase and `Score.estimatedTempo()`
+for rate -- so on a recording whose beat drifts they walk away from the
+recording's downbeats (#187, #196, #200). A chart score is therefore never
+better than the model score and the gap is the drift, not the harmony. That
+holds of the seconds route only; a progression carrying beats is laid out on
+the beat axis instead, and `short_changes` below refuses to measure one.
 
 Both columns are reported per benchmark:
 
@@ -195,6 +197,19 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     # is not a check. This is the same defect one layer down: the rounded header
     # is the layer the problem was noticed at, and `estimatedTempo()`'s
     # conditions are the layer it lives at.
+    # And before any of that: whether `estimatedTempo()` is consulted at all.
+    # `ChartLayout.unreduced` dispatches on `ChordProgression.isQuantized()`, and
+    # its beat-axis branch takes bar lengths from the `TempoMap` without ever
+    # calling `quarterNoteSeconds`. Round 4 of review found this missing, and it
+    # is the branch most likely to move: wiring `Quantizer` into the audio path
+    # is #212's other candidate and `ChartLayout`'s javadoc calls it a live
+    # option, and it would flip this predicate without touching any provenance.
+    chords = doc.get("chords", {}).get("chords", [])
+    if chords and all(c.get("startBeat") is not None for c in chords):
+        sys.exit(f"{workspace.name}: the chords are quantized, so the chart is laid out on "
+                 f"the beat axis rather than at estimatedTempo(); this measure does not "
+                 f"model that.")
+
     segments = doc.get("tempoMap", {}).get("segments", [])
     provenances = {s.get("provenance", "UNKNOWN") for s in segments}
     if "SUPPLIED" in provenances:
