@@ -380,6 +380,37 @@ class GridRateTest {
                     .isCloseTo(120.0, within(1e-9));
         }
 
+        @Test
+        @DisplayName("a list that really shrinks is refused, not answered")
+        void aListThatActuallyShrinksIsRefused() {
+            // The one escape the snapshot leaves, found in round 9 and named in
+            // the javadoc rather than left to be discovered: a list that reports
+            // four and then has three to give cannot be read once, and the read
+            // fails. A refusal rather than a wrong answer, which is the
+            // distinction that makes it acceptable -- but an undocumented
+            // exception type from a public method is not.
+            List<Double> vanishing = new AbstractList<>() {
+                private int sizeReads;
+
+                @Override
+                public Double get(int index) {
+                    if (index >= 2) {
+                        throw new IndexOutOfBoundsException(
+                                "Index " + index + " out of bounds for length 2");
+                    }
+                    return index * 0.5;
+                }
+
+                @Override
+                public int size() {
+                    return sizeReads++ == 0 ? 4 : 2;
+                }
+            };
+
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(vanishing))
+                    .isInstanceOf(IndexOutOfBoundsException.class);
+        }
+
         /** A list that may hold nulls, which {@code List.of} refuses to. */
         private static List<Double> listOf(Double... times) {
             List<Double> list = new ArrayList<>(times.length);

@@ -283,7 +283,23 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *                                  {@link Beat} and the constructor between
      *                                  them enforce, since a caller bypassing
      *                                  the grid must not bypass its invariant
-     * @throws NullPointerException     if the list or any element is null
+     * <p><b>The list is read once and answered for as read.</b> Every element is
+     * fetched exactly once, into a copy, and the size exactly once, before it is
+     * guarded -- so the figure returned is the rate of times that were validated,
+     * not of whatever the list says afterwards. A caller passing a list that
+     * changes underneath gets the rate of the snapshot, which is the ordinary
+     * contract and the only one implementable: detecting that a list lied would
+     * take a second read, and a list that lies once can lie twice. That is not
+     * defensive -- rounds 7 and 8 of review got -20 BPM and then NaN out of
+     * versions that re-read.
+     *
+     * @throws NullPointerException      if the list or any element is null
+     * @throws IndexOutOfBoundsException if the list genuinely shrinks between
+     *                                   the one {@code size()} call and the copy.
+     *                                   Named rather than left to be discovered
+     *                                   because it is the one escape the
+     *                                   snapshot leaves, and it is a refusal
+     *                                   rather than a wrong answer
      */
     public static double overallPulseRate(List<Double> pulseSeconds) {
         Objects.requireNonNull(pulseSeconds, "pulseSeconds");
