@@ -38,9 +38,15 @@ import java.util.Objects;
  * amount of template tuning.
  *
  * <p>Templates are binary — a chord tone is 1, everything else 0 — which is
- * deliberately crude. What makes them work at all on a real mix is the front
- * end: {@link NnlsChroma} explains the spectrum as notes before folding, so the
- * chroma this matches against is peaked rather than close to flat (#3, #185).
+ * deliberately crude, and crude turns out not to be the problem. On a real
+ * recording with known changes this stage was returning one N.C. span for the
+ * whole song (#185), and of the fix that ended that, more belonged here than to
+ * the front end: per-bar root accuracy on {@code samples/gmajorblues.mp3} runs
+ * 1.0% for the old vocabulary and no-chord model over the new {@link NnlsChroma}
+ * front end, 58.9% for the new ones over plain chroma, and 86.6% for both. So
+ * neither half is the answer alone: the front end is worth twenty-eight points
+ * on top of the vocabulary and the no-chord level, and they are worth fifty-eight
+ * on top of it.
  *
  * <p>The vocabulary is major and minor triads and dominant sevenths on all
  * twelve roots, plus "no chord".
@@ -48,10 +54,34 @@ import java.util.Objects;
 public final class ChordEstimator {
 
     /**
-     * Probability of staying on the same chord between frames.
+     * Probability of staying on the same chord between beats.
      *
-     * <p>High because chords last for beats, not frames. Lower it and the
-     * output chatters; raise it much further and genuine changes are missed.
+     * <p>High because chords last for several beats. Lower it and the output
+     * chatters; raise it much further and genuine changes are missed.
+     *
+     * <p>Left at 0.6 after trying to raise it. On {@code samples/gmajorblues.mp3}
+     * the accuracy cost is monotone in this value and the chatter benefit is
+     * slight, so there is no trade worth making:
+     *
+     * <pre>
+     *   self-transition   per-bar root accuracy   chord spans over 711 s
+     *        0.6                 86.6%                    740
+     *        0.8                 85.7%                    684
+     *        0.9                 85.4%                    642
+     *        0.95                83.4%                    604
+     *        0.98                82.8%                    565
+     * </pre>
+     *
+     * <p>Worth recording because an earlier revision of this change did set it
+     * to 0.9, on a measurement taken before {@link NnlsChroma#combined()} was
+     * being folded in the right order. Against the wrong ordering 0.9 improved
+     * both columns; against the right one it improves neither enough. The
+     * constant is the same as it was, and the reason it is the same is not.
+     *
+     * <p>740 spans over 314 bars is 2.4 chords a bar, which is far more than
+     * this music contains. The chatter is real and is not addressed here: it
+     * wants the chart to snap changes to beats or bars, which is a notation
+     * decision rather than an estimation one.
      */
     private static final double SELF_TRANSITION = 0.6;
 
@@ -67,10 +97,22 @@ public final class ChordEstimator {
      * what it used to do.
      *
      * <p>Raised from 20 to 50 with the front end change, and measured rather
-     * than reasoned: on {@code samples/gmajorblues.mp3}, per-bar root accuracy
-     * against the known cycle runs 53.8% at 20, 64.0% at 35, 64.6% at 50 and
-     * 62.7% at 80. It is a broad optimum, which is the reassuring shape -- the
-     * figure is not balanced on a point.
+     * than reasoned. On {@code samples/gmajorblues.mp3}, per-bar root accuracy
+     * against the known cycle and the number of chord spans over 711 seconds:
+     *
+     * <pre>
+     *   sharpness   root accuracy   root+quality   spans
+     *       20          80.6%          80.6%        440
+     *       35          85.4%          85.4%        645
+     *       50          86.6%          86.3%        740
+     *       80          85.0%          82.8%        837
+     *      120          84.4%          81.2%        898
+     * </pre>
+     *
+     * <p>A real peak at 50 rather than a plateau, and the fall on either side
+     * has different causes: below it the transition prior is still winning
+     * arguments the evidence should win, and above it the evidence is sharp
+     * enough to chase noise, which shows up first in the quality column.
      */
     private static final double EMISSION_SHARPNESS = 50.0;
 
@@ -90,17 +132,33 @@ public final class ChordEstimator {
      * when some chord actually fits, not when it fits better than a profile that
      * grows stronger the less the frame looks like music. 0.60 is a little above
      * the 0.5 a three-note template scores against a genuinely flat chroma by
-     * construction, so noise still fails to clear it.
+     * construction.
      *
-     * <p>The reason this is safe now and would not have been before is the front
-     * end. Through {@link NnlsChroma} the same recording scores +0.170 the other
-     * way, so a real chord clears 0.60 comfortably and a drum fill does not. Set
-     * this threshold on plain chroma and it would not be a threshold at all --
-     * nothing would ever reach it, so the state would simply be disabled, which
-     * #185 warns against for good reason.
+     * <p>This is what carries the change, and by more than the front end does.
+     * Holding the chroma fixed at what {@link NnlsChroma} produces and varying
+     * only this, per-bar root accuracy on {@code samples/gmajorblues.mp3} is
+     * 1.0% with the flat template and 86.6% with a fixed level -- the flat
+     * template still swallows 95.8% of the recording as N.C. even on a chroma
+     * that NNLS has sharpened. So #3 alone does not fix #185; it needed this
+     * too. The level itself is not delicate over its working range: 0.50, 0.60
+     * and 0.65 all give exactly the same 86.6%. It falls off a cliff shortly
+     * afterwards -- 80.9% at 0.70 with 8.0% N.C., and 20.7% at 0.75 with 77.7%
+     * N.C. -- so 0.60 is placed to leave room before that edge rather than
+     * because 0.65 measured worse.
      *
-     * <p>Genuine silence is not handled here but by {@link #SILENCE_THRESHOLD},
-     * which is why this value does not have to be low enough to catch it.
+     * <p><b>What this does not do, stated because it is easy to assume it
+     * does.</b> 0.60 is not, on real material, much of a threshold. Measured
+     * over every beat span, the best of the thirty-six templates clears it on
+     * 100% of spans of the blues and 98% of a second full-mix recording -- and
+     * on plain chroma, 100% and 97.1%. So the state is close to an off switch on
+     * both front ends rather than a discriminator, and what actually keeps the
+     * two recordings honest is that it fires at all on the quiet passages of the
+     * second one (2.1% of its duration). #185's warning that removing no-chord
+     * outright would put a chord over every drum fill is therefore only
+     * half-answered here: digital silence is caught by
+     * {@link #SILENCE_THRESHOLD}, and a quiet or percussive passage is caught
+     * only weakly. A no-chord model that reads energy and flatness rather than a
+     * cosine level is #195.
      */
     private static final double NO_CHORD_SIMILARITY = 0.60;
 
@@ -155,11 +213,12 @@ public final class ChordEstimator {
      *
      * <p>The sevenths are not a luxury. On {@code samples/gmajorblues.mp3},
      * whose changes are entirely dominant sevenths, adding them takes per-bar
-     * root accuracy from 31.2% to 64.6% -- and the bars it rescues are the ones
-     * that matter, since recall on the two D7 bars of the cycle is 0% without
-     * them and 53% with. A triad-only vocabulary does not merely mislabel a
-     * seventh as a triad; asked to explain D-F#-A-C with three notes it prefers
-     * an unrelated root altogether.
+     * root accuracy from 32.5% to 86.6%, and recall on the C7 and D7 bars from
+     * nothing at all -- 0% each -- to 96% and 68%. A triad-only vocabulary does
+     * not merely mislabel a seventh as a triad: asked to explain D-F#-A-C with
+     * three notes it prefers an unrelated root altogether, which is why the
+     * figure without them is far below even the 58.3% that writing G7 in every
+     * bar of this particular cycle would score.
      *
      * <p>The confusion this introduces is real and is worth naming, because a
      * dominant seventh shares three of its four notes with the major triad on

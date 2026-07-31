@@ -97,7 +97,7 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      * room to spare while giving up 5% of the best margin measured. It is not
      * chosen because it won: on one recording, a difference between +0.225 and
      * +0.214 is not a result. Calibrating this on a tier-2 corpus rather than on
-     * one file is issue #191.
+     * one file is issue #193.
      */
     private static final int WHITENING_HALF_WIDTH_SEMITONES = 6;
 

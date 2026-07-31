@@ -40,9 +40,19 @@ import java.util.stream.IntStream;
  * resampled onto a pitch-linear grid, whitened, and then explained as a
  * non-negative combination of idealised note spectra — so a low C's fifth
  * partial is attributed to the low C rather than counted as an E. Only the
- * resulting note activations are folded to chroma. The pipeline this feeds is
- * unchanged: {@link ChordEstimator} still matches templates and decodes with
- * Viterbi, and it is handed a sharper chroma to do it with.
+ * resulting note activations are folded to chroma. {@link ChordEstimator} still
+ * matches templates and decodes with Viterbi and is handed a sharper chroma to
+ * do it with.
+ *
+ * <p>It is not, on its own, the cure for #185, and the measurement is worth
+ * stating here rather than only where it was taken. Handed this chroma but left
+ * with its old flat no-chord template, the estimator still returns 95.8% of
+ * {@code samples/gmajorblues.mp3} as N.C.: a flat profile scores highest exactly
+ * when a frame looks least like music, and sharpening the frame does not stop
+ * that. What the two changes are worth separately, per-bar root accuracy on that
+ * recording, is 58.9% for the estimator's new templates and no-chord level over
+ * plain chroma and 86.6% for the same estimator over this. See
+ * {@link ChordEstimator} and {@link #combined()}.
  *
  * <h2>Why a separate type rather than a mode of {@code Chroma}</h2>
  *
@@ -67,12 +77,14 @@ import java.util.stream.IntStream;
  * beat grids, or one of them forgotten; returned together, {@link
  * #beatSynchronous(List)} folds both or neither.
  *
- * <p>The plain path stays exactly as it was. It is the fallback when this one
+ * <p>The plain path stays exactly as it was, apart from the #77 fix to its
+ * tuning estimate that this depends on. It is the fallback when this one
  * underperforms, and the tier-0 tests depend on it.
  *
  * @param treble                chroma from the notes in the chordal register
- * @param bass                  chroma from the notes below it, which is what
- *                              carries the root; see {@link #bass()}
+ * @param bass                  chroma from the notes below it, which is where a
+ *                              root would be if this register could be trusted
+ *                              to place one; see {@link #bass()}
  * @param tuningOffsetSemitones the tuning the analysis was run at, in the sense
  *                              of {@link Chroma#estimateTuning}
  */
@@ -240,7 +252,7 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * It is computed and exposed here because it falls out of the transcription
      * for free, because the alternative — computing it later from a
      * transcription that has been thrown away — is not free at all, and because
-     * naming a bass note is what slash chords and inversions will need (#192).
+     * naming a bass note is what slash chords and inversions will need (#194).
      */
     @Override
     public Chroma bass() {
@@ -256,26 +268,59 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * G7 G7 G7 G7 / C7 C7 G7 G7 / D7 C7 G7 D7 — the three folds give:
      *
      * <pre>
-     *                 bars whose root    G      C      D
-     *                 is right          recall recall recall
-     *   treble only        36.0%          19%    55%    66%
-     *   bass only          31.5%          38%    37%     0%
-     *   both               64.6%          58%    88%    53%
+     *                    bars whose      G        C        D
+     *                    root is right   recall   recall   recall
+     *   treble only          42.7%         24%      67%      72%
+     *   bass only            51.3%         80%       0%      26%
+     *   both                 86.6%         88%      96%      68%
+     *   plain chroma         58.9%         32%     100%      91%
      * </pre>
      *
      * <p>The whole is a good deal more than either part, and the reason is
      * visible in the columns: the two registers fail on different chords. The
      * treble on this recording is mostly a lead line playing a blues scale, so
-     * it hears the passing notes rather than the accompaniment; the bass hears
-     * the accompaniment but a shuffle riff spelling root-third-fifth-sixth is
-     * the same set of pitch classes as the relative minor seventh, and the bass
-     * alone resolves that ambiguity the wrong way often enough to score zero on
-     * every D7 bar. Added together neither ambiguity survives.
+     * it hears the passing notes rather than the accompaniment and finds the
+     * tonic in a quarter of the bars that hold it; the bass hears the
+     * accompaniment and never once finds the C7. Added together, most of both
+     * errors go — and the sum beats each part by more than thirty points, which
+     * is not a subtlety that could have been reasoned to.
+     *
+     * <p>The fourth row is there because leaving it out would flatter this one.
+     * Plain chroma through the same estimator scores 58.9%, so on this recording
+     * the transcription step is worth about twenty-eight points rather than the
+     * whole difference — the rest belongs to the estimator's own two changes, its
+     * seventh templates and its no-chord model, without which the same chroma
+     * scores 32.5% and 1.0% respectively. What the transcription buys is
+     * concentrated in the tonic, 32% against 88%, and it gives a little back on
+     * the D7 bars. That trade is favourable here, and there is exactly one
+     * recording's evidence that it is favourable anywhere (#193).
      *
      * <p>Because the two weight functions are complementary ramps, the sum is
      * one everywhere from A0 to C6 and tapers above it — so this is a plain
      * unweighted fold of the note activations, and the register split exists for
      * the benefit of callers that want it rather than as a stage of this one.
+     *
+     * <h2>Call this before {@link #beatSynchronous(List)}, not after</h2>
+     *
+     * <p>The two orderings are not the same computation and the difference is
+     * easy to miss, because both compile and both return a plausible chroma.
+     * {@link Chroma#beatSynchronous(List)} scales each span to sum to one. Fold
+     * the registers first and that normalisation is applied once, to the whole;
+     * beat-synchronise first and it is applied to each register separately, so
+     * adding them afterwards gives every beat exactly half treble and half bass
+     * — whatever the two actually held. A beat where the bass is silent then
+     * counts its noise floor as loudly as the chord above it.
+     *
+     * <p>Measured on {@code samples/gmajorblues.mp3}, per-bar root accuracy is
+     * 86.6% folding first and 77.7% beat-synchronising first, and the per-chord
+     * recall shows why: 88/96/68 for G, C and D against 94/67/38. The wrong
+     * order does not fail, it just quietly over-weights whichever register had
+     * less to say — which on this recording means promoting a bass register that
+     * never once names the C7 to an equal vote in every beat.
+     *
+     * <p>{@code NnlsChromaTest.foldingBeforeAndAfterAreNotTheSame} pins this, so
+     * that a future reordering has to argue with a test rather than with a
+     * comment.
      */
     public Chroma combined() {
         double[][] out = new double[treble.frameCount()][12];

@@ -160,7 +160,7 @@ class NnlsChromaTest {
             // and no longer by a margin worth calling separation.
             //
             // Pinned as a floor rather than a range so that the bass register
-            // getting better again -- which is what #192 would do -- does not
+            // getting better again -- which is what #194 would do -- does not
             // fail a test whose point is that it must not get worse.
             assertThat(energy(fromLow.bass())).isGreaterThan(1.3 * energy(fromLow.treble()));
             assertThat(energy(fromHigh.treble())).isGreaterThan(10 * energy(fromHigh.bass()));
@@ -308,6 +308,46 @@ class NnlsChromaTest {
             assertThat(folded.bass().frameCount()).isEqualTo(beats.size() - 1);
             assertThat(folded.treble().isBeatSynchronous()).isTrue();
             assertThat(folded.bass().isBeatSynchronous()).isTrue();
+        }
+
+        @Test
+        @DisplayName("folding the registers before and after beat-synchronising differ")
+        void foldingBeforeAndAfterAreNotTheSame() {
+            // The trap NnlsChroma.combined warns about, pinned so that a future
+            // reordering of the pipeline has to argue with a test.
+            //
+            // beatSynchronous scales each span to sum to one. Fold first and
+            // that happens once; beat-synchronise first and it happens to each
+            // register separately, so the sum is half treble and half bass in
+            // every beat regardless of what they held. Here the signal is
+            // entirely in the treble -- a C4-E4-G4 triad, nothing below A3 -- so
+            // the wrong order promotes whatever the bass register invented to an
+            // equal share.
+            AudioBuffer audio = new AudioBuffer(
+                    harmonicNote(SignalFactory.midiToHz(60), 6, 3.0), RATE);
+            List<Double> beats = List.of(0.5, 1.0, 1.5, 2.0, 2.5);
+
+            NnlsChroma nnls = NnlsChroma.extract(audio);
+            double[] foldedFirst = meanChroma(nnls.combined().beatSynchronous(beats));
+            double[] syncedFirst = meanChroma(nnls.beatSynchronous(beats).combined());
+
+            // Both name C, so neither is nonsense and the difference is one of
+            // proportion rather than of answer.
+            assertThat(argMax(foldedFirst)).isZero();
+
+            // Folding first keeps the C dominant; synchronising first dilutes it
+            // with a register that contributed almost no energy.
+            assertThat(foldedFirst[0]).isGreaterThan(syncedFirst[0] + 0.05);
+        }
+
+        private static int argMax(double[] values) {
+            int best = 0;
+            for (int i = 1; i < values.length; i++) {
+                if (values[i] > values[best]) {
+                    best = i;
+                }
+            }
+            return best;
         }
 
         @Test

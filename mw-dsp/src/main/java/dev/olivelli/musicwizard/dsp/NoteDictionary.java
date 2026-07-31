@@ -86,30 +86,30 @@ public final class NoteDictionary {
      * <pre>
      *   roll-off   triad keeps   A1 keeps   A1 bass    blues    blues
      *              its 3 notes   its own    / treble   root     root+quality
-     *     0.70        0.310       0.720       8.15     40.8%      34.1%
-     *     0.60        0.489       0.490       2.93     47.1%      41.1%
-     *     0.55        0.589       0.395       2.12     48.7%      38.9%
-     *     0.50        0.682       0.321       1.53     51.3%      42.0%
-     *     0.45        0.764       0.268       1.20     52.5%      41.1%
-     *     0.40        0.833       0.233       0.99     52.5%      40.4%
-     *     0.30        0.930       0.194       0.75     51.3%      37.9%
+     *     0.70        0.310       0.720       8.15     72.0%      60.8%
+     *     0.60        0.489       0.490       2.93     78.3%      75.5%
+     *     0.55        0.589       0.395       2.12     83.4%      82.2%
+     *     0.50        0.682       0.321       1.53     86.6%      86.3%
+     *     0.45        0.764       0.268       1.20     85.4%      85.0%
+     *     0.40        0.833       0.233       0.99     85.0%      85.0%
+     *     0.30        0.930       0.194       0.75     85.4%      85.4%
      * </pre>
      *
-     * <p>0.50 is taken as the setting. Accuracy is flat from 0.50 to 0.40 —
-     * 51.3, 52.5, 52.5 on the root, and root-plus-quality is actually highest at
-     * 0.50 — so the choice inside that plateau is made by the column that is
-     * still moving, which is what the low note keeps. At 0.50 a bass note still
-     * lands in the bass register; by 0.40 it no longer reliably does.
+     * <p>0.50 is taken as the setting, where accuracy peaks on both columns.
+     * The peak is not sharp — everything from 0.50 down to 0.30 is within 1.6
+     * points — but it is on the side of the range that also keeps a bass note in
+     * the bass register, so the two considerations agree rather than having to
+     * be traded.
      *
      * <p>What this costs is stated rather than buried: at 0.70 a low A kept 72%
      * of its activation on itself and eight times as much energy in the bass
      * register as in the treble, and at 0.50 those are 32% and 1.5. The
      * <em>pitch class</em> survives — which is why chord accuracy improves — but
      * the octave often does not, so {@link NnlsChroma#bass()} is a good deal
-     * weaker than it was and naming a bass note from it is not yet safe (#192).
+     * weaker than it was and naming a bass note from it is not yet safe (#194).
      *
      * <p>One recording sets the shape of the accuracy curve here, not the value
-     * of its peak. Calibrating on a tier-2 corpus is #191.
+     * of its peak. Calibrating on a tier-2 corpus is #193.
      */
     public static final double PARTIAL_ROLL_OFF = 0.50;
 
