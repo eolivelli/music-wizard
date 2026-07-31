@@ -40,13 +40,27 @@ import java.util.Objects;
  * <p>Templates are binary — a chord tone is 1, everything else 0 — which is
  * deliberately crude, and crude turns out not to be the problem. On a real
  * recording with known changes this stage was returning one N.C. span for the
- * whole song (#185), and of the fix that ended that, more belonged here than to
- * the front end: per-bar root accuracy on {@code samples/gmajorblues.mp3} runs
- * 1.0% for the old vocabulary and no-chord model over the new {@link NnlsChroma}
- * front end, 58.9% for the new ones over plain chroma, and 86.6% for both. So
- * neither half is the answer alone: the front end is worth twenty-eight points
- * on top of the vocabulary and the no-chord level, and they are worth fifty-eight
- * on top of it.
+ * whole song (#185). Per-bar root accuracy on {@code samples/gmajorblues.mp3},
+ * varying the front end and this class's two changes independently:
+ *
+ * <pre>
+ *                                        old vocabulary   sevenths and a
+ *                                        and flat         fixed no-chord
+ *                                        no-chord         level
+ *   plain chroma                            0.0%             58.9%
+ *   {@link NnlsChroma} combined             0.3%             86.6%
+ * </pre>
+ *
+ * <p>Down the first column, a better front end on its own is worth three tenths
+ * of a point — 0.0% to 0.3%, one N.C. span becoming 106 of them — because the
+ * flat no-chord template swallows the recording whichever chroma it is handed.
+ * Along the first row, these two changes on their own are worth 58.9. And the
+ * front end adds 27.7 on top of them, 58.9% to 86.6%, which is the only cell
+ * where it is worth anything at all.
+ *
+ * <p>The surprising column is the first one, and it is why this class changed
+ * at all: #3 called the front end the fix for #185, and measured alone against
+ * the estimator it was written for, the front end does not fix it.
  *
  * <p>The vocabulary is major and minor triads and dominant sevenths on all
  * twelve roots, plus "no chord".
@@ -367,20 +381,27 @@ public final class ChordEstimator {
             // to span 0 to 1 rather than reporting a number that never drops
             // below two thirds.
             //
-            // A no-chord span reports one of exactly two confidences, and which
-            // one says something worth reading. A span that won on
-            // NO_CHORD_SIMILARITY scores below the bottom of this range and so
-            // reports zero: nothing was clearly sounding, and there is no chord
-            // there to be confident about. A span that won on SILENCE_THRESHOLD
-            // scores 1.0 and reports full confidence, which is not a stray
-            // number attached to a non-statement -- the recording really is
-            // silent there and "no chord" really is certain.
+            // A no-chord span's confidence is the mean over its beats of two
+            // very different scores, and it can land anywhere between them. A
+            // beat that won on NO_CHORD_SIMILARITY contributes 0.60, below the
+            // bottom of this range, and so contributes zero confidence: nothing
+            // was clearly sounding and there is no chord there to be confident
+            // about. A beat that won on SILENCE_THRESHOLD contributes 1.0, which
+            // is not a stray number attached to a non-statement -- the recording
+            // really is silent and "no chord" really is certain.
             //
-            // An earlier draft of this comment claimed a no-chord span always
-            // reports zero. It does not: a quiet opening comes back as N.C. at
-            // confidence 1.000, because the silence branch writes 1.0 into this
-            // same array. The fix reached the branch the defect was noticed in
-            // and not the other one that writes the same value.
+            // Viterbi merges consecutive no-chord beats into one span, so a
+            // silent lead-in running into a quiet passage reports the average of
+            // the two, and a reader cannot tell from the number which kind of
+            // "no chord" they have. That is a defect in what this reports rather
+            // than in what it decides; #201.
+            //
+            // Two earlier drafts of this comment were wrong about it, each in
+            // the way the fix before it had been: the first said a no-chord span
+            // always reports zero, which the silence branch falsifies, and the
+            // second said it reports one of exactly two values, which merging
+            // falsifies. Both stopped at the layer the previous mistake was
+            // noticed in.
             double mean = total / (i - spanStart);
             double confidence = Math.clamp((mean - 0.65) / 0.35, 0, 1);
 

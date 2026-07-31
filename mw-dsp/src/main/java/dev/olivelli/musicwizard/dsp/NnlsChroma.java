@@ -46,13 +46,14 @@ import java.util.stream.IntStream;
  *
  * <p>It is not, on its own, the cure for #185, and the measurement is worth
  * stating here rather than only where it was taken. Handed this chroma but left
- * with its old flat no-chord template, the estimator still returns 95.8% of
- * {@code samples/gmajorblues.mp3} as N.C.: a flat profile scores highest exactly
- * when a frame looks least like music, and sharpening the frame does not stop
- * that. What the two changes are worth separately, per-bar root accuracy on that
- * recording, is 58.9% for the estimator's new templates and no-chord level over
- * plain chroma and 86.6% for the same estimator over this. See
- * {@link ChordEstimator} and {@link #combined()}.
+ * with the estimator it was written for — triads only, no-chord scored as a flat
+ * template — the result is 0.3% of bars with the right root and 96.5% of
+ * {@code samples/gmajorblues.mp3} still labelled N.C. A flat profile scores
+ * highest exactly when a frame looks least like music, and sharpening the frame
+ * does not stop that. Over plain chroma the estimator's two changes reach 58.9%,
+ * and the two together 86.6%. So this stage is worth a great deal and worth it
+ * only in company; the full table is on {@link ChordEstimator}, and
+ * {@link #combined()} breaks this stage's own contribution down by register.
  *
  * <h2>Why a separate type rather than a mode of {@code Chroma}</h2>
  *
@@ -155,6 +156,16 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
         if (treble.frameCount() != bass.frameCount()) {
             throw new IllegalArgumentException("treble has " + treble.frameCount()
                     + " frames and bass has " + bass.frameCount()
+                    + "; the two registers describe the same frames");
+        }
+        // And at the same rate. Without this the pair can disagree about whether
+        // it has been beat-synchronised, since that is exactly "frameRate == 0"
+        // -- and then combined()'s guard, which asks the treble, is right by
+        // luck rather than by construction. Checking it here makes the single
+        // question that method asks a sound one.
+        if (treble.frameRate() != bass.frameRate()) {
+            throw new IllegalArgumentException("treble is at " + treble.frameRate()
+                    + " frames per second and bass at " + bass.frameRate()
                     + "; the two registers describe the same frames");
         }
     }
@@ -296,9 +307,13 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * recording's evidence that it is favourable anywhere (#193).
      *
      * <p>Because the two weight functions are complementary ramps, the sum is
-     * one everywhere from A0 to C6 and tapers above it — so this is a plain
-     * unweighted fold of the note activations, and the register split exists for
+     * one everywhere from A0 to C6 and tapers to zero over the octave above,
+     * reaching zero exactly at C7 — so this is a plain unweighted fold of the
+     * note activations over the chordal range, and the register split exists for
      * the benefit of callers that want it rather than as a stage of this one.
+     * The top note is therefore fitted and then discarded, which is deliberate:
+     * it gives the partials of everything below it somewhere to go at the top of
+     * the grid without contributing a pitch class of its own.
      *
      * <h2>Call this before {@link #beatSynchronous(List)}, not after</h2>
      *

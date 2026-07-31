@@ -30,7 +30,8 @@ import java.util.Objects;
  * than adding a second one with its own kernels to get wrong.
  *
  * <p>The map is a resampling and is built to conserve energy <em>per FFT bin</em>
- * rather than per output bin. Each FFT bin's magnitude is spread over the output
+ * rather than per output bin — away from the ends of the grid, where it does
+ * not; see #202. Each FFT bin's magnitude is spread over the output
  * bins its band covers, with weights summing to one. Normalising the other way
  * round — making each output bin an average of the FFT bins near it — is the
  * mistake that looks equivalent and is not: at the bottom of the grid several
@@ -82,11 +83,15 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      *       36        +0.065     +0.168     65.9%       65.6%
      * </pre>
      *
-     * <p>Six is chosen because it wins: the best margin on the second recording
-     * and the best root-plus-quality accuracy on the first, with only three
-     * close to it and everything from nine upward far behind. The physical
-     * bracket and the measurement agree rather than having to be traded, which
-     * is the comfortable case.
+     * <p>What that table does and does not settle. It settles the upper end
+     * decisively: everything from nine upward gives away ten to twenty points of
+     * accuracy, so the octave-wide window is not an arbitrary pick among
+     * plausible ones. It does not settle three against six — 86.3% and 86.0% of
+     * 314 bars is a difference of one bar, and on the root column three is ahead
+     * by the same one bar. Six is taken because it leads on the second
+     * recording's margin and on the first's root-plus-quality, but a
+     * one-bar-in-314 lead is not a result and is not claimed as one. What can
+     * be said is that three and six are indistinguishable here and nine is not.
      *
      * <p>The mechanism for the collapse above six is legible. A note's partials
      * are 12, 7, 5 and 4 semitones apart, so a window wider than that normalises
@@ -103,6 +108,12 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      * roll-off change. It was a table in one file made stale by a constant in
      * another, which is this project's recurring failure and was caught here by
      * review rather than by anything mechanical.
+     *
+     * <p>The margin columns are means over frames that carry any energy. That
+     * convention is worth stating because it is not free: {@code islanda.mp3}
+     * has 136 silent frames at its head and tail, and counting them lowers every
+     * cell by about 0.005 while leaving the ranking untouched. A silent frame
+     * scores zero against every template, so it is not evidence either way.
      *
      * <p>Two recordings is still not a corpus (#193).
      */
@@ -227,7 +238,7 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      * the envelope and keeps the peaks, which is exactly the part that carries
      * pitch.
      *
-     * <p>It also, incidentally, does most of the work the {@code s ≈ 0.7} partial
+     * <p>It also, incidentally, does most of the work the {@code s = 0.50} partial
      * roll-off in the dictionary would otherwise have to do alone: after
      * whitening, a partial's height reflects how much it stands out from its
      * surroundings rather than how much absolute energy it has.

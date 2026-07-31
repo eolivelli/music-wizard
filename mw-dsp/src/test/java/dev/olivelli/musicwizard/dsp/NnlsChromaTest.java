@@ -497,16 +497,72 @@ class NnlsChromaTest {
     class TuningEstimation {
 
         @Test
-        @DisplayName("answers no-tuning-evidence rather than half a semitone flat")
+        @DisplayName("answers zero when the spectrum carries no tuning evidence")
         void emptyEvidenceGivesZero() {
-            // #77. The mode search used to seed its winner at slot 0 and never
-            // move off it when nothing beat it, and slot 0 of a forty-slot
-            // histogram is -0.4875 semitones -- the most extreme claim the
-            // function can make, returned on no evidence at all.
             AudioBuffer silence = new AudioBuffer(SignalFactory.silence(2.0, RATE), RATE);
 
             assertThat(Chroma.estimateTuning(Spectrogram.compute(silence, 4096, 1024)))
                     .isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("the #77 guards are defence in depth, not a live fix")
+        void theTuningGuardsAreDefenceInDepth() {
+            // Recorded rather than asserted, because a test that cannot fail is
+            // worse than no test and this one nearly was. #77 is about
+            // estimateTuning's mode search seeding its winner at slot 0 and
+            // never moving off it, so that no evidence reads as -0.4875
+            // semitones. Two things were changed for it: the search now seeds at
+            // -1 so a winner has to be positively chosen, and a non-finite
+            // deviation is skipped before it can enter the histogram.
+            //
+            // Neither is reachable through this API. The old search already
+            // returned 0 for an empty histogram, by way of a separate
+            // "total <= 0" test -- so the silence case above passes identically
+            // against the code before the change and proves nothing about it.
+            // And the only input that made the seeding matter was a NaN, which
+            // Spectrogram's constructor already refuses, so the finiteness guard
+            // cannot fire either.
+            //
+            // They are kept because they cost two comparisons and because
+            // estimateTuning is public and takes a Spectrogram someone could
+            // build differently one day. What is asserted here is only what is
+            // true: the function is total over the shapes it can be handed.
+            for (int windowSize : new int[] {2, 8, 512, 4096}) {
+                float[][] magnitudes = new float[3][windowSize / 2 + 1];
+                assertThat(Chroma.estimateTuning(
+                        new Spectrogram(magnitudes, RATE, windowSize, windowSize / 2)))
+                        .as("an empty spectrogram at window %d", windowSize)
+                        .isEqualTo(0.0);
+            }
+            // And a frameless one, where there is not even a row to iterate.
+            assertThat(Chroma.estimateTuning(new Spectrogram(new float[0][], RATE, 4096, 1024)))
+                    .isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("a flat histogram still reads as a confident tuning, which is #203")
+        void aFlatHistogramStillReadsAsConfident() {
+            // The half of #77 that is not fixed, pinned so that it is visible
+            // rather than assumed away. White noise carries no tuning at all --
+            // its spectral peaks are wherever the noise put them -- and the mode
+            // search happily reports a third of a semitone. The guards added for
+            // #77 do not touch this, because a noise histogram is not empty; it
+            // is flat, and the search cannot tell the difference.
+            java.util.Random random = new java.util.Random(6);
+            float[] noise = new float[(int) (2.0 * RATE)];
+            for (int i = 0; i < noise.length; i++) {
+                noise[i] = (float) (random.nextGaussian() * 0.1);
+            }
+
+            double tuning = Chroma.estimateTuning(
+                    Spectrogram.compute(new AudioBuffer(noise, RATE), 4096, 1024));
+
+            // Asserted as a magnitude rather than a value, since the figure is a
+            // property of the seed. Delete this test when #203 is fixed.
+            assertThat(Math.abs(tuning))
+                    .as("white noise should carry no tuning and does not read as none")
+                    .isGreaterThan(0.1);
         }
 
         @Test

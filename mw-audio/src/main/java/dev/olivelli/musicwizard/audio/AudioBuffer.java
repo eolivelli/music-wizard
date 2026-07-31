@@ -47,12 +47,19 @@ public final class AudioBuffer {
      * <p>A single non-finite sample does not stay where it lands. It reaches
      * every FFT bin of every window containing it, and any stage that then
      * aggregates over frames inherits it as a whole: one NaN in a 32-second
-     * I-V-vi-IV click track pins {@code Chroma.estimateTuning} at -0.4875
-     * semitones -- because a NaN deviation histograms into slot 0 and
-     * {@code >} against NaN is false, so the mode can never move off it -- and
-     * turns a chart of {@code C G Am F} at 0.91 confidence into a single
+     * I-V-vi-IV click track pinned {@code Chroma.estimateTuning} at -0.4875
+     * semitones -- because a NaN deviation histogrammed into slot 0 and
+     * {@code >} against NaN is false, so the mode could never move off it -- and
+     * turned a chart of {@code C G Am F} at 0.91 confidence into a single
      * {@code N.C.} at 0.44. Beat tracking is untouched, so the failure does not
      * look like the bad sample it is.
+     *
+     * <p>Past tense on the mechanism, present tense on the rule. Since #3,
+     * {@code estimateTuning} skips a non-finite deviation before it can enter
+     * the histogram, so that particular route is closed twice over. This check
+     * is still the one that matters: it closes the route for every stage rather
+     * than for the one where the symptom happened to be noticed, which is the
+     * argument for having it here and not there.
      *
      * <p>Rejected rather than replaced with zero, and rejected here rather than
      * at the decode boundary, for one reason: no decodable file can produce a
