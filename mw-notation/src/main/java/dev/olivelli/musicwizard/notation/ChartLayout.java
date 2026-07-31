@@ -285,24 +285,19 @@ final class ChartLayout {
      * <p>Which of the two figures does the validating is the part worth keeping.
      * The 4 reproduces at every quarter length from 0.554 to 0.572, being one
      * local irregularity, so agreeing with it demonstrates nothing; the 26 holds
-     * only in a narrow band about the right value. A harness checked against the
-     * 4 alone is a harness checked against something that could not have failed,
-     * which is how the figure in this paragraph was wrong for a round.
-     *
-     * <p>Three rounds of review corrected a number in these two paragraphs and
-     * two of them introduced a fresh one, so what is left is deliberately the
-     * smallest set that carries the argument: two quarter lengths, the range
-     * over which the 4 is uninformative, and the pairs themselves. Anything
-     * quantifying <em>how</em> narrow or <em>how</em> different has been removed
-     * rather than re-measured.
+     * only in a narrow band about the right value, and 0.5546 falls inside the
+     * first and outside the second. So check a harness against the 26. One
+     * checked against the 4 alone is one checked against something that could
+     * not have failed.
      *
      * <p>What the collapse means is that after chord 25 the grid width has
      * stopped being the thing that decides. The recording's beats run 0.5583s
-     * over the first hundred and 0.5552s over the whole of it, against an
-     * estimate of 0.5631s -- the drift is not uniform, which is why the second
-     * figure does not predict the first -- and by chord 26 the bar lines have
-     * walked off the music by 0.86 of a beat whatever the grid does. That is past the
-     * half beat a counted-beat grid can absorb, which is why 26 fails, and it is
+     * over the hundred from the first downbeat to chord 26, and 0.5552s over the
+     * whole of it, against an estimate of 0.5631s -- the drift is not uniform,
+     * which is why the second figure does not predict the first -- and by chord
+     * 26 the bar lines have walked off the music by 0.86 of a beat whatever the
+     * grid does. That is past the half beat a counted-beat grid can absorb,
+     * which is why 26 fails, and it is
      * #196 rather than a result about grid width. The drift reaches two beats by
      * chord 47 and seventeen by the end. The one-chord margin between 25 and 26
      * is noise.
