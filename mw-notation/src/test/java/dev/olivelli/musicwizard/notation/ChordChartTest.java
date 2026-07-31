@@ -984,10 +984,10 @@ class ChordChartTest {
         // of the eight go.
         //
         // Declining to reduce a bar whose harmony moves faster than the counted
-        // beat would save this one, and it is not a clean rule -- 12% to 24% of
-        // changes on the five sample recordings are that fast on the axis the
-        // chart's bars are drawn on, while none of them is on the tracked beat
-        // grid the estimator used. See ChartLayout.atHarmonicRhythm, and
+        // beat would save this one, and it is not a clean rule -- 12% to 33% of
+        // changes on the five sample recordings are that fast against the beat
+        // their charts are spaced at, while none of them is against the tracked
+        // beat grid the estimator used. See ChartLayout.atHarmonicRhythm, and
         // tools/score-chart.py, which reports both. So this is a stated cost
         // rather than a case to special-case. The model still holds all eight,
         // which the assertion above is on.

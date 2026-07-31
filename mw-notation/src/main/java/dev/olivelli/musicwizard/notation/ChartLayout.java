@@ -107,8 +107,8 @@ final class ChartLayout {
      * <ul>
      *   <li>The band over which all five charts are identical is narrower than
      *       was claimed, and 0.3 sits at its <em>upper edge</em> rather than in
-     *       its middle. Raising it a little changes what three of the five
-     *       recordings print.
+     *       its middle: raising it changes what one of the five recordings
+     *       prints almost at once, and most of them a little further up.
      *   <li>Lowering it does <em>not</em> cost accuracy, which is what the
      *       previous draft asserted. It buys accuracy. At a cost low enough to
      *       print about two chords a bar, per-bar root accuracy on
@@ -642,21 +642,22 @@ final class ChartLayout {
      *
      * <p>The next thing to reach for is "reduce a bar only where the harmony is
      * no faster than the counted beat", and it is a worse discriminator than it
-     * looks. Round 1 of review established why, and {@code tools/score-chart.py}
-     * now reports both halves of it per recording. Measured against the
-     * <em>tracked</em> beat grid, no change on any of the five benchmarks is
-     * faster than a beat, and that is structural rather than lucky:
-     * {@code ChordEstimator} takes both boundaries of every span from the tracked
-     * beat times. Measured against the tempo the chart prints -- which is the
-     * axis its bars are drawn on -- 12% to 24% of changes are. The whole of that
-     * difference is one constant bar length drifting against a recording that
-     * does not keep one, which is #187, #196 and #200, and it has nothing to do
-     * with how fast the harmony moves. So the signal a gate would read is mostly
-     * the chart's own grid error: it would decline to reduce a substantial
-     * minority of perfectly ordinary bars, which is where the chatter is, and it
-     * would still fire on a wrong {@code --tempo}, where the same drift is total
-     * rather than partial. What is left is how much of its bar a chord holds, and
-     * that is what this reads.
+     * looks. Rounds 1 and 2 of review established why between them, and
+     * {@code tools/score-chart.py} now reports both halves of it per recording.
+     * Measured against the <em>tracked</em> beat grid, no change on any of the
+     * five benchmarks is faster than a beat, and that is structural rather than
+     * lucky: {@code ChordEstimator} takes both boundaries of every span from the
+     * tracked beat times. Measured against the beat the chart's bars are spaced
+     * at, which is the median tracked interval, 12% to 33% of changes are.
+     *
+     * <p>The whole of that difference is one constant bar length drifting
+     * against a recording that does not keep one -- #187, #196 and #200 -- and
+     * it says nothing about how fast the harmony moves. So the signal such a gate
+     * would read is mostly the chart's own grid error: it would decline to reduce
+     * a substantial minority of perfectly ordinary bars, which is where the
+     * chatter is, and it would still fire on a wrong {@code --tempo}, where the
+     * same drift is total rather than partial. What is left is how much of its
+     * bar a chord holds, and that is what this reads.
      *
      * <p><b>What it costs, and it is a reduction rather than a clean-up.</b>
      *

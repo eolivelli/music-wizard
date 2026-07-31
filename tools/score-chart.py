@@ -31,10 +31,12 @@ Both columns are reported per benchmark:
                  tracked   against the beat grid the estimator itself used.
                            Zero by construction -- `ChordEstimator` takes both
                            boundaries of every span from the tracked beat times.
-                 chart     against `Score.estimatedTempo()`, which is the axis
-                           the chart's bars are actually on. Not zero, because
-                           a single constant bar length drifts against a
-                           recording's own beat (#187, #196, #200).
+                 chart     against the median tracked interval, which is what
+                           `Score.estimatedTempo()` spaces the chart's bars at.
+                           Not zero, because one constant bar length drifts
+                           against a recording that does not keep one (#187,
+                           #196, #200). So this column is not a fact about how
+                           fast the harmony moves; it is the size of that drift.
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]
 """
@@ -145,37 +147,64 @@ def render(jar: Path, mp3: Path, workspace: Path) -> str:
     return (workspace / "out" / "chords.ly").read_text()
 
 
-def short_changes(workspace: Path) -> tuple[float, float]:
+def short_changes(workspace: Path) -> tuple[float, float] | None:
     """Changes closer than a counted beat, as a share, on each of the two axes.
 
-    The chart's quarter length is read back out of the chart's own header rather
-    than recomputed, so this measures the axis the bars were actually drawn on
-    and not a second derivation of it.
+    The chart's counted beat is the *median* interval between tracked beats, and
+    that is exact rather than approximate. `ChartLayout` spaces its bars at
+    `60 / Score.estimatedTempo()` quarter notes; with no `--tempo` supplied that
+    accessor returns `BeatGrid.medianTempo`, which is
+    `60 / median-interval * beatUnitQuarters` -- so one counted beat comes to
+    exactly the median interval, whatever the meter.
+
+    An earlier version read the tempo back out of the printed chart header
+    instead, on the reasoning that the header is the axis the bars were drawn
+    on. Round 2 of review pointed out that this is inverted: the header is
+    written with `%.0f`, so it is a *lossy second derivation* of the axis. It
+    mattered. Chord gaps are whole numbers of tracked beat intervals, so a
+    one-beat gap sits exactly on the boundary this counts against, and a
+    fraction of a percent of tempo moves a whole cohort of them across at once
+    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%.
+
+    Returns None where the model cannot be measured this way, rather than a
+    figure that would be mistaken for a measured zero.
     """
     doc = json.loads((workspace / "score" / "score.json").read_text())
     starts = [c["startSeconds"] for c in doc.get("chords", {}).get("chords", [])]
     beats = [b["seconds"] for b in doc.get("beatGrid", {}).get("beats", [])]
     if len(starts) < 2 or len(beats) < 2:
-        return 0.0, 0.0
+        return None
 
+    intervals = sorted(beats[i] - beats[i - 1] for i in range(1, len(beats)))
+    middle = len(intervals) // 2
+    counted = (intervals[middle] if len(intervals) % 2
+               else (intervals[middle - 1] + intervals[middle]) / 2.0)
+
+    # The derivation above is only `estimatedTempo()`'s answer while it takes
+    # its beat-grid branch -- a supplied `--tempo` or a score carrying no
+    # provenance takes another. Checked against what the chart printed rather
+    # than assumed, so a model change fails loudly here instead of quietly
+    # reporting a figure about the wrong axis. Both branches of `tempoLine`
+    # print the counted tempo first, so this comparison is meter-independent.
     header = (workspace / "out" / "chords.txt").read_text()
-    quarter = 60.0 / float(re.search(r"^Tempo\s+(\d+)", header, re.M).group(1))
+    printed = int(re.search(r"^Tempo\s+(\d+)", header, re.M).group(1))
+    if round(60.0 / counted) != printed:
+        sys.exit(f"the chart is not spaced at the tracked median here: it printed "
+                 f"{printed} BPM where the median beat interval is {60.0 / counted:.3f}. "
+                 f"Score.estimatedTempo() took a branch this measure does not model.")
 
-    # On the tracked axis, "one counted beat" is the local beat interval the
-    # estimator was working in, which is what makes this the estimator's own
-    # question rather than the chart's.
-    def tracked_beats(a: float, b: float) -> int:
-        return sum(1 for t in beats if a < t <= b)
+    def spans_a_beat(a: float, b: float) -> bool:
+        return any(a < t <= b for t in beats)
 
     gaps = [(starts[i] - starts[i - 1]) for i in range(1, len(starts))]
-    on_chart = sum(1 for g in gaps if g < quarter)
-    on_tracked = sum(1 for i, g in enumerate(gaps)
-                     if tracked_beats(starts[i], starts[i + 1]) < 1)
+    on_chart = sum(1 for g in gaps if g < counted)
+    on_tracked = sum(1 for i in range(len(gaps))
+                     if not spans_a_beat(starts[i], starts[i + 1]))
     return 100.0 * on_tracked / len(gaps), 100.0 * on_chart / len(gaps)
 
 
 def score(name: str, lilypond: str, truth: str,
-          short: tuple[float, float]) -> None:
+          short: tuple[float, float] | None) -> None:
     bars = bars_of(lilypond)
     printed = sum(len(bar) for bar in bars)
 
@@ -211,7 +240,9 @@ def score(name: str, lilypond: str, truth: str,
     print(f"  {name}: bars={len(bars)}  chords/bar {printed / n:.2f}"
           f"  root {root_ok}/{n} ({100 * root_ok / n:.1f}%)"
           f"  root+quality {full_ok}/{n} ({100 * full_ok / n:.1f}%)"
-          f"  short: tracked {short[0]:.1f}%, chart {short[1]:.1f}%")
+          f"  short: " + ("not measurable"
+                            if short is None
+                            else f"tracked {short[0]:.1f}%, chart {short[1]:.1f}%"))
 
 
 def main() -> None:

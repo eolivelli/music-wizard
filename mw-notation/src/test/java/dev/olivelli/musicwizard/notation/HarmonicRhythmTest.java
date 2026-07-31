@@ -30,6 +30,8 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -242,47 +244,120 @@ class HarmonicRhythmTest {
     }
 
     @Test
-    @DisplayName("the two outputs name the same chords on every sample-shaped chart")
+    @DisplayName("the text chart and the page name a chord in exactly the same places")
     void theTextAndThePageNeverDisagreeAboutANameChange() {
-        // The property behind the two fixtures above, stated over the shapes
-        // rather than over an instance, because the defect it guards was found on
-        // real recordings and not on either fixture. Every arrangement of up to
-        // four cells over three symbols, in the meters the chart emits: the cells
-        // the text chart names have to be exactly the ones a reader of the page
-        // sees a new symbol at, which is what chordChanges prints.
+        // The property behind the two fixtures above, stated over shapes rather
+        // than over an instance, because the defect it guards was found on real
+        // recordings and not on either fixture.
+        //
+        // Round 2 of review found the first version of this test unable to fail
+        // for the defect, and the reason is worth keeping because it is the trap
+        // rather than a slip. It generated only bars of one chord per counted
+        // beat, and the reduction rewrites every such bar -- while the defect
+        // only ever showed on a bar the reduction hands *back untouched*, which
+        // is the one case where the old naming pass and the new one behave
+        // identically. Tens of thousands of generated scores therefore found
+        // nothing against deliberately broken code. Round 2 also measured that
+        // the untouched shape is a large minority of bars on every one of the
+        // five sample recordings, and that every real disagreement the fix
+        // removed was of it, so the omission was not an exotic corner.
+        //
+        // So every score here pairs a bar the reduction rewrites with a bar it
+        // does not, in both orders, which is exactly the adjacency the defect
+        // lived at. Re-checked the same way: with the pre-fix naming pass
+        // restored on a scratch copy outside the repository, this test and
+        // aDroppedNameIsRecomputedRatherThanKept both fail and the other seven
+        // pass.
         NoteLetter[] alphabet = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
         for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
-                TimeSignature.SIX_EIGHT, new TimeSignature(5, 4))) {
+                TimeSignature.SIX_EIGHT, new TimeSignature(5, 4), new TimeSignature(7, 8))) {
             int beats = meter.beatsPerBar();
-            for (int shape = 0; shape < Math.pow(alphabet.length, 2 * beats); shape++) {
-                NoteLetter[] roots = new NoteLetter[2 * beats];
-                double[] lengths = new double[2 * beats];
-                int rest = shape;
-                for (int i = 0; i < roots.length; i++) {
-                    roots[i] = alphabet[rest % alphabet.length];
-                    rest /= alphabet.length;
-                    lengths[i] = meter.beatUnitQuarters();
+            for (boolean wholeBarFirst : List.of(false, true)) {
+                for (int shape = 0; shape < Math.pow(alphabet.length, beats + 1); shape++) {
+                    NoteLetter[] roots = new NoteLetter[beats + 1];
+                    double[] lengths = new double[beats + 1];
+                    int rest = shape;
+                    for (int i = 0; i < roots.length; i++) {
+                        roots[i] = alphabet[rest % alphabet.length];
+                        rest /= alphabet.length;
+                    }
+                    // One bar of a chord to a counted beat, and one bar holding a
+                    // single chord, which enters the second naming pass exactly
+                    // as the reduction found it.
+                    for (int i = 0; i < beats; i++) {
+                        lengths[wholeBarFirst ? i + 1 : i] = meter.beatUnitQuarters();
+                    }
+                    lengths[wholeBarFirst ? 0 : beats] = meter.quarterBeatsPerBar();
+                    assertBothOutputsNameTheSameCells(bar(meter, roots, lengths));
                 }
-                assertNamesMatchTheChanges(bar(meter, roots, lengths));
             }
         }
     }
 
     /**
-     * Asserts that the cells the text chart names are exactly the cells at which
-     * the symbol changes, which is the rule {@code chordChanges} applies to the
-     * page.
+     * Asserts that the text chart prints a chord name in exactly the cells at
+     * which a reader of the engraved page sees one.
+     *
+     * <p>Both real emitters, read back out of what they wrote, rather than
+     * {@link ChartLayout.Cell#named()} compared against the rule that sets it --
+     * which round 2 of review pointed out is the implementation's own expression
+     * copied, and can only ever check the composition rather than the answer.
+     * The page's rule is {@code chordChanges}, which prints a name wherever the
+     * chord differs from the previous event's, so it is recovered here by
+     * stripping the duration off each {@code chordmode} token and comparing.
+     *
+     * <p>No fixture here has a lead-in gap, so no bar holds a rest. That matters
+     * because a rest is the one legitimate difference between the two: the text
+     * writes {@code N.C.} and the page writes {@code r}, which carries no name.
      */
-    private static void assertNamesMatchTheChanges(Score score) {
+    private static void assertBothOutputsNameTheSameCells(Score score) {
+        List<Integer> onThePage = new ArrayList<>();
         String previous = null;
-        for (ChartLayout.Bar bar : ChartLayout.of(score)) {
-            for (ChartLayout.Cell cell : bar.cells()) {
-                boolean changed = previous == null || !cell.symbol().equals(previous);
-                assertThat(cell.named())
-                        .as("%s after %s", cell.symbol(), previous)
-                        .isEqualTo(changed);
-                previous = cell.symbol();
+        for (String line : chordModeOf(ChordChart.toLilyPond(score))) {
+            int named = 0;
+            for (String token : line.substring(0, line.length() - 1).trim().split(" +")) {
+                String chord = chordOf(token);
+                if (!chord.equals(previous)) {
+                    named++;
+                }
+                previous = chord;
+            }
+            onThePage.add(named);
+        }
+
+        List<Integer> inTheText = new ArrayList<>();
+        for (String line : ChordChart.barLines(score)) {
+            for (String cell : line.strip().split("\\|")) {
+                if (!cell.isBlank()) {
+                    // "%" is the text chart saying it named nothing in this bar.
+                    inTheText.add(cell.strip().equals("%") ? 0 : cell.strip().split(" +").length);
+                }
             }
         }
+
+        assertThat(inTheText).as("%s", ChordChart.barLines(score)).isEqualTo(onThePage);
     }
+
+    /** The bars of a chart's {@code \chordmode} block, {@code \time} lines dropped. */
+    private static List<String> chordModeOf(String source) {
+        List<String> bars = new ArrayList<>();
+        for (String line : source.split("\n")) {
+            String stripped = line.strip();
+            if (stripped.endsWith("|") && !stripped.startsWith("\\")) {
+                bars.add(stripped);
+            }
+        }
+        return bars;
+    }
+
+    /** A {@code chordmode} token with its duration removed: what the page names. */
+    private static String chordOf(String token) {
+        Matcher matcher = CHORD_MODE.matcher(token);
+        assertThat(matcher.matches()).as("chordmode token %s", token).isTrue();
+        return matcher.group(1) + matcher.group(2);
+    }
+
+    /** A root or rest, a duration, then the quality and any bass. */
+    private static final Pattern CHORD_MODE =
+            Pattern.compile("^(r|[a-g](?:is|es)*)\\d+\\.?(?:\\*\\d+(?:/\\d+)?)?(.*)$");
 }
