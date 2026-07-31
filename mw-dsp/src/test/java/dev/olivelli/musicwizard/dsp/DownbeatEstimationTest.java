@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -1209,20 +1210,21 @@ class DownbeatEstimationTest {
         }
 
         @Test
-        @DisplayName("a ragged chroma is refused evidence rather than read off the end")
+        @DisplayName("a ragged chroma cannot reach the novelty measure at all")
         void raggedChromaRowsAreNotNovel() {
-            // Chroma does not validate its row shapes, so comparing a twelve-bin
-            // vector with a shorter one indexed past the end of the shorter.
+            // This used to assert that harmonicNovelty scored a ragged chroma as
+            // zero rather than indexing off the end of the shorter row. Since #77
+            // the shape is a constructor invariant of Chroma, so the ragged case
+            // is refused a layer earlier and the guard inside the novelty measure
+            // is unreachable through it. The property is the same one -- nothing
+            // reads past the end of a chroma vector -- asserted where it is now
+            // enforced rather than where it used to be survived.
             double[][] spans = {new double[12], new double[6], new double[12]};
-            spans[0][0] = 1;
-            spans[1][0] = 1;
-            spans[2][0] = 1;
 
-            double[] novelty = DownbeatEstimator.harmonicNovelty(new Chroma(spans, 0));
-
-            for (double value : novelty) {
-                assertThat(value).isZero();
-            }
+            assertThatThrownBy(() -> new Chroma(spans, 0))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("vectors[1]")
+                    .hasMessageContaining("twelve pitch classes");
         }
 
         @Test

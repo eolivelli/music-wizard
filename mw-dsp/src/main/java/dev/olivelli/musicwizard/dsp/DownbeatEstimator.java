@@ -647,8 +647,12 @@ public final class DownbeatEstimator {
 
     private static double cosine(double[] a, double[] b) {
         if (a.length != b.length) {
-            // Chroma does not validate its row shapes, so a ragged one would
-            // otherwise index off the end of the shorter row.
+            // Unreachable through Chroma since #77: its constructor now rejects a
+            // frame that is not twelve values wide, so harmonicNovelty -- the
+            // only caller, and one that takes a Chroma -- cannot be handed a
+            // ragged one. Kept because it costs one comparison and because this
+            // is a private helper that a future caller could reach with two
+            // arrays of its own.
             return Double.NaN;
         }
         double dot = 0;

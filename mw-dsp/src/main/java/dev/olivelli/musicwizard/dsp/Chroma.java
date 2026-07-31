@@ -52,8 +52,34 @@ public record Chroma(double[][] vectors, double frameRate) {
     /** Highest pitch considered; above this there is little chordal information. */
     private static final double MAX_HZ = 2093.0; // C7
 
+    /**
+     * Validates the shape and finiteness of the vectors.
+     *
+     * <p>{@code mw-core}'s records all reject non-finite values and this one did
+     * not, which left a door open that #77 walked through: a {@code Chroma} built
+     * by hand with a NaN in it produces a confident wrong tuning rather than an
+     * error. {@link Spectrogram} already guarantees finite magnitudes, so the
+     * extraction path cannot reach this — it is the hand-built path that could.
+     *
+     * @throws IllegalArgumentException if a frame is absent, is not twelve
+     *     values wide, or holds a non-finite value
+     */
     public Chroma {
         Objects.requireNonNull(vectors, "vectors");
+        for (int frame = 0; frame < vectors.length; frame++) {
+            double[] vector = vectors[frame];
+            if (vector == null || vector.length != 12) {
+                throw new IllegalArgumentException("vectors[" + frame + "] has "
+                        + (vector == null ? "null" : vector.length + " values")
+                        + ", but a chroma vector is twelve pitch classes");
+            }
+            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                if (!Double.isFinite(vector[pitchClass])) {
+                    throw new IllegalArgumentException("vectors[" + frame + "][" + pitchClass
+                            + "] is " + vector[pitchClass] + "; chroma must be finite");
+                }
+            }
+        }
     }
 
     /** Extracts chroma from audio, correcting for the recording's tuning. */
@@ -128,22 +154,39 @@ public record Chroma(double[][] vectors, double frameRate) {
                 }
                 double semitones = 12 * (Math.log(frequency / 16.351625) / Math.log(2));
                 double deviation = semitones - Math.round(semitones);
+                // A non-finite deviation would land in slot 0 and stay there:
+                // (int) Math.floor(NaN) is 0, and one NaN in the histogram then
+                // makes every later comparison against it false. See #77 -- a
+                // single poisoned sample used to pin the answer at -0.4875
+                // semitones, which reads as a recording half a semitone flat.
+                if (!Double.isFinite(deviation) || !Float.isFinite(magnitudes[bin])) {
+                    continue;
+                }
                 int slot = (int) Math.floor((deviation + 0.5) * bins);
                 histogram[Math.clamp(slot, 0, bins - 1)] += magnitudes[bin];
             }
         }
 
-        int best = 0;
-        for (int i = 1; i < bins; i++) {
-            if (histogram[i] > histogram[best]) {
+        // Seeded at -1 rather than 0 so the mode has to be positively chosen.
+        // Seeded at 0, a histogram whose slot 0 is not comparable -- or simply
+        // one that is entirely empty -- returns slot 0 as though it had won,
+        // and slot 0 is the most extreme answer the function can give.
+        int best = -1;
+        double total = 0;
+        for (int i = 0; i < bins; i++) {
+            double value = histogram[i];
+            if (!Double.isFinite(value)) {
+                continue;
+            }
+            total += value;
+            if (value > 0 && (best < 0 || value > histogram[best])) {
                 best = i;
             }
         }
-        double total = 0;
-        for (double value : histogram) {
-            total += value;
-        }
-        if (total <= 0) {
+        if (best < 0 || total <= 0) {
+            // No tuning evidence. Zero means "assume A440", which is the honest
+            // answer and, unlike a confident half-semitone, is also usually the
+            // right one.
             return 0;
         }
         return (best + 0.5) / bins - 0.5;

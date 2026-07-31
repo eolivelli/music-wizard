@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
+import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -266,8 +267,21 @@ public final class AudioTranscriber {
         // harmonic change rather than from onset energy. The order stays acyclic:
         // chroma needs the beats, the downbeat phase needs the chroma, and chord
         // estimation needs neither the phase nor the grid.
+        //
+        // NNLS rather than the plain fold, because the plain fold does not work
+        // on records. Measured over every frame of samples/gmajorblues.mp3 (711
+        // seconds, #185's probe), plain chroma matched a flat profile better
+        // than it matched the best of all twenty-four triads -- 0.882 against
+        // 0.691, a margin of -0.191 -- so "no chord" was the maximum-likelihood
+        // answer for the whole recording, and that is what came out: a single
+        // N.C. span covering all 711 seconds. Through NNLS the same file
+        // measures +0.170 the other way.
+        //
+        // Both registers, not the treble alone: the two fail on different
+        // chords and adding them takes per-bar root accuracy on that recording
+        // from 36.0% to 64.6%. See NnlsChroma.combined for the breakdown.
         progress.accept("extracting chroma");
-        Chroma chroma = Chroma.extract(audio).beatSynchronous(beatTimes);
+        Chroma chroma = NnlsChroma.extract(audio).beatSynchronous(beatTimes).combined();
 
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.
