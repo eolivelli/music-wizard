@@ -137,6 +137,35 @@ class EndToEndIT {
     }
 
     @Test
+    @DisplayName("a clip between the two analysis window lengths still transcribes")
+    void aClipBetweenTheTwoWindowLengthsStillTranscribes() {
+        // The whole pipeline over the gap #3 opened between two window lengths.
+        // NnlsChroma analyses at 8192 samples -- 0.371 s at the analysis rate,
+        // twice the plain front end's window -- so a clip in this band yields no
+        // chroma frames at all while BeatTracker still tracks two pulses in it.
+        // Chroma.beatSynchronous then built a clamp whose bounds crossed and
+        // threw IllegalArgumentException out of transcribe().
+        //
+        // Covered here as well as in mw-dsp because this is the level a user
+        // reaches it from: the CLI on a very short file, which is exactly what
+        // someone does first when trying the tool out.
+        float[] clicks = new float[(int) (0.34 * SignalFactory.DEFAULT_SAMPLE_RATE)];
+        for (int i = 0; i < clicks.length; i += SignalFactory.DEFAULT_SAMPLE_RATE / 25) {
+            clicks[i] = 1;
+        }
+        Path source = tempDirectory.resolve("gap.wav");
+        SignalFactory.writeWav(source, clicks, SignalFactory.DEFAULT_SAMPLE_RATE);
+
+        Score score = new AudioTranscriber().transcribe(
+                source, AudioTranscriber.Options.defaults());
+
+        // Nothing to say about the harmony of a third of a second of clicks, and
+        // saying nothing is the correct outcome rather than a degraded one.
+        assertThat(score.chords().isEmpty()).isTrue();
+        assertThat(score.beatGrid()).isPresent();
+    }
+
+    @Test
     @DisplayName("LilyPond engraves the generated chart to a PDF, without complaining about it")
     void engravesToPdf() throws Exception {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);

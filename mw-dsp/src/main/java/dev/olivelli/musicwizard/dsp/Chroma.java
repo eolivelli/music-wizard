@@ -218,12 +218,29 @@ public record Chroma(double[][] vectors, double frameRate) {
      * beats, so this both denoises the estimate and gives the decoder its
      * segmentation for free.
      *
+     * <p>Three cases fold nothing and return this chroma unchanged: fewer than
+     * two beats, so there is no span between them; a chroma that is already
+     * beat-synchronous, which is what {@code frameRate <= 0} means; and a chroma
+     * with no frames at all.
+     *
+     * <p>That last one is not hypothetical, and it took a window length change
+     * to expose. A recording shorter than one analysis window yields zero
+     * frames while the beat tracker still finds two pulses in it — and the loop
+     * below then clamps {@code to} into the range {@code [from + 1, 0]}, which
+     * {@link Math#clamp} rejects outright. With the old 4096-sample window that
+     * combination was unreachable, because anything long enough to hold two
+     * pulses was long enough to hold a frame; at {@link NnlsChroma}'s 8192 it is
+     * reachable for any clip between about 0.305 and 0.371 seconds. The guard is
+     * here rather than at the call site because {@link NnlsChroma#beatSynchronous}
+     * reaches this same line by a different route.
+     *
      * @param beatTimes beat instants in seconds, ascending
-     * @return one chroma vector per inter-beat span
+     * @return one chroma vector per inter-beat span, or this chroma unchanged
+     *     when there is nothing to fold
      */
     public Chroma beatSynchronous(List<Double> beatTimes) {
         Objects.requireNonNull(beatTimes, "beatTimes");
-        if (beatTimes.size() < 2 || frameRate <= 0) {
+        if (beatTimes.size() < 2 || frameRate <= 0 || vectors.length == 0) {
             return this;
         }
         int spans = beatTimes.size() - 1;

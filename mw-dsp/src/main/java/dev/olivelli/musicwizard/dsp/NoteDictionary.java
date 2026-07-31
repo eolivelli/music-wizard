@@ -62,11 +62,18 @@ public final class NoteDictionary {
      *
      * <p>The arithmetic. Unit-normalised, a column with roll-off {@code s} gives
      * its fundamental weight {@code sqrt(1 − s²)} and its {@code k}-th partial
-     * {@code s^(k−1)} times that. At 0.7 the fundamental carries 0.714 and the
-     * third partial 0.350. So a note that is really sounding earns 0.714 from
-     * its own fundamental — while a note two octaves and a fifth below it, which
-     * is not sounding at all, earns 0.350 from each of the *three* chord tones
-     * its partials happen to land on, for 1.05. The absent note wins.
+     * {@code s^(k−1)} times that. At 0.7 the fundamental carries 0.714, the
+     * second partial 0.500 and the third 0.350. So a note that is really
+     * sounding earns 0.714 from its own fundamental — and a note an octave
+     * below it, which is not sounding at all, earns 0.500 from that note's
+     * fundamental as its own second partial and 0.350 from a note a fifth above
+     * as its third, for 0.850. The absent note wins.
+     *
+     * <p>Enumerating every note from A0 to C4 against a C4-E4-G4 triad at 0.7
+     * confirms which one it is: C3 at 0.850, then F2 at 0.350 and C2 at 0.536,
+     * against a real note's 0.714. The winner is the octave below, not something
+     * further down — a lower note has more partials landing on the triad but
+     * each is worth less, and the product peaks immediately.
      *
      * <p>That is not a hypothesis. Handed three pure sines at C4, E4 and G4 —
      * no partials, nothing below C4 in the signal at all — the dictionary at 0.7

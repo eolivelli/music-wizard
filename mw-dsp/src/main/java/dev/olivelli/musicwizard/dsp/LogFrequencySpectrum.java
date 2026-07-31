@@ -40,10 +40,13 @@ import java.util.Objects;
  * output bins that happen to fit. The bass is the part this front end exists to
  * get right.
  *
- * <p>The kernel widens where it has to. Below roughly 200 Hz at the resolutions
- * used here an FFT bin is wider than an output bin, so a bin's energy is shared
- * between neighbours; above it, several FFT bins fall inside one output bin and
- * the kernel is a plain interpolation. {@link NoteDictionary} widens its
+ * <p>The kernel widens where it has to. At the resolutions used here — 2.69 Hz
+ * per FFT bin at both 22.05 kHz/8192 and 44.1 kHz/16384 — one FFT bin is wider
+ * than one grid bin below 141 Hz and narrower above it, so low down a bin's
+ * energy is shared between neighbours and high up several FFT bins fall inside
+ * one grid bin and the kernel is a plain interpolation. The sharing only
+ * actually begins below 71 Hz, because {@link #map} floors the half-width at one
+ * grid bin and that floor binds between the two frequencies. {@link NoteDictionary} widens its
  * partials by the same rule, so the modelled peak and the observed peak have
  * the same width at every frequency. Without that they diverge exactly where
  * the bass lives, and NNLS explains a wide observed peak with a chord's worth of

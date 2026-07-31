@@ -49,7 +49,13 @@ import org.junit.jupiter.api.Test;
  * working rather than when it changes.
  *
  * <p>{@code *IT}, so it runs only under {@code -Pintegration}: it decodes and
- * analyses twelve minutes of audio. One analysis serves every assertion.
+ * analyses twelve minutes of audio. One analysis serves every assertion, which
+ * is what keeps it to about seven seconds.
+ *
+ * <p>The recording it depends on carries no licence or provenance note in the
+ * repository (#204). That is a question about the file rather than about this
+ * test, and it is the reason this comment mentions it: a gate that depends on a
+ * committed binary should say where the binary stands.
  */
 class BluesLoopIT {
 

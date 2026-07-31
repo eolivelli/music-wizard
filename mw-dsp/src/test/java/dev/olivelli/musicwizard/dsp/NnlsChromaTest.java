@@ -297,6 +297,41 @@ class NnlsChromaTest {
         }
 
         @Test
+        @DisplayName("survives a clip too short to hold a frame but long enough to hold beats")
+        void handlesAClipWithBeatsButNoFrames() {
+            // The gap between two window lengths, which is a real crash and was
+            // reachable from the CLI. NnlsChroma analyses at 8192 samples, 0.371
+            // s at this rate, so a clip below that yields zero frames -- while
+            // BeatTracker still finds two pulses in it from about 0.3 s. Chroma
+            // .beatSynchronous then clamped `to` into [from + 1, 0], and
+            // Math.clamp throws when the bounds cross.
+            //
+            // Unreachable before this front end: plain chroma's window is 4096,
+            // so anything long enough for two pulses was long enough for a
+            // frame. Swept at 5 ms, the band is 0.305 s to 0.370 s.
+            for (double seconds : new double[] {0.305, 0.32, 0.35, 0.37}) {
+                float[] clicks = new float[(int) (seconds * RATE)];
+                for (int i = 0; i < clicks.length; i += (int) (0.04 * RATE)) {
+                    clicks[i] = 1;
+                }
+                AudioBuffer audio = new AudioBuffer(clicks, RATE);
+                List<Double> beats = BeatTracker.track(OnsetEnvelope.fromAudio(audio)).beatTimes();
+
+                NnlsChroma chroma = NnlsChroma.extract(audio);
+                assertThat(chroma.treble().frameCount())
+                        .as("a %.3f s clip is shorter than the 8192-sample window", seconds)
+                        .isZero();
+                assertThat(beats.size())
+                        .as("but the tracker still finds pulses in it")
+                        .isGreaterThanOrEqualTo(2);
+
+                // The line that threw. Both the combined fold and the pair.
+                assertThat(chroma.combined().beatSynchronous(beats).frameCount()).isZero();
+                assertThat(chroma.beatSynchronous(beats).treble().frameCount()).isZero();
+            }
+        }
+
+        @Test
         @DisplayName("survives a signal shorter than one analysis window")
         void handlesASignalShorterThanTheWindow() {
             // windowSizeFor(22050) is 8192 samples, so a tenth of a second yields
@@ -418,9 +453,27 @@ class NnlsChromaTest {
             Chroma two = new Chroma(new double[2][12], 10);
             Chroma three = new Chroma(new double[3][12], 10);
 
+            // Matched on the count rather than on the shared closing phrase, so
+            // that this cannot be satisfied by the frame-rate guard below.
             assertThatIllegalArgumentException()
                     .isThrownBy(() -> new NnlsChroma(two, three, 0))
-                    .withMessageContaining("same frames");
+                    .withMessageContaining("treble has 2 frames and bass has 3");
+        }
+
+        @Test
+        @DisplayName("refuses registers at different frame rates")
+        void refusesRegistersAtDifferentFrameRates() {
+            // What makes combined()'s guard sound rather than lucky. It asks the
+            // treble whether the pair is beat-synchronous, and "beat-synchronous"
+            // is exactly "frameRate == 0" -- so without this a pair could
+            // disagree, and combined() would fold a beat-synchronous bass into a
+            // frame-rate treble without complaint.
+            Chroma framed = new Chroma(new double[2][12], 10);
+            Chroma folded = new Chroma(new double[2][12], 0);
+
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> new NnlsChroma(framed, folded, 0))
+                    .withMessageContaining("treble is at 10.0 frames per second and bass at 0.0");
         }
 
         @Test
@@ -549,20 +602,41 @@ class NnlsChromaTest {
             // search happily reports a third of a semitone. The guards added for
             // #77 do not touch this, because a noise histogram is not empty; it
             // is flat, and the search cannot tell the difference.
-            java.util.Random random = new java.util.Random(6);
-            float[] noise = new float[(int) (2.0 * RATE)];
-            for (int i = 0; i < noise.length; i++) {
-                noise[i] = (float) (random.nextGaussian() * 0.1);
+            //
+            // Asserted as *disagreement between noise samples* rather than as a
+            // magnitude, and the difference matters. estimateTuning returns one
+            // of forty slots, thirty-two of which exceed a tenth of a semitone,
+            // so "the answer is large" holds four times in five for a coin toss
+            // and would pass whether or not the defect existed -- an assertion
+            // about java.util.Random's seed wearing the clothes of one about
+            // this function. What no correct tuning estimate can do is give
+            // three noise signals three materially different answers, because
+            // none of them has a tuning to find.
+            double[] answers = new double[8];
+            for (int seed = 0; seed < answers.length; seed++) {
+                java.util.Random random = new java.util.Random(seed + 1);
+                float[] noise = new float[(int) (2.0 * RATE)];
+                for (int i = 0; i < noise.length; i++) {
+                    noise[i] = (float) (random.nextGaussian() * 0.1);
+                }
+                answers[seed] = Chroma.estimateTuning(
+                        Spectrogram.compute(new AudioBuffer(noise, RATE), 4096, 1024));
             }
 
-            double tuning = Chroma.estimateTuning(
-                    Spectrogram.compute(new AudioBuffer(noise, RATE), 4096, 1024));
+            double spread = java.util.Arrays.stream(answers).max().orElseThrow()
+                    - java.util.Arrays.stream(answers).min().orElseThrow();
+            // Eight signals rather than three, and 0.25 against a measured
+            // 0.400. Three was not enough: their answers happened to cluster
+            // within 0.175, which is the same fragility in a different costume.
+            // Over forty seeds the answers run from -0.463 to +0.488.
+            assertThat(spread)
+                    .as("eight noise signals, none with a tuning, answered %s",
+                            java.util.Arrays.toString(answers))
+                    .isGreaterThan(0.25);
 
-            // Asserted as a magnitude rather than a value, since the figure is a
-            // property of the seed. Delete this test when #203 is fixed.
-            assertThat(Math.abs(tuning))
-                    .as("white noise should carry no tuning and does not read as none")
-                    .isGreaterThan(0.1);
+            // Delete this test when #203 is fixed: a function that answered "no
+            // evidence" would return zero for all three and the spread would be
+            // zero.
         }
 
         @Test

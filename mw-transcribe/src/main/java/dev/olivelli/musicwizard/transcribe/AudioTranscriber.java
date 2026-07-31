@@ -269,8 +269,9 @@ public final class AudioTranscriber {
         // estimation needs neither the phase nor the grid.
         //
         // NNLS rather than the plain fold, because the plain fold does not work
-        // on records. Measured over every frame of samples/gmajorblues.mp3 (711
-        // seconds, #185's probe), plain chroma matched a flat profile better
+        // on records. Measured over every frame of samples/gmajorblues.mp3 that
+        // carries any energy -- 15,305 of 15,321, #185's probe -- plain chroma
+        // matched a flat profile better
         // than it matched the best of all twenty-four triads -- 0.882 against
         // 0.691, a margin of -0.191 -- so "no chord" was the maximum-likelihood
         // answer for the whole recording, and that is what came out: a single
