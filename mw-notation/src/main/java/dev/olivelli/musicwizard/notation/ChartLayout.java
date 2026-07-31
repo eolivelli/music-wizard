@@ -254,22 +254,19 @@ final class ChartLayout {
      * <p>Counting bars from the first downbeat, a grid step of a sixteenth --
      * which moves a chord by at most an eighth of a quarter beat -- puts the
      * fourth chord in the wrong bar, where a step of one counted beat, moving a
-     * chord by at most half a beat, holds to the twenty-fifth. Eight times as
-     * far, and that is the whole of what this method is answering for.
+     * chord by at most half a beat, holds through the twenty-fifth chord and
+     * first misplaces the twenty-sixth. Eight times as far, and that is the
+     * whole of what this method is answering for.
      *
-     * <p>What goes wrong beyond that is not this method's, and three review
-     * rounds were spent on successive wrong stories about whose it is, so this
-     * says only what was measured. The fourth downbeat is detected 0.18s early
-     * and the fifth is back within 0.012s, which is one bad downbeat rather than
-     * a trend. Past there two effects run against each other: the chart's bar is
-     * 1.417% long, because {@link Score#estimatedTempo()} takes the median
-     * tracked interval and the grid's own rate is faster (#200), and on a
-     * wander-free grid that alone would misplace the tenth chord; the
-     * recording's actual wander happens to cancel a third of it by the
-     * twenty-fifth (-1.397 quarter beats of tempo against +0.521 of wander), and
-     * that is what carries the real chart as far as it goes. They are not
-     * additive and neither is the remainder of the other. #187 is the wander,
-     * #200 is the tempo.
+     * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
+     * and 8 of review each found a different wrong story about whose it is, so
+     * this states the one measurement that bears on the ceiling and stops. The
+     * fourth downbeat is detected 0.18s early and the fifth is back within
+     * 0.012s -- one bad downbeat, and a grid narrower than it is wide trips over
+     * it. Past there the chart's bar length is wrong (#200) and the recording's
+     * beat does not keep to any single bar length (#187); the two run against
+     * each other rather than adding, and the measurements are on those issues
+     * where they can be corrected without touching this file.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it

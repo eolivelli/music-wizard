@@ -998,10 +998,13 @@ class ChordChartTest {
     void aChartChangingOnceABarIsDrawnOnTheBeat() {
         // Which grid the seconds route snaps to is a claim about how precisely
         // an estimate is worth believing, and a fixed sixteenth claimed too
-        // much. Measured on samples/gmajorblues.mp3, whose detected downbeats
-        // wander by up to 0.18s against a 2.25s bar: a sixteenth tolerates
-        // 0.06s, so the fourth bar's chord printed in the third bar. A beat
-        // tolerates 0.28s.
+        // much. Measured on samples/gmajorblues.mp3, where one downbeat -- the
+        // fourth -- is detected 0.18s early against a 2.25s bar: at that
+        // recording's tempo a sixteenth grid moves a chord by at most 0.070s, so
+        // that chord printed in the previous bar, where a beat grid moves it by
+        // up to 0.282s and it does not. Both tolerances are that recording's;
+        // quoting one of them at 120 BPM and the other at 106.6 is how this
+        // comment read until round 8.
         //
         // This fixture is that shape in miniature: four chords a bar apart at
         // 120 BPM, the third detected 0.16s early -- 0.32 of a beat, which a
