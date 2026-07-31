@@ -163,11 +163,18 @@ class GridRateTest {
         }
 
         @Test
-        @DisplayName("the overload enforces the invariant the constructor would have")
-        void theStaticOverloadStillDemandsAnOrderedGrid() {
-            // A caller reaching past the grid must not reach past its validation:
-            // unordered times give a negative or infinite rate, and this is the
-            // one entry point where no constructor has already refused them.
+        @DisplayName("the overload refuses every beat time a grid would refuse")
+        void theStaticOverloadEnforcesTheWholeInvariant() {
+            // A caller reaching past the grid must not reach past its
+            // validation, and this is the one entry point where no constructor
+            // has already refused the input.
+            //
+            // Round 4 of review found this checking the ordering alone while its
+            // name claimed the invariant -- the layer the round before had named
+            // rather than the layer the invariant lives at, which is Beat's own
+            // constructor. So the cases below are read off that constructor
+            // rather than off what seemed likely to matter, and the two
+            // non-finite ones are the reason: they returned an answer.
             assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(0.5)))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("two beats");
@@ -177,8 +184,61 @@ class GridRateTest {
             assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(1.0, 1.0)))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("strictly increase");
+            // 0.0 BPM before round 4, which a caller dividing 60 by turns into
+            // infinity -- and a grid cannot hold an infinite beat time at all.
+            assertThatThrownBy(() ->
+                    BeatGrid.overallPulseRate(List.of(0.0, Double.POSITIVE_INFINITY)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("finite and non-negative");
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(0.0, Double.NaN)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            // 30.0 BPM before round 4: plausible, and off a grid that could not
+            // exist, since a beat before the recording started is not a beat.
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(-3.0, -1.0)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("finite and non-negative");
+
             assertThatThrownBy(() -> BeatGrid.overallPulseRate(null))
                     .isInstanceOf(NullPointerException.class);
+            // A null element, which List.of cannot hold but an ArrayList can.
+            // Named, so the message says which beat rather than coming out of an
+            // unboxing that mentions no beats at all.
+            List<Double> withNull = new ArrayList<>(List.of(0.0, 0.5));
+            withNull.add(null);
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(withNull))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("pulseSeconds[2]");
+        }
+
+        @Test
+        @DisplayName("accepts exactly what a grid built from the same times accepts")
+        void theStaticOverloadAgreesWithTheConstructorOnWhatIsLegal() {
+            // The claim the case list above can only sample. Anything the
+            // overload accepts, ofTimes accepts too, and the other way round --
+            // so the two cannot drift into disagreeing about what a beat time is.
+            List<List<Double>> candidates = List.of(
+                    List.of(0.0, 0.5, 1.0),
+                    List.of(0.05, 0.4, 1.9),
+                    List.of(1.0, 0.5, 2.0),
+                    List.of(1.0, 1.0),
+                    List.of(-3.0, -1.0),
+                    List.of(0.0, Double.POSITIVE_INFINITY),
+                    List.of(0.0, Double.NaN),
+                    List.of(0.0, -0.0));
+            for (List<Double> times : candidates) {
+                boolean overloadAccepts = accepts(() -> BeatGrid.overallPulseRate(times));
+                boolean gridAccepts = accepts(() -> gridOf(times));
+                assertThat(overloadAccepts).as("%s", times).isEqualTo(gridAccepts);
+            }
+        }
+
+        private static boolean accepts(Runnable call) {
+            try {
+                call.run();
+                return true;
+            } catch (RuntimeException accepted) {
+                return false;
+            }
         }
 
         @Test

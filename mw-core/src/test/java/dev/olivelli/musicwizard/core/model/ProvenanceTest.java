@@ -307,7 +307,7 @@ class ProvenanceTest {
             // shape a MIDI import plus --tempo produces once #98 lands, and the
             // one aSuppliedTempoSurvivesWithoutABeatGrid exists for.
             BeatGrid grid = gridOf(pulses(0.2, 0.5, 24));
-            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
+            assertThat(grid.overallTempo(TimeSignature.FOUR_FOUR))
                     .as("the grid must disagree with the correction, or a column shows nothing")
                     .isCloseTo(120.0, within(1e-6));
 

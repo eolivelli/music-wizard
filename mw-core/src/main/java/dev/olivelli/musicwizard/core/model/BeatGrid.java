@@ -247,8 +247,13 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * The same rate, for a caller that has the pulse times but not yet a grid.
      *
      * <p>Exists for one caller, and for a reason worth stating: the transcriber
-     * reports the rate it tracked before it has phased the downbeats, so it
-     * cannot ask a grid. It used to report the beat tracker's own median
+     * reports the rate it tracked before it has phased the downbeats, so no grid
+     * exists yet to ask. That is a choice rather than an impossibility -- the
+     * grid is built later in the same method, and the line could be moved after
+     * it -- but chroma extraction runs in between and takes seconds on a real
+     * recording, and the beat count is what tells a user that tracking worked at
+     * all. Reporting it late to save an overload would be paying in the one
+     * currency the message is for. It used to report the beat tracker's own median
      * interval, and once {@link Score#estimatedTempo()} stopped reading a median
      * that made one command print two figures for one recording -- 106.6 in the
      * progress line and 108 in the chart header, on the project's one real
@@ -262,12 +267,22 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * because two copies of a rate is how the two figures came to disagree in the
      * first place.
      *
+     * <p>The whole of what a grid demands of a beat time is checked, not only
+     * the ordering: finite, non-negative, and strictly increasing. Round 4 of
+     * review found this checking the ordering alone, which is the layer the
+     * previous round had named rather than the layer the invariant lives at --
+     * {@code overallPulseRate(List.of(0.0, POSITIVE_INFINITY))} returned 0.0 BPM,
+     * a rate no grid can hold and one that a caller dividing 60 by turns into
+     * infinity.
+     *
      * @param pulseSeconds pulse times, ordered and holding at least two
-     * @throws IllegalArgumentException if there are fewer than two, or they do
-     *                                  not strictly increase -- the same
-     *                                  condition the constructor enforces, since
-     *                                  a caller bypassing the grid must not
-     *                                  bypass its invariant
+     * @throws IllegalArgumentException if there are fewer than two, or any is
+     *                                  not finite and non-negative, or they do
+     *                                  not strictly increase -- the conditions
+     *                                  {@link Beat} and the constructor between
+     *                                  them enforce, since a caller bypassing
+     *                                  the grid must not bypass its invariant
+     * @throws NullPointerException     if the list or any element is null
      */
     public static double overallPulseRate(List<Double> pulseSeconds) {
         Objects.requireNonNull(pulseSeconds, "pulseSeconds");
@@ -275,11 +290,16 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
             throw new IllegalArgumentException(
                     "cannot infer tempo from fewer than two beats, got: " + pulseSeconds.size());
         }
-        for (int i = 1; i < pulseSeconds.size(); i++) {
-            if (!(pulseSeconds.get(i) > pulseSeconds.get(i - 1))) {
+        for (int i = 0; i < pulseSeconds.size(); i++) {
+            double at = Objects.requireNonNull(pulseSeconds.get(i), "pulseSeconds[" + i + "]");
+            if (!Double.isFinite(at) || at < 0) {
+                throw new IllegalArgumentException(
+                        "beat time must be finite and non-negative, got: " + at);
+            }
+            if (i > 0 && !(at > pulseSeconds.get(i - 1))) {
                 throw new IllegalArgumentException(
                         "beats must strictly increase in time; beat " + i + " at "
-                                + pulseSeconds.get(i) + "s does not follow beat " + (i - 1)
+                                + at + "s does not follow beat " + (i - 1)
                                 + " at " + pulseSeconds.get(i - 1) + "s");
             }
         }

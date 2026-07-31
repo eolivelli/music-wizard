@@ -142,7 +142,7 @@ class TempoOverrideTest {
                 new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null));
 
         assertThat(compound.beatGrid()).isPresent();
-        assertThat(compound.beatGrid().get().medianPulseRate()).isCloseTo(120.0, within(2.0));
+        assertThat(compound.beatGrid().get().overallPulseRate()).isCloseTo(120.0, within(2.0));
         assertThat(compound.tempoMap().averageTempo(compound.durationSeconds()))
                 .isCloseTo(180.0, within(3.0));
         // And the grid bars every two pulses, not every six. Asserted on the
@@ -216,7 +216,12 @@ class TempoOverrideTest {
         assertThat(halved.tempoMap().segments())
                 .as("the fixture must exercise the lead-in, or this proves nothing")
                 .hasSizeGreaterThan(1);
-        assertThat(halved.beatGrid().orElseThrow().medianPulseRate())
+        // overallPulseRate, not medianPulseRate: the figure the correction has
+        // to beat is the one Score.estimatedTempo would have answered with, and
+        // since #200 that is the rate the grid ran at. The two differ on this
+        // fixture -- 120.19 against 119.82 -- so naming the wrong one would have
+        // guarded a value nothing reads.
+        assertThat(halved.beatGrid().orElseThrow().overallPulseRate())
                 .as("the grid still disagrees, which is what makes the choice matter")
                 .isCloseTo(120.0, within(2.0));
         assertThat(halved.estimatedTempo()).isCloseTo(60.0, within(1e-9));

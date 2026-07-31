@@ -38,6 +38,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -286,16 +288,32 @@ class GmajorBluesChartTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no rate was reported: " + progress));
 
+        // Parsed rather than compared against a literal, so what is pinned is
+        // the agreement and not two numbers this test wrote down itself. Round 4
+        // of review found the first version asserting both figures against its
+        // own constants, which would have gone on passing if the two drifted
+        // apart in step with the fixture.
+        Matcher rate = Pattern.compile("found (\\d+) beats at ([0-9.]+) beats/min")
+                .matcher(reported);
+        assertThat(rate.matches()).as("%s", reported).isTrue();
+        assertThat(Integer.parseInt(rate.group(1))).isEqualTo(grid.size());
+        assertThat(Double.parseDouble(rate.group(2)))
+                .as("the rate printed while tracking is the rate the chart is barred at")
+                .isCloseTo(grid.overallPulseRate(), within(0.05));
+
+        // And the same figure in the header, which is the other end of the
+        // journey a user reads. 4/4 here, so a counted beat is a quarter note.
+        assertThat(ChordChart.toText(chartOf(documentedProgression(), tracked())))
+                .contains(String.format(Locale.ROOT, "Tempo  %.0f BPM",
+                        grid.overallTempo(TimeSignature.FOUR_FOUR)));
+
+        // The literals too, because the assertions above would both hold if the
+        // two readers agreed on the median instead -- which is what they did
+        // before #200, and what makes this recording worth the five seconds.
         assertThat(reported).isEqualTo("found 1281 beats at 108.1 beats/min");
         assertThat(reported)
-                .as("the figure this used to print, which is the one that mis-bars")
+                .as("the figure this used to print, and the one that mis-bars")
                 .doesNotContain("106.6");
-        // Not just the same digits: the same statistic. 4/4, so a counted beat
-        // is a quarter note and the two units coincide.
-        assertThat(grid.overallPulseRate())
-                .isCloseTo(grid.overallTempo(TimeSignature.FOUR_FOUR), within(1e-12));
-        assertThat(ChordChart.toText(chartOf(documentedProgression(), tracked())))
-                .contains("Tempo  108 BPM");
     }
 
     @Test
