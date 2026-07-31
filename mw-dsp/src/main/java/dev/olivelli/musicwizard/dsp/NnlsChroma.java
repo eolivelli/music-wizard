@@ -47,8 +47,9 @@ import java.util.stream.IntStream;
  * <p>It is not, on its own, the cure for #185, and the measurement is worth
  * stating here rather than only where it was taken. Handed this chroma but left
  * with the estimator it was written for — triads only, no-chord scored as a flat
- * template — the result is 0.3% of bars with the right root and 96.5% of
- * {@code samples/gmajorblues.mp3} still labelled N.C. A flat profile scores
+ * template, emissions unsharpened — the answer does not change at all: one N.C.
+ * span covering 99.9% of {@code samples/gmajorblues.mp3}, which is bit for bit
+ * what plain chroma gives. A flat profile scores
  * highest exactly when a frame looks least like music, and sharpening the frame
  * does not stop that. So this stage is worth a great deal and worth it only in
  * company.

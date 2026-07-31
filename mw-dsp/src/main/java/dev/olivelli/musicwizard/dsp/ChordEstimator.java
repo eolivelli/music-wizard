@@ -41,24 +41,25 @@ import java.util.Objects;
  * deliberately crude, and crude turns out not to be the problem. On a real
  * recording with known changes this stage was returning one N.C. span for the
  * whole song (#185). Per-bar root accuracy on {@code samples/gmajorblues.mp3},
- * varying the front end and this class's changes independently — the seventh
- * templates, the no-chord level and the emission sharpness, which move together
- * in the column below and are not separable into a single culprit:
+ * varying the front end and all three of this class's changes together — the
+ * seventh templates, the no-chord level and the emission sharpness, which the
+ * left column holds at their pre-#3 values and the right column at their
+ * current ones:
  *
  * <pre>
  *                                        old vocabulary   sevenths and a
  *                                        and flat         fixed no-chord
  *                                        no-chord         level
  *   plain chroma                            0.0%             58.9%
- *   {@link NnlsChroma} combined             0.3%             86.6%
+ *   {@link NnlsChroma} combined             0.0%             86.6%
  * </pre>
  *
- * <p>Down the first column, a better front end on its own is worth three tenths
- * of a point — 0.0% to 0.3%, one N.C. span becoming 106 of them — because the
- * flat no-chord template swallows the recording whichever chroma it is handed.
- * Along the first row, these changes on their own are worth 58.9. And the front
- * end adds 27.7 on top of them, 58.9% to 86.6%, which is the only cell where it
- * is worth anything at all.
+ * <p>Down the first column, a better front end on its own is worth <em>nothing
+ * whatever</em>: both cells are one N.C. span covering 99.9% of the recording,
+ * bit for bit the same answer, because the flat no-chord template swallows it
+ * whichever chroma it is handed. Along the first row, these changes on their own
+ * are worth 58.9. And the front end adds 27.7 on top of them, 58.9% to 86.6%,
+ * which is the only cell where it is worth anything at all.
  *
  * <p>Not one of the three carries that 58.9 alone, and the decomposition is
  * worth having because two review rounds went wrong for want of it. Over plain
@@ -68,9 +69,10 @@ import java.util.Objects;
  *
  * <p>So the no-chord level is what makes the recording speak at all, the
  * sevenths are the largest single step, and the sharpness is worth ten points
- * that are easy to attribute to one of the other two. This is the one place
- * that attribution is stated; {@link NnlsChroma} used to restate it and now
- * links here instead, having been corrected three rounds running.
+ * that are easy to attribute to one of the other two. This is the one place the
+ * decomposition is measured; {@link NnlsChroma} used to restate it and now links
+ * here instead, having been corrected three rounds running, and {@code
+ * CLAUDE.md} carries a two-line summary that defers here for the rest.
  *
  * <p>The surprising column is the first one, and it is why this class changed
  * at all: #3 called the front end the fix for #185, and measured alone against

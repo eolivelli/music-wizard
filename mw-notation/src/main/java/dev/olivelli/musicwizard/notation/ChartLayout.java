@@ -269,21 +269,33 @@ final class ChartLayout {
      * changed, and both want re-taking.</b> Not the beat times -- those come out
      * byte-identical -- but the downbeat phase, which moved by one beat on this
      * recording, and with it the irregularity the sixteenth grid was tripping
-     * over. The comparison does not narrow, it inverts. Re-measured exactly as
-     * described above -- bars counted from the first downbeat, one chord per
-     * detected downbeat, through this class's own snap -- the sixteenth grid
-     * first misplaces the fourth chord before that change and the hundred and
-     * twelfth after it. The method is the right one: it reproduces the figure
-     * above on the unchanged code.
+     * over. The comparison does not narrow and it does not invert: it collapses.
+     * Re-measured exactly as described above -- bars from the first downbeat,
+     * one chord per detected downbeat, through this class's own snap and its own
+     * {@code quarterNoteSeconds} -- the sixteenth grid first misplaces the
+     * fourth chord before that change and the twenty-fifth after it, against a
+     * counted beat that first misplaces the twenty-sixth either way.
      *
-     * <p>So on this recording the sixteenth grid is now the better of the two,
-     * and a maintainer re-taking this measurement will conclude the choice was
-     * wrong. The choice is still right, and the reason has to carry it now that
-     * the figure does not: a grid narrower than the timing error trips over it,
-     * which is a claim about what a grid must survive rather than about what one
-     * recording happens to contain. What that costs is a real gap in the
-     * evidence, and closing it wants a recording whose downbeats are still
-     * irregular rather than a re-run of this one.
+     * <p>Both original figures reproduce on the unchanged code, which is what
+     * makes the pair worth stating. The quarter length has to be this class's
+     * own: at a bar length least-squares-fitted to the downbeats instead, the
+     * same harness reports 4 and 112 -- and 110 rather than 26 for the counted
+     * beat, which is the tell. The 4 is reproduced at every plausible quarter
+     * length, being one local irregularity, so it validates nothing; the 26 is
+     * the figure that distinguishes a right harness from a wrong one.
+     *
+     * <p>What the collapse means is that after chord 25 the grid width has
+     * stopped being the thing that decides. The recording's beats run 0.5552s
+     * where the estimate is 0.5631s, so the bar lines walk off the music by two
+     * beats around there whatever the grid does -- that is #196, not a result
+     * about grid width. The one-chord margin left between 25 and 26 is noise.
+     *
+     * <p>So the choice stands and its evidence does not, and the reason has to
+     * carry it alone: a grid narrower than the timing error trips over it, which
+     * is a claim about what a grid must survive rather than about what one
+     * recording happens to contain. That is a real gap, and closing it wants a
+     * recording whose downbeats are still irregular rather than a re-run of this
+     * one.
      *
      * <p>What goes wrong beyond that is not this method's, and rounds 5, 6, 7
      * and 8 of review each found a different wrong story about whose it is, so
