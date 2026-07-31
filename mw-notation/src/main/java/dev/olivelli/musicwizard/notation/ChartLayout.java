@@ -293,12 +293,12 @@ final class ChartLayout {
      * <p>What the collapse means is that after chord 25 the grid width has
      * stopped being the thing that decides. The recording's beats run 0.5583s
      * over the hundred from the first downbeat to chord 26, and 0.5552s over the
-     * whole of it, against an estimate of 0.5631s -- the drift is not uniform,
-     * which is why the second figure does not predict the first -- and by chord
-     * 26 the bar lines have walked off the music by 0.86 of a beat whatever the
-     * grid does. That is past the half beat a counted-beat grid can absorb,
-     * which is why 26 fails, and it is
-     * #196 rather than a result about grid width. The drift reaches two beats by
+     * whole recording, against an estimate of 0.5631s -- the drift is not
+     * uniform, which is why the whole-recording rate does not predict the
+     * hundred-beat one -- and by chord 26 the bar lines have walked off the
+     * music by 0.86 of a beat whatever the grid does. That is past the half beat
+     * a counted-beat grid can absorb, which is why 26 fails, and it is #196
+     * rather than a result about grid width. The drift reaches two beats by
      * chord 47 and seventeen by the end. The one-chord margin between 25 and 26
      * is noise.
      *
