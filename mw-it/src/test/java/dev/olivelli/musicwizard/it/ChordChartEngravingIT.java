@@ -149,6 +149,60 @@ class ChordChartEngravingIT {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
+    /**
+     * A progression that chatters, in a meter whose bar the reduction cannot
+     * halve.
+     *
+     * <p>#212 rewrites a bar's cell lengths, so a bar that no longer sums to its
+     * meter is a bar this file exists to catch. The awkward case is a meter whose
+     * only divisions are one slot and all of them: a 5/4 bar written on five
+     * slots merges runs of them into cells of one, two and three quarters, none
+     * of which is a length the unreduced chart would ever have produced here.
+     *
+     * <p>Sixteen chords over four 5/4 bars, changing on beats the reduction will
+     * partly absorb: 2+1+1+1 quarters a bar, so the first bar is written whole
+     * and the rest are not.
+     */
+    private static Score aChatteringFiveFour() {
+        TimeSignature meter = new TimeSignature(5, 4);
+        double quarter = 0.5;
+        double[] lengths = {2, 1, 1, 1};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C, NoteLetter.C,
+                NoteLetter.A, NoteLetter.A, NoteLetter.F, NoteLetter.A,
+                NoteLetter.C, NoteLetter.G, NoteLetter.G, NoteLetter.G,
+                NoteLetter.F, NoteLetter.C, NoteLetter.F, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            double length = lengths[i % lengths.length];
+            chords.add(chord(roots[i], ChordQuality.MAJOR, at * quarter,
+                    (at + length) * quarter));
+            at += length;
+        }
+        return Score.empty(TempoMap.constant(120, meter), at * quarter)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    /** The same in 7/8, whose bar is three and a half quarters and divides only by seven. */
+    private static Score aChatteringSevenEight() {
+        TimeSignature meter = new TimeSignature(7, 8);
+        double quarter = 0.5;
+        double[] lengths = {1.5, 0.5, 1, 0.5};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C, NoteLetter.C,
+                NoteLetter.A, NoteLetter.F, NoteLetter.A, NoteLetter.A,
+                NoteLetter.G, NoteLetter.C, NoteLetter.G, NoteLetter.G};
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            double length = lengths[i % lengths.length];
+            chords.add(chord(roots[i], ChordQuality.MAJOR, at * quarter,
+                    (at + length) * quarter));
+            at += length;
+        }
+        return Score.empty(TempoMap.constant(120, meter), at * quarter)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
     static Stream<Arguments> charts() {
         return Stream.of(
                         // #64: a bar that is not four quarters long.
@@ -164,7 +218,11 @@ class ChordChartEngravingIT {
                         Arguments.of("forced-tempo", eightChordsAtAForcedTempo()),
                         Arguments.of("ornamental", anOrnamentalChord()),
                         // A meter change mid-chart, which needs a second \time.
-                        Arguments.of("meter-change", aMeterChange()));
+                        Arguments.of("meter-change", aMeterChange()),
+                        // #212: bars whose cell lengths the reduction rewrote,
+                        // in the two meters whose bar it cannot halve.
+                        Arguments.of("chattering-five-four", aChatteringFiveFour()),
+                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()));
     }
 
     @ParameterizedTest(name = "{0}")
