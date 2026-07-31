@@ -29,7 +29,9 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -262,16 +264,38 @@ class HarmonicRhythmTest {
         // five sample recordings, and that every real disagreement the fix
         // removed was of it, so the omission was not an exotic corner.
         //
-        // So every score here pairs a bar the reduction rewrites with a bar it
-        // does not, in both orders, which is exactly the adjacency the defect
-        // lived at. Re-checked the same way: with the pre-fix naming pass
-        // restored on a scratch copy outside the repository, this test and
-        // aDroppedNameIsRecomputedRatherThanKept both fail and the other seven
-        // pass.
+        // So every score here pairs a bar of one chord per counted beat with a
+        // bar holding a single chord, in both orders. Only one of those orders
+        // can reach the defect -- with the single-chord bar first there is no
+        // predecessor, so its cell is named in both passes and the stale branch
+        // is never taken -- and the reversed order is carried as a control on
+        // the rest of the composition rather than as evidence. Round 3 measured
+        // that too, and the comment here claimed both orders before it did.
+        //
+        // The counting below is round 3's finding and it is the same lesson a
+        // third time. Rebuilding the population was not enough: whether it can
+        // construct the precondition at all depends on EXTRA_CHORD_COST, which
+        // this class's own javadoc invites a maintainer to move. Set that to
+        // 0.05 and every one of these scores goes inert -- the reduction stops
+        // dropping anything, no predecessor ever changes, and the test passes
+        // against deliberately broken code without a word. So the population is
+        // made to prove its own power rather than asserted to have it, which is
+        // what everyWrittenBarFillsItsMeter already does one test along and what
+        // this one was missing.
+        //
+        // Two of the five meters cannot construct it either, and are carried
+        // as controls for the same reason. In 3/4 and 6/8 at this cost a chord
+        // holding one counted beat always earns its place, so the reduction
+        // never drops one and never changes a bar's last symbol -- which is the
+        // fact aCountedBeatSurvivesWhereItIsWorthMore asserts, seen from behind.
+        // So the count is required to be positive in 4/4, 5/4 and 7/8 and is
+        // expected to be zero in the other two.
         NoteLetter[] alphabet = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
+        Map<TimeSignature, Integer> reachedTheDefect = new LinkedHashMap<>();
         for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
                 TimeSignature.SIX_EIGHT, new TimeSignature(5, 4), new TimeSignature(7, 8))) {
             int beats = meter.beatsPerBar();
+            reachedTheDefect.put(meter, 0);
             for (boolean wholeBarFirst : List.of(false, true)) {
                 for (int shape = 0; shape < Math.pow(alphabet.length, beats + 1); shape++) {
                     NoteLetter[] roots = new NoteLetter[beats + 1];
@@ -288,10 +312,72 @@ class HarmonicRhythmTest {
                         lengths[wholeBarFirst ? i + 1 : i] = meter.beatUnitQuarters();
                     }
                     lengths[wholeBarFirst ? 0 : beats] = meter.quarterBeatsPerBar();
-                    assertBothOutputsNameTheSameCells(bar(meter, roots, lengths));
+                    Score score = bar(meter, roots, lengths);
+                    assertBothOutputsNameTheSameCells(score);
+                    if (couldStrandAName(score)) {
+                        reachedTheDefect.merge(meter, 1, Integer::sum);
+                    }
                 }
             }
         }
+
+        for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR,
+                new TimeSignature(5, 4), new TimeSignature(7, 8))) {
+            assertThat(reachedTheDefect.get(meter))
+                    .as("scores in %s that put a stale name within reach; if this is zero the "
+                            + "sweep above proves nothing and EXTRA_CHORD_COST has moved", meter)
+                    .isPositive();
+        }
+    }
+
+    /**
+     * Whether a score contains the shape the naming defect needed: a bar the
+     * reduction hands back untouched, whose first symbol the reduction has just
+     * changed the predecessor of.
+     *
+     * <p>Both halves are required and neither alone is the defect. The untouched
+     * bar is what carries a flag from the first naming pass into the second; the
+     * changed predecessor is what makes that flag wrong. Specifically the first
+     * pass sees a different symbol before this cell and marks it named, and the
+     * second should see an equal one and not — so the text chart prints a chord
+     * change the page does not.
+     */
+    private static boolean couldStrandAName(Score score) {
+        List<ChartLayout.Bar> laid = ChartLayout.unreduced(score);
+        List<ChartLayout.Bar> written = ChartLayout.of(score);
+        String laidPrevious = null;
+        String writtenPrevious = null;
+        for (int i = 0; i < written.size(); i++) {
+            List<ChartLayout.Cell> before = laid.get(i).cells();
+            List<ChartLayout.Cell> after = written.get(i).cells();
+            if (i > 0 && handedBack(before, after)
+                    && !after.get(0).symbol().equals(laidPrevious)
+                    && after.get(0).symbol().equals(writtenPrevious)) {
+                return true;
+            }
+            laidPrevious = before.get(before.size() - 1).symbol();
+            writtenPrevious = after.get(after.size() - 1).symbol();
+        }
+        return false;
+    }
+
+    /**
+     * Whether the reduction returned a bar as it found it, compared on what it
+     * decides -- the chords and their lengths. Not on {@code named}, which both
+     * passes rewrite and which is the very thing under test.
+     */
+    private static boolean handedBack(List<ChartLayout.Cell> before,
+                                      List<ChartLayout.Cell> after) {
+        if (before.size() != after.size()) {
+            return false;
+        }
+        for (int i = 0; i < before.size(); i++) {
+            if (!before.get(i).chord().equals(after.get(i).chord())
+                    || before.get(i).lengthQuarters() != after.get(i).lengthQuarters()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

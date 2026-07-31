@@ -984,8 +984,8 @@ class ChordChartTest {
         // of the eight go.
         //
         // Declining to reduce a bar whose harmony moves faster than the counted
-        // beat would save this one, and it is not a clean rule -- 12% to 33% of
-        // changes on the five sample recordings are that fast against the beat
+        // beat would save this one, and it is not a clean rule -- 12.0% to 32.9%
+        // of changes on the five sample recordings are that fast against the beat
         // their charts are spaced at, while none of them is against the tracked
         // beat grid the estimator used. See ChartLayout.atHarmonicRhythm, and
         // tools/score-chart.py, which reports both. So this is a stated cost

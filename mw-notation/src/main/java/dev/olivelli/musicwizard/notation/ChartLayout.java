@@ -120,7 +120,7 @@ final class ChartLayout {
      * two chords a bar is the chatter the issue is about, and a chart nobody can
      * read scores nothing in practice -- but it is a trade, and a maintainer
      * moving this should expect the two columns to move against each other.
-     * Neither figure is quoted here because nothing committed reproduces a sweep
+     * Neither is given a number, because nothing committed reproduces a sweep
      * over the constant; {@code tools/score-chart.py} measures the chart this
      * value produces, not the ones others would.
      *
@@ -648,7 +648,7 @@ final class ChartLayout {
      * five benchmarks is faster than a beat, and that is structural rather than
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
-     * at, which is the median tracked interval, 12% to 33% of changes are.
+     * at, which is the median tracked interval, 12.0% to 32.9% of changes are.
      *
      * <p>The whole of that difference is one constant bar length drifting
      * against a recording that does not keep one -- #187, #196 and #200 -- and

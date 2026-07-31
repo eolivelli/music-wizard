@@ -164,7 +164,10 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     mattered. Chord gaps are whole numbers of tracked beat intervals, so a
     one-beat gap sits exactly on the boundary this counts against, and a
     fraction of a percent of tempo moves a whole cohort of them across at once
-    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%.
+    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%. The same
+    rounding then survived one round as the *check* on the derivation, which
+    round 3 found accepts anything within half a BPM: a band the figure varies
+    over by more than the error it was guarding. Both are gone.
 
     Returns None where the model cannot be measured this way, rather than a
     figure that would be mistaken for a measured zero.
@@ -181,17 +184,26 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
                else (intervals[middle - 1] + intervals[middle]) / 2.0)
 
     # The derivation above is only `estimatedTempo()`'s answer while it takes
-    # its beat-grid branch -- a supplied `--tempo` or a score carrying no
-    # provenance takes another. Checked against what the chart printed rather
-    # than assumed, so a model change fails loudly here instead of quietly
-    # reporting a figure about the wrong axis. Both branches of `tempoLine`
-    # print the counted tempo first, so this comparison is meter-independent.
-    header = (workspace / "out" / "chords.txt").read_text()
-    printed = int(re.search(r"^Tempo\s+(\d+)", header, re.M).group(1))
-    if round(60.0 / counted) != printed:
-        sys.exit(f"the chart is not spaced at the tracked median here: it printed "
-                 f"{printed} BPM where the median beat interval is {60.0 / counted:.3f}. "
-                 f"Score.estimatedTempo() took a branch this measure does not model.")
+    # its beat-grid branch, so the branch is checked rather than assumed --
+    # against its own conditions, which `score.json` carries in full.
+    #
+    # An earlier version checked it by rounding the derived tempo and comparing
+    # with the printed header. Round 3 of review measured that the band such a
+    # check accepts is half a BPM wide, and that the reported figure ranges over
+    # 24.4% to 36.1% inside it on `gmajorblues.mp3` -- wider than the error the
+    # check was added to catch. A check whose resolution is the size of the bug
+    # is not a check. This is the same defect one layer down: the rounded header
+    # is the layer the problem was noticed at, and `estimatedTempo()`'s
+    # conditions are the layer it lives at.
+    segments = doc.get("tempoMap", {}).get("segments", [])
+    provenances = {s.get("provenance", "UNKNOWN") for s in segments}
+    if "SUPPLIED" in provenances:
+        sys.exit(f"{workspace.name}: a supplied --tempo makes the chart's beat something "
+                 f"other than the tracked median; this measure does not model that.")
+    if provenances <= {"UNKNOWN"}:
+        sys.exit(f"{workspace.name}: the tempo map records no provenance, so "
+                 f"estimatedTempo() may prefer a stated constant over the beat grid; "
+                 f"this measure does not model that.")
 
     def spans_a_beat(a: float, b: float) -> bool:
         return any(a < t <= b for t in beats)
