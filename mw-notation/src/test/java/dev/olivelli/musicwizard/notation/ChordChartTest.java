@@ -359,9 +359,10 @@ class ChordChartTest {
         // This grid has the shape a tracked one has: most intervals on one
         // periodic template, a minority shorter because the recording ran ahead
         // of it. 112 of 0.5s and 8 of 0.4s, spread one in fifteen, so the median
-        // is the template's 0.5s while the 120 intervals those 121 pulses hold
-        // span 59.2s -- a rate of 0.493s, 1.35% faster. Deliberately close to the 1.4% measured on
-        // samples/gmajorblues.mp3, and deliberately spread rather than bunched:
+        // is the template's 0.5s while the 120 intervals those 121 pulses
+        // hold span 59.2s -- a rate of 0.493s, 1.35% faster. Deliberately close
+        // to the 1.4% measured on samples/gmajorblues.mp3, and deliberately
+        // spread rather than bunched:
         // a bunched minority puts the second chord in the wrong bar through a
         // phase error in one bar, which is not the defect. The defect is
         // accumulation, so the fixture has to be right at the start and wrong

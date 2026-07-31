@@ -336,6 +336,28 @@ class TempoOverrideTest {
         assertThat(untyped).anyMatch(line -> line.contains("assuming 120 beats/min"));
     }
 
+    @Test
+    @DisplayName("reports a lone tracked beat without inventing a rate for it")
+    void aLonePulseIsCountedAndNotRated() {
+        // #200 made the reported rate the rate the pulses ran at, which one
+        // pulse does not have -- BeatGrid.overallPulseRate throws below two,
+        // where BeatTracker's median quietly returned the seed estimate. So this
+        // line acquired a branch, and a branch nothing runs is a branch that
+        // throws in front of a user on the shortest clip they try.
+        //
+        // The count is still reported, because it is the count that tells them
+        // whether tracking worked at all; only the rate is withheld.
+        List<String> lines = new java.util.ArrayList<>();
+        Score score = new AudioTranscriber(lines::add).transcribe(tone(0.25),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+
+        assertThat(score.beatGrid().orElseThrow().size())
+                .as("the fixture must track exactly one beat, or this tests the other branch")
+                .isEqualTo(1);
+        assertThat(lines).anyMatch(line -> line.equals("found 1 beat, which carries no rate"));
+        assertThat(lines).noneMatch(line -> line.startsWith("found 1 beats at"));
+    }
+
     private static List<Provenance> provenances(Score score) {
         return score.tempoMap().segments().stream()
                 .map(TempoMap.TempoSegment::provenance).toList();

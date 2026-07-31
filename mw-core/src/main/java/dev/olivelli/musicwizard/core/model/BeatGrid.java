@@ -182,7 +182,10 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
 
     /**
      * The rate the grid actually ran at, in pulses per minute: its whole span
-     * divided by the number of pulses in it.
+     * divided by the number of <em>intervals</em> in it, which is one fewer than
+     * the number of pulses. Getting that off by one is getting the answer wrong
+     * by a pulse, which is the same distinction the whole class of defect this
+     * fixes turns on.
      *
      * <p><b>A rate per pulse index, which is what places anything counted in
      * pulses.</b> Pulse {@code k} is at {@code first + k * 60 / this}, and that
@@ -236,8 +239,57 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         if (beats.size() < 2) {
             throw new IllegalStateException("cannot infer tempo from fewer than two beats");
         }
-        double span = beats.get(beats.size() - 1).seconds() - beats.get(0).seconds();
-        return 60.0 * (beats.size() - 1) / span;
+        return overallPulseRate(
+                beats.get(0).seconds(), beats.get(beats.size() - 1).seconds(), beats.size());
+    }
+
+    /**
+     * The same rate, for a caller that has the pulse times but not yet a grid.
+     *
+     * <p>Exists for one caller, and for a reason worth stating: the transcriber
+     * reports the rate it tracked before it has phased the downbeats, so it
+     * cannot ask a grid. It used to report the beat tracker's own median
+     * interval, and once {@link Score#estimatedTempo()} stopped reading a median
+     * that made one command print two figures for one recording -- 106.6 in the
+     * progress line and 108 in the chart header, on the project's one real
+     * recording (#200, round 3 of review). Worse than untidy: the comment in
+     * {@code AudioTranscriber} beside {@code --tempo} tells the user they may
+     * type back "the rate this very run just reported", and a supplied tempo
+     * beats the grid -- so the printed figure was a documented route back to the
+     * defect this method exists to remove.
+     *
+     * <p>An overload rather than the arithmetic written out at the call site,
+     * because two copies of a rate is how the two figures came to disagree in the
+     * first place.
+     *
+     * @param pulseSeconds pulse times, ordered and holding at least two
+     * @throws IllegalArgumentException if there are fewer than two, or they do
+     *                                  not strictly increase -- the same
+     *                                  condition the constructor enforces, since
+     *                                  a caller bypassing the grid must not
+     *                                  bypass its invariant
+     */
+    public static double overallPulseRate(List<Double> pulseSeconds) {
+        Objects.requireNonNull(pulseSeconds, "pulseSeconds");
+        if (pulseSeconds.size() < 2) {
+            throw new IllegalArgumentException(
+                    "cannot infer tempo from fewer than two beats, got: " + pulseSeconds.size());
+        }
+        for (int i = 1; i < pulseSeconds.size(); i++) {
+            if (!(pulseSeconds.get(i) > pulseSeconds.get(i - 1))) {
+                throw new IllegalArgumentException(
+                        "beats must strictly increase in time; beat " + i + " at "
+                                + pulseSeconds.get(i) + "s does not follow beat " + (i - 1)
+                                + " at " + pulseSeconds.get(i - 1) + "s");
+            }
+        }
+        return overallPulseRate(pulseSeconds.get(0),
+                pulseSeconds.get(pulseSeconds.size() - 1), pulseSeconds.size());
+    }
+
+    /** The one definition, so the two public forms cannot drift apart. */
+    private static double overallPulseRate(double first, double last, int pulses) {
+        return 60.0 * (pulses - 1) / (last - first);
     }
 
     /**

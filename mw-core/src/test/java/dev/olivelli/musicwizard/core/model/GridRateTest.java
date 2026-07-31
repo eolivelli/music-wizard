@@ -75,7 +75,7 @@ class GridRateTest {
     class OverallRate {
 
         @Test
-        @DisplayName("is the span divided by the pulses in it, not the typical interval")
+        @DisplayName("is the span divided by the intervals in it, not the typical interval")
         void isASpanNotAnInterval() {
             BeatGrid grid = gridOf(aTrackedShape());
 
@@ -86,7 +86,7 @@ class GridRateTest {
                     .as("the template the tracker scored against")
                     .isCloseTo(120.0, within(1e-9));
             assertThat(grid.overallPulseRate())
-                    .as("what the pulses actually did: 40 of them in 18.8s")
+                    .as("what the pulses actually did: 40 intervals in 18.8s")
                     .isCloseTo(60.0 * 40 / 18.8, within(1e-9))
                     .isCloseTo(127.66, within(0.01));
         }
@@ -146,6 +146,39 @@ class GridRateTest {
                     .hasMessageContaining("two beats");
             assertThatThrownBy(() -> lonely.overallTempo(TimeSignature.FOUR_FOUR))
                     .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("answers the same off bare pulse times as off a built grid")
+        void theStaticOverloadIsTheSameStatistic() {
+            // The overload exists for the transcriber, which reports the rate it
+            // tracked before the downbeat phase is known and so has no grid to
+            // ask. Two copies of a rate is exactly how the progress line and the
+            // chart header came to disagree, so this pins them to one answer
+            // rather than to two that happen to match today.
+            List<Double> times = aTrackedShape();
+
+            assertThat(BeatGrid.overallPulseRate(times))
+                    .isEqualTo(gridOf(times).overallPulseRate());
+        }
+
+        @Test
+        @DisplayName("the overload enforces the invariant the constructor would have")
+        void theStaticOverloadStillDemandsAnOrderedGrid() {
+            // A caller reaching past the grid must not reach past its validation:
+            // unordered times give a negative or infinite rate, and this is the
+            // one entry point where no constructor has already refused them.
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(0.5)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("two beats");
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(1.0, 0.5, 2.0)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("strictly increase");
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(1.0, 1.0)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("strictly increase");
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(null))
+                    .isInstanceOf(NullPointerException.class);
         }
 
         @Test

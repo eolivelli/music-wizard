@@ -213,8 +213,26 @@ public final class AudioTranscriber {
         // Named as beats per minute rather than as a tempo on purpose: the
         // tracker counts pulses, and a pulse is a quarter note only in simple
         // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
-        progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
-                beatTimes.size(), beats.beatsPerMinute()));
+        //
+        // The rate those pulses ran at, not BeatTracker.Result.beatsPerMinute(),
+        // which is their median interval. The two agreed until #200 stopped
+        // Score.estimatedTempo() reading a median, and then one command printed
+        // two figures for one recording: 106.6 here and 108 in the chart header,
+        // on samples/gmajorblues.mp3. Which matters beyond untidiness because of
+        // the comment directly below -- a user is invited to type this figure
+        // back as --tempo, a supplied tempo beats the grid, and 106.6 is the
+        // spacing that puts the twenty-sixth chord of that recording in the
+        // wrong bar. Printing it was a documented route back to the defect.
+        //
+        // Only one beat is possible here and that carries no rate, so the count
+        // is reported without one rather than the whole line being dropped: it
+        // is the count that tells a user whether tracking worked at all. #206
+        // covers the tracker's own accessor, which nothing now reads.
+        progress.accept(beatTimes.size() >= 2
+                ? String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
+                        beatTimes.size(), BeatGrid.overallPulseRate(beatTimes))
+                : String.format(Locale.ROOT, "found %d beat, which carries no rate",
+                        beatTimes.size()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of

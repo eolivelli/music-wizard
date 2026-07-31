@@ -161,7 +161,7 @@ public enum Provenance {
      * 300 over 0.2s and the 60 over the remaining 11.8s average to 64. A figure
      * nobody supplied and the music never had -- and one that moves with the
      * recording's length, unlike the 60 and the 120 beside it, which are the
-     * supplied value and the grid's median.
+     * supplied value and the rate the grid ran at.
      *
      * <p>The two cells that come out right are not right for the same reason.
      * Losing one label without a grid is right <em>by design</em>: the surviving
@@ -172,7 +172,7 @@ public enum Provenance {
      * {@link Score#estimatedTempo()} -- exempts the lead-in by an exact match
      * between a segment's start and the grid's first beat, so that cell holds
      * only while the grid's beats still line up with the map's. Move the grid
-     * off its map and it reads the grid's median instead. Which segment the
+     * off its map and it reads the rate the grid ran at instead. Which segment the
      * match exempts is not restated here; it is stated once, beside the code
      * that does it, because restating it is how this paragraph got it backwards. <b>The table is
      * for the grid the map was built from</b>, and claims nothing for a grid

@@ -85,12 +85,15 @@ class GmajorBluesChartTest {
 
     private static double duration;
 
+    /** Everything the transcriber said on the way, for {@link #oneCommandPrintsOneTempo()}. */
+    private static final List<String> progress = new ArrayList<>();
+
     @BeforeAll
     static void trackTheRecording() {
         Path sample = repositoryRoot().resolve("samples").resolve("gmajorblues.mp3");
         assertThat(sample).as("the sample this test is about is tracked in the repository")
                 .exists();
-        Score transcribed = new AudioTranscriber()
+        Score transcribed = new AudioTranscriber(progress::add)
                 .transcribe(sample, AudioTranscriber.Options.defaults());
         grid = transcribed.beatGrid().orElseThrow();
         duration = transcribed.durationSeconds();
@@ -259,6 +262,40 @@ class GmajorBluesChartTest {
         assertThat(grid.overallTempo(TimeSignature.FOUR_FOUR))
                 .as("what those pulses actually did, 1.4% faster")
                 .isCloseTo(108.067, within(0.001));
+    }
+
+    @Test
+    @DisplayName("the rate it reports while tracking is the rate it charts with")
+    void oneCommandPrintsOneTempo() {
+        // Round 3 of review found this PR creating a divergence: the progress
+        // line printed BeatTracker's median interval and the chart header
+        // printed the score's tempo, which agreed until #200 and then did not.
+        // 106.6 against 108 on this recording.
+        //
+        // Untidy, and worse than untidy, because the comment beside --tempo in
+        // AudioTranscriber invites the user to type back "the rate this very run
+        // just reported" and a supplied tempo beats the grid. 106.6 is the
+        // spacing chordsStayInTheirBarsFourTimesLonger measures putting 295 of
+        // 320 chords in the wrong bar, so the printed figure was a documented
+        // route back to the defect.
+        //
+        // Only a real recording can hold this: on an even grid the two figures
+        // agree whichever statistic each reads.
+        String reported = progress.stream()
+                .filter(line -> line.startsWith("found ") && line.contains("beats/min"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no rate was reported: " + progress));
+
+        assertThat(reported).isEqualTo("found 1281 beats at 108.1 beats/min");
+        assertThat(reported)
+                .as("the figure this used to print, which is the one that mis-bars")
+                .doesNotContain("106.6");
+        // Not just the same digits: the same statistic. 4/4, so a counted beat
+        // is a quarter note and the two units coincide.
+        assertThat(grid.overallPulseRate())
+                .isCloseTo(grid.overallTempo(TimeSignature.FOUR_FOUR), within(1e-12));
+        assertThat(ChordChart.toText(chartOf(documentedProgression(), tracked())))
+                .contains("Tempo  108 BPM");
     }
 
     @Test
