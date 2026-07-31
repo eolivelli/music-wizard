@@ -206,6 +206,18 @@ that outrun their evidence: a result measured at one point written up as
 general, a javadoc describing the design that was replaced. On a tool whose
 output is estimates users act on, an overstated confidence is a defect.
 
+That last observation eventually restructured the process. Measured over the
+long reviews, executable defects stopped by round three-to-five and everything
+after was prose — real findings, wrongly priced, since a wrong sentence was
+costing a full adversarial round and one PR ran to eighteen. Reviews now have
+**two tiers**: findings that touch executable code or tests force a fresh full
+round, findings that are prose-only are fixed and confirmed in a delta pass on
+exactly the changed text (`APPROVE_WITH_CORRECTIONS`). Two writing rules shrink
+the prose tier at its source: when a reviewer corrects a fact, grep for every
+other statement of that fact before replying; and a number may appear in prose
+only if a test asserts it or a committed harness reproduces it — otherwise
+state the qualitative fact.
+
 ## Conventions
 
 - **Push at every milestone**, not at the end.

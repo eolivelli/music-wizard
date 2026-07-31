@@ -185,9 +185,24 @@ For each finding:
 - Reply on the PR saying what you changed and why, so the next round can verify
   rather than rediscover.
 
-Loop until the reviewer returns `APPROVE` on a round where it found nothing new.
-A round that finds new problems always requires another round after it,
-regardless of how many you have run.
+Loop until the reviewer returns `APPROVE` on a round where it found nothing
+new, **or** returns `APPROVE_WITH_CORRECTIONS` and confirms your prose fixes in
+a delta pass. A round that finds problems in executable code or tests always
+requires a full round after it, regardless of how many you have run. A round
+whose findings are prose-only does not — fix the text, request the delta
+confirmation on exactly that text, and merge on it.
+
+Two habits keep the prose tier small, and they are cheaper than the rounds
+they replace:
+
+- **When a reviewer corrects a fact, grep for every other statement of that
+  fact before replying.** The recurring failure of long reviews here was
+  correcting the sentence pointed at and not the sentence beside it resting on
+  the same fact — four consecutive rounds of that on one PR.
+- **A number may appear in prose only if a test asserts it or a committed
+  harness reproduces it.** Otherwise state the qualitative fact. Unverifiable
+  numbers were the single largest source of late-round findings: measured
+  wrong by 3x, 5x, 16x, and each correction spawned its own round.
 
 ## Step 5 — Merge, or hand over
 

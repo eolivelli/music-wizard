@@ -103,6 +103,16 @@ Reviewers should confirm suspected bugs by execution before reporting them as
 confirmed, and should say explicitly what they checked and found correct so the
 next round need not redo it.
 
+Findings are priced in two tiers. A finding that touches executable code or a
+test forces a fresh full round after the fix. A finding that is prose-only — a
+javadoc claim, a comment, a description — is fixed and then confirmed by the
+same reviewer in a delta pass over exactly the changed text, and the patch can
+merge on that confirmation. The history behind the split: executable defects
+consistently stopped by round five, and pricing every wrong sentence at a full
+round once took a patch to eighteen rounds, the last ten of which changed no
+code. A number belongs in prose only if a test asserts it or a committed
+harness reproduces it; otherwise write the qualitative fact.
+
 ## Issue tracking
 
 Anything that is not being fixed right now goes in a GitHub issue rather than a

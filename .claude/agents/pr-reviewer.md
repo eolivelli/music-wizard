@@ -151,13 +151,29 @@ nobody looks at it again.
 
 Return `REJECT_TRIAGE` when the verdict is wrong, with your evidence.
 
-## Verdict
+## Verdict — two tiers, because a wrong sentence must not cost a full round
 
 End with exactly one:
 
 - **`APPROVE`** — you found nothing new this round. Say so plainly.
-- **`REQUEST_CHANGES`** — findings must be addressed before merge.
+- **`APPROVE_WITH_CORRECTIONS`** — every finding is **prose-only**: javadoc,
+  comments, commit-message or PR-description claims, with no change to any
+  executable line or test. List the corrections; the author fixes them and you
+  re-check **only the changed text** in a delta pass — not a fresh round — then
+  the PR merges on your delta confirmation.
+- **`REQUEST_CHANGES`** — at least one finding touches executable code or
+  tests. These always require a full fresh round after the fix.
 - **`REJECT_TRIAGE`** — the decision not to write code is wrong.
+
+The distinction exists because of measured history: on this project the first
+three-to-five rounds of a hard PR find real defects — including CLI-reachable
+crashes no suite caught — and the rounds after that find only claims. Claims
+matter (an overstated confidence *is* a defect on a tool whose output users act
+on), but a wrong sentence is fixed and verified by reading one sentence, and
+pricing it at a full adversarial round produced 18-round reviews whose last
+ten rounds changed no code. Escalate a "prose" finding to `REQUEST_CHANGES`
+whenever fixing it honestly would change behaviour, a test, or a published
+number a test should be asserting.
 
 Then report findings, most severe first. For each: file and line, one sentence
 on what is wrong, a concrete input or interleaving that triggers it, why it
@@ -167,16 +183,10 @@ Separately list what you verified and found correct.
 
 **An `APPROVE` covers one commit, not a branch.** If anything is pushed after
 your approval — including a comment or javadoc change — it is unreviewed until
-you say otherwise. Re-stamp it explicitly, and where the author claims the
-change is non-executable, have them show it mechanically rather than assert it:
+you say otherwise. Re-stamp it explicitly (a delta pass suffices for
+non-executable changes), and where the author claims a change is
+non-executable, have them show it mechanically rather than assert it:
 compiling with `-g:none` and diffing the class files settles it in one command.
-
-**Late rounds change character, and that is not a reason to stop.** Once the
-executable code stops yielding defects, what remains is claims that outrun their
-evidence — a result measured at one point and written up as general, a javadoc
-describing the design that was replaced, a confidence value the data cannot
-support. On a tool whose output is estimates that users act on, an overstated
-confidence *is* a defect. Report it as one.
 
 Do not soften a serious finding to be agreeable, and do not inflate a nitpick to
 look thorough. Severity should mean something. If the change is good, say it is
