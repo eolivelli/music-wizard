@@ -59,12 +59,16 @@ import org.junit.jupiter.api.io.TempDir;
  * produce the awkward cases (ten failures, the pre-2.25.6 spelling) that no
  * fixture would reliably give.
  *
- * <p><b>What this does not prove.</b> {@code render} writes only the chord
- * chart today, and {@code ChordChart.toLilyPond} emits no {@code |} bar checks
- * at all, so real LilyPond cannot currently reach this branch through {@code mw
- * render}. It becomes reachable the moment a staff part is engraved — {@code
- * StaffNotation} ends every bar with one on purpose — and #160 tracks giving the
- * chord chart its own.
+ * <p><b>What this does not prove, and what changed.</b> {@code render} writes
+ * only the chord chart today. When this was written {@code
+ * ChordChart.toLilyPond} emitted no {@code |} bar checks at all, so real
+ * LilyPond could not reach this branch through {@code mw render}; #160 gave the
+ * chart a {@code \time} and a check per bar, and {@code
+ * ChordChartEngravingIT.aShortBarIsCaught} engraves a short chart bar with real
+ * LilyPond and reads the warning back. What is still not proved <em>here</em> is
+ * the wiring end to end under a real engraver, which is deliberate: this suite
+ * stays offline, and a stand-in is what lets it produce ten failures and the
+ * pre-2.25.6 spelling.
  */
 class RenderDiagnosticsTest {
 

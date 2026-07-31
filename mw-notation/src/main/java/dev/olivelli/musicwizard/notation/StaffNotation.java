@@ -252,24 +252,11 @@ public final class StaffNotation {
         }
 
         /**
-         * The time signature, carrying the model's beat grouping where it has
-         * one.
-         *
-         * <p>{@code \time #'(3 3) 6/8} rather than a pair of {@code \set Timing}
-         * lines: the list form takes the grouping in denominator units, which is
-         * exactly what {@link TimeSignature#beatStructure()} returns, and it does
-         * not name {@code baseMoment}, which LilyPond renamed in 2.26 and now
-         * warns about. One line, no deprecation, same grouping on both versions.
+         * The time signature, spelled by {@link LilyPondMeter} so that a staff
+         * part and a chord chart of the same piece cannot state it differently.
          */
         private void appendMeter(TimeSignature meter) {
-            out.append("    \\time ");
-            if (statesItsOwnGrouping(meter)) {
-                out.append("#'(")
-                        .append(meter.beatStructure().stream().map(String::valueOf)
-                                .collect(Collectors.joining(" ")))
-                        .append(") ");
-            }
-            out.append(meter.numerator()).append('/').append(meter.denominator()).append('\n');
+            out.append("    ").append(LilyPondMeter.time(meter)).append('\n');
         }
 
         /** What a token is written on: a rest, a pitch, or a chord. */
@@ -283,24 +270,6 @@ public final class StaffNotation {
             return pitches.stream().map(PitchSpelling::lilyPondAbsoluteName)
                     .collect(Collectors.joining(" ", "<", ">"));
         }
-    }
-
-    /**
-     * Whether the model's beat structure is worth emitting for this meter.
-     *
-     * <p>{@link TimeSignature#beatStructure()} is authoritative for compound time
-     * — it is what beams a 6/8 bar as two groups of three — and for meters
-     * counted in quarters or halves, where one beat per denominator unit is how
-     * the bar is actually counted.
-     *
-     * <p>It is not authoritative for an irregular meter in eighths. There it
-     * declines to guess and returns one beat per eighth, which as a beam grouping
-     * means no beams at all: 7/8 would come out as seven separate eighth notes.
-     * LilyPond's own table has a conventional grouping for those, so it is left
-     * to make the guess this model deliberately does not make. See #62.
-     */
-    private static boolean statesItsOwnGrouping(TimeSignature meter) {
-        return meter.isCompound() || meter.denominator() <= 4;
     }
 
     private static String escape(String text) {

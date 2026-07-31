@@ -127,9 +127,9 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     @Option(names = "--first-downbeat", paramLabel = "SECONDS",
             description = "Force where a bar begins, in seconds. Snapped to the "
-                    + "nearest tracked beat, which then begins every bar in the "
-                    + "saved score. Does not move the engraved chart's bar lines "
-                    + "yet (issue #83). Audio only.")
+                    + "nearest tracked beat, which then begins a bar in the "
+                    + "saved beat grid and the chart's first bar line. Does not "
+                    + "renumber the tempo map's bars. Audio only.")
     Double firstDownbeat;
 
     @Option(names = "--skip-separation",

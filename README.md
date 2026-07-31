@@ -54,14 +54,40 @@ to the nearest tracked beat — it says which beat begins a bar, not that a beat
 was missed — and it overrides the downbeat detector outright rather than being
 weighed against it.
 
-**It changes the saved score and not, yet, the engraved chart.** The chart
-anchors its bar lines on the first chord rather than on the detected downbeat,
-deliberately, and does not yet distinguish a downbeat a human supplied from one
-that was guessed ([#83][i83]). So today this option is worth setting for the
-score and for anything reading it, and will not move a bar line in the PDF.
+**It moves the bar lines on the engraved page** ([#83][i83]). The chart's first
+bar line is the downbeat at or before the first chord, so nominating a different
+beat re-bars the PDF: the chords move within their bars, and a chord change
+landing mid-bar shows up as one.
+
+The text chart moves less, and it is worth knowing why before you compare two
+runs. It prints chord *names*, not lengths, so it can tell you the harmony
+starts part-way into the first bar — an `N.C.` appears — but not by how much
+([#186][i186]). Two different wrong downbeats can give the same `.txt` and
+different pages.
+
+Bar *spacing* still comes from the tempo, not from the rest of the grid: only
+the first bar line is read off a downbeat, and the ones after it are laid out at
+the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
+largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
+blues the chart puts the first twenty-five changes in the right bar and every one
+after that in the wrong one.
+
+Two things cause that and they are not the same size on every recording, so it is
+worth knowing both: the bar lines are spaced at a tempo that is 1.4% long here
+([#200][i200]), and the recording's own beat does not keep to any single bar
+length ([#187][i187]). Correcting `--tempo` by hand is worth at least as much as
+correcting the downbeat.
+
+That figure is the bar arithmetic measured on real *timing* with the chords
+supplied, not a figure for what the tool recognises — chord recognition on that
+recording currently returns nothing but `N.C.` ([#3][i3]).
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
+[i186]: https://github.com/eolivelli/music-wizard/issues/186
+[i187]: https://github.com/eolivelli/music-wizard/issues/187
+[i3]: https://github.com/eolivelli/music-wizard/issues/3
+[i200]: https://github.com/eolivelli/music-wizard/issues/200
 
 ## Installing
 

@@ -17,7 +17,6 @@
 package dev.olivelli.musicwizard.it;
 
 import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedCleanly;
-import static dev.olivelli.musicwizard.it.LilyPondComplaints.failedBarChecksIn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
@@ -157,15 +156,14 @@ class EndToEndIT {
         // about, so on the output CLAUDE.md calls this project's strongest, the
         // diagnostics were the one thing nothing looked at.
         //
-        // What this catches and what it does not is worth being exact about,
-        // because round 1 of review on #164 found the first draft overclaiming
-        // it. It catches anything LilyPond says about the chart. It does *not*
-        // catch a bar of the wrong length, because ChordChart.toLilyPond emits
-        // no bar checks and no \time, so LilyPond never counts the bars: halving
-        // every chord in this chart engraves in silence under 2.24.3 and 2.26.0
-        // alike. That gap is #160 and is the emitter's to close, not this
-        // test's; engravingComplaintsAreNoticed says exactly which half of it
-        // this gate holds.
+        // What this catches is worth being exact about, because round 1 of
+        // review on #164 found the first draft overclaiming it, and the claim
+        // has since changed. It caught anything LilyPond said about the chart
+        // and *not* a bar of the wrong length, because the emitter wrote no bar
+        // checks and no \time -- halving every chord engraved in silence under
+        // 2.24.3 and 2.26.0 alike. #160 closed that in the emitter, so the gate
+        // now covers both: the chart states its meter and ends every bar with a
+        // check, and engravingComplaintsAreNoticed damages a bar to prove it.
         //
         // No tolerance is passed. The one assertEngravedCleanly knows about is a
         // spacing complaint about a tuplet number against a beam, and a chord
@@ -198,20 +196,18 @@ class EndToEndIT {
         // says nothing about ours. Round 4 of #92 made that distinction and it
         // applies here unchanged.
         //
-        // Two edits, and the second is the interesting one. Halving the first
-        // chord leaves the bar half short. The bar check is what makes LilyPond
-        // say so -- and it has to be added, because ChordChart.toLilyPond writes
-        // none. So what this test demonstrates is that the gate in
-        // engravesToPdf notices a complaint about a chart of this shape, not
-        // that a chart bar which does not sum produces one: round 1 of review on
-        // #164 halved every bar without adding a check and the flagship test
-        // passed, correctly, in silence. That is #160 and it belongs to the
-        // emitter. The same fact is why failedBarChecksIn(output).isEmpty() --
-        // the gate #153 proposed -- would be vacuous on an undamaged chart.
+        // One edit now, where this needed two. It used to have to insert the bar
+        // check as well as shorten the bar, because the emitter wrote none -- so
+        // what it demonstrated was that the gate notices a complaint about a
+        // chart of this shape, not that a chart bar which does not sum produces
+        // one. #164 measured the difference: every bar halved, no check added,
+        // and the whole suite stayed green. #160 gave the emitter its own
+        // checks, so halving the first bar is now enough, and this test says the
+        // thing it always wanted to say.
         assertThat(clean).as("the emitter no longer opens the chart this way; "
                 + "the damage below would be a no-op and this test would pass for nothing")
-                .contains("c1 g1");
-        String damaged = clean.replace("c1 g1", "c2 | g1");
+                .contains("c1 |");
+        String damaged = clean.replaceFirst("c1 \\|", "c2 |");
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve("damaged/chords.ly"), damaged);
@@ -225,7 +221,9 @@ class EndToEndIT {
         // LilyPond's spellings: the bar reached a half note where a whole was
         // due. Asserting merely that something was said would not distinguish a
         // counted bar from an unparsed one.
-        assertThat(failedBarChecksIn(result.output()))
+        // Read through the product's own accessor, which is what #156 added so
+        // that a failed bar check reaches a user rather than only a test.
+        assertThat(result.failedBarChecks())
                 .as("%s", result.output())
                 .contains("1/2");
         // The gate itself, pointed at the damaged run: what engravesToPdf
