@@ -56,17 +56,7 @@ public final class ChordChart {
         }
 
         List<ChartLayout.Bar> bars = ChartLayout.of(score);
-        // The meter of the chart's own first bar, not the piece's. They differ
-        // only when the harmony starts after a meter change, and then it is the
-        // header that is wrong: it would name a meter no bar of the chart is in,
-        // and -- because tempoLine reads the same meter to decide whether the
-        // counted beat is a quarter -- hand a 6/8 chart a metronome mark 50%
-        // fast, which is the failure tempoLine exists to prevent, arriving by
-        // the other door. Round 2 of review found that; the header still names
-        // one meter where a chart can hold several, which is #191.
-        TimeSignature meter = bars.isEmpty()
-                ? score.tempoMap().initialTimeSignature()
-                : bars.get(0).meter();
+        TimeSignature meter = countedIn(score, bars);
         out.append(tempoLine(score, meter));
         out.append("Meter  ").append(meter).append('\n');
         score.primaryKey().ifPresent(key -> out.append("Key    ")
@@ -77,6 +67,26 @@ public final class ChordChart {
             out.append(line).append('\n');
         }
         return out.toString();
+    }
+
+    /**
+     * The meter the chart is read in: its own first bar's, not the piece's.
+     *
+     * <p>The two differ only when the harmony starts after a meter change, and
+     * then it is the piece's that is wrong: it would name a meter no bar of the
+     * chart is in, and -- because the tempo is counted in this same meter --
+     * hand a 6/8 chart a metronome mark 50% fast, which is the failure the
+     * counted beat exists to prevent, arriving by the other door. Round 2 of
+     * review found that on the text chart; it is answered here rather than
+     * there because the engraving now needs the same answer, and a second copy
+     * of the rule is a second chance for the two charts of one score to be
+     * counted differently. The header still names one meter where a chart can
+     * hold several, which is #191.
+     */
+    private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
+        return bars.isEmpty()
+                ? score.tempoMap().initialTimeSignature()
+                : bars.get(0).meter();
     }
 
     /**
@@ -140,9 +150,16 @@ public final class ChordChart {
      *
      * <p>Emitted directly from the model rather than by converting MusicXML,
      * which loses information on the way through.
+     *
+     * <p>The page carries what the text chart's first three lines carry: the
+     * title, the artist and how fast it goes. A chart is printed to be handed
+     * to somebody, and one headed {@code Untitled} with no tempo asks them to
+     * remember which recording it came from and to find the tempo by ear --
+     * which is #216, observed on the first real commercial recording tried.
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
+        List<ChartLayout.Bar> bars = ChartLayout.of(score);
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -159,9 +176,14 @@ public final class ChordChart {
         // "| C | % | % |" -- the same disagreement between the two outputs that
         // deciding the bars twice used to produce.
         out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
+        // Outside \chordmode, which is where a mark belongs that is not a chord:
+        // inside it, every line of the block is a bar whose durations have to
+        // sum to the meter, and this one has no duration at all.
+        TempoMark.of(score, countedIn(score, bars))
+                .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 
-        for (ChartLayout.Bar bar : ChartLayout.of(score)) {
+        for (ChartLayout.Bar bar : bars) {
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }

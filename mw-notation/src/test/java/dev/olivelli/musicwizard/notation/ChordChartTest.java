@@ -749,6 +749,11 @@ class ChordChartTest {
                 .doesNotContain("Meter  4/4");
         assertThat(chordModeOf(ChordChart.toLilyPond(score)))
                 .containsExactly("\\time #'(3 3) 6/8", "c2. |", "g2. |");
+        // The engraved mark is counted in the chart's meter for the same
+        // reason and by the same rule: off the piece's it would read "4 = 120"
+        // over bars counted at 80.
+        assertThat(ChordChart.toLilyPond(score))
+                .contains("\\tempo \\markup { \\italic \"ca.\" } 4. = 80");
     }
 
     @Test
@@ -1165,5 +1170,84 @@ class ChordChartTest {
         Score score = fourChordSong(1).withMetadata("A \"Quoted\" Title", null);
 
         assertThat(ChordChart.toLilyPond(score)).contains("\\\"Quoted\\\"");
+    }
+
+    // ---------------------------------------------------------------- #216 --
+
+    /** The mark the engraving carries at a given counted tempo. */
+    private static String markOf(String unit, int perMinute) {
+        return "\\tempo \\markup { \\italic \"ca.\" } " + unit + " = " + perMinute;
+    }
+
+    @Test
+    @DisplayName("the engraving states the tempo the text chart states")
+    void theEngravingStatesTheTempo() {
+        // The two charts are the same chart in two media, and the engraved one
+        // used to state no tempo at all: a page a musician was handed with the
+        // one number the pipeline is most confident about left in the .txt file
+        // beside it.
+        Score score = fourChordSong(1);
+
+        assertThat(ChordChart.toText(score)).contains("Tempo  120 BPM");
+        assertThat(ChordChart.toLilyPond(score)).contains(markOf("4", 120));
+    }
+
+    @Test
+    @DisplayName("the engraved mark counts the beat the reader counts, not the stored quarter")
+    void theEngravedMarkCountsTheCountedBeat() {
+        // 180 quarter notes a minute is 120 dotted quarters, and a 6/8 bar is
+        // counted in dotted quarters. A mark reading "4 = 180" over these bars
+        // is a metronome setting 50% fast -- the trap the text chart's tempo
+        // line has carried a comment about since round 2, now reachable through
+        // a second emitter.
+        Score jig = aJig();
+
+        assertThat(ChordChart.toText(jig)).contains("Tempo  120 BPM (180 quarter notes/min)");
+        assertThat(ChordChart.toLilyPond(jig))
+                .contains(markOf("4.", 120))
+                .doesNotContain("= 180");
+    }
+
+    @Test
+    @DisplayName("the mark says the figure is an estimate")
+    void theMarkIsQualified() {
+        // On a chart whose tempo came from beat tracking -- the least reliable
+        // stage in the pipeline -- an unqualified metronome mark states a
+        // precision nothing in the score has.
+        assertThat(ChordChart.toLilyPond(fourChordSong(1)))
+                .contains("\\italic \"ca.\"")
+                .doesNotContain("\\tempo 4 =");
+    }
+
+    @Test
+    @DisplayName("the mark sits outside \\chordmode, where no bar has to account for it")
+    void theMarkIsNotInAnyBar() {
+        // Every line of the chordmode block is a bar whose durations must sum to
+        // the meter, and a bar check follows each. A zero-duration mark written
+        // among them would fail LilyPond's own check on the bar it landed in.
+        String source = ChordChart.toLilyPond(fourChordSong(1));
+
+        assertThat(source).contains("\\tempo");
+        assertThat(chordModeOf(source)).noneMatch(line -> line.contains("\\tempo"));
+        assertBarsFillTheirMeter(source);
+    }
+
+    @Test
+    @DisplayName("heads the engraving with the title and the artist it was given")
+    void theEngravingCarriesTitleAndArtist() {
+        Score named = fourChordSong(1).withMetadata("Hanno ucciso l'uomo ragno", "883");
+
+        assertThat(ChordChart.toLilyPond(named))
+                .contains("title = \"Hanno ucciso l'uomo ragno\"")
+                .contains("composer = \"883\"")
+                .doesNotContain("Untitled");
+    }
+
+    @Test
+    @DisplayName("says Untitled rather than inventing a title, and names no artist")
+    void anUnnamedScoreIsNotGivenAName() {
+        assertThat(ChordChart.toLilyPond(fourChordSong(1)))
+                .contains("title = \"Untitled\"")
+                .doesNotContain("composer");
     }
 }
