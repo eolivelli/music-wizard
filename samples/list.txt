@@ -30,3 +30,14 @@ Same 12-bar sequence as blues-a-90bpm.mp3, shuffled feel:
 A7 A7 A7 A7
 D7 D7 A7 A7
 E7 D7 A7 E7
+
+blues-e-90bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
+
+Blues backing track in E at 90 BPM, 5:02. Same source channel and licensing
+posture as the other backing tracks; fetch locally:
+  yt-dlp -x --audio-format mp3 -o samples/blues-e-90bpm.mp3 \
+    https://www.youtube.com/watch?v=36X3wecT2z8
+Same 12-bar shape as the A-blues tracks, in E:
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 B7
