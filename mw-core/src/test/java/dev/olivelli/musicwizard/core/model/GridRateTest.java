@@ -227,6 +227,14 @@ class GridRateTest {
             // is the claim worth having anyway: what a caller reaching past the
             // grid must not be able to do is get a different answer, not build a
             // different grid.
+            //
+            // "One arity" is a universal, and this table is still a sample, so
+            // it was checked once by exhaustion rather than argued: every list
+            // of length 0 to 4 over {null, 0.0, -0.0, 0.5, 1.0, -1.0, NaN, both
+            // infinities, MIN_VALUE, 2.0} -- 16105 of them -- and no
+            // disagreement outside length 1. That sweep is not kept as a test;
+            // it took a minute to run and its result is a fact about a
+            // validation order, which the rows below are chosen to hold.
             List<List<Double>> candidates = new ArrayList<>(List.of(
                     List.of(),
                     List.of(0.5),
@@ -242,10 +250,16 @@ class GridRateTest {
                     List.of(-0.0, 0.5),
                     List.of(0.0, Double.MIN_VALUE),
                     List.of(0.0, Double.MAX_VALUE)));
-            List<Double> withNull = new ArrayList<>();
-            withNull.add(0.0);
-            withNull.add(null);
-            candidates.add(withNull);
+            candidates.add(listOf(0.0, null));
+            candidates.add(listOf(null, 0.5));
+            // Out of order *and* holding a null, which is what round 6 found the
+            // two forms answering differently: the grid builds every Beat before
+            // it looks at ordering, so it reports the null, and a single fused
+            // validation pass reported the ordering. Both orderings of the two
+            // faults, since only one of them was reachable.
+            candidates.add(listOf(0.0, 0.0, null));
+            candidates.add(listOf(1.0, null, 0.5));
+            candidates.add(listOf(5.0, 1.0, Double.NaN));
 
             for (List<Double> times : candidates) {
                 String viaOverload = answerOf(() -> BeatGrid.overallPulseRate(times));
@@ -280,6 +294,13 @@ class GridRateTest {
             // And the grid itself is legal, which is the fact that made the
             // first version of the mirror test false.
             assertThat(gridOf(List.of(0.5)).size()).isEqualTo(1);
+        }
+
+        /** A list that may hold nulls, which {@code List.of} refuses to. */
+        private static List<Double> listOf(Double... times) {
+            List<Double> list = new ArrayList<>(times.length);
+            java.util.Collections.addAll(list, times);
+            return list;
         }
 
         /**
