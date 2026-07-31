@@ -211,33 +211,89 @@ class GridRateTest {
         }
 
         @Test
-        @DisplayName("accepts exactly what a grid built from the same times accepts")
-        void theStaticOverloadAgreesWithTheConstructorOnWhatIsLegal() {
-            // The claim the case list above can only sample. Anything the
-            // overload accepts, ofTimes accepts too, and the other way round --
-            // so the two cannot drift into disagreeing about what a beat time is.
-            List<List<Double>> candidates = List.of(
+        @DisplayName("answers whatever the grid's own accessor answers, refusals included")
+        void theStaticOverloadMirrorsTheInstanceAccessor() {
+            // The property the case list above can only sample, and the reason
+            // it is stated against the instance accessor rather than against the
+            // constructor: round 5 of review found the first version of this
+            // claiming the overload "accepts exactly what a grid accepts", which
+            // is false at one pulse. ofTimes builds a perfectly legal one-beat
+            // grid; neither form of overallPulseRate will answer for it. The
+            // candidate table was all of length two or three, so it never
+            // reached the one arity where the two disagree -- and the test
+            // nineteen lines above asserts that very rejection.
+            //
+            // Against gridOf(...).overallPulseRate() the claim is true, and it
+            // is the claim worth having anyway: what a caller reaching past the
+            // grid must not be able to do is get a different answer, not build a
+            // different grid.
+            List<List<Double>> candidates = new ArrayList<>(List.of(
+                    List.of(),
+                    List.of(0.5),
                     List.of(0.0, 0.5, 1.0),
                     List.of(0.05, 0.4, 1.9),
                     List.of(1.0, 0.5, 2.0),
                     List.of(1.0, 1.0),
                     List.of(-3.0, -1.0),
                     List.of(0.0, Double.POSITIVE_INFINITY),
+                    List.of(Double.NEGATIVE_INFINITY, 0.0),
                     List.of(0.0, Double.NaN),
-                    List.of(0.0, -0.0));
+                    List.of(0.0, -0.0),
+                    List.of(-0.0, 0.5),
+                    List.of(0.0, Double.MIN_VALUE),
+                    List.of(0.0, Double.MAX_VALUE)));
+            List<Double> withNull = new ArrayList<>();
+            withNull.add(0.0);
+            withNull.add(null);
+            candidates.add(withNull);
+
             for (List<Double> times : candidates) {
-                boolean overloadAccepts = accepts(() -> BeatGrid.overallPulseRate(times));
-                boolean gridAccepts = accepts(() -> gridOf(times));
-                assertThat(overloadAccepts).as("%s", times).isEqualTo(gridAccepts);
+                String viaOverload = answerOf(() -> BeatGrid.overallPulseRate(times));
+                String viaGrid = answerOf(() -> gridOf(times).overallPulseRate());
+                if (times.size() == 1) {
+                    // The one input on which the two differ, kept in the table
+                    // and named rather than left out of it -- leaving it out is
+                    // what made the first version of this test false. Both
+                    // refuse; they disagree only about whose fault it is, which
+                    // the test below states.
+                    assertThat(viaOverload).isEqualTo("IllegalArgumentException");
+                    assertThat(viaGrid).isEqualTo("IllegalStateException");
+                    continue;
+                }
+                assertThat(viaOverload).as("%s", times).isEqualTo(viaGrid);
             }
         }
 
-        private static boolean accepts(Runnable call) {
+        @Test
+        @DisplayName("but says a lone pulse is a bad argument where the grid says it is a bad state")
+        void theTwoFormsDifferOnlyInWhatTheyCallAOnePulseGrid() {
+            // The one difference the mirror above cannot see, since both refuse.
+            // Named rather than left implicit, because it is a real distinction
+            // and not an oversight: a one-pulse list is a caller's mistake,
+            // while a one-pulse grid is a legitimate object being asked
+            // something it cannot answer -- which is exactly the case
+            // Score.estimatedTempo guards with size() >= 2 rather than catching.
+            assertThatThrownBy(() -> BeatGrid.overallPulseRate(List.of(0.5)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> gridOf(List.of(0.5)).overallPulseRate())
+                    .isInstanceOf(IllegalStateException.class);
+            // And the grid itself is legal, which is the fact that made the
+            // first version of the mirror test false.
+            assertThat(gridOf(List.of(0.5)).size()).isEqualTo(1);
+        }
+
+        /**
+         * What a call answered: its value, or the exception it threw.
+         *
+         * <p>The exception's class as well as the fact of one, so the table
+         * cannot pass while the two entry points refuse the same input for
+         * different kinds of reason.
+         */
+        private static String answerOf(java.util.function.DoubleSupplier call) {
             try {
-                call.run();
-                return true;
-            } catch (RuntimeException accepted) {
-                return false;
+                return String.valueOf(call.getAsDouble());
+            } catch (RuntimeException refused) {
+                return refused.getClass().getSimpleName();
             }
         }
 

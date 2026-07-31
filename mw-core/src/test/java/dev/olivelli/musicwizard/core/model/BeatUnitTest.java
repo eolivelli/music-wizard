@@ -631,7 +631,7 @@ class BeatUnitTest {
             Score corrected = Score.empty(anchored, 12.0).withBeatGrid(grid);
 
             assertThat(corrected.tempoMap().segments()).hasSizeGreaterThan(1);
-            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR)).isCloseTo(120.0, within(1e-6));
+            assertThat(grid.overallTempo(TimeSignature.FOUR_FOUR)).isCloseTo(120.0, within(1e-6));
             assertThat(corrected.estimatedTempo()).isEqualTo(60.0);
             // The lead-in's own 300 BPM is an artefact of where the pulse fell and
             // must never be the answer.

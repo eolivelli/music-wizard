@@ -183,7 +183,7 @@ class ProvenanceTest {
             BeatGrid grid = gridOf(pulses(0.2, 0.5, 24));
             Score corrected = Score.empty(suppliedSixty(), 12.0).withBeatGrid(grid);
 
-            assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR))
+            assertThat(grid.overallTempo(TimeSignature.FOUR_FOUR))
                     .as("the grid disagrees, which is what makes the choice matter")
                     .isCloseTo(120.0, within(1e-6));
             assertThat(corrected.estimatedTempo()).isEqualTo(60.0);
@@ -359,13 +359,13 @@ class ProvenanceTest {
             // proxy exempts the lead-in positionally -- the segment *before*
             // the one starting where the grid's first beat does -- so it
             // survives only while the grid's beats line up with the map's. Move
-            // the whole grid off its map and the all-lost cell reads the grid's
-            // median instead. Not a corruption anything produces, since it
+            // the whole grid off its map and the all-lost cell reads the rate
+            // the grid ran at instead. Not a corruption anything produces, since it
             // takes editing times as well as labels; the point is that the
             // table is for the grid the map was built from, and this is where
             // that boundary is.
             BeatGrid drifted = gridOf(pulses(0.25, 0.5, 24));
-            assertThat(drifted.medianTempo(TimeSignature.FOUR_FOUR))
+            assertThat(drifted.overallTempo(TimeSignature.FOUR_FOUR))
                     .as("the drifted grid still reads 120, so only its phase changed")
                     .isCloseTo(120.0, within(1e-6));
             assertThat(Score.empty(allLost, 12.0).withBeatGrid(drifted).estimatedTempo())
