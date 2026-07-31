@@ -217,11 +217,17 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * prone to, moves this by the affected fraction and does not move the median
      * at all: 80 intervals of 0.5s followed by 40 of 0.25s give a median of 120
      * BPM, right for four fifths of the duration, and a rate of 144, right
-     * nowhere. That cost does not shrink with length, and it is not bounded by
-     * anything measured here -- {@code gmajorblues.mp3} contains no such run, its
-     * longest interval being 1.40x its median. #205 records the statistic that
-     * would concede neither this nor the dropped pulse, and why one recording is
-     * not enough evidence to choose it.
+     * nowhere. That cost is the affected fraction of the duration whatever the
+     * grid's length, so unlike the dropped pulse it does not shrink, and nothing
+     * measured here bounds it in general. What it is bounded by on
+     * {@code gmajorblues.mp3} is that the recording contains no such stretch:
+     * <b>8 of its 1280 intervals are under 0.6x the median and the longest run
+     * of consecutive ones is 2, spanning 0.563s of 710.7s.</b> That is the
+     * statistic on the short side, which is the side a double-time stretch is
+     * on; round 2 of review found this bounded by the longest interval instead,
+     * which rules out the opposite mistake and not this one. #205 records the
+     * statistic that would concede neither this nor the dropped pulse, and why
+     * one recording is not enough evidence to choose it.
      *
      * @throws IllegalStateException if the grid holds fewer than two pulses,
      *                               which carry no interval to measure

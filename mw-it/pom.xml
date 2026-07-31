@@ -38,12 +38,17 @@
     The fourth, GmajorBluesChartTest, is the one that needed this paragraph
     rewritten rather than the one that fitted it (#200). It decodes an 11 MB mp3
     the repository carries and tracks its beats: no LilyPond, no model and no
-    network, but neither fast nor binary-free. It costs about five seconds and
-    needs a 512 MB heap where everything else here runs in 256 MB. It is here
-    anyway, and named so that every job runs it, because it is the project's
-    only tier-2 gate -- CLAUDE.md ranks real recordings above synthetic
-    fixtures, and #200 is a defect that eleven minutes of real timing showed
-    immediately and every synthetic fixture in the repository was blind to.
+    network, but neither fast nor binary-free. It costs about five seconds, and
+    it needs more heap than the default build had ever asked for -- which is why
+    surefire below pins one rather than leaving it to the JVM's 1/4-of-RAM
+    default. Measured: it fails at 320 MB and passes at 384 MB, where every
+    other test in this module passes at 256 MB. A container capped low enough
+    would otherwise fail `mvn verify` with a dead fork and no test report naming
+    the cause, on machines nobody develops on. It is here anyway, and named so
+    that every job runs it, because it is the project's only tier-2 gate --
+    CLAUDE.md ranks real recordings above synthetic fixtures, and #200 is a
+    defect that eleven minutes of real timing showed immediately and every
+    synthetic fixture in the repository was blind to.
 
     So the rule as amended: a test that needs no LilyPond, no model download and
     no network is named *Test. `mvn verify` stays offline. It is no longer
@@ -98,4 +103,29 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        A heap large enough for GmajorBluesChartTest, which decodes eleven
+        minutes of audio in the default build. Pinned rather than inherited from
+        the JVM's quarter-of-physical-RAM default, because that default is
+        generous on every machine anyone develops or runs CI on and is not on a
+        constrained container. So the failure would appear only where nobody
+        would see it coming, and it would appear as a dead surefire fork with no
+        test report naming the test that killed it.
+
+        Merged with the parent's XDG_CONFIG_HOME setting rather than replacing
+        it: pluginManagement configuration and this one combine, and the config
+        isolation that setting buys must not be lost to a memory flag.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>-Xmx512m</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

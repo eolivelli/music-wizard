@@ -54,10 +54,10 @@ class GridRateTest {
      *
      * <p>28 intervals of 0.5s and 12 of 0.4s, interleaved so no window is
      * unrepresentative. The median is 0.5s -- the template -- while the 40
-     * pulses span 18.8s, a rate of 0.47s: 6% apart, where the real recording's
-     * two figures are 1.4% apart. Accumulating 0.4s repeatedly is not exact in
-     * binary, so the assertions below carry a tolerance rather than claiming
-     * they do not need one.
+     * <em>intervals</em> that 41 pulses hold span 18.8s, a rate of 0.47s: 6%
+     * apart, where the real recording's two figures are 1.4% apart.
+     * Accumulating 0.4s repeatedly is not exact in binary, so the assertions
+     * below carry a tolerance rather than claiming they do not need one.
      */
     private static List<Double> aTrackedShape() {
         List<Double> times = new ArrayList<>();
@@ -196,34 +196,47 @@ class GridRateTest {
             // The second concession, and the one that does not shrink -- so it is
             // asserted rather than left to the sentence above, which bounds only
             // the first. A stretch tracked an octave out moves this by the
-            // fraction it covers, and moves the median not at all. Round 1 of
-            // review found the javadoc claiming the whole trade fell away with
-            // length, on the strength of the dropped-pulse case alone.
+            // fraction of the duration it covers, and moves the median not at
+            // all. Round 1 of review found the javadoc claiming the whole trade
+            // fell away with length, on the strength of the dropped-pulse case
+            // alone.
+            //
+            // Measured at two lengths a factor of ten apart, because round 2
+            // found the display name asserting length-independence off a single
+            // grid -- which is the same defect one level up. The answer is
+            // identical at both, since the ratio depends on the fraction and not
+            // on the count.
             //
             // Not hypothetical: BeatTracker re-estimates the tempo per window and
             // its own javadoc says the autocorrelation peak "is prone to landing
-            // an octave out". It is bounded by nothing measured here, because
-            // gmajorblues.mp3 contains no such run -- its longest interval is
-            // 1.40x its median, nowhere near 2x. #205.
-            List<Double> partlyDoubled = new ArrayList<>();
-            double at = 0;
-            for (int i = 0; i < 80; i++) {
+            // an octave out". Nothing measured bounds it in general.
+            // gmajorblues.mp3 happens to contain no such stretch -- 8 of its 1280
+            // intervals are under 0.6x the median and the longest consecutive run
+            // is 2, spanning 0.563s of 710.7s -- and that is the short side,
+            // which is the side a double-time stretch is on. #205.
+            for (int scale : new int[] {1, 10}) {
+                List<Double> partlyDoubled = new ArrayList<>();
+                double at = 0;
+                for (int i = 0; i < 80 * scale; i++) {
+                    partlyDoubled.add(at);
+                    at += 0.5;
+                }
+                for (int i = 0; i < 40 * scale; i++) {
+                    partlyDoubled.add(at);
+                    at += 0.25;
+                }
                 partlyDoubled.add(at);
-                at += 0.5;
-            }
-            for (int i = 0; i < 40; i++) {
-                partlyDoubled.add(at);
-                at += 0.25;
-            }
-            partlyDoubled.add(at);
-            BeatGrid grid = gridOf(partlyDoubled);
+                BeatGrid grid = gridOf(partlyDoubled);
 
-            assertThat(grid.medianPulseRate())
-                    .as("right for the four fifths of the duration that is tracked right")
-                    .isCloseTo(120.0, within(1e-9));
-            assertThat(grid.overallPulseRate())
-                    .as("right nowhere: 120 for 40s then 240 for 10s averages to 144")
-                    .isCloseTo(144.0, within(1e-9));
+                assertThat(grid.medianPulseRate())
+                        .as("%d pulses: right for the four fifths of the duration that "
+                                + "is tracked right", grid.size())
+                        .isCloseTo(120.0, within(1e-9));
+                assertThat(grid.overallPulseRate())
+                        .as("%d pulses: right nowhere, since 120 for 40s and then 240 "
+                                + "for 10s averages to 144", grid.size())
+                        .isCloseTo(144.0, within(1e-9));
+            }
         }
     }
 
