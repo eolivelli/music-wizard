@@ -308,6 +308,15 @@ class GridRateTest {
             // index -- and got -20 BPM out of the method whose whole job is
             // refusing what a grid would refuse.
             //
+            // This fixture demonstrates the other direction of that same defect,
+            // and the comment used to imply otherwise: against the old code it
+            // rejects a list it had already accepted ("beat 1 at 1.0s does not
+            // follow beat 0 at 1.5s"), because the second read comes back
+            // reversed. A fixture for the -20 BPM direction would need the
+            // second read to be ordered too. One defect, two faces, and the
+            // assertion below holds for both -- what is measured has to be what
+            // was checked.
+            //
             // ofTimes has never had the hole, because it reads each element once
             // into a Beat, so the fix is to do the same rather than to add a
             // check. Nothing reachable does this: the sole production caller
@@ -332,8 +341,43 @@ class GridRateTest {
 
             assertThat(BeatGrid.overallPulseRate(shifty))
                     .as("the rate of the times that were checked, which is 0 to 1.5s in four")
-                    .isCloseTo(120.0, within(1e-9))
-                    .isPositive();
+                    .isCloseTo(120.0, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("and a list that shrinks after the arity check is measured at the arity checked")
+        void aListThatShrinksAfterTheArityCheckIsMeasuredAtTheOneChecked() {
+            // The same defect at the other end of the method, found in round 8:
+            // the size was read once to guard and again to copy, so a list that
+            // dropped to one pulse in between produced a one-element array, two
+            // degenerate loops and 60.0 * 0 / 0.0 -- NaN. Worse than the 0.0 BPM
+            // the javadoc cites as the reason this validation exists, because
+            // every comparison against NaN is silently false, so it propagates
+            // through a bound check rather than tripping one.
+            List<Double> shrinking = new AbstractList<>() {
+                private int sizeReads;
+
+                @Override
+                public Double get(int index) {
+                    return index * 0.5;
+                }
+
+                @Override
+                public int size() {
+                    return sizeReads++ == 0 ? 4 : 1;
+                }
+            };
+
+            // The size is read once now, so the four pulses that were guarded
+            // are the four that are copied, validated and measured. Answering
+            // the rate of what was checked is the guarantee; what must not
+            // happen is an answer that is neither a refusal nor a rate.
+            double rate = BeatGrid.overallPulseRate(shrinking);
+
+            assertThat(rate).isNotNaN().isFinite().isPositive();
+            assertThat(rate)
+                    .as("four pulses 0.5s apart, which is what the arity check approved")
+                    .isCloseTo(120.0, within(1e-9));
         }
 
         /** A list that may hold nulls, which {@code List.of} refuses to. */

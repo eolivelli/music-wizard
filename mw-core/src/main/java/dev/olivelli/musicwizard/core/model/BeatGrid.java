@@ -287,9 +287,15 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      */
     public static double overallPulseRate(List<Double> pulseSeconds) {
         Objects.requireNonNull(pulseSeconds, "pulseSeconds");
-        if (pulseSeconds.size() < 2) {
+        // The size once, before it is guarded, so the count that is checked is
+        // the count that is used. Reading it again below would leave the same
+        // hole the copy closes one level down: round 8 of review shrank a list
+        // between the guard and the copy and got NaN out, which is 0.0 BPM's
+        // worse sibling -- every comparison against it is silently false.
+        int pulses = pulseSeconds.size();
+        if (pulses < 2) {
             throw new IllegalArgumentException(
-                    "cannot infer tempo from fewer than two beats, got: " + pulseSeconds.size());
+                    "cannot infer tempo from fewer than two beats, got: " + pulses);
         }
         // Copied first, then validated, then measured -- all three off the copy,
         // so every element is read exactly once. Validating the caller's list in
@@ -301,10 +307,19 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         //
         // Read in the order the grid checks in, which is not the order that
         // reads most naturally: ofTimes builds every Beat before the canonical
-        // constructor looks at ordering. So a list holding a null *after* a pair
-        // that is out of order must report the null, and a single fused pass
-        // reported the disorder -- 442 of the 11100 lists round 6 swept.
-        int pulses = pulseSeconds.size();
+        // constructor looks at ordering. So a fault of *either* kind after a
+        // pair that is out of order has to be reported ahead of the disorder,
+        // and a single fused pass reported the disorder. Measured over every
+        // list of length 2 to 4 drawn from {null, 0.0, -0.0, 0.5, 1.0, -1.0,
+        // NaN, both infinities, MIN_VALUE, 2.0} -- 16093 of them -- a fused pass
+        // disagrees with the grid on 2320.
+        //
+        // Both halves of the first loop earn their place, and the null half is
+        // the smaller one: 464 of those come from a null after a disorder and
+        // 1856 from a non-finite or negative value after one, such as
+        // [1.0, 0.0, -1.0]. Worth the sentence because the obvious tidy-up is to
+        // fold the finiteness check back in beside the ordering check, and that
+        // is the larger of the two breakages, not the safer one.
         double[] times = new double[pulses];
         for (int i = 0; i < pulses; i++) {
             double at = Objects.requireNonNull(pulseSeconds.get(i), "pulseSeconds[" + i + "]");
