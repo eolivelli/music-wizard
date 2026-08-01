@@ -218,16 +218,26 @@ public final class AudioTranscriber {
         // The grid's own statistic rather than the tracker's median, and not for
         // tidiness. The comment beside --tempo below tells the user they may type
         // back "the rate this very run just reported", and a supplied tempo beats
-        // the grid -- so were this to name a different figure from the one the
-        // chart is headed with, the message would be a documented route back to
-        // the defect #200 removes. BeatTracker.Result.beatsPerMinute is the
-        // tracker's median interval, which since #200 is not what
-        // Score.estimatedTempo answers with.
+        // the grid -- so a figure here that differs from the one the chart is
+        // headed with is a documented route back to the defect #200 removes.
+        // BeatTracker.Result.beatsPerMinute is the tracker's median interval,
+        // which since #200 is not what Score.estimatedTempo answers with.
         //
         // Read off the times rather than off a grid because there is no grid yet:
         // the downbeat phase is chosen from chroma, which is extracted below, and
         // holding this message back until then would delay the one line that says
         // beat tracking worked at all past the slowest stage in the run.
+        //
+        // The ternary's other arm does NOT hold that property, and saying so is
+        // the point of naming it. A lone tracked pulse carries no interval, so
+        // there is no rate in it for either accessor to return, and this falls
+        // back to the tracker's own figure -- which on that path is the
+        // autocorrelation seed rather than any median, and moves with the clip's
+        // length rather than with the music. A 0.40s clip prints 188 beats/min
+        // here, then says the clip carries no tempo, then heads the chart 120.
+        // That predates #200 and is unchanged by it, so it is #240 rather than
+        // something to fix under cover of this change; what #200 did was make it
+        // the only remaining path on which the two figures can disagree.
         progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
                 beatTimes.size(),
                 beatTimes.size() >= 2

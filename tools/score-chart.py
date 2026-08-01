@@ -61,11 +61,12 @@ Both columns are reported per benchmark:
                            Not zero, because one constant bar length drifts
                            against a recording that does not hold one (#187).
                            So this column is not a fact about how fast the
-                           harmony moves; it is a count of how many chord gaps
-                           that drift has pushed under one counted beat. A
-                           count, not a scale: the gaps are whole multiples of
-                           the tracked interval, so the threshold sits on a mode
-                           and a cell moves by a cohort or not at all. See
+                           harmony moves; it is the share of gaps that drift has
+                           pushed under one counted beat. Which is a tally, not
+                           a scale: the gaps are whole multiples of the tracked
+                           interval, so the threshold sits on a mode, and a cell
+                           moves by a whole cohort or not at all rather than in
+                           proportion to the drift. See
                            `ChartLayout.atHarmonicRhythm`.
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]

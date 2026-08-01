@@ -98,7 +98,9 @@ leftover of the other:
 - a recording does not hold one bar length anyway, and one constant spacing
   cannot follow one that does not ([#187][i187]). On the blues above, a bar line
   placed by index still ends about a beat and a half from the recording's own
-  beats by the end of the eleven minutes — down from about seven.
+  beats by the end of the eleven minutes — down from about seven once
+  [#196][i196] had landed and before [#200][i200], and from about seventeen
+  before either.
 
 So correcting the downbeat by hand is now worth more than correcting `--tempo`,
 which is the other way round from how it used to be.
