@@ -6,13 +6,25 @@
 asks the question a reader of the page asks: how many chords are printed in a
 bar, and is the one a reader takes away from that bar the right one.
 
-The two differ in a way worth keeping visible. On the audio path the chart's
-bar lines are its own -- one downbeat for phase and `Score.estimatedTempo()`
-for rate -- so on a recording whose beat drifts they walk away from the
-recording's downbeats (#187, #196, #200). A chart score is therefore never
-better than the model score and the gap is the drift, not the harmony. That
-holds of the seconds route only; a progression carrying beats is laid out on
-the beat axis instead, and `short_changes` below refuses to measure one.
+The two differ in a way worth keeping visible, and it is not the way it looks.
+On the audio path the chart's bar lines are its own -- one downbeat for phase
+and `Score.estimatedTempo()` for rate -- so on a recording whose beat drifts
+they walk away from the recording's downbeats (#187, #196, #200). That holds
+of the seconds route only; a progression carrying beats is laid out on the
+beat axis instead, and `short_changes` below refuses to measure one.
+
+**Neither score bounds the other, because they are scored over different
+bars.** An earlier version of this paragraph said a chart score can never beat
+a model score and that the gap is the drift; run the two harnesses on this
+tree and the chart column is *higher* on four of the five benchmarks, by a
+wide margin on some. The reason is the same drift read the other way round: it
+is the recording's own downbeat sequence that wanders, `score-samples.py` bars
+the model on that sequence, and the chart's single constant bar length happens
+to track the music better over twelve minutes than the tracker's accumulated
+phase does. `BluesLoopIT` measures the same thing from the other side and its
+javadoc says so -- which is why the sentence had to go rather than be softened:
+it made a maintainer who ran both harnesses go looking for a bug in one of
+them. This is #196, seen from the chart.
 
 Both columns are reported per benchmark:
 
@@ -20,8 +32,12 @@ Both columns are reported per benchmark:
   root, root+quality
                per bar, taking the bar's dominant printed chord -- the one
                filling most of it, which is what a reader takes from the bar --
-               against the known cycle at its best rotation, exactly as
-               score-samples.py scores the model.
+               against the known cycle at its best rotation. The same rule as
+               score-samples.py applies to the model, over different bars: not
+               quite the same, in fact, since this totals equal symbols across
+               a bar where that takes the single longest span. Measured on all
+               five, the two rules give the same label everywhere; the bars are
+               what make the columns differ.
   short
                the share of consecutive chord changes that are closer together
                than one counted beat, on each of the two axes there are. This is
