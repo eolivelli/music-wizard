@@ -437,20 +437,58 @@ class ChordSpellerTest {
         }
 
         @Test
-        @DisplayName("a tail no key covers is counted too, not left to the key before it")
-        void anUncoveredTailIsCountedAsWell() {
-            // The mirror of the lead-in, which the fixtures did not have: an
-            // uncovered chord after the last key rather than before the first.
-            // Under B major's window this E flat would be a D#; nothing about
-            // the rule depends on which side of the key the chord falls.
-            Score score = Score.empty(TempoMap.constant(120), 4.0)
+        @DisplayName("a run whose own chords cannot decide agrees with the key it abuts")
+        void anUncoveredRunAgreesWithTheKeyBesideIt() {
+            // Round 6 of review. A run of one or two chords ties on both of the
+            // ranks its own chords can supply -- a single pitch class has two
+            // spellings costing one accidental each and sitting zero from their
+            // own regions -- so the flat-first scan decided, and a lead-in on
+            // the dominant of B major printed Gb two bars before the identical
+            // chord printed F#. The key next door is the only evidence there is,
+            // and it is a tie-break rather than a source.
+            Score leadIn = Score.empty(TempoMap.constant(120), 4.0)
+                    .withChords(asGiven(List.of(
+                            chordAt(0, "F#4"), chordAt(1, "B4"),
+                            chordAt(2, "F#4"), chordAt(3, "G#4"))))
+                    .withKeys(List.of(keyOver("B4", 1, 4)));
+
+            assertThat(symbols(ChordSpeller.respell(leadIn).chords()))
+                    .containsExactly("F#", "B", "F#", "G#");
+
+            // The mirror, which the fixtures did not have: uncovered after the
+            // last key rather than before the first. D# and A# are the iii and
+            // vii of the B major it follows.
+            Score tail = Score.empty(TempoMap.constant(120), 4.0)
                     .withChords(asGiven(List.of(
                             chordAt(0, "B4"), chordAt(1, "F#4"),
                             chordAt(2, "D#4"), chordAt(3, "A#4"))))
                     .withKeys(List.of(keyOver("B4", 0, 2)));
 
+            assertThat(symbols(ChordSpeller.respell(tail).chords()))
+                    .containsExactly("B", "F#", "D#", "A#");
+        }
+
+        @Test
+        @DisplayName("two uncovered runs are counted apart, not averaged across the key between")
+        void eachUncoveredRunIsCountedOnItsOwn() {
+            // Round 6 of review. Counted as one set, a flat lead-in and a sharp
+            // tail either side of a key get a compromise region belonging to
+            // neither, and the tail printed Gb three bars after the covered
+            // chord beside it printed F#. Each run is counted from its own
+            // chords, and each of these two decides on accidentals alone -- four
+            // against two either way -- so neither is the key beside them to
+            // move.
+            Score score = Score.empty(TempoMap.constant(120), 12.0)
+                    .withChords(asGiven(List.of(
+                            chordAt(0, "A#4"), chordAt(1, "D#4"),
+                            chordAt(2, "F4"), chordAt(3, "C4"),
+                            chordAt(4, "B4"), chordAt(5, "F#4"),
+                            chordAt(6, "E4"), chordAt(7, "B4"),
+                            chordAt(8, "F#4"), chordAt(9, "C#4"))))
+                    .withKeys(List.of(keyOver("B4", 4, 6)));
+
             assertThat(symbols(ChordSpeller.respell(score).chords()))
-                    .containsExactly("B", "F#", "Eb", "Bb");
+                    .containsExactly("Bb", "Eb", "F", "C", "B", "F#", "E", "B", "F#", "C#");
         }
 
         @Test

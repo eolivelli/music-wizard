@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
  * Decides how a piece's chord symbols are written.
@@ -45,7 +46,8 @@ import java.util.Optional;
  * the middle of the window a chart's roots occupy rather than a fitted number.
  * Music no key covers -- a lead-in before the first key signature, or a whole
  * section of a file that only declares one where it modulates -- has no key, and
- * is counted like a keyless score over exactly the chords that are in it.
+ * is counted like a keyless score over its own chords, run by run, with the key
+ * it abuts breaking a tie its chords cannot.
  *
  * <p>When the score carries no key at all, which is every score the audio path
  * produces, the region is counted the same way from the roots themselves: fewest
@@ -155,15 +157,29 @@ public final class ChordSpeller {
      * {@code Cb Gb Ab E}. The stage that replaces a decision has to be at least
      * as fine-grained as the decision it replaces.
      *
-     * <p>Whatever the keys do not cover is counted, over those chords and no
-     * others. Two rounds of review each found one half of that. Counting them
-     * together with the covered ones gives a region belonging to no key in the
-     * piece, so an E flat lead-in printed {@code D#} two bars before an identical
-     * chord printed {@code Eb}. Handing them the nearest key instead applies a
-     * window to music that key does not cover, and sixteen bars of plain C major
-     * before a late B major signature came back with an {@code E#} in every one
-     * of them -- overwriting a spelling {@code SymbolicChordEstimator} had
-     * already got right.
+     * <p>Whatever the keys do not cover is counted, one run of consecutive
+     * uncovered chords at a time, with the key the run abuts breaking a tie the
+     * chords cannot. Three rounds of review each found one part of that, and each
+     * fix was the previous one over-applied:
+     *
+     * <ul>
+     *   <li>Counted together with the covered chords, a lead-in gets a region
+     *       belonging to no key in the piece, and an E flat one printed {@code D#}
+     *       two bars before an identical chord printed {@code Eb}.
+     *   <li>Given the nearest key outright, a run gets a window over music that
+     *       key does not cover: a section of plain C major before a late B major
+     *       signature came back with an {@code E#} in every bar, overwriting a
+     *       spelling {@code SymbolicChordEstimator} had already got right.
+     *   <li>Counted as one set however far apart, two uncovered sections either
+     *       side of a key get a compromise region belonging to neither, so a
+     *       sharp tail printed {@code Gb} where the key beside it printed
+     *       {@code F#}.
+     * </ul>
+     *
+     * <p>What survives all three: a run is counted from its own chords, so no key
+     * reaches music outside itself, and where its own chords cannot decide -- a
+     * one-chord run has a single pitch class and both spellings tie -- the key
+     * next door does.
      */
     public static Score respell(Score score) {
         Objects.requireNonNull(score, "score");
@@ -173,28 +189,48 @@ public final class ChordSpeller {
         if (score.keys().isEmpty()) {
             return score.withChords(respell(score.chords(), Optional.empty()));
         }
-        List<Chord> uncovered = new ArrayList<>();
-        for (Chord chord : score.chords().chords()) {
-            if (keyUnder(score, chord).isEmpty()) {
-                uncovered.add(chord);
+        List<Chord> chords = score.chords().chords();
+        List<Optional<Key>> covering = new ArrayList<>(chords.size());
+        for (Chord chord : chords) {
+            covering.add(keyUnder(score, chord));
+        }
+        List<Chord> respelled = new ArrayList<>(chords.size());
+        int at = 0;
+        while (at < chords.size()) {
+            if (covering.get(at).isPresent()) {
+                respelled.add(respell(chords.get(at), regionOf(covering.get(at).orElseThrow())));
+                at++;
+                continue;
+            }
+            int end = at;
+            while (end < chords.size() && covering.get(end).isEmpty()) {
+                end++;
+            }
+            double region = countedRegion(chords.subList(at, end), beside(covering, at, end));
+            for (; at < end; at++) {
+                respelled.add(respell(chords.get(at), region));
             }
         }
-        // Counted over the uncovered chords and nothing else, and only when
-        // there are some. Both halves were found the hard way: counting the
-        // whole progression gave a lead-in a region belonging to neither key and
-        // printed D# two bars before an identical chord printed Eb (round 4),
-        // and handing an uncovered chord the nearest key instead applied that
-        // key's window to music it does not cover -- sixteen bars of plain C
-        // major before a late B major signature came out with an E# in every
-        // one of them (round 5). Music no key covers has no key: it is the
-        // keyless case, over exactly the chords that are in it.
-        double counted = uncovered.isEmpty() ? 0 : countedRegion(uncovered);
-        List<Chord> respelled = new ArrayList<>(score.chords().size());
-        for (Chord chord : score.chords().chords()) {
-            respelled.add(respell(chord, keyUnder(score, chord)
-                    .map(ChordSpeller::regionOf).orElse(counted)));
-        }
         return score.withChords(score.chords().withChords(respelled));
+    }
+
+    /**
+     * The region of the key a run of uncovered chords abuts, if it abuts one.
+     *
+     * <p>The key <em>before</em> the run for preference, since a run that ends at
+     * a key is leaving one -- the same convention that writes a pivot chord in
+     * the key it comes from -- and the key after it for a lead-in, which has
+     * nothing before it. Empty only when no chord in the piece is covered, which
+     * is a score whose keys sit where no chord does.
+     */
+    private static OptionalDouble beside(List<Optional<Key>> covering, int from, int to) {
+        if (from > 0) {
+            return OptionalDouble.of(regionOf(covering.get(from - 1).orElseThrow()));
+        }
+        if (to < covering.size()) {
+            return OptionalDouble.of(regionOf(covering.get(to).orElseThrow()));
+        }
+        return OptionalDouble.empty();
     }
 
     /**
@@ -257,7 +293,8 @@ public final class ChordSpeller {
      * <p>Otherwise it is {@link #countedRegion counted}.
      */
     private static double region(ChordProgression chords, Optional<Key> key) {
-        return key.isPresent() ? regionOf(key.get()) : countedRegion(chords.chords());
+        return key.isPresent() ? regionOf(key.get())
+                : countedRegion(chords.chords(), OptionalDouble.empty());
     }
 
     /**
@@ -271,10 +308,13 @@ public final class ChordSpeller {
      *
      * <p>Takes the chords rather than a whole progression because the set that
      * matters is not always all of them: a score that names a key still has to
-     * write whatever the key does not cover, and that is counted over the
-     * uncovered chords alone. See {@link #respell(Score)}.
+     * write whatever the key does not cover, and that is counted over each run of
+     * uncovered chords on its own. See {@link #respell(Score)}.
+     *
+     * @param beside the region of the key the run abuts, which breaks a tie the
+     *               chords cannot; empty when there is no key to abut
      */
-    private static double countedRegion(List<Chord> chords) {
+    private static double countedRegion(List<Chord> chords, OptionalDouble beside) {
         List<Integer> sounding = new ArrayList<>();
         for (Chord chord : chords) {
             if (chord.isNoChord()) {
@@ -284,7 +324,7 @@ public final class ChordSpeller {
             chord.bass().filter(bass -> !isChordTone(bass, chord))
                     .ifPresent(bass -> price(bass, sounding));
         }
-        return sounding.isEmpty() ? 0 : cheapestRegion(sounding);
+        return sounding.isEmpty() ? 0 : cheapestRegion(sounding, beside);
     }
 
     /** The region a key writes its chords from. See {@link #TONIC_TO_ROOT_CENTRE}. */
@@ -343,16 +383,25 @@ public final class ChordSpeller {
      * back as {@code G# D# E#m C#} -- four accidentals bought to save two steps,
      * including an E sharp minor that no chart of anything writes.
      *
+     * <p><b>Then the key the run abuts</b>, when it abuts one: of two regions the
+     * chords cannot choose between, the one nearer the key next door. A run of one
+     * chord carries a single pitch class, whose two spellings tie on both ranks
+     * above by construction, so without this a lead-in on the dominant of B major
+     * printed {@code Gb} two bars before the identical chord printed {@code F#}.
+     * It is a tie-break and not a source: the ranks above are what stop a key
+     * dragging music it does not cover, which is the other half of the same
+     * finding.
+     *
      * <p><b>Then the region nearest natural</b>, which decides between a region
      * and the same one a whole turn of the circle away. That leaves one thing
-     * undecided, and deliberately: a region and its mirror -- +6 and -6 -- tie on
-     * every rank, and the scan runs flat to sharp and compares strictly, so the
-     * flat one wins. F sharp major and G flat major are the same music and one of
-     * them has to be printed.
+     * undecided, and deliberately: with no key to abut, a region and its mirror --
+     * +6 and -6 -- tie on every rank, and the scan runs flat to sharp and compares
+     * strictly, so the flat one wins. F sharp major and G flat major are the same
+     * music and one of them has to be printed.
      */
-    private static int cheapestRegion(List<Integer> sounding) {
+    private static int cheapestRegion(List<Integer> sounding, OptionalDouble beside) {
         int best = 0;
-        int[] bestRank = null;
+        double[] bestRank = null;
         for (int region = PitchSpeller.MIN_FIFTHS; region <= PitchSpeller.MAX_FIFTHS; region++) {
             int accidentals = 0;
             int distance = 0;
@@ -362,7 +411,10 @@ public final class ChordSpeller {
                 accidentals += Math.abs(written.accidental().alteration());
                 distance += Math.abs(PitchSpeller.fifthsOf(written) - region);
             }
-            int[] rank = {accidentals, distance, Math.abs(region)};
+            // Constant when there is no key next door, so that rank does not
+            // discriminate and the one below it decides, exactly as before.
+            double fromKey = beside.isPresent() ? Math.abs(region - beside.getAsDouble()) : 0;
+            double[] rank = {accidentals, distance, fromKey, Math.abs(region)};
             if (bestRank == null || Arrays.compare(rank, bestRank) < 0) {
                 bestRank = rank;
                 best = region;
