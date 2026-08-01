@@ -188,22 +188,39 @@ public final class BeatTracker {
      * double-rate seed <em>removes</em> beats that were sitting between onsets
      * and were nearly free to keep.
      *
-     * <p>Measured on a 120 BPM click track, as the strength a rigid grid
-     * collects per beat, which is what the recursion sums: 7.06 at the true
-     * period, 7.07 at twice it, 3.42 at half it, against an envelope floor of
-     * −0.22 between onsets. So at the old weight, where a halving or doubling
-     * cost 1.00, correcting a half-rate seed was worth 12.12 against 7.07 and
-     * correcting a double-rate seed 6.06 against 6.84. That is the asymmetry,
-     * and it is arithmetic rather than a property of the search window. At the
-     * published weight the penalty is 48.05 and the same two corrections are
-     * worth −81.97 and −40.99, so neither happens. See {@link #TIGHTNESS}, and
+     * <p>Measured on a twenty-second 120 BPM click track, as the strength a
+     * rigid grid collects per beat — which is what the recursion sums — with the
+     * grid phased where it collects most: <b>7.23</b> at the true period,
+     * <b>7.26</b> at twice it, <b>3.50</b> at half it, against an envelope floor
+     * of <b>−0.22</b> between onsets. So at the old weight, where a halving or
+     * doubling cost 1.00, correcting a half-rate seed was worth 12.46 against
+     * 7.26 and correcting a double-rate seed 6.23 against 7.00. That is the
+     * asymmetry, and it is arithmetic rather than a property of the search
+     * window. At the published weight the penalty is 48.05 and the same two
+     * corrections come to −81.64 and −40.82, so neither happens. See
+     * {@link #TIGHTNESS}, and
      * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
      *
-     * <p>An earlier version of this paragraph put the onset at 5.8, taken from a
-     * single frame offset applied to every click rather than from a grid phased
-     * where it collects most. All four comparisons shift with it, none of the
-     * four outcomes changes, and the margins were understated — which is the
-     * kind of error that survives because the conclusion it supports is right.
+     * <p><strong>Read the two margins rather than the four levels.</strong>
+     * Three independently written measurements of those levels agree only to a
+     * few percent, because the answer depends on how finely the grid's phase is
+     * searched and there is no natural stopping point; the levels above come
+     * from a sweep refined until they stopped moving. The margins are far more
+     * stable, and they are what decides the outcomes: correcting a half-rate
+     * seed wins by about five, and correcting a double-rate seed <em>loses</em>
+     * by well under one — 0.6 to 0.8 across the three. All four outcomes hold
+     * under all three.
+     *
+     * <p>An earlier version of this paragraph put the onset at 5.8, from a
+     * single frame offset applied to every click rather than a grid phased where
+     * it collects most. Correcting it moved all four comparisons and none of the
+     * four outcomes. It did <em>not</em> make them uniformly safer, which the
+     * first correction of it claimed: the half-rate margin widened, from about
+     * 3.8 to about 5.2, and the double-rate one — the close margin, the only
+     * place this conclusion has little slack — did not widen at all, going from
+     * 0.80 to 0.77. Both errors were the same mistake at different depths, a
+     * phase searched too coarsely, and both were caught by someone re-deriving
+     * the figure rather than by anything in the build.
      *
      * <p>That is the algorithm working as designed rather than a hole opened by
      * fixing it — resolving the octave is what {@link TempoEstimator}'s
