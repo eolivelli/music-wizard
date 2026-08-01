@@ -45,18 +45,28 @@ Both columns are reported per benchmark:
                quite the same, in fact, since this totals equal symbols across
                a bar where that takes the single longest span.
 
-               **That difference is not safe to ignore, and a previous version
-               of this paragraph said it was** -- "measured on all five, the two
-               rules give the same label everywhere; the bars are what make the
-               columns differ". On the seven there are now, `eb7-vamp-130.mp3`
-               disagrees on 33 bars and the two columns differ by 18.5 points,
-               of which the bars account for about three. The rest is the rule:
+               **That difference is harmless and stays harmless**: applied to
+               every bar of every chart, totals and single-longest-span give the
+               same label on all 1134 of them across the seven benchmarks. What
+               is not harmless is a step *inside* the rule, and a previous
+               version of this paragraph reassured the reader against it by
+               accident -- "the bars are what make the columns differ".
+
                `ChartLayout.atHarmonicRhythm` writes an evenly split 4/4 bar as
                exactly 2+2 quarters, so "the chord filling most of the bar" is a
-               tie, and `score` below breaks it positionally. 88 of the 91
-               multi-cell bars across all seven benchmarks are exact 2+2 splits,
-               so the tie-break is not an edge case in this metric -- it *is*
-               the rule for multi-chord bars. #242 carries the measurement.
+               **tie**, and `score` below breaks ties positionally. That is not
+               an edge case: 88 of the 91 multi-cell bars across all seven
+               benchmarks are exact 2+2 splits, so the positional tie-break is
+               the whole rule for multi-chord bars.
+
+               On `eb7-vamp-130.mp3` it decides 34 bars and loses all 34, which
+               is most of the 18.5-point gap between that file's model column
+               (93.4%) and its chart column (74.9%). The bars themselves push
+               the other way -- 8 bars wrong outright against the model's 11 --
+               so the bar lines make the chart about three points *better* while
+               the tie-break makes it about twenty-one worse. #242 carries the
+               measurement and is about that tie-break rather than about these
+               two columns.
   short
                the share of consecutive chord changes that are closer together
                than one counted beat, on each of the two axes there are. This is
