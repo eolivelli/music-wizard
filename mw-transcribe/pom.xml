@@ -25,10 +25,23 @@
     </dependency>    <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-dsp</artifactId>
-    </dependency>    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>mw-ml</artifactId>
     </dependency>
+    <!--
+      No mw-ml, deliberately (#247). This module declared it and never wrote a
+      line against it, which cost nothing on the desktop and everything on the
+      phone: mw-ml's own dependency is ONNX Runtime, whose jar carries desktop
+      x86-64 and aarch64 natives, and the Android app (#236) links this module
+      for one entry point, transcribe(AudioBuffer, Options), which reaches
+      onsets, beats, chroma and chords and no provider at all.
+
+      When a neural stage does arrive (melody #8, separation, lyrics #9), what
+      it needs here is the provider SPI, not the ONNX implementations behind
+      it; splitting those apart is the work that dependency should wait for.
+      Until then mw-cli, the module whose job is wiring, declares mw-ml
+      directly. HarmonyPathNeedsNoMlTest holds this side of that line and
+      MlRuntimeStaysOnTheDesktopTest in mw-cli holds the other, by checking
+      that the CLI still resolves the runtime this module gave up.
+    -->
     <!--
       Fixture MIDI for the import tests. Test scope only: mw-testkit depends on
       mw-core alone, so this cannot pull anything into the shipped graph, and the

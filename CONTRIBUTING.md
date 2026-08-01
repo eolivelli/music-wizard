@@ -50,6 +50,13 @@ mw-it           slow integration tests
 everything together. This is what lets the symbolic and audio tracks be built
 in parallel without colliding.
 
+Today `mw-cli` is in fact the only module that depends on `mw-ml` at all (#247),
+which is what keeps ONNX Runtime's desktop natives out of the Android app's
+compile closure — the app links `mw-transcribe`, not the command line. Treat
+that as state rather than rule: a future neural stage in `mw-transcribe` will
+need a provider SPI, and the honest way to give it one is to split the SPI from
+the ONNX implementations rather than to restore the old edge.
+
 ## Two rules that govern the pipeline
 
 These are not style preferences; violating either produces output that is
