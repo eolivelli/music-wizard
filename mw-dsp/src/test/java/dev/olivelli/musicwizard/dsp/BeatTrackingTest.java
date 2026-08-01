@@ -1194,10 +1194,10 @@ class BeatTrackingTest {
             }
 
             assertThat(onGrid)
-                    .as("intervals within 10%% of one beat, of %d", beats.size() - 1)
+                    .as("intervals within a tenth of one beat, of %d", beats.size() - 1)
                     .isGreaterThan(90);
             assertThat(detours)
-                    .as("intervals within 10%% of the swung eighth's two thirds of a beat")
+                    .as("intervals that are the swung eighth's two thirds of a beat")
                     .isLessThan(5);
         }
 

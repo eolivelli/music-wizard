@@ -300,7 +300,7 @@ class BluesLoopIT {
         }
 
         assertThat(100.0 * onGrid / intervals.length)
-                .as("share of tracked intervals within 10%% of the median")
+                .as("share of tracked intervals within a tenth of the median")
                 .isGreaterThan(85.0);
         assertThat(100.0 * detours / intervals.length)
                 .as("share that are the swung eighth's two thirds of a beat")
