@@ -383,49 +383,54 @@ class ChordSpellerTest {
             // chord. One region for the whole piece overwrote that and printed
             // the last chorus as Cb Gb Ab -- a stage that replaces a decision
             // has to be at least as fine-grained as the decision it replaces.
-            List<Chord> chords = List.of(
-                    Chord.ofSeconds(PitchSpelling.parse("A#4"), ChordQuality.MAJOR,
-                            0, 1, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("D#4"), ChordQuality.MAJOR,
-                            1, 2, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("B4"), ChordQuality.MAJOR,
-                            2, 3, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR,
-                            3, 4, Confidence.of(0.8)));
-            Score score = Score.empty(TempoMap.constant(120), 4.0)
-                    .withChords(asGiven(chords))
-                    .withKeys(List.of(
-                            Key.ofSeconds(PitchSpelling.parse("Bb4"), Mode.MAJOR,
-                                    0, 2, Confidence.of(0.9)),
-                            Key.ofSeconds(PitchSpelling.parse("B4"), Mode.MAJOR,
-                                    2, 4, Confidence.of(0.9))));
+            Score score = modulating(
+                    chordAt(0, "A#4"), chordAt(1, "D#4"), chordAt(2, "B4"), chordAt(3, "E4"));
 
             assertThat(symbols(ChordSpeller.respell(score).chords()))
                     .containsExactly("Bb", "Eb", "B", "E");
         }
 
         @Test
-        @DisplayName("a chord no key covers is written from the count, not from the nearest key")
-        void aChordOutsideEveryKeyFallsBackToTheCount() {
-            // A lead-in before the first key signature. Written from the key
-            // that starts after it, this one would come out A# D# E# -- B
-            // major's window reaches E sharp and the count does not go near it.
-            List<Chord> chords = List.of(
-                    Chord.ofSeconds(PitchSpelling.parse("A#4"), ChordQuality.MAJOR,
-                            0, 1, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("D#4"), ChordQuality.MAJOR,
-                            1, 2, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("F4"), ChordQuality.MAJOR,
-                            2, 3, Confidence.of(0.8)),
-                    Chord.ofSeconds(PitchSpelling.parse("B4"), ChordQuality.MAJOR,
-                            3, 4, Confidence.of(0.8)));
-            Score score = Score.empty(TempoMap.constant(120), 4.0)
-                    .withChords(asGiven(chords))
-                    .withKeys(List.of(Key.ofSeconds(PitchSpelling.parse("B4"), Mode.MAJOR,
-                            3, 4, Confidence.of(0.9))));
+        @DisplayName("a chord no key covers takes the nearest key, not a count of the whole piece")
+        void aChordOutsideEveryKeyTakesTheNearestKey() {
+            // Round 4 of review, on a MIDI whose key signature sits at bar 2: an
+            // E flat lead-in into a piece that modulates was counted over the
+            // whole progression, whose region belongs to neither key, and
+            // printed D# two bars before an identical chord printed Eb. A
+            // lead-in is in the key it leads into.
+            Score score = modulating(
+                    chordAt(0, "D#4"), chordAt(1, "A#4"), chordAt(2, "B4"), chordAt(3, "E4"))
+                    .withKeys(List.of(
+                            keyOver("Bb4", 1, 2),
+                            keyOver("B4", 2, 4)));
 
             assertThat(symbols(ChordSpeller.respell(score).chords()))
-                    .containsExactly("Bb", "Eb", "F", "B");
+                    .containsExactly("Eb", "Bb", "B", "E");
+        }
+
+        @Test
+        @DisplayName("a chord and a key are matched on beats when both carry them")
+        void theBeatAxisDecidesWhenBothAreQuantized() {
+            // The branch the pipeline actually takes, and it took two rounds to
+            // get a fixture that reaches it: MidiTranscriber quantizes every key
+            // and SymbolicChordEstimator every chord, so a score reaching here
+            // from a MIDI file is on beats. Made to matter by putting the
+            // modulation at beat 2 and second 3, and the chord at beat 2 and
+            // second 2.5: on beats it is in the new key and in seconds it is
+            // still in the old one.
+            Chord straddling = Chord.ofSeconds(PitchSpelling.parse("B4"),
+                    ChordQuality.MAJOR, 2.5, 3.5, Confidence.of(0.8)).quantizedTo(2, 3);
+            Score score = Score.empty(TempoMap.constant(120), 4.0)
+                    .withChords(asGiven(List.of(straddling)))
+                    .withKeys(List.of(
+                            Key.ofSeconds(PitchSpelling.parse("Bb4"), Mode.MAJOR,
+                                    0, 3, Confidence.of(0.9)).quantizedTo(0, 2),
+                            Key.ofSeconds(PitchSpelling.parse("B4"), Mode.MAJOR,
+                                    3, 4, Confidence.of(0.9)).quantizedTo(2, 4)));
+
+            // B major writes it B; B flat major would reach for its Cb.
+            assertThat(symbols(ChordSpeller.respell(score).chords()))
+                    .containsExactly("B");
         }
 
         @Test
@@ -485,6 +490,35 @@ class ChordSpellerTest {
     /** A progression keeping the timing its chords were built with. */
     private static ChordProgression asGiven(List<Chord> chords) {
         return new ChordProgression(chords, Confidence.of(0.8));
+    }
+
+    /**
+     * A one-beat chord at a beat, quantized as the pipeline quantizes.
+     *
+     * <p>On both axes, because {@code keyUnder} reads whichever the score is on
+     * and the pipeline is on beats: {@code MidiTranscriber} quantizes every key
+     * and {@code SymbolicChordEstimator} every chord. Round 4 of review found the
+     * fixtures reaching only the seconds branch, which is the one no caller
+     * takes.
+     */
+    private static Chord chordAt(int beat, String root) {
+        return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.MAJOR,
+                        beat, beat + 1.0, Confidence.of(0.8))
+                .quantizedTo(beat, beat + 1.0);
+    }
+
+    /** A key over a span of beats, quantized the same way. */
+    private static Key keyOver(String tonic, int fromBeat, int toBeat) {
+        return Key.ofSeconds(PitchSpelling.parse(tonic), Mode.MAJOR,
+                        fromBeat, toBeat, Confidence.of(0.9))
+                .quantizedTo(fromBeat, toBeat);
+    }
+
+    /** A score in B flat major for two beats and then B major, as the fixtures use. */
+    private static Score modulating(Chord... chords) {
+        return Score.empty(TempoMap.constant(120), 4.0)
+                .withChords(asGiven(List.of(chords)))
+                .withKeys(List.of(keyOver("Bb4", 0, 2), keyOver("B4", 2, 4)));
     }
 
     private static Chord major(String root) {

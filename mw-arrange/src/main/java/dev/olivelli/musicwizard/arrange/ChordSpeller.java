@@ -39,13 +39,18 @@ import java.util.Optional;
  *
  * <h2>The rule</h2>
  *
- * <p>Every root is written from one <b>region</b> of the line of fifths. When the
- * score carries a key, the region is the key's, half a fifth sharp of its tonic
- * -- see {@link #TONIC_TO_ROOT_CENTRE}, which is the middle of the window a
- * chart's roots occupy rather than a fitted number.
+ * <p>Every root is written from a <b>region</b> of the line of fifths. When the
+ * score carries a key, the region is that of the key in force under the chord --
+ * half a fifth sharp of its tonic, see {@link #TONIC_TO_ROOT_CENTRE}, which is
+ * the middle of the window a chart's roots occupy rather than a fitted number.
+ * A chord no key covers, a lead-in before the first key signature, is written
+ * from the nearest key rather than from a count: a lead-in is in the key it
+ * leads into, and counting it separately is what printed a {@code D#} two bars
+ * before an identical chord printed {@code Eb}.
  *
- * <p>When it does not, which is every score the audio path produces, the region
- * is counted from the roots themselves: fewest accidentals first, which is the
+ * <p>When the score carries no key at all, which is every score the audio path
+ * produces, the region is counted from the roots themselves: fewest accidentals
+ * first, which is the
  * criterion #227 asks for with naturals free, and then least spread on the line
  * of fifths. The count alone does not decide the case this exists for -- A sharp
  * and B flat each carry one accidental, as do D sharp and E flat, so the sharp
@@ -159,36 +164,60 @@ public final class ChordSpeller {
         if (score.keys().isEmpty()) {
             return score.withChords(respell(score.chords(), Optional.empty()));
         }
-        // The fallback is for a chord no key covers -- an intro before the first
-        // key signature, a gap between two -- and is counted from the roots, as
-        // it is for a score with no key at all.
-        double counted = region(score.chords(), Optional.empty());
         List<Chord> respelled = new ArrayList<>(score.chords().size());
         for (Chord chord : score.chords().chords()) {
-            respelled.add(respell(chord, keyUnder(score, chord)
-                    .map(ChordSpeller::regionOf).orElse(counted)));
+            respelled.add(respell(chord, regionOf(keyUnder(score, chord))));
         }
         return score.withChords(score.chords().withChords(respelled));
     }
 
     /**
-     * The key in force under a chord, asked on the axis both are placed on.
+     * The key a chord is written from: the one in force under it, or failing
+     * that the nearest one in time.
      *
-     * <p>The beat axis once both the chord and every key carry musical timing,
-     * and seconds otherwise -- the same rule and the same reason as {@code
-     * PitchSpeller.keyUnder}, which asks it of a note. A key list can be a
-     * mixture, one span too short to sit between two bar lines keeping its
-     * seconds, so every key is asked rather than the one that is wanted.
+     * <p>Asked on the axis both are placed on -- the beat axis once the chord and
+     * every key carry musical timing, and seconds otherwise. That is the same
+     * rule and the same reason as {@code PitchSpeller.keyUnder}, which asks it of
+     * a note; a key list can be a mixture, one span too short to sit between two
+     * bar lines keeping its seconds, so every key is asked rather than the one
+     * that is wanted.
+     *
+     * <p><b>Nearest, rather than counted.</b> A chord no key covers is almost
+     * always a lead-in before the first key signature, and a lead-in is in the
+     * key it leads into. Round 4 of review found what counting it instead did:
+     * on a piece modulating from B flat to B major the count belongs to neither
+     * key, and an E flat lead-in printed {@code D#} two bars before an identical
+     * chord printed {@code Eb} -- #227's own defect, from the one line that was
+     * still deciding a chord's spelling without asking the music around it.
      */
-    private static Optional<Key> keyUnder(Score score, Chord chord) {
-        if (chord.isQuantized() && score.keys().stream().allMatch(Key::isQuantized)) {
-            double beat = chord.startBeat().orElseThrow();
-            return score.keys().stream()
-                    .filter(k -> beat >= k.startBeat().orElseThrow()
-                            && beat < k.endBeat().orElseThrow())
-                    .findFirst();
+    private static Key keyUnder(Score score, Chord chord) {
+        boolean onBeats = chord.isQuantized() && score.keys().stream().allMatch(Key::isQuantized);
+        double at = onBeats ? chord.startBeat().orElseThrow() : chord.startSeconds();
+        Key nearest = null;
+        double nearestGap = Double.MAX_VALUE;
+        for (Key key : score.keys()) {
+            double from = onBeats ? key.startBeat().orElseThrow() : key.startSeconds();
+            double to = onBeats ? key.endBeat().orElseThrow() : key.endSeconds();
+            if (at >= from && at < to) {
+                return key;
+            }
+            // Compared strictly against a list the score keeps in time order, so
+            // a chord exactly between two keys takes the earlier one -- the key
+            // it is leaving rather than the one it is entering, which is how a
+            // pivot chord is conventionally written.
+            double gap = at < from ? from - at : at - to;
+            if (gap < nearestGap) {
+                nearestGap = gap;
+                nearest = key;
+            }
         }
-        return score.keyAt(chord.startSeconds());
+        if (nearest == null) {
+            // Unreachable: the only caller returns before this when the score
+            // names no key. Named rather than left to a NullPointerException,
+            // which would say nothing about which invariant broke.
+            throw new IllegalStateException("a chord cannot be spelled from no key at all");
+        }
+        return nearest;
     }
 
     /**
