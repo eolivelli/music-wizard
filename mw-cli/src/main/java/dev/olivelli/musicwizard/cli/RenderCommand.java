@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.cli;
 
+import dev.olivelli.musicwizard.arrange.ChordSpeller;
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -246,6 +247,16 @@ final class RenderCommand implements Callable<Integer> {
         // for, one line further down the same command.
         Score score = workspace.readScore().orElseThrow(() -> new IllegalStateException(
                 "no transcription yet; run: mw analyze " + workspaceDirectory));
+
+        // Once, here, rather than in each emitter. The estimator writes every
+        // black key as a sharp from a fixed table, so a chart in B flat major
+        // printed as A# F Gm D# (#227); ChordSpeller decides how the harmony is
+        // written from the piece as a whole. It is applied to the score every
+        // part then reads, so the chart, the staff parts and the exports cannot
+        // spell the same chord three ways -- the failure this command already
+        // has a history of, one layer up. The workspace's saved transcription
+        // keeps the estimate untouched: this is a decision about the page.
+        score = ChordSpeller.respell(score);
 
         List<Part> producible = new ArrayList<>();
         List<String> notWritten = new ArrayList<>();
