@@ -233,8 +233,10 @@ public final class AudioTranscriber {
         // there is no rate in it for either accessor to return, and this falls
         // back to the tracker's own figure -- which on that path is the
         // autocorrelation seed rather than any median, and moves with the clip's
-        // length rather than with the music. A 0.40s clip prints 188 beats/min
-        // here, then says the clip carries no tempo, then heads the chart 120.
+        // length rather than with the music -- hold one click fixed and stretch
+        // the clip and the figure slides monotonically with nothing musical
+        // under it. One 0.40s clip here printed 188 beats/min, then said the
+        // clip carries no tempo, then headed the chart 120.
         // That predates #200 and is unchanged by it, so it is #240 rather than
         // something to fix under cover of this change; what #200 did was make it
         // the only remaining path on which the two figures can disagree.

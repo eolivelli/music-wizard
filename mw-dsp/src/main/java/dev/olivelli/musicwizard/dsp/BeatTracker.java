@@ -177,12 +177,17 @@ public final class BeatTracker {
      * did.</strong> {@code Score.estimatedTempo()} answers from
      * {@link dev.olivelli.musicwizard.core.model.BeatGrid#steadyPulseRate()}
      * instead, and {@code AudioTranscriber}'s progress line followed it there.
-     * The one remaining reader of {@link Result#beatsPerMinute()} is that
-     * progress line's fewer-than-two-beats arm -- where this method returns the
-     * {@code fallback} seed and never reaches the median at all, which is
-     * precisely the case the paragraph above says must not happen. #240 carries
-     * that. Retiring the field is a change to this module's public shape and is
-     * not made here.
+     * The one remaining reader of {@link Result#beatsPerMinute()} <em>in
+     * production</em> is that progress line's fewer-than-two-beats arm -- where
+     * this method returns the {@code fallback} seed and never reaches the median
+     * at all, which is precisely the case the paragraph above says must not
+     * happen. #240 carries that.
+     *
+     * <p>The median itself is still pinned by one test, and it is the only thing
+     * pinning it: {@code BeatTrackingTest.tracksEvenlySpacedBeats} asserts this
+     * figure within 2% of the click rate at five tempi. So retiring the field is
+     * a call site plus that test, not a call site alone, and it is a change to
+     * this module's public shape either way -- #241, not here.
      *
      * <p><strong>What this no longer means is that the dynamic program will
      * rescue an octave error in the seed.</strong> An earlier version of this
