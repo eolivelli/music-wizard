@@ -376,14 +376,15 @@ public final class ChordSpeller {
      * chart of anything writes.
      *
      * <p><b>Then the key the run abuts</b>, when it abuts one: of two regions the
-     * chords cannot choose between, the one nearer the key next door. What reaches
-     * it is a short run on a chromatic root, whose two spellings cost one
+     * chords cannot choose between, the one nearer the key next door. What it can
+     * change is a short run on a chromatic root, whose two spellings cost one
      * accidental each and sit the same distance from their own regions -- a
      * lead-in on the dominant of B major printed {@code Gb} two bars before the
-     * identical chord, covered by the key, printed {@code F#}. A run on naturals
-     * never gets here, because the alternative spellings cost an accidental and
-     * the first rank has already decided. It is a tie-break and not a source: the
-     * ranks above are what stop a key dragging music it does not cover.
+     * identical chord, covered by the key, printed {@code F#}. Regions tied on
+     * the ranks above write a natural root the same way whichever wins, so this
+     * moves the region for an all-natural run and never the page. It is a
+     * tie-break and not a source: the ranks above are what stop a key dragging
+     * music it does not cover.
      *
      * <p><b>Then the region nearest natural</b>, which decides between a region
      * and the same one a whole turn of the circle away. That leaves one thing

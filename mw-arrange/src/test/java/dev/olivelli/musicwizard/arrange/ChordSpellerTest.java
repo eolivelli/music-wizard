@@ -443,8 +443,7 @@ class ChordSpellerTest {
             // scan decided it, and a lead-in on the dominant of B major printed
             // Gb two bars before the identical chord printed F#. The key next
             // door is the only evidence there is, and it is a tie-break rather
-            // than a source -- a run on naturals is settled by the accidental
-            // count before the key is asked.
+            // than a source.
             Score leadIn = Score.empty(TempoMap.constant(120), 4.0)
                     .withChords(asGiven(List.of(
                             chordAt(0, "F#4"), chordAt(1, "B4"),
