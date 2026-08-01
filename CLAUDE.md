@@ -238,10 +238,9 @@ them are in `docs/history.md`. The short version:
   - **No superlative that is a ranking of the current corpus** — *worst*,
     *furthest*, *the only one* — since it dates the moment a benchmark is added.
     Point at the committed baseline instead. A superlative that follows from a
-    mechanism is fine and often the clearest thing to write: "a faster rate
-    shortens the counted beat, so every recording whose rate rose fell or
-    stayed" cannot be falsified by growth. On #200 four successive drafts of one
-    paragraph each claimed a ranking the data did not hold.
+    mechanism is fine and often the clearest thing to write, because growth
+    cannot falsify it. On #200 four successive drafts of one paragraph each
+    claimed a ranking the data did not hold.
   - **Do not narrate the review.** "An earlier draft said", "round 3 found",
     "corrected in review" is process history; it belongs in the commit message
     or the PR, once, not in the source. Fix the sentence and move on.
