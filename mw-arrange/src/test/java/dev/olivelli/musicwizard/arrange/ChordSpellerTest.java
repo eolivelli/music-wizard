@@ -128,40 +128,109 @@ class ChordSpellerTest {
         }
 
         @Test
-        @DisplayName("a detected key decides instead of counting")
-        void aDetectedKeyWins() {
-            // Written key signatures are evidence; a count is an inference from
-            // one. These three roots sit exactly on the boundary where the two
-            // spellings cost the same and lie the same distance from natural, so
-            // counting alone falls back on its tie-break and writes them flat.
-            // In A major they are the iii, the VI and the II, and the signature
-            // says so outright.
-            ChordProgression chords = progression(
-                    minor("C#4"), major("F#4"), major("B4"));
-            Key aMajor = Key.ofSeconds(PitchSpelling.parse("A3"), Mode.MAJOR,
+        @DisplayName("one chromatic chord does not flip the chart across the half turn")
+        void aSingleChromaticChordDoesNotFlipTheChart() {
+            // Round 1 of review, by execution: eight cycles of B F#m G#m E and
+            // one C#7 reach the tie at six fifths either way, where the region
+            // is exactly as close written from +6 as from -6 and the flat-first
+            // scan took the flat. One chord in 33 turned every symbol on the
+            // page into Cb Gb Abm Fb. The accidental count is what separates
+            // them: 2 a cycle against 4.
+            List<Chord> chords = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                chords.add(major("B4"));
+                chords.add(major("F#4"));
+                chords.add(minor("G#4"));
+                chords.add(major("E4"));
+            }
+            chords.add(seventh("C#4"));
+
+            assertThat(symbols(ChordSpeller.respell(progression(chords), Optional.empty())))
+                    .startsWith("B", "F#", "G#m", "E").endsWith("C#7");
+        }
+
+        @Test
+        @DisplayName("a chromatic chord is not paid for with accidentals on every other one")
+        void theRegionDoesNotBuyClosenessWithAccidentals() {
+            // Ranking distance before the accidental count answered this with
+            // G# D# E#m C#: four accidentals a cycle instead of three, bought to
+            // put the one A7 two steps nearer the region. E sharp minor is not a
+            // chord any chart writes, and A7 is the commonest colour there is.
+            List<Chord> chords = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                chords.add(major("G#4"));
+                chords.add(major("D#4"));
+                chords.add(minor("F4"));
+                chords.add(major("C#4"));
+            }
+            chords.add(seventh("A4"));
+
+            assertThat(symbols(ChordSpeller.respell(progression(chords), Optional.empty())))
+                    .startsWith("Ab", "Eb", "Fm", "Db").endsWith("A7");
+        }
+
+        @Test
+        @DisplayName("a detected key breaks a tie the roots cannot, and no more than that")
+        void aDetectedKeyBreaksTies() {
+            // F# C# G#m D# and Gb Db Abm Eb are the same distance from their own
+            // regions and carry four accidentals either way, so nothing in the
+            // roots can choose; a written six-sharp signature can.
+            ChordProgression tied = progression(
+                    major("F#4"), major("C#4"), minor("G#4"), major("D#4"));
+            Key fSharpMajor = Key.ofSeconds(PitchSpelling.parse("F#4"), Mode.MAJOR,
                     0, 8, Confidence.of(0.9));
 
-            assertThat(symbols(ChordSpeller.respell(chords, Optional.empty())))
-                    .containsExactly("Dbm", "Gb", "Cb");
-            assertThat(symbols(ChordSpeller.respell(chords, Optional.of(aMajor))))
-                    .containsExactly("C#m", "F#", "B");
+            assertThat(symbols(ChordSpeller.respell(tied, Optional.empty())))
+                    .containsExactly("Gb", "Db", "Abm", "Eb");
+            assertThat(symbols(ChordSpeller.respell(tied, Optional.of(fSharpMajor))))
+                    .containsExactly("F#", "C#", "G#m", "D#");
+        }
+
+        @Test
+        @DisplayName("a key does not override roots that have already decided")
+        void aDetectedKeyDoesNotOverrideTheRoots() {
+            // The other half, and the reason the key is ranked last. A minor's
+            // leading-tone chord is a G# triad and no single region holds it:
+            // ranked first, the key printed Abdim under a header reading "A
+            // minor". The roots themselves get it right, key or no key.
+            ChordProgression harmonicMinor = progression(
+                    minor("A4"), minor("D4"), major("E4"), diminished("G#4"));
+            Key aMinor = Key.ofSeconds(PitchSpelling.parse("A3"), Mode.MINOR,
+                    0, 8, Confidence.of(0.9));
+
+            assertThat(symbols(ChordSpeller.respell(harmonicMinor, Optional.empty())))
+                    .containsExactly("Am", "Dm", "E", "G#dim");
+            assertThat(symbols(ChordSpeller.respell(harmonicMinor, Optional.of(aMinor))))
+                    .containsExactly("Am", "Dm", "E", "G#dim");
         }
 
         @Test
         @DisplayName("no root is ever written with a double accidental")
-        void everyKeyComesBackPrintable() {
-            // The tie-break the region search needs. Its cost repeats every
-            // twelve steps, because moving the region one whole turn of the
-            // circle moves every root with it, so cheapest alone allows C G Am F
-            // to come back as Dbb Abb Bbbm Gbb -- as cheap, and unreadable.
+        void everyChartComesBackPrintable() {
+            // Two things this holds off. The region search's distance repeats
+            // every twelve steps, because moving the region a whole turn of the
+            // circle moves every root with it, so C G Am F is as close written
+            // from -12, where its roots are Dbb Abb Bbbm Gbb, as from 0. And in
+            // a region as flat as A flat major's, a plain A7 is nearer Bbb than
+            // A -- which is what an unbounded search printed. Every key against
+            // every chromatic addition, which is where round 1 found the second.
             for (int tonic = 0; tonic < 12; tonic++) {
-                ChordProgression iViViIv = progression(
-                        major(root(tonic)), major(root(tonic + 7)),
-                        minor(root(tonic + 9)), major(root(tonic + 5)));
+                for (int added = 0; added < 12; added++) {
+                    List<Chord> chords = new ArrayList<>();
+                    for (int i = 0; i < 8; i++) {
+                        chords.add(major(root(tonic)));
+                        chords.add(major(root(tonic + 7)));
+                        chords.add(minor(root(tonic + 9)));
+                        chords.add(major(root(tonic + 5)));
+                    }
+                    chords.add(seventh(root(tonic + added)));
 
-                assertThat(symbols(ChordSpeller.respell(iViViIv, Optional.empty())))
-                        .allSatisfy(symbol -> assertThat(symbol)
-                                .doesNotContain("##").doesNotContain("bb"));
+                    assertThat(symbols(ChordSpeller.respell(
+                            progression(chords), Optional.empty())))
+                            .as("tonic %d plus %d", tonic, added)
+                            .allSatisfy(symbol -> assertThat(symbol)
+                                    .doesNotContain("##").doesNotContain("bb"));
+                }
             }
         }
     }
@@ -171,8 +240,8 @@ class ChordSpellerTest {
     class WhatSurvives {
 
         @Test
-        @DisplayName("a slash chord's bass is re-spelled with its root")
-        void theBassMovesToo() {
+        @DisplayName("a bass that is not a chord tone is re-spelled from the region")
+        void aForeignBassFollowsTheRegion() {
             // Left out, this prints Bb/D# -- a chord and its own bass written
             // from two different regions, which is worse than either alone.
             Chord slash = Chord.ofSeconds(PitchSpelling.parse("A#4"), ChordQuality.MAJOR,
@@ -182,6 +251,22 @@ class ChordSpellerTest {
 
             assertThat(symbols(ChordSpeller.respell(chords, Optional.empty())))
                     .containsExactly("Bb/Eb", "F", "Gm", "Eb");
+        }
+
+        @Test
+        @DisplayName("a bass that is a chord tone is spelled by its chord, not by the region")
+        void aChordToneBassFollowsItsChord() {
+            // Round 1 of review, by execution through the CLI: E/G# came out as
+            // E/Ab, and A flat is not a note of E major. The region has nothing
+            // to say about a note the chord above it already spells -- the third
+            // of E is a G of some kind whatever the rest of the piece does.
+            Chord slash = Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR,
+                    0, 1, Confidence.of(0.8)).withBass(PitchSpelling.parse("G#4"));
+            ChordProgression chords = progression(
+                    List.of(major("C4"), slash, minor("A4"), major("F4")));
+
+            assertThat(symbols(ChordSpeller.respell(chords, Optional.empty())))
+                    .containsExactly("C", "E/G#", "Am", "F");
         }
 
         @Test
@@ -294,6 +379,16 @@ class ChordSpellerTest {
 
     private static Chord minor(String root) {
         return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.MINOR,
+                0, 1, Confidence.of(0.8));
+    }
+
+    private static Chord seventh(String root) {
+        return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.DOMINANT_SEVENTH,
+                0, 1, Confidence.of(0.8));
+    }
+
+    private static Chord diminished(String root) {
+        return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.DIMINISHED,
                 0, 1, Confidence.of(0.8));
     }
 

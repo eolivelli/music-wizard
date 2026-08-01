@@ -117,6 +117,9 @@ public final class PitchSpeller {
     static final int MIN_FIFTHS = -15;
     static final int MAX_FIFTHS = 19;
 
+    /** Accidentals a spelling can carry at all: a double sharp or a double flat. */
+    static final int MAX_WRITABLE_ACCIDENTALS = 2;
+
     /**
      * Octaves a spelling may be placed in: the band
      * {@link PitchSpelling#parse} accepts.
@@ -242,8 +245,15 @@ public final class PitchSpeller {
      * -- and the accidental is whatever makes that letter sound right. That is
      * what gives B diminished seventh the A flat it needs rather than the G
      * sharp a pitch-class table would produce.
+     *
+     * <p>Package-private because {@link ChordSpeller} needs the same answer for a
+     * slash chord's bass. Written on its own from the line of fifths, the bass of
+     * E major in a flat-leaning piece comes out A flat -- a note that is not in
+     * the chord it is printed under. Callers wanting the bass <em>derived</em>
+     * rather than honoured must pass a chord with no bass on it, since the branch
+     * below returns a written bass unchanged.
      */
-    private static Optional<PitchSpelling> asChordTone(int midiPitch, Chord chord) {
+    static Optional<PitchSpelling> asChordTone(int midiPitch, Chord chord) {
         if (chord.isNoChord()) {
             return Optional.empty();
         }
@@ -348,12 +358,32 @@ public final class PitchSpeller {
      * printed as a double flat.
      */
     static PitchSpelling onLineOfFifths(int midiPitch, double centre) {
+        return onLineOfFifths(midiPitch, centre, MAX_WRITABLE_ACCIDENTALS);
+    }
+
+    /**
+     * The same, refusing any spelling that needs more than a given number of
+     * accidentals.
+     *
+     * <p>For {@link ChordSpeller}, which caps a chord symbol at one. A note on a
+     * staff may legitimately need a double sharp, and reads as one because the
+     * key signature and the notes around it say what it is; a chord symbol has
+     * neither, and {@code Bbb7} standing alone over a bar is a chord nobody can
+     * play at sight. Every pitch class can meet a cap of one -- only D, G and A
+     * have a single such spelling, and the other nine have two.
+     *
+     * @param maxAccidentals the widest accidental the answer may carry
+     */
+    static PitchSpelling onLineOfFifths(int midiPitch, double centre, int maxAccidentals) {
         int pitchClass = Math.floorMod(midiPitch, 12);
         int best = Integer.MIN_VALUE;
         double bestDistance = Double.MAX_VALUE;
         int bestAccidentals = Integer.MAX_VALUE;
         for (int fifths = MIN_FIFTHS; fifths <= MAX_FIFTHS; fifths++) {
             if (Math.floorMod(fifths * 7, 12) != pitchClass) {
+                continue;
+            }
+            if (Math.abs(Math.floorDiv(fifths + 1, 7)) > maxAccidentals) {
                 continue;
             }
             if (spellingOf(fifths, midiPitch).isEmpty()) {
