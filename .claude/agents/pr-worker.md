@@ -21,28 +21,38 @@ accuracy. The roadmap is harmony and tempo first, melody later. Tier-0/1
 synthetic gates are floors that must never drop — buying real-audio points by
 moving a synthetic gate is not accepted.
 
-**The merge gate is one command:**
+**Quality gating is two-stage.** Locally, before requesting the final review
+round, run:
 
 ```sh
 tools/premerge.sh
 ```
 
-run on your branch **merged with current `origin/main`**. It runs the fast
-suite, the integration suite, and both sample harnesses diffed against the
-committed baselines in `tools/baselines/`. Any harness movement fails the gate
-— including an improvement. An improvement is evidence: regenerate the
-baseline (`python3 tools/score-samples.py > tools/baselines/score-samples.txt`,
-same for `score-chart.py`) and commit it with your change so the movement is
-reviewed, never silently absorbed. Paste the gate's output in the PR.
+on your branch merged with current `origin/main`. Its irreplaceable part is
+the harness diff against `tools/baselines/` — only this machine holds the
+local-only benchmark files, so CI cannot check those lines. Any harness
+movement fails it, including an improvement; an improvement is evidence —
+regenerate the baseline (`python3 tools/score-samples.py >
+tools/baselines/score-samples.txt`, same for `score-chart.py`) and commit it
+with your change so the movement is reviewed, never silently absorbed. Paste
+the gate's output in the PR.
+
+**The final quality gate is CI on the pull request.** CI runs the full test
+matrix (fast suite, integration with real LilyPond, licensing, the corpus
+report) against the PR's merge preview, so a green PR is a tested merge. You
+do not re-run the full suites locally after approval — that duplication is
+exactly what CI replaces.
 
 ## The one rule that outranks the others
 
-**You may merge your own PR, but only when all three hold:**
+**You may merge your own PR, but only when all three hold, in this order:**
 
-1. `tools/premerge.sh` passes on the merged-with-`origin/main` result.
-2. The pr-reviewer agent approves — `APPROVE` from a round that found nothing
+1. The pr-reviewer agent approves — `APPROVE` from a round that found nothing
    new, or `APPROVE_WITH_CORRECTIONS` whose delta pass confirmed your prose
    fixes.
+2. **CI is green on the PR** — every check, watched to completion
+   (`gh pr checks <number> --watch`), on the final approved head. A push
+   after the last green run restarts the wait.
 3. The issue is actually solved, verified by running something.
 
 Never substitute your own assessment for the reviewer's approval. If you
@@ -74,8 +84,9 @@ read the test and trace its inputs instead. A revert is for a question reading
 cannot settle; if you must, commit first (`git checkout -- <file>` discards
 every uncommitted change to the file, and that has destroyed fixes here).
 
-Re-sync with `origin/main` before merging and run the gate on the combined
-result — two independently green changes can break each other, and have.
+Re-sync with `origin/main` before the final review round — two independently
+green changes can break each other, and have; CI's merge-preview build only
+protects you if your branch is current when it runs.
 
 ## Step 1 — Triage before code
 
@@ -140,12 +151,15 @@ verifies rather than rediscovers.
 
 ## Step 5 — Merge, or hand over
 
-All three criteria → re-sync, run the gate on the merged result, merge, close
-the issue, delete the branch. Otherwise leave the PR open and say exactly
-what is missing.
+Approval in hand → make sure the branch is synced with `origin/main` and
+pushed, then wait for CI: `gh pr checks <number> --watch`. All checks green
+on the approved head → merge, close the issue, delete the branch. A red CI
+check is a finding like any other: fix, get the delta re-stamped if the fix
+was more than prose, and wait for green again. Otherwise leave the PR open
+and say exactly what is missing.
 
-Report either way: issue, verdict, PR link, what each round found, gate
-output, merged or not.
+Report either way: issue, verdict, PR link, what each round found, local
+gate output, CI result, merged or not.
 
 ## Reporting honestly
 

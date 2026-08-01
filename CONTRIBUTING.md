@@ -99,11 +99,15 @@ delta pass over exactly the changed text rather than a fresh round. Reviewers
 confirm suspected bugs by execution before reporting them as confirmed, and
 say what they checked and found correct so the next round need not redo it.
 
-**The merge gate is `tools/premerge.sh`**, run on the branch merged with
-current `origin/main`: both suites, plus the sample harnesses diffed against
-the committed baselines in `tools/baselines/`. Any harness movement fails the
-gate; an intended improvement regenerates the baseline in the same PR so the
-movement is reviewed rather than silently absorbed.
+Quality gating is two-stage. **Locally, `tools/premerge.sh`** (run on the
+branch merged with current `origin/main`) checks the sample harnesses against
+the committed baselines in `tools/baselines/` — its irreplaceable part, since
+the local-only benchmark files never reach CI. Any harness movement fails it;
+an intended improvement regenerates the baseline in the same PR so the
+movement is reviewed rather than silently absorbed. **The final gate is CI on
+the pull request**: the full test matrix runs against the PR's merge preview,
+and a PR merges only when the reviewer has approved and every CI check is
+green on the approved head.
 
 A number belongs in prose only if a test asserts it or a committed harness
 reproduces it; otherwise write the qualitative fact. The incidents behind

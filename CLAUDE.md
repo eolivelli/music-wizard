@@ -192,11 +192,13 @@ Serialized: **one PR in flight at a time.** The rules live in
 `.claude/agents/pr-worker.md` and `pr-reviewer.md`; the incidents that shaped
 them are in `docs/history.md`. The short version:
 
-- **The merge gate is `tools/premerge.sh`**, run on the branch merged with
-  current `origin/main`: both suites plus both sample harnesses diffed against
-  the committed baselines in `tools/baselines/`. Any harness movement fails —
-  an intended improvement regenerates the baseline in the same PR, so movement
-  is always reviewed.
+- **Two-stage gate.** Locally, `tools/premerge.sh` (branch merged with
+  current `origin/main`) — its irreplaceable part is the harness diff against
+  `tools/baselines/`, which CI cannot run in full because the local-only
+  benchmark files never leave this machine. Any movement fails; intended
+  improvements regenerate the baseline in the same PR. **Finally, CI on the
+  pull request is the quality gate**: full matrix against the merge preview;
+  merge only on reviewer approval plus every check green on the approved head.
 - **Round 1 is a full adversarial review; later rounds are scoped to the
   delta.** Loop until a round finds nothing new, or only prose
   (`APPROVE_WITH_CORRECTIONS` → delta pass on the changed text → merge).
