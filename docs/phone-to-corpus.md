@@ -12,21 +12,19 @@ storage, named `yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says
 otherwise, and the app offers it under whatever that name is. Rename it first,
 to something that says what it is.
 
-## 2. Which directory depends on whether the changes are known
+## 2. Where it goes
 
-`tools/score-samples.py` looks for every benchmark under `samples/`, so a take
-that could be scored has to live there: an entry in `samples/list.txt` giving
-the changes bar by bar, and — to be scored rather than merely present — those
-changes in that script's `BENCHMARKS` table (`score-chart.py` imports it), with
-the baselines under `tools/baselines/` regenerated in the same PR.
+A take of your own playing belongs in `samples/`, the corpus MW is measured on:
+committed where the licensing allows it, and otherwise gitignored by name, as
+several files there already are. `uncommitted/` is for commercial recordings,
+and its `list.txt` header says why they are looked at rather than scored.
 
-A take whose changes are not known that way goes in `uncommitted/`, whose
-`list.txt` header says what that directory is for: looking at MW's output, never
-scoring it.
-
-Either way, commit the audio only if it may be redistributed. `samples/` already
-holds files that may not — they are gitignored by name, and their `list.txt`
-entry says where to get them instead.
+Being scored is a further step, and a later one: `tools/score-samples.py` looks
+for every benchmark under `samples/` and reads its changes from the `BENCHMARKS`
+table in that same script (`score-chart.py` imports it). A file's `list.txt`
+entry does not put it there — `samples/list.txt` says changes are confirmed by
+ear before a file is promoted — and adding one means regenerating the baselines
+under `tools/baselines/` in the same PR.
 
 ## 3. Write the `list.txt` entry
 
@@ -38,9 +36,9 @@ known or as remembered.
 ## 4. Run the desktop CLI on the same file
 
 ```sh
-./mw init uncommitted/<slug>.wav
-./mw analyze uncommitted/<slug>.mwz
-./mw render uncommitted/<slug>.mwz
+./mw init <dir>/<slug>.wav
+./mw analyze <dir>/<slug>.mwz
+./mw render <dir>/<slug>.mwz
 ```
 
 `render` prints the chart and writes `<slug>.mwz/out/chords.txt`. That file and
