@@ -43,14 +43,13 @@ import java.util.Optional;
  * score carries a key, the region is that of the key in force under the chord --
  * half a fifth sharp of its tonic, see {@link #TONIC_TO_ROOT_CENTRE}, which is
  * the middle of the window a chart's roots occupy rather than a fitted number.
- * A chord no key covers, a lead-in before the first key signature, is written
- * from the nearest key rather than from a count: a lead-in is in the key it
- * leads into, and counting it separately is what printed a {@code D#} two bars
- * before an identical chord printed {@code Eb}.
+ * Music no key covers -- a lead-in before the first key signature, or a whole
+ * section of a file that only declares one where it modulates -- has no key, and
+ * is counted like a keyless score over exactly the chords that are in it.
  *
  * <p>When the score carries no key at all, which is every score the audio path
- * produces, the region is counted from the roots themselves: fewest accidentals
- * first, which is the
+ * produces, the region is counted the same way from the roots themselves: fewest
+ * accidentals first, which is the
  * criterion #227 asks for with naturals free, and then least spread on the line
  * of fifths. The count alone does not decide the case this exists for -- A sharp
  * and B flat each carry one accidental, as do D sharp and E flat, so the sharp
@@ -155,6 +154,16 @@ public final class ChordSpeller {
      * chord, and one region for the piece turned its last chorus into
      * {@code Cb Gb Ab E}. The stage that replaces a decision has to be at least
      * as fine-grained as the decision it replaces.
+     *
+     * <p>Whatever the keys do not cover is counted, over those chords and no
+     * others. Two rounds of review each found one half of that. Counting them
+     * together with the covered ones gives a region belonging to no key in the
+     * piece, so an E flat lead-in printed {@code D#} two bars before an identical
+     * chord printed {@code Eb}. Handing them the nearest key instead applies a
+     * window to music that key does not cover, and sixteen bars of plain C major
+     * before a late B major signature came back with an {@code E#} in every one
+     * of them -- overwriting a spelling {@code SymbolicChordEstimator} had
+     * already got right.
      */
     public static Score respell(Score score) {
         Objects.requireNonNull(score, "score");
@@ -164,16 +173,32 @@ public final class ChordSpeller {
         if (score.keys().isEmpty()) {
             return score.withChords(respell(score.chords(), Optional.empty()));
         }
+        List<Chord> uncovered = new ArrayList<>();
+        for (Chord chord : score.chords().chords()) {
+            if (keyUnder(score, chord).isEmpty()) {
+                uncovered.add(chord);
+            }
+        }
+        // Counted over the uncovered chords and nothing else, and only when
+        // there are some. Both halves were found the hard way: counting the
+        // whole progression gave a lead-in a region belonging to neither key and
+        // printed D# two bars before an identical chord printed Eb (round 4),
+        // and handing an uncovered chord the nearest key instead applied that
+        // key's window to music it does not cover -- sixteen bars of plain C
+        // major before a late B major signature came out with an E# in every
+        // one of them (round 5). Music no key covers has no key: it is the
+        // keyless case, over exactly the chords that are in it.
+        double counted = uncovered.isEmpty() ? 0 : countedRegion(uncovered);
         List<Chord> respelled = new ArrayList<>(score.chords().size());
         for (Chord chord : score.chords().chords()) {
-            respelled.add(respell(chord, regionOf(keyUnder(score, chord))));
+            respelled.add(respell(chord, keyUnder(score, chord)
+                    .map(ChordSpeller::regionOf).orElse(counted)));
         }
         return score.withChords(score.chords().withChords(respelled));
     }
 
     /**
-     * The key a chord is written from: the one in force under it, or failing
-     * that the nearest one in time.
+     * The key in force under a chord, if one is.
      *
      * <p>Asked on the axis both are placed on -- the beat axis once the chord and
      * every key carry musical timing, and seconds otherwise. That is the same
@@ -181,43 +206,16 @@ public final class ChordSpeller {
      * a note; a key list can be a mixture, one span too short to sit between two
      * bar lines keeping its seconds, so every key is asked rather than the one
      * that is wanted.
-     *
-     * <p><b>Nearest, rather than counted.</b> A chord no key covers is almost
-     * always a lead-in before the first key signature, and a lead-in is in the
-     * key it leads into. Round 4 of review found what counting it instead did:
-     * on a piece modulating from B flat to B major the count belongs to neither
-     * key, and an E flat lead-in printed {@code D#} two bars before an identical
-     * chord printed {@code Eb} -- #227's own defect, from the one line that was
-     * still deciding a chord's spelling without asking the music around it.
      */
-    private static Key keyUnder(Score score, Chord chord) {
-        boolean onBeats = chord.isQuantized() && score.keys().stream().allMatch(Key::isQuantized);
-        double at = onBeats ? chord.startBeat().orElseThrow() : chord.startSeconds();
-        Key nearest = null;
-        double nearestGap = Double.MAX_VALUE;
-        for (Key key : score.keys()) {
-            double from = onBeats ? key.startBeat().orElseThrow() : key.startSeconds();
-            double to = onBeats ? key.endBeat().orElseThrow() : key.endSeconds();
-            if (at >= from && at < to) {
-                return key;
-            }
-            // Compared strictly against a list the score keeps in time order, so
-            // a chord exactly between two keys takes the earlier one -- the key
-            // it is leaving rather than the one it is entering, which is how a
-            // pivot chord is conventionally written.
-            double gap = at < from ? from - at : at - to;
-            if (gap < nearestGap) {
-                nearestGap = gap;
-                nearest = key;
-            }
+    private static Optional<Key> keyUnder(Score score, Chord chord) {
+        if (chord.isQuantized() && score.keys().stream().allMatch(Key::isQuantized)) {
+            double beat = chord.startBeat().orElseThrow();
+            return score.keys().stream()
+                    .filter(k -> beat >= k.startBeat().orElseThrow()
+                            && beat < k.endBeat().orElseThrow())
+                    .findFirst();
         }
-        if (nearest == null) {
-            // Unreachable: the only caller returns before this when the score
-            // names no key. Named rather than left to a NullPointerException,
-            // which would say nothing about which invariant broke.
-            throw new IllegalStateException("a chord cannot be spelled from no key at all");
-        }
-        return nearest;
+        return score.keyAt(chord.startSeconds());
     }
 
     /**
@@ -256,18 +254,29 @@ public final class ChordSpeller {
      * of its own tonic, which is what made a passing {@code G#dim} come out as
      * {@code Abdim}.
      *
-     * <p>Otherwise it is counted. Priced from the pitches this will actually
-     * write from the region, which is every root and every bass that is not a
-     * tone of its own chord; a bass that <em>is</em> one is written from its
-     * chord instead, so it says nothing about where the piece sits. A no-chord
-     * span's placeholder root is not priced either.
+     * <p>Otherwise it is {@link #countedRegion counted}.
      */
     private static double region(ChordProgression chords, Optional<Key> key) {
-        if (key.isPresent()) {
-            return regionOf(key.get());
-        }
+        return key.isPresent() ? regionOf(key.get()) : countedRegion(chords.chords());
+    }
+
+    /**
+     * The region a set of chords is cheapest to write from.
+     *
+     * <p>Priced from the pitches this will actually write from the region, which
+     * is every root and every bass that is not a tone of its own chord; a bass
+     * that <em>is</em> one is written from its chord instead, so it says nothing
+     * about where the piece sits. A no-chord span's placeholder root is not
+     * priced either.
+     *
+     * <p>Takes the chords rather than a whole progression because the set that
+     * matters is not always all of them: a score that names a key still has to
+     * write whatever the key does not cover, and that is counted over the
+     * uncovered chords alone. See {@link #respell(Score)}.
+     */
+    private static double countedRegion(List<Chord> chords) {
         List<Integer> sounding = new ArrayList<>();
-        for (Chord chord : chords.chords()) {
+        for (Chord chord : chords) {
             if (chord.isNoChord()) {
                 continue;
             }

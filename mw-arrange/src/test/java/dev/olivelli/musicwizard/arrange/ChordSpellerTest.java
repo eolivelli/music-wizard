@@ -391,13 +391,12 @@ class ChordSpellerTest {
         }
 
         @Test
-        @DisplayName("a chord no key covers takes the nearest key, not a count of the whole piece")
-        void aChordOutsideEveryKeyTakesTheNearestKey() {
+        @DisplayName("a lead-in no key covers is counted over itself, not over the whole piece")
+        void aLeadInIsCountedOverTheChordsNoKeyCovers() {
             // Round 4 of review, on a MIDI whose key signature sits at bar 2: an
             // E flat lead-in into a piece that modulates was counted over the
-            // whole progression, whose region belongs to neither key, and
-            // printed D# two bars before an identical chord printed Eb. A
-            // lead-in is in the key it leads into.
+            // whole progression, whose region belongs to neither of its keys,
+            // and printed D# two bars before an identical chord printed Eb.
             Score score = modulating(
                     chordAt(0, "D#4"), chordAt(1, "A#4"), chordAt(2, "B4"), chordAt(3, "E4"))
                     .withKeys(List.of(
@@ -406,6 +405,52 @@ class ChordSpellerTest {
 
             assertThat(symbols(ChordSpeller.respell(score).chords()))
                     .containsExactly("Eb", "Bb", "B", "E");
+        }
+
+        @Test
+        @DisplayName("a whole section no key covers is not written from a key that does not cover it")
+        void anUncoveredSectionIsNotWrittenFromTheNextKey() {
+            // Round 5 of review, on a MIDI that declares no key at the start and
+            // one only where it modulates. Giving those chords the nearest key
+            // applied B major's window to four bars of plain C major and printed
+            // an E# in every one of them -- overwriting a spelling
+            // SymbolicChordEstimator had already got right. The rule that a
+            // lead-in belongs to the key it leads into is true of a bar or two
+            // and was being applied at any distance.
+            List<Chord> chords = new ArrayList<>();
+            for (int bar = 0; bar < 4; bar++) {
+                chords.add(chordAt(bar * 4, "C4"));
+                chords.add(chordAt(bar * 4 + 1, "F4"));
+                chords.add(chordAt(bar * 4 + 2, "G4"));
+                chords.add(chordAt(bar * 4 + 3, "A4"));
+            }
+            chords.add(chordAt(16, "B4"));
+            chords.add(chordAt(17, "F#4"));
+            Score score = Score.empty(TempoMap.constant(120), 20.0)
+                    .withChords(asGiven(chords))
+                    .withKeys(List.of(keyOver("B4", 16, 18)));
+
+            assertThat(symbols(ChordSpeller.respell(score).chords()))
+                    .startsWith("C", "F", "G", "A")
+                    .doesNotContain("E#")
+                    .endsWith("B", "F#");
+        }
+
+        @Test
+        @DisplayName("a tail no key covers is counted too, not left to the key before it")
+        void anUncoveredTailIsCountedAsWell() {
+            // The mirror of the lead-in, which the fixtures did not have: an
+            // uncovered chord after the last key rather than before the first.
+            // Under B major's window this E flat would be a D#; nothing about
+            // the rule depends on which side of the key the chord falls.
+            Score score = Score.empty(TempoMap.constant(120), 4.0)
+                    .withChords(asGiven(List.of(
+                            chordAt(0, "B4"), chordAt(1, "F#4"),
+                            chordAt(2, "D#4"), chordAt(3, "A#4"))))
+                    .withKeys(List.of(keyOver("B4", 0, 2)));
+
+            assertThat(symbols(ChordSpeller.respell(score).chords()))
+                    .containsExactly("B", "F#", "Eb", "Bb");
         }
 
         @Test
