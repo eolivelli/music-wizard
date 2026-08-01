@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the recordings directory is ever shared out, and it is app-private
+     otherwise. Sharing the WAV is how a take reaches the desktop corpus. -->
+<paths>
+    <files-path name="recordings" path="recordings/" />
+</paths>

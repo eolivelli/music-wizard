@@ -457,9 +457,16 @@ public final class ChordEstimator {
     /**
      * A default spelling for a pitch class, preferring sharps.
      *
-     * <p>Provisional on purpose. Correct spelling depends on the key, which is
-     * not known until the chords are, so the key estimator re-spells the
-     * progression afterwards.
+     * <p>Provisional on purpose, and it carries no intent: which of A sharp and
+     * B flat this returns says only that the pitch class is 10. How a root is
+     * actually written is decided over the whole progression once it is known,
+     * by {@code ChordSpeller} in {@code mw-arrange} (#227), because one chord
+     * cannot answer it -- the same pitch class is A sharp in one piece and B
+     * flat in another.
+     *
+     * <p>Anything reading these spellings as a decision is reading a table: that
+     * is what put A sharp on a real B flat chart, and it is what {@code
+     * PitchSpeller.centreFromChords} still does (#190).
      */
     static PitchSpelling spell(int pitchClass) {
         NoteLetter[] letters = {NoteLetter.C, NoteLetter.C, NoteLetter.D, NoteLetter.D,

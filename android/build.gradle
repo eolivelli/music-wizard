@@ -1,0 +1,4 @@
+// Root project: no code of its own, only the AGP version the app module uses.
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Music Wizard</string>
+    <string name="record_title">Record</string>
+    <string name="library_title">Recordings</string>
+
+    <string name="record_idle">Ready. Recordings stay on this phone.</string>
+    <string name="record_running">Recording…</string>
+    <string name="record_start">Record</string>
+    <string name="record_stop">Stop</string>
+    <string name="zero_time">0:00</string>
+    <string name="open_library">Recordings</string>
+    <string name="record_hint">Mono WAV, 16-bit, 44100 Hz. Analysis runs on this
+        phone; nothing is uploaded.</string>
+    <string name="permission_needed">Recording needs microphone permission.</string>
+
+    <string name="library_empty">No recordings yet.</string>
+    <string name="analyze">Analyze</string>
+    <string name="reanalyze">Re-analyze</string>
+    <string name="share_chart">Share chart</string>
+    <string name="share_wav">Share WAV</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="not_analyzed">Not analyzed yet.</string>
+    <string name="analyzing">Analyzing…</string>
+</resources>
