@@ -41,7 +41,17 @@
 
       Runtime scope: no source in this module compiles against mw-ml, and none
       should, because a provider is chosen at run time.
-      MlRuntimeStaysOnTheDesktopTest pins that the jar still gets it.
+
+      MlRuntimeStaysOnTheDesktopTest pins that this module still RESOLVES the
+      runtime. It runs at the test phase, before shade runs at package, so it
+      reads a classpath and never the jar. That is a sound proxy only while
+      shade's configuration below takes everything on the runtime classpath,
+      which it does today. #25 ("make the ML stack an optional download") is
+      exactly the change that would add an exclusion here, and it is deliberately
+      in tension with this test: whoever does #25 should revisit the test rather
+      than delete it in passing. What it guards, that removing the edge from
+      mw-transcribe did not silently strip the desktop, outlives the jar layout
+      it currently implies.
     -->
     <dependency>
       <groupId>${project.groupId}</groupId>

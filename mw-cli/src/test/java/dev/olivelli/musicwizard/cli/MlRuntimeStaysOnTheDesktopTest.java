@@ -43,6 +43,17 @@ import org.junit.jupiter.api.Test;
  * provider is selected at run time, and
  * {@link dev.olivelli.musicwizard.core.config.MusicWizardConfig} already carries
  * the {@code ml.offline} switch that will select it.
+ *
+ * <p><b>What this pins is resolution, not the jar.</b> Surefire runs at the
+ * {@code test} phase and shade at {@code package}, so nothing here can read
+ * {@code mw.jar}; the probe reads a classpath. It is a sound proxy only while
+ * shade takes the whole runtime classpath, which the current configuration does.
+ * #25 — make the ML stack an optional download — is the change that would add an
+ * exclusion and break the proxy while leaving this green. That is a tension to
+ * resolve deliberately when #25 is done, not a reason to weaken the guard now:
+ * the thing it exists for is that removing {@code mw-transcribe}'s edge must not
+ * silently strip the desktop, and #25 removing ONNX on purpose is a different
+ * act from #247 removing it by accident.
  */
 class MlRuntimeStaysOnTheDesktopTest {
 
@@ -53,8 +64,9 @@ class MlRuntimeStaysOnTheDesktopTest {
     @DisplayName("the CLI still reaches the ML runtime the transcribe module gave up")
     void theProviderRuntimeIsStillWiredIntoTheCli() {
         assertThatNoException()
-                .as("mw-cli declares mw-ml directly (#247); without it the shaded"
-                        + " jar loses ONNX Runtime and no other test notices")
+                .as("mw-cli declares mw-ml directly (#247); without it nothing"
+                        + " puts ONNX Runtime on the CLI's classpath, the shaded"
+                        + " jar loses it, and no other test notices")
                 .isThrownBy(() -> Class.forName(ONNX_PROBE, false,
                         MlRuntimeStaysOnTheDesktopTest.class.getClassLoader()));
     }

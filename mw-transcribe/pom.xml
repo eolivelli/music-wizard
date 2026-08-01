@@ -39,7 +39,8 @@
       it; splitting those apart is the work that dependency should wait for.
       Until then mw-cli, the module whose job is wiring, declares mw-ml
       directly. HarmonyPathNeedsNoMlTest holds this side of that line and
-      MlRuntimeStaysOnTheDesktopTest in mw-cli holds the other.
+      MlRuntimeStaysOnTheDesktopTest in mw-cli holds the other, by checking
+      that the CLI still resolves the runtime this module gave up.
     -->
     <!--
       Fixture MIDI for the import tests. Test scope only: mw-testkit depends on

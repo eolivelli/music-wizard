@@ -46,11 +46,16 @@ mw-it           slow integration tests
 ```
 
 **The dependency rule:** `mw-core` is the only module everything may depend on.
-`mw-cli` is the only module that depends on `mw-ml`, and the only one that wires
+`mw-notation` must not depend on `mw-ml`. `mw-cli` is the only module that wires
 everything together. This is what lets the symbolic and audio tracks be built
-in parallel without colliding — and it is what keeps ONNX Runtime's desktop
-natives out of the Android app's compile closure (#247), since the app links
-`mw-transcribe` and not the command line.
+in parallel without colliding.
+
+Today `mw-cli` is in fact the only module that depends on `mw-ml` at all (#247),
+which is what keeps ONNX Runtime's desktop natives out of the Android app's
+compile closure — the app links `mw-transcribe`, not the command line. Treat
+that as state rather than rule: a future neural stage in `mw-transcribe` will
+need a provider SPI, and the honest way to give it one is to split the SPI from
+the ONNX implementations rather than to restore the old edge.
 
 ## Two rules that govern the pipeline
 

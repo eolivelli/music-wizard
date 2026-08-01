@@ -104,9 +104,12 @@ mw-testkit    MIDI fixtures, synthesis, evaluation metrics
 mw-it         slow integration tests
 ```
 
-**`mw-core` is the only module everything may depend on. `mw-cli` is the only
-module that depends on `mw-ml` at all, and the only one that wires everything
-together.**
+**`mw-core` is the only module everything may depend on. `mw-notation` must not
+depend on `mw-ml`. `mw-cli` is the only module that wires everything together.**
+(As of #247 the stronger statement is also true — `mw-cli` is the *only* module
+that depends on `mw-ml` — but that is current state, not the rule: when melody
+lands, `mw-transcribe` will need a provider SPI again. The rule above survives
+that; the fact does not.)
 This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.

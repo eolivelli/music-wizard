@@ -26,7 +26,6 @@ import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,8 +40,9 @@ import org.w3c.dom.NodeList;
  * <p>This module declared a compile dependency on {@code mw-ml} and never wrote
  * a line against it — {@code mw-ml} has no sources at all — so the only thing
  * the declaration ever did was pull ONNX Runtime into the compile closure of
- * everything downstream. On the desktop that is 80-odd megabytes of unused
- * native library. On Android (#236) it is worse than unused: the artifact ships
+ * everything downstream. On the desktop that is a large unused native library
+ * (how large is #25's business, and no number belongs in a comment nobody can
+ * re-measure). On Android (#236) it is worse than unused: the artifact ships
  * x86-64 and aarch64 <em>desktop</em> natives, and the app links this module for
  * exactly one entry point, {@link AudioTranscriber#transcribe(AudioBuffer,
  * AudioTranscriber.Options)}, which reaches beats, chroma and chords and nothing
@@ -55,9 +55,9 @@ import org.w3c.dom.NodeList;
  *
  * <p>Note what is deliberately <em>not</em> asserted: that no ML runtime exists
  * anywhere. {@code mw-cli} declares {@code mw-ml} directly, at runtime scope,
- * and {@code MlRuntimeStaysOnTheDesktopTest} over there pins that — the desktop
- * tool keeps its provider layer. The rule is about which modules the phone
- * links, not about what the command line ships.
+ * and {@code MlRuntimeStaysOnTheDesktopTest} over there pins that the CLI still
+ * resolves it — the desktop tool keeps its provider layer. The rule is about
+ * which modules the phone links, not about what the command line ships.
  */
 class HarmonyPathNeedsNoMlTest {
 
@@ -102,7 +102,8 @@ class HarmonyPathNeedsNoMlTest {
         // that the run works, not that it works without it.
         assertThatExceptionOfType(ClassNotFoundException.class)
                 .as("ONNX Runtime must not be reachable from mw-transcribe")
-                .isThrownBy(() -> Class.forName(ONNX_PROBE));
+                .isThrownBy(() -> Class.forName(ONNX_PROBE, false,
+                        HarmonyPathNeedsNoMlTest.class.getClassLoader()));
 
         List<String> stages = new ArrayList<>();
         Score score = new AudioTranscriber(stages::add).transcribe(fourChordSong(),
@@ -114,8 +115,11 @@ class HarmonyPathNeedsNoMlTest {
                 .hasSizeGreaterThan(8);
         assertThat(score.chords().isEmpty()).as("chord progression is empty").isFalse();
         assertThat(score.estimatedTempo()).as("tempo").isGreaterThan(0.0);
-        // And the stages really ran, rather than the transcriber bailing out
-        // early and handing back an empty Score that satisfies the above.
+        // The transcriber narrated its way through, which is not what excludes
+        // the too-short-to-track bail-out -- that path emits messages too, and
+        // round 1 of review caught this comment claiming otherwise. What
+        // excludes it is the beat grid above: Score.empty carries none. This
+        // says the stages the app's progress line reads are really produced.
         assertThat(stages).as("progress messages").isNotEmpty();
     }
 
@@ -127,23 +131,64 @@ class HarmonyPathNeedsNoMlTest {
         // about: mw-ml gaining sources of its own, or swapping ONNX Runtime for
         // another inference library, must not quietly put a provider module
         // back into the phone's compile closure.
-        assertThat(declaredDependencies())
+        assertThat(declaredDependenciesOf(thisModulesPom(), "mw-transcribe"))
                 .as("direct dependencies of mw-transcribe")
                 .isNotEmpty()
                 .doesNotContain("mw-ml");
     }
 
-    /** The artifactIds of this module's own {@code <dependencies>}, in pom order. */
-    private static List<String> declaredDependencies() {
-        try {
-            Path pom = Path.of(
-                    Optional.ofNullable(System.getProperty("basedir",
-                                    System.getProperty("user.dir")))
-                            .orElse("."),
-                    "pom.xml");
-            assertThat(pom).as("this module's pom is not where the test expected it")
-                    .isRegularFile();
+    @Test
+    @DisplayName("the pom reader refuses a pom that is not this module's")
+    void theReaderCannotBeFooledByTheReactorRootPom() {
+        // Round 1's finding, kept as a test rather than as a promise. The
+        // reader used to resolve pom.xml against basedir and fall back to the
+        // working directory; Maven always sets basedir, so the build was never
+        // wrong, but the reactor root pom also carries a top-level
+        // <dependencies> block and it contains no mw-ml. Launched from the
+        // repository root -- an IDE, an ad-hoc `java -cp` -- the check read the
+        // parent, saw a non-empty list with no mw-ml in it, and passed having
+        // verified nothing at all. Both anti-vacuity guards fell to the same
+        // wrong file, so identity is now asserted from the pom's own contents.
+        Path reactorRoot = thisModulesPom().getParent().getParent().resolve("pom.xml");
+        assertThat(reactorRoot).as("the reactor root pom").isRegularFile();
+        assertThat(declaredDependenciesOf(reactorRoot, "music-wizard"))
+                .as("the root pom really does have dependencies and no mw-ml,"
+                        + " which is what made it able to fool the old reader")
+                .isNotEmpty()
+                .doesNotContain("mw-ml");
+        assertThatExceptionOfType(AssertionError.class)
+                .as("reading the root pom while expecting mw-transcribe's")
+                .isThrownBy(() -> declaredDependenciesOf(reactorRoot, "mw-transcribe"));
+    }
 
+    /**
+     * This module's own pom, located through the {@code basedir} Maven sets.
+     *
+     * <p>Required rather than defaulted to the working directory: a missing
+     * {@code basedir} means this is not running the way the check was designed
+     * for, and guessing a directory is how it ends up reading the wrong file.
+     */
+    private static Path thisModulesPom() {
+        String basedir = System.getProperty("basedir");
+        assertThat(basedir)
+                .as("basedir is unset; run this through Maven, which sets it"
+                        + " to the module directory")
+                .isNotNull();
+        Path pom = Path.of(basedir, "pom.xml");
+        assertThat(pom).as("this module's pom is not where the test expected it")
+                .isRegularFile();
+        return pom;
+    }
+
+    /**
+     * The artifactIds of {@code pom}'s own {@code <dependencies>}, in pom order.
+     *
+     * <p>The pom is identified by what it says it is, not by where it was found:
+     * {@code expectedArtifactId} is checked against the document's own
+     * {@code <artifactId>} before anything is read out of it.
+     */
+    private static List<String> declaredDependenciesOf(Path pom, String expectedArtifactId) {
+        try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             // Our own file, but a parser that will not resolve an external
             // entity is the only kind worth writing.
@@ -151,6 +196,15 @@ class HarmonyPathNeedsNoMlTest {
                     "http://apache.org/xml/features/disallow-doctype-decl", true);
             Element project =
                     factory.newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
+
+            // The pom names itself, so a file read by mistake fails here rather
+            // than answering a question about some other module. Direct
+            // children only: <parent> carries an artifactId of its own.
+            assertThat(childrenNamed(project, "artifactId").stream()
+                            .map(element -> element.getTextContent().trim())
+                            .toList())
+                    .as("the pom at %s is not %s's", pom, expectedArtifactId)
+                    .containsExactly(expectedArtifactId);
 
             // Only the project's own <dependencies>, not a <dependencyManagement>
             // block's copy of it: managed versions are declarations of what a
@@ -165,7 +219,10 @@ class HarmonyPathNeedsNoMlTest {
             }
             return declared;
         } catch (Exception e) {
-            throw new AssertionError("could not read this module's declared dependencies", e);
+            // AssertionError is an Error, so the identity check above is not
+            // caught here -- which is what lets a wrong pom fail loudly rather
+            // than being reported as an unreadable one.
+            throw new AssertionError("could not read the dependencies declared in " + pom, e);
         }
     }
 
