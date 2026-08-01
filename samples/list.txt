@@ -53,3 +53,70 @@ Cm7  Cm7  Fm6  Fm6
 D0   G7   Cm6  Cm6
 Ebm7 Ab7  DbDELTA DbDELTA
 D0   G7   Cm6  D0-G7
+
+# ============================================================================
+# Batch added 2026-08-01 from the candidates search (uncommitted/candidates.md).
+# All files below from YouTube channel "Guitar Improvisation" (Martin Gioani,
+# guitare-improvisation.com) unless noted. License verified per video via
+# yt-dlp metadata. CC-BY files are committed WITH ATTRIBUTION as required;
+# two standard-license files are local-only (gitignored, fetch commands given).
+# Key/tempo/progression lines are the UPLOADER'S STATED CLAIMS, to be
+# confirmed by ear before a file is promoted to a scored benchmark.
+# ============================================================================
+
+bm-blues-slow.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=hLeDkqjxWtw)
+Slow B minor blues. Stated chords: Bm G7 F#7. Minor key that stays minor.
+Bar-by-bar grid: TO CONFIRM.
+
+waltz-am-e7-160.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=t4ULKM39g6E)
+Waltz in 3/4, stated Am E7, 160 bpm. First real 3/4 in the corpus.
+Bar-by-bar grid: TO CONFIRM (likely alternating Am/E7; confirm bars per chord).
+
+cm-blues-68-95.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=bCXILhgRXG4)
+Cm blues, 6/8 fusion groove, stated 95 bpm. First compound meter.
+Bar-by-bar grid: TO CONFIRM.
+
+ballad-wine-roses-65.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=aIdXtd8wa0Q)
+"Days of Wine and Roses" ballad at stated 65 bpm. Slow-tempo octave-error probe.
+Jazz-standard changes: TO CONFIRM (complex; treat as corpus, not gate).
+
+slow-68-40.mp3   (LOCAL ONLY — standard YouTube license)
+Extreme slow case, stated 40 bpm in 6/8. Fetch:
+  yt-dlp -x --audio-format mp3 -o samples/slow-68-40.mp3 \
+    https://www.youtube.com/watch?v=k5sun2UIAwc
+
+f-blues-swing-170.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=llh6bcVyXDs)
+F blues, jazz/swing, stated 170 bpm. Fast-tempo probe.
+Bar-by-bar grid: TO CONFIRM (12-bar F jazz blues expected).
+
+footprints-200.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=4QUIK0sVhO0)
+"Footprints" at stated 200 bpm in 3. Deliberate stress ceiling: fast AND ternary
+AND minor jazz. Expect failure today; keep as the horizon marker.
+
+pop-c-g-am-f-120.mp3   (CC-BY, RainbowMonkey, https://www.youtube.com/watch?v=B13A7mPu_cs)
+Pop backing track, stated C G Am F at 120 BPM in C major. THE pop progression.
+Bar-by-bar grid: stated one chord per bar — CONFIRM.
+
+pop-am-f-c-g-144.mp3   (LOCAL ONLY — standard YouTube license)
+Same four chords minor-framed: stated Am F C G, 144 bpm. Direct probe of
+relative-minor tonic framing (the Gli Anni problem). Fetch:
+  yt-dlp -x --audio-format mp3 -o samples/pop-am-f-c-g-144.mp3 \
+    https://www.youtube.com/watch?v=TeHQd4gTmZA
+
+jazz-251-c-140.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=45u1nwqITh4)
+ii-V-I in C: stated Dm7 G7 CMaj7 at 140 bpm. Waits for the jazz vocabulary.
+Bar-by-bar grid: TO CONFIRM.
+
+fm7-vamp-110.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=IHPGsOe97qA)
+Latin-jazz one-chord vamp: Fm7 throughout, stated 110 bpm. Ground truth is
+trivially complete: every bar is Fm7. Tests harmonic-stasis honesty.
+Fm7
+
+eb7-vamp-130.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=ml4ICs8DKAE)
+One-chord vamp, dominant quality: Eb7 throughout, stated 130 bpm.
+Eb7
+
+g-blues-shuffle-cc.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=o5xCVtkOPVc)
+Blues shuffle in G, 5:16. Candidate replacement gate file for #204 (the
+existing gmajorblues.mp3 has unknown provenance). BPM and exact changes are
+shown in the video, not the text metadata — grid TO CONFIRM before adoption.

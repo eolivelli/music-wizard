@@ -36,6 +36,10 @@ BENCHMARKS = {
         "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7",
     "blues-e-90bpm.mp3":
         "E7 E7 E7 E7  A7 A7 E7 E7  B7 A7 E7 B7",
+    "fm7-vamp-110.mp3":
+        "Fm7",
+    "eb7-vamp-130.mp3":
+        "Eb7",
     "bossa-cm.mp3":
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
 }
