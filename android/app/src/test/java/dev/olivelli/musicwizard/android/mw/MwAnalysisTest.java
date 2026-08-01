@@ -90,9 +90,9 @@ public class MwAnalysisTest {
      *
      * <p>{@code mw-ml} exists only to pull ONNX Runtime in — desktop natives of
      * the wrong ABI for a phone. #247 took it out of {@code mw-transcribe}'s
-     * dependencies and {@code app/build.gradle} excludes it as a backstop; this
-     * fails whichever of the two an edit undoes, before an APK ships tens of
-     * megabytes it cannot use.
+     * dependencies and {@code app/build.gradle} excludes it as a backstop, so
+     * both would have to be undone before an APK could ship tens of megabytes
+     * it cannot use — which is what this fails on.
      */
     @Test
     public void onnxRuntimeIsNotOnTheClasspath() {
