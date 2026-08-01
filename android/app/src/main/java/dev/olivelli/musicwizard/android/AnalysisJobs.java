@@ -322,6 +322,7 @@ final class AnalysisJobs {
         Score analysed = null;
         String note = null;
         String failure = null;
+        File cached = null;
         try {
             analysed = analyzer.analyze(wav, line -> dispatcher.post(() -> {
                 job.progress = line;
@@ -329,9 +330,12 @@ final class AnalysisJobs {
                     job.listener.onProgress(line);
                 }
             }));
+            // Beside the audio this worker read, which is a copy of a path the
+            // dispatcher's thread may have changed meanwhile; finish() reconciles.
             // A cache that could not be written does not spoil an analysis that
             // succeeded; the screen says so and shows the chart.
-            note = MwAnalysis.writeCache(MwAnalysis.scoreFileFor(wav), analysed);
+            cached = MwAnalysis.scoreFileFor(wav);
+            note = MwAnalysis.writeCache(cached, analysed);
         } catch (Throwable t) {
             // Throwable, not Exception. A long take on a mid-range phone runs
             // out of heap -- the manifest asks for a large one precisely because
@@ -348,7 +352,8 @@ final class AnalysisJobs {
             Score score = analysed;
             String cacheNote = note;
             String message = failure;
-            dispatcher.post(() -> finish(job, score, cacheNote, message));
+            File written = cached;
+            dispatcher.post(() -> finish(job, written, score, cacheNote, message));
         }
     }
 
@@ -369,7 +374,7 @@ final class AnalysisJobs {
         return hasMessage ? message : failure.getClass().getSimpleName();
     }
 
-    private void finish(Job job, Score score, String cacheNote, String failure) {
+    private void finish(Job job, File written, Score score, String cacheNote, String failure) {
         job.running = false;
         Listener listener = job.listener;
         job.listener = null;
@@ -387,7 +392,26 @@ final class AnalysisJobs {
         // or another take was renamed over its name while this ran, and a result
         // computed from audio that is no longer there must not be filed under a
         // name that now means something else.
-        if (jobs.get(job.key) == job) {
+        boolean current = jobs.get(job.key) == job;
+
+        // The same question for the copy on disk, and it has to be asked here
+        // because this is where the take's current name is known: the worker
+        // cached beside the path it was handed an analysis ago, and a rename or
+        // a delete in the meantime never reached it. Left alone, that file sits
+        // under a name that is now free, and RecordingStore.rename would let the
+        // next take of that name inherit a chart of audio it never held -- the
+        // orphan its own comment says it exists to prevent. Moving or removing
+        // one small file, only when a library action raced a whole analysis;
+        // writing the thing is still the worker's job.
+        if (written != null) {
+            File belongs = current ? MwAnalysis.scoreFileFor(new File(job.key)) : null;
+            if (!written.equals(belongs) && (belongs == null || !written.renameTo(belongs))) {
+                //noinspection ResultOfMethodCallIgnored
+                written.delete();
+            }
+        }
+
+        if (current) {
             // Removed on completion: a job's only purpose was to survive the
             // screen, and a map that keeps every file ever analysed is a leak
             // with a gentler name. What is kept instead is the one result.

@@ -449,6 +449,66 @@ public class AnalysisJobsTest {
                 jobs.lastResult(wav));
     }
 
+    /**
+     * The cache follows a take renamed while it was being analysed.
+     *
+     * <p>The worker caches beside the path it was handed, and a rename an
+     * analysis later never reaches it. Left where it was written the file is an
+     * orphan under a freed name, and {@code RecordingStore.rename} — which
+     * refuses only names that are taken — would hand it to the next take called
+     * that: a chart of audio it never held. The renamed take loses its analysis
+     * into the bargain, since the file lands where nothing looks for it.
+     *
+     * <p>Unlike the rest of this class, this runs the real
+     * {@link MwAnalysis#writeCache}, which works on a JVM: Android is where
+     * {@code ScoreJson} cannot serialize a desugared record, and the day that is
+     * fixed is the day this stops being latent.
+     */
+    @Test
+    public void aCacheFollowsTheTakeItWasComputedFrom() {
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> aScore());
+        File renamed = new File(folder.getRoot(), "renamed.wav");
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        jobs.stopObserving(screen);
+        // Before anything is drained, so the rename lands while the analysis is
+        // still in flight -- the realistic ordering for a minute of DSP.
+        jobs.moved(wav, renamed);
+        pumpUntil(() -> posts.get() >= 1);
+
+        assertNull("the cache was written, so nothing said it could not be",
+                jobs.lastResult(renamed).cacheNote);
+        assertTrue("the analysis was cached where nothing will look for it",
+                MwAnalysis.scoreFileFor(renamed).isFile());
+        assertFalse("an orphan cache is left under a name that is now free",
+                MwAnalysis.scoreFileFor(wav).isFile());
+    }
+
+    /** A take deleted while it was being analysed does not get its cache back. */
+    @Test
+    public void aDeletedTakeDoesNotHaveItsCacheWrittenAfterIt() {
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> aScore());
+
+        // An undisturbed run first, so the absence below is the delete's doing
+        // and not a cache that was never written.
+        Screen undisturbed = new Screen();
+        jobs.start(wav, undisturbed);
+        pumpUntil(() -> undisturbed.finished != null);
+        assertTrue(MwAnalysis.scoreFileFor(wav).isFile());
+        assertTrue(MwAnalysis.scoreFileFor(wav).delete());
+
+        posts.set(0);
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        jobs.forget(wav);
+        pumpUntil(() -> posts.get() >= 1);
+
+        assertFalse("a deleted take's cache came back after the delete",
+                MwAnalysis.scoreFileFor(wav).isFile());
+        assertNull(jobs.lastResult(wav));
+    }
+
     /** An error that cannot even say what it is; see {@code describe}. */
     private static final class SpeechlessError extends Error {
 
