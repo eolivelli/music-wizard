@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One button, a level meter and a way to the library: the record screen has
+     no other job. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="16dp"
+        android:text="@string/record_idle"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/elapsed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingBottom="8dp"
+        android:text="@string/zero_time"
+        android:textSize="40sp"
+        android:typeface="monospace" />
+
+    <!-- Peak of the last block, 0..100. A meter that only moves when there is
+         signal is the quickest way to notice a microphone that is not open. -->
+    <ProgressBar
+        android:id="@+id/level"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="24dp"
+        android:layout_marginBottom="24dp"
+        android:max="100"
+        android:progress="0" />
+
+    <Button
+        android:id="@+id/recordButton"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:text="@string/record_start" />
+
+    <Button
+        android:id="@+id/libraryButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/open_library" />
+
+    <TextView
+        android:id="@+id/hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="24dp"
+        android:text="@string/record_hint"
+        android:textSize="13sp" />
+</LinearLayout>
