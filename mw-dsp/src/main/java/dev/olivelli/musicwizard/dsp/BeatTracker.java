@@ -188,35 +188,53 @@ public final class BeatTracker {
      * double-rate seed <em>removes</em> beats that were sitting between onsets
      * and were nearly free to keep.
      *
-     * <p>Correcting a half-rate seed wins by a wide margin and correcting a
-     * double-rate seed loses by a narrow one, and the narrow one has a closed
-     * form worth knowing. Write {@code A} for the strength a grid at the true
-     * period collects per beat and {@code F} for the envelope's floor between
-     * onsets. A half-rate grid phased on the onsets alternates between the two,
-     * so two of its beats come to {@code A + F}, against the one beat and one
-     * penalty that correcting costs, {@code A - 1}. The {@code A} cancels and
-     * the margin is <b>{@code 1 + F}</b> — it does not depend on how loud the
-     * onsets are at all. On a finite clip, add or subtract one edge beat's
-     * worth, {@code (A - F) / n}, according to whether the grid ends with one
-     * more onset than floor.
+     * <p>Both cases have a closed form, which is better than a measurement of
+     * one. Write {@code A} for the strength a grid at the true period collects
+     * per beat, {@code F} for the envelope's floor between onsets, and {@code p}
+     * for what one halving or doubling of a gap costs — 1 at the old weight,
+     * {@code 100 * (ln 2)^2} at this one. Then the margin by which the tracker
+     * prefers to <em>follow</em> its seed rather than correct it is:
      *
-     * <p><strong>The levels themselves are deliberately not quoted here, and
-     * that is the third answer to this question rather than the first.</strong>
-     * Three review passes went on correcting figures in this paragraph — an
-     * onset of 5.8, then 7.06, then 7.23 — and each correction was a better
-     * measurement of a quantity nothing asserts. The first two were a phase
-     * swept too coarsely. The third was fine and the trouble moved to the
-     * margins: independent measurements of the close one land at 0.68, 0.78 and
-     * 0.89, which is the {@code (A - F) / n} term above and not disagreement at
-     * all — but it spans a quarter of the margin, and no summary of it survived
-     * a reading. A claim was also made along the way that correcting the first
-     * error had made the margins look tighter than they were; it was true of the
-     * wide margin and false of the narrow one.
+     * <pre>
+     *   double-rate seed    p + F     following alternates onset and floor,
+     *                                 so A cancels out of it entirely
+     *   half-rate seed      2p - A    following collects one onset where
+     *                                 correcting collects two, and pays twice
+     * </pre>
      *
-     * <p>What is pinned instead is the four outcomes, in
-     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt},
-     * and they hold under every measurement anyone has taken — the levels were
-     * never load-bearing and cost three rounds. See also {@link #TIGHTNESS}.
+     * <p>So the two are not merely asymmetric; they turn on different things.
+     * <b>A double-rate seed is followed at every weight</b>, because {@code F}
+     * is a small negative number and {@code p} is at least 1 — how loud the
+     * onsets are never enters it, which is why raising the weight cannot have
+     * taken that rescue away: there was never one to take. <b>A half-rate seed
+     * is corrected exactly while an onset is worth more than two penalties</b>,
+     * which it comfortably is at the old weight and is nowhere near at this one.
+     * That is the whole of the asymmetry, and it is arithmetic rather than a
+     * property of the search window.
+     *
+     * <p><strong>The measured values of {@code A} and {@code F} are
+     * deliberately not quoted here, and that is the fourth answer to this
+     * question rather than the first.</strong> Four review passes went on
+     * correcting figures in this paragraph — an onset of 5.8, then 7.06, then
+     * 7.23, each a better measurement of a quantity nothing asserts, the first
+     * two of them a phase swept too coarsely. Then the trouble moved to the
+     * margins, where independent measurements of {@code p + F} landed at 0.68,
+     * 0.78 and 0.89: not disagreement, but the same quantity taken over grids
+     * ending with one more onset than floor, or one fewer, which shifts it by
+     * one beat's worth of the difference between them. No summary of that
+     * survived a reading, and a claim made along the way that the earlier error
+     * had left every margin understated was true of one and false of the other.
+     *
+     * <p>The closed forms need none of it. What they need is that an onset is
+     * worth several units on an envelope normalised to unit variance and that
+     * the floor between onsets is slightly negative, and both are properties of
+     * {@link OnsetEnvelope} rather than of a fixture.
+     *
+     * <p>What is pinned is the two outcomes still reachable — both directions at
+     * the shipped weight — in
+     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
+     * The old weight's two are history and no test in the tree can hold them.
+     * See also {@link #TIGHTNESS}.
      *
      * <p>That is the algorithm working as designed rather than a hole opened by
      * fixing it — resolving the octave is what {@link TempoEstimator}'s
