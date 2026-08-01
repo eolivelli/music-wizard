@@ -92,7 +92,14 @@ public final class ResultActivity extends Activity implements AnalysisJobs.Liste
         // nothing at all seconds after a successful one.
         AnalysisJobs.Result finished = AnalysisJobs.get().lastResult(wav);
         if (finished != null) {
-            show(finished.score, finished.cacheNote);
+            if (finished.failure != null) {
+                // A run that failed is the current answer for this take, and
+                // the disk's older chart is not: drawing that instead would
+                // show the previous analysis as though it were this one's.
+                showFailed(finished.failure);
+            } else {
+                show(finished.score, finished.cacheNote);
+            }
             return;
         }
         Score cached = MwAnalysis.readCache(MwAnalysis.scoreFileFor(wav));
@@ -175,6 +182,10 @@ public final class ResultActivity extends Activity implements AnalysisJobs.Liste
 
     @Override
     public void onFailed(String message) {
+        showFailed(message);
+    }
+
+    private void showFailed(String message) {
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);

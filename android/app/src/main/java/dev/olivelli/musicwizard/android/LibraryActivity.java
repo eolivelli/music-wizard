@@ -148,7 +148,11 @@ public final class LibraryActivity extends Activity {
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.ok, (dialog, which) -> {
                     try {
-                        store.rename(recording, input.getText().toString());
+                        Recording renamed = store.rename(recording, input.getText().toString());
+                        // The store moves the cached analysis with the audio;
+                        // the copy held in memory has to move with it too, and
+                        // below Android 35 that is the only copy there is.
+                        AnalysisJobs.get().moved(recording.wav(), renamed.wav());
                     } catch (IOException e) {
                         Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
                     }
@@ -164,6 +168,9 @@ public final class LibraryActivity extends Activity {
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
                     store.delete(recording);
+                    // The analysis is keyed by path, and this path is now free
+                    // for another take to be renamed onto.
+                    AnalysisJobs.get().forget(recording.wav());
                     reload();
                 })
                 .show();

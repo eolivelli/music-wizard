@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.android;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.Before;
 import org.junit.Rule;
@@ -58,11 +60,29 @@ public class AnalysisJobsTest {
     /** Posted to from the worker thread, drained from this one. */
     private final Queue<Runnable> mainThread = new ConcurrentLinkedQueue<>();
 
+    /**
+     * How many callbacks the worker has handed over.
+     *
+     * <p>The handover is the only thing this test can wait on when the case
+     * under test has deliberately detached the screen: with no listener to
+     * observe and no result to appear, counting posts is what says the worker
+     * has finished rather than not started.
+     */
+    private final AtomicInteger posts = new AtomicInteger();
+
     private File wav;
 
     @Before
     public void setUp() throws IOException {
         wav = folder.newFile("take.wav");
+    }
+
+    /** The stand-in main looper, counting what it is handed. */
+    private AnalysisJobs.Dispatcher dispatcher() {
+        return action -> {
+            mainThread.add(action);
+            posts.incrementAndGet();
+        };
     }
 
     /** Records what a screen was told. */
@@ -194,7 +214,9 @@ public class AnalysisJobsTest {
         assertTrue(first.failure, first.failure.contains("OutOfMemoryError"));
         assertTrue("the class name alone does not say what went wrong",
                 first.failure.contains("Java heap space"));
-        assertNull("a failed analysis has no result to keep", jobs.lastResult(wav));
+        assertNull("a failed analysis has no score to keep", jobs.lastResult(wav).score);
+        assertEquals("but it is what the screen coming back must be told",
+                first.failure, jobs.lastResult(wav).failure);
 
         // And the take is not wedged: a second attempt actually runs.
         Screen retry = new Screen();
@@ -235,6 +257,209 @@ public class AnalysisJobsTest {
         pumpUntil(() -> screen.finished != null || second.finished != null);
 
         assertEquals("the analysis should have been started once", 1, attempts.size());
+        assertNotNull("the screen that asked second is the one watching now", second.finished);
+        assertNull("the screen it replaced should no longer be told", screen.finished);
+    }
+
+    /**
+     * A screen that comes back to a running analysis watches it.
+     *
+     * <p>{@link AnalysisJobs#observe} is the first thing
+     * {@code ResultActivity.onResume} calls, and the three states it has to
+     * separate are all here: running, so watch it; finished, so there is
+     * nothing to watch and {@link AnalysisJobs#lastResult} answers instead; and
+     * never started.
+     */
+    @Test
+    public void aScreenComingBackWatchesTheRunningAnalysisAndThenReadsItsResult() {
+        Score result = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> {
+            progress.accept("detecting onsets");
+            return result;
+        });
+
+        Screen never = new Screen();
+        assertFalse("nothing has been started for this take",
+                jobs.observe(wav, never));
+
+        Screen leaving = new Screen();
+        jobs.start(wav, leaving);
+        jobs.stopObserving(leaving);
+
+        Screen returning = new Screen();
+        assertTrue("a running analysis must be watched, not restarted",
+                jobs.observe(wav, returning));
+
+        pumpUntil(() -> returning.finished != null);
+        assertSame(result, returning.finished);
+        assertTrue("the stage line reached the screen that came back",
+                returning.progress.contains("detecting onsets"));
+        assertNull("the screen that left should have heard nothing", leaving.finished);
+
+        Screen later = new Screen();
+        assertFalse("a finished analysis is not something to watch",
+                jobs.observe(wav, later));
+        assertSame("and lastResult is what answers for it",
+                result, jobs.lastResult(wav).score);
+    }
+
+    /**
+     * A failure with no message to report is still a failure.
+     *
+     * <p>{@code describe} allocates, and it runs inside the catch of the error
+     * this class exists to survive: an {@code OutOfMemoryError} there leaves the
+     * completion with neither a score nor a reason. Treating that as success
+     * hands the screen a null score — an immediate crash drawing the chart, and
+     * then the same crash on every later attempt to open the take, because the
+     * null is the retained result too.
+     */
+    @Test
+    public void aCompletionWithNeitherScoreNorReasonIsReportedAsAFailure() {
+        List<File> attempts = new ArrayList<>();
+        Score eventually = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> {
+            attempts.add(file);
+            if (attempts.size() == 1) {
+                throw new SpeechlessError();
+            }
+            return eventually;
+        });
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        pumpUntil(() -> screen.failure != null || screen.finished != null);
+
+        assertNull("a completion with no score is not a finished analysis", screen.finished);
+        assertNotNull("the screen was left with nothing to show", screen.failure);
+        assertNull("nor may a scoreless result be kept", jobs.lastResult(wav).score);
+        assertNotNull(jobs.lastResult(wav).failure);
+
+        Screen retry = new Screen();
+        jobs.start(wav, retry);
+        pumpUntil(() -> retry.finished != null);
+        assertSame(eventually, retry.finished);
+    }
+
+    /**
+     * A failed re-analysis is the current answer; the run before it is not.
+     *
+     * <p>Analyse, re-analyse, have the second run fail, and rotate the phone.
+     * If only successes were kept, the screen coming back would draw the first
+     * run's chart with nothing to say the re-run failed — the previous answer
+     * presented as this one's, on the screen whose purpose is reading what
+     * changed between runs.
+     */
+    @Test
+    public void aFailedReanalysisSupersedesTheScoreBeforeIt() {
+        List<File> attempts = new ArrayList<>();
+        Score first = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> {
+            attempts.add(file);
+            if (attempts.size() == 1) {
+                return first;
+            }
+            throw new IOException("the recording holds no audio");
+        });
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        pumpUntil(() -> screen.finished != null);
+        assertSame(first, jobs.lastResult(wav).score);
+
+        Screen reanalyzing = new Screen();
+        jobs.start(wav, reanalyzing);
+        jobs.stopObserving(reanalyzing);
+        pumpUntil(() -> jobs.lastResult(wav) != null
+                && jobs.lastResult(wav).failure != null);
+
+        assertNull("the superseded score must not come back", jobs.lastResult(wav).score);
+        assertEquals("the recording holds no audio", jobs.lastResult(wav).failure);
+    }
+
+    /**
+     * A renamed take keeps the analysis it already has.
+     *
+     * <p>The store moves {@code score.json} with the audio; below Android 35
+     * that file does not exist, so the copy in memory is the analysis, and it is
+     * keyed by a path that the rename has just changed.
+     */
+    @Test
+    public void aRenamedTakeKeepsItsAnalysis() {
+        Score result = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> result);
+        File renamed = new File(folder.getRoot(), "renamed.wav");
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        pumpUntil(() -> screen.finished != null);
+
+        jobs.moved(wav, renamed);
+        assertSame("the analysis was left behind under the old name",
+                result, jobs.lastResult(renamed).score);
+        assertNull("and must not answer for the name it no longer has",
+                jobs.lastResult(wav));
+    }
+
+    /** A take renamed while it is being analysed is still the take being analysed. */
+    @Test
+    public void aTakeRenamedMidAnalysisIsStillTheTakeBeingAnalysed() {
+        Score result = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> result);
+        File renamed = new File(folder.getRoot(), "renamed.wav");
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        jobs.stopObserving(screen);
+        // Before anything is drained, so the completion is still in flight.
+        jobs.moved(wav, renamed);
+
+        pumpUntil(() -> posts.get() >= 1);
+        assertSame(result, jobs.lastResult(renamed).score);
+        assertNull(jobs.lastResult(wav));
+    }
+
+    /**
+     * A deleted take takes its analysis with it.
+     *
+     * <p>Both halves matter, and the second is the one that shows wrong data
+     * rather than none: {@code RecordingStore.rename} refuses only names that
+     * are taken, so a deleted take's name is free for another take to be
+     * renamed onto, and it would inherit a chart computed from audio it has
+     * never held.
+     */
+    @Test
+    public void aDeletedTakeLeavesNothingForTheNextTakeOfThatName() {
+        Score result = aScore();
+        AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, progress) -> result);
+
+        Screen screen = new Screen();
+        jobs.start(wav, screen);
+        pumpUntil(() -> screen.finished != null);
+        jobs.forget(wav);
+        assertNull("a deleted take has no analysis", jobs.lastResult(wav));
+
+        // And one deleted while it was being analysed does not file its result
+        // under the freed name afterwards.
+        posts.set(0);
+        Screen watching = new Screen();
+        jobs.start(wav, watching);
+        jobs.forget(wav);
+        pumpUntil(() -> posts.get() >= 1);
+        assertNull("the analysis of a deleted take was filed under its name anyway",
+                jobs.lastResult(wav));
+    }
+
+    /** An error that cannot even say what it is; see {@code describe}. */
+    private static final class SpeechlessError extends Error {
+
+        SpeechlessError() {
+            super(null, null, false, false);
+        }
+
+        @Override
+        public String getMessage() {
+            throw new OutOfMemoryError("no room left to describe the last one");
+        }
     }
 
     /** A screen that goes away stops hearing about a job it is no longer showing. */

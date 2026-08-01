@@ -87,20 +87,55 @@ final class AnalysisJobs {
         Score analyze(File wav, Consumer<String> progress) throws Exception;
     }
 
-    /** A finished analysis, and whether it reached the disk. */
+    /**
+     * How an analysis ended: a score, or the reason there is none.
+     *
+     * <p>Failures are kept as well as scores because the alternative is worse
+     * than losing them. Re-analyse a take, have it fail, and rotate the phone:
+     * if only successes were kept, the screen coming back would find the run
+     * before the failed one and draw its chart with nothing to say the re-run
+     * failed — the previous answer presented as the current one, on a screen
+     * whose whole purpose is reading what changed since the last run.
+     */
     static final class Result {
 
+        /** The analysis, or null when it failed. */
         final Score score;
+
+        /** Null when the score reached the disk; see {@link MwAnalysis#writeCache}. */
         final String cacheNote;
 
-        Result(Score score, String cacheNote) {
+        /** Why there is no score, or null when there is one. */
+        final String failure;
+
+        private Result(Score score, String cacheNote, String failure) {
             this.score = score;
             this.cacheNote = cacheNote;
+            this.failure = failure;
+        }
+
+        static Result of(Score score, String cacheNote) {
+            return new Result(score, cacheNote, null);
+        }
+
+        static Result failed(String failure) {
+            return new Result(null, null, failure);
         }
     }
 
     /** One analysis of one file. */
     private static final class Job {
+
+        /**
+         * The file this is analysing.
+         *
+         * <p>Mutable, and written only on the dispatcher's thread, because a
+         * take can be renamed while its analysis runs; see {@link #moved}. The
+         * worker never reads it — it posts the job itself and lets
+         * {@link #finish} read the key on the thread that owns it.
+         */
+        String key;
+
         String progress = "";
         boolean running = true;
         Listener listener;
@@ -126,7 +161,7 @@ final class AnalysisJobs {
     private final Map<String, Job> jobs = new HashMap<>();
 
     /**
-     * The most recent finished analysis, by file.
+     * How the most recent analysis ended, by file.
      *
      * <p>One entry, not a growing cache: the screen that comes back is always
      * the one for the take just analysed, and holding every score ever produced
@@ -156,7 +191,7 @@ final class AnalysisJobs {
     }
 
     /**
-     * The most recent finished analysis of a file, or null.
+     * How the most recent analysis of a file ended, or null if there was none.
      *
      * <p>Checked <em>before</em> the file beside the audio, because when a
      * re-analysis succeeded and could not be cached, the disk still holds the
@@ -181,11 +216,18 @@ final class AnalysisJobs {
             return;
         }
 
+        // What was known about this take is superseded the moment a new run
+        // starts, so it is dropped here rather than left for a reader to
+        // outrun: nothing kept under this key is ever from a run that has
+        // been replaced.
+        forgetAt(key);
+
         Job job = new Job();
+        job.key = key;
         job.listener = listener;
         jobs.put(key, job);
 
-        worker.submit(() -> run(key, wav, job));
+        worker.submit(() -> run(wav, job));
     }
 
     /**
@@ -218,7 +260,65 @@ final class AnalysisJobs {
         }
     }
 
-    private void run(String key, File wav, Job job) {
+    /**
+     * Drops everything known about a take, because it no longer exists.
+     *
+     * <p>Called when a recording is deleted. What is keyed here is the path, and
+     * a path is reusable: {@link dev.olivelli.musicwizard.android.mw.RecordingStore#rename}
+     * refuses only names that are <em>taken</em>, so a later take can be renamed
+     * onto a deleted one's name and would otherwise be shown the deleted take's
+     * chart, computed from audio it has never contained.
+     */
+    void forget(File wav) {
+        forgetAt(key(wav));
+    }
+
+    /**
+     * Carries a take's analysis, running or finished, to its new name.
+     *
+     * <p>Called when a recording is renamed. {@code RecordingStore.rename} moves
+     * the cached {@code score.json} with the audio for the same reason, and on
+     * Android below 35 that file cannot be written — so this is the copy that
+     * actually exists, and leaving it behind loses the analysis outright.
+     */
+    void moved(File from, File to) {
+        String oldKey = key(from);
+        String newKey = key(to);
+        if (oldKey.equals(newKey)) {
+            return;
+        }
+        // The destination name is being taken over: anything still held under
+        // it belongs to a take that is not there any more.
+        forgetAt(newKey);
+
+        Job job = jobs.remove(oldKey);
+        if (job != null) {
+            job.key = newKey;
+            jobs.put(newKey, job);
+        }
+        if (oldKey.equals(finishedKey)) {
+            finishedKey = newKey;
+        }
+    }
+
+    private void forgetAt(String key) {
+        Job job = jobs.remove(key);
+        if (job != null) {
+            // Detached rather than cancelled: the worker cannot be interrupted
+            // mid-analysis safely, so the run finishes and finish() discards it,
+            // having found itself no longer the job registered under its key.
+            // Clearing the listener also releases the Activity it points at,
+            // which stopObserving can no longer reach now that the job is out
+            // of the map.
+            job.listener = null;
+        }
+        if (key.equals(finishedKey)) {
+            finishedKey = null;
+            finishedResult = null;
+        }
+    }
+
+    private void run(File wav, Job job) {
         Score analysed = null;
         String note = null;
         String failure = null;
@@ -248,7 +348,7 @@ final class AnalysisJobs {
             Score score = analysed;
             String cacheNote = note;
             String message = failure;
-            dispatcher.post(() -> finish(key, job, score, cacheNote, message));
+            dispatcher.post(() -> finish(job, score, cacheNote, message));
         }
     }
 
@@ -269,25 +369,41 @@ final class AnalysisJobs {
         return hasMessage ? message : failure.getClass().getSimpleName();
     }
 
-    private void finish(String key, Job job, Score score, String cacheNote, String failure) {
+    private void finish(Job job, Score score, String cacheNote, String failure) {
         job.running = false;
         Listener listener = job.listener;
-        // Removed on completion: a job's only purpose was to survive the screen,
-        // and a map that keeps every file ever analysed is a leak with a gentler
-        // name. What is kept instead is the one result, below.
-        jobs.remove(key);
+        job.listener = null;
 
-        if (failure == null) {
-            finishedKey = key;
-            finishedResult = new Result(score, cacheNote);
+        // Neither a score nor a reason means describe() itself threw -- which is
+        // exactly what a second OutOfMemoryError inside the catch looks like.
+        // The success branch would then hand the screen a null score, and the
+        // screen would keep being handed it: it is the retained result too, so
+        // the take could not be opened again until the process died.
+        String outcome = failure == null && score == null
+                ? "the analysis stopped without saying why"
+                : failure;
+
+        // Still the job registered for this file? If not, the take was deleted
+        // or another take was renamed over its name while this ran, and a result
+        // computed from audio that is no longer there must not be filed under a
+        // name that now means something else.
+        if (jobs.get(job.key) == job) {
+            // Removed on completion: a job's only purpose was to survive the
+            // screen, and a map that keeps every file ever analysed is a leak
+            // with a gentler name. What is kept instead is the one result.
+            jobs.remove(job.key);
+            finishedKey = job.key;
+            finishedResult = outcome == null
+                    ? Result.of(score, cacheNote)
+                    : Result.failed(outcome);
         }
         if (listener == null) {
             // No screen is attached. The result is not lost: lastResult() hands
             // it to whichever screen opens this take next.
             return;
         }
-        if (failure != null) {
-            listener.onFailed(failure);
+        if (outcome != null) {
+            listener.onFailed(outcome);
         } else {
             listener.onFinished(score, cacheNote);
         }

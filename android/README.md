@@ -31,8 +31,7 @@ GitHub release.
 
 `local.properties` (pointing at your Android SDK) is generated per machine and
 is not committed. The Gradle wrapper jar *is* committed, against the repository
-root's `*.jar` rule, because the CI workflow decides the project exists by
-testing for `android/gradlew`.
+root's `*.jar` rule, because `./gradlew` cannot bootstrap without it.
 
 ### One Maven repository per worktree
 

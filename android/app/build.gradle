@@ -153,11 +153,23 @@ ext.dexForbiddenCalls = [
         'Ljava/util/stream/Stream;.toList',
 ]
 
+/**
+ * Positive control for the same check: a class that is certainly in the dex.
+ *
+ * <p>Every assertion the check makes is a negative one, and a search that finds
+ * nothing because it is searching nothing reports exactly the same "none
+ * survived". The transcriber is where the app enters the reactor's jars, which
+ * is where the forbidden calls come from, so its absence from the dump means
+ * the dump is not what the check believes it to be.
+ */
+ext.dexControlClass = 'Ldev/olivelli/musicwizard/transcribe/AudioTranscriber;'
+
 tasks.register('checkDexedApiLevel') {
     description = 'Fails if the debug APK still calls JDK methods newer than minSdk.'
     def apkDir = layout.buildDirectory.dir('outputs/apk/debug')
     def dexdump = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}/dexdump"
     def forbidden = dexForbiddenCalls
+    def control = dexControlClass
     def workDir = layout.buildDirectory.dir('dex-api-check')
 
     doLast {
@@ -194,6 +206,11 @@ tasks.register('checkDexedApiLevel') {
         }
 
         def dex = dumped.toString()
+        if (!dex.contains(control)) {
+            throw new GradleException("the dex dump does not contain ${control}, so it is not"
+                    + " the code this check is meant to search: a dex naming scheme or a"
+                    + " dexdump output format has changed, and 'none found' would be vacuous")
+        }
         def found = forbidden.findAll { dex.contains(it + ':') }
         if (!found.isEmpty()) {
             throw new GradleException("the debug APK calls JDK methods that do not exist at"
