@@ -188,39 +188,35 @@ public final class BeatTracker {
      * double-rate seed <em>removes</em> beats that were sitting between onsets
      * and were nearly free to keep.
      *
-     * <p>Measured on a twenty-second 120 BPM click track, as the strength a
-     * rigid grid collects per beat — which is what the recursion sums — with the
-     * grid phased where it collects most: <b>7.23</b> at the true period,
-     * <b>7.26</b> at twice it, <b>3.50</b> at half it, against an envelope floor
-     * of <b>−0.22</b> between onsets. So at the old weight, where a halving or
-     * doubling cost 1.00, correcting a half-rate seed was worth 12.46 against
-     * 7.26 and correcting a double-rate seed 6.23 against 7.00. That is the
-     * asymmetry, and it is arithmetic rather than a property of the search
-     * window. At the published weight the penalty is 48.05 and the same two
-     * corrections come to −81.64 and −40.82, so neither happens. See
-     * {@link #TIGHTNESS}, and
-     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
+     * <p>Correcting a half-rate seed wins by a wide margin and correcting a
+     * double-rate seed loses by a narrow one, and the narrow one has a closed
+     * form worth knowing. Write {@code A} for the strength a grid at the true
+     * period collects per beat and {@code F} for the envelope's floor between
+     * onsets. A half-rate grid phased on the onsets alternates between the two,
+     * so two of its beats come to {@code A + F}, against the one beat and one
+     * penalty that correcting costs, {@code A - 1}. The {@code A} cancels and
+     * the margin is <b>{@code 1 + F}</b> — it does not depend on how loud the
+     * onsets are at all. On a finite clip, add or subtract one edge beat's
+     * worth, {@code (A - F) / n}, according to whether the grid ends with one
+     * more onset than floor.
      *
-     * <p><strong>Read the two margins rather than the four levels.</strong>
-     * Three independently written measurements of those levels agree only to a
-     * few percent, because the answer depends on how finely the grid's phase is
-     * searched and there is no natural stopping point; the levels above come
-     * from a sweep refined until they stopped moving. The margins are far more
-     * stable, and they are what decides the outcomes: correcting a half-rate
-     * seed wins by about five, and correcting a double-rate seed <em>loses</em>
-     * by well under one — 0.6 to 0.8 across the three. All four outcomes hold
-     * under all three.
+     * <p><strong>The levels themselves are deliberately not quoted here, and
+     * that is the third answer to this question rather than the first.</strong>
+     * Three review passes went on correcting figures in this paragraph — an
+     * onset of 5.8, then 7.06, then 7.23 — and each correction was a better
+     * measurement of a quantity nothing asserts. The first two were a phase
+     * swept too coarsely. The third was fine and the trouble moved to the
+     * margins: independent measurements of the close one land at 0.68, 0.78 and
+     * 0.89, which is the {@code (A - F) / n} term above and not disagreement at
+     * all — but it spans a quarter of the margin, and no summary of it survived
+     * a reading. A claim was also made along the way that correcting the first
+     * error had made the margins look tighter than they were; it was true of the
+     * wide margin and false of the narrow one.
      *
-     * <p>An earlier version of this paragraph put the onset at 5.8, from a
-     * single frame offset applied to every click rather than a grid phased where
-     * it collects most. Correcting it moved all four comparisons and none of the
-     * four outcomes. It did <em>not</em> make them uniformly safer, which the
-     * first correction of it claimed: the half-rate margin widened, from about
-     * 3.8 to about 5.2, and the double-rate one — the close margin, the only
-     * place this conclusion has little slack — did not widen at all, going from
-     * 0.80 to 0.77. Both errors were the same mistake at different depths, a
-     * phase searched too coarsely, and both were caught by someone re-deriving
-     * the figure rather than by anything in the build.
+     * <p>What is pinned instead is the four outcomes, in
+     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt},
+     * and they hold under every measurement anyone has taken — the levels were
+     * never load-bearing and cost three rounds. See also {@link #TIGHTNESS}.
      *
      * <p>That is the algorithm working as designed rather than a hole opened by
      * fixing it — resolving the octave is what {@link TempoEstimator}'s
