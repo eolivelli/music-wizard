@@ -212,6 +212,15 @@ public final class ChordChart {
         // score, invisible on the page. LilyPond's own Lyrics context carries
         // the same override for the same reason, and 2 staff spaces either side
         // of the chord names is the value its manual uses for ChordNames.
+        //
+        // Bar lines cost one thing, and it is #225: LilyPond may break a system
+        // only where there is one, so a bar wider than the line no longer wraps
+        // -- it runs past the margin and then off the sheet, silently. That
+        // needs about thirteen chords in a single bar and the widest bar of any
+        // real recording tried holds four, but the bar that holds the lead-in is
+        // exempt from the harmonic-rhythm reduction and so is not bounded by the
+        // meter. ChordChartEngravingIT reads each system's right edge back out
+        // of LilyPond, since LilyPond itself says nothing about it.
         out.append("  \\new ChordNames \\with {\n");
         out.append("    chordChanges = ##t\n");
         out.append("    \\consists \"Bar_engraver\"\n");

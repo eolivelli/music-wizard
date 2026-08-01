@@ -265,21 +265,25 @@ class ChordChartEngravingIT {
     // ---------------------------------------------------------------- #217 --
 
     /**
-     * A probe that makes every bar line LilyPond drew report its own height.
+     * A probe that makes the page report two things about itself: how tall each
+     * bar line LilyPond drew is, and how far right each system reached.
      *
      * <p>Substituted for the chart's own empty {@code \layout} block, so what is
      * engraved is the emitter's source and not a hand copy of it. {@code
      * MidiChordChartIT} patches the same anchor to ask for MIDI, though it
-     * appends beside the block rather than replacing it. {@code BarLine} carries
-     * no {@code after-line-breaking} of its own, so this adds a callback rather
-     * than displacing one.
+     * appends beside the block rather than replacing it. Neither {@code BarLine}
+     * nor {@code System} carries an {@code after-line-breaking} of its own, so
+     * this adds callbacks rather than displacing any.
      *
-     * <p>It reports a length rather than the interval because an undrawn bar
-     * line has the <em>empty</em> interval, printed {@code (+inf.0 . -inf.0)},
+     * <p>The bar line reports a length rather than an interval because an undrawn
+     * one has the <em>empty</em> interval, printed {@code (+inf.0 . -inf.0)},
      * which is not a pair of numbers a test can subtract; {@code
-     * interval-length} answers 0 for it.
+     * interval-length} answers 0 for it. The system reports the right end of its
+     * interval and the line width beside it, because what matters is only which
+     * way the right edge falls: a system's left end sits a little outside the
+     * line on every page, where the bar number is printed.
      */
-    private static final String HEIGHT_PROBE = """
+    private static final String LAYOUT_PROBE = """
               \\layout {
                 \\context {
                   \\ChordNames
@@ -287,6 +291,14 @@ class ChordChartEngravingIT {
                     #(lambda (grob)
                        (ly:message "MW-BAR-HEIGHT ~a"
                                    (interval-length (ly:grob-extent grob grob Y))))
+                }
+                \\context {
+                  \\Score
+                  \\override System.after-line-breaking =
+                    #(lambda (grob)
+                       (ly:message "MW-SYSTEM-RIGHT ~a ~a"
+                                   (cdr (ly:grob-extent grob grob X))
+                                   (ly:output-def-lookup (ly:grob-layout grob) 'line-width)))
                 }
               }
             """;
@@ -296,11 +308,14 @@ class ChordChartEngravingIT {
         String source = ChordChart.toLilyPond(score);
         assertThat(source).as("the emitter still writes the block the probe replaces")
                 .contains("  \\layout { }\n");
-        return source.replace("  \\layout { }\n", HEIGHT_PROBE);
+        return source.replace("  \\layout { }\n", LAYOUT_PROBE);
     }
 
     private static final Pattern BAR_HEIGHT =
             Pattern.compile("MW-BAR-HEIGHT (\\S+)");
+
+    private static final Pattern SYSTEM_RIGHT =
+            Pattern.compile("MW-SYSTEM-RIGHT (\\S+) (\\S+)");
 
     /** Every bar-line height the probe reported, in the order LilyPond drew them. */
     private static List<Double> barLineHeights(String lilypondOutput) {
@@ -310,6 +325,17 @@ class ChordChartEngravingIT {
             heights.add(Double.parseDouble(matcher.group(1)));
         }
         return heights;
+    }
+
+    /** How far each system overran the line, in staff spaces; negative is room to spare. */
+    private static List<Double> systemOverruns(String lilypondOutput) {
+        List<Double> overruns = new ArrayList<>();
+        Matcher matcher = SYSTEM_RIGHT.matcher(lilypondOutput);
+        while (matcher.find()) {
+            overruns.add(Double.parseDouble(matcher.group(1))
+                    - Double.parseDouble(matcher.group(2)));
+        }
+        return overruns;
     }
 
     @ParameterizedTest(name = "{0}")
@@ -336,11 +362,45 @@ class ChordChartEngravingIT {
         // of the chart's \bar "|." -- LilyPond draws it either way, and the mark
         // only chooses the glyph, so what closes the chart is asserted on the
         // text in ChordChartTest. Counted from the bar checks the emitter wrote,
-        // so a chart that lost a bar line cannot pass by also having lost the
-        // bar.
+        // which catches a bar line lost against a bar kept and nothing more:
+        // both sides come from the same text, so a bar dropped in ChartLayout
+        // takes its bar line with it and this still passes. What guards that is
+        // ChordChartTest.theTextAndTheEngravingCountTheSameBars, where the two
+        // sides are two different renderings of one score.
         long bars = probed(score).lines().filter(line -> line.strip().endsWith("|")).count();
         assertThat(heights).as("%s", result.output()).hasSize((int) bars);
         assertEngravedCleanly(name, result);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("charts")
+    @DisplayName("no system runs off the page, which bar lines made possible")
+    void noBarIsTooWideForTheLine(String name, Score score) {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve(name + "/width.ly"), probed(score));
+
+        // The cost of the bar lines, and the reason this test exists (#225).
+        // Without a Bar_engraver LilyPond could break a system between any two
+        // chord names, so a bar wider than the line simply wrapped; with one,
+        // breaks fall only at bar lines, as in any engraved music, and a single
+        // over-wide bar is set past the margin and then past the edge of the
+        // sheet, where the chord names are gone. LilyPond exits zero and says
+        // nothing about it, so assertEngravedCleanly cannot be the guard.
+        //
+        // No fixture here is anywhere near the limit -- a bar needs roughly
+        // thirteen chords in it, where the widest bar of any real recording in
+        // samples/ holds four -- so this passes today and is here to fail when
+        // a future ChartLayout change makes a chart clip.
+        List<Double> overruns = systemOverruns(result.output());
+        assertThat(overruns).as("%s", result.output()).isNotEmpty();
+        // A hair of tolerance, not a threshold: a system that fills its line
+        // reports a right edge equal to the line width to within rounding, and
+        // the overrun that matters is tens of staff spaces.
+        assertThat(overruns).as("%s", result.output()).allSatisfy(
+                overrun -> assertThat(overrun).isLessThan(1e-6));
     }
 
     @Test
