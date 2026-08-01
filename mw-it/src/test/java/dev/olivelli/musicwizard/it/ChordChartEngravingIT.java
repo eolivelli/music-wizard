@@ -322,8 +322,8 @@ class ChordChartEngravingIT {
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve(name + "/drawn.ly"), probed(score));
 
-        // Two distinct failures, and #217 is that neither draws a single bar
-        // line, so a reader cannot tell them apart or from each other. Without a
+        // Two distinct failures, and neither can be told from a chart that is
+        // right, because neither puts a bar line on the page. Without a
         // Bar_engraver there is no BarLine grob at all and this list is empty;
         // with one but no bar-extent there is a grob per boundary, each of
         // height zero. The chart shipped in the first state until #217.
@@ -331,10 +331,13 @@ class ChordChartEngravingIT {
         assertThat(heights).as("%s", result.output()).isNotEmpty();
         assertThat(heights).as("%s", result.output()).allSatisfy(
                 height -> assertThat(height).isGreaterThan(0.0));
-        // One per bar: the boundary after each bar but the last, plus the final
-        // bar line the chart closes with. Counted from the bar checks the
-        // emitter wrote, so a chart that lost a bar line cannot pass by also
-        // having lost the bar.
+        // One per bar: the boundary after each bar but the last, plus the one
+        // LilyPond draws at the end of the score. That last one is not evidence
+        // of the chart's \bar "|." -- LilyPond draws it either way, and the mark
+        // only chooses the glyph, so what closes the chart is asserted on the
+        // text in ChordChartTest. Counted from the bar checks the emitter wrote,
+        // so a chart that lost a bar line cannot pass by also having lost the
+        // bar.
         long bars = probed(score).lines().filter(line -> line.strip().endsWith("|")).count();
         assertThat(heights).as("%s", result.output()).hasSize((int) bars);
         assertEngravedCleanly(name, result);
