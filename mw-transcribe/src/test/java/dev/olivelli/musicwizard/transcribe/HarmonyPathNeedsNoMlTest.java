@@ -52,9 +52,10 @@ import org.w3c.dom.NodeList;
  * rather than argued: one pins the classpath this module is compiled and tested
  * against, the other runs the analysis in it and reads the result. Neither
  * passes against the dependency as it stood before #247. The third,
- * {@link #theReaderCannotBeFooledByTheReactorRootPom}, guards the pom reader the
- * second one uses rather than the dependency itself, so it is indifferent to
- * whether the {@code mw-ml} edge is there — it passes either way, by design.
+ * {@link #theReaderCannotBeFooledByTheReactorRootPom}, guards the pom reader
+ * {@link #theModuleDoesNotDeclareMwMl} uses rather than the dependency itself,
+ * so it is indifferent to whether the {@code mw-ml} edge is there — it passes
+ * either way, by design.
  *
  * <p>Note what is deliberately <em>not</em> asserted: that no ML runtime exists
  * anywhere. {@code mw-cli} declares {@code mw-ml} directly, at runtime scope,
