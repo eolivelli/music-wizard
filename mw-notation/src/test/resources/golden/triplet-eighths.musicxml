@@ -31,6 +31,9 @@
             </attributes>
             <direction placement="above">
                 <direction-type>
+                    <words>ca.</words>
+                </direction-type>
+                <direction-type>
                     <metronome>
                         <beat-unit>quarter</beat-unit>
                         <per-minute>120</per-minute>

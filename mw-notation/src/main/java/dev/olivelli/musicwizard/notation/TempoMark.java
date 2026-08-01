@@ -25,15 +25,24 @@ import java.util.Optional;
  * The one metronome mark a score is engraved with: how fast, in the beat the
  * reader counts.
  *
- * <p>Two emitters print it — {@link ChordChart} on a chart and
- * {@link StaffNotation} on a staff — and they get it from here rather than each
- * deciding for itself, because both halves of the decision have already been got
- * wrong once on this project. The beat unit is the one #4 is about: the map
- * stores quarter notes per minute, so an unqualified figure in 6/8 is a
- * metronome marking 50% fast. And the figure itself has to be
- * {@link Score#estimatedTempo()}, which is what the text chart and the
- * {@code analyze} summary print, or the page contradicts the two lines the user
- * read before looking at it.
+ * <p>Three emitters print it — {@link ChordChart} on a chart,
+ * {@link StaffNotation} on a staff, and {@link MusicXmlExport} for whatever
+ * opens the file next — and they get it from here rather than each deciding for
+ * itself, because every part of the decision has already been got wrong once on
+ * this project. The beat unit is the one #4 is about: the map stores quarter
+ * notes per minute, so an unqualified figure in 6/8 is a metronome marking 50%
+ * fast. The figure itself has to be {@link Score#estimatedTempo()}, which is
+ * what the text chart and the {@code analyze} summary print, or the page
+ * contradicts the two lines the user read before looking at it. And how much to
+ * trust it is {@link #ESTIMATE}, which round 1 of review found stated two ways
+ * in two goldens of one fixture.
+ *
+ * <p>How each emitter reaches it differs, and only the decision is shared. The
+ * chart asks {@link #of} directly. A staff goes through {@link StaffLayout},
+ * which asks {@link #of} and publishes the unit and the count through
+ * {@link StaffWriter#tempo}; {@link StaffNotation} then formats them with
+ * {@link #lilyPond()} and {@link MusicXmlExport} spells them as
+ * {@code <metronome>} beside {@link #ESTIMATE}.
  *
  * <p><b>Marked as an estimate, always.</b> The mark reads {@code ca. (♩ = 159)}
  * rather than {@code ♩ = 159}, because one figure for a whole piece is an
@@ -51,6 +60,23 @@ import java.util.Optional;
  * @param perMinute how many of them a minute holds
  */
 record TempoMark(NoteValue unit, long perMinute) {
+
+    /**
+     * The word that says the figure is an estimate, in the one place both
+     * spellings of the mark read it from.
+     *
+     * <p>Three emitters print this mark -- LilyPond twice and MusicXML once --
+     * and a constant is what stops two of them agreeing on the number while
+     * disagreeing about how much to trust it. Round 1 of review found exactly
+     * that: the qualifier had reached {@link StaffNotation} and not
+     * {@link MusicXmlExport}, so one fixture's two goldens stated the same
+     * tempo with two different confidences.
+     *
+     * <p>"ca." rather than "≈" or "approx.": it is the abbreviation engraving
+     * already uses for this, and unlike "≈" it cannot be misread as "=" at
+     * print size.
+     */
+    static final String ESTIMATE = "ca.";
 
     /**
      * The mark for a score, or empty when it has no tempo worth printing.
@@ -91,10 +117,13 @@ record TempoMark(NoteValue unit, long perMinute) {
      * nothing in the score mentions.
      */
     String lilyPond() {
-        // Locale.ROOT: a LilyPond count is not a localised number, and under
-        // fr_FR a decimal comma would reach a parser that rejects it. The same
-        // trap the text chart's tempo line carries a comment about.
-        return String.format(Locale.ROOT, "\\tempo \\markup { \\italic \"ca.\" } %s = %d",
-                unit.lilyPondToken(), perMinute);
+        // Locale.ROOT because the digits are the hazard, not a decimal
+        // separator: the count is a long and %d never writes one. What a
+        // default locale does write is its own numbering system, so this emits
+        // "١٥٩" under ar-EG and hands LilyPond a count it cannot parse. The
+        // text chart's tempo line carries a comment about the other half of the
+        // same trap, which its %.0f really can reach.
+        return String.format(Locale.ROOT, "\\tempo \\markup { \\italic \"%s\" } %s = %d",
+                ESTIMATE, unit.lilyPondToken(), perMinute);
     }
 }

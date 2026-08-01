@@ -458,6 +458,27 @@ class MusicXmlExportTest {
     }
 
     @Test
+    @DisplayName("the metronome mark says the figure is an estimate, as the engraving does")
+    void theMetronomeMarkIsQualified() {
+        // A reader of this file draws the metronome as a note and a number, so
+        // an unqualified one states as exact what the PDF of the same score
+        // marks as approximate. Round 1 of review on #216 found the two goldens
+        // of one fixture disagreeing about exactly that, because the qualifier
+        // had reached the LilyPond writer and not this one.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+
+        Document document = parse(MusicXmlExport.toMusicXml(
+                score(TimeSignature.FOUR_FOUR, 120, voice), voice));
+
+        assertThat(text(first(document, "words"))).isEqualTo("ca.");
+        // In the same <direction> as the mark it qualifies, or it is a word
+        // floating somewhere else on the page.
+        Element direction = first(document, "direction");
+        assertThat(elements(direction, "words")).hasSize(1);
+        assertThat(elements(direction, "metronome")).hasSize(1);
+    }
+
+    @Test
     @DisplayName("a key signature is written as fifths, and an absent one as none")
     void keySignature() {
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
