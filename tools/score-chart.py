@@ -17,12 +17,12 @@ on the beat axis instead, and `short_changes` below refuses to measure one.
 bars, and which of them is higher has already changed sign once.** An early
 version of this paragraph said a chart score can never beat a model score and
 that the gap is the drift; that was wrong, and before #196 the chart column was
-*higher* on four of the five benchmarks, because the recording's own downbeat
+*higher* on four of the five benchmarks there were then, because the recording's
 sequence wandered and one constant bar length tracked the music better over
 twelve minutes than the tracker's accumulated phase did.
 
 #196 removed the wander, and the columns swapped: the chart column went *lower*
-on four of the five, because the tracker's phase was the better of the two and
+on four of those five, because the tracker's phase was the better of the two and
 the constant bar length was what was left drifting -- it was spaced at the median
 tracked interval where the grid ran at a rate half a percent from it. #200 has
 since replaced that statistic with a rate, which closed most of the gap again
