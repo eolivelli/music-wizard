@@ -113,7 +113,18 @@ public final class ChordChart {
         return linesOf(ChartLayout.of(score));
     }
 
-    private static List<String> linesOf(List<ChartLayout.Bar> bars) {
+    /**
+     * The same, over a layout the caller has already taken.
+     *
+     * <p>Both emitters take a {@code List<Bar>} as well as a {@link Score},
+     * because the layout is two stages with two different promises --
+     * {@link ChartLayout#unreduced} drops nothing and {@link ChartLayout#of}
+     * reduces on purpose -- and a suite that could only see the second could not
+     * tell a chord absorbed deliberately from one lost to arithmetic. That
+     * distinction is #174 against #212, and it is the one this file's history
+     * turns on.
+     */
+    static List<String> linesOf(List<ChartLayout.Bar> bars) {
         List<String> lines = new ArrayList<>();
         StringBuilder line = new StringBuilder();
         int onThisLine = 0;
@@ -143,6 +154,11 @@ public final class ChordChart {
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
+        return lilyPondOf(score, ChartLayout.of(score));
+    }
+
+    /** The same, over a layout the caller has already taken. See {@link #linesOf}. */
+    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -161,7 +177,7 @@ public final class ChordChart {
         out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
         out.append("    \\chordmode {\n");
 
-        for (ChartLayout.Bar bar : ChartLayout.of(score)) {
+        for (ChartLayout.Bar bar : bars) {
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }
