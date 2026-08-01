@@ -188,59 +188,26 @@ downloads a model or shells out to LilyPond belongs in `mw-it`.
 
 ## Review process
 
-Every patch gets **at least three review rounds** (see `.claude/agents/`), and
-the reason is empirical rather than ceremonial: on this project, round two has
-caught a round-one *fix* that was worse than the bug it replaced, and round
-three caught two round-two fixes that were bypassable. Specifically:
+Serialized: **one PR in flight at a time.** The rules live in
+`.claude/agents/pr-worker.md` and `pr-reviewer.md`; the incidents that shaped
+them are in `docs/history.md`. The short version:
 
-- A lead-in fix silently misaligned the whole tempo map by up to half a beat —
-  and every existing test started at `t=0.0`, so none exercised the branch the
-  fix was written for.
-- A path-traversal fix normalised the path but never resolved symlinks, so a
-  shared workspace could still read `~/.ssh/id_rsa`.
-- A hash-collision fix added a byte-length prefix, but UTF-8 encoding is itself
-  lossy for unpaired surrogates, so the collision survived.
-
-The pattern worth remembering: **fixes tend to stop at the layer where the bug
-was noticed, not the layer where it lives.** Reviewers confirm findings by
-execution and label them `CONFIRMED` or `PLAUSIBLE`.
-
-Writing that pattern down here has not reduced how often it happens — four
-changes in a single night each shipped a first fix that reached one caller and
-missed another. So one thing is now a **mechanical check the reviewer runs
-rather than a judgement call**: enumerate every reader of the value that
-changed. See `.claude/agents/pr-reviewer.md`.
-
-A second check was tried and withdrawn: re-running every new test against the
-code without its fix. It was correct in principle — a fixture starting at
-`t=0.0` tests nothing about tempo, because every derivation agrees at the origin
-— but it cost far more than it returned. Reading the test finds the same thing,
-most reverts only confirmed what the reviewer already believed, and the revert
-itself (`git checkout -- <file>`, which discards *all* uncommitted changes to
-that file) destroyed half-written fixes repeatedly. It is now reserved for
-troubleshooting something genuinely hard to reproduce. Mutation sweeps were
-never required at all; they were a generalisation of that check, and they
-produced more false numbers than findings.
-
-Two further observations from the same night. When a fix needs the same edit in
-a *third* place, the structural change that removes the choice is cheaper than
-the third edit — that is where `Score.estimatedTempo()` came from. And once late
-rounds stop finding defects in executable code, what they find instead is claims
-that outrun their evidence: a result measured at one point written up as
-general, a javadoc describing the design that was replaced. On a tool whose
-output is estimates users act on, an overstated confidence is a defect.
-
-That last observation eventually restructured the process. Measured over the
-long reviews, executable defects stopped by round three-to-five and everything
-after was prose — real findings, wrongly priced, since a wrong sentence was
-costing a full adversarial round and one PR ran to eighteen. Reviews now have
-**two tiers**: findings that touch executable code or tests force a fresh full
-round, findings that are prose-only are fixed and confirmed in a delta pass on
-exactly the changed text (`APPROVE_WITH_CORRECTIONS`). Two writing rules shrink
-the prose tier at its source: when a reviewer corrects a fact, grep for every
-other statement of that fact before replying; and a number may appear in prose
-only if a test asserts it or a committed harness reproduces it — otherwise
-state the qualitative fact.
+- **The merge gate is `tools/premerge.sh`**, run on the branch merged with
+  current `origin/main`: both suites plus both sample harnesses diffed against
+  the committed baselines in `tools/baselines/`. Any harness movement fails —
+  an intended improvement regenerates the baseline in the same PR, so movement
+  is always reviewed.
+- **Round 1 is a full adversarial review; later rounds are scoped to the
+  delta.** Loop until a round finds nothing new, or only prose
+  (`APPROVE_WITH_CORRECTIONS` → delta pass on the changed text → merge).
+  Findings are `CONFIRMED` by execution or honestly `PLAUSIBLE`.
+- **The one mechanical check every round: enumerate every reader of the value
+  that changed.** It is the project's dominant defect class and reasoning
+  about it has repeatedly failed where running it succeeded.
+- **Prose discipline:** no number outside a test or committed harness; when a
+  fact is corrected, grep for its every other statement before replying.
+- Revert-the-fix verification and mutation sweeps are **not** used; both were
+  tried and withdrawn (`docs/history.md`).
 
 ## Conventions
 
@@ -252,17 +219,11 @@ state the qualitative fact.
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
-- **One git worktree per concurrent task**, never the shared checkout. A
-  `git checkout` moves HEAD for every process in that clone; a commit made
-  during the move lands on another branch, silently.
-- **One local Maven repository per worktree**, passed as
-  `-Dmaven.repo.local=<worktree>/.m2` on every invocation. The worktree isolates
-  the source; `~/.m2` is the channel it does not isolate. Whatever one agent
-  installs becomes another's dependency, so a build can silently resolve a
-  sibling module from somebody else's uncommitted work. It has already produced
-  a false result here: a `mvn -pl mw-dsp` mutation sweep picked up a stale
-  `mw-audio`, ten mutants failed to *build*, and the summary counted them as
-  killed. Build with `-am` too, so siblings come from the source tree.
+- **One git worktree per task, one local Maven repository per worktree**
+  (seed it: `rsync -a ~/.m2-pristine/ <worktree>/.m2/`, then
+  `-Dmaven.repo.local` via `MAVEN_ARGS` and `-am` on every build). Never
+  `git checkout` in the shared clone. The incidents behind each half are in
+  `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
@@ -293,10 +254,11 @@ layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
 tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
 Four review rounds on `mw-core`.
 
-Still missing: key detection, the whole symbolic/notation track (#1),
-separation and melody (#8), lyrics (#9), piano (#10), advisor (#11). NNLS chroma
-(#3) has landed; `tools/score-samples.py` is the standing measurement of what it
-is worth.
+Still missing: key detection, separation and melody (#8), lyrics (#9), piano
+(#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
+NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
+`tools/score-samples.py` and `tools/score-chart.py` are the standing
+measurement of what they are worth, with baselines under `tools/baselines/`.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
 `design-gap` issues before treating it as frozen — especially #4 (no beat unit,
