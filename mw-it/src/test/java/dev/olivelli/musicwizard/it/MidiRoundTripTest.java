@@ -51,8 +51,11 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>It lives here rather than in {@code mw-notation} because the exporter and
  * the importer are in different modules and neither may depend on the other:
- * {@code mw-transcribe} pulls in {@code mw-ml}, which the notation layer is not
- * allowed to see. {@code mw-it} is the module that already depends on both.
+ * the notation layer must not see the audio and DSP stack {@code mw-transcribe}
+ * is built on, and {@code mw-transcribe} has no business emitting notation.
+ * {@code mw-it} is the module that already depends on both. (Until #247 the
+ * sharper way to say that was "{@code mw-transcribe} pulls in {@code mw-ml}",
+ * which it no longer does; the rule the edge illustrated is unchanged.)
  *
  * <p><b>Tempo does not round-trip exactly, and that is the format.</b> A tempo
  * event holds whole microseconds per quarter note, so 140 BPM is stored as

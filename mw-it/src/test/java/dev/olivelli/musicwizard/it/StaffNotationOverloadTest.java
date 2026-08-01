@@ -43,8 +43,8 @@ import org.junit.jupiter.api.Test;
  * more than that — see {@link LilyPondComplaintsTest}, which records what round
  * 1 of review on #164 measured about the rest. It is in {@code mw-it} rather than in
  * {@code mw-notation} for the reason {@link MidiRoundTripTest} gives: it needs
- * {@code MidiTranscriber}, and {@code mw-transcribe} pulls in {@code mw-ml},
- * which the notation layer is not allowed to see.
+ * {@code MidiTranscriber}, and the notation layer must not depend on the module
+ * that holds it.
  */
 class StaffNotationOverloadTest {
 
