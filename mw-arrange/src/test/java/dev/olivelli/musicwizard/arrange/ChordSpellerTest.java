@@ -467,6 +467,48 @@ class ChordSpellerTest {
         }
 
         @Test
+        @DisplayName("a pickup is written the way the same chord inside the key is")
+        void aPickupAgreesWithTheKeyOverEveryTonicAndEveryRoot() {
+            // The case above, swept: a one-chord pickup before the first key
+            // signature, and the same chord again once the key covers it. Two
+            // spellings of one sound in one chart is #227's own complaint, and
+            // each rule tried for uncovered music broke a different cell of this
+            // table -- the nearest key outright broke the diatonic degrees, the
+            // count alone broke the black-key roots. The pickup is spelled the
+            // way ChordEstimator spells, but the answer does not depend on that:
+            // both the pricing and the rewriting read a sounding pitch.
+            //
+            // What is left is #251 and not this: at the two ends of a key's
+            // twelve-position window the covered chord is named across a natural
+            // boundary, and there the pickup carries the better spelling. Listed
+            // rather than counted so that a new cell cannot hide in a total.
+            List<String> disagreeing = new ArrayList<>();
+            for (String tonic : ALL_TONICS) {
+                for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                    Score score = Score.empty(TempoMap.constant(120), 4.0)
+                            .withChords(asGiven(List.of(
+                                    chordAt(0, root(pitchClass)),
+                                    chordAt(1, root(pitchClass)),
+                                    chordAt(2, root(pitchClass)))))
+                            .withKeys(List.of(keyOver(tonic, 1, 4)));
+                    List<String> written = symbols(ChordSpeller.respell(score).chords());
+                    if (!written.get(0).equals(written.get(2))) {
+                        disagreeing.add(tonic.replace("4", "") + ": "
+                                + written.get(0) + " then " + written.get(2));
+                    }
+                }
+            }
+
+            assertThat(disagreeing).containsExactly(
+                    "Db: E then Fb", "Db: B then Cb",
+                    "Eb: E then Fb", "Eb: B then Cb",
+                    "F#: C then B#", "F#: F then E#",
+                    "Ab: E then Fb", "Ab: B then Cb",
+                    "Bb: B then Cb",
+                    "B: F then E#");
+        }
+
+        @Test
         @DisplayName("two uncovered runs are counted apart, not averaged across the key between")
         void eachUncoveredRunIsCountedOnItsOwn() {
             // Counted as one set, a flat lead-in and a sharp tail either side
