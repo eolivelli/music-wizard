@@ -38,3 +38,5 @@ samples/bossa-cm.mp3
 # Only the descriptive list.txt is tracked.
 uncommitted/*
 !uncommitted/list.txt
+samples/slow-68-40.mp3
+samples/pop-am-f-c-g-144.mp3

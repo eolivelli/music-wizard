@@ -74,6 +74,15 @@ import java.util.Objects;
  * here instead, having been corrected three rounds running, and {@code
  * CLAUDE.md} carries a two-line summary that defers here for the rest.
  *
+ * <p><strong>Every accuracy figure in this class, and in the sweeps that cite
+ * it, was measured on the beat grid as it was before #196.</strong> Chroma is
+ * averaged per tracked beat, so removing that grid's 1.9% rate error moved the
+ * top cell above from 86.6% to 85.7%. None of the comparisons is in doubt — the
+ * differences they rest on are tens of points and the anchor moved by one — but
+ * the cells read as current and are not. Re-measuring them is #232; do not
+ * subtract the difference from each cell, which would be inventing
+ * measurements.
+ *
  * <p>The surprising column is the first one, and it is why this class changed
  * at all: #3 called the front end the fix for #185, and measured alone against
  * the estimator it was written for, the front end does not fix it.

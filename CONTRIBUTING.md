@@ -92,26 +92,26 @@ that downloads a model or shells out to LilyPond belongs in `mw-it` behind
 
 ## Review process
 
-Every patch is reviewed for a **minimum of three rounds**:
+One PR in flight at a time. Round 1 is a full adversarial review; later rounds
+are scoped to the fixes and what they touched. The loop ends when a round
+finds nothing new, or finds only prose — which is fixed and confirmed in a
+delta pass over exactly the changed text rather than a fresh round. Reviewers
+confirm suspected bugs by execution before reporting them as confirmed, and
+say what they checked and found correct so the next round need not redo it.
 
-1. **Correctness and design** — arithmetic, logic, validation gaps, API shape.
-2. **Tests and edge cases** — coverage, boundaries, failure modes.
-3. **Adversarial verification** — confirm the earlier findings were genuinely
-   fixed and nothing regressed.
+Quality gating is two-stage. **Locally, `tools/premerge.sh`** (run on the
+branch merged with current `origin/main`) checks the sample harnesses against
+the committed baselines in `tools/baselines/` — its irreplaceable part, since
+the local-only benchmark files never reach CI. Any harness movement fails it;
+an intended improvement regenerates the baseline in the same PR so the
+movement is reviewed rather than silently absorbed. **The final gate is CI on
+the pull request**: the full test matrix runs against the PR's merge preview,
+and a PR merges only when the reviewer has approved and every CI check is
+green on the approved head.
 
-Reviewers should confirm suspected bugs by execution before reporting them as
-confirmed, and should say explicitly what they checked and found correct so the
-next round need not redo it.
-
-Findings are priced in two tiers. A finding that touches executable code or a
-test forces a fresh full round after the fix. A finding that is prose-only — a
-javadoc claim, a comment, a description — is fixed and then confirmed by the
-same reviewer in a delta pass over exactly the changed text, and the patch can
-merge on that confirmation. The history behind the split: executable defects
-consistently stopped by round five, and pricing every wrong sentence at a full
-round once took a patch to eighteen rounds, the last ten of which changed no
-code. A number belongs in prose only if a test asserts it or a committed
-harness reproduces it; otherwise write the qualitative fact.
+A number belongs in prose only if a test asserts it or a committed harness
+reproduces it; otherwise write the qualitative fact. The incidents behind
+these rules are collected in `docs/history.md`.
 
 ## Issue tracking
 

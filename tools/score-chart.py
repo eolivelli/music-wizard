@@ -8,23 +8,27 @@ bar, and is the one a reader takes away from that bar the right one.
 
 The two differ in a way worth keeping visible, and it is not the way it looks.
 On the audio path the chart's bar lines are its own -- one downbeat for phase
-and `Score.estimatedTempo()` for rate -- so on a recording whose beat drifts
-they walk away from the recording's downbeats (#187, #196, #200). That holds
-of the seconds route only; a progression carrying beats is laid out on the
-beat axis instead, and `short_changes` below refuses to measure one.
+and `Score.estimatedTempo()` for rate -- so wherever those two disagree with
+the grid they walk away from the recording's downbeats (#187, #200, #233).
+That holds of the seconds route only; a progression carrying beats is laid out
+on the beat axis instead, and `short_changes` below refuses to measure one.
 
 **Neither score bounds the other, because they are scored over different
-bars.** An earlier version of this paragraph said a chart score can never beat
-a model score and that the gap is the drift; run the two harnesses on this
-tree and the chart column is *higher* on four of the five benchmarks, by a
-wide margin on some. The reason is the same drift read the other way round: it
-is the recording's own downbeat sequence that wanders, `score-samples.py` bars
-the model on that sequence, and the chart's single constant bar length happens
-to track the music better over twelve minutes than the tracker's accumulated
-phase does. `BluesLoopIT` measures the same thing from the other side and its
-javadoc says so -- which is why the sentence had to go rather than be softened:
-it made a maintainer who ran both harnesses go looking for a bug in one of
-them. This is #196, seen from the chart.
+bars, and which of them is higher has already changed sign once.** An early
+version of this paragraph said a chart score can never beat a model score and
+that the gap is the drift; that was wrong, and before #196 the chart column was
+*higher* on four of the five benchmarks, because the recording's own downbeat
+sequence wandered and one constant bar length tracked the music better over
+twelve minutes than the tracker's accumulated phase did.
+
+#196 removed the wander, and the columns swapped: the chart column is now
+*lower* on four of the five, because the tracker's phase is the better of the
+two and the constant bar length is what is left drifting -- it is spaced at the
+median tracked interval where the grid ran at a rate half a percent from it
+(#200). Both readings had the same cause under them, seen from opposite sides,
+which is the reason to state the mechanism here rather than a rule of thumb
+about which column wins. A maintainer who runs both harnesses and finds them
+disagreeing is looking at the bar axes, not at a bug in either.
 
 Both columns are reported per benchmark:
 
@@ -52,8 +56,8 @@ Both columns are reported per benchmark:
                  chart     against the median tracked interval, which is what
                            `Score.estimatedTempo()` spaces the chart's bars at.
                            Not zero, because one constant bar length drifts
-                           against a recording that does not keep one (#187,
-                           #196, #200). So this column is not a fact about how
+                           against a recording it is not quite the rate of
+                           (#187, #200). So this column is not a fact about how
                            fast the harmony moves; it is the size of that drift.
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]
@@ -182,7 +186,8 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     mattered. Chord gaps are whole numbers of tracked beat intervals, so a
     one-beat gap sits exactly on the boundary this counts against, and a
     fraction of a percent of tempo moves a whole cohort of them across at once
-    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%. The same
+    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%, both
+    measured before #196 changed that recording's beat grid. The same
     rounding then survived one round as the *check* on the derivation, which
     round 3 found accepts anything within half a BPM: a band the figure varies
     over by more than the error it was guarding. Both are gone.
@@ -208,8 +213,9 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     # An earlier version checked it by rounding the derived tempo and comparing
     # with the printed header. Round 3 of review measured that the band such a
     # check accepts is half a BPM wide, and that the reported figure ranges over
-    # 24.4% to 36.1% inside it on `gmajorblues.mp3` -- wider than the error the
-    # check was added to catch. A check whose resolution is the size of the bug
+    # 24.4% to 36.1% inside it on `gmajorblues.mp3` -- both taken before #196
+    # changed that recording's beat grid, like the pair in the docstring above,
+    # and both still wider than the error the check was added to catch. A check whose resolution is the size of the bug
     # is not a check. This is the same defect one layer down: the rounded header
     # is the layer the problem was noticed at, and `estimatedTempo()`'s
     # conditions are the layer it lives at.

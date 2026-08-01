@@ -70,19 +70,22 @@ the first bar line is read off a downbeat, and the ones after it are laid out at
 the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
 largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
 blues the chart puts the first twenty-five changes in the right bar and every one
-after that in the wrong one.
+after that in the wrong one — measured before [#196][i196] and not re-taken.
 
-Two things cause that and they are not the same size on every recording, so it is
-worth knowing both: the bar lines are spaced at a tempo that is 1.4% long here
-([#200][i200]), and the recording's own beat does not keep to any single bar
-length ([#187][i187]). Correcting `--tempo` by hand is worth at least as much as
-correcting the downbeat.
+Two things caused that and they were not the same size on every recording. The
+recording's own beat did not keep to any single bar length, which was the beat
+tracker leaving the grid for loud offbeats and is fixed; and the bar lines are
+spaced at the median tracked interval, which on that recording is half a percent
+longer than the rate its own beats ran at ([#200][i200]). Only the second is
+left. Correcting `--tempo` by hand is worth at least as much as correcting the
+downbeat, and more than it used to be.
 
 That figure is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises. Chord recognition on that
-recording used to return nothing but `N.C.`; since [#3][i3] it returns 740 spans
-and no `N.C.` at all, about half of them in the right bar with the right root.
-The chords were supplied anyway, because a layout measurement wants a
+recording used to return nothing but `N.C.`; since [#3][i3] it returns hundreds
+of spans and no `N.C.` at all, most of them in the right bar with the right root
+since [#196][i196] stopped the beat grid drifting. The chords were supplied
+anyway, because a layout measurement wants a
 progression known to be right rather than one that is half right.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
@@ -91,6 +94,7 @@ progression known to be right rather than one that is half right.
 [i187]: https://github.com/eolivelli/music-wizard/issues/187
 [i3]: https://github.com/eolivelli/music-wizard/issues/3
 [i200]: https://github.com/eolivelli/music-wizard/issues/200
+[i196]: https://github.com/eolivelli/music-wizard/issues/196
 
 ## Installing
 

@@ -281,7 +281,12 @@ public final class AudioTranscriber {
         //
         // Both registers, not the treble alone: the two fail on different chords
         // and adding them takes per-bar root accuracy on that recording from
-        // 42.7% to 86.6%. The margin figures above rank the two the other way
+        // 42.7% to 86.6%. Both of those, and the 77.7% below, were measured on
+        // the beat grid as it was before #196; chroma is averaged per tracked
+        // beat, so they move with it. ChordEstimator's class javadoc states
+        // that and #232 tracks re-measuring them -- the comparisons are not in
+        // doubt, the cells just read as current. The margin figures above rank
+        // the two the other way
         // round, which is worth knowing rather than smoothing over -- #185's
         // probe asks whether a frame looks like some triad, and the sum looks
         // less like one while naming the right one more often. See
