@@ -68,9 +68,12 @@ different pages.
 Bar *spacing* still comes from the tempo, not from the rest of the grid: only
 the first bar line is read off a downbeat, and the ones after it are laid out at
 the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
-largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
-blues the chart puts the first twenty-five changes in the right bar and every one
-after that in the wrong one — measured before [#196][i196] and not re-taken.
+largest remaining error.** How large is no longer known: the figure that used to
+sit here — on an eleven minute twelve-bar blues, the first twenty-five changes in
+the right bar and every one after that in the wrong one — was measured before
+both [#196][i196] and [#200][i200], each of which more than halved the drift it
+came from, and it has not been re-taken. What *is* current is the score of the
+printed chart, below.
 
 That twenty-five is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises. Chord recognition on that
@@ -80,15 +83,21 @@ since [#196][i196] stopped the beat grid drifting. The chords were supplied
 anyway, because a layout measurement wants a
 progression known to be right rather than one that is half right.
 
-Three things caused it and they were not the same size on every recording. The
-recording's own beat did not keep to any single bar length, which was the beat
-tracker leaving the grid for loud offbeats and is fixed ([#196][i196]); the bar
-lines were spaced at the median tracked interval rather than at a rate, which is
-also fixed ([#200][i200]); and the whole axis still hangs on the grid's *first*
-downbeat, which on a recording with a lead-in is the least reliable beat in it
-([#233][i233]). Only the third is left. Correcting the downbeat by hand is now
-worth more than correcting `--tempo`, which is the other way round from how it
-used to be.
+Several things cause that drift and they are not the same size on every
+recording. Two have been fixed: the beat tracker was leaving the grid for loud
+offbeats ([#196][i196]), and the bar lines were spaced at the median tracked
+interval rather than at a rate ([#200][i200]). Two are open, and neither is a
+leftover of the other:
+
+- the whole bar axis hangs on the grid's *first* downbeat, which on a recording
+  with a lead-in is the least reliable beat in it ([#233][i233]);
+- a recording does not hold one bar length anyway, and one constant spacing
+  cannot follow one that does not ([#187][i187]). On the blues above, a bar line
+  placed by index still ends about a beat and a half from the recording's own
+  beats by the end of the eleven minutes — down from about seven.
+
+So correcting the downbeat by hand is now worth more than correcting `--tempo`,
+which is the other way round from how it used to be.
 
 Those two fixes do show up in what the tool actually prints. Scoring the emitted
 chart against the known changes — `tools/score-chart.py`, which reads the

@@ -366,7 +366,7 @@ class ProvenanceTest {
             // the one starting where the grid's first beat does -- so it
             // survives only while the grid's beats line up with the map's. Move
             // the whole grid off its map and the all-lost cell reads the grid's
-            // median instead. Not a corruption anything produces, since it
+            // own rate instead. Not a corruption anything produces, since it
             // takes editing times as well as labels; the point is that the
             // table is for the grid the map was built from, and this is where
             // that boundary is.

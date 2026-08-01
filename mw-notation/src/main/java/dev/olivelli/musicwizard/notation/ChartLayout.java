@@ -388,15 +388,28 @@ final class ChartLayout {
      * the gap between the median interval this class then spaced bars at and the
      * rate the grid actually ran at, which is #200.
      *
-     * <p><b>#200 has since moved the third of those three rates.</b>
+     * <p><b>#200 has since moved the third of those three rates, and with it the
+     * paragraph above's "unchanged at about a beat".</b>
      * {@code quarterNoteSeconds} now gives 0.56651s here rather than 0.5689s,
      * because {@link Score#estimatedTempo()} answers with the rate the grid ran
      * at over the pulses it tracked steadily rather than with a median interval.
      * Against the same 0.5658s the whole-recording drift falls from about seven
-     * beats to about one and a half, so what is left of it is neither the tracker
-     * nor the statistic: it is that the recording does not hold one bar length
-     * (#187) and that the anchor is the grid's first downbeat (#233). The chord
-     * indices themselves want re-taking a third time and have not been.
+     * beats to about one and a half.
+     *
+     * <p><b>The drift by chord 26 halves too, and it lands on the threshold the
+     * argument above turns on rather than clear of it.</b> Over the hundred beats
+     * to chord 26 the recording runs at 0.5636s; at 0.5689s that is 0.93 of a
+     * beat and at 0.56651s it is 0.51 -- so the counted-beat grid, which absorbs
+     * half a beat, no longer misses by a comfortable margin but by a hair.
+     * <b>Whether chord 26 is still the first misplaced one is therefore an open
+     * question and not a re-derivation</b>; the chord indices in this javadoc
+     * want re-taking for the third time and have not been. What is certain is
+     * that the reason the paragraph above gives for the failure -- drift past
+     * what the grid can absorb -- is now a much narrower claim than it was.
+     *
+     * <p>What is left of the drift is neither the tracker nor the statistic: it
+     * is that the recording does not hold one bar length (#187) and that the
+     * anchor is the grid's first downbeat (#233).
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
      * carry it alone: a grid narrower than the timing error trips over it, which
@@ -673,10 +686,19 @@ final class ChartLayout {
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
      * at, which is the grid's steady rate, 7.8% to 24.1% of changes are. That
-     * range was 12.0% to 32.9% before #196 and 11.3% to 24.1% before #200; the
-     * ends move because the axis moves under them, and the bottom end fell
-     * furthest at #200 because the recordings whose rate was worst are the ones
-     * whose bars were drifting most.
+     * range was 12.0% to 32.9% before #196 and 11.3% to 24.1% before #200.
+     *
+     * <p><b>How much a recording's cell moves is not how much its rate moved</b>,
+     * and a draft of this paragraph said it was. Chord gaps are whole multiples
+     * of the tracked interval, so the threshold this counts against sits on a
+     * mode of the distribution rather than between modes: a change of either sign
+     * flips a whole cohort of one-beat gaps across it at once, or flips none.
+     * At #200 the direction followed the sign -- a faster rate makes the counted
+     * beat shorter, so fewer gaps fall under it -- but the size followed how many
+     * gaps happened to lie between the old beat and the new one. Two of the five
+     * did not move at all, including the one whose rate moved <em>most</em>; and
+     * the recording that sets the range's new bottom end had the <em>smallest</em>
+     * rate correction of the five.
      *
      * <p>The whole of that difference is one constant bar length drifting
      * against a recording that does not keep one -- #187 and #233 -- and

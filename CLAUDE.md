@@ -53,14 +53,17 @@ now score between 15% and 99% of bars correct on the tracker's own downbeats.
 The chart's bar *rate* is fixed too (#200): it was the median tracked interval,
 which is not a rate and is quantised to the analysis hop, and it is now the mean
 of the intervals the tracker held steadily. Every benchmark's printed chart
-improved or held, the reference recording by fifteen points and one other by
-twelve.
+improved or held **on the root column**, the reference recording by fifteen
+points and one other by twelve. Not on `root+quality`, which fell a point or two
+on two of them — that column is dominated by #208 and its small movements do not
+mean much either way, which is exactly why the two are quoted separately.
 
 What is now top is what all three exposed, in order. The chart still hangs its
 whole bar axis on one downbeat, which on a lead-in is the least reliable beat
-there is (#233). Then: dominant sevenths are found on two of the five benchmarks
-and called plain triads on the other three (#208), and one benchmark's tempo is
-read at four thirds of its true rate (#231).
+there is (#233), and one constant bar length still cannot follow a recording
+that does not hold one (#187). Then: dominant sevenths are found on two of the
+five benchmarks and called plain triads on the other three (#208), and one
+benchmark's tempo is read at four thirds of its true rate (#231).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

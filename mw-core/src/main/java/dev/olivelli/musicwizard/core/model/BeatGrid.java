@@ -148,13 +148,30 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * Measured over the five tier-2 benchmarks against each recording's own
      * tempo -- taken from the lag its harmonic self-similarity peaks at, which
      * is a measurement of the music rather than of the tracker -- every
-     * half-width from 0.075 to 0.30 puts all four measurable ones inside 0.11%,
-     * and leaves the fifth within half a percent of its median. The plateau is
-     * four times wider than the distance from here to either edge, which is the
-     * evidence that this is not fitted to five files. Outside it the estimate
-     * does move: below about 0.05 the band starts excluding beats that really
-     * are beats, and above about 0.30 it starts admitting the mistracked
-     * stretch in {@code bossa-cm.mp3}.
+     * half-width from 0.075 to 0.30 puts all four measurable ones inside 0.13%,
+     * and moves the fifth by under 0.9% of its own median. <b>The plateau spans a
+     * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
+     * evidence that this is not fitted to five files. Swept at a step of 0.0025:
+     * the worst cell inside it is 0.128% on {@code gmajorblues.mp3} at 0.165, and
+     * {@code bossa-cm.mp3}'s largest excursion is +0.82% at 0.145.
+     *
+     * <p>Both edges have a mechanism rather than a fitted value, which is the
+     * other half of the same argument.
+     *
+     * <ul>
+     *   <li><b>Below 0.055 the band starts excluding beats that really are
+     *       beats.</b> A tracked pulse population is a few percent wide on its
+     *       own: at 0.05 {@code blues-shuffle-a-106bpm.mp3} keeps 494 of its 576
+     *       intervals and reads +0.56%, which is <em>worse than the median it
+     *       replaces</em> at +0.45%. One step up, at 0.055, it keeps 545 and
+     *       reads +0.07%.
+     *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
+     *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
+     *       (#231), so it carries a population of intervals about 4/3 of its
+     *       median -- 54 of its 501 sit between 1.30x and 1.36x -- and a band
+     *       reaching 1/3 lets them in: at 0.30 it is 0.17% from its median, at
+     *       0.325 it is 2.3% away and at 0.35 it is 3.4% away.
+     * </ul>
      */
     private static final double STEADY_BAND = 0.2;
 
