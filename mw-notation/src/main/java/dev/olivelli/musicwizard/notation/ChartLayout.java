@@ -685,8 +685,17 @@ final class ChartLayout {
      * five benchmarks is faster than a beat, and that is structural rather than
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
-     * at, which is the grid's steady rate, 7.8% to 24.1% of changes are. That
-     * range was 12.0% to 32.9% before #196 and 11.3% to 24.1% before #200.
+     * at, which is the grid's steady rate, <b>3.2% to 38.3%</b> of changes are,
+     * over the seven benchmarks there now are. Over the five there were when
+     * this paragraph was written it is 7.8% to 24.1%, and that range was 12.0%
+     * to 32.9% before #196 and 11.3% to 24.1% before #200.
+     *
+     * <p>The wider spread strengthens the argument rather than complicating it,
+     * and the outlier is worth knowing: {@code eb7-vamp-130.mp3}'s 38.3% is the
+     * file #242 is about, where at the correct bar rate the harmony's recurring
+     * mid-bar flip lands in the same place in all 167 bars. So the top of this
+     * range is a recording whose bars are <em>right</em>, which is precisely why
+     * "faster than the counted beat" cannot be read as chatter.
      *
      * <p><b>How much a recording's cell moves is not how much its rate moved</b>,
      * and a draft of this paragraph said it was. Chord gaps are whole multiples

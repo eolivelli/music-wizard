@@ -995,11 +995,15 @@ class ChordChartTest {
         // of the eight go.
         //
         // Declining to reduce a bar whose harmony moves faster than the counted
-        // beat would save this one, and it is not a clean rule -- 11.3% to 24.1%
-        // of changes on the five sample recordings are that fast against the beat
-        // their charts are spaced at, while none of them is against the tracked
-        // beat grid the estimator used. See ChartLayout.atHarmonicRhythm, and
-        // tools/score-chart.py, which reports both. So this is a stated cost
+        // beat would save this one, and it is not a clean rule -- 3.2% to 38.3%
+        // of changes on the seven sample recordings are that fast against the
+        // beat their charts are spaced at, while none of them is against the
+        // tracked beat grid the estimator used. See ChartLayout.atHarmonicRhythm,
+        // and tools/score-chart.py, which reports both.
+        //
+        // 11.3% to 24.1% until #200, which is the figure ChartLayout carried and
+        // this comment kept after that one was corrected -- the second reader of
+        // a moved value, found by the review check that exists for exactly it. So this is a stated cost
         // rather than a case to special-case. The model still holds all eight,
         // which the assertion above is on.
         assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
