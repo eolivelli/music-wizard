@@ -402,8 +402,11 @@ public final class PitchSpeller {
             }
         }
         if (best == Integer.MIN_VALUE) {
-            throw new IllegalStateException(
-                    "no spelling within two accidentals for pitch class " + pitchClass);
+            // Names the cap it was actually given, since it is a parameter: it
+            // read "within two accidentals" while the caller may have asked for
+            // one, which sends whoever reads it looking at the wrong table.
+            throw new IllegalStateException("no spelling within " + maxAccidentals
+                    + " accidentals for pitch class " + pitchClass);
         }
         return spellingOf(best, midiPitch).orElseThrow();
     }

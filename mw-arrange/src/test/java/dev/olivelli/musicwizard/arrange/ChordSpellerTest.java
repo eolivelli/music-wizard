@@ -44,6 +44,16 @@ import org.junit.jupiter.api.Test;
  */
 class ChordSpellerTest {
 
+    /**
+     * One tonic per pitch class, spelled the way a key of that name is written.
+     *
+     * <p>Not {@link #root}, whose sharps would make keys of C sharp major and
+     * D sharp major -- real enough on paper and written by nobody, and their
+     * chromatic windows run past what a single accidental can print.
+     */
+    private static final List<String> ALL_TONICS = List.of(
+            "C4", "Db4", "D4", "Eb4", "E4", "F4", "F#4", "G4", "Ab4", "A4", "Bb4", "B4");
+
     @Nested
     @DisplayName("the region the piece lives in")
     class TheRegion {
@@ -170,11 +180,12 @@ class ChordSpellerTest {
         }
 
         @Test
-        @DisplayName("a detected key breaks a tie the roots cannot, and no more than that")
-        void aDetectedKeyBreaksTies() {
-            // F# C# G#m D# and Gb Db Abm Eb are the same distance from their own
-            // regions and carry four accidentals either way, so nothing in the
-            // roots can choose; a written six-sharp signature can.
+        @DisplayName("a detected key decides what the roots alone cannot")
+        void aDetectedKeyDecides() {
+            // F# C# G#m D# and Gb Db Abm Eb carry four accidentals either way
+            // and are the same distance from their own regions, so nothing in
+            // the roots can choose and the scan takes the flat. A written
+            // six-sharp signature says which piece this is.
             ChordProgression tied = progression(
                     major("F#4"), major("C#4"), minor("G#4"), major("D#4"));
             Key fSharpMajor = Key.ofSeconds(PitchSpelling.parse("F#4"), Mode.MAJOR,
@@ -187,21 +198,70 @@ class ChordSpellerTest {
         }
 
         @Test
-        @DisplayName("a key does not override roots that have already decided")
-        void aDetectedKeyDoesNotOverrideTheRoots() {
-            // The other half, and the reason the key is ranked last. A minor's
-            // leading-tone chord is a G# triad and no single region holds it:
-            // ranked first, the key printed Abdim under a header reading "A
-            // minor". The roots themselves get it right, key or no key.
-            ChordProgression harmonicMinor = progression(
-                    minor("A4"), minor("D4"), major("E4"), diminished("G#4"));
+        @DisplayName("a key's raised fourth is sharp, whether the key is major or minor")
+        void aKeyIsReadFromItsTonicRatherThanItsSignature() {
+            // Both halves of round 2's finding, and of round 1's before it. A
+            // chart of D, G and A has its roots centred a fifth flat of D, so
+            // counting alone writes a passing G# diminished as Abdim -- under a
+            // header reading "D major". Measuring from the signature instead of
+            // the tonic does the same to A minor, whose leading-tone chord is
+            // also a G# and whose signature is C major's.
+            Key dMajor = Key.ofSeconds(PitchSpelling.parse("D4"), Mode.MAJOR,
+                    0, 8, Confidence.of(0.9));
             Key aMinor = Key.ofSeconds(PitchSpelling.parse("A3"), Mode.MINOR,
                     0, 8, Confidence.of(0.9));
 
-            assertThat(symbols(ChordSpeller.respell(harmonicMinor, Optional.empty())))
+            ChordProgression inD = progression(
+                    major("D4"), major("G4"), major("A4"), diminished("G#4"));
+            assertThat(symbols(ChordSpeller.respell(inD, Optional.of(dMajor))))
+                    .containsExactly("D", "G", "A", "G#dim");
+
+            ChordProgression inAMinor = progression(
+                    minor("A4"), minor("D4"), major("E4"), diminished("G#4"));
+            assertThat(symbols(ChordSpeller.respell(inAMinor, Optional.of(aMinor))))
                     .containsExactly("Am", "Dm", "E", "G#dim");
-            assertThat(symbols(ChordSpeller.respell(harmonicMinor, Optional.of(aMinor))))
+            // And the count, which has no tonic to measure from, happens to get
+            // this one right on its own -- it is the sparse chart above that it
+            // cannot.
+            assertThat(symbols(ChordSpeller.respell(inAMinor, Optional.empty())))
                     .containsExactly("Am", "Dm", "E", "G#dim");
+        }
+
+        @Test
+        @DisplayName("every key writes its roots within five flat and six sharp of its tonic")
+        void everyKeySpellsTheWholeChromaticWindow() {
+            // The window TONIC_TO_ROOT_CENTRE is the middle of: the Neapolitan
+            // five fifths flat of the tonic, the six diatonic degrees, and the
+            // raised fourth six sharp. Twelve consecutive positions, one per
+            // pitch class -- so this asserts the design rather than a table of
+            // expected names, and it holds for a minor key only because the
+            // centre is measured from the tonic and not from the signature.
+            //
+            // Every degree is checked in every key. The full chromatic window is
+            // checked only where the window itself is printable within one
+            // accidental, which runs from E flat major to F sharp major: beyond
+            // that the window asks for a double, the cap refuses, and the answer
+            // is the nearest printable spelling instead -- the Neapolitan of D
+            // flat major is a D natural rather than an E double flat, which is
+            // what a chart writes anyway.
+            for (String tonic : ALL_TONICS) {
+                for (Mode mode : Mode.values()) {
+                    Key key = Key.ofSeconds(PitchSpelling.parse(tonic), mode,
+                            0, 8, Confidence.of(0.9));
+                    int home = fifths(key.tonic());
+                    boolean windowIsPrintable = home >= -3 && home <= 6;
+                    int from = windowIsPrintable ? home - 5 : home - 1;
+                    int to = windowIsPrintable ? home + 6 : home + 5;
+                    for (int degree = from; degree <= to; degree++) {
+                        Chord written = ChordSpeller.respell(
+                                progression(major(root(Math.floorMod(degree * 7, 12)))),
+                                Optional.of(key)).chords().get(0);
+                        assertThat(fifths(written.root()))
+                                .as("%s in %s", written.symbol(), key.displayName())
+                                .isEqualTo(degree);
+                    }
+                }
+            }
         }
 
         @Test
@@ -390,6 +450,18 @@ class ChordSpellerTest {
     private static Chord diminished(String root) {
         return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.DIMINISHED,
                 0, 1, Confidence.of(0.8));
+    }
+
+    /**
+     * Where a written pitch sits on the line of fifths, C being zero.
+     *
+     * <p>The test's own copy on purpose: asserting a property of the answer
+     * against the same table that produced it would assert nothing.
+     */
+    private static int fifths(PitchSpelling written) {
+        int[] letterFifths = {0, 2, 4, -1, 1, 3, 5};
+        return letterFifths[written.letter().diatonicStep()]
+                + 7 * written.accidental().alteration();
     }
 
     /** A root a number of semitones above C4, spelled the way the estimator does. */

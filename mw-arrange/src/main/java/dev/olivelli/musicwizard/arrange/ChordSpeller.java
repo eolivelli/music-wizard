@@ -22,6 +22,7 @@ import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,16 +39,20 @@ import java.util.Optional;
  *
  * <h2>The rule</h2>
  *
- * <p>Every root is written from one <b>region</b> of the line of fifths, and the
- * region is chosen so that the roots the piece actually contains are, in order:
- * closest to it, then cheapest in accidentals. Distance first, because counting
- * accidentals does not decide the case this exists for -- A sharp and B flat each
- * carry one accidental, as do D sharp and E flat, so the sharp chart above and the
- * flat one tie at two -- and what separates them is that {@code Bb F G Eb} occupies
- * four steps of the line of fifths where {@code A# F G D#} occupies eleven.
- * Accidentals second, because distance alone leaves real ties: B major and C flat
- * major are the same distance from their own regions, and only the count says that
- * one needs two accidentals and the other eight.
+ * <p>Every root is written from one <b>region</b> of the line of fifths. When the
+ * score carries a key, the region is the key's, half a fifth sharp of its tonic
+ * -- see {@link #TONIC_TO_ROOT_CENTRE}, which is the middle of the window a
+ * chart's roots occupy rather than a fitted number.
+ *
+ * <p>When it does not, which is every score the audio path produces, the region
+ * is counted from the roots themselves: fewest accidentals first, which is the
+ * criterion #227 asks for with naturals free, and then least spread on the line
+ * of fifths. The count alone does not decide the case this exists for -- A sharp
+ * and B flat each carry one accidental, as do D sharp and E flat, so the sharp
+ * chart above and the flat one tie at two -- and the spread is what separates
+ * them: {@code Bb F G Eb} occupies four steps where {@code A# F G D#} occupies
+ * eleven. Ranking the two the other way round is wrong, and only a run showed it;
+ * see {@link #cheapestRegion}.
  *
  * <p>No root is ever written with a double accidental. A note on a staff may need
  * one and reads as one, because the key signature and its neighbours say what it
@@ -60,14 +65,6 @@ import java.util.Optional;
  * the flat wins -- which is why an A major chart prints its Neapolitan as
  * {@code Bb} rather than {@code A#}, and that is the spelling a reader wants.
  *
- * <p>Nothing here detects a key, and it does not need to: a key and its relative
- * minor share a region. A detected key is consulted only to break a tie the roots
- * themselves cannot -- {@code F# C# G#m D#} costs the same and the same four
- * accidentals as {@code Gb Db Abm Eb}, and a written six-sharp signature settles
- * it. It is deliberately not allowed to override the count: a key's own region
- * cannot express a raised leading tone, so ranking it first printed the {@code
- * G#dim} of A minor as {@code Abdim} under a header reading "A minor".
- *
  * <h2>What is left alone</h2>
  *
  * <p>A no-chord span carries a placeholder root that means nothing, so it is
@@ -79,6 +76,13 @@ import java.util.Optional;
  * to a sharp one is written from wherever the count lands, which is #228. That is
  * the same simplification the chart header already makes in naming one key and
  * one meter, and it is a great deal closer than a fixed table of sharps.
+ *
+ * <p>And with no key, the count finds where the roots sit rather than where the
+ * music's home is, which are half a fifth apart for a full chart and further for
+ * a sparse one. A chromatic root exactly six fifths from the counted region is
+ * then a coin toss that lands flat -- {@code C F G} plus an {@code F#7} prints
+ * {@code Gb7}, where the same chart with an {@code Am} in it prints {@code F#7}.
+ * That is #230, and it is why a key is preferred to the count outright.
  */
 public final class ChordSpeller {
 
@@ -89,6 +93,30 @@ public final class ChordSpeller {
      * symbol has no key signature and no neighbours to be read against.
      */
     private static final int MAX_SYMBOL_ACCIDENTALS = 1;
+
+    /**
+     * How far sharp of a key's tonic the roots a chart uses are centred.
+     *
+     * <p>Not a fitted constant: it is the middle of the window those roots
+     * occupy. Write the tonic at 0 on the line of fifths, and a chart's roots run
+     * from the Neapolitan at -5, through the six diatonic degrees at -1 to +5, to
+     * the raised fourth at +6 -- twelve consecutive positions, one per pitch
+     * class, whose midpoint is +0.5. Spelling every root from there is exactly
+     * what makes a chromatic root come out as the degree a reader expects: in C
+     * major the flat second is D flat and the raised fourth is F sharp, and in D
+     * major the raised fourth is G sharp rather than the A flat that a centre
+     * over the tonic would give.
+     *
+     * <p>It is measured from the <em>tonic</em> and not from the key signature,
+     * which is what makes it hold for a minor key without a second constant. A
+     * minor key's window is the same twelve positions about its own tonic -- the
+     * Neapolitan of A minor is B flat and its leading-tone chord is G sharp minus
+     * nothing -- and its tonic sits three fifths sharp of where its signature
+     * would put a major one. Round 1 of review found the version that measured
+     * from the signature spelling {@code G#dim} as {@code Abdim} in a chart
+     * headed "A minor", and that is the missing three.
+     */
+    private static final double TONIC_TO_ROOT_CENTRE = 0.5;
 
     private ChordSpeller() {
     }
@@ -138,13 +166,23 @@ public final class ChordSpeller {
     /**
      * The region the whole progression is written from.
      *
-     * <p>Priced from the pitches this will actually write from the region, which
-     * is every root and every bass that is not a tone of its own chord; a bass
-     * that <em>is</em> one is written from its chord instead, so it says nothing
-     * about where the piece sits. A no-chord span's placeholder root is not
-     * priced either.
+     * <p>A detected key answers it outright, from its tonic -- see
+     * {@link #TONIC_TO_ROOT_CENTRE}. A written key signature is the only thing in
+     * a score that says where the music's <em>home</em> is, and the count below
+     * cannot recover it: a chart of D, G and A has its roots centred a fifth flat
+     * of its own tonic, which is what made a passing {@code G#dim} come out as
+     * {@code Abdim}.
+     *
+     * <p>Otherwise it is counted. Priced from the pitches this will actually
+     * write from the region, which is every root and every bass that is not a
+     * tone of its own chord; a bass that <em>is</em> one is written from its
+     * chord instead, so it says nothing about where the piece sits. A no-chord
+     * span's placeholder root is not priced either.
      */
     private static double region(ChordProgression chords, Optional<Key> key) {
+        if (key.isPresent()) {
+            return PitchSpeller.fifthsOf(key.get().tonic()) + TONIC_TO_ROOT_CENTRE;
+        }
         List<Integer> sounding = new ArrayList<>();
         for (Chord chord : chords.chords()) {
             if (chord.isNoChord()) {
@@ -154,7 +192,7 @@ public final class ChordSpeller {
             chord.bass().filter(bass -> !isChordTone(bass, chord))
                     .ifPresent(bass -> price(bass, sounding));
         }
-        return sounding.isEmpty() ? 0 : cheapestRegion(sounding, key);
+        return sounding.isEmpty() ? 0 : cheapestRegion(sounding);
     }
 
     /**
@@ -186,6 +224,11 @@ public final class ChordSpeller {
      * thirty-five candidates against a handful of roots -- cheaper than the
      * closed form would be worth.
      *
+     * <p>What it finds is where the roots <em>sit</em>, which is not quite where
+     * the music's home is: a chart of D, G and A centres a fifth flat of D. That
+     * is why a detected key is preferred outright and this is the fallback, and
+     * it is the residue behind #230.
+     *
      * <p><b>Accidentals first</b>, summed over every answer: the criterion #227
      * asks for, with naturals free. Each root counts once per span it sounds in,
      * so a chart that sits on B flat for two minutes weighs more than one
@@ -203,17 +246,14 @@ public final class ChordSpeller {
      * back as {@code G# D# E#m C#} -- four accidentals bought to save two steps,
      * including an E sharp minor that no chart of anything writes.
      *
-     * <p><b>Then a detected key</b>, if there is one, by whether the region falls
-     * on the same side of natural as its signature; and last the region nearest
-     * natural, so that the answer cannot depend on the order of the scan. The key
-     * comes in here rather than deciding outright because it is the only thing
-     * that can settle a genuine enharmonic tie -- {@code F# C# G#m D#} and
-     * {@code Gb Db Abm Eb} carry four accidentals either way and are the same
-     * distance from their own regions -- while ranking it first spelled the
-     * {@code G#dim} of A minor as {@code Abdim}, since no single region can hold
-     * a raised leading tone.
+     * <p><b>Then the region nearest natural</b>, which decides between a region
+     * and the same one a whole turn of the circle away. That leaves one thing
+     * undecided, and deliberately: a region and its mirror -- +6 and -6 -- tie on
+     * every rank, and the scan runs flat to sharp and compares strictly, so the
+     * flat one wins. F sharp major and G flat major are the same music and one of
+     * them has to be printed.
      */
-    private static int cheapestRegion(List<Integer> sounding, Optional<Key> key) {
+    private static int cheapestRegion(List<Integer> sounding) {
         int best = 0;
         int[] bestRank = null;
         for (int region = PitchSpeller.MIN_FIFTHS; region <= PitchSpeller.MAX_FIFTHS; region++) {
@@ -225,34 +265,13 @@ public final class ChordSpeller {
                 accidentals += Math.abs(written.accidental().alteration());
                 distance += Math.abs(PitchSpeller.fifthsOf(written) - region);
             }
-            int[] rank = {accidentals, distance, disagreesWithKey(region, key),
-                    Math.abs(region)};
-            // Scanned flat to sharp and compared strictly, so a region that ties
-            // on all four keeps the flatter one -- the same tie-break
-            // PitchSpeller applies to a single pitch.
-            if (bestRank == null || java.util.Arrays.compare(rank, bestRank) < 0) {
+            int[] rank = {accidentals, distance, Math.abs(region)};
+            if (bestRank == null || Arrays.compare(rank, bestRank) < 0) {
                 bestRank = rank;
                 best = region;
             }
         }
         return best;
-    }
-
-    /**
-     * Zero if a region is written the way the key signature is, one otherwise.
-     *
-     * <p>Compared by sign, not by value, because that is all this is asked to
-     * settle: whether a piece a signature says is sharp should be written from
-     * the sharp end when the roots alone cannot say. A key of C, whose signature
-     * is neither, agrees with nothing and leaves the decision to the tie-break
-     * below it.
-     */
-    private static int disagreesWithKey(int region, Optional<Key> key) {
-        if (key.isEmpty()) {
-            return 0;
-        }
-        return Integer.signum(region) == Integer.signum(key.get().keySignatureAccidentals())
-                ? 0 : 1;
     }
 
     /** One chord, rewritten from the region; a no-chord span passes through. */
@@ -285,6 +304,14 @@ public final class ChordSpeller {
      * and no bass: the new root because the bass must agree with what will be
      * printed beside it, and no bass because {@code asChordTone} honours a
      * written one, which is exactly the spelling being replaced.
+     *
+     * <p>There is a third case under the second, and round 2 of review found the
+     * javadoc claiming two. A chord tone whose derived spelling needs more than
+     * one accidental -- the third of C sharp diminished written from a C flat
+     * root would be an A double flat -- is unprintable as a symbol, so it falls
+     * back to the region like a foreign bass. It is rare enough that no fixture
+     * reached it before the reviewer built one, and the fallback is the same
+     * answer {@code asChordTone} itself gives when a tone needs a triple.
      */
     private static PitchSpelling rewriteBass(PitchSpelling written, Chord chord,
                                              PitchSpelling root, double region) {
