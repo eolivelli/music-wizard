@@ -491,8 +491,9 @@ final class RenderCommand implements Callable<Integer> {
         if (moments.size() > MOMENTS_LISTED) {
             named += ", and " + (moments.size() - MOMENTS_LISTED) + " more";
         }
-        // Locale.ROOT, for the same reason StaffNotation's tempo mark carries it
-        // and LilyPondRenderer.speakEnglish exists one process out: %d is
+        // Locale.ROOT, for the same reason the engraved tempo mark carries it
+        // -- mw-notation's TempoMark -- and LilyPondRenderer.speakEnglish
+        // exists one process out: %d is
         // localised, so on an ar_EG machine this sentence read "LilyPond
         // reported ١٠ failed bar checks" with the rest of it in English.
         return Optional.of(String.format(Locale.ROOT,

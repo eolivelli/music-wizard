@@ -56,17 +56,7 @@ public final class ChordChart {
         }
 
         List<ChartLayout.Bar> bars = ChartLayout.of(score);
-        // The meter of the chart's own first bar, not the piece's. They differ
-        // only when the harmony starts after a meter change, and then it is the
-        // header that is wrong: it would name a meter no bar of the chart is in,
-        // and -- because tempoLine reads the same meter to decide whether the
-        // counted beat is a quarter -- hand a 6/8 chart a metronome mark 50%
-        // fast, which is the failure tempoLine exists to prevent, arriving by
-        // the other door. Round 2 of review found that; the header still names
-        // one meter where a chart can hold several, which is #191.
-        TimeSignature meter = bars.isEmpty()
-                ? score.tempoMap().initialTimeSignature()
-                : bars.get(0).meter();
+        TimeSignature meter = countedIn(score, bars);
         out.append(tempoLine(score, meter));
         out.append("Meter  ").append(meter).append('\n');
         score.primaryKey().ifPresent(key -> out.append("Key    ")
@@ -80,6 +70,26 @@ public final class ChordChart {
     }
 
     /**
+     * The meter the chart is read in: its own first bar's, not the piece's.
+     *
+     * <p>The two differ only when the harmony starts after a meter change, and
+     * then it is the piece's that is wrong: it would name a meter no bar of the
+     * chart is in, and -- because the tempo is counted in this same meter --
+     * hand a 6/8 chart a metronome mark 50% fast, which is the failure the
+     * counted beat exists to prevent, arriving by the other door. Round 2 of
+     * review found that on the text chart; it is answered here rather than
+     * there because the engraving now needs the same answer, and a second copy
+     * of the rule is a second chance for the two charts of one score to be
+     * counted differently. The header still names one meter where a chart can
+     * hold several, which is #191.
+     */
+    private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
+        return bars.isEmpty()
+                ? score.tempoMap().initialTimeSignature()
+                : bars.get(0).meter();
+    }
+
+    /**
      * The tempo, in the beat the reader counts.
      *
      * <p>The map stores quarter notes per minute. Printed unqualified next to a
@@ -90,9 +100,14 @@ public final class ChordChart {
     private static String tempoLine(Score score, TimeSignature meter) {
         double quarterBpm = score.estimatedTempo();
         // Locale.ROOT, because this number is meant to be typed back in via
-        // --tempo and picocli parses it with Double.valueOf. Under fr_FR the
-        // chart would print "120,0", which that rejects; under ar_EG it would
-        // print Arabic-Indic digits.
+        // --tempo and picocli parses it with Double.valueOf. What a default
+        // locale changes here is the digits and not the separator: %.0f prints
+        // no fractional part, so no decimal comma can arise from it, but under
+        // ar_EG it prints Arabic-Indic digits, which Double.valueOf rejects.
+        // Round 2 of review on #216 found this comment claiming the comma --
+        // AnalyzeCommand prints the same tempo with %.1f, where it is real, and
+        // the sentence had been carried across to a formatter that cannot
+        // reach it.
         if (meter.beatUnitQuarters() == 1.0) {
             return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
         }
@@ -151,6 +166,12 @@ public final class ChordChart {
      *
      * <p>Emitted directly from the model rather than by converting MusicXML,
      * which loses information on the way through.
+     *
+     * <p>The page carries what the text chart's first three lines carry: the
+     * title, the artist and how fast it goes. A chart is printed to be handed
+     * to somebody, and one headed {@code Untitled} with no tempo asks them to
+     * remember which recording it came from and to find the tempo by ear --
+     * which is #216, observed on the first real commercial recording tried.
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
@@ -175,6 +196,11 @@ public final class ChordChart {
         // "| C | % | % |" -- the same disagreement between the two outputs that
         // deciding the bars twice used to produce.
         out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
+        // Outside \chordmode, which is where a mark belongs that is not a chord:
+        // inside it, every line of the block is a bar whose durations have to
+        // sum to the meter, and this one has no duration at all.
+        TempoMark.of(score, countedIn(score, bars))
+                .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 
         for (ChartLayout.Bar bar : bars) {

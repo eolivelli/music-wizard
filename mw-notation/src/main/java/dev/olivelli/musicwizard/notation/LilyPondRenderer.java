@@ -182,8 +182,8 @@ public final class LilyPondRenderer {
      * <p>The cost is that a non-English user sees LilyPond's own complaints in
      * English. That is the trade: this project embeds those lines in its own
      * English messages anyway, and a tool whose behaviour depends on the
-     * machine's locale is the same defect {@link StaffNotation}'s
-     * {@code Locale.ROOT} tempo mark exists to prevent, one process out.
+     * machine's locale is the same defect {@link TempoMark}'s
+     * {@code Locale.ROOT} exists to prevent, one process out.
      *
      * <p>Package-private so it can be tested against a {@link ProcessBuilder}
      * whose environment has been poisoned first. Testing it through the ambient

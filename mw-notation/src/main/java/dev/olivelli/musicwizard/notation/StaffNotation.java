@@ -24,7 +24,6 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -197,11 +196,11 @@ public final class StaffNotation {
 
         @Override
         public void tempo(NoteValue unit, long perMinute) {
-            // Locale.ROOT: a LilyPond integer is not a localised number, and
-            // under fr_FR this would emit a decimal comma LilyPond rejects.
-            out.append(String.format(Locale.ROOT, "    \\tempo %s = %d%n",
-                            unit.lilyPondToken(), perMinute)
-                    .replace(System.lineSeparator(), "\n"));
+            // Written by TempoMark, which is also where the chart's mark comes
+            // from: the figure is an estimate and says so, and one page saying
+            // "ca." while the other does not would be the same fact stated two
+            // ways.
+            out.append("    ").append(new TempoMark(unit, perMinute).lilyPond()).append('\n');
         }
 
         @Override

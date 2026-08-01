@@ -40,6 +40,7 @@ import org.audiveris.proxymusic.Clef;
 import org.audiveris.proxymusic.ClefSign;
 import org.audiveris.proxymusic.Direction;
 import org.audiveris.proxymusic.DirectionType;
+import org.audiveris.proxymusic.FormattedTextId;
 import org.audiveris.proxymusic.Identification;
 import org.audiveris.proxymusic.Metronome;
 import org.audiveris.proxymusic.Notations;
@@ -501,6 +502,19 @@ public final class MusicXmlExport {
             DirectionType directionType = factory.createDirectionType();
             directionType.setMetronome(metronome);
             Direction direction = factory.createDirection();
+            // The qualifier first, as its own direction-type, which is how
+            // MusicXML spells a word standing next to a metronome mark. It is
+            // the same word LilyPond prints, from the same constant: this file
+            // and the .ly are two spellings of one page, and a reader that
+            // engraves this one -- MuseScore draws a metronome as a note and a
+            // number -- would otherwise state as exact the figure the PDF marks
+            // as an estimate. Round 1 of review found the two goldens of one
+            // fixture already disagreeing about it.
+            DirectionType qualifier = factory.createDirectionType();
+            FormattedTextId words = factory.createFormattedTextId();
+            words.setValue(TempoMark.ESTIMATE);
+            qualifier.getWordsOrSymbol().add(words);
+            direction.getDirectionType().add(qualifier);
             direction.getDirectionType().add(directionType);
             direction.setPlacement(org.audiveris.proxymusic.AboveBelow.ABOVE);
 

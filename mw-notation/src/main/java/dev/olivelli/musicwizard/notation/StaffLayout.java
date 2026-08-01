@@ -692,17 +692,14 @@ final class StaffLayout {
      * two exports of such a score disagree — which is #154, and is deliberately
      * not fixed here because the answer needs a rule for how many marks a
      * beat-tracked map should produce, not just a loop.
+     *
+     * <p>Which unit and which figure is {@link TempoMark}'s answer rather than
+     * this method's, because the chart engraves a mark too and the two must not
+     * be able to count the same score differently.
      */
     private static void writeTempo(StaffWriter writer, Score score, TimeSignature meter) {
-        Optional<NoteValue> unit = LilyPondDuration.valueOf(meter.beatUnitQuarters());
-        if (unit.isEmpty()) {
-            return;
-        }
-        double counted = meter.countedTempo(score.estimatedTempo());
-        if (!Double.isFinite(counted) || counted < 1) {
-            return;
-        }
-        writer.tempo(unit.get(), Math.round(counted));
+        TempoMark.of(score, meter)
+                .ifPresent(mark -> writer.tempo(mark.unit(), mark.perMinute()));
     }
 
     /**
