@@ -4,7 +4,8 @@ Generate sheet music from a recording. Give it an MP3 and it works out the
 melody, the bass line, the chords and the lyrics, then engraves a PDF for each
 part — plus a simplified two-hand piano arrangement.
 
-Java 25, Maven, Apache-2.0. Command line for now; a web UI later.
+Built on JDK 25, targeting Java 21 bytecode; Maven, Apache-2.0. Command line
+for now; a web UI later.
 
 > **Status: early, but it runs.** Give it an MP3 or WAV and it will find the
 > beats, estimate the chords, and engrave a chord chart as a PDF. Melody, bass,
@@ -98,7 +99,9 @@ progression known to be right rather than one that is half right.
 
 ## Installing
 
-Requires **JDK 25**. For PDF output you also need
+Building requires **JDK 25**; the jar it produces is Java 21 bytecode and runs
+on **JDK 21 or newer**, which is what lets an Android build link the same
+modules. For PDF output you also need
 [LilyPond](https://lilypond.org) on your `PATH`:
 
 ```sh
