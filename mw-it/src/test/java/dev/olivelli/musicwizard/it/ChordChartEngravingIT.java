@@ -364,9 +364,13 @@ class ChordChartEngravingIT {
         // text in ChordChartTest. Counted from the bar checks the emitter wrote,
         // which catches a bar line lost against a bar kept and nothing more:
         // both sides come from the same text, so a bar dropped in ChartLayout
-        // takes its bar line with it and this still passes. What guards that is
-        // ChordChartTest.theTextAndTheEngravingCountTheSameBars, where the two
-        // sides are two different renderings of one score.
+        // takes its bar line with it and this still passes. Round 4 of review
+        // dropped ChartLayout's last bar and measured which tests noticed --
+        // not this one, and not the two-outputs comparison either, since both
+        // its sides read one layout. The ones that fail are the ones asserting
+        // what is in which bar against an expectation formed outside the
+        // layout, ChordChartTest.printsOneChordPerBar and
+        // theBarLinesFollowTheGridsDownbeats among them.
         long bars = probed(score).lines().filter(line -> line.strip().endsWith("|")).count();
         assertThat(heights).as("%s", result.output()).hasSize((int) bars);
         assertEngravedCleanly(name, result);
@@ -390,10 +394,10 @@ class ChordChartEngravingIT {
         // sheet, where the chord names are gone. LilyPond exits zero and says
         // nothing about it, so assertEngravedCleanly cannot be the guard.
         //
-        // No fixture here is anywhere near the limit -- a bar needs roughly
-        // thirteen chords in it, where the widest bar of any real recording in
-        // samples/ holds four -- so this passes today and is here to fail when
-        // a future ChartLayout change makes a chart clip.
+        // No fixture here is anywhere near the limit -- a bar has to hold far
+        // more chords than any real recording tried has put in one, and how
+        // many depends on how wide their names are -- so this passes today and
+        // is here to fail when a future ChartLayout change makes a chart clip.
         List<Double> overruns = systemOverruns(result.output());
         assertThat(overruns).as("%s", result.output()).isNotEmpty();
         // A hair of tolerance, not a threshold: a system that fills its line
