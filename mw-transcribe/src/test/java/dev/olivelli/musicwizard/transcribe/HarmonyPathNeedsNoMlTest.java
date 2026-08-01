@@ -119,12 +119,10 @@ class HarmonyPathNeedsNoMlTest {
                 .hasSizeGreaterThan(8);
         assertThat(score.chords().isEmpty()).as("chord progression is empty").isFalse();
         assertThat(score.estimatedTempo()).as("tempo").isGreaterThan(0.0);
-        // The transcriber narrated its way through, which is not what excludes
-        // the too-short-to-track bail-out -- that path emits messages too, and
-        // round 1 of review caught this comment claiming otherwise. The
-        // assertions above exclude it: Score.empty carries no beat grid and no
-        // chords, so either of those two would fail on it. This one says the
-        // stages the app's progress line reads are really produced.
+        // The too-short-to-track bail-out narrates its way through as well, so
+        // this assertion is not what excludes it; the ones above are, because
+        // Score.empty carries neither a beat grid nor chords. What this one
+        // buys is that the stages the app's progress line reads are produced.
         assertThat(stages).as("progress messages").isNotEmpty();
     }
 
@@ -145,15 +143,15 @@ class HarmonyPathNeedsNoMlTest {
     @Test
     @DisplayName("the pom reader refuses a pom that is not this module's")
     void theReaderCannotBeFooledByTheReactorRootPom() {
-        // Round 1's finding, kept as a test rather than as a promise. The
-        // reader used to resolve pom.xml against basedir and fall back to the
-        // working directory; Maven always sets basedir, so the build was never
-        // wrong, but the reactor root pom also carries a top-level
-        // <dependencies> block and it contains no mw-ml. Launched from the
-        // repository root -- an IDE, an ad-hoc `java -cp` -- the check read the
-        // parent, saw a non-empty list with no mw-ml in it, and passed having
-        // verified nothing at all. Both anti-vacuity guards fell to the same
-        // wrong file, so identity is now asserted from the pom's own contents.
+        // Why the reader demands basedir and checks the document's own
+        // artifactId, rather than trusting the file it was handed: the reactor
+        // root pom carries a top-level <dependencies> block that is non-empty
+        // and holds no mw-ml, which is exactly the shape that satisfies both
+        // anti-vacuity guards while verifying nothing at all. A reader that
+        // fell back to the working directory would read it from the repository
+        // root and pass. That shape is asserted here rather than assumed, so
+        // the day the root pom loses its dependencies this test says so instead
+        // of quietly guarding less.
         Path reactorRoot = thisModulesPom().getParent().getParent().resolve("pom.xml");
         assertThat(reactorRoot).as("the reactor root pom").isRegularFile();
         assertThat(declaredDependenciesOf(reactorRoot, "music-wizard"))
