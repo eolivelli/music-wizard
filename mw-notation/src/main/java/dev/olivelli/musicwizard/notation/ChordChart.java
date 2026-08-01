@@ -100,9 +100,14 @@ public final class ChordChart {
     private static String tempoLine(Score score, TimeSignature meter) {
         double quarterBpm = score.estimatedTempo();
         // Locale.ROOT, because this number is meant to be typed back in via
-        // --tempo and picocli parses it with Double.valueOf. Under fr_FR the
-        // chart would print "120,0", which that rejects; under ar_EG it would
-        // print Arabic-Indic digits.
+        // --tempo and picocli parses it with Double.valueOf. What a default
+        // locale changes here is the digits and not the separator: %.0f prints
+        // no fractional part, so no decimal comma can arise from it, but under
+        // ar_EG it prints Arabic-Indic digits, which Double.valueOf rejects.
+        // Round 2 of review on #216 found this comment claiming the comma --
+        // AnalyzeCommand prints the same tempo with %.1f, where it is real, and
+        // the sentence had been carried across to a formatter that cannot
+        // reach it.
         if (meter.beatUnitQuarters() == 1.0) {
             return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
         }

@@ -120,9 +120,11 @@ record TempoMark(NoteValue unit, long perMinute) {
         // Locale.ROOT because the digits are the hazard, not a decimal
         // separator: the count is a long and %d never writes one. What a
         // default locale does write is its own numbering system, so this emits
-        // "١٥٩" under ar-EG and hands LilyPond a count it cannot parse. The
-        // text chart's tempo line carries a comment about the other half of the
-        // same trap, which its %.0f really can reach.
+        // Arabic-Indic digits under ar-EG and hands LilyPond a count it cannot
+        // parse. The text chart's tempo line has the same hazard for the same
+        // reason -- its %.0f prints no fractional part either. A decimal comma
+        // is a third way to lose such a number and is reachable only where a
+        // fractional digit is printed, which is AnalyzeCommand's %.1f.
         return String.format(Locale.ROOT, "\\tempo \\markup { \\italic \"%s\" } %s = %d",
                 ESTIMATE, unit.lilyPondToken(), perMinute);
     }

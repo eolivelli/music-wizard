@@ -567,9 +567,13 @@ class ChordChartTest {
     @Test
     @DisplayName("prints a tempo the user can type back in, in any locale")
     void tempoLineIsLocaleIndependent() {
-        // picocli parses --tempo with Double.valueOf, which rejects "120,0". A
-        // chart printed under fr_FR used to hand the user a number their own
-        // tool would not accept, and under ar_EG one in Arabic-Indic digits.
+        // The chart's tempo is meant to be typed back into --tempo, which
+        // picocli parses with Double.valueOf. ar_EG is the locale that
+        // discriminates: it prints the figure in Arabic-Indic digits, which
+        // that rejects. The other two are guards rather than reproductions --
+        // %.0f prints no fractional part, so the decimal comma this comment
+        // used to blame fr_FR for cannot arise from this formatter, and a
+        // later edit to %.1f would put it back within reach.
         Locale original = Locale.getDefault();
         try {
             for (Locale locale : List.of(Locale.forLanguageTag("fr-FR"),
