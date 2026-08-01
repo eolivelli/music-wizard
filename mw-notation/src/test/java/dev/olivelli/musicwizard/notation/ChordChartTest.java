@@ -1390,4 +1390,59 @@ class ChordChartTest {
                 .contains("title = \"Untitled\"")
                 .doesNotContain("composer");
     }
+
+    // ---------------------------------------------------------------- #217 --
+
+    @Test
+    @DisplayName("the ChordNames context is given the engraver that draws bar lines")
+    void theEngravingDrawsItsBarLines() {
+        // ChordNames has no Bar_engraver of its own, so the | closing every bar
+        // was only a check: the page was one uninterrupted row of chord names,
+        // on which nothing distinguishes "| C G | Am |" from "| C | G | Am |".
+        // The two are not the same page -- a half-note bar is spaced more
+        // tightly than two whole-note bars, so the names land differently --
+        // but nothing on either says where a bar ends, which is the reading a
+        // chart exists to give.
+        assertThat(ChordChart.toLilyPond(fourChordSong(2)))
+                .contains("\\consists \"Bar_engraver\"");
+    }
+
+    @Test
+    @DisplayName("the bar lines are given a height, which the engraver alone does not")
+    void theBarLinesAreGivenAHeight() {
+        // A bar line is drawn the height of its staff and ChordNames has no
+        // staff, so the engraver on its own emits lines of empty vertical
+        // extent -- in the score, invisible on the page, which reads exactly
+        // like not having asked for them. ChordChartEngravingIT reads the
+        // heights back out of LilyPond; this only says the request is made.
+        assertThat(ChordChart.toLilyPond(fourChordSong(2)))
+                .contains("\\override BarLine.bar-extent = #'(-2 . 2)");
+    }
+
+    @Test
+    @DisplayName("the chart ends with a final bar line, as the staff parts do")
+    void theChartClosesWithAFinalBarLine() {
+        String source = ChordChart.toLilyPond(fourChordSong(1));
+
+        assertThat(source).contains("\\bar \"|.\"");
+        // After the last bar and outside \chordmode: inside it, a mark with no
+        // duration is a bar whose contents do not sum to the meter, which is
+        // the check the tempo mark is kept out of that block for.
+        assertThat(chordModeOf(source)).noneMatch(line -> line.contains("\\bar"));
+        assertThat(source.indexOf("\\bar \"|.\""))
+                .as("the final bar line follows the last bar")
+                .isGreaterThan(source.lastIndexOf("|\n"));
+        assertBarsFillTheirMeter(source);
+    }
+
+    @Test
+    @DisplayName("a chart with no bars is not closed with a bar line")
+    void aChartWithNothingInItIsNotGivenAnEnding() {
+        // Nothing to end. The text chart says "(no chords were found)"; the
+        // engraving of a score with none should not print the one mark that
+        // claims a piece just finished.
+        Score empty = Score.empty(TempoMap.constant(120), 10);
+
+        assertThat(ChordChart.toLilyPond(empty)).doesNotContain("\\bar");
+    }
 }

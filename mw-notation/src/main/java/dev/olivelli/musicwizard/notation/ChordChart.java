@@ -172,6 +172,10 @@ public final class ChordChart {
      * to somebody, and one headed {@code Untitled} with no tempo asks them to
      * remember which recording it came from and to find the tempo by ear --
      * which is #216, observed on the first real commercial recording tried.
+     *
+     * <p>It also carries the bars, which the text chart has always drawn and
+     * the page did not: see the {@code ChordNames} context settings in {@link
+     * #lilyPondOf}.
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
@@ -195,7 +199,34 @@ public final class ChordChart {
         // without this the page would say "C C C" where the text chart says
         // "| C | % | % |" -- the same disagreement between the two outputs that
         // deciding the bars twice used to produce.
-        out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
+        //
+        // Bar_engraver, because ChordNames is not given one: the | that closes
+        // every bar below is only a check, and a check draws nothing. The page
+        // was a continuous stream of chord names, so a bar holding "C G" could
+        // not be told from two bars holding one chord each -- which is the one
+        // thing a chart is read for (#217).
+        //
+        // bar-extent, because the engraver alone is not enough. A bar line is
+        // drawn the height of its staff, and a ChordNames context has no staff,
+        // so the lines engrave with an empty vertical extent: present in the
+        // score, invisible on the page. LilyPond's own Lyrics context carries
+        // the same override for the same reason, and 2 staff spaces either side
+        // of the chord names is the value its manual uses for ChordNames.
+        //
+        // Bar lines cost one thing, and it is #225: LilyPond may break a system
+        // only where there is one, so a bar wider than the line no longer wraps
+        // -- it runs past the margin and then off the sheet, silently. It takes
+        // far more chords in one bar than any real recording tried has produced,
+        // and how many depends on how wide their names are, but the bar holding
+        // the lead-in is exempt from the harmonic-rhythm reduction and so is not
+        // bounded by the meter. ChordChartEngravingIT reads each system's right
+        // edge back out of LilyPond, since LilyPond itself says nothing about
+        // it.
+        out.append("  \\new ChordNames \\with {\n");
+        out.append("    chordChanges = ##t\n");
+        out.append("    \\consists \"Bar_engraver\"\n");
+        out.append("    \\override BarLine.bar-extent = #'(-2 . 2)\n");
+        out.append("  } {\n");
         // Outside \chordmode, which is where a mark belongs that is not a chord:
         // inside it, every line of the block is a bar whose durations have to
         // sum to the meter, and this one has no duration at all.
@@ -215,7 +246,18 @@ public final class ChordChart {
             // number it prints names the bar that does not add up.
             out.append("|\n");
         }
-        out.append("    }\n  }\n");
+        out.append("    }\n");
+        // Outside \chordmode for the same reason the tempo mark is: it has no
+        // duration, and every line inside that block is a bar that has to sum to
+        // the meter. Written at all so the chart ends the way the staff parts
+        // do -- StaffNotation closes every part with the same mark, and a reader
+        // handed both should not have to wonder whether the chart's last page
+        // is the last page. Skipped when there are no bars, because a final bar
+        // line after no bars marks the end of nothing.
+        if (!bars.isEmpty()) {
+            out.append("    \\bar \"|.\"\n");
+        }
+        out.append("  }\n");
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
