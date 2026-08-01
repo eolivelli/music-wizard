@@ -37,6 +37,8 @@ import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -258,6 +260,84 @@ class ChordChartEngravingIT {
         // tuplet number and a beam, and a chord chart has neither.
         assertEngravedCleanly(name, result);
         assertThat(result.pdf()).isPresent();
+    }
+
+    // ---------------------------------------------------------------- #217 --
+
+    /**
+     * A probe that makes every bar line LilyPond drew report its own height.
+     *
+     * <p>Substituted for the chart's own empty {@code \layout} block, so what is
+     * engraved is the emitter's source and not a hand copy of it. {@code
+     * MidiChordChartIT} patches the same anchor to ask for MIDI, though it
+     * appends beside the block rather than replacing it. {@code BarLine} carries
+     * no {@code after-line-breaking} of its own, so this adds a callback rather
+     * than displacing one.
+     *
+     * <p>It reports a length rather than the interval because an undrawn bar
+     * line has the <em>empty</em> interval, printed {@code (+inf.0 . -inf.0)},
+     * which is not a pair of numbers a test can subtract; {@code
+     * interval-length} answers 0 for it.
+     */
+    private static final String HEIGHT_PROBE = """
+              \\layout {
+                \\context {
+                  \\ChordNames
+                  \\override BarLine.after-line-breaking =
+                    #(lambda (grob)
+                       (ly:message "MW-BAR-HEIGHT ~a"
+                                   (interval-length (ly:grob-extent grob grob Y))))
+                }
+              }
+            """;
+
+    /** The chart's own source with the probe in place of its {@code \layout}. */
+    private static String probed(Score score) {
+        String source = ChordChart.toLilyPond(score);
+        assertThat(source).as("the emitter still writes the block the probe replaces")
+                .contains("  \\layout { }\n");
+        return source.replace("  \\layout { }\n", HEIGHT_PROBE);
+    }
+
+    private static final Pattern BAR_HEIGHT =
+            Pattern.compile("MW-BAR-HEIGHT (\\S+)");
+
+    /** Every bar-line height the probe reported, in the order LilyPond drew them. */
+    private static List<Double> barLineHeights(String lilypondOutput) {
+        List<Double> heights = new ArrayList<>();
+        Matcher matcher = BAR_HEIGHT.matcher(lilypondOutput);
+        while (matcher.find()) {
+            heights.add(Double.parseDouble(matcher.group(1)));
+        }
+        return heights;
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("charts")
+    @DisplayName("every bar boundary is drawn, not merely counted")
+    void barLinesAreEngravedWithAHeight(String name, Score score) {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve(name + "/drawn.ly"), probed(score));
+
+        // Two distinct failures, and #217 is that neither draws a single bar
+        // line, so a reader cannot tell them apart or from each other. Without a
+        // Bar_engraver there is no BarLine grob at all and this list is empty;
+        // with one but no bar-extent there is a grob per boundary, each of
+        // height zero. The chart shipped in the first state until #217.
+        List<Double> heights = barLineHeights(result.output());
+        assertThat(heights).as("%s", result.output()).isNotEmpty();
+        assertThat(heights).as("%s", result.output()).allSatisfy(
+                height -> assertThat(height).isGreaterThan(0.0));
+        // One per bar: the boundary after each bar but the last, plus the final
+        // bar line the chart closes with. Counted from the bar checks the
+        // emitter wrote, so a chart that lost a bar line cannot pass by also
+        // having lost the bar.
+        long bars = probed(score).lines().filter(line -> line.strip().endsWith("|")).count();
+        assertThat(heights).as("%s", result.output()).hasSize((int) bars);
+        assertEngravedCleanly(name, result);
     }
 
     @Test
