@@ -232,14 +232,15 @@ public final class AudioTranscriber {
         // the point of naming it. A lone tracked pulse carries no interval, so
         // there is no rate in it for either accessor to return, and this falls
         // back to the tracker's own figure -- which on that path is the
-        // autocorrelation seed rather than any median, and moves with the clip's
-        // length rather than with the music: hold one click fixed, stretch the
-        // clip, and the figure changes with nothing musical under it. How it
-        // changes is not worth a claim -- one click shape slides smoothly down
-        // and another rails at TempoEstimator's 240 BPM ceiling and comes back
-        // off it, which is what the search band does rather than what the audio
-        // does. One 0.40s clip here printed 188 beats/min, then said the clip
-        // carries no tempo, then headed the chart 120.
+        // autocorrelation seed rather than any median, and on a clip this short
+        // that seed is a function of the clip's length rather than of the music.
+        // The mechanism is two lines of TempoEstimator rather than anything
+        // observed: maxLag is min(envelope.length() - 1, the lag of MIN_TEMPO),
+        // so below the 1.5s that 40 BPM needs, the slowest tempo the estimator
+        // is permitted to consider is set by how long the clip is -- and shorter
+        // still, maxLag <= minLag and it returns PREFERRED_TEMPO outright. One
+        // 0.40s clip here printed 188 beats/min, then said the clip carries no
+        // tempo, then headed the chart 120.
         // That predates #200 and is unchanged by it, so it is #240 rather than
         // something to fix under cover of this change; what #200 did was make it
         // the only remaining path on which the two figures can disagree.

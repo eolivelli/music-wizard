@@ -72,12 +72,12 @@ largest remaining error.** How large is no longer known: the figure that used to
 sit here — on an eleven minute twelve-bar blues, the first twenty-five changes in
 the right bar and every one after that in the wrong one — was measured before
 both [#196][i196] and [#200][i200], and it has not been re-taken. Between them
-those two took a bar line placed by index from about seventeen beats away from
-the recording's own beats by the end to about one and a half. They did not do it
-in the same place, which is why the twenty-five wants re-measuring rather than
-adjusting: at the point that figure comes from, a hundred beats in, #196 left the
-error where it was and #200 halved it. What *is* current is the score of the
-printed chart, below.
+those two cut a bar line's drift against the recording by roughly an order of
+magnitude — the figures, and a caveat on the earliest of them, are below. They
+did not do it in the same place, which is why the twenty-five wants re-measuring
+rather than adjusting: at the point that figure comes from, a hundred beats in,
+#196 left the error where it was and #200 halved it. What *is* current is the
+score of the printed chart, below.
 
 That twenty-five is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises. Chord recognition on that
@@ -99,8 +99,11 @@ leftover of the other:
   cannot follow one that does not ([#187][i187]). On the blues above, a bar line
   placed by index still ends about a beat and a half from the recording's own
   beats by the end of the eleven minutes — down from about seven once
-  [#196][i196] had landed and before [#200][i200], and from about seventeen
-  before either.
+  [#196][i196] had landed and before [#200][i200]. The figure before either was
+  about seventeen, but that one is inherited rather than re-measured, and it is
+  not on the same axis: #196 moved the tracked beat times themselves, so the
+  seventeen is against the beats that tracker read and the one and a half is
+  against today's.
 
 So correcting the downbeat by hand is now worth more than correcting `--tempo`,
 which is the other way round from how it used to be.
