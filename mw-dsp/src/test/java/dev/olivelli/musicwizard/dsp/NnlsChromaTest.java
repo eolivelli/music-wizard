@@ -265,12 +265,16 @@ class NnlsChromaTest {
             AudioBuffer audio = new AudioBuffer(signal, RATE);
             List<Double> beats = BeatTracker.track(OnsetEnvelope.fromAudio(audio)).beatTimes();
 
-            // Through combined(), which is what AudioTranscriber uses. Asserting
-            // this of treble() instead -- as an earlier draft did -- leaves the
+            // Both registers, composed exactly as AudioTranscriber composes
+            // them: the root from combined(), the quality from treble() (#208).
+            // Asserting this of one register alone -- as two earlier drafts did,
+            // each for the register that was then in fashion -- leaves the
             // composition the pipeline actually runs uncovered at unit level,
             // and it is a composition that has already been wrong once.
+            NnlsChroma registers = NnlsChroma.extract(audio);
             ChordProgression chords = ChordEstimator.estimate(
-                    NnlsChroma.extract(audio).combined().beatSynchronous(beats), beats);
+                    registers.combined().beatSynchronous(beats),
+                    registers.treble().beatSynchronous(beats), beats);
 
             assertThat(chords.chords()).extracting(Chord::symbol)
                     .startsWith("C", "G", "Am", "F", "C", "G", "Am", "F");
