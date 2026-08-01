@@ -682,7 +682,7 @@ final class ChartLayout {
      * looks. Rounds 1 and 2 of review established why between them, and
      * {@code tools/score-chart.py} now reports both halves of it per recording.
      * Measured against the <em>tracked</em> beat grid, no change on any of the
-     * five benchmarks is faster than a beat, and that is structural rather than
+     * seven benchmarks is faster than a beat, and that is structural rather than
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
      * at, which is the grid's steady rate, <b>3.2% to 38.3%</b> of changes are,
@@ -691,11 +691,13 @@ final class ChartLayout {
      * to 32.9% before #196 and 11.3% to 24.1% before #200.
      *
      * <p>The wider spread strengthens the argument rather than complicating it,
-     * and the outlier is worth knowing: {@code eb7-vamp-130.mp3}'s 38.3% is the
-     * file #242 is about, where at the correct bar rate the harmony's recurring
-     * mid-bar flip lands in the same place in all 167 bars. So the top of this
-     * range is a recording whose bars are <em>right</em>, which is precisely why
-     * "faster than the counted beat" cannot be read as chatter.
+     * and the top of it is the clearest case. {@code eb7-vamp-130.mp3} is a
+     * one-chord vamp -- its harmony never moves -- so its 38.3% is entirely the
+     * estimator changing its mind mid-bar, and 149 of those 175 short gaps are
+     * within a twentieth of one counted beat rather than genuinely faster than
+     * one. That is the cohort effect the next paragraph describes, at its
+     * largest: a gate reading this column would decline to reduce more than a
+     * third of the changes on a recording whose harmony does not move at all.
      *
      * <p><b>How much a recording's cell moves is not how much its rate moved</b>,
      * and a draft of this paragraph said it was. Chord gaps are whole multiples
@@ -706,8 +708,10 @@ final class ChartLayout {
      * beat shorter, so fewer gaps fall under it -- but the size followed how many
      * gaps happened to lie between the old beat and the new one. Two of the five
      * did not move at all, including the one whose rate moved <em>most</em>; and
-     * the recording that sets the range's new bottom end had the <em>smallest</em>
-     * rate correction of the five.
+     * {@code blues-e-90bpm.mp3}, which fell furthest and set the bottom of the
+     * five-file range at 7.8%, had the <em>smallest</em> rate correction of the
+     * five. (The seven-file range's bottom is {@code fm7-vamp-110.mp3}, which
+     * has no "before" at all -- it is one of the two #200 did not move.)
      *
      * <p>The whole of that difference is one constant bar length drifting
      * against a recording that does not keep one -- #187 and #233 -- and

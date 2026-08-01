@@ -62,9 +62,10 @@ Both columns are reported per benchmark:
                On `eb7-vamp-130.mp3` it decides 34 bars and loses all 34, which
                is most of the 18.5-point gap between that file's model column
                (93.4%) and its chart column (74.9%). The bars themselves push
-               the other way -- 8 bars wrong outright against the model's 11 --
-               so the bar lines make the chart about three points *better* while
-               the tie-break makes it about twenty-one worse. #242 carries the
+               the other way -- 8 bars wrong outright against the model's 11.
+               In points on 167 bars: the tie-break costs about twenty and the
+               bar lines gain about two. The two partly cancel, which is the
+               only reason 18.5 looks like a single effect. #242 carries the
                measurement and is about that tie-break rather than about these
                two columns.
   short

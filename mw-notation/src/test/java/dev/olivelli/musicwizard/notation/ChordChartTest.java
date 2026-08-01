@@ -1001,11 +1001,13 @@ class ChordChartTest {
         // tracked beat grid the estimator used. See ChartLayout.atHarmonicRhythm,
         // and tools/score-chart.py, which reports both.
         //
-        // 11.3% to 24.1% until #200, which is the figure ChartLayout carried and
-        // this comment kept after that one was corrected -- the second reader of
-        // a moved value, found by the review check that exists for exactly it. So this is a stated cost
-        // rather than a case to special-case. The model still holds all eight,
-        // which the assertion above is on.
+        // So this is a stated cost rather than a case to special-case. The model
+        // still holds all eight, which the assertion above is on.
+        //
+        // The range read 11.3% to 24.1% until #200. That is the figure
+        // ChartLayout carried, and this comment kept it after that one was
+        // corrected -- the second reader of a moved value, found by the review
+        // check that exists for exactly that.
         assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
     }
 

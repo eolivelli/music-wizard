@@ -164,12 +164,18 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * evidence that this is not fitted to a handful of files.
      *
      * <p>The corpus grew from five recordings to seven while this was in review,
-     * and <b>the worst cell did not move</b> -- it is the same recording at the
-     * same half-width. That is worth more than the two extra rows: the two files
-     * added are the ones on which the rejected alternatives are worst of all,
-     * the median 0.64% out on {@code eb7-vamp-130.mp3} and the plain mean 7.7%
-     * out on {@code fm7-vamp-110.mp3}, so the widening exercised the choice
-     * rather than padding it.
+     * and the worst cell stayed the same recording at the same half-width. <b>Its
+     * value did move</b>, from 0.128% to the 0.121% above, and not because of the
+     * corpus: {@code gmajorblues.mp3}'s reference changed axis, from the chord
+     * labels' 106.007 to the onset comb's 106.000. An earlier draft here said
+     * "the worst cell did not move", which is true of the cell's identity and
+     * not of its number.
+     *
+     * <p>What the widening was worth is the two files themselves: they are the
+     * ones on which the rejected alternatives are worst of all, the median 0.64%
+     * out on {@code eb7-vamp-130.mp3} and the plain mean 7.7% out on
+     * {@code fm7-vamp-110.mp3}. So it exercised the choice rather than padding
+     * it.
      *
      * <p>Both edges have a mechanism rather than a fitted value, which is the
      * other half of the same argument.
