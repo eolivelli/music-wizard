@@ -231,9 +231,10 @@ class ChordSpellerTest {
         @DisplayName("every key writes its roots within five flat and six sharp of its tonic")
         void everyKeySpellsTheWholeChromaticWindow() {
             // The window TONIC_TO_ROOT_CENTRE is the middle of: the Neapolitan
-            // five fifths flat of the tonic, the six diatonic degrees, and the
-            // raised fourth six sharp. Twelve consecutive positions, one per
-            // pitch class -- so this asserts the design rather than a table of
+            // five fifths flat of the tonic, the flat sixth, third and seventh
+            // at -4, -3 and -2, the seven diatonic degrees at -1 to +5, and the
+            // raised fourth at +6. Twelve consecutive positions, one per pitch
+            // class -- so this asserts the design rather than a table of
             // expected names, and it holds for a minor key only because the
             // centre is measured from the tonic and not from the signature.
             //
@@ -371,6 +372,60 @@ class ChordSpellerTest {
                     .doesNotThrowAnyException();
             assertThat(symbols(ChordSpeller.respell(chords, Optional.empty())))
                     .containsExactly("B#", "Bb", "Eb");
+        }
+
+        @Test
+        @DisplayName("a modulation is followed, key by key, rather than averaged")
+        void eachChordIsWrittenFromTheKeyUnderIt() {
+            // Round 3 of review, through the CLI: a MIDI modulating from B flat
+            // to B major arrives here already spelled per span, because
+            // SymbolicChordEstimator reads the key signature in force at each
+            // chord. One region for the whole piece overwrote that and printed
+            // the last chorus as Cb Gb Ab -- a stage that replaces a decision
+            // has to be at least as fine-grained as the decision it replaces.
+            List<Chord> chords = List.of(
+                    Chord.ofSeconds(PitchSpelling.parse("A#4"), ChordQuality.MAJOR,
+                            0, 1, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("D#4"), ChordQuality.MAJOR,
+                            1, 2, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("B4"), ChordQuality.MAJOR,
+                            2, 3, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR,
+                            3, 4, Confidence.of(0.8)));
+            Score score = Score.empty(TempoMap.constant(120), 4.0)
+                    .withChords(asGiven(chords))
+                    .withKeys(List.of(
+                            Key.ofSeconds(PitchSpelling.parse("Bb4"), Mode.MAJOR,
+                                    0, 2, Confidence.of(0.9)),
+                            Key.ofSeconds(PitchSpelling.parse("B4"), Mode.MAJOR,
+                                    2, 4, Confidence.of(0.9))));
+
+            assertThat(symbols(ChordSpeller.respell(score).chords()))
+                    .containsExactly("Bb", "Eb", "B", "E");
+        }
+
+        @Test
+        @DisplayName("a chord no key covers is written from the count, not from the nearest key")
+        void aChordOutsideEveryKeyFallsBackToTheCount() {
+            // A lead-in before the first key signature. Written from the key
+            // that starts after it, this one would come out A# D# E# -- B
+            // major's window reaches E sharp and the count does not go near it.
+            List<Chord> chords = List.of(
+                    Chord.ofSeconds(PitchSpelling.parse("A#4"), ChordQuality.MAJOR,
+                            0, 1, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("D#4"), ChordQuality.MAJOR,
+                            1, 2, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("F4"), ChordQuality.MAJOR,
+                            2, 3, Confidence.of(0.8)),
+                    Chord.ofSeconds(PitchSpelling.parse("B4"), ChordQuality.MAJOR,
+                            3, 4, Confidence.of(0.8)));
+            Score score = Score.empty(TempoMap.constant(120), 4.0)
+                    .withChords(asGiven(chords))
+                    .withKeys(List.of(Key.ofSeconds(PitchSpelling.parse("B4"), Mode.MAJOR,
+                            3, 4, Confidence.of(0.9))));
+
+            assertThat(symbols(ChordSpeller.respell(score).chords()))
+                    .containsExactly("Bb", "Eb", "F", "B");
         }
 
         @Test

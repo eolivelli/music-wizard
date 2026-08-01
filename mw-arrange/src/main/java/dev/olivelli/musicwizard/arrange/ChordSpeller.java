@@ -60,10 +60,12 @@ import java.util.Optional;
  * nobody plays at sight. That cap is a property of {@link
  * PitchSpeller#onLineOfFifths(int, double, int)}, not a check applied afterwards.
  *
- * <p>What this does <em>not</em> rule out is a chart mixing sharps with flats.
- * A pitch class six fifths from the region is the same distance either way, and
- * the flat wins -- which is why an A major chart prints its Neapolitan as
- * {@code Bb} rather than {@code A#}, and that is the spelling a reader wants.
+ * <p>What this does <em>not</em> rule out is a chart mixing sharps with flats. An
+ * A major chart prints its Neapolitan as {@code Bb} rather than {@code A#}, which
+ * is the spelling a reader wants. On the counted path that is a tie the flat wins
+ * -- a pitch class six fifths from an integer region is the same distance either
+ * way -- and on the key path it is not a tie at all, since a region half a fifth
+ * off the line can never be equidistant from two spellings twelve apart.
  *
  * <h2>What is left alone</h2>
  *
@@ -72,15 +74,15 @@ import java.util.Optional;
  * timing on both axes, its confidence -- is carried through untouched: this
  * changes how the harmony is spelled and never what it is.
  *
- * <p>One region serves the whole piece, so a song that modulates from a flat key
- * to a sharp one is written from wherever the count lands, which is #228. That is
- * the same simplification the chart header already makes in naming one key and
- * one meter, and it is a great deal closer than a fixed table of sharps.
+ * <p>A modulation is followed only as far as the keys go. {@link #respell(Score)}
+ * writes each chord from the key under it, so a MIDI file that changes signature
+ * changes region with it; a score with no key at all gets one region for all of
+ * it, which is #228 and is what the audio path always gets.
  *
- * <p>And with no key, the count finds where the roots sit rather than where the
- * music's home is, which are half a fifth apart for a full chart and further for
- * a sparse one. A chromatic root exactly six fifths from the counted region is
- * then a coin toss that lands flat -- {@code C F G} plus an {@code F#7} prints
+ * <p>And there, with no key, the count finds where the roots sit rather than
+ * where the music's home is -- half a fifth apart for a full chart and further
+ * for a sparse one. A chromatic root exactly six fifths from the counted region
+ * is then a coin toss that lands flat: {@code C F G} plus an {@code F#7} prints
  * {@code Gb7}, where the same chart with an {@code Am} in it prints {@code F#7}.
  * That is #230, and it is why a key is preferred to the count outright.
  */
@@ -99,13 +101,22 @@ public final class ChordSpeller {
      *
      * <p>Not a fitted constant: it is the middle of the window those roots
      * occupy. Write the tonic at 0 on the line of fifths, and a chart's roots run
-     * from the Neapolitan at -5, through the six diatonic degrees at -1 to +5, to
-     * the raised fourth at +6 -- twelve consecutive positions, one per pitch
-     * class, whose midpoint is +0.5. Spelling every root from there is exactly
-     * what makes a chromatic root come out as the degree a reader expects: in C
-     * major the flat second is D flat and the raised fourth is F sharp, and in D
-     * major the raised fourth is G sharp rather than the A flat that a centre
-     * over the tonic would give.
+     * from the Neapolitan at -5, through the borrowed flat degrees at -4, -3 and
+     * -2 -- the flat sixth, third and seventh -- and the seven diatonic ones at
+     * -1 to +5, to the raised fourth at +6. Twelve consecutive positions, one per
+     * pitch class, whose midpoint is +0.5. Spelling every root from there is what
+     * makes a chromatic root come out as the degree a reader expects: in C major
+     * the flat second is D flat and the raised fourth is F sharp, and in D major
+     * the raised fourth is G sharp rather than the A flat that a centre over the
+     * tonic would give.
+     *
+     * <p>A window twelve wide has to end somewhere, and both ends can be reached
+     * by a chord that did not mean them. In B major it writes an F major triad as
+     * E sharp -- right for the {@code E#dim} that the raised fourth usually is,
+     * wrong for a plain F -- because the region is chosen before the quality is
+     * looked at. Sliding the window flat only moves the problem: at -6 to +5 the
+     * raised fourth of C major comes back G flat, which is what round 2 of review
+     * rejected. That trade is #251.
      *
      * <p>It is measured from the <em>tonic</em> and not from the key signature,
      * which is what makes it hold for a minor key without a second constant. A
@@ -130,24 +141,67 @@ public final class ChordSpeller {
      * that, leaving the workspace's transcription as the estimator produced it,
      * because how a chart is written is a decision about the printed page rather
      * than about the music that was heard.
+     *
+     * <p>Each chord is written from the key <em>in force under it</em>, and only
+     * a score that names no key at all gets one region for the whole piece.
+     * Round 3 of review found the difference by execution: a MIDI file modulating
+     * from B flat to B major reached here already spelled per span by {@code
+     * SymbolicChordEstimator}, which reads the key signature in force at each
+     * chord, and one region for the piece turned its last chorus into
+     * {@code Cb Gb Ab E}. The stage that replaces a decision has to be at least
+     * as fine-grained as the decision it replaces.
      */
     public static Score respell(Score score) {
         Objects.requireNonNull(score, "score");
         if (score.chords().isEmpty()) {
             return score;
         }
-        return score.withChords(respell(score.chords(), score.primaryKey()));
+        if (score.keys().isEmpty()) {
+            return score.withChords(respell(score.chords(), Optional.empty()));
+        }
+        // The fallback is for a chord no key covers -- an intro before the first
+        // key signature, a gap between two -- and is counted from the roots, as
+        // it is for a score with no key at all.
+        double counted = region(score.chords(), Optional.empty());
+        List<Chord> respelled = new ArrayList<>(score.chords().size());
+        for (Chord chord : score.chords().chords()) {
+            respelled.add(respell(chord, keyUnder(score, chord)
+                    .map(ChordSpeller::regionOf).orElse(counted)));
+        }
+        return score.withChords(score.chords().withChords(respelled));
     }
 
     /**
-     * The same over a progression alone, against the key it sounds in.
+     * The key in force under a chord, asked on the axis both are placed on.
      *
-     * <p>Separate because the region is a property of the whole progression: one
-     * chord cannot be re-spelled on its own without asking what the rest of the
-     * piece does, which is the entire point of the exercise.
+     * <p>The beat axis once both the chord and every key carry musical timing,
+     * and seconds otherwise -- the same rule and the same reason as {@code
+     * PitchSpeller.keyUnder}, which asks it of a note. A key list can be a
+     * mixture, one span too short to sit between two bar lines keeping its
+     * seconds, so every key is asked rather than the one that is wanted.
+     */
+    private static Optional<Key> keyUnder(Score score, Chord chord) {
+        if (chord.isQuantized() && score.keys().stream().allMatch(Key::isQuantized)) {
+            double beat = chord.startBeat().orElseThrow();
+            return score.keys().stream()
+                    .filter(k -> beat >= k.startBeat().orElseThrow()
+                            && beat < k.endBeat().orElseThrow())
+                    .findFirst();
+        }
+        return score.keyAt(chord.startSeconds());
+    }
+
+    /**
+     * The same over a progression alone, against one key for all of it.
+     *
+     * <p>Separate because the region is a property of the whole progression when
+     * it has to be counted: one chord cannot be re-spelled on its own without
+     * asking what the rest of the piece does, which is the entire point of the
+     * exercise. Callers holding a whole {@link Score} should use
+     * {@link #respell(Score)}, which follows a modulation.
      *
      * @param chords the progression to re-spell
-     * @param key    the key it is in, when one has been detected
+     * @param key    the key all of it is in, when one has been detected
      */
     public static ChordProgression respell(ChordProgression chords, Optional<Key> key) {
         Objects.requireNonNull(chords, "chords");
@@ -181,7 +235,7 @@ public final class ChordSpeller {
      */
     private static double region(ChordProgression chords, Optional<Key> key) {
         if (key.isPresent()) {
-            return PitchSpeller.fifthsOf(key.get().tonic()) + TONIC_TO_ROOT_CENTRE;
+            return regionOf(key.get());
         }
         List<Integer> sounding = new ArrayList<>();
         for (Chord chord : chords.chords()) {
@@ -193,6 +247,11 @@ public final class ChordSpeller {
                     .ifPresent(bass -> price(bass, sounding));
         }
         return sounding.isEmpty() ? 0 : cheapestRegion(sounding);
+    }
+
+    /** The region a key writes its chords from. See {@link #TONIC_TO_ROOT_CENTRE}. */
+    private static double regionOf(Key key) {
+        return PitchSpeller.fifthsOf(key.tonic()) + TONIC_TO_ROOT_CENTRE;
     }
 
     /**
