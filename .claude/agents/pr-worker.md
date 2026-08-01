@@ -121,9 +121,11 @@ unsure about. Two writing rules that keep review cheap:
 - **A number may appear in prose only if a test asserts it or a committed
   harness reproduces it** — and prefer the qualitative fact even then. A figure
   dates the moment anything moves and must be restated everywhere it appears.
-- **No superlatives about a set that can grow** (*worst*, *only*, *furthest*,
-  *every*). Point at the committed baseline instead. On #200 three drafts of one
-  paragraph each claimed a maximum the data did not hold.
+- **No superlative that ranks the current corpus** (*worst*, *furthest*, *the
+  only one*) — it dates the moment a benchmark is added; point at the committed
+  baseline. One that follows from a mechanism is fine and usually clearest. On
+  #200 four drafts of one paragraph each claimed a ranking the data did not
+  hold.
 - **Do not narrate the review in the source.** "An earlier draft said", "round 3
   found" belongs in the commit message or the PR, once.
 - **When a reviewer corrects a fact, grep for every other statement of that

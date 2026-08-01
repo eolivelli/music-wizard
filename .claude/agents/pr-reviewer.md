@@ -117,7 +117,9 @@ wrong sentence at a full round once took a PR to eighteen — `docs/history.md`.
 
 **Be proportionate about prose, and prefer deletion to correction.** Report a
 wrong sentence when it would mislead someone changing the code; do not report
-wording, emphasis, or a figure's last decimal. If a paragraph has needed
+wording, emphasis, or a figure that differs only in rounding — as against one
+derived from a different source than its paragraph claims, which is worth
+raising however small the difference looks. If a paragraph has needed
 correcting twice, say so and recommend cutting it rather than fixing it a third
 time — a claim nobody makes cannot be wrong, and the project's convention is
 that prose stays short. **Too much prose is itself a finding**: flag javadoc or
