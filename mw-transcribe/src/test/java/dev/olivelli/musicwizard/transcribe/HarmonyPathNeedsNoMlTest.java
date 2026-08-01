@@ -156,7 +156,7 @@ class HarmonyPathNeedsNoMlTest {
         assertThat(reactorRoot).as("the reactor root pom").isRegularFile();
         assertThat(declaredDependenciesOf(reactorRoot, "music-wizard"))
                 .as("the root pom really does have dependencies and no mw-ml,"
-                        + " which is what made it able to fool the old reader")
+                        + " which is the shape that lets it pass an unguarded reader")
                 .isNotEmpty()
                 .doesNotContain("mw-ml");
         assertThatExceptionOfType(AssertionError.class)
