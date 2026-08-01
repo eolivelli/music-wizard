@@ -109,9 +109,13 @@ public final class PitchSpeller {
     /**
      * The range of the line of fifths that a legal {@link Accidental} can reach:
      * F double flat at -15 through B double sharp at 19.
+     *
+     * <p>Package-private because {@link ChordSpeller} searches the same band for
+     * a region, for the same reason: a region outside it cannot be reached by
+     * any spelling that can be printed.
      */
-    private static final int MIN_FIFTHS = -15;
-    private static final int MAX_FIFTHS = 19;
+    static final int MIN_FIFTHS = -15;
+    static final int MAX_FIFTHS = 19;
 
     /**
      * Octaves a spelling may be placed in: the band
@@ -381,8 +385,15 @@ public final class PitchSpeller {
                 Accidental.ofAlteration(alteration), midiPitch);
     }
 
-    /** Position of a written pitch on the line of fifths, C being zero. */
-    private static int fifthsOf(PitchSpelling spelling) {
+    /**
+     * Position of a written pitch on the line of fifths, C being zero.
+     *
+     * <p>Package-private rather than private because {@link ChordSpeller} asks
+     * where a spelling landed in order to price it. Sharing this one is the
+     * point: a second copy of the mapping could disagree about where B sharp is,
+     * and the two would then spell the same music differently.
+     */
+    static int fifthsOf(PitchSpelling spelling) {
         return LETTER_FIFTHS[spelling.letter().diatonicStep()] + 7 * spelling.accidental().alteration();
     }
 
