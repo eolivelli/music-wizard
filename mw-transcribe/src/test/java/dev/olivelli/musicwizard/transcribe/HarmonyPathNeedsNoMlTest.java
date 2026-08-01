@@ -41,8 +41,7 @@ import org.w3c.dom.NodeList;
  * a line against it — {@code mw-ml} has no sources at all — so the only thing
  * the declaration ever did was pull ONNX Runtime into the compile closure of
  * everything downstream. On the desktop that is a large unused native library
- * (how large is #25's business, and no number belongs in a comment nobody can
- * re-measure). On Android (#236) it is worse than unused: the artifact ships
+ * (#25). On Android (#236) it is worse than unused: the artifact ships
  * x86-64 and aarch64 <em>desktop</em> natives, and the app links this module for
  * exactly one entry point, {@link AudioTranscriber#transcribe(AudioBuffer,
  * AudioTranscriber.Options)}, which reaches beats, chroma and chords and nothing

@@ -25,10 +25,8 @@
     here because neither module may depend on the other -- mw-notation must not
     see the audio and DSP stack mw-transcribe is built on, and mw-transcribe has
     no business emitting notation -- and this is the module that already depends
-    on both. (Until #247, the sharper version of that was "mw-transcribe pulls
-    in mw-ml, which the notation layer is not allowed to see"; the edge is gone
-    but the rule it illustrated is not.) LilyPondComplaintsTest reads LilyPond's
-    diagnostics without running it, and explains there why it belongs here.
+    on both. LilyPondComplaintsTest reads LilyPond's diagnostics without running
+    it, and explains there why it belongs here.
 
     The rule, from #148 and #155: a test that needs no LilyPond is named *Test,
     whatever else is in the file it was written in. What that buys is which job
