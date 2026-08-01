@@ -186,7 +186,8 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     mattered. Chord gaps are whole numbers of tracked beat intervals, so a
     one-beat gap sits exactly on the boundary this counts against, and a
     fraction of a percent of tempo moves a whole cohort of them across at once
-    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%. The same
+    -- on `gmajorblues.mp3` it moved the answer from 32.9% to 24.4%, both
+    measured before #196 changed that recording's beat grid. The same
     rounding then survived one round as the *check* on the derivation, which
     round 3 found accepts anything within half a BPM: a band the figure varies
     over by more than the error it was guarding. Both are gone.

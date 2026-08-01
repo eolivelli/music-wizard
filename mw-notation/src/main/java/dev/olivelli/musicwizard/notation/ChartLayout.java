@@ -325,8 +325,10 @@ final class ChartLayout {
      *
      * <p>The reason originally given for supplying them was that chord
      * recognition returned one {@code N.C.} span covering the whole recording.
-     * That was true and is not: since #3 the same file yields 740 spans and no
-     * {@code N.C.} at all. The caveat above stands anyway and stands for a
+     * That was true and is not: since #3 the same file yields hundreds of spans
+     * and no {@code N.C.} at all -- 740 then, 666 since #196 removed the
+     * spurious beats their boundaries were taken from. The caveat above stands
+     * anyway and stands for a
      * better reason — a layout measurement wants a progression known to be
      * right, not one that is 50% right — so the method here did not change when
      * its original justification stopped applying.
