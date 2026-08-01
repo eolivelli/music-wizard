@@ -18,3 +18,54 @@ First real commercial pop recording tried end to end (2026-08-01). MW read
 the song, judged it a very good job by ear. Known weaknesses on this track:
 Am/A7/A flip-flopping on sustained A chords, and the final ~10 bars degrade
 into chromatic noise (fade-out, or the beat drift of #196).
+
+la-canzone-del-sole.mp3
+
+"La canzone del sole" (Lucio Battisti), 5:55. Classic Italian pop, acoustic
+guitar driven. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/la-canzone-del-sole.mp3 \
+    https://www.youtube.com/watch?v=XXOIqni93AY
+Remembered by ear (explicitly uncertain): essentially A E D E throughout,
+with maybe some small variation. A recollection, not ground truth.
+Run 2026-08-01. MW read 89.1 BPM in 4/4 and a chart whose whole vocabulary is
+G#, D#, C# with occasional D#7 and A#7 — exactly the remembered A, E, D (plus
+an occasional B7-shaped dominant) transposed down one semitone, so the harmony
+matches the recollection up to a global half-step (pitched upload or tuning
+call; spelled in sharps where flats would read better). No N.C. spans at all.
+Two weaknesses: the chart is choppy — 281 spans, median 1.35 s, constant
+G#/D# flip-flopping where the ear expects one chord per bar — and the beat
+grid wobbles badly (windowed tempo drifts from ~93 to ~109 BPM across the
+song, inter-beat gaps from 0.28 s to 1.4 s, the #196 pattern), so the printed
+89 BPM is a median over an unsteady grid. The final ~10 s (fade-out) degrades
+into low-confidence chromatic noise: A#m F7 C7 G.
+
+gli-anni.mp3
+
+"Gli anni" (883), 3:41. Italian pop/rock, band arrangement. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/gli-anni.mp3 \
+    https://www.youtube.com/watch?v=dSypLaaqwKQ
+Remembered by ear: not remembered ahead of time; Enrico will judge the chart
+against memory after seeing MW's output. A recollection, not ground truth.
+Run 2026-08-01. MW read 99.4 BPM in 4/4 and a chart whose vocabulary is G, D,
+C, Em, Am plus occasional E7/D7/A7 (secondary dominants) — a diatonic G-major
+set (I-V-IV-vi-ii) that reads as musically coherent for a pop/rock song. No
+N.C. spans in the underlying chord data; the printed chart shows "N.C." only
+as a sub-beat filler before the very first chord (0.0-0.12 s), harmless. 153
+spans over 220 s, median 1.24 s — choppy in the same way as the other two
+entries above, more chord changes printed than a guitarist would actually
+play. Confidence sits in the 0.4-0.8 range throughout, including the final
+bars (last span is a 7.2 s G, confidence 0.55) — no sign of the fade-out
+chromatic-noise degradation (#196) seen on the previous two tracks; this
+recording's ending held up. One flag: 99 BPM is on the slow side for what is
+remembered as an up-tempo rock song, so a beat-tracking octave error (half
+the true tempo) is plausible but unconfirmed — worth checking by ear against
+the render.
+Enrico's verdict (2026-08-01): the sequence "looks pretty good", confirming
+the progression is right, but he remembers the song as being in Em, not G —
+classic relative-minor confusion. MW's G-major reading (G-D-Em-C, tonic G) and
+Enrico's Em recollection (tonic Em) share the same key signature and the same
+set of chords, just disagree on which chord is heard as "home"; the chart's
+harmony is not contradicted, only its major/minor framing.
+

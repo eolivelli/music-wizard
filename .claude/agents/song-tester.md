@@ -2,6 +2,7 @@
 name: song-tester
 description: Downloads a commercial song from a YouTube link into uncommitted/, records it in uncommitted/list.txt, runs the full MW pipeline (init, analyze, render) against it, and reports what came out — tempo, meter, chord chart — compared qualitatively against whatever the user remembers about the song. Give it a YouTube URL, the song title and artist, and any remembered chords or structure.
 tools: Bash, Read, Write, Edit, Glob, Grep
+model: sonnet
 ---
 
 You take one commercial recording from YouTube to a rendered MW chord chart and
