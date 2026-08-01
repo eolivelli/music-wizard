@@ -193,28 +193,43 @@ public final class BeatTracker {
      * per beat, {@code F} for the envelope's floor between onsets, and {@code p}
      * for what one halving or doubling of a gap costs — 1 at the old weight,
      * {@code 100 * (ln 2)^2} at this one. Then the margin by which the tracker
-     * prefers to <em>follow</em> its seed rather than correct it is:
+     * prefers to <em>follow</em> its seed rather than correct it is as below,
+     * each row measured over the span on which its two grids realign — one true
+     * beat in the first, two in the second, so the rows are not comparable with
+     * each other in magnitude, only in sign:
      *
      * <pre>
      *   double-rate seed    p + F     following alternates onset and floor,
      *                                 so A cancels out of it entirely
      *   half-rate seed      2p - A    following collects one onset where
-     *                                 correcting collects two, and pays twice
+     *                                 correcting collects two and pays two
+     *                                 penalties for them
      * </pre>
      *
      * <p>So the two are not merely asymmetric; they turn on different things.
-     * <b>A double-rate seed is followed at every weight</b>, because {@code F}
-     * is a small negative number and {@code p} is at least 1 — how loud the
-     * onsets are never enters it, which is why raising the weight cannot have
-     * taken that rescue away: there was never one to take. <b>A half-rate seed
-     * is corrected exactly while an onset is worth more than two penalties</b>,
-     * which it comfortably is at the old weight and is nowhere near at this one.
+     * <b>A double-rate seed is followed whenever {@code p} is deeper than the
+     * floor</b>, and how loud the onsets are never enters it. That is not
+     * "always": the form says the tracker should start correcting one below
+     * {@code p = -F}, and it does. On a 120 BPM click track that fixture's
+     * {@code F} of −0.217 puts the crossing at a {@link #TIGHTNESS} of 0.4517,
+     * and the dynamic program follows a double-rate seed at 0.46 and corrects it
+     * at 0.45. What matters here is that the condition holds at every weight
+     * this tracker has had, and by a wide margin at both, so <b>raising the
+     * weight cannot have taken that rescue away — there was never one to
+     * take</b>. <b>A half-rate seed is corrected exactly while an onset is worth
+     * more than two penalties</b>, which it comfortably is at the old weight and
+     * is nowhere near at this one.
      * That is the whole of the asymmetry, and it is arithmetic rather than a
      * property of the search window.
      *
-     * <p><strong>The measured values of {@code A} and {@code F} are
-     * deliberately not quoted here, and that is the fourth answer to this
-     * question rather than the first.</strong> Four review passes went on
+     * <p><strong>The measured value of {@code A} is deliberately not quoted
+     * here, and that is the fourth answer to this question rather than the
+     * first.</strong> ({@code F} is quoted above, where the closed form is
+     * checked against the tracker, because unlike {@code A} it has never moved:
+     * every measurement of it has landed between −0.22 and −0.33, on the
+     * click-track fixture and on ten recordings of which five are real music,
+     * and it is the envelope's mean over its standard deviation rather than a
+     * peak that has to be found.) Four review passes went on
      * correcting figures in this paragraph — an onset of 5.8, then 7.06, then
      * 7.23, each a better measurement of a quantity nothing asserts, the first
      * two of them a phase swept too coarsely. Then the trouble moved to the
@@ -223,7 +238,9 @@ public final class BeatTracker {
      * ending with one more onset than floor, or one fewer, which shifts it by
      * one beat's worth of the difference between them. No summary of that
      * survived a reading, and a claim made along the way that the earlier error
-     * had left every margin understated was true of one and false of the other.
+     * had left every margin understated was true of exactly one of the four
+     * margins in view — the half-rate one at the old weight — and false of the
+     * other three.
      *
      * <p>The closed forms need none of it. What they need is that an onset is
      * worth several units on an envelope normalised to unit variance and that
