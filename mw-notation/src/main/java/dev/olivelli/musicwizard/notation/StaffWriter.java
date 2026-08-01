@@ -90,9 +90,9 @@ interface StaffWriter {
      * {@link TempoMark#ESTIMATE} beside it in whatever this format's vocabulary
      * for a word next to a metronome mark is. That is the one part of the mark
      * this signature cannot carry, and it is the part that went wrong: #216
-     * qualified the LilyPond writer and left this one printing the same number
-     * as exact, so two goldens of one fixture disagreed about how much to trust
-     * it. Passing a {@link TempoMark} instead would not have prevented it —
+     * qualified {@link StaffNotation} and left {@link MusicXmlExport} printing
+     * the same number as exact, so two goldens of one fixture disagreed about
+     * how much to trust it. Passing a {@link TempoMark} instead would not have prevented it —
      * spelling the word is the implementation's work either way — so it is
      * written here, where an implementer reads what the callback means.
      *
