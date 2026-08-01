@@ -116,11 +116,11 @@ validation. If it rejects your verdict, re-triage; do not argue.
 - Follow `CONTRIBUTING.md`; match the surrounding code's idiom and comment
   density.
 - Scope to the issue. Unrelated findings become issues, never riders or TODOs.
-- **Write Java that compiles at `--release 21`** even while the reactor is at
-  25: the Android epic (#236, other lane) is downgrading the shared modules,
-  and any 22+ language feature you introduce now (unnamed `_` variables above
-  all) becomes a conflict for that PR to resolve. New code should not add to
-  that bill.
+- **The reactor compiles at `--release 21`**, so a 22+ language feature is a
+  compile error rather than a convention (#246). It is pinned there because
+  Android's D8 cannot read newer class files and the app (#236) links the
+  shared modules; the build JDK is still 25. Raising it means editing the
+  parent pom past an enforcer rule and a test, which is the intended cost.
 - **Tests are the deliverable.** A bug-fix test must fail before and pass
   after — and must actually execute the branch you changed. Trace it.
 

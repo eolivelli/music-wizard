@@ -3,7 +3,9 @@
 Sheet music from a recording. MP3 in; melody, bass line, chords, lyrics and a
 simplified piano arrangement out, engraved as one PDF per part.
 
-Java 25, Maven, Apache-2.0. CLI now, web UI much later.
+Built on JDK 25, compiled to Java 21 bytecode — Android's D8 reads no newer,
+and the field-recording app (#236) links the shared modules. Maven, Apache-2.0.
+CLI now, web UI much later.
 Repo: https://github.com/eolivelli/music-wizard
 
 ## Build and run
