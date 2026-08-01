@@ -48,10 +48,13 @@ import org.w3c.dom.NodeList;
  * AudioTranscriber.Options)}, which reaches beats, chroma and chords and nothing
  * else.
  *
- * <p>The two tests here are the issue's acceptance criterion, executed rather
- * than argued. One pins the classpath this module is compiled and tested
- * against; the other runs the analysis in it and reads the result. Neither
- * passes against the dependency as it stood before #247.
+ * <p>Two of the three tests here are the issue's acceptance criterion, executed
+ * rather than argued: one pins the classpath this module is compiled and tested
+ * against, the other runs the analysis in it and reads the result. Neither
+ * passes against the dependency as it stood before #247. The third,
+ * {@link #theReaderCannotBeFooledByTheReactorRootPom}, guards the pom reader the
+ * second one uses rather than the dependency itself, so it is indifferent to
+ * whether the {@code mw-ml} edge is there — it passes either way, by design.
  *
  * <p>Note what is deliberately <em>not</em> asserted: that no ML runtime exists
  * anywhere. {@code mw-cli} declares {@code mw-ml} directly, at runtime scope,
@@ -117,9 +120,10 @@ class HarmonyPathNeedsNoMlTest {
         assertThat(score.estimatedTempo()).as("tempo").isGreaterThan(0.0);
         // The transcriber narrated its way through, which is not what excludes
         // the too-short-to-track bail-out -- that path emits messages too, and
-        // round 1 of review caught this comment claiming otherwise. What
-        // excludes it is the beat grid above: Score.empty carries none. This
-        // says the stages the app's progress line reads are really produced.
+        // round 1 of review caught this comment claiming otherwise. The
+        // assertions above exclude it: Score.empty carries no beat grid and no
+        // chords, so either of those two would fail on it. This one says the
+        // stages the app's progress line reads are really produced.
         assertThat(stages).as("progress messages").isNotEmpty();
     }
 
