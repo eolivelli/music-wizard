@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The platform's own dark theme: no AppCompat, no Material, nothing to
+         keep up to date. A data-collection instrument does not need a look. -->
+    <style name="AppTheme" parent="@android:style/Theme.Material" />
+</resources>

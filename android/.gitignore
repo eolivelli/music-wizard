@@ -1,0 +1,9 @@
+build/
+.gradle/
+# Points at this machine's Android SDK; every checkout has a different one.
+local.properties
+
+# The repository root ignores *.jar, and the wrapper jar has to be committed:
+# .github/workflows/android.yml decides the app exists by testing for
+# android/gradlew, and gradlew without its jar cannot bootstrap.
+!gradle/wrapper/gradle-wrapper.jar
