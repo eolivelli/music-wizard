@@ -1,0 +1,20 @@
+# Commercial recordings for local evaluation only.
+#
+# Nothing in this directory may be committed or redistributed: these are
+# commercial songs under ordinary copyright, unlike samples/, whose local-only
+# files are at least backing tracks fetched for measurement. Everything here
+# except this file is gitignored. No ground truth either — use these to *look*
+# at MW's output, never to score it.
+
+hanno-ucciso-luomo-ragno-karaoke.mp3
+
+"Hanno ucciso l'uomo ragno" (883), karaoke version, 4:31. Pop, simplified
+arrangement, no published chords to hand. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/hanno-ucciso-luomo-ragno-karaoke.mp3 \
+    https://www.youtube.com/watch?v=Lqq8ye8bItE
+First real commercial pop recording tried end to end (2026-08-01). MW read
+159 BPM in 4/4 and a chart dominated by the Am-F-C-G loop; Enrico, who knows
+the song, judged it a very good job by ear. Known weaknesses on this track:
+Am/A7/A flip-flopping on sustained A chords, and the final ~10 bars degrade
+into chromatic noise (fade-out, or the beat drift of #196).
