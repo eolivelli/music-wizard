@@ -88,10 +88,11 @@ public class MwAnalysisTest {
     /**
      * ONNX Runtime is not in the app's dependency graph.
      *
-     * <p>{@code mw-transcribe} compile-depends on {@code mw-ml}, which exists
-     * only to pull ONNX Runtime in — desktop natives of the wrong ABI for a
-     * phone. Both are excluded in {@code app/build.gradle}; this fails if an
-     * edit puts them back, before an APK ships tens of megabytes it cannot use.
+     * <p>{@code mw-ml} exists only to pull ONNX Runtime in — desktop natives of
+     * the wrong ABI for a phone. #247 took it out of {@code mw-transcribe}'s
+     * dependencies and {@code app/build.gradle} excludes it as a backstop; this
+     * fails whichever of the two an edit undoes, before an APK ships tens of
+     * megabytes it cannot use.
      */
     @Test
     public void onnxRuntimeIsNotOnTheClasspath() {
@@ -107,7 +108,7 @@ public class MwAnalysisTest {
     /**
      * The whole harmony path runs with {@code mw-ml} excluded.
      *
-     * <p>This is the question epic #236 raised and issue #247 tracks. It runs
+     * <p>This is the question epic #236 raised and issue #247 answered. It runs
      * the real {@code AudioTranscriber} over real samples on the app's own
      * classpath: onsets, beat tracking, chroma and chord estimation. If any of
      * those reached for a provider, this would be a {@code NoClassDefFoundError}

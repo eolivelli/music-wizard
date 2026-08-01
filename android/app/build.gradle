@@ -91,11 +91,12 @@ configurations.configureEach {
     exclude group: 'com.tagtraum', module: 'ffsampledsp-complete'
     exclude group: 'org.audiveris', module: 'proxymusic'
 
-    // mw-transcribe compile-depends on mw-ml, which drags ONNX Runtime's
-    // desktop natives in. No main source in mw-transcribe references it, so the
-    // harmony path this app runs does not need it -- and
-    // MwAnalysisTest.analysisRunsWithMwMlAbsent runs the whole analysis on this
-    // very classpath to keep that true.
+    // A backstop, not the fix: #247 removed mw-ml -- and with it ONNX Runtime's
+    // desktop natives -- from mw-transcribe's own dependencies, and the reactor
+    // tests that line from both sides. This keeps a reactor regression from
+    // reaching the APK, where the cost is tens of megabytes of natives no phone
+    // can load. MwAnalysisTest.analysisRunsWithMwMlAbsent runs the whole
+    // analysis on this very classpath.
     exclude group: 'dev.olivelli.musicwizard', module: 'mw-ml'
     exclude group: 'com.microsoft.onnxruntime'
 
