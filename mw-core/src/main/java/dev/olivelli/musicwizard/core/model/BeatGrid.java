@@ -145,15 +145,27 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * beat the tracker did not emit.
      *
      * <p><b>Chosen from the middle of a plateau, not tuned to an edge of one.</b>
-     * Measured over the five tier-2 benchmarks against each recording's own
-     * tempo -- taken from the lag its harmonic self-similarity peaks at, which
-     * is a measurement of the music rather than of the tracker -- every
-     * half-width from 0.075 to 0.30 puts all four measurable ones inside 0.13%,
-     * and moves the fifth by under 0.9% of its own median. <b>The plateau spans a
+     * Measured over the seven scored tier-2 benchmarks against each recording's
+     * own tempo, which is a measurement of the music rather than of the tracker.
+     * Two independent axes agree on it to three decimals wherever both apply: the
+     * lag at which the estimated chord labels' self-similarity peaks, and a comb
+     * fit of an onset envelope taken straight from the decoded audio.
+     *
+     * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
+     * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
+     * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
+     * {@code bossa-cm.mp3}, inside 0.72% of four thirds of its tempo, which is
+     * the pulse its tracker is actually following (#231). <b>The plateau spans a
      * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
-     * evidence that this is not fitted to five files. Swept at a step of 0.0025:
-     * the worst cell inside it is 0.128% on {@code gmajorblues.mp3} at 0.165, and
-     * {@code bossa-cm.mp3}'s largest excursion is +0.82% at 0.145.
+     * evidence that this is not fitted to a handful of files.
+     *
+     * <p>The corpus grew from five recordings to seven while this was in review,
+     * and <b>the worst cell did not move</b> -- it is the same recording at the
+     * same half-width. That is worth more than the two extra rows: the two files
+     * added are the ones on which the rejected alternatives are worst of all,
+     * the median 0.64% out on {@code eb7-vamp-130.mp3} and the plain mean 7.7%
+     * out on {@code fm7-vamp-110.mp3}, so the widening exercised the choice
+     * rather than padding it.
      *
      * <p>Both edges have a mechanism rather than a fitted value, which is the
      * other half of the same argument.
@@ -170,8 +182,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
      *       (#231), so it carries a population of intervals about 4/3 of its
      *       median -- 54 of its 501 sit between 1.30x and 1.36x -- and a band
-     *       reaching 1/3 lets them in: at 0.30 it is 0.17% from its median, at
-     *       0.325 it is 2.3% away and at 0.35 it is 3.4% away.
+     *       reaching 1/3 lets them in. Against the same reference as above, four
+     *       thirds of its measured tempo: 0.334% out at the value chosen here,
+     *       0.717% at 0.30, then 2.83% at 0.325 and 3.92% at 0.35.
      * </ul>
      */
     private static final double STEADY_BAND = 0.2;

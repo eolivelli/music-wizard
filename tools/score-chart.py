@@ -42,9 +42,20 @@ Both columns are reported per benchmark:
                against the known cycle at its best rotation. The same rule as
                score-samples.py applies to the model, over different bars: not
                quite the same, in fact, since this totals equal symbols across
-               a bar where that takes the single longest span. Measured on all
-               five, the two rules give the same label everywhere; the bars are
-               what make the columns differ.
+               a bar where that takes the single longest span.
+
+               **That difference is not safe to ignore, and a previous version
+               of this paragraph said it was** -- "measured on all five, the two
+               rules give the same label everywhere; the bars are what make the
+               columns differ". On the seven there are now, `eb7-vamp-130.mp3`
+               disagrees on 33 bars and the two columns differ by 18.5 points,
+               of which the bars account for about three. The rest is the rule:
+               `ChartLayout.atHarmonicRhythm` writes an evenly split 4/4 bar as
+               exactly 2+2 quarters, so "the chord filling most of the bar" is a
+               tie, and `score` below breaks it positionally. 88 of the 91
+               multi-cell bars across all seven benchmarks are exact 2+2 splits,
+               so the tie-break is not an edge case in this metric -- it *is*
+               the rule for multi-chord bars. #242 carries the measurement.
   short
                the share of consecutive chord changes that are closer together
                than one counted beat, on each of the two axes there are. This is
