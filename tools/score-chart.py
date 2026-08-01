@@ -17,18 +17,22 @@ on the beat axis instead, and `short_changes` below refuses to measure one.
 bars, and which of them is higher has already changed sign once.** An early
 version of this paragraph said a chart score can never beat a model score and
 that the gap is the drift; that was wrong, and before #196 the chart column was
-*higher* on four of the five benchmarks, because the recording's own downbeat
-sequence wandered and one constant bar length tracked the music better over
+*higher* on four of the five benchmarks there were then, because the recording's
+own downbeat sequence wandered and one constant bar length tracked the music
+better over
 twelve minutes than the tracker's accumulated phase did.
 
-#196 removed the wander, and the columns swapped: the chart column is now
-*lower* on four of the five, because the tracker's phase is the better of the
-two and the constant bar length is what is left drifting -- it is spaced at the
-median tracked interval where the grid ran at a rate half a percent from it
-(#200). Both readings had the same cause under them, seen from opposite sides,
-which is the reason to state the mechanism here rather than a rule of thumb
-about which column wins. A maintainer who runs both harnesses and finds them
-disagreeing is looking at the bar axes, not at a bug in either.
+#196 removed the wander, and the columns swapped: the chart column went *lower*
+on four of those five, because the tracker's phase was the better of the two and
+the constant bar length was what was left drifting -- it was spaced at the median
+tracked interval where the grid ran at a rate half a percent from it. #200 has
+since replaced that statistic with a rate, which closed most of the gap again
+without closing it entirely, since what remains of it is the chart's phase
+(#233) and the recording's own unevenness (#187). Both readings had the same
+cause under them, seen from opposite sides, which is the reason to state the
+mechanism here rather than a rule of thumb about which column wins. A maintainer
+who runs both harnesses and finds them disagreeing is looking at the bar axes,
+not at a bug in either.
 
 Both columns are reported per benchmark:
 
@@ -39,9 +43,31 @@ Both columns are reported per benchmark:
                against the known cycle at its best rotation. The same rule as
                score-samples.py applies to the model, over different bars: not
                quite the same, in fact, since this totals equal symbols across
-               a bar where that takes the single longest span. Measured on all
-               five, the two rules give the same label everywhere; the bars are
-               what make the columns differ.
+               a bar where that takes the single longest span.
+
+               **That difference is harmless and stays harmless**: applied to
+               every bar of every chart, totals and single-longest-span give the
+               same label on all 1134 of them across the seven benchmarks. What
+               is not harmless is a step *inside* the rule, and a previous
+               version of this paragraph reassured the reader against it by
+               accident -- "the bars are what make the columns differ".
+
+               `ChartLayout.atHarmonicRhythm` writes an evenly split 4/4 bar as
+               exactly 2+2 quarters, so "the chord filling most of the bar" is a
+               **tie**, and `score` below breaks ties positionally. That is not
+               an edge case: 88 of the 91 multi-cell bars across all seven
+               benchmarks are exact 2+2 splits, so the positional tie-break is
+               the whole rule for multi-chord bars.
+
+               On `eb7-vamp-130.mp3` it decides 34 bars and loses all 34, which
+               is most of the 18.5-point gap between that file's model column
+               (93.4%) and its chart column (74.9%). The bars themselves push
+               the other way -- 8 bars wrong outright against the model's 11.
+               In points on 167 bars: the tie-break costs about twenty and the
+               bar lines gain about two. The two partly cancel, which is the
+               only reason 18.5 looks like a single effect. #242 carries the
+               measurement and is about that tie-break rather than about these
+               two columns.
   short
                the share of consecutive chord changes that are closer together
                than one counted beat, on each of the two axes there are. This is
@@ -53,12 +79,18 @@ Both columns are reported per benchmark:
                  tracked   against the beat grid the estimator itself used.
                            Zero by construction -- `ChordEstimator` takes both
                            boundaries of every span from the tracked beat times.
-                 chart     against the median tracked interval, which is what
+                 chart     against the steady tracked rate, which is what
                            `Score.estimatedTempo()` spaces the chart's bars at.
                            Not zero, because one constant bar length drifts
-                           against a recording it is not quite the rate of
-                           (#187, #200). So this column is not a fact about how
-                           fast the harmony moves; it is the size of that drift.
+                           against a recording that does not hold one (#187).
+                           So this column is not a fact about how fast the
+                           harmony moves; it is the share of gaps that drift has
+                           pushed under one counted beat. Which is a tally, not
+                           a scale: the gaps are whole multiples of the tracked
+                           interval, so the threshold sits on a mode, and a cell
+                           moves by a whole cohort or not at all rather than in
+                           proportion to the drift. See
+                           `ChartLayout.atHarmonicRhythm`.
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]
 """
@@ -172,12 +204,19 @@ def render(jar: Path, mp3: Path, workspace: Path) -> str:
 def short_changes(workspace: Path) -> tuple[float, float] | None:
     """Changes closer than a counted beat, as a share, on each of the two axes.
 
-    The chart's counted beat is the *median* interval between tracked beats, and
-    that is exact rather than approximate. `ChartLayout` spaces its bars at
+    The chart's counted beat is the *steady* rate of the tracked beats, and that
+    is exact rather than approximate. `ChartLayout` spaces its bars at
     `60 / Score.estimatedTempo()` quarter notes; with no `--tempo` supplied that
-    accessor returns `BeatGrid.medianTempo`, which is
-    `60 / median-interval * beatUnitQuarters` -- so one counted beat comes to
-    exactly the median interval, whatever the meter.
+    accessor returns `BeatGrid.steadyTempo`, which is
+    `steadyPulseRate * beatUnitQuarters` -- so one counted beat comes to exactly
+    the mean of the intervals within a fifth of the median, whatever the meter.
+
+    **`STEADY_BAND` below is a copy of `BeatGrid`'s and nothing checks it.** It
+    is reproduced because the only precise statement of the chart's axis lives in
+    `BeatGrid`, and nothing the tool writes carries it: the chart header is
+    `%.0f`, which round 3 of review on #212 already measured as too lossy to
+    derive this from. A change to the band in `BeatGrid` has to be made here too,
+    and #238 is open for removing the copy.
 
     An earlier version read the tempo back out of the printed chart header
     instead, on the reasoning that the header is the axis the bars were drawn
@@ -203,8 +242,15 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
 
     intervals = sorted(beats[i] - beats[i - 1] for i in range(1, len(beats)))
     middle = len(intervals) // 2
-    counted = (intervals[middle] if len(intervals) % 2
-               else (intervals[middle - 1] + intervals[middle]) / 2.0)
+    median = (intervals[middle] if len(intervals) % 2
+              else (intervals[middle - 1] + intervals[middle]) / 2.0)
+    # BeatGrid.steadyPulseRate, in the same order it does it: the mean of the
+    # intervals within STEADY_BAND of the median, falling back to the median when
+    # the band is empty -- which an even count of wildly unequal intervals can do.
+    STEADY_BAND = 0.2
+    steady = [d for d in intervals
+              if median * (1 - STEADY_BAND) <= d <= median * (1 + STEADY_BAND)]
+    counted = sum(steady) / len(steady) if steady else median
 
     # The derivation above is only `estimatedTempo()`'s answer while it takes
     # its beat-grid branch, so the branch is checked rather than assumed --
@@ -236,7 +282,7 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     provenances = {s.get("provenance", "UNKNOWN") for s in segments}
     if "SUPPLIED" in provenances:
         sys.exit(f"{workspace.name}: a supplied --tempo makes the chart's beat something "
-                 f"other than the tracked median; this measure does not model that.")
+                 f"other than the tracked rate; this measure does not model that.")
     if provenances <= {"UNKNOWN"}:
         sys.exit(f"{workspace.name}: the tempo map records no provenance, so "
                  f"estimatedTempo() may prefer a stated constant over the beat grid; "

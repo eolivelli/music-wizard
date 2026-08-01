@@ -52,12 +52,21 @@ exposed is fixed too (#196): the tracker's spacing penalty was a forty-eighth of
 the published one, so it left the grid for any loud offbeat, and the benchmarks
 now score between 15% and 99% of bars correct on the tracker's own downbeats.
 
-What is now top is what *that* exposed, in order. The chart spaces its bars at
-the median tracked interval where the grid's own rate is the better figure — on
-the reference recording that is worth eighteen points of printed chart (#200) —
-and it hangs the whole axis on one downbeat, which on a lead-in is the least
-reliable beat there is (#233). Then: dominant sevenths are found on two of the
-five benchmarks and called plain triads on the other three (#208), and one
+The chart's bar *rate* is fixed too (#200): it was the median tracked interval,
+which is not a rate and is quantised to the analysis hop, and it is now the mean
+of the intervals the tracker held steadily. Each of the five benchmarks that
+existed then improved or held **on the root column**, the reference recording by
+fifteen points and one other by twelve. Not on `root+quality`, which fell a point
+or two on two of them — that column is dominated by #208 and its small movements
+do not mean much either way, which is exactly why the two are quoted separately.
+Of the two benchmarks added since, one scores lower, and #242 measures why that
+cell is a tie-break artefact rather than a reading.
+
+What is now top is what all three exposed, in order. The chart still hangs its
+whole bar axis on one downbeat, which on a lead-in is the least reliable beat
+there is (#233), and one constant bar length still cannot follow a recording
+that does not hold one (#187). Then: dominant sevenths are found on two of the
+seven scored benchmarks and called plain triads on the other five (#208), and one
 benchmark's tempo is read at four thirds of its true rate (#231).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
@@ -230,6 +239,24 @@ them are in `docs/history.md`. The short version:
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
+- **Keep prose short.** Comments, javadoc, commit messages, issue and PR bodies:
+  write what a future reader strictly needs and stop. Reviewing prose is the
+  most expensive thing this project does per unit of value, and every sentence
+  is a claim someone has to check.
+  - **Prefer the qualitative fact to the figure.** A number invites
+    verification, dates as soon as anything moves, and has to be restated
+    everywhere it appears. Give one only where it decides something.
+  - **No superlative that is a ranking of the current corpus** — *worst*,
+    *furthest*, *the only one* — since it dates the moment a benchmark is added.
+    Point at the committed baseline instead. A superlative that follows from a
+    mechanism is fine and often the clearest thing to write, because growth
+    cannot falsify it. On #200 four successive drafts of one paragraph each
+    claimed a ranking the data did not hold.
+  - **Do not narrate the review.** "An earlier draft said", "round 3 found",
+    "corrected in review" is process history; it belongs in the commit message
+    or the PR, once, not in the source. Fix the sentence and move on.
+  - When a fact changes, grep for every statement of it before editing one. That
+    is the cheapest way to stop the next round.
 - **One git worktree per task, one local Maven repository per worktree**
   (seed it: `rsync -a ~/.m2-pristine/ <worktree>/.m2/`, then
   `-Dmaven.repo.local` via `MAVEN_ARGS` and `-am` on every build). Never

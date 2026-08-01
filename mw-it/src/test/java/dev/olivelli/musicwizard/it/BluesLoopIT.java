@@ -257,11 +257,56 @@ class BluesLoopIT {
         // reported. A band is still the right shape, since the loop length this
         // is compared against is itself a measurement, but it has to be narrow
         // enough that passing it means the bars stay on the music.
+        //
+        // Written out rather than calling BeatGrid.steadyPulseRate, and that is
+        // deliberate rather than an oversight left behind by #200. What this
+        // gates is whether the tracker inserted or dropped pulses, and the
+        // end-to-end rate is the statistic that notices -- it is exactly the mean
+        // interval, so an inserted pulse moves it. steadyPulseRate is built to
+        // not notice, which is right for spacing a bar line and wrong here.
+        // Substituting it would quietly retire #196's gate.
         List<Double> beats = score.beatGrid().map(BeatGrid::beatTimes).orElseThrow();
         double tracked = 60.0 * (beats.size() - 1)
                 / (beats.get(beats.size() - 1) - beats.get(0));
 
         assertThat(tracked).isBetween(105.0, 107.2);
+    }
+
+    @Test
+    @DisplayName("the tempo the chart is spaced at is the recording's, not the grid's median")
+    void theSpacingTempoAgreesWithTheLoop() {
+        // #200. Score.estimatedTempo() is what ChartLayout divides by to place
+        // every bar line after the first, and what the chart header, the staff
+        // layout and the MusicXML export all print -- so an error here is an
+        // error in every one of them at once, and it compounds with the bar
+        // index rather than staying put.
+        //
+        // Scored against this file's own axis, which is the point: the loop
+        // period is measured from the recording rather than taken from the
+        // tracker, so this asks whether the printed tempo is the music's rather
+        // than whether it agrees with the beat grid. #207 was refuted for
+        // measuring the second and calling it the first.
+        //
+        // Measured 105.912 against the loop's 106.077, which is 0.16% out. The
+        // median interval the accessor used to return is 105.469, which is 0.57%
+        // out and outside the band below -- so this test distinguishes the two
+        // rather than passing on either. The band is 0.4% either way: wide enough
+        // that the loop period being itself a measurement does not decide the
+        // outcome, narrow enough that passing it means the bar lines stay within
+        // a beat of the music over a twelve-bar cycle.
+        double loopTempo = 48 * 60.0 / CYCLE_SECONDS;
+        double spacing = score.estimatedTempo();
+        double median = score.beatGrid().orElseThrow()
+                .medianTempo(score.tempoMap().initialTimeSignature());
+
+        assertThat(spacing)
+                .as("the tempo the chart spaces its bars at")
+                .isBetween(loopTempo * 0.996, loopTempo * 1.004);
+        // And it is nearer the music than the statistic it replaced, which is a
+        // comparison rather than a band and so cannot pass by a lucky constant.
+        assertThat(Math.abs(spacing - loopTempo))
+                .as("distance from the loop's own tempo, against the median interval's")
+                .isLessThan(Math.abs(median - loopTempo));
     }
 
     @Test
