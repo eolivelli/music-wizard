@@ -149,44 +149,27 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * own tempo, which is a measurement of the music rather than of the tracker
      * -- the distinction #207 was closed for missing.
      *
-     * <p><b>{@code tools/ScoreBeats.java} derives it and is committed</b>, which
-     * an earlier draft of this paragraph denied. It prints a reference tempo per
-     * benchmark from the onset envelope's autocorrelation, and those are the
-     * figures used here: 106.000 for {@code gmajorblues.mp3}, 105.000, 89.998,
-     * 89.999 and 74.944. Three further axes built during review agree with it
-     * within 0.01 BPM wherever they overlap -- the lag at which the estimated
-     * chord labels' self-similarity peaks, a comb fit over the decoded audio,
-     * and a spectral-flux Fourier fit sharing code with none of them. Those
-     * three are not committed and #245 is open for one of them, but the axis the
-     * worst cell below rests on is one command away.
-     *
-     * <p>What is <em>not</em> re-derivable in the tree is the sweep itself: no
-     * committed harness varies this constant and reports the plateau, so the
-     * band figures below were taken by hand and confirmed by two reviewers
-     * independently rather than by anything a maintainer can re-run. That is
-     * #245's other half.
+     * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
+     * for five of the seven, from the onset envelope's autocorrelation: 106.000,
+     * 105.000, 89.998, 89.999 and 74.944. The two vamps' 110 and 130 are not in
+     * it, and nothing committed sweeps this constant -- both are #245. So the
+     * axis is re-runnable and the plateau below is not; those figures were taken
+     * by hand and confirmed independently in review.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
      * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
-     * {@code bossa-cm.mp3}, inside 0.72% of four thirds of its tempo, which is
+     * {@code bossa-cm.mp3}, inside 0.71% of four thirds of its tempo, which is
      * the pulse its tracker is actually following (#231). <b>The plateau spans a
      * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
      * evidence that this is not fitted to a handful of files.
      *
-     * <p>The corpus grew from five recordings to seven while this was in review,
-     * and the worst cell stayed the same recording at the same half-width. <b>Its
-     * value did move</b>, from 0.128% to the 0.121% above, and not because of the
-     * corpus: {@code gmajorblues.mp3}'s reference changed axis, from the chord
-     * labels' 106.007 to the onset comb's 106.000. An earlier draft here said
-     * "the worst cell did not move", which is true of the cell's identity and
-     * not of its number.
-     *
-     * <p>What the widening was worth is the two files themselves: they are the
-     * ones on which the rejected alternatives are worst of all, the median 0.64%
-     * out on {@code eb7-vamp-130.mp3} and the plain mean 7.7% out on
-     * {@code fm7-vamp-110.mp3}. So it exercised the choice rather than padding
-     * it.
+     * <p>The corpus grew from five to seven while this was in review, and the
+     * two files added are the ones on which the rejected alternatives are worst
+     * of all -- the median 0.64% out on {@code eb7-vamp-130.mp3}, the plain mean
+     * 7.7% out on {@code fm7-vamp-110.mp3}. The widening exercised the choice
+     * rather than padding it, and did not move which recording or half-width is
+     * worst.
      *
      * <p>Both edges have a mechanism rather than a fitted value, which is the
      * other half of the same argument.
@@ -203,9 +186,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
      *       (#231), so it carries a population of intervals about 4/3 of its
      *       median -- 54 of its 501 sit between 1.30x and 1.36x -- and a band
-     *       reaching 1/3 lets them in. Against the same reference as above, four
-     *       thirds of its measured tempo: 0.334% out at the value chosen here,
-     *       0.717% at 0.30, then 2.83% at 0.325 and 3.92% at 0.35.
+     *       reaching 1/3 lets them in. Against four thirds of ScoreBeats'
+     *       74.944: 0.33% out at the value chosen here, 0.71% at 0.30, then
+     *       2.82% at 0.325 and 3.91% at 0.35.
      * </ul>
      */
     private static final double STEADY_BAND = 0.2;

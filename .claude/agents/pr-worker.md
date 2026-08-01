@@ -114,8 +114,18 @@ Say **why** (the diff shows what); `Closes #N`; flag any `FIX_DIFFERENTLY`
 divergence prominently; name what you verified and how; name what you are
 unsure about. Two writing rules that keep review cheap:
 
+- **Keep it short.** Write what a future reader strictly needs and stop. Prose
+  review is the most expensive thing here per unit of value; every extra
+  sentence is a claim someone must check. This applies to javadoc, comments,
+  commit messages, issue bodies and PR bodies alike.
 - **A number may appear in prose only if a test asserts it or a committed
-  harness reproduces it.** Otherwise state the qualitative fact.
+  harness reproduces it** — and prefer the qualitative fact even then. A figure
+  dates the moment anything moves and must be restated everywhere it appears.
+- **No superlatives about a set that can grow** (*worst*, *only*, *furthest*,
+  *every*). Point at the committed baseline instead. On #200 three drafts of one
+  paragraph each claimed a maximum the data did not hold.
+- **Do not narrate the review in the source.** "An earlier draft said", "round 3
+  found" belongs in the commit message or the PR, once.
 - **When a reviewer corrects a fact, grep for every other statement of that
   fact before replying** — fixing only the sentence pointed at is this
   project's most repeated prose failure.

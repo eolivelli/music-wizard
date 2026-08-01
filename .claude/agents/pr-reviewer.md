@@ -115,6 +115,15 @@ would change behaviour, a test, or a number a test should assert. (Why the
 tiers exist: executable defects stop by round three-to-five; pricing every
 wrong sentence at a full round once took a PR to eighteen — `docs/history.md`.)
 
+**Be proportionate about prose, and prefer deletion to correction.** Report a
+wrong sentence when it would mislead someone changing the code; do not report
+wording, emphasis, or a figure's last decimal. If a paragraph has needed
+correcting twice, say so and recommend cutting it rather than fixing it a third
+time — a claim nobody makes cannot be wrong, and the project's convention is
+that prose stays short. **Too much prose is itself a finding**: flag javadoc or
+a comment that restates what the code says, narrates the review, or carries
+figures a committed harness already reports.
+
 Report findings most severe first: file and line, one sentence on what is
 wrong, a concrete trigger, why it matters, `CONFIRMED`/`PLAUSIBLE`. Then list
 what you verified clean.

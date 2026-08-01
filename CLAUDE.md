@@ -228,6 +228,21 @@ them are in `docs/history.md`. The short version:
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
+- **Keep prose short.** Comments, javadoc, commit messages, issue and PR bodies:
+  write what a future reader strictly needs and stop. Reviewing prose is the
+  most expensive thing this project does per unit of value, and every sentence
+  is a claim someone has to check.
+  - **Prefer the qualitative fact to the figure.** A number invites
+    verification, dates as soon as anything moves, and has to be restated
+    everywhere it appears. Give one only where it decides something.
+  - **Never write a superlative** — *worst*, *only*, *furthest*, *every* — about
+    a set that can grow. Point at the committed baseline or harness instead. On
+    #200 three successive drafts each claimed a maximum the data did not hold.
+  - **Do not narrate the review.** "An earlier draft said", "round 3 found",
+    "corrected in review" is process history; it belongs in the commit message
+    or the PR, once, not in the source. Fix the sentence and move on.
+  - When a fact changes, grep for every statement of it before editing one. That
+    is the cheapest way to stop the next round.
 - **One git worktree per task, one local Maven repository per worktree**
   (seed it: `rsync -a ~/.m2-pristine/ <worktree>/.m2/`, then
   `-Dmaven.repo.local` via `MAVEN_ARGS` and `-am` on every build). Never
