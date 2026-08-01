@@ -437,13 +437,14 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a run whose own chords cannot decide agrees with the key it abuts")
         void anUncoveredRunAgreesWithTheKeyBesideIt() {
-            // A run of one or two chords ties on both of the ranks its own
-            // chords can supply -- a single pitch class has two spellings
-            // costing one accidental each and sitting zero from their own
-            // regions -- so the flat-first scan decided, and a lead-in on the
-            // dominant of B major printed Gb two bars before the identical
-            // chord printed F#. The key next door is the only evidence there
-            // is, and it is a tie-break rather than a source.
+            // A short run on a chromatic root ties on both of the ranks its own
+            // chords can supply: its two spellings cost one accidental each and
+            // sit the same distance from their own regions. So the flat-first
+            // scan decided it, and a lead-in on the dominant of B major printed
+            // Gb two bars before the identical chord printed F#. The key next
+            // door is the only evidence there is, and it is a tie-break rather
+            // than a source -- a run on naturals is settled by the accidental
+            // count before the key is asked.
             Score leadIn = Score.empty(TempoMap.constant(120), 4.0)
                     .withChords(asGiven(List.of(
                             chordAt(0, "F#4"), chordAt(1, "B4"),

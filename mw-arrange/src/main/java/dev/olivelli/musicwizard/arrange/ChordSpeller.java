@@ -156,28 +156,24 @@ public final class ChordSpeller {
      * least as fine-grained as the decision it replaces.
      *
      * <p>Whatever the keys do not cover is counted, one run of consecutive
-     * uncovered chords at a time, with the key the run abuts breaking a tie the
-     * chords cannot. Each of the three simpler rules is wrong, and each is this
-     * one with a piece removed:
+     * uncovered chords at a time, from that run's own chords, with the key the run
+     * abuts breaking a tie those chords leave. Each half earns its place, and the
+     * three simpler rules are each this one with a half removed:
      *
      * <ul>
      *   <li>Counted together with the covered chords, a lead-in gets a region
      *       belonging to no key in the piece, and an E flat one printed {@code D#}
      *       two bars before an identical chord printed {@code Eb}.
-     *   <li>Given the nearest key outright, a run gets a window over music that
-     *       key does not cover: a section of plain C major before a late B major
-     *       signature came back with an {@code E#} in every bar, overwriting a
-     *       spelling {@code SymbolicChordEstimator} had already got right.
+     *   <li>Given the abutting key outright rather than as a tie-break, a run gets
+     *       a window over music that key does not cover: a section of plain C
+     *       major before a late B major signature came back with an {@code E#} in
+     *       every bar, overwriting a spelling {@code SymbolicChordEstimator} had
+     *       already got right.
      *   <li>Counted as one set however far apart, two uncovered sections either
      *       side of a key get a compromise region belonging to neither, so a
      *       sharp tail printed {@code Gb} where the key beside it printed
      *       {@code F#}.
      * </ul>
-     *
-     * <p>What survives all three: a run is counted from its own chords, so no key
-     * reaches music outside itself, and where its own chords cannot decide -- a
-     * one-chord run has a single pitch class and both spellings tie -- the key
-     * next door does.
      */
     public static Score respell(Score score) {
         Objects.requireNonNull(score, "score");
@@ -215,11 +211,9 @@ public final class ChordSpeller {
     /**
      * The region of the key a run of uncovered chords abuts, if it abuts one.
      *
-     * <p>The key <em>before</em> the run for preference, since a run that ends at
-     * a key is leaving one -- the same convention that writes a pivot chord in
-     * the key it comes from -- and the key after it for a lead-in, which has
-     * nothing before it. Empty only when no chord in the piece is covered, which
-     * is a score whose keys sit where no chord does.
+     * <p>The key <em>before</em> the run for preference, and the key after it for
+     * a lead-in, which has nothing before it. Empty only when no chord in the
+     * piece is covered, which is a score whose keys sit where no chord does.
      */
     private static OptionalDouble beside(List<Optional<Key>> covering, int from, int to) {
         if (from > 0) {
@@ -382,13 +376,14 @@ public final class ChordSpeller {
      * chart of anything writes.
      *
      * <p><b>Then the key the run abuts</b>, when it abuts one: of two regions the
-     * chords cannot choose between, the one nearer the key next door. A run of one
-     * chord carries a single pitch class, whose two spellings tie on both ranks
-     * above by construction, so without this a lead-in on the dominant of B major
-     * printed {@code Gb} two bars before the identical chord printed {@code F#}.
-     * It is a tie-break and not a source: the ranks above are what stop a key
-     * dragging music it does not cover, which is the other half of the same
-     * finding.
+     * chords cannot choose between, the one nearer the key next door. What reaches
+     * it is a short run on a chromatic root, whose two spellings cost one
+     * accidental each and sit the same distance from their own regions -- a
+     * lead-in on the dominant of B major printed {@code Gb} two bars before the
+     * identical chord, covered by the key, printed {@code F#}. A run on naturals
+     * never gets here, because the alternative spellings cost an accidental and
+     * the first rank has already decided. It is a tie-break and not a source: the
+     * ranks above are what stop a key dragging music it does not cover.
      *
      * <p><b>Then the region nearest natural</b>, which decides between a region
      * and the same one a whole turn of the circle away. That leaves one thing
