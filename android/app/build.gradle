@@ -1,0 +1,232 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Kept in one place because the app and its unit tests both name it, and a
+// mismatch between them is only visible as an unresolved snapshot.
+ext.mwVersion = '0.1.0-SNAPSHOT'
+
+android {
+    namespace = 'dev.olivelli.musicwizard.android'
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = 'dev.olivelli.musicwizard.android'
+        // Android 8. Everything the analysis needs at run time is either in
+        // API 26 or brought there by D8: Math.clamp (API 35) is backported and
+        // Stream.toList (API 34) comes from the desugared library below. The
+        // one thing that is not, and cannot be, is Jackson's record support --
+        // see MwAnalysis.writeCache.
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = '0.1'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        // mw-core folds its lists with Stream.toList(), which Android only
+        // grew in API 34; the desugared library supplies it below that.
+        coreLibraryDesugaringEnabled = true
+    }
+
+    buildTypes {
+        debug {
+            // Debug only, on purpose: a debug APK is signed with the
+            // auto-generated debug keystore, so CI can publish something that
+            // installs on a real phone without holding a signing secret.
+            minifyEnabled = false
+        }
+    }
+
+    packaging {
+        resources {
+            // Every MW jar and its dependencies carry these; the packager
+            // refuses to choose between duplicates on its own.
+            excludes += [
+                    'META-INF/LICENSE*',
+                    'META-INF/NOTICE*',
+                    'META-INF/DEPENDENCIES',
+                    'META-INF/*.kotlin_module',
+                    'META-INF/versions/**',
+            ]
+        }
+    }
+
+    testOptions {
+        unitTests {
+            // The analysis glue under test never calls into the framework, but
+            // Log.i does turn up in the classes that carry it; returning
+            // defaults keeps that from throwing.
+            returnDefaultValues = true
+        }
+    }
+
+    lint {
+        // The MW jars are ordinary JVM code and lint has opinions about JVM
+        // APIs it cannot see the guards for; the app's own sources are what
+        // this build gates on, via javac and the unit tests.
+        checkDependencies = false
+    }
+}
+
+configurations.configureEach {
+    // Everything shipped inside the APK stays Apache-2.0/BSD/MIT, the same
+    // discipline the reactor's enforcer applies. Three of the reactor's
+    // dependencies are LGPL and none of them is reachable from the harmony
+    // path this app runs:
+    //   * jipes         (LGPL-2.1) - declared by mw-dsp, referenced by no
+    //                                source file in the repository.
+    //   * ffsampledsp   (LGPL-2.1) - the MP3/FLAC provider AudioDecoder finds
+    //                                through javax.sound's SPI. The app never
+    //                                loads AudioDecoder; it reads its own WAV.
+    //   * proxymusic    (LGPL-3.0) - MusicXML export, which the app has no
+    //                                screen for.
+    // ffsampledsp is also 25 MB of desktop natives -- six of them, for Windows,
+    // macOS and Linux on x86_64, i386 and aarch64 -- none of which a phone can
+    // load. jipes and proxymusic carry no natives at all; for those two the
+    // reason is licensing alone.
+    exclude group: 'com.tagtraum', module: 'jipes'
+    exclude group: 'com.tagtraum', module: 'ffsampledsp-complete'
+    exclude group: 'org.audiveris', module: 'proxymusic'
+
+    // A backstop, not the fix: #247 removed mw-ml -- and with it ONNX Runtime's
+    // desktop natives -- from mw-transcribe's own dependencies, and the reactor
+    // tests that line from both sides. This keeps a reactor regression from
+    // reaching the APK, where the cost is tens of megabytes of natives no phone
+    // can load. MwAnalysisTest.analysisRunsWithMwMlAbsent runs the whole
+    // analysis on this very classpath.
+    exclude group: 'dev.olivelli.musicwizard', module: 'mw-ml'
+    exclude group: 'com.microsoft.onnxruntime'
+
+    // 0.1.0-SNAPSHOT is a changing module: without this, a Gradle build an hour
+    // after `mvn install` silently keeps the previous jar.
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+}
+
+dependencies {
+    // The six modules the app needs, from the local Maven repository.
+    //
+    // JUnit is excluded here rather than in the configuration-wide block above,
+    // because it is a real runtime dependency of JLargeArrays, which JTransforms
+    // depends on and the FFT therefore drags in. Excluding it configuration-wide
+    // would reach testImplementation as well -- which extends implementation --
+    // and take the test framework with it.
+    ['mw-core', 'mw-audio', 'mw-dsp', 'mw-arrange', 'mw-transcribe', 'mw-notation'].each {
+        implementation("dev.olivelli.musicwizard:${it}:${mwVersion}") {
+            exclude group: 'junit'
+            exclude group: 'org.hamcrest'
+        }
+    }
+
+    // FileProvider, for handing a recording to another app. Sharing the WAV
+    // out is how a phone recording reaches the desktop corpus, so it is worth
+    // the one dependency rather than a hand-rolled ContentProvider.
+    implementation 'androidx.core:core:1.13.1'
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+/**
+ * Denylist for {@code checkDexedApiLevel}: JDK methods newer than {@code minSdk}
+ * that the analysis really calls, which must therefore not survive into the dex.
+ *
+ * <p>This is not a general API-level audit — lint does not see inside the MW
+ * jars, and every other post-26 method those jars carry is in a class the app
+ * never loads (the workspace, the config loader, the LilyPond runner, the MIDI
+ * importer). These two are different: they sit on the path every analysis takes,
+ * and both are handled by the toolchain rather than by anything in this
+ * repository, so a toolchain downgrade would put them back silently and the app
+ * would die with NoSuchMethodError on the first recording.
+ */
+ext.dexForbiddenCalls = [
+        // Java 21, Android API 35. D8 backports it -- but not every D8 does:
+        // building this same app against AGP 8.7.3 left 23 calls to it in the
+        // dex, and against the 8.13.0 pinned in the root build file, none. So
+        // that version is load-bearing rather than cosmetic, and this check is
+        // what says so from the committed tree.
+        'Ljava/lang/Math;.clamp',
+        // Java 16, Android API 34. Comes from the desugared library, so this
+        // also fails if coreLibraryDesugaringEnabled is turned off.
+        'Ljava/util/stream/Stream;.toList',
+]
+
+/**
+ * Positive control for the same check: a call that is certainly in the dex.
+ *
+ * <p>Every assertion the check makes is a negative one, and a search that finds
+ * nothing because it is searching nothing reports exactly the same "none
+ * survived". The transcriber is where the app enters the reactor's jars, which
+ * is where the forbidden calls come from.
+ *
+ * <p>A <em>call</em> rather than a class, and searched by the same expression,
+ * so that it fails wherever the search would: class descriptors appear in the
+ * dump's header lines, and invocations only in the disassembly, so a dump taken
+ * without {@code -d} would still name the class while carrying not one call to
+ * look through.
+ */
+ext.dexControlCall = 'Ldev/olivelli/musicwizard/transcribe/AudioTranscriber;.transcribe'
+
+tasks.register('checkDexedApiLevel') {
+    description = 'Fails if the debug APK still calls JDK methods newer than minSdk.'
+    def apkDir = layout.buildDirectory.dir('outputs/apk/debug')
+    def dexdump = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}/dexdump"
+    def forbidden = dexForbiddenCalls
+    def control = dexControlCall
+    def workDir = layout.buildDirectory.dir('dex-api-check')
+
+    doLast {
+        def apk = apkDir.get().asFile.listFiles({ f -> f.name.endsWith('.apk') } as FileFilter)
+        if (apk == null || apk.length == 0) {
+            throw new GradleException("no debug APK under ${apkDir.get().asFile}")
+        }
+        def tool = file(dexdump)
+        if (!tool.canExecute()) {
+            throw new GradleException("dexdump not found at ${tool};"
+                    + " the check that keeps post-minSdk JDK calls out of the APK cannot run")
+        }
+        def out = workDir.get().asFile
+        out.deleteDir()
+        out.mkdirs()
+        // java.util.zip and ProcessBuilder rather than Gradle's copy {} and
+        // exec {}: those two are what make a doLast block incompatible with
+        // Gradle 9, and this task is small enough not to need them.
+        def dumped = new StringBuilder()
+        new java.util.zip.ZipFile(apk[0]).withCloseable { archive ->
+            archive.entries().findAll { it.name ==~ /classes\d*\.dex/ }.each { entry ->
+                def dex = new File(out, entry.name)
+                archive.getInputStream(entry).withStream { input ->
+                    dex.withOutputStream { output -> output << input }
+                }
+                def process = new ProcessBuilder(tool.absolutePath, '-d', dex.absolutePath)
+                        .redirectErrorStream(true)
+                        .start()
+                dumped.append(process.inputStream.getText('UTF-8'))
+                if (process.waitFor() != 0) {
+                    throw new GradleException("dexdump failed on ${entry.name}")
+                }
+            }
+        }
+
+        def dex = dumped.toString()
+        if (!dex.contains(control + ':')) {
+            throw new GradleException("the dex dump holds no call to ${control}, so it is not"
+                    + " the disassembly this check searches: a dex naming scheme or a dexdump"
+                    + " invocation has changed, and 'none found' would be vacuous")
+        }
+        def found = forbidden.findAll { dex.contains(it + ':') }
+        if (!found.isEmpty()) {
+            throw new GradleException("the debug APK calls JDK methods that do not exist at"
+                    + " minSdk ${android.defaultConfig.minSdk}: ${found}."
+                    + " D8 should have backported or desugared them; check the AGP version"
+                    + " and coreLibraryDesugaringEnabled. Leaving these in makes the app die"
+                    + " with NoSuchMethodError on the first analysis.")
+        }
+        logger.lifecycle("dex API check: none of ${forbidden} survived into the APK")
+    }
+}
+
+tasks.matching { it.name == 'assembleDebug' }.configureEach { finalizedBy 'checkDexedApiLevel' }

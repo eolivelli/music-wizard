@@ -31,18 +31,32 @@ jobs:
       - name: Check the project exists
         id: exists
         run: test -f android/gradlew && echo "yes=true" >> "$GITHUB_OUTPUT" || echo "yes=false" >> "$GITHUB_OUTPUT"
+      # Two JDKs, in this order, because the two builds want different ones and
+      # the last setup-java wins for JAVA_HOME (#252):
+      #   * The reactor's enforcer requires a build JDK of 25 or newer. #246
+      #     lowered the *bytecode target* to 21 so D8 can read the jars; it did
+      #     not lower the compiler that produces them.
+      #   * AGP runs on a JDK it supports, which 25 is not.
+      # A single JDK cannot satisfy both, and the earlier single '21' setup made
+      # the Maven step below fail in validate, before compiling anything.
+      - uses: actions/setup-java@v4
+        if: steps.exists.outputs.yes == 'true'
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+      # The shared MW modules are consumed as jars from a local Maven repo the
+      # Gradle build reads; install them first. ubuntu-latest runners ship the
+      # Android SDK preinstalled.
+      - name: Install shared MW modules
+        if: steps.exists.outputs.yes == 'true'
+        run: mvn -B --no-transfer-progress -DskipTests install
       - uses: actions/setup-java@v4
         if: steps.exists.outputs.yes == 'true'
         with:
           java-version: '21'
           distribution: temurin
           cache: gradle
-      # The shared MW modules are consumed as jars from a local Maven repo the
-      # Gradle build reads; install them first. ubuntu-latest runners ship the
-      # Android SDK preinstalled.
-      - name: Install shared MW modules at release 21
-        if: steps.exists.outputs.yes == 'true'
-        run: mvn -B --no-transfer-progress -DskipTests install
       - name: Build and test the app
         if: steps.exists.outputs.yes == 'true'
         working-directory: android

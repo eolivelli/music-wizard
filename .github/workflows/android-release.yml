@@ -16,13 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Two JDKs, for the reason android.yml spells out (#252): the reactor's
+      # enforcer requires a build JDK of 25 or newer, AGP does not run on one,
+      # and the last setup-java wins for JAVA_HOME. This job is only reachable
+      # by pushing an android-v* tag, so unlike android.yml it cannot be proved
+      # by a pull request -- the first tag is its first run.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+      - name: Install shared MW modules
+        run: mvn -B --no-transfer-progress -DskipTests install
       - uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: temurin
           cache: gradle
-      - name: Install shared MW modules
-        run: mvn -B --no-transfer-progress -DskipTests install
       - name: Build and test the app
         working-directory: android
         run: ./gradlew --no-daemon test assembleDebug
