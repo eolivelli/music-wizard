@@ -69,8 +69,9 @@ rendered chart source. Establish:
   known failure mode of #185, worth flagging loudly);
 - how the dominant progression relates to what the user remembered — same
   chords, transposed, relative-minor confusion, or unrelated;
-- where the chart degrades, if it does (fade-outs and beat drift, #196, tend
-  to wreck the last bars).
+- where the chart degrades, if it does (fade-outs, and the chart's bar lines
+  drifting away from the beats they are meant to sit on, #200, tend to wreck
+  the last bars).
 
 **6. Append the outcome to the `list.txt` entry**, dated, in the style of the
 existing ones: what MW read, what matched the recollection, and the specific

@@ -45,9 +45,18 @@ stale in four separate files. The lesson is not "a constant can fix it" but
 So: work that makes real audio work outranks work that polishes what already
 works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
 every benchmark with known ground truth went from 0% of bars correct to between
-14% and 89%, and from one `N.C.` span per recording to none. What is now top is
-what that exposed: the beat grid drifts (#196), and dominant sevenths are found
-on two of the five benchmarks and called plain triads on the other three (#208).
+14% and 89%, and from one `N.C.` span per recording to none. The beat drift that
+exposed is fixed too (#196): the tracker's spacing penalty was a forty-eighth of
+the published one, so it left the grid for any loud offbeat, and the benchmarks
+now score between 15% and 99% of bars correct on the tracker's own downbeats.
+
+What is now top is what *that* exposed, in order. The chart spaces its bars at
+the median tracked interval where the grid's own rate is the better figure — on
+the reference recording that is worth eighteen points of printed chart (#200) —
+and it hangs the whole axis on one downbeat, which on a lead-in is the least
+reliable beat there is (#233). Then: dominant sevenths are found on two of the
+five benchmarks and called plain triads on the other three (#208), and one
+benchmark's tempo is read at four thirds of its true rate (#231).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

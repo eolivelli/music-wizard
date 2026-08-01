@@ -35,7 +35,7 @@ import java.util.Objects;
  * </pre>
  *
  * <p>with the recursion {@code D(n) = max over m of { D(m) + lambda * P(n - m) }
- * + strength(n)} and {@code P(delta) = -(log2(delta / period))^2}. Because the
+ * + strength(n)} and {@code P(delta) = -(ln(delta / period))^2}. Because the
  * penalty is a function of the log ratio, being 10% fast costs the same as being
  * 10% slow, which is what keeps the tracker from drifting in one direction.
  *
@@ -49,10 +49,49 @@ public final class BeatTracker {
     /**
      * Weight of the spacing penalty against onset strength.
      *
-     * <p>Ellis suggests around 1. Higher makes the tracker insist on even
-     * spacing and ignore evidence; lower lets it chase every syncopation.
+     * <p>Higher makes the tracker insist on even spacing and ignore evidence;
+     * lower lets it chase every syncopation. This is the reference
+     * implementations' value for the penalty as Ellis writes it, in natural
+     * logs.
+     *
+     * <p><strong>It has to be read together with the base of the logarithm,
+     * and that is how it was wrong.</strong> The penalty here used to be
+     * {@code -(log2(gap / period))^2} weighted at 1, quoting a figure of
+     * "around 1" that belongs to the natural-log form. The two differ by
+     * {@code 1 / (ln 2)^2}, so the shipped penalty was <b>one forty-eighth</b>
+     * of the published one — not a loose setting of the algorithm but a
+     * different algorithm, which is why no constant downstream could
+     * compensate.
+     *
+     * <p>What it cost is worth stating in the units the recursion works in.
+     * The envelope is normalised to unit variance and a loud attack reads
+     * several, while inserting one extra beat — two gaps of half a period
+     * where there was one — cost {@code 2 * log2(1/2)^2 = 2} at the old
+     * weight. So an offbeat worth two standard deviations bought its own beat,
+     * and on a shuffle the swung eighth is exactly that. The tracker left the
+     * grid for it and came back a beat later, and the detours that failed to
+     * pair up accumulated into the 1.9% rate error of #196 — a whole extra
+     * beat per twelve-bar cycle.
+     *
+     * <p>Both halves of that are pinned rather than described.
+     * {@code BeatTrackingTest.aLouderOffbeatDoesNotBuyItselfABeat} is the
+     * mechanism on a synthetic shuffle, and {@code BluesLoopIT} is the
+     * consequence on the real recording: the share of intervals that are two
+     * thirds of a beat rather than a beat, and the tracked rate against the
+     * loop's own. Both carry their before-and-after figures.
+     *
+     * <p>The one thing not to read into the choice of value: it is the
+     * published one and it was not tuned. A sweep over the five benchmarks of
+     * {@code tools/score-samples.py} says the failure is on the low side and
+     * that this is not a cliff edge, and it says no more than that — every one
+     * of those recordings is a programmed loop with rigid timing, so a sweep
+     * on them rewards rigidity without bound and cannot choose a value. Two of
+     * the five have their best point a little below this one and two a little
+     * above, by margins far smaller than the distance from the old weight.
+     * Somewhere above it the tracker must stop following a human rubato, and
+     * nothing here measures where.
      */
-    private static final double TIGHTNESS = 1.0;
+    private static final double TIGHTNESS = 100.0;
 
     /** Window over which one tempo is assumed, in seconds. */
     private static final double WINDOW_SECONDS = 25.0;
@@ -199,7 +238,7 @@ public final class BeatTracker {
             int latest = n - minGap;
             for (int m = earliest; m <= latest; m++) {
                 double gap = n - m;
-                double deviation = Math.log(gap / periodFrames) / Math.log(2);
+                double deviation = Math.log(gap / periodFrames);
                 double candidate = score[m] - TIGHTNESS * deviation * deviation;
                 if (candidate > best) {
                     best = candidate;
