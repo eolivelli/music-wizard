@@ -115,6 +115,10 @@ mw-it         slow integration tests
 
 **`mw-core` is the only module everything may depend on. `mw-notation` must not
 depend on `mw-ml`. `mw-cli` is the only module that wires everything together.**
+(As of #247 the stronger statement is also true — `mw-cli` is the *only* module
+that depends on `mw-ml` — but that is current state, not the rule: when melody
+lands, `mw-transcribe` will need a provider SPI again. The rule above survives
+that; the fact does not.)
 This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
@@ -122,7 +126,10 @@ and changes to `mw-core` go through a separate serialized PR.
 One edge between non-core modules is new and worth naming: **`mw-notation`
 depends on `mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. It
 joins the ones the pipeline already had — `mw-dsp` on `mw-audio`, and
-`mw-transcribe` on all three of `mw-audio`, `mw-dsp` and `mw-ml`. The notation
+`mw-transcribe` on both `mw-audio` and `mw-dsp`. (`mw-transcribe` declared
+`mw-ml` too and never wrote a line against it, which put ONNX Runtime's desktop
+natives in the Android app's compile closure for nothing; #247 moved that
+declaration to `mw-cli`, at runtime scope, where the wiring belongs.) The notation
 layer needs the quantizer's tuplet decision and cannot re-derive it — three
 onsets a third of a beat apart and three a half beat apart are both legal on the
 sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both

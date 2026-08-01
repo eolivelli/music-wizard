@@ -70,10 +70,11 @@ class AndroidBytecodeTargetTest {
      * referenced so the list reads as data and so mw-cli need not declare a
      * direct dependency on modules it only uses transitively.
      *
-     * <p>mw-ml is in the closure too ({@code mw-transcribe} compile-depends on
-     * it, which is #247) but has no sources at all today, so there is no class
-     * to probe and nothing for D8 to choke on. The reactor property covers it
-     * the moment it gains one.
+     * <p>mw-ml is deliberately absent: #247 removed {@code mw-transcribe}'s
+     * unused compile dependency on it, so it is no longer in the app's closure
+     * at all and D8 never sees it. {@code HarmonyPathNeedsNoMlTest} in
+     * mw-transcribe is what keeps it out; if it ever comes back, it belongs in
+     * this list.
      */
     private static final Map<String, String> APP_FACING_MODULES = appFacingModules();
 
