@@ -325,8 +325,10 @@ final class ChartLayout {
      *
      * <p>The reason originally given for supplying them was that chord
      * recognition returned one {@code N.C.} span covering the whole recording.
-     * That was true and is not: since #3 the same file yields 740 spans and no
-     * {@code N.C.} at all. The caveat above stands anyway and stands for a
+     * That was true and is not: since #3 the same file yields hundreds of spans
+     * and no {@code N.C.} at all -- 740 then, 666 since #196 removed the
+     * spurious beats their boundaries were taken from. The caveat above stands
+     * anyway and stands for a
      * better reason — a layout measurement wants a progression known to be
      * right, not one that is 50% right — so the method here did not change when
      * its original justification stopped applying.
@@ -374,6 +376,18 @@ final class ChartLayout {
      * rather than a result about grid width. The drift reaches two beats by
      * chord 47 and seventeen by the end. The one-chord margin between 25 and 26
      * is noise.
+     *
+     * <p><b>#196 has moved that paragraph's three rates, and this time it moved
+     * the beat times rather than only the downbeat phase.</b> They now read
+     * 0.5636s over the hundred, 0.5658s over the whole recording and 0.5689s for
+     * the estimate. The conclusion survives and its shape changes: the drift by
+     * chord 26 is unchanged at about a beat, so 26 still fails for the reason
+     * given, but the whole-recording figure falls from seventeen beats to seven.
+     * What is left of it is no longer the tracker running fast -- it now runs
+     * within a tenth of a percent of the music, which is what #196 fixed -- but
+     * the gap between the median interval this class spaces bars at and the rate
+     * the grid actually ran at, which is #200. The chord indices themselves want
+     * re-taking a third time and have not been.
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
      * carry it alone: a grid narrower than the timing error trips over it, which
@@ -648,7 +662,10 @@ final class ChartLayout {
      * five benchmarks is faster than a beat, and that is structural rather than
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
-     * at, which is the median tracked interval, 12.0% to 32.9% of changes are.
+     * at, which is the median tracked interval, 11.3% to 24.1% of changes are.
+     * That range was 12.0% to 32.9% before #196; both ends move because the
+     * beats themselves moved, and its top end fell by most because the
+     * recording it came from is the one whose grid was worst.
      *
      * <p>The whole of that difference is one constant bar length drifting
      * against a recording that does not keep one -- #187, #196 and #200 -- and

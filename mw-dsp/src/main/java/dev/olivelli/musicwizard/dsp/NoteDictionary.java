@@ -104,6 +104,14 @@ public final class NoteDictionary {
      *     0.30        0.930       0.194       1.11     85.4%      85.4%
      * </pre>
      *
+     * <p>The per-bar figures in this table were measured on the beat grid as
+     * it was before #196: chroma is averaged per tracked beat, so removing
+     * that grid's 1.9% rate error moves them. The comparison the table is
+     * for is not in doubt -- the differences down it are tens of points and
+     * the anchor moved by one -- but the cells read as current and are not.
+     * {@link ChordEstimator} carries the statement of this and #232 tracks
+     * re-measuring them.
+     *
      * <p>0.50 is taken as the setting, where accuracy peaks on both columns.
      * The peak is not sharp — everything from 0.50 down to 0.30 is within 1.6
      * points — but it is on the side of the range that also keeps a bass note in
