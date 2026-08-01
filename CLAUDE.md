@@ -309,3 +309,6 @@ The directory "./samples" contains a selection of real mp3 files that are
 expected to work.
 The file samples/list.txt contains a description of the contents of each file.
 This is the ultimate reference test set to evaluate the quality of the results
+
+`docs/phone-to-corpus.md` is the route a recording made with the phone app takes
+into `uncommitted/` or `samples/`, and what to write down beside it.
