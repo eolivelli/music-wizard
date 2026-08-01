@@ -167,13 +167,30 @@ public final class BeatTracker {
     /**
      * The tempo actually implied by the tracked beats, as the median interval.
      *
-     * <p>Reported rather than the seed estimate, because the two can disagree.
-     * The autocorrelation peak is prone to landing an octave out -- the signal
-     * really is periodic at half and double the beat rate -- but the dynamic
-     * program recovers the right beats anyway, since onset strength outvotes a
-     * mistaken period once the spacing penalty allows the correct gap. Reporting
-     * the seed would then contradict the very beats returned alongside it, and
-     * every stage downstream reads both.
+     * <p>Reported rather than the seed estimate, because the two can disagree:
+     * the seed is one number for a window and this is what the beats in it
+     * actually did. Reporting the seed would contradict the very beats returned
+     * alongside it, and every stage downstream reads both.
+     *
+     * <p><strong>What this no longer means is that the dynamic program will
+     * rescue an octave error in the seed.</strong> An earlier version of this
+     * comment said it would, on the grounds that onset strength outvotes a
+     * mistaken period once the spacing penalty allows the correct gap. That was
+     * true only because the penalty was a forty-eighth of the published weight,
+     * and it was true in only one of the two directions even then: measured on
+     * clean click tracks at 90, 120 and 160 BPM, a seed at half the true rate
+     * was rescued and a seed at double it was not, because a double-rate seed's
+     * predecessor window puts the true period at the far edge rather than the
+     * near one. At the published weight neither is rescued and the tracker
+     * follows its seed. See {@link #TIGHTNESS}, and
+     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
+     *
+     * <p>That is the algorithm working as designed rather than a hole opened by
+     * fixing it — resolving the octave is what {@link TempoEstimator}'s
+     * perceptual prior is for, and a tracker that quietly disagrees with the
+     * period it was given is a tracker whose reported tempo means nothing. But
+     * it does move where an octave error becomes visible, so it is worth saying
+     * here rather than only where the weight is set.
      *
      * <p>Median rather than mean so that one dropped or doubled beat does not
      * drag the answer.

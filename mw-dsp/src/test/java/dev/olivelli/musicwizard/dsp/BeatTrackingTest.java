@@ -1201,6 +1201,44 @@ class BeatTrackingTest {
                     .isLessThan(5);
         }
 
+        @ParameterizedTest(name = "the dynamic program follows a seed an octave out at {0} BPM")
+        @ValueSource(doubles = {90, 120, 160})
+        void theDynamicProgramFollowsItsSeedRatherThanFixingIt(double bpm) {
+            // A limitation, pinned deliberately, because it is the cost of the
+            // spacing weight being what Ellis published rather than a
+            // forty-eighth of it, and because the comment on tempoOf used to
+            // claim the opposite.
+            //
+            // Under the old weight a seed at *half* the true rate was
+            // overridden by the clicks -- 45 gave back 89.9 -- and a seed at
+            // double it was not, since a double-rate seed puts the true period
+            // at the far edge of the predecessor window rather than the near
+            // one. Now neither is. Resolving the octave is TempoEstimator's
+            // job, and this asserts that BeatTracker will not paper over it.
+            //
+            // On the fixture rather than through track(), because track() would
+            // supply a correct seed and the point is what happens when the seed
+            // is wrong.
+            OnsetEnvelope envelope = envelopeOf(SignalFactory.clickTrack(bpm, 20, RATE));
+
+            for (double factor : new double[] {0.5, 2.0}) {
+                List<Double> beats =
+                        BeatTracker.trackFixedTempo(envelope, bpm * factor, 0, envelope.length());
+                assertThat(beats).hasSizeGreaterThan(4);
+
+                double[] intervals = new double[beats.size() - 1];
+                for (int i = 0; i < intervals.length; i++) {
+                    intervals[i] = beats.get(i + 1) - beats.get(i);
+                }
+                java.util.Arrays.sort(intervals);
+                double tracked = 60.0 / intervals[intervals.length / 2];
+
+                assertThat(tracked)
+                        .as("tracked rate from a seed at %s of the true one", factor)
+                        .isCloseTo(bpm * factor, within(bpm * factor * 0.03));
+            }
+        }
+
         @Test
         @DisplayName("produces no beats for silence")
         void silenceProducesNoBeats() {
