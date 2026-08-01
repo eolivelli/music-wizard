@@ -84,6 +84,17 @@ public final class ResultActivity extends Activity implements AnalysisJobs.Liste
             showRunning();
             return;
         }
+        // In memory before on disk. An analysis that finished while this screen
+        // was away -- a rotation, or a trip to the home screen -- is held by
+        // AnalysisJobs, and on Android below 35 that is the only place it is
+        // held, because the file beside the audio could not be written. Asking
+        // the disk first would answer with the previous analysis, or with
+        // nothing at all seconds after a successful one.
+        AnalysisJobs.Result finished = AnalysisJobs.get().lastResult(wav);
+        if (finished != null) {
+            show(finished.score, finished.cacheNote);
+            return;
+        }
         Score cached = MwAnalysis.readCache(MwAnalysis.scoreFileFor(wav));
         if (cached != null) {
             // Read back from disk, so by definition it is cached.
@@ -124,7 +135,7 @@ public final class ResultActivity extends Activity implements AnalysisJobs.Liste
      * Draws a finished analysis.
      *
      * <p>What is shared is the chart text unaltered — the same thing
-     * {@code mw analyze} writes to {@code chords.txt} — so the two can be
+     * {@code mw render} writes to {@code chords.txt} — so the two can be
      * compared line for line. Tempo and meter go in the status line above it;
      * see {@link MwAnalysis#summary}.
      */

@@ -34,11 +34,15 @@ import java.io.RandomAccessFile;
  * because the app only ever meets one format: signed 16-bit little-endian PCM,
  * which is exactly what {@code AudioRecord} produces.
  *
- * <p>Reading is deliberately more tolerant than writing. A WAV copied onto the
- * phone from elsewhere may carry {@code LIST} or {@code fact} chunks before the
- * audio, and a recording whose process was killed mid-take has a header whose
- * declared sizes were never patched — both are read here rather than rejected,
- * because a recording that cannot be opened is a lost take.
+ * <p>Reading is more tolerant than writing, but only along two axes, and it is
+ * worth being exact about which: chunks the app does not write ({@code LIST},
+ * {@code fact}) are walked past rather than tripped over, and a recording whose
+ * process was killed mid-take — leaving the declared sizes never patched — is
+ * read from what is actually on disk, because a recording that cannot be opened
+ * is a lost take. It is <em>not</em> a general WAV reader: anything that is not
+ * 16-bit PCM in one or two channels is refused by name, including
+ * {@code WAVE_FORMAT_EXTENSIBLE}, which is how some desktop tools write plain
+ * PCM. Nothing imports a foreign file today, and widening this is #260.
  */
 public final class WavFile {
 

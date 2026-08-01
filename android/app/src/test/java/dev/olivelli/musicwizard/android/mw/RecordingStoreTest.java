@@ -158,6 +158,39 @@ public class RecordingStoreTest {
         assertEquals("trailing", RecordingStore.sanitize("trailing. "));
         assertEquals("already named", RecordingStore.sanitize("  already named.wav  "));
         assertEquals(64, RecordingStore.sanitize("x".repeat(200)).length());
+        // Case-insensitively, or "Take.WAV" becomes the file Take.WAV.wav.
+        assertEquals("Take", RecordingStore.sanitize("Take.WAV"));
+    }
+
+    /**
+     * Truncation never cuts a character in half.
+     *
+     * <p>An emoji is two chars. Cutting between them leaves an unpaired
+     * surrogate, and what the filesystem then holds is not the name this method
+     * returned — the same mismatch the trailing-dot rule exists to prevent, and
+     * it travels out through the share sheet. The ASCII case above cannot see
+     * this, because every char there is a whole character.
+     */
+    @Test
+    public void aLongNameIsNotCutThroughTheMiddleOfACharacter() throws IOException {
+        // 63 plain characters, then a guitar that would straddle the 64th.
+        String typed = "x".repeat(63) + "\uD83C\uDFB8" + "more";
+        String stem = RecordingStore.sanitize(typed);
+
+        assertEquals("the pair does not fit, so neither half is taken", 63, stem.length());
+        assertFalse("an unpaired surrogate reached the filesystem",
+                Character.isHighSurrogate(stem.charAt(stem.length() - 1)));
+        assertEquals(stem.length(), stem.codePointCount(0, stem.length()));
+
+        // One character fewer in front and the whole guitar fits.
+        String fits = RecordingStore.sanitize("x".repeat(62) + "\uD83C\uDFB8" + "more");
+        assertEquals(64, fits.length());
+        assertEquals("\uD83C\uDFB8", fits.substring(62));
+
+        // And a real file can be created under it, which is the point.
+        File named = new File(store.directory(), fits + RecordingStore.WAV);
+        assertTrue(named.createNewFile());
+        assertEquals(fits, store.list().get(0).displayName());
     }
 
     @Test

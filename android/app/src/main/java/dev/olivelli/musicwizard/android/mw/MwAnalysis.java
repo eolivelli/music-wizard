@@ -69,9 +69,11 @@ public final class MwAnalysis {
     /**
      * Reads a recording, analyses it, and reports each stage as it starts.
      *
-     * <p>The progress strings are the transcriber's own — the same ones
-     * {@code mw analyze} prints — so the phone and the desktop describe a run
-     * in the same words.
+     * <p>From "detecting onsets" onwards the strings are the transcriber's own,
+     * the same ones {@code mw analyze} prints, so the phone and the desktop
+     * describe a run in the same words. The two lines before that are this
+     * method's: the desktop decodes where the phone reads a WAV it wrote, and
+     * it reports the file's rate before resampling rather than after.
      */
     public static Score analyze(File wav, Consumer<String> progress) throws IOException {
         Consumer<String> report = progress != null ? progress : line -> { };
@@ -187,8 +189,8 @@ public final class MwAnalysis {
      *
      * <p>It is not folded into the chart text. What the chart shows and what
      * "share" sends is {@link #chartText} unaltered, so that a chart shared off
-     * the phone and one printed by {@code mw analyze} on the same take can be
-     * compared line for line. This line is also the only place the tempo
+     * the phone and the {@code chords.txt} that {@code mw render} writes for the
+     * same take can be compared line for line. This line is also the only place the tempo
      * appears when no chords were found, which is the case the chart's own
      * header does not cover.
      */

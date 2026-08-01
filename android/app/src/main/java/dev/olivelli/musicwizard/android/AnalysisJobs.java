@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Analyses running in the background, and who is watching them.
@@ -32,16 +33,21 @@ import java.util.concurrent.Executors;
  * <p>Process-wide rather than owned by an activity, because analysing a take is
  * the one thing in the app that outlives a screen: a rotation, or a trip to the
  * home screen and back, must not restart a minute of DSP or lose its result.
- * The result screen attaches to whatever is already running for its file.
+ *
+ * <p>It holds the last finished result as well as the running ones. That is not
+ * a nicety: with {@code score.json} unwritable on Android below 35 (see
+ * {@link MwAnalysis#writeCache}) this object is the <em>only</em> place a
+ * finished analysis lives, and dropping it when the screen happens to be away
+ * would mean a minute of DSP thrown away for a rotation.
  *
  * <p>Threading: one worker thread runs the analysis; <em>all</em> state in this
- * class is read and written on the main thread only, and the worker reaches it
- * exclusively by posting. That is why nothing here is synchronized — there is
- * no second thread to synchronize with.
+ * class is read and written on the dispatcher's thread only — the main looper in
+ * the app — and the worker reaches it exclusively by posting. That is why
+ * nothing here is synchronized: there is no second thread to synchronize with.
  */
 final class AnalysisJobs {
 
-    /** What a screen watching an analysis is told. Always on the main thread. */
+    /** What a screen watching an analysis is told. Always on the dispatcher's thread. */
     interface Listener {
 
         /** A stage started; the transcriber's own wording. */
@@ -59,12 +65,45 @@ final class AnalysisJobs {
         void onFailed(String message);
     }
 
+    /**
+     * Where callbacks land.
+     *
+     * <p>The app's posts to the main looper. A test supplies a queue it drains
+     * itself, which is what lets the lifecycle behaviour here be exercised on a
+     * JVM instead of argued about.
+     */
+    interface Dispatcher {
+        void post(Runnable action);
+    }
+
+    /**
+     * The analysis a job runs.
+     *
+     * <p>A seam for the same reason: a test needs to make an analysis fail in a
+     * particular way — including with an {@link Error} — without spending a
+     * second of real DSP to get there.
+     */
+    interface Analyzer {
+        Score analyze(File wav, Consumer<String> progress) throws Exception;
+    }
+
+    /** A finished analysis, and whether it reached the disk. */
+    static final class Result {
+
+        final Score score;
+        final String cacheNote;
+
+        Result(Score score, String cacheNote) {
+            this.score = score;
+            this.cacheNote = cacheNote;
+        }
+    }
+
     /** One analysis of one file. */
     private static final class Job {
         String progress = "";
         boolean running = true;
         Listener listener;
-        String cacheNote;
     }
 
     private static AnalysisJobs instance;
@@ -82,16 +121,30 @@ final class AnalysisJobs {
         return thread;
     });
 
-    private final Handler main = new Handler(Looper.getMainLooper());
+    private final Dispatcher dispatcher;
+    private final Analyzer analyzer;
     private final Map<String, Job> jobs = new HashMap<>();
 
-    private AnalysisJobs() {
+    /**
+     * The most recent finished analysis, by file.
+     *
+     * <p>One entry, not a growing cache: the screen that comes back is always
+     * the one for the take just analysed, and holding every score ever produced
+     * would be a memory leak with a friendlier name.
+     */
+    private String finishedKey;
+    private Result finishedResult;
+
+    AnalysisJobs(Dispatcher dispatcher, Analyzer analyzer) {
+        this.dispatcher = dispatcher;
+        this.analyzer = analyzer;
     }
 
     /** The single instance. Main thread only. */
     static AnalysisJobs get() {
         if (instance == null) {
-            instance = new AnalysisJobs();
+            Handler main = new Handler(Looper.getMainLooper());
+            instance = new AnalysisJobs(main::post, MwAnalysis::analyze);
         }
         return instance;
     }
@@ -103,11 +156,21 @@ final class AnalysisJobs {
     }
 
     /**
+     * The most recent finished analysis of a file, or null.
+     *
+     * <p>Checked <em>before</em> the file beside the audio, because when a
+     * re-analysis succeeded and could not be cached, the disk still holds the
+     * previous one and this holds the new one.
+     */
+    Result lastResult(File wav) {
+        return key(wav).equals(finishedKey) ? finishedResult : null;
+    }
+
+    /**
      * Starts analysing {@code wav}, unless it already is.
      *
-     * <p>The cache is written before the listener hears about it, so a screen
-     * that reloads immediately finds it on disk. Whether it could be written is
-     * passed on rather than assumed -- see {@link MwAnalysis#writeCache}.
+     * <p>Whether the result could be cached is passed on rather than assumed —
+     * see {@link MwAnalysis#writeCache}.
      */
     void start(File wav, Listener listener) {
         String key = key(wav);
@@ -143,9 +206,9 @@ final class AnalysisJobs {
     /**
      * Stops delivering to {@code listener}.
      *
-     * <p>Called when a screen goes away. The analysis keeps running: it is the
-     * expensive thing, and the job is kept until it finishes so that a screen
-     * coming back attaches to it rather than starting a second one.
+     * <p>Called when a screen goes away. The analysis keeps running, because it
+     * is the expensive thing, and its result is kept in {@link #lastResult} for
+     * whichever screen comes back to it.
      */
     void stopObserving(Listener listener) {
         for (Job job : jobs.values()) {
@@ -156,45 +219,77 @@ final class AnalysisJobs {
     }
 
     private void run(String key, File wav, Job job) {
+        Score analysed = null;
+        String note = null;
+        String failure = null;
         try {
-            Score score = MwAnalysis.analyze(wav, line -> main.post(() -> {
+            analysed = analyzer.analyze(wav, line -> dispatcher.post(() -> {
                 job.progress = line;
                 if (job.listener != null) {
                     job.listener.onProgress(line);
                 }
             }));
-            // A cache that could not be written does not spoil an analysis
-            // that succeeded; the screen says so and shows the chart.
-            String cacheNote = MwAnalysis.writeCache(MwAnalysis.scoreFileFor(wav), score);
-            main.post(() -> {
-                job.cacheNote = cacheNote;
-                finish(key, job, score, null);
-            });
-        } catch (Exception e) {
-            // Anything at all: a broken WAV, a stage that could not cope with
-            // the audio, or a device that ran out of memory part-way. The
-            // screen says so and the take is still on disk to try again.
-            String message = e.getMessage() != null && !e.getMessage().isEmpty()
-                    ? e.getMessage()
-                    : e.getClass().getSimpleName();
-            main.post(() -> finish(key, job, null, message));
+            // A cache that could not be written does not spoil an analysis that
+            // succeeded; the screen says so and shows the chart.
+            note = MwAnalysis.writeCache(MwAnalysis.scoreFileFor(wav), analysed);
+        } catch (Throwable t) {
+            // Throwable, not Exception. A long take on a mid-range phone runs
+            // out of heap -- the manifest asks for a large one precisely because
+            // the default is not enough -- and OutOfMemoryError is an Error. An
+            // Exception-only catch let it escape into the executor's Future,
+            // where nothing reads it: no callback, no log, and a job left
+            // "running" forever so that every retry short-circuited.
+            analysed = null;
+            failure = describe(t);
+        } finally {
+            // In a finally block so that the screen is answered even if the
+            // catch itself could not run -- an unattended screen is the failure
+            // this whole class exists to prevent.
+            Score score = analysed;
+            String cacheNote = note;
+            String message = failure;
+            dispatcher.post(() -> finish(key, job, score, cacheNote, message));
         }
     }
 
-    private void finish(String key, Job job, Score score, String failure) {
+    /**
+     * A sentence for the screen.
+     *
+     * <p>An {@link Error} is named by its class: "Java heap space" on its own
+     * does not tell anyone their recording was too long for this phone.
+     */
+    private static String describe(Throwable failure) {
+        String message = failure.getMessage();
+        boolean hasMessage = message != null && !message.isEmpty();
+        if (failure instanceof Error) {
+            return hasMessage
+                    ? failure.getClass().getSimpleName() + ": " + message
+                    : failure.getClass().getSimpleName();
+        }
+        return hasMessage ? message : failure.getClass().getSimpleName();
+    }
+
+    private void finish(String key, Job job, Score score, String cacheNote, String failure) {
         job.running = false;
         Listener listener = job.listener;
-        // Removed on completion: the job's only job was to survive the screen,
-        // and a map that keeps every file ever analysed is a leak with a
-        // gentler name.
+        // Removed on completion: a job's only purpose was to survive the screen,
+        // and a map that keeps every file ever analysed is a leak with a gentler
+        // name. What is kept instead is the one result, below.
         jobs.remove(key);
+
+        if (failure == null) {
+            finishedKey = key;
+            finishedResult = new Result(score, cacheNote);
+        }
         if (listener == null) {
+            // No screen is attached. The result is not lost: lastResult() hands
+            // it to whichever screen opens this take next.
             return;
         }
         if (failure != null) {
             listener.onFailed(failure);
         } else {
-            listener.onFinished(score, job.cacheNote);
+            listener.onFinished(score, cacheNote);
         }
     }
 

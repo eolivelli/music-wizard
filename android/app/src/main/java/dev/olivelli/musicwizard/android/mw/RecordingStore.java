@@ -210,16 +210,30 @@ public final class RecordingStore {
      */
     public static String sanitize(String rawName) throws IOException {
         String name = rawName == null ? "" : rawName.trim();
-        if (name.endsWith(WAV)) {
+        // Case-insensitively, because a name typed as "Take.WAV" is the same
+        // intention as "take.wav" and stripping only the lowercase one produces
+        // a file called Take.WAV.wav.
+        if (name.toLowerCase(Locale.ROOT).endsWith(WAV)) {
             name = name.substring(0, name.length() - WAV.length());
         }
         StringBuilder out = new StringBuilder(name.length());
-        for (int i = 0; i < name.length() && out.length() < MAX_NAME_LENGTH; i++) {
-            char c = name.charAt(i);
-            boolean illegal = c == '/' || c == '\\' || c == 0 || c < ' '
-                    || c == ':' || c == '*' || c == '?' || c == '"'
-                    || c == '<' || c == '>' || c == '|';
-            out.append(illegal ? '_' : c);
+        // By code point rather than by char: an emoji in a take name is two
+        // chars, and cutting between them at the length limit leaves an
+        // unpaired surrogate. The filesystem then holds a name that is not the
+        // one this method returned -- exactly the mismatch the trailing-dot rule
+        // below exists to prevent, and it travels out through the share sheet.
+        for (int i = 0; i < name.length(); ) {
+            int codePoint = name.codePointAt(i);
+            int width = Character.charCount(codePoint);
+            if (out.length() + width > MAX_NAME_LENGTH) {
+                break;
+            }
+            boolean illegal = codePoint == '/' || codePoint == '\\' || codePoint < ' '
+                    || codePoint == ':' || codePoint == '*' || codePoint == '?'
+                    || codePoint == '"' || codePoint == '<' || codePoint == '>'
+                    || codePoint == '|';
+            out.append(illegal ? "_" : new String(Character.toChars(codePoint)));
+            i += width;
         }
         // Trailing dots and spaces are dropped by some filesystems, which would
         // make the rename appear to have produced a different name than it did.

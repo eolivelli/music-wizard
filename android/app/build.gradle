@@ -7,28 +7,28 @@ plugins {
 ext.mwVersion = '0.1.0-SNAPSHOT'
 
 android {
-    namespace 'dev.olivelli.musicwizard.android'
-    compileSdk 35
+    namespace = 'dev.olivelli.musicwizard.android'
+    compileSdk = 35
 
     defaultConfig {
-        applicationId 'dev.olivelli.musicwizard.android'
+        applicationId = 'dev.olivelli.musicwizard.android'
         // Android 8. Everything the analysis needs at run time is either in
         // API 26 or brought there by D8: Math.clamp (API 35) is backported and
         // Stream.toList (API 34) comes from the desugared library below. The
         // one thing that is not, and cannot be, is Jackson's record support --
         // see MwAnalysis.writeCache.
-        minSdk 26
-        targetSdk 35
-        versionCode 1
-        versionName '0.1'
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = '0.1'
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
         // mw-core folds its lists with Stream.toList(), which Android only
         // grew in API 34; the desugared library supplies it below that.
-        coreLibraryDesugaringEnabled true
+        coreLibraryDesugaringEnabled = true
     }
 
     buildTypes {
@@ -36,7 +36,7 @@ android {
             // Debug only, on purpose: a debug APK is signed with the
             // auto-generated debug keystore, so CI can publish something that
             // installs on a real phone without holding a signing secret.
-            minifyEnabled false
+            minifyEnabled = false
         }
     }
 
@@ -67,7 +67,7 @@ android {
         // The MW jars are ordinary JVM code and lint has opinions about JVM
         // APIs it cannot see the guards for; the app's own sources are what
         // this build gates on, via javac and the unit tests.
-        checkDependencies false
+        checkDependencies = false
     }
 }
 
@@ -83,8 +83,10 @@ configurations.configureEach {
     //                                loads AudioDecoder; it reads its own WAV.
     //   * proxymusic    (LGPL-3.0) - MusicXML export, which the app has no
     //                                screen for.
-    // Excluding them also keeps ~30 MB of desktop x86_64 natives, of the wrong
-    // ABI for a phone, out of the APK.
+    // ffsampledsp is also 25 MB of desktop natives -- six of them, for Windows,
+    // macOS and Linux on x86_64, i386 and aarch64 -- none of which a phone can
+    // load. jipes and proxymusic carry no natives at all; for those two the
+    // reason is licensing alone.
     exclude group: 'com.tagtraum', module: 'jipes'
     exclude group: 'com.tagtraum', module: 'ffsampledsp-complete'
     exclude group: 'org.audiveris', module: 'proxymusic'
@@ -140,8 +142,11 @@ dependencies {
  * would die with NoSuchMethodError on the first recording.
  */
 ext.dexForbiddenCalls = [
-        // Java 21, Android API 35. D8 backports it; AGP 8.7's did not, so the
-        // AGP version in the root build file is load-bearing, not cosmetic.
+        // Java 21, Android API 35. D8 backports it -- but not every D8 does:
+        // building this same app against AGP 8.7.3 left 23 calls to it in the
+        // dex, and against the 8.13.0 pinned in the root build file, none. So
+        // that version is load-bearing rather than cosmetic, and this check is
+        // what says so from the committed tree.
         'Ljava/lang/Math;.clamp',
         // Java 16, Android API 34. Comes from the desugared library, so this
         // also fails if coreLibraryDesugaringEnabled is turned off.
@@ -166,22 +171,25 @@ tasks.register('checkDexedApiLevel') {
                     + " the check that keeps post-minSdk JDK calls out of the APK cannot run")
         }
         def out = workDir.get().asFile
-        delete out
-        copy {
-            from zipTree(apk[0])
-            include '*.dex'
-            into out
-        }
-
+        out.deleteDir()
+        out.mkdirs()
+        // java.util.zip and ProcessBuilder rather than Gradle's copy {} and
+        // exec {}: those two are what make a doLast block incompatible with
+        // Gradle 9, and this task is small enough not to need them.
         def dumped = new StringBuilder()
-        out.listFiles({ f -> f.name.endsWith('.dex') } as FileFilter).each { dex ->
-            new ByteArrayOutputStream().withStream { stream ->
-                exec {
-                    commandLine tool.absolutePath, '-d', dex.absolutePath
-                    standardOutput = stream
-                    errorOutput = new ByteArrayOutputStream()
+        new java.util.zip.ZipFile(apk[0]).withCloseable { archive ->
+            archive.entries().findAll { it.name ==~ /classes\d*\.dex/ }.each { entry ->
+                def dex = new File(out, entry.name)
+                archive.getInputStream(entry).withStream { input ->
+                    dex.withOutputStream { output -> output << input }
                 }
-                dumped.append(stream.toString('UTF-8'))
+                def process = new ProcessBuilder(tool.absolutePath, '-d', dex.absolutePath)
+                        .redirectErrorStream(true)
+                        .start()
+                dumped.append(process.inputStream.getText('UTF-8'))
+                if (process.waitFor() != 0) {
+                    throw new GradleException("dexdump failed on ${entry.name}")
+                }
             }
         }
 
