@@ -1211,10 +1211,13 @@ class BeatTrackingTest {
             //
             // Under the old weight a seed at *half* the true rate was
             // overridden by the clicks -- 45 gave back 89.9 -- and a seed at
-            // double it was not, since a double-rate seed puts the true period
-            // at the far edge of the predecessor window rather than the near
-            // one. Now neither is. Resolving the octave is TempoEstimator's
-            // job, and this asserts that BeatTracker will not paper over it.
+            // double it was not. The penalties are symmetric, so that asymmetry
+            // is not in the search window: correcting upward adds beats that
+            // each collect an onset, and correcting downward removes beats that
+            // sat between onsets and cost almost nothing to keep. See
+            // BeatTracker.tempoOf, which has the arithmetic. Now neither is
+            // corrected. Resolving the octave is TempoEstimator's job, and this
+            // asserts that BeatTracker will not paper over it.
             //
             // On the fixture rather than through track(), because track() would
             // supply a correct seed and the point is what happens when the seed

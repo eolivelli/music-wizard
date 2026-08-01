@@ -61,12 +61,15 @@ import java.util.Set;
  * {@link OnsetEnvelope}, which both sides read, so a defect in the envelope
  * would move both and go unseen here.
  *
- * <p>The printed reference tempo is the check on all of that: it should land on
- * the round number the benchmark is named for. Measured on the five, it gives
- * 106.000, 89.998, 105.000, 89.999 and 74.944 BPM, against three files named
- * for 90, 106 and 90 and a bossa with no stated tempo. Four agree to three
- * decimal places. {@code blues-shuffle-a-106bpm.mp3} does not: its loop measures
- * 105.000 over 27.4285 s, and the discrepancy with the name is unresolved.
+ * <p>The printed reference tempo is the check on all of that, and it is a
+ * weaker check than it looks, so it is worth counting rather than gesturing at.
+ * Three of the five benchmarks state a tempo, in their names and in
+ * {@code samples/list.txt}: two of those three agree, at 89.998 and 89.999
+ * against 90, and {@code blues-shuffle-a-106bpm.mp3} does not — its loop
+ * measures 105.000 over 27.4285 s, robustly, and the discrepancy with the name
+ * is unresolved. The other two state none: {@code gmajorblues.mp3} measures
+ * 106.000 and {@code bossa-cm.mp3} 74.944, and neither has anything to be
+ * checked against except its own plausibility.
  *
  * <h2>The columns</h2>
  *
@@ -83,15 +86,34 @@ import java.util.Set;
  *       shows up anywhere else.</dd>
  *   <dt>slips</dt>
  *   <dd>Places where the tracked grid advances by other than one reference beat.
- *       Zero is the claim worth making: it means the grid never loses its place,
- *       whatever the timing error within a beat.</dd>
+ *       Zero means the grid never loses its place.
+ *       <p><b>It has the F-measure's blind spot too, and reading it as though it
+ *       has not is the mistake to avoid.</b> A slip is a change in
+ *       {@code round((beat - phase) / period)}, and that rounding puts its
+ *       boundary at half a period, so a grid that keeps its place perfectly but
+ *       sits most of a beat late will cross the boundary on jitter alone and be
+ *       counted as slipping. The count is only about place-keeping while the
+ *       {@code offset} column beside it is small; at an offset approaching half
+ *       a period it degenerates into a jitter count. Read the two together.</dd>
  *   <dt>offset</dt>
  *   <dd>Mean and root-mean-square distance from the nearest reference beat, over
- *       the beats within half a period of one. The mean is a phase error and the
- *       RMS is jitter; the F-measure conflates them.</dd>
+ *       <em>every</em> tracked beat. There is no filter and there cannot be one:
+ *       the distance to the nearest beat of a grid is in {@code [-p/2, +p/2]} by
+ *       construction, so a beat bearing no relation to the reference still has a
+ *       small one.
+ *       <p>That sets the floor to read this against. A tracked grid at the wrong
+ *       rate entirely wanders uniformly across the reference's period, and the
+ *       RMS of a uniform distribution over {@code [-p/2, +p/2]} is
+ *       {@code p / (2 * sqrt(3))} — 0.231 s at the bossa's period. It measures
+ *       0.237. So on that recording this column carries no information about
+ *       phase, and on {@code blues-e-90bpm.mp3}, at 0.013 s against a floor of
+ *       0.192, it carries a great deal.</dd>
  *   <dt>on grid, 2/3</dt>
  *   <dd>Share of tracked intervals within a tenth of the tracked median, and
- *       within a tenth of two thirds of it. The second is the detour #196 is
+ *       within a tenth <em>of the median</em> of two thirds of it. The band is
+ *       the same absolute width in both, so around two thirds it is fifteen
+ *       percent of what it is centred on rather than ten. The second is the
+ *       detour #196 is
  *       made of, and unlike everything above it needs no reference at all, which
  *       is why it is the form {@code BluesLoopIT} asserts.</dd>
  * </dl>

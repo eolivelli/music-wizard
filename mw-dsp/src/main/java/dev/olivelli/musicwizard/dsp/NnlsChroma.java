@@ -308,6 +308,14 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      *   plain chroma         58.9%         32%     100%      91%
      * </pre>
      *
+     * <p>The per-bar figures in this table were measured on the beat grid as
+     * it was before #196: chroma is averaged per tracked beat, so removing
+     * that grid's 1.9% rate error moves them. The comparison the table is
+     * for is not in doubt -- the differences down it are tens of points and
+     * the anchor moved by one -- but the cells read as current and are not.
+     * {@link ChordEstimator} carries the statement of this and #232 tracks
+     * re-measuring them.
+     *
      * <p>The whole is a good deal more than either part, and the reason is
      * visible in the columns: the two registers fail on different chords. The
      * treble on this recording is mostly a lead line playing a blues scale, so
@@ -346,9 +354,10 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      * — whatever the two actually held. A beat where the bass is silent then
      * counts its noise floor as loudly as the chord above it.
      *
-     * <p>Measured on {@code samples/gmajorblues.mp3}, per-bar root accuracy is
-     * 86.6% folding first and 77.7% beat-synchronising first, and the per-chord
-     * recall shows why: 88/96/68 for G, C and D against 94/67/38. The wrong
+     * <p>Measured on {@code samples/gmajorblues.mp3} before #196 changed that
+     * recording's beat grid — see {@link ChordEstimator} and #232 — per-bar root
+     * accuracy is 86.6% folding first and 77.7% beat-synchronising first, and
+     * the per-chord recall shows why: 88/96/68 for G, C and D against 94/67/38. The wrong
      * order does not fail, it just quietly over-weights whichever register had
      * less to say — which on this recording means promoting a bass register that
      * never once names the C7 to an equal vote in every beat.

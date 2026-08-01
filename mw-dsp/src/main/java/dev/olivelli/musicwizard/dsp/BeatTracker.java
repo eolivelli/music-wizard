@@ -179,10 +179,20 @@ public final class BeatTracker {
      * true only because the penalty was a forty-eighth of the published weight,
      * and it was true in only one of the two directions even then: measured on
      * clean click tracks at 90, 120 and 160 BPM, a seed at half the true rate
-     * was rescued and a seed at double it was not, because a double-rate seed's
-     * predecessor window puts the true period at the far edge rather than the
-     * near one. At the published weight neither is rescued and the tracker
-     * follows its seed. See {@link #TIGHTNESS}, and
+     * was rescued and a seed at double it was not.
+     *
+     * <p>The two are not mirror images, although the penalties are — halving and
+     * doubling a gap both cost {@code (ln 2)^2} times the weight. What differs is
+     * what the correction buys. Correcting a half-rate seed <em>adds</em> beats,
+     * and each one collects an onset the seed was stepping over; correcting a
+     * double-rate seed <em>removes</em> beats that were sitting between onsets
+     * and were nearly free to keep. On a 120 BPM click track this envelope reads
+     * about +5.8 at an onset and −0.2 between, so at the old weight, where the
+     * penalty was 1.0, correcting upward was worth 9.6 against 5.8 and
+     * correcting downward 4.8 against 5.6 — which is the asymmetry, and it is
+     * arithmetic rather than a property of the search window. At the published
+     * weight the penalty is 48.1 and both corrections are far out of reach. See
+     * {@link #TIGHTNESS}, and
      * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
      *
      * <p>That is the algorithm working as designed rather than a hole opened by
@@ -191,6 +201,17 @@ public final class BeatTracker {
      * period it was given is a tracker whose reported tempo means nothing. But
      * it does move where an octave error becomes visible, so it is worth saying
      * here rather than only where the weight is set.
+     *
+     * <p><strong>It is visible on one of the benchmarks, and counting it as one
+     * window understates its shape.</strong> Across the five recordings'
+     * analysis windows the seed is on the music in all but a handful, and only
+     * one of those few is an octave: the first window of
+     * {@code blues-shuffle-a-106bpm.mp3}. That recording's first ten intervals
+     * are consequently about two beats of the music each, and those ten are most
+     * of the thirteen slips {@code tools/ScoreBeats.java} still reports for it —
+     * the only benchmark whose slip count does not reach zero. So the cost of
+     * this trade is small, concentrated, and is the visible residue in the one
+     * row of that table that has any.
      *
      * <p>Median rather than mean so that one dropped or doubled beat does not
      * drag the answer.
