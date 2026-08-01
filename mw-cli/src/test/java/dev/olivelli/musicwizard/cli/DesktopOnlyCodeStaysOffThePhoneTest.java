@@ -29,20 +29,14 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.CodeSource;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,10 +46,12 @@ import org.junit.jupiter.api.io.TempDir;
  * must not carry desktop-only machinery onto the phone.
  *
  * <p>A phone has no {@code javax.sound}, cannot load ffsampledsp's or ONNX
- * Runtime's desktop natives, and has no LilyPond to run. The app links these
- * modules for one way in — {@code AudioTranscriber.transcribe(AudioBuffer,
- * Options)} — and one way out — {@code ChordChart.toText(Score)}. Everything
- * else in them is desktop code that happens to ship in the same jars.
+ * Runtime's desktop natives, and has no LilyPond to run. What the app calls of
+ * those modules is a handful of methods — {@code Resampler.resample}, {@code
+ * AudioTranscriber.transcribe(AudioBuffer, Options)}, {@code
+ * ChordChart.toText(Score)} — and the run below is those, in that order.
+ * Everything else in those jars is desktop code that happens to ship beside
+ * them.
  *
  * <p>So the rule is not "these modules never mention a desktop API": three
  * classes exist to use one, and deleting them would cost the desktop its MP3
@@ -74,7 +70,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       sees past the class file: a decode from the {@code AudioBuffer} overload
  *       fails here with {@code NoClassDefFoundError} while confinement stays
  *       green. Its limit is the other side of the same coin — it sees the calls
- *       this fixture makes, so a branch not taken is a branch not checked.
+ *       the fixture makes, so a branch not taken is a branch not checked, and
+ *       what the app itself does beyond these three calls is not covered.
  * </ul>
  *
  * <p>LilyPond is the one family whose ban needed a decision, since emitting
@@ -95,75 +92,66 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     /**
      * A desktop-only API family, in the two forms this test has to recognise it.
      *
-     * @param name        what to call it in a failure message
-     * @param needle      how it appears in a class file's constant pool. Method
-     *                    descriptors are UTF-8 constants like everything else,
-     *                    so {@code java/lang/Process} catches a method that only
-     *                    returns one as well as a {@code new ProcessBuilder}
-     * @param packagePrefix how the phone classloader recognises it by name
-     * @param probe       a class of this family that is on this module's own
-     *                    test classpath, so that "the phone loader refuses it"
-     *                    is a statement about the loader and not about an
-     *                    absent jar
-     * @param confinedTo  the classes of the six modules that may name it, outer
-     *                    class only — a nested class is part of the class that
-     *                    declares it
+     * @param name       what to call it in a failure message
+     * @param needle     how it appears in a class file's constant pool, in
+     *                   internal form. Method descriptors are UTF-8 constants
+     *                   like everything else, so {@code java/lang/Process}
+     *                   catches a method that only returns one as well as a
+     *                   {@code new ProcessBuilder}. The dotted spelling of the
+     *                   same prefix is looked for too, since a reflective
+     *                   {@code Class.forName} names it that way
+     * @param probe      a class of this family, used to prove that the deny-list
+     *                   below is what refuses it and that the needle above
+     *                   really matches it
+     * @param confinedTo the classes of the six modules that may name it, by
+     *                   binary name — a simple name would let a class of the
+     *                   same name in another module inherit the exemption
      */
     private record DesktopOnly(
             String name,
             String needle,
-            String packagePrefix,
             String probe,
-            List<String> confinedTo) {}
+            List<String> confinedTo) {
+
+        /** The package prefix the phone classloader refuses by. */
+        String packagePrefix() {
+            return needle.replace('/', '.');
+        }
+
+        boolean isNamedIn(List<String> constants) {
+            String dotted = packagePrefix();
+            return constants.stream()
+                    .anyMatch(text -> text.contains(needle) || text.contains(dotted));
+        }
+    }
 
     private static final List<DesktopOnly> FAMILIES = List.of(
-            new DesktopOnly("javax.sound", "javax/sound/", "javax.sound.",
+            new DesktopOnly("javax.sound", "javax/sound/",
                     "javax.sound.sampled.AudioSystem",
                     // AudioDecoder decodes files the app never hands it -- it
                     // reads its own WAV from AudioRecord. The other two are the
                     // MIDI import and export, which are desktop features.
-                    List.of("AudioDecoder", "MidiExport", "MidiTranscriber")),
+                    List.of("dev.olivelli.musicwizard.audio.AudioDecoder",
+                            "dev.olivelli.musicwizard.notation.MidiExport",
+                            "dev.olivelli.musicwizard.transcribe.MidiTranscriber")),
             new DesktopOnly("ffsampledsp", "com/tagtraum/ffsampledsp/",
-                    "com.tagtraum.ffsampledsp.",
                     "com.tagtraum.ffsampledsp.FFAudioFileReader",
                     // Empty because it is reached through javax.sound's service
                     // loader and never named: mw-audio depends on the artifact,
-                    // no source mentions it. Which is why the app can drop the
-                    // artifact -- 25 MB of desktop natives -- without a compile
-                    // error, and why this list going non-empty matters.
+                    // no source mentions it. Which is why the app can drop a jar
+                    // of desktop natives without a compile error, and why this
+                    // list going non-empty matters.
                     List.of()),
-            new DesktopOnly("ONNX Runtime", "ai/onnxruntime/", "ai.onnxruntime.",
+            new DesktopOnly("ONNX Runtime", "ai/onnxruntime/",
                     "ai.onnxruntime.OrtEnvironment",
                     List.of()),
             new DesktopOnly("process invocation", "java/lang/Process",
-                    "java.lang.Process", "java.lang.ProcessBuilder",
-                    List.of("LilyPondRenderer")));
+                    "java.lang.ProcessBuilder",
+                    List.of("dev.olivelli.musicwizard.notation.LilyPondRenderer")));
 
     /**
-     * The modules the app links, each with a class that locates its compiled
-     * output. Named rather than referenced, so mw-cli need not declare a direct
-     * dependency on a module it only uses transitively.
-     *
-     * <p>mw-ml is not among them and has no sources to scan either, so the check
-     * that keeps ONNX Runtime off the phone is the reachability half below,
-     * where the runtime is on the classpath and refused by name.
-     */
-    private static final Map<String, String> APP_FACING_MODULES = appFacingModules();
-
-    private static Map<String, String> appFacingModules() {
-        Map<String, String> modules = new LinkedHashMap<>();
-        modules.put("mw-core", "dev.olivelli.musicwizard.core.config.MusicWizardConfig");
-        modules.put("mw-audio", "dev.olivelli.musicwizard.audio.AudioBuffer");
-        modules.put("mw-dsp", "dev.olivelli.musicwizard.dsp.BeatTracker");
-        modules.put("mw-transcribe", "dev.olivelli.musicwizard.transcribe.AudioTranscriber");
-        modules.put("mw-arrange", "dev.olivelli.musicwizard.arrange.GridResolution");
-        modules.put("mw-notation", "dev.olivelli.musicwizard.notation.ChordChart");
-        return modules;
-    }
-
-    /**
-     * Everything the phone classloader may see: the six modules and the FFT
-     * library the analysis runs on.
+     * Everything the phone classloader may see: the six modules, from {@link
+     * AppFacingModules}, and the FFT library the analysis runs on.
      *
      * <p>An allow-list rather than this test's own classpath, and a shorter one
      * than the app's — the app also serialises its cache with Jackson, which
@@ -171,17 +159,19 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
      * fails below with a {@code ClassNotFoundException} naming it, rather than
      * silently adding an artifact to an APK.
      */
-    private static final List<String> SEAM_CLASSPATH = List.of(
-            "dev.olivelli.musicwizard.core.config.MusicWizardConfig",
-            "dev.olivelli.musicwizard.audio.AudioBuffer",
-            "dev.olivelli.musicwizard.dsp.BeatTracker",
-            "dev.olivelli.musicwizard.transcribe.AudioTranscriber",
-            "dev.olivelli.musicwizard.arrange.GridResolution",
-            "dev.olivelli.musicwizard.notation.ChordChart",
-            "org.jtransforms.fft.FloatFFT_1D",
-            "org.visnow.jlargearrays.FloatLargeArray");
+    private static final List<String> SEAM_CLASSPATH = seamClasspath();
 
-    private static final int SAMPLE_RATE = SignalFactory.DEFAULT_SAMPLE_RATE;
+    private static List<String> seamClasspath() {
+        List<String> classpath = new ArrayList<>(AppFacingModules.PROBE_CLASSES.values());
+        classpath.add("org.jtransforms.fft.FloatFFT_1D");
+        classpath.add("org.visnow.jlargearrays.FloatLargeArray");
+        return List.copyOf(classpath);
+    }
+
+    /** What a phone records at, and what the analysis runs at. */
+    private static final int RECORDED_RATE = 44_100;
+
+    private static final int ANALYSIS_RATE = SignalFactory.DEFAULT_SAMPLE_RATE;
 
     @Test
     @DisplayName("only the classes that own a desktop-only API mention it")
@@ -191,16 +181,16 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             mentions.put(family.name(), new TreeSet<>());
         }
 
-        for (Map.Entry<String, String> module : APP_FACING_MODULES.entrySet()) {
-            Map<String, byte[]> classes = classFilesOfModuleContaining(module.getValue());
+        for (Map.Entry<String, String> module : AppFacingModules.PROBE_CLASSES.entrySet()) {
+            Map<String, byte[]> classes = AppFacingModules.classFilesOf(module.getValue());
             // A scan that found nothing would pass every assertion below.
             assertThat(classes).describedAs("class files of %s", module.getKey()).isNotEmpty();
 
             for (Map.Entry<String, byte[]> classFile : classes.entrySet()) {
                 List<String> constants = utf8ConstantsOf(classFile.getValue());
                 for (DesktopOnly family : FAMILIES) {
-                    if (constants.stream().anyMatch(text -> text.contains(family.needle()))) {
-                        mentions.get(family.name()).add(outerClassNameOf(classFile.getKey()));
+                    if (family.isNamedIn(constants)) {
+                        mentions.get(family.name()).add(declaringClassOf(classFile.getKey()));
                     }
                 }
             }
@@ -218,6 +208,36 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     }
 
     @Test
+    @DisplayName("each needle matches the API it is meant to name")
+    void theNeedlesMatchTheApisTheyName() throws Exception {
+        // Two of the four families are expected to be named by nothing, and a
+        // mistyped needle produces exactly that answer. A class of each family
+        // carries its own name in its own constant pool, so its class file is
+        // the one input where every needle must hit.
+        for (DesktopOnly family : FAMILIES) {
+            // Loaded without initialising it: ffsampledsp's static initialiser
+            // loads a native library, which is exactly the kind of thing this
+            // test is about and has no business running in the fast suite.
+            Class<?> probe = Class.forName(family.probe(), false,
+                    DesktopOnlyCodeStaysOffThePhoneTest.class.getClassLoader());
+            // Asked of the class itself rather than of a classloader, because
+            // two of the four live in a JDK module rather than on a classpath.
+            // A .class file is readable either way; other resources are not.
+            byte[] classFile;
+            try (InputStream in = probe.getResourceAsStream(
+                    "/" + family.probe().replace('.', '/') + ".class")) {
+                assertThat(in).describedAs("class file of %s", family.probe()).isNotNull();
+                classFile = in.readAllBytes();
+            }
+            assertThat(utf8ConstantsOf(classFile))
+                    .describedAs("%s must be recognisable by the needle that looks"
+                            + " for it, or the classes naming it are missed silently",
+                            family.probe())
+                    .anyMatch(constant -> constant.contains(family.needle()));
+        }
+    }
+
+    @Test
     @DisplayName("the app's seam runs with every desktop-only API refused")
     void theSeamRunsWithEveryDesktopOnlyApiRefused() throws Exception {
         try (URLClassLoader phone = phoneClassLoader()) {
@@ -229,12 +249,23 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
                     .describedAs("AudioTranscriber must come from the phone-shaped loader")
                     .isSameAs(phone);
 
+            // The app records at 44.1 kHz and resamples, because it reads its
+            // own WAV rather than loading AudioDecoder, which is what would
+            // otherwise have done it.
+            Class<?> resampler = phone.loadClass("dev.olivelli.musicwizard.audio.Resampler");
+            float[] analysed = (float[]) resampler
+                    .getMethod("resample", float[].class, int.class, int.class)
+                    .invoke(null, fourChordSong(RECORDED_RATE), RECORDED_RATE, ANALYSIS_RATE);
+
             Class<?> audioBuffer = phone.loadClass("dev.olivelli.musicwizard.audio.AudioBuffer");
             Object audio = audioBuffer.getConstructor(float[].class, int.class)
-                    .newInstance(fourChordSong(), SAMPLE_RATE);
+                    .newInstance(analysed, ANALYSIS_RATE);
+            assertThat((boolean) audioBuffer.getMethod("isEffectivelySilent").invoke(audio))
+                    .describedAs("the resampled fixture the analysis is about to read")
+                    .isFalse();
+
             Class<?> options =
                     phone.loadClass("dev.olivelli.musicwizard.transcribe.AudioTranscriber$Options");
-
             Object score = transcriber.getMethod("transcribe", audioBuffer, options)
                     .invoke(transcriber.getConstructor().newInstance(),
                             audio, options.getMethod("defaults").invoke(null));
@@ -256,18 +287,24 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     }
 
     @Test
-    @DisplayName("the phone-shaped loader refuses what this module's classpath has")
-    void theRefusalIsReal() throws Exception {
-        try (URLClassLoader phone = phoneClassLoader()) {
+    @DisplayName("it is the refusal, and not an absent jar, that keeps each family out")
+    void theRefusalIsWhatKeepsThemOut() throws Exception {
+        // Two loaders over the same URLs -- the seam's, plus the jars the
+        // desktop-only families ship in -- differing only in whether they
+        // refuse. Without the second, "ClassNotFoundException" would be the
+        // right answer for ffsampledsp and ONNX Runtime whatever the deny-list
+        // said, since the allow-listed classpath excludes them anyway, and the
+        // two clauses of this test that matter most would assert nothing.
+        try (URLClassLoader refusing = seamLoader(true, desktopCodeSources());
+                URLClassLoader permissive = seamLoader(false, desktopCodeSources())) {
             for (DesktopOnly family : FAMILIES) {
                 assertThatNoException()
-                        .describedAs("%s must be on mw-cli's own test classpath, or refusing"
-                                        + " it below proves nothing", family.name())
-                        .isThrownBy(() -> Class.forName(family.probe(), false,
-                                DesktopOnlyCodeStaysOffThePhoneTest.class.getClassLoader()));
+                        .describedAs("%s must be reachable without the refusal, or refusing"
+                                        + " it proves nothing", family.name())
+                        .isThrownBy(() -> Class.forName(family.probe(), false, permissive));
                 assertThatExceptionOfType(ClassNotFoundException.class)
-                        .describedAs("the phone-shaped loader must refuse %s", family.name())
-                        .isThrownBy(() -> Class.forName(family.probe(), false, phone));
+                        .describedAs("the refusal must be what stops %s", family.name())
+                        .isThrownBy(() -> Class.forName(family.probe(), false, refusing));
             }
         }
     }
@@ -329,23 +366,35 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
         void run() throws Exception;
     }
 
+    /** The loader the seam runs under: the app's classpath, refusing the four. */
+    private static URLClassLoader phoneClassLoader() throws Exception {
+        return seamLoader(true, List.of());
+    }
+
     /**
-     * A classloader shaped like the app's: the six modules and their permitted
-     * libraries, with every desktop-only family refused by name.
+     * A classloader over the seam's classpath and whatever else is asked for,
+     * optionally refusing the desktop-only families by name.
      *
      * <p>The parent is the platform loader rather than this test's own, so that
      * the modules are loaded <em>here</em> and every name they resolve comes
-     * back through {@link #loadClass}. With the ordinary application loader as
+     * back through {@code loadClass}. With the ordinary application loader as
      * parent, delegation would satisfy each reference from the test classpath
-     * before this loader ever saw it.
+     * before this loader ever saw it. The JDK is still visible through that
+     * parent, which is why {@code javax.sound} has to be refused by name and not
+     * merely left off the classpath.
      */
-    private static URLClassLoader phoneClassLoader() throws Exception {
+    private static URLClassLoader seamLoader(boolean refusing, List<URL> alsoVisible)
+            throws Exception {
         List<URL> code = new ArrayList<>();
         for (String linked : SEAM_CLASSPATH) {
-            code.add(codeSourceOf(linked));
+            code.add(AppFacingModules.codeSourceOf(linked));
         }
-        return new URLClassLoader("phone", code.toArray(URL[]::new),
-                ClassLoader.getPlatformClassLoader()) {
+        code.addAll(alsoVisible);
+        URL[] urls = code.toArray(URL[]::new);
+        if (!refusing) {
+            return new URLClassLoader("permissive", urls, ClassLoader.getPlatformClassLoader());
+        }
+        return new URLClassLoader("phone", urls, ClassLoader.getPlatformClassLoader()) {
             @Override
             protected Class<?> loadClass(String name, boolean resolve)
                     throws ClassNotFoundException {
@@ -363,84 +412,48 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     }
 
     /**
+     * The jars the desktop-only families ship in, for the loaders that must see
+     * them. Two of the four are JDK modules and have no code source; the
+     * platform parent supplies those.
+     */
+    private static List<URL> desktopCodeSources() throws Exception {
+        List<URL> jars = new ArrayList<>();
+        for (DesktopOnly family : FAMILIES) {
+            CodeSource source = Class.forName(family.probe(), false,
+                            DesktopOnlyCodeStaysOffThePhoneTest.class.getClassLoader())
+                    .getProtectionDomain().getCodeSource();
+            if (source != null && source.getLocation() != null) {
+                jars.add(source.getLocation());
+            }
+        }
+        return jars;
+    }
+
+    /**
      * Eight bars of I-V-vi-IV in C at 120 BPM with a click, built on this side
      * of the boundary and handed over as a {@code float[]}: the testkit reads
      * and writes WAV files through {@code javax.sound}, so it is desktop code
      * itself and cannot be loaded over there.
      */
-    private static float[] fourChordSong() {
+    private static float[] fourChordSong(int sampleRate) {
         double[][] bars = {
             SignalFactory.majorTriad(60), // C
             SignalFactory.majorTriad(67), // G
             SignalFactory.minorTriad(57), // Am
             SignalFactory.majorTriad(65), // F
         };
-        return SignalFactory.clickTrackWithChords(120.0, bars, 4, 16.0, SAMPLE_RATE);
-    }
-
-    /** Where the class named was loaded from: a directory or a jar. */
-    private static URL codeSourceOf(String className) throws Exception {
-        CodeSource source = Class.forName(className).getProtectionDomain().getCodeSource();
-        assertThat(source).describedAs("code source of %s", className).isNotNull();
-        assertThat(source.getLocation()).describedAs("code source location of %s", className)
-                .isNotNull();
-        return source.getLocation();
+        return SignalFactory.clickTrackWithChords(120.0, bars, 4, 16.0, sampleRate);
     }
 
     /**
-     * Every class file of the module holding {@code className}, by its path
-     * within that module: a directory in a reactor build, a jar once packaged
-     * or resolved from the local repository.
-     */
-    private static Map<String, byte[]> classFilesOfModuleContaining(String className)
-            throws Exception {
-        Path path = Path.of(codeSourceOf(className).toURI());
-        return Files.isDirectory(path) ? classFilesUnder(path) : classFilesInJar(path);
-    }
-
-    private static Map<String, byte[]> classFilesUnder(Path root) throws IOException {
-        Map<String, byte[]> found = new LinkedHashMap<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
-                    throws IOException {
-                if (file.getFileName().toString().endsWith(".class")) {
-                    found.put(root.relativize(file).toString(), Files.readAllBytes(file));
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        return found;
-    }
-
-    private static Map<String, byte[]> classFilesInJar(Path jar) throws IOException {
-        Map<String, byte[]> found = new LinkedHashMap<>();
-        try (JarFile archive = new JarFile(jar.toFile())) {
-            Enumeration<JarEntry> entries = archive.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                if (entry.isDirectory() || !entry.getName().endsWith(".class")) {
-                    continue;
-                }
-                try (InputStream in = archive.getInputStream(entry)) {
-                    found.put(entry.getName(), in.readAllBytes());
-                }
-            }
-        }
-        return found;
-    }
-
-    /**
-     * The outer class a class file belongs to: {@code
-     * dev/olivelli/.../MusicXmlExport$Context.class} is part of
+     * The class a class file belongs to: {@code
+     * dev.olivelli.musicwizard.notation.MusicXmlExport$Context} is part of
      * {@code MusicXmlExport}, and the constant pool of a nested class is the
      * nested class's own.
      */
-    private static String outerClassNameOf(String path) {
-        String name = path.substring(path.lastIndexOf('/') + 1);
-        name = name.substring(0, name.length() - ".class".length());
-        int nested = name.indexOf('$');
-        return nested < 0 ? name : name.substring(0, nested);
+    private static String declaringClassOf(String binaryName) {
+        int nested = binaryName.indexOf('$');
+        return nested < 0 ? binaryName : binaryName.substring(0, nested);
     }
 
     /**
