@@ -1,6 +1,6 @@
 charts emitted for samples with known ground truth:
-  gmajorblues.mp3: bars=313  chords/bar 1.09  root 210/313 (67.1%)  root+quality 210/313 (67.1%)  short: tracked 0.0%, chart 24.1%
-  blues-a-90bpm.mp3: bars=113  chords/bar 1.08  root 81/113 (71.7%)  root+quality 80/113 (70.8%)  short: tracked 0.0%, chart 18.1%
-  blues-shuffle-a-106bpm.mp3: bars=148  chords/bar 1.09  root 119/148 (80.4%)  root+quality 8/148 (5.4%)  short: tracked 0.0%, chart 12.0%
-  blues-e-90bpm.mp3: bars=113  chords/bar 1.04  root 111/113 (98.2%)  root+quality 12/113 (10.6%)  short: tracked 0.0%, chart 11.3%
-  bossa-cm.mp3: bars=130  chords/bar 1.10  root 23/130 (17.7%)  root+quality 6/130 (4.6%)  short: tracked 0.0%, chart 19.0%
+  gmajorblues.mp3: bars=314  chords/bar 1.04  root 257/314 (81.8%)  root+quality 257/314 (81.8%)  short: tracked 0.0%, chart 24.1%
+  blues-a-90bpm.mp3: bars=113  chords/bar 1.08  root 84/113 (74.3%)  root+quality 83/113 (73.5%)  short: tracked 0.0%, chart 14.6%
+  blues-shuffle-a-106bpm.mp3: bars=148  chords/bar 1.03  root 137/148 (92.6%)  root+quality 21/148 (14.2%)  short: tracked 0.0%, chart 18.3%
+  blues-e-90bpm.mp3: bars=113  chords/bar 1.06  root 111/113 (98.2%)  root+quality 10/113 (8.8%)  short: tracked 0.0%, chart 7.8%
+  bossa-cm.mp3: bars=130  chords/bar 1.18  root 24/130 (18.5%)  root+quality 5/130 (3.8%)  short: tracked 0.0%, chart 19.0%

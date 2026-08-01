@@ -213,9 +213,13 @@ class ProvenanceTest {
                             .toList(),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
 
-            // A grid whose median is a different figure, so the two answers are
-            // distinguishable. 0.75s is exact in binary, so 80 is exact too.
+            // A grid whose own rate is a different figure, so the two answers are
+            // distinguishable. 0.75s is exact in binary, so 80 is exact too. The
+            // grid is even, so every statistic on it agrees -- which is what this
+            // test wants, since what it is separating is the map from the grid
+            // rather than one grid statistic from another.
             BeatGrid grid = gridOf(pulses(1.0, 0.75, 8));
+            assertThat(grid.steadyTempo(TimeSignature.FOUR_FOUR)).isEqualTo(80.0);
             assertThat(grid.medianTempo(TimeSignature.FOUR_FOUR)).isEqualTo(80.0);
 
             assertThat(Score.empty(measured, 10.0).withBeatGrid(grid).estimatedTempo())
@@ -246,11 +250,11 @@ class ProvenanceTest {
                         .withBeatGrid(grid);
 
                 // Both grids are answered from the same place. The two figures
-                // are not identical -- they are medians of different sets of
+                // are not identical -- they are rates over different sets of
                 // intervals -- so the claim is the rule, not the number.
                 assertThat(score.estimatedTempo())
                         .as("%d tracked beats", times.size())
-                        .isEqualTo(grid.medianTempo(TimeSignature.FOUR_FOUR));
+                        .isEqualTo(grid.steadyTempo(TimeSignature.FOUR_FOUR));
             }
 
             // And the assertion discriminates: for two beats the map states a
@@ -261,7 +265,9 @@ class ProvenanceTest {
             assertThat(twoBeatMap.segments()).hasSize(2);
             assertThat(twoBeatMap.segments().get(1).beatsPerMinute())
                     .isCloseTo(121.2, within(0.1));
-            assertThat(gridOf(twoBeats).medianTempo(TimeSignature.FOUR_FOUR))
+            // One interval, so the grid's rate is that interval whichever
+            // statistic asks for it.
+            assertThat(gridOf(twoBeats).steadyTempo(TimeSignature.FOUR_FOUR))
                     .isCloseTo(60.6, within(0.1));
         }
 

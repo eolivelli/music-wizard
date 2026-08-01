@@ -378,16 +378,25 @@ final class ChartLayout {
      * is noise.
      *
      * <p><b>#196 has moved that paragraph's three rates, and this time it moved
-     * the beat times rather than only the downbeat phase.</b> They now read
-     * 0.5636s over the hundred, 0.5658s over the whole recording and 0.5689s for
-     * the estimate. The conclusion survives and its shape changes: the drift by
+     * the beat times rather than only the downbeat phase.</b> They read 0.5636s
+     * over the hundred, 0.5658s over the whole recording and 0.5689s for the
+     * estimate. The conclusion survives and its shape changes: the drift by
      * chord 26 is unchanged at about a beat, so 26 still fails for the reason
      * given, but the whole-recording figure falls from seventeen beats to seven.
      * What is left of it is no longer the tracker running fast -- it now runs
      * within a tenth of a percent of the music, which is what #196 fixed -- but
-     * the gap between the median interval this class spaces bars at and the rate
-     * the grid actually ran at, which is #200. The chord indices themselves want
-     * re-taking a third time and have not been.
+     * the gap between the median interval this class then spaced bars at and the
+     * rate the grid actually ran at, which is #200.
+     *
+     * <p><b>#200 has since moved the third of those three rates.</b>
+     * {@code quarterNoteSeconds} now gives 0.56651s here rather than 0.5689s,
+     * because {@link Score#estimatedTempo()} answers with the rate the grid ran
+     * at over the pulses it tracked steadily rather than with a median interval.
+     * Against the same 0.5658s the whole-recording drift falls from about seven
+     * beats to about one and a half, so what is left of it is neither the tracker
+     * nor the statistic: it is that the recording does not hold one bar length
+     * (#187) and that the anchor is the grid's first downbeat (#233). The chord
+     * indices themselves want re-taking a third time and have not been.
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
      * carry it alone: a grid narrower than the timing error trips over it, which
@@ -414,10 +423,11 @@ final class ChartLayout {
      * about what a grid must survive, not about what this recording happens to
      * contain -- but it now wants a recording that still exhibits the defect.
      *
-     * <p>Past there the chart's bar length is wrong (#200) and the recording's
-     * beat does not keep to any single bar length (#187); the two run against
-     * each other rather than adding, and the measurements are on those issues
-     * where they can be corrected without touching this file.
+     * <p>Past there the chart's bar phase is taken from one downbeat (#233) and
+     * the recording's beat does not keep to any single bar length (#187); the
+     * two run against each other rather than adding, and the measurements are on
+     * those issues where they can be corrected without touching this file. The
+     * bar *length* used to be the third of these and is #200, now fixed.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
@@ -662,13 +672,14 @@ final class ChartLayout {
      * five benchmarks is faster than a beat, and that is structural rather than
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
-     * at, which is the median tracked interval, 11.3% to 24.1% of changes are.
-     * That range was 12.0% to 32.9% before #196; both ends move because the
-     * beats themselves moved, and its top end fell by most because the
-     * recording it came from is the one whose grid was worst.
+     * at, which is the grid's steady rate, 7.8% to 24.1% of changes are. That
+     * range was 12.0% to 32.9% before #196 and 11.3% to 24.1% before #200; the
+     * ends move because the axis moves under them, and the bottom end fell
+     * furthest at #200 because the recordings whose rate was worst are the ones
+     * whose bars were drifting most.
      *
      * <p>The whole of that difference is one constant bar length drifting
-     * against a recording that does not keep one -- #187, #196 and #200 -- and
+     * against a recording that does not keep one -- #187 and #233 -- and
      * it says nothing about how fast the harmony moves. So the signal such a gate
      * would read is mostly the chart's own grid error: it would decline to reduce
      * a substantial minority of perfectly ordinary bars, which is where the

@@ -214,8 +214,25 @@ public final class AudioTranscriber {
         // Named as beats per minute rather than as a tempo on purpose: the
         // tracker counts pulses, and a pulse is a quarter note only in simple
         // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
+        //
+        // The grid's own statistic rather than the tracker's median, and not for
+        // tidiness. The comment beside --tempo below tells the user they may type
+        // back "the rate this very run just reported", and a supplied tempo beats
+        // the grid -- so were this to name a different figure from the one the
+        // chart is headed with, the message would be a documented route back to
+        // the defect #200 removes. BeatTracker.Result.beatsPerMinute is the
+        // tracker's median interval, which since #200 is not what
+        // Score.estimatedTempo answers with.
+        //
+        // Read off the times rather than off a grid because there is no grid yet:
+        // the downbeat phase is chosen from chroma, which is extracted below, and
+        // holding this message back until then would delay the one line that says
+        // beat tracking worked at all past the slowest stage in the run.
         progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
-                beatTimes.size(), beats.beatsPerMinute()));
+                beatTimes.size(),
+                beatTimes.size() >= 2
+                        ? BeatGrid.steadyPulseRate(beatTimes)
+                        : beats.beatsPerMinute()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of

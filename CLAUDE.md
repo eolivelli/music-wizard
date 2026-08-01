@@ -50,13 +50,17 @@ exposed is fixed too (#196): the tracker's spacing penalty was a forty-eighth of
 the published one, so it left the grid for any loud offbeat, and the benchmarks
 now score between 15% and 99% of bars correct on the tracker's own downbeats.
 
-What is now top is what *that* exposed, in order. The chart spaces its bars at
-the median tracked interval where the grid's own rate is the better figure — on
-the reference recording that is worth eighteen points of printed chart (#200) —
-and it hangs the whole axis on one downbeat, which on a lead-in is the least
-reliable beat there is (#233). Then: dominant sevenths are found on two of the
-five benchmarks and called plain triads on the other three (#208), and one
-benchmark's tempo is read at four thirds of its true rate (#231).
+The chart's bar *rate* is fixed too (#200): it was the median tracked interval,
+which is not a rate and is quantised to the analysis hop, and it is now the mean
+of the intervals the tracker held steadily. Every benchmark's printed chart
+improved or held, the reference recording by fifteen points and one other by
+twelve.
+
+What is now top is what all three exposed, in order. The chart still hangs its
+whole bar axis on one downbeat, which on a lead-in is the least reliable beat
+there is (#233). Then: dominant sevenths are found on two of the five benchmarks
+and called plain triads on the other three (#208), and one benchmark's tempo is
+read at four thirds of its true rate (#231).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

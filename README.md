@@ -72,15 +72,7 @@ largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
 blues the chart puts the first twenty-five changes in the right bar and every one
 after that in the wrong one — measured before [#196][i196] and not re-taken.
 
-Two things caused that and they were not the same size on every recording. The
-recording's own beat did not keep to any single bar length, which was the beat
-tracker leaving the grid for loud offbeats and is fixed; and the bar lines are
-spaced at the median tracked interval, which on that recording is half a percent
-longer than the rate its own beats ran at ([#200][i200]). Only the second is
-left. Correcting `--tempo` by hand is worth at least as much as correcting the
-downbeat, and more than it used to be.
-
-That figure is the bar arithmetic measured on real *timing* with the chords
+That twenty-five is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises. Chord recognition on that
 recording used to return nothing but `N.C.`; since [#3][i3] it returns hundreds
 of spans and no `N.C.` at all, most of them in the right bar with the right root
@@ -88,12 +80,29 @@ since [#196][i196] stopped the beat grid drifting. The chords were supplied
 anyway, because a layout measurement wants a
 progression known to be right rather than one that is half right.
 
+Three things caused it and they were not the same size on every recording. The
+recording's own beat did not keep to any single bar length, which was the beat
+tracker leaving the grid for loud offbeats and is fixed ([#196][i196]); the bar
+lines were spaced at the median tracked interval rather than at a rate, which is
+also fixed ([#200][i200]); and the whole axis still hangs on the grid's *first*
+downbeat, which on a recording with a lead-in is the least reliable beat in it
+([#233][i233]). Only the third is left. Correcting the downbeat by hand is now
+worth more than correcting `--tempo`, which is the other way round from how it
+used to be.
+
+Those two fixes do show up in what the tool actually prints. Scoring the emitted
+chart against the known changes — `tools/score-chart.py`, which reads the
+engraved source rather than the model behind it — the share of bars carrying the
+right chord on that recording went from 67% to 82% at [#200][i200]. All five
+benchmarks improved or held; the next largest was 80% to 93%.
+
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
 [i186]: https://github.com/eolivelli/music-wizard/issues/186
 [i187]: https://github.com/eolivelli/music-wizard/issues/187
 [i3]: https://github.com/eolivelli/music-wizard/issues/3
 [i200]: https://github.com/eolivelli/music-wizard/issues/200
+[i233]: https://github.com/eolivelli/music-wizard/issues/233
 [i196]: https://github.com/eolivelli/music-wizard/issues/196
 
 ## Installing
