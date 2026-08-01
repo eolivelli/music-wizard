@@ -69,19 +69,18 @@ different pages.
 Bar *spacing* still comes from the tempo, not from the rest of the grid: only
 the first bar line is read off a downbeat, and the ones after it are laid out at
 the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
-largest remaining error, and it is not subtle.** On an eleven minute twelve-bar
-blues the chart puts the first twenty-five changes in the right bar and every one
-after that in the wrong one — measured before [#196][i196] and not re-taken.
+largest remaining error.** How large is no longer known: the figure that used to
+sit here — on an eleven minute twelve-bar blues, the first twenty-five changes in
+the right bar and every one after that in the wrong one — was measured before
+both [#196][i196] and [#200][i200], and it has not been re-taken. Between them
+those two cut a bar line's drift against the recording by roughly an order of
+magnitude — the figures, and a caveat on the earliest of them, are below. They
+did not do it in the same place, which is why the twenty-five wants re-measuring
+rather than adjusting: at the point that figure comes from, a hundred beats in,
+#196 left the error where it was and #200 halved it. What *is* current is the
+score of the printed chart, below.
 
-Two things caused that and they were not the same size on every recording. The
-recording's own beat did not keep to any single bar length, which was the beat
-tracker leaving the grid for loud offbeats and is fixed; and the bar lines are
-spaced at the median tracked interval, which on that recording is half a percent
-longer than the rate its own beats ran at ([#200][i200]). Only the second is
-left. Correcting `--tempo` by hand is worth at least as much as correcting the
-downbeat, and more than it used to be.
-
-That figure is the bar arithmetic measured on real *timing* with the chords
+That twenty-five is the bar arithmetic measured on real *timing* with the chords
 supplied, not a figure for what the tool recognises. Chord recognition on that
 recording used to return nothing but `N.C.`; since [#3][i3] it returns hundreds
 of spans and no `N.C.` at all, most of them in the right bar with the right root
@@ -89,12 +88,44 @@ since [#196][i196] stopped the beat grid drifting. The chords were supplied
 anyway, because a layout measurement wants a
 progression known to be right rather than one that is half right.
 
+Several things cause that drift and they are not the same size on every
+recording. Two have been fixed: the beat tracker was leaving the grid for loud
+offbeats ([#196][i196]), and the bar lines were spaced at the median tracked
+interval rather than at a rate ([#200][i200]). Two are open, and neither is a
+leftover of the other:
+
+- the whole bar axis hangs on the grid's *first* downbeat, which on a recording
+  with a lead-in is the least reliable beat in it ([#233][i233]);
+- a recording does not hold one bar length anyway, and one constant spacing
+  cannot follow one that does not ([#187][i187]). On the blues above, a bar line
+  placed by index still ends about a beat and a half from the recording's own
+  beats by the end of the eleven minutes — down from about seven once
+  [#196][i196] had landed and before [#200][i200]. The figure before either was
+  about seventeen, but that one is inherited rather than re-measured, and it is
+  not on the same axis: #196 moved the tracked beat times themselves, so the
+  seventeen is against the beats that tracker read and the one and a half is
+  against today's.
+
+So correcting the downbeat by hand is now worth more than correcting `--tempo`,
+which is the other way round from how it used to be.
+
+Those two fixes do show up in what the tool actually prints. Scoring the emitted
+chart against the known changes — `tools/score-chart.py`, which reads the
+engraved source rather than the model behind it — the share of bars carrying the
+right chord on that recording went from 67% to 82% at [#200][i200]. All five
+benchmarks that existed at the time improved or held; the next largest was 80% to
+93%. Two more have since been added to the corpus and one of them scores lower
+under this change — see [#242][i242], which measures why that particular cell is
+not a measurement.
+
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
 [i186]: https://github.com/eolivelli/music-wizard/issues/186
 [i187]: https://github.com/eolivelli/music-wizard/issues/187
 [i3]: https://github.com/eolivelli/music-wizard/issues/3
 [i200]: https://github.com/eolivelli/music-wizard/issues/200
+[i233]: https://github.com/eolivelli/music-wizard/issues/233
+[i242]: https://github.com/eolivelli/music-wizard/issues/242
 [i196]: https://github.com/eolivelli/music-wizard/issues/196
 
 ## Installing
