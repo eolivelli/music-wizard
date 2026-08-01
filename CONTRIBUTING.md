@@ -46,9 +46,11 @@ mw-it           slow integration tests
 ```
 
 **The dependency rule:** `mw-core` is the only module everything may depend on.
-`mw-notation` must not depend on `mw-ml`. `mw-cli` is the only module that wires
+`mw-cli` is the only module that depends on `mw-ml`, and the only one that wires
 everything together. This is what lets the symbolic and audio tracks be built
-in parallel without colliding.
+in parallel without colliding — and it is what keeps ONNX Runtime's desktop
+natives out of the Android app's compile closure (#247), since the app links
+`mw-transcribe` and not the command line.
 
 ## Two rules that govern the pipeline
 

@@ -22,9 +22,12 @@
     through mw-notation and reads it back through mw-transcribe, and
     StaffNotationOverloadTest reads what the emitter writes for a played
     passage; both need audio, model and binary alike not at all, and both are
-    here because neither module may depend on the other -- mw-transcribe pulls
-    in mw-ml, which the notation layer is not allowed to see -- and this is the
-    module that already depends on both. LilyPondComplaintsTest reads LilyPond's
+    here because neither module may depend on the other -- mw-notation must not
+    see the audio and DSP stack mw-transcribe is built on, and mw-transcribe has
+    no business emitting notation -- and this is the module that already depends
+    on both. (Until #247, the sharper version of that was "mw-transcribe pulls
+    in mw-ml, which the notation layer is not allowed to see"; the edge is gone
+    but the rule it illustrated is not.) LilyPondComplaintsTest reads LilyPond's
     diagnostics without running it, and explains there why it belongs here.
 
     The rule, from #148 and #155: a test that needs no LilyPond is named *Test,

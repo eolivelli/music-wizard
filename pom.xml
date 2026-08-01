@@ -73,13 +73,14 @@
       The build JDK stays 25 (see requireJavaVersion below); only the bytecode
       target drops. Android's D8 refuses class files above major version 65, so
       every module the app links against must be compiled at release 21 or
-      lower — and the app's compile closure is mw-core, mw-audio, mw-dsp, mw-ml,
-      mw-transcribe, mw-arrange and mw-notation, which is most of the reactor.
+      lower — and the app's compile closure is mw-core, mw-audio, mw-dsp,
+      mw-transcribe, mw-arrange and mw-notation, most of the reactor. (mw-ml was
+      in that closure too until #247 took mw-transcribe's unused edge to it out.)
 
       A survey of those modules found no post-21 language feature and no post-21
       API in main or test sources: the whole reactor compiles clean at 21, so
-      lowering it here rather than overriding it in seven module poms costs
-      nothing and leaves one number to read instead of eight to keep in step.
+      lowering it here rather than overriding it in six module poms costs
+      nothing and leaves one number to read instead of several to keep in step.
       The enforcer rule below stops it drifting back up, and
       AndroidBytecodeTargetTest checks the class files themselves, which is what
       D8 actually reads.
@@ -389,7 +390,7 @@
                 <requireProperty>
                   <property>maven.compiler.release</property>
                   <regex>^([89]|1[0-9]|2[01])$</regex>
-                  <regexMessage>maven.compiler.release must be 21 or lower: Android's D8 rejects class files above major version 65, and the app (#236) links against mw-core, mw-audio, mw-dsp, mw-ml, mw-transcribe, mw-arrange and mw-notation.</regexMessage>
+                  <regexMessage>maven.compiler.release must be 21 or lower: Android's D8 rejects class files above major version 65, and the app (#236) links against mw-core, mw-audio, mw-dsp, mw-transcribe, mw-arrange and mw-notation.</regexMessage>
                 </requireProperty>
                 <!--
                   Guard the licensing policy mechanically: GPL/AGPL artifacts

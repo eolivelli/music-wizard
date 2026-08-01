@@ -31,7 +31,24 @@
     </dependency>    <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-llm</artifactId>
-    </dependency>    <dependency>
+    </dependency>
+    <!--
+      The provider layer, declared here because this is the module whose job is
+      wiring and because the shaded jar is what a desktop user runs. It arrived
+      transitively through mw-transcribe until #247 took that edge out to keep
+      ONNX Runtime's desktop natives off the phone; the CLI still wants it, so
+      it is named here instead of quietly disappearing from the jar.
+
+      Runtime scope: no source in this module compiles against mw-ml, and none
+      should, because a provider is chosen at run time.
+      MlRuntimeStaysOnTheDesktopTest pins that the jar still gets it.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-ml</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
       <groupId>info.picocli</groupId>
       <artifactId>picocli</artifactId>
     </dependency>    <dependency>
