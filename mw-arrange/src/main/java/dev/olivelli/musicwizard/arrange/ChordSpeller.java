@@ -57,8 +57,8 @@ import java.util.OptionalDouble;
  * and B flat each carry one accidental, as do D sharp and E flat, so the sharp
  * chart above and the flat one tie at two -- and the spread is what separates
  * them: {@code Bb F G Eb} occupies four steps where {@code A# F G D#} occupies
- * eleven. Ranking the two the other way round is wrong, and only a run showed it;
- * see {@link #cheapestRegion}.
+ * eleven. Ranking the two the other way round is wrong; see
+ * {@link #cheapestRegion}.
  *
  * <p>No root is ever written with a double accidental. A note on a staff may need
  * one and reads as one, because the key signature and its neighbours say what it
@@ -121,17 +121,16 @@ public final class ChordSpeller {
      * E sharp -- right for the {@code E#dim} that the raised fourth usually is,
      * wrong for a plain F -- because the region is chosen before the quality is
      * looked at. Sliding the window flat only moves the problem: at -6 to +5 the
-     * raised fourth of C major comes back G flat, which is what round 2 of review
-     * rejected. That trade is #251.
+     * raised fourth of C major comes back G flat. That trade is #251.
      *
      * <p>It is measured from the <em>tonic</em> and not from the key signature,
      * which is what makes it hold for a minor key without a second constant. A
      * minor key's window is the same twelve positions about its own tonic -- the
      * Neapolitan of A minor is B flat and its leading-tone chord is G sharp minus
      * nothing -- and its tonic sits three fifths sharp of where its signature
-     * would put a major one. Round 1 of review found the version that measured
-     * from the signature spelling {@code G#dim} as {@code Abdim} in a chart
-     * headed "A minor", and that is the missing three.
+     * would put a major one. Measured from the signature instead, {@code G#dim}
+     * comes back {@code Abdim} in a chart headed "A minor", and that is the
+     * missing three.
      */
     private static final double TONIC_TO_ROOT_CENTRE = 0.5;
 
@@ -149,18 +148,17 @@ public final class ChordSpeller {
      * than about the music that was heard.
      *
      * <p>Each chord is written from the key <em>in force under it</em>, and only
-     * a score that names no key at all gets one region for the whole piece.
-     * Round 3 of review found the difference by execution: a MIDI file modulating
-     * from B flat to B major reached here already spelled per span by {@code
-     * SymbolicChordEstimator}, which reads the key signature in force at each
-     * chord, and one region for the piece turned its last chorus into
-     * {@code Cb Gb Ab E}. The stage that replaces a decision has to be at least
-     * as fine-grained as the decision it replaces.
+     * a score that names no key at all gets one region for the whole piece. A
+     * MIDI file modulating from B flat to B major reaches here already spelled
+     * per span by {@code SymbolicChordEstimator}, which reads the key signature
+     * in force at each chord, and one region for the piece turns its last chorus
+     * into {@code Cb Gb Ab E}. The stage that replaces a decision has to be at
+     * least as fine-grained as the decision it replaces.
      *
      * <p>Whatever the keys do not cover is counted, one run of consecutive
      * uncovered chords at a time, with the key the run abuts breaking a tie the
-     * chords cannot. Three rounds of review each found one part of that, and each
-     * fix was the previous one over-applied:
+     * chords cannot. Each of the three simpler rules is wrong, and each is this
+     * one with a piece removed:
      *
      * <ul>
      *   <li>Counted together with the covered chords, a lead-in gets a region
@@ -377,11 +375,11 @@ public final class ChordSpeller {
      * accidentals each, and what separates them is that the second occupies four
      * steps of the line of fifths where the first occupies eleven.
      *
-     * <p>Ranking them the other way round was tried and is wrong, which only a
-     * run showed: distance is measured to the region, so a region can buy
-     * closeness with an accidental. An A flat major chart with one A7 in it came
-     * back as {@code G# D# E#m C#} -- four accidentals bought to save two steps,
-     * including an E sharp minor that no chart of anything writes.
+     * <p>Ranking them the other way round is wrong: distance is measured to the
+     * region, so a region can buy closeness with an accidental. An A flat major
+     * chart with one A7 in it then comes back as {@code G# D# E#m C#} -- four
+     * accidentals bought to save two steps, including an E sharp minor that no
+     * chart of anything writes.
      *
      * <p><b>Then the key the run abuts</b>, when it abuts one: of two regions the
      * chords cannot choose between, the one nearer the key next door. A run of one
@@ -442,25 +440,22 @@ public final class ChordSpeller {
      * A slash chord's bass, written from the chord it is under when it belongs to
      * it and from the region when it does not.
      *
-     * <p>Round 1 of review found this: written from the region alone, the bass of
-     * E major in a piece that leans flat came out {@code E/Ab}, and A flat is not
-     * a note of E major. The chord decides its own tones -- that is what
-     * {@link PitchSpeller#asChordTone} is for, and asking it here rather than
-     * repeating its ladder is what keeps the bass of a chart and the notes of a
-     * staff spelled by one rule.
+     * <p>Written from the region alone, the bass of E major in a piece that leans
+     * flat comes out {@code E/Ab}, and A flat is not a note of E major. The chord
+     * decides its own tones -- that is what {@link PitchSpeller#asChordTone} is
+     * for, and asking it here rather than repeating its ladder is what keeps the
+     * bass of a chart and the notes of a staff spelled by one rule.
      *
      * <p>It is asked against a copy of the chord carrying the <em>new</em> root
      * and no bass: the new root because the bass must agree with what will be
      * printed beside it, and no bass because {@code asChordTone} honours a
      * written one, which is exactly the spelling being replaced.
      *
-     * <p>There is a third case under the second, and round 2 of review found the
-     * javadoc claiming two. A chord tone whose derived spelling needs more than
-     * one accidental -- the third of C sharp diminished written from a C flat
-     * root would be an A double flat -- is unprintable as a symbol, so it falls
-     * back to the region like a foreign bass. It is rare enough that no fixture
-     * reached it before the reviewer built one, and the fallback is the same
-     * answer {@code asChordTone} itself gives when a tone needs a triple.
+     * <p>There is a third case under the second. A chord tone whose derived
+     * spelling needs more than one accidental -- the third of C sharp diminished
+     * written from a C flat root would be an A double flat -- is unprintable as a
+     * symbol, so it falls back to the region like a foreign bass. That is the
+     * same answer {@code asChordTone} itself gives when a tone needs a triple.
      */
     private static PitchSpelling rewriteBass(PitchSpelling written, Chord chord,
                                              PitchSpelling root, double region) {

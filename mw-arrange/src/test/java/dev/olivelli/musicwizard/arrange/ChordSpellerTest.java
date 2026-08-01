@@ -140,12 +140,11 @@ class ChordSpellerTest {
         @Test
         @DisplayName("one chromatic chord does not flip the chart across the half turn")
         void aSingleChromaticChordDoesNotFlipTheChart() {
-            // Round 1 of review, by execution: eight cycles of B F#m G#m E and
-            // one C#7 reach the tie at six fifths either way, where the region
-            // is exactly as close written from +6 as from -6 and the flat-first
-            // scan took the flat. One chord in 33 turned every symbol on the
-            // page into Cb Gb Abm Fb. The accidental count is what separates
-            // them: 2 a cycle against 4.
+            // Eight cycles of B F#m G#m E and one C#7 reach the tie at six
+            // fifths either way, where the region is exactly as close written
+            // from +6 as from -6 and the flat-first scan took the flat. One
+            // chord in 33 turned every symbol on the page into Cb Gb Abm Fb.
+            // The accidental count is what separates them: 2 a cycle against 4.
             List<Chord> chords = new ArrayList<>();
             for (int i = 0; i < 8; i++) {
                 chords.add(major("B4"));
@@ -200,8 +199,7 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a key's raised fourth is sharp, whether the key is major or minor")
         void aKeyIsReadFromItsTonicRatherThanItsSignature() {
-            // Both halves of round 2's finding, and of round 1's before it. A
-            // chart of D, G and A has its roots centred a fifth flat of D, so
+            // A chart of D, G and A has its roots centred a fifth flat of D, so
             // counting alone writes a passing G# diminished as Abdim -- under a
             // header reading "D major". Measuring from the signature instead of
             // the tonic does the same to A minor, whose leading-tone chord is
@@ -274,7 +272,7 @@ class ChordSpellerTest {
             // from -12, where its roots are Dbb Abb Bbbm Gbb, as from 0. And in
             // a region as flat as A flat major's, a plain A7 is nearer Bbb than
             // A -- which is what an unbounded search printed. Every key against
-            // every chromatic addition, which is where round 1 found the second.
+            // every chromatic addition, which is where the second one shows.
             for (int tonic = 0; tonic < 12; tonic++) {
                 for (int added = 0; added < 12; added++) {
                     List<Chord> chords = new ArrayList<>();
@@ -317,10 +315,10 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a bass that is a chord tone is spelled by its chord, not by the region")
         void aChordToneBassFollowsItsChord() {
-            // Round 1 of review, by execution through the CLI: E/G# came out as
-            // E/Ab, and A flat is not a note of E major. The region has nothing
-            // to say about a note the chord above it already spells -- the third
-            // of E is a G of some kind whatever the rest of the piece does.
+            // Written from the region alone, E/G# comes out as E/Ab, and A
+            // flat is not a note of E major. The region has nothing to say
+            // about a note the chord above it already spells -- the third of E
+            // is a G of some kind whatever the rest of the piece does.
             Chord slash = Chord.ofSeconds(PitchSpelling.parse("E4"), ChordQuality.MAJOR,
                     0, 1, Confidence.of(0.8)).withBass(PitchSpelling.parse("G#4"));
             ChordProgression chords = progression(
@@ -377,12 +375,12 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a modulation is followed, key by key, rather than averaged")
         void eachChordIsWrittenFromTheKeyUnderIt() {
-            // Round 3 of review, through the CLI: a MIDI modulating from B flat
-            // to B major arrives here already spelled per span, because
-            // SymbolicChordEstimator reads the key signature in force at each
-            // chord. One region for the whole piece overwrote that and printed
-            // the last chorus as Cb Gb Ab -- a stage that replaces a decision
-            // has to be at least as fine-grained as the decision it replaces.
+            // A MIDI modulating from B flat to B major arrives here already
+            // spelled per span, because SymbolicChordEstimator reads the key
+            // signature in force at each chord. One region for the whole piece
+            // overwrote that and printed the last chorus as Cb Gb Ab -- a stage
+            // that replaces a decision has to be at least as fine-grained as
+            // the decision it replaces.
             Score score = modulating(
                     chordAt(0, "A#4"), chordAt(1, "D#4"), chordAt(2, "B4"), chordAt(3, "E4"));
 
@@ -393,10 +391,10 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a lead-in no key covers is counted over itself, not over the whole piece")
         void aLeadInIsCountedOverTheChordsNoKeyCovers() {
-            // Round 4 of review, on a MIDI whose key signature sits at bar 2: an
-            // E flat lead-in into a piece that modulates was counted over the
-            // whole progression, whose region belongs to neither of its keys,
-            // and printed D# two bars before an identical chord printed Eb.
+            // On a MIDI whose key signature sits at bar 2, an E flat lead-in
+            // into a piece that modulates was counted over the whole
+            // progression, whose region belongs to neither of its keys, and
+            // printed D# two bars before an identical chord printed Eb.
             Score score = modulating(
                     chordAt(0, "D#4"), chordAt(1, "A#4"), chordAt(2, "B4"), chordAt(3, "E4"))
                     .withKeys(List.of(
@@ -410,10 +408,10 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a whole section no key covers is not written from a key that does not cover it")
         void anUncoveredSectionIsNotWrittenFromTheNextKey() {
-            // Round 5 of review, on a MIDI that declares no key at the start and
-            // one only where it modulates. Giving those chords the nearest key
-            // applied B major's window to four bars of plain C major and printed
-            // an E# in every one of them -- overwriting a spelling
+            // On a MIDI that declares no key at the start and one only where
+            // it modulates, giving those chords the nearest key applies B
+            // major's window to four bars of plain C major and prints an E# in
+            // every one of them -- overwriting a spelling
             // SymbolicChordEstimator had already got right. The rule that a
             // lead-in belongs to the key it leads into is true of a bar or two
             // and was being applied at any distance.
@@ -439,13 +437,13 @@ class ChordSpellerTest {
         @Test
         @DisplayName("a run whose own chords cannot decide agrees with the key it abuts")
         void anUncoveredRunAgreesWithTheKeyBesideIt() {
-            // Round 6 of review. A run of one or two chords ties on both of the
-            // ranks its own chords can supply -- a single pitch class has two
-            // spellings costing one accidental each and sitting zero from their
-            // own regions -- so the flat-first scan decided, and a lead-in on
-            // the dominant of B major printed Gb two bars before the identical
-            // chord printed F#. The key next door is the only evidence there is,
-            // and it is a tie-break rather than a source.
+            // A run of one or two chords ties on both of the ranks its own
+            // chords can supply -- a single pitch class has two spellings
+            // costing one accidental each and sitting zero from their own
+            // regions -- so the flat-first scan decided, and a lead-in on the
+            // dominant of B major printed Gb two bars before the identical
+            // chord printed F#. The key next door is the only evidence there
+            // is, and it is a tie-break rather than a source.
             Score leadIn = Score.empty(TempoMap.constant(120), 4.0)
                     .withChords(asGiven(List.of(
                             chordAt(0, "F#4"), chordAt(1, "B4"),
@@ -471,13 +469,12 @@ class ChordSpellerTest {
         @Test
         @DisplayName("two uncovered runs are counted apart, not averaged across the key between")
         void eachUncoveredRunIsCountedOnItsOwn() {
-            // Round 6 of review. Counted as one set, a flat lead-in and a sharp
-            // tail either side of a key get a compromise region belonging to
-            // neither, and the tail printed Gb three bars after the covered
-            // chord beside it printed F#. Each run is counted from its own
-            // chords, and each of these two decides on accidentals alone -- four
-            // against two either way -- so neither is the key beside them to
-            // move.
+            // Counted as one set, a flat lead-in and a sharp tail either side
+            // of a key get a compromise region belonging to neither, and the
+            // tail printed Gb three bars after the covered chord beside it
+            // printed F#. Each run is counted from its own chords, and each of
+            // these two decides on accidentals alone -- four against two either
+            // way -- so neither is the key beside them to move.
             Score score = Score.empty(TempoMap.constant(120), 12.0)
                     .withChords(asGiven(List.of(
                             chordAt(0, "A#4"), chordAt(1, "D#4"),
@@ -580,9 +577,8 @@ class ChordSpellerTest {
      *
      * <p>On both axes, because {@code keyUnder} reads whichever the score is on
      * and the pipeline is on beats: {@code MidiTranscriber} quantizes every key
-     * and {@code SymbolicChordEstimator} every chord. Round 4 of review found the
-     * fixtures reaching only the seconds branch, which is the one no caller
-     * takes.
+     * and {@code SymbolicChordEstimator} every chord. A fixture left on seconds
+     * alone reaches only the seconds branch, which is the one no caller takes.
      */
     private static Chord chordAt(int beat, String root) {
         return Chord.ofSeconds(PitchSpelling.parse(root), ChordQuality.MAJOR,
