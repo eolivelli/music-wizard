@@ -116,6 +116,11 @@ validation. If it rejects your verdict, re-triage; do not argue.
 - Follow `CONTRIBUTING.md`; match the surrounding code's idiom and comment
   density.
 - Scope to the issue. Unrelated findings become issues, never riders or TODOs.
+- **Write Java that compiles at `--release 21`** even while the reactor is at
+  25: the Android epic (#236, other lane) is downgrading the shared modules,
+  and any 22+ language feature you introduce now (unnamed `_` variables above
+  all) becomes a conflict for that PR to resolve. New code should not add to
+  that bill.
 - **Tests are the deliverable.** A bug-fix test must fail before and pass
   after — and must actually execute the branch you changed. Trace it.
 
