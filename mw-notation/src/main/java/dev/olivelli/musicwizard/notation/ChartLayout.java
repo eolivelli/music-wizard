@@ -704,14 +704,31 @@ final class ChartLayout {
      * of the tracked interval, so the threshold this counts against sits on a
      * mode of the distribution rather than between modes: a change of either sign
      * flips a whole cohort of one-beat gaps across it at once, or flips none.
-     * At #200 the direction followed the sign -- a faster rate makes the counted
-     * beat shorter, so fewer gaps fall under it -- but the size followed how many
-     * gaps happened to lie between the old beat and the new one. Two of the five
-     * did not move at all, including the one whose rate moved <em>most</em>; and
-     * {@code blues-e-90bpm.mp3}, which fell furthest and set the bottom of the
-     * five-file range at 7.8%, had the <em>smallest</em> rate correction of the
-     * five. (The seven-file range's bottom is {@code fm7-vamp-110.mp3}, which
-     * has no "before" at all -- it is one of the two #200 did not move.)
+     *
+     * <p>Stated as a table rather than in superlatives, because three successive
+     * drafts of this paragraph each claimed a maximum that the numbers did not
+     * hold -- which recording fell furthest, which one #200 did not move, which
+     * end of the range belongs to what. A table cannot make that mistake.
+     *
+     * <pre>
+     *   recording                    rate at #200   before   after
+     *   gmajorblues.mp3                  +0.420%     24.1%   24.1%
+     *   bossa-cm.mp3                     +0.217%     19.0%   19.0%
+     *   blues-a-90bpm.mp3                +0.144%     18.1%   14.6%
+     *   fm7-vamp-110.mp3                 +0.084%      4.3%    3.2%
+     *   blues-e-90bpm.mp3                +0.083%     11.3%    7.8%
+     *   blues-shuffle-a-106bpm.mp3       -0.397%     12.0%   18.3%
+     *   eb7-vamp-130.mp3                 -0.642%     35.7%   38.3%
+     * </pre>
+     *
+     * <p><b>The direction follows the sign and nothing follows the size.</b> A
+     * faster rate shortens the counted beat, so fewer gaps fall under it: every
+     * positive row falls or stays, every negative row rises. But the largest
+     * correction moves nothing and the second smallest moves 3.5 points, because
+     * what decides is how many gaps happened to lie between the old counted beat
+     * and the new one. The two vamps had no <em>recorded</em> before -- they
+     * entered the corpus after the five-file range was taken -- so their rows
+     * here are recomputed from the same grids at the median.
      *
      * <p>The whole of that difference is one constant bar length drifting
      * against a recording that does not keep one -- #187 and #233 -- and

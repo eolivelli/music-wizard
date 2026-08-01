@@ -147,13 +147,24 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p><b>Chosen from the middle of a plateau, not tuned to an edge of one.</b>
      * Measured over the seven scored tier-2 benchmarks against each recording's
      * own tempo, which is a measurement of the music rather than of the tracker
-     * -- the distinction #207 was closed for missing. Three independent axes
-     * were built for it during review and agree within 0.01 BPM wherever they
-     * overlap: the lag at which the estimated chord labels' self-similarity
-     * peaks, a comb fit over an onset envelope from the decoded audio, and a
-     * spectral-flux Fourier fit sharing code with neither. <b>None of the three
-     * is committed, which is #245</b>, so the figures below are re-derivable in
-     * principle and not by running anything here.
+     * -- the distinction #207 was closed for missing.
+     *
+     * <p><b>{@code tools/ScoreBeats.java} derives it and is committed</b>, which
+     * an earlier draft of this paragraph denied. It prints a reference tempo per
+     * benchmark from the onset envelope's autocorrelation, and those are the
+     * figures used here: 106.000 for {@code gmajorblues.mp3}, 105.000, 89.998,
+     * 89.999 and 74.944. Three further axes built during review agree with it
+     * within 0.01 BPM wherever they overlap -- the lag at which the estimated
+     * chord labels' self-similarity peaks, a comb fit over the decoded audio,
+     * and a spectral-flux Fourier fit sharing code with none of them. Those
+     * three are not committed and #245 is open for one of them, but the axis the
+     * worst cell below rests on is one command away.
+     *
+     * <p>What is <em>not</em> re-derivable in the tree is the sweep itself: no
+     * committed harness varies this constant and reports the plateau, so the
+     * band figures below were taken by hand and confirmed by two reviewers
+     * independently rather than by anything a maintainer can re-run. That is
+     * #245's other half.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is

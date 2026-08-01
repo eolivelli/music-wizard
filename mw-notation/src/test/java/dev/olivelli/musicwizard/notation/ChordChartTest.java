@@ -1004,7 +1004,9 @@ class ChordChartTest {
         // So this is a stated cost rather than a case to special-case. The model
         // still holds all eight, which the assertion above is on.
         //
-        // The range read 11.3% to 24.1% until #200. That is the figure
+        // Over the five benchmarks there were then, the range read 11.3% to
+        // 24.1% until #200 -- over the seven there are now it was 4.3% to
+        // 35.7%. The five-file figure is the one
         // ChartLayout carried, and this comment kept it after that one was
         // corrected -- the second reader of a moved value, found by the review
         // check that exists for exactly that.
