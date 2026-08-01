@@ -234,8 +234,14 @@ public record Score(
      *       kept only for values that predate the field -- a {@code score.json}
      *       written by an earlier build, or a map assembled by a caller that did
      *       not say. For anything a current producer builds it never runs.
-     *   <li><b>Otherwise the beat grid, if there is one.</b> Median interval, so
-     *       one dropped beat does not skew it. Preferred over the map because
+     *   <li><b>Otherwise the beat grid, if there is one.</b> The rate it ran at
+     *       over the pulses it tracked steadily -- see
+     *       {@link BeatGrid#steadyPulseRate()}, which explains why neither the
+     *       median interval nor the plain mean will do. Every reader of this
+     *       accessor places something at {@code first + k * period} for a whole
+     *       number {@code k} -- a bar line, a chart cell, a metronome mark -- so
+     *       what they need is a rate per index; the median is not one, and it is
+     *       quantised to the analysis hop besides. Preferred over the map because
      *       {@link TempoMap#fromBeatTimes} gives the audio before the first
      *       tracked beat a whole beat of lead-in, and on a short clip that one
      *       crammed beat pulls the map's average measurably above the real tempo
@@ -292,7 +298,7 @@ public record Score(
             }
         }
         if (beatGrid.isPresent() && beatGrid.get().size() >= 2) {
-            return beatGrid.get().medianTempo(tempoMap.initialTimeSignature());
+            return beatGrid.get().steadyTempo(tempoMap.initialTimeSignature());
         }
         return tempoMap.averageTempoIgnoringLeadIn(durationSeconds);
     }
