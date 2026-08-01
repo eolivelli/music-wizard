@@ -49,6 +49,25 @@ class ChordChartTest {
     }
 
     /**
+     * The chart before {@link ChartLayout#atHarmonicRhythm} reduces it, as text.
+     *
+     * <p>Where #174's property is held. That property -- every chord in the model
+     * begins exactly one cell -- is a promise about the bar arithmetic, and it
+     * survives #212 unchanged; what #212 added is a second stage that then drops
+     * chords on purpose. Asserting it on the finished chart would assert the two
+     * jointly and fail the moment either moved, which is how a deliberate
+     * reduction and a rounding bug come to look alike.
+     */
+    private static List<String> unreducedBarLines(Score score) {
+        return ChordChart.linesOf(ChartLayout.unreduced(score));
+    }
+
+    /** The same chart as LilyPond. */
+    private static String unreducedLilyPond(Score score) {
+        return ChordChart.lilyPondOf(score, ChartLayout.unreduced(score));
+    }
+
+    /**
      * The lines of a chart's {@code \chordmode} block, trimmed and non-blank.
      *
      * <p>Everything this class decides is in that block; the rest of the file is
@@ -943,9 +962,17 @@ class ChordChartTest {
                         Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR,
                                 1.5, 2.0, Confidence.of(0.9))), Confidence.of(0.9)));
 
-        assertThat(ChordChart.barLines(score)).containsExactly("| C G         |");
-        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+        assertThat(unreducedBarLines(score)).containsExactly("| C G         |");
+        assertThat(chordModeOf(unreducedLilyPond(score)))
                 .containsExactly("\\time #'(1 1 1 1) 4/4", "c2. g4 |");
+
+        // The written chart absorbs the G, which is #212 and not a return of
+        // #174: it is in the layout above, and it is dropped because one beat of
+        // four is not enough of a bar to earn a second symbol. The distinction
+        // is the whole reason the two stages are asserted separately.
+        assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
+        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+                .containsExactly("\\time #'(1 1 1 1) 4/4", "c1 |");
     }
 
     @Test
@@ -958,17 +985,28 @@ class ChordChartTest {
         Score score = eightChordsAtAForcedTempo();
 
         assertThat(score.chords().chords()).hasSize(8);
-        assertThat(ChordChart.barLines(score)).containsExactly("| C G A F C G A F|");
-        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+        assertThat(unreducedBarLines(score)).containsExactly("| C G A F C G A F|");
+        assertThat(chordModeOf(unreducedLilyPond(score)))
                 .containsExactly("\\time #'(1 1 1 1) 4/4", "c8 g8 a8 f8 c8 g8 a8 f8 |");
+
+        // What the reader gets, and it is the sharpest edge of #212: a tempo
+        // wrong by a factor packs the whole progression into one bar, and the
+        // reduction then writes that bar as the chord holding most of it. Seven
+        // of the eight go.
+        //
+        // Declining to reduce a bar whose harmony moves faster than the counted
+        // beat would save this one, and it is not a clean rule -- 12.0% to 32.9%
+        // of changes on the five sample recordings are that fast against the beat
+        // their charts are spaced at, while none of them is against the tracked
+        // beat grid the estimator used. See ChartLayout.atHarmonicRhythm, and
+        // tools/score-chart.py, which reports both. So this is a stated cost
+        // rather than a case to special-case. The model still holds all eight,
+        // which the assertion above is on.
+        assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
     }
 
-    @Test
-    @DisplayName("an ornamental sub-beat chord does not push the others out of their bars")
-    void anOrnamentalChordKeepsTheRestInPlace() {
-        // C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4 at 120 BPM. The final C --
-        // a full-beat chord, perfectly placeable -- used to be dropped, and A
-        // and F printed in a bar they do not sound in.
+    /** One sub-beat ornament among four beat-aligned chords, at 120 BPM. */
+    private static Score anOrnamentalChord() {
         double[][] spans = {{0, 1}, {1, 1.1}, {1.1, 2}, {2, 3}, {3, 4}};
         NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A,
                 NoteLetter.F, NoteLetter.C};
@@ -977,24 +1015,45 @@ class ChordChartTest {
             chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
                     spans[i][0], spans[i][1], Confidence.of(0.9)));
         }
-        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 4.0)
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 4.0)
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
 
-        assertThat(ChordChart.barLines(score))
+    @Test
+    @DisplayName("an ornamental sub-beat chord does not push the others out of their bars")
+    void anOrnamentalChordKeepsTheRestInPlace() {
+        // C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4 at 120 BPM. The final C --
+        // a full-beat chord, perfectly placeable -- used to be dropped, and A
+        // and F printed in a bar they do not sound in.
+        Score score = anOrnamentalChord();
+
+        assertThat(unreducedBarLines(score))
                 .containsExactly("| C G A       | F C         |");
+        assertBarsFillTheirMeter(unreducedLilyPond(score));
+
+        // Written, the ornament goes and the two full-beat chords of the second
+        // bar stay: it holds F and C for two beats each, which is a split rather
+        // than chatter. So the reduction is not simply "one chord a bar".
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C A         | F C         |");
         assertBarsFillTheirMeter(ChordChart.toLilyPond(score));
     }
 
     @Test
-    @DisplayName("prints every chord the model holds, in order, whatever they land on")
+    @DisplayName("lays out every chord the model holds, in order, whatever they land on")
     void noChordIsEverDropped() {
         // The property the guard at barLines used to break. Stated over the
         // awkward cases rather than one of them, because each of the three
         // reproductions in #174 lost a different chord for a different reason.
+        //
+        // On the layout rather than on the finished chart, because #212 makes the
+        // chart drop chords deliberately. Moving the assertion is not weakening
+        // it: the layout is where a chord can be lost to arithmetic, and it is
+        // still every chord, still in order, over the same seven fixtures.
         for (Score score : List.of(eightChordsAtAForcedTempo(), aWaltz(), aJig(),
                 twoChordsInABar(), quantizedAcrossATempoChange(), clickTrackPhasedAt(2),
                 fourChordSong(3))) {
-            String printed = String.join(" ", ChordChart.barLines(score));
+            String printed = String.join(" ", unreducedBarLines(score));
             int at = 0;
             for (Chord chord : score.chords().chords()) {
                 int found = printed.indexOf(chord.symbol(), at);
@@ -1002,6 +1061,75 @@ class ChordChartTest {
                 at = found;
             }
         }
+    }
+
+    @Test
+    @DisplayName("what the written chart drops, it drops for holding no more than half its bar")
+    void aDroppedChordNeverHeldMoreThanHalfItsBar() {
+        // The other half of the property above, and the one that makes the move
+        // to the layout honest: a chord missing from the page has to have been
+        // outvoted, not mislaid. Every chord the layout holds and the chart does
+        // not is one whose own bar gave it no more than half.
+        //
+        // Half and not less than half, and the difference is not pedantry --
+        // round 1 of review swept every bar of up to nine equal cells over three
+        // symbols in eleven meters and found the bound attained, twice over. The
+        // last two fixtures below are those cases: a bar of I-V-I whose V holds a
+        // contiguous half, and two chords alternating on the beat where the loser
+        // holds an aggregate half. Both are ordinary shapes rather than corners,
+        // both lose a chord, and the eight fixtures that were here before happen
+        // to contain neither. The bound is tight: nothing holding *more* than
+        // half was dropped anywhere in that sweep.
+        for (Score score : List.of(eightChordsAtAForcedTempo(), aWaltz(), aJig(),
+                twoChordsInABar(), quantizedAcrossATempoChange(), clickTrackPhasedAt(2),
+                fourChordSong(3), anOrnamentalChord(),
+                aBarHoldingAContiguousHalf(), aBarAlternatingOnTheBeat())) {
+            List<ChartLayout.Bar> laid = ChartLayout.unreduced(score);
+            List<ChartLayout.Bar> written = ChartLayout.of(score);
+            for (int i = 0; i < laid.size(); i++) {
+                double bar = laid.get(i).meter().quarterBeatsPerBar();
+                List<String> kept = laid.get(i).cells().stream()
+                        .map(ChartLayout.Cell::symbol).toList();
+                for (ChartLayout.Cell cell : laid.get(i).cells()) {
+                    boolean survives = written.get(i).cells().stream()
+                            .anyMatch(c -> c.symbol().equals(cell.symbol()));
+                    if (!survives) {
+                        double held = laid.get(i).cells().stream()
+                                .filter(c -> c.symbol().equals(cell.symbol()))
+                                .mapToDouble(ChartLayout.Cell::lengthQuarters)
+                                .sum();
+                        assertThat(held)
+                                .as("%s dropped from bar %d of %s", cell.symbol(), i, kept)
+                                .isLessThanOrEqualTo(bar / 2);
+                    }
+                }
+            }
+        }
+    }
+
+    /** One 4/4 bar of C G G C, where the G holds a contiguous half and still goes. */
+    private static Score aBarHoldingAContiguousHalf() {
+        return oneBarOf(new NoteLetter[] {NoteLetter.C, NoteLetter.G, NoteLetter.C},
+                0.5, 1.0, 0.5);
+    }
+
+    /** One 4/4 bar of G C G C, where the C holds an aggregate half and still goes. */
+    private static Score aBarAlternatingOnTheBeat() {
+        return oneBarOf(new NoteLetter[] {NoteLetter.G, NoteLetter.C, NoteLetter.G, NoteLetter.C},
+                0.5, 0.5, 0.5, 0.5);
+    }
+
+    /** Back-to-back chords of the stated lengths in seconds, 4/4 at 120 BPM. */
+    private static Score oneBarOf(NoteLetter[] roots, double... seconds) {
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    at, at + seconds[i], Confidence.of(0.9)));
+            at += seconds[i];
+        }
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
     @Test
@@ -1075,9 +1203,12 @@ class ChordChartTest {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
         // The ninth chord is heard at 3.8s, inside the bar that runs 2.0..4.0.
-        assertThat(ChordChart.barLines(score))
+        // On the layout: where a chord is placed is this fixture's question, and
+        // the reduction that follows would hide a chord shunted a bar along by
+        // absorbing it, which is exactly the failure being guarded against.
+        assertThat(unreducedBarLines(score))
                 .containsExactly("| N.C. C      | Dm E Fm G Am B Cm D|");
-        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+        assertThat(chordModeOf(unreducedLilyPond(score)))
                 .containsExactly("\\time #'(1 1 1 1) 4/4", "r1*7/8 c8 |",
                         "d8:m e8 f8:m g8 a8:m b8 c8:m d8 |");
     }
@@ -1091,7 +1222,10 @@ class ChordChartTest {
         // #174 exists to keep onto four positions.
         Score score = eightChordsAtAForcedTempo();
 
-        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+        // Which grid the layout draws on is what this asks, so it asks the
+        // layout. The reduction downstream writes a coarser rhythm than the grid
+        // it was drawn on, which is a different decision and has its own test.
+        assertThat(chordModeOf(unreducedLilyPond(score)))
                 .containsExactly("\\time #'(1 1 1 1) 4/4", "c8 g8 a8 f8 c8 g8 a8 f8 |");
     }
 
@@ -1111,8 +1245,8 @@ class ChordChartTest {
         Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 2.0)
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
-        assertThat(ChordChart.barLines(score)).containsExactly("| C G Am      |");
-        assertThat(chordModeOf(ChordChart.toLilyPond(score)))
+        assertThat(unreducedBarLines(score)).containsExactly("| C G Am      |");
+        assertThat(chordModeOf(unreducedLilyPond(score)))
                 .containsExactly("\\time #'(1 1 1 1) 4/4", "c1*31/64 g64 a2:m |");
     }
 
@@ -1136,10 +1270,10 @@ class ChordChartTest {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
         // G and Am both land on quarter beat 4 even at a 64th; Am is nudged to
-        // the next one. All three are printed, which is the whole property.
-        assertThat(ChordChart.barLines(score))
+        // the next one. All three are laid out, which is the whole property.
+        assertThat(unreducedBarLines(score))
                 .containsExactly("| C           | G Am        |");
-        assertBarsFillTheirMeter(ChordChart.toLilyPond(score));
+        assertBarsFillTheirMeter(unreducedLilyPond(score));
     }
 
     @ParameterizedTest(name = "a quarter note lasting {0} seconds")

@@ -24,7 +24,9 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -54,11 +56,20 @@ import java.util.Optional;
  * one meter where {@link Bar#meter()} can state several, which is #191.
  *
  * <p><b>A chord holds until the next one starts.</b> Cell boundaries are chord
- * <em>starts</em>, never ends, which is both how a chart is read and why no
- * chord can be dropped: every chord in the progression begins exactly one cell,
- * and the last cell runs to the final bar line. A chord that stops early leaves
- * its symbol standing, and a silence the estimator states explicitly arrives as
- * an {@code N.C.} chord of its own.
+ * <em>starts</em>, never ends, which is how a chart is read: every chord in the
+ * progression begins exactly one cell, the last cell runs to the final bar line,
+ * a chord that stops early leaves its symbol standing, and a silence the
+ * estimator states explicitly arrives as an {@code N.C.} chord of its own.
+ *
+ * <p><b>Then the bar is written at the harmonic rhythm its own evidence
+ * supports, which does drop chords.</b> That is #212 and it is deliberate, so it
+ * is worth separating from the sentence above rather than qualifying it: the
+ * walk that lays chords into bars still drops nothing -- a chord silently
+ * discarded there was #174 and remains a defect -- and {@link #atHarmonicRhythm}
+ * then reduces each bar, which is a decision rather than an accident and states
+ * its own cost. Before it existed the chart printed every span the estimator
+ * produced, two to three a bar on real recordings, so harmony that was mostly
+ * right read as noise.
  */
 final class ChartLayout {
 
@@ -75,6 +86,49 @@ final class ChartLayout {
      * change: identical text, identical LilyPond, identical PDF.
      */
     private static final double COARSEST_GRID_BEATS = 1.0;
+
+    /**
+     * The share of a bar a second chord has to explain to be worth printing.
+     * See {@link #atHarmonicRhythm}.
+     *
+     * <p>Read as a rate rather than a threshold: writing one more chord in a bar
+     * has to account for at least this much more of it. What that means in 4/4 is
+     * the whole of the setting -- a chord holding one of four beats explains a
+     * quarter of the bar, which at 0.3 does not pay for itself, and one holding
+     * two of four explains a half, which does. So a 4/4 bar is written as two
+     * chords when they split it and as one otherwise. In 3/4 and 6/8 the same
+     * constant keeps a one-beat chord, since a third and a half of a bar clear
+     * it.
+     *
+     * <p><b>This is a trade and not a free win, and two drafts of this paragraph
+     * said otherwise.</b> Round 1 of review swept the constant by recompiling and
+     * re-emitting all five charts, and corrected both halves of what was here:
+     *
+     * <ul>
+     *   <li>The band over which all five charts are identical is narrower than
+     *       was claimed, and 0.3 sits at its <em>upper edge</em> rather than in
+     *       its middle: raising it changes what one of the five recordings
+     *       prints almost at once, and most of them a little further up.
+     *   <li>Lowering it does <em>not</em> cost accuracy, which is what the
+     *       previous draft asserted. It buys accuracy. At a cost low enough to
+     *       print about two chords a bar, per-bar root accuracy on
+     *       {@code blues-a-90bpm.mp3} is several points higher than it is here.
+     * </ul>
+     *
+     * <p>So what this constant buys is readability, and it is paid for on at
+     * least one benchmark in accuracy. That is the right trade for #212 --
+     * two chords a bar is the chatter the issue is about, and a chart nobody can
+     * read scores nothing in practice -- but it is a trade, and a maintainer
+     * moving this should expect the two columns to move against each other.
+     * Neither is given a number, because nothing committed reproduces a sweep
+     * over the constant; {@code tools/score-chart.py} measures the chart this
+     * value produces, not the ones others would.
+     *
+     * <p>0.3 rather than 0.25, which behaves identically on all five, because
+     * 0.25 is an exact tie against a quarter of a 4/4 bar and a decision resting
+     * on tie-breaking order is a decision waiting to move.
+     */
+    private static final double EXTRA_CHORD_COST = 0.3;
 
     /**
      * One printed chord, or the silence before the first one.
@@ -141,6 +195,25 @@ final class ChartLayout {
      * is for.
      */
     static List<Bar> of(Score score) {
+        return atHarmonicRhythm(unreduced(score));
+    }
+
+    /**
+     * The same bars before {@link #atHarmonicRhythm} reduces them.
+     *
+     * <p>A stage of its own rather than a step inside one, because the two make
+     * different promises and each has to be able to fail on its own. This one
+     * <b>drops nothing</b>: every chord in the progression begins exactly one
+     * cell, which is the property #174 is, and a chord lost here is a chord lost
+     * to arithmetic. The reduction then drops chords deliberately, which is #212.
+     * Collapsing the two would leave no way to tell a chord absorbed on purpose
+     * from one rounded out of existence -- and #174 was found precisely because
+     * the second was mistaken for the first.
+     *
+     * <p>Read by {@code ChordChartTest}, which holds #174's property here rather
+     * than on the finished chart, where it is no longer true.
+     */
+    static List<Bar> unreduced(Score score) {
         List<Chord> chords = score.chords().chords();
         if (chords.isEmpty()) {
             return List.of();
@@ -430,6 +503,8 @@ final class ChartLayout {
         // Printed rather than absorbed: a chart whose first chord arrives half a
         // bar late is telling the reader the downbeat is out, which is precisely
         // what --first-downbeat is for, and back-dating the chord would hide it.
+        // atHarmonicRhythm leaves the bar holding this gap alone for the same
+        // reason -- see its javadoc.
         if (starts[0] > 0) {
             spans.add(new Span(Optional.empty(), 0, starts[0]));
         }
@@ -442,37 +517,19 @@ final class ChartLayout {
         for (int i = 0; i < barStarts.size(); i++) {
             cells.add(new ArrayList<>());
         }
-        String named = null;
-        boolean anyNamed = false;
         int bar = 0;
         for (Span span : spans) {
             while (bar + 1 < barStarts.size() && barStarts.get(bar + 1) <= span.from()) {
                 bar++;
             }
-            boolean first = true;
             double at = span.from();
             while (at < span.to() && bar < barStarts.size()) {
                 double barEnd = barStarts.get(bar) + meters.get(bar).quarterBeatsPerBar();
                 double cut = Math.min(span.to(), barEnd);
-                String symbol = span.chord().map(Chord::symbol).orElse(ChordQuality.NONE.symbol());
-                // The first cell of a run of equal symbols. That is what the
-                // text chart's "%" has always meant, and it is the rule
-                // chordChanges applies on the page -- but the page applies its
-                // own copy of it, because chordmode has no way to write a chord
-                // event that declines to print its name. So this is the text
-                // chart's flag, and the agreement between the two outputs is
-                // held by keeping two rules in step rather than by one reader.
-                // Round 2 of review found the comment here claiming otherwise.
-                // Where they legitimately part is a system break, at which
-                // LilyPond reprints a held chord and the text, having no
-                // systems, does not.
-                boolean namesIt = first && (!anyNamed || !symbol.equals(named));
-                cells.get(bar).add(new Cell(span.chord(), cut - at, namesIt));
-                if (namesIt) {
-                    named = symbol;
-                    anyNamed = true;
-                }
-                first = false;
+                // Unnamed for now: which cells name their chord is decided in one
+                // pass over the finished bars, because a cell the reduction
+                // removes must not have been the one carrying the name.
+                cells.get(bar).add(new Cell(span.chord(), cut - at, false));
                 at = cut;
                 if (cut == barEnd) {
                     bar++;
@@ -483,9 +540,330 @@ final class ChartLayout {
         List<Bar> bars = new ArrayList<>(barStarts.size());
         for (int i = 0; i < barStarts.size(); i++) {
             bars.add(new Bar(meters.get(i), i == 0 || !meters.get(i).equals(meters.get(i - 1)),
-                    List.copyOf(cells.get(i))));
+                    cells.get(i)));
         }
-        return List.copyOf(bars);
+        return named(bars);
+    }
+
+    /**
+     * Marks the cell that begins each run of equal symbols, in chart order.
+     *
+     * <p>That is what the text chart's {@code %} has always meant, and it is the
+     * rule {@code chordChanges} applies on the page -- but the page applies its
+     * own copy of it, because {@code chordmode} has no way to write a chord event
+     * that declines to print its name. So this is the text chart's flag, and the
+     * agreement between the two outputs is held by keeping two rules in step
+     * rather than by one reader. Round 2 of review found the comment here
+     * claiming otherwise. Where they legitimately part is a system break, at
+     * which LilyPond reprints a held chord and the text, having no systems, does
+     * not.
+     *
+     * <p>A separate pass over the finished cells rather than a flag set while
+     * they are built, because {@link #atHarmonicRhythm} may drop the cell a chord
+     * was named at and keep a later one carrying the same symbol. Deciding the
+     * name first left such a bar naming nothing and the text chart writing
+     * {@code %} for a chord it had never printed.
+     *
+     * <p><b>Every cell is rebuilt, including the ones whose answer does not
+     * change.</b> That is what makes this idempotent, and it has to be, because
+     * it runs twice -- once over the laid-out bars and again over the reduced
+     * ones. An earlier version only ever <em>set</em> the flag and returned an
+     * unchanged cell otherwise, so a bar the reduction handed back untouched kept
+     * a {@code named} decided against a predecessor that no longer existed.
+     * Round 1 of review measured the result on real output: five bars across the
+     * sample recordings where the text chart printed a chord change the engraved
+     * page did not, because {@code chordChanges} recomputes the same rule from
+     * the symbols it is given and reached the right answer. That is precisely the
+     * disagreement between the two outputs that this class exists to prevent,
+     * arriving through the flag instead of through a second derivation.
+     */
+    private static List<Bar> named(List<Bar> bars) {
+        List<Bar> out = new ArrayList<>(bars.size());
+        String previous = null;
+        for (Bar bar : bars) {
+            List<Cell> cells = new ArrayList<>(bar.cells().size());
+            for (Cell cell : bar.cells()) {
+                cells.add(new Cell(cell.chord(), cell.lengthQuarters(),
+                        previous == null || !cell.symbol().equals(previous)));
+                previous = cell.symbol();
+            }
+            out.add(new Bar(bar.meter(), bar.meterChanged(), List.copyOf(cells)));
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * The chart written at the harmonic rhythm each bar's own evidence supports.
+     *
+     * <p>This is #212, and it is what turns an estimate a musician can measure
+     * into a chart a musician can read. Every span the estimator produces used to
+     * be printed, so a recording whose per-bar majority chord is right most of
+     * the time still came out at two to three chords a bar -- correct harmony
+     * buried in chatter. Measured through {@code tools/score-chart.py} on the
+     * five benchmarks in {@code samples/} before this existed: 2.01, 2.04, 2.37,
+     * 2.76 and 3.03 printed chords a bar, against music that changes chord about
+     * once a bar.
+     *
+     * <p><b>The rule, per bar.</b> The bar is divided into equal slots; each slot
+     * is written as the chord filling most of it; runs of equal slots merge. The
+     * division used is the one minimising
+     *
+     * <pre>
+     *   (share of the bar the written chords do not cover)
+     *       + EXTRA_CHORD_COST * (chords written - 1)
+     * </pre>
+     *
+     * with ties going to the coarser division, so a bar holding one chord is
+     * written as one chord, a bar genuinely split in half is written as two, and
+     * a bar the estimator disagreed with itself about is written as whatever it
+     * mostly said.
+     *
+     * <p>A threshold on coverage alone was tried first and does not work, which
+     * is worth recording because it is the obvious rule. The finest division
+     * always covers a bar whose chords sit on counted beats <em>exactly</em>, so
+     * any absolute coverage bar is cleared there and the chattiest bars -- three
+     * and four chords, each on its own beat -- came through untouched. What
+     * decides has to be what a further chord <em>buys</em>, not what a division
+     * reaches.
+     *
+     * <p>The divisions offered are those giving a whole number of counted beats
+     * per slot: 1, 2 and 4 in 4/4, 1 and 3 in 3/4, 1 and 2 in 6/8. Never finer
+     * than the counted beat, which is both what a lead sheet does and what the
+     * two chord estimators decide over -- {@code SymbolicChordEstimator} takes
+     * one decision per counted beat and the audio one is beat-synchronous.
+     *
+     * <p><b>Why this is not decided from where the chords came from.</b> The
+     * obvious rule is to reduce an audio progression and leave a MIDI one alone.
+     * It would have to read provenance out of {@code isQuantized()}, which is a
+     * fact about the beat axis and not about where the chords came from, so
+     * wiring {@code Quantizer} into the audio path -- which #212 weighed and
+     * which is a live option -- would silently switch the reduction off. #213
+     * carries the provenance that would answer this properly.
+     *
+     * <p>The next thing to reach for is "reduce a bar only where the harmony is
+     * no faster than the counted beat", and it is a worse discriminator than it
+     * looks. Rounds 1 and 2 of review established why between them, and
+     * {@code tools/score-chart.py} now reports both halves of it per recording.
+     * Measured against the <em>tracked</em> beat grid, no change on any of the
+     * five benchmarks is faster than a beat, and that is structural rather than
+     * lucky: {@code ChordEstimator} takes both boundaries of every span from the
+     * tracked beat times. Measured against the beat the chart's bars are spaced
+     * at, which is the median tracked interval, 12.0% to 32.9% of changes are.
+     *
+     * <p>The whole of that difference is one constant bar length drifting
+     * against a recording that does not keep one -- #187, #196 and #200 -- and
+     * it says nothing about how fast the harmony moves. So the signal such a gate
+     * would read is mostly the chart's own grid error: it would decline to reduce
+     * a substantial minority of perfectly ordinary bars, which is where the
+     * chatter is, and it would still fire on a wrong {@code --tempo}, where the
+     * same drift is total rather than partial. What is left is how much of its
+     * bar a chord holds, and that is what this reads.
+     *
+     * <p><b>What it costs, and it is a reduction rather than a clean-up.</b>
+     *
+     * <ul>
+     *   <li>In 4/4 a bar is written as two chords only where each holds about
+     *       half of it; a chord holding a single beat is absorbed into its
+     *       neighbour. In 3/4 and 6/8 a chord holding one counted beat survives,
+     *       because a third and a half of a bar are larger claims than a quarter
+     *       of one. That difference between meters follows from the constant
+     *       rather than being chosen per meter.
+     *   <li><b>A progression read at a badly wrong {@code --tempo} loses most of
+     *       its chords from the page.</b> Eight chords a half-beat apart, which
+     *       is {@code --tempo 60} against material heard at 120, are written as
+     *       the one that holds most of the bar. That case is #157's and #174's
+     *       and it used to print all eight. It is not separable from ordinary
+     *       chatter by anything this class can see -- see the paragraph above --
+     *       so it is stated rather than special-cased, and the chart still heads
+     *       itself with the tempo the user supplied.
+     *   <li>A MIDI import whose harmony genuinely changes on every beat of a 4/4
+     *       bar is written as one chord for that bar. Same mechanism, same lack
+     *       of a signal to separate it by; #213 carries the provenance that would.
+     * </ul>
+     *
+     * <p>Nothing is lost from the model: {@link Score#chords()} still holds every
+     * span and {@code analyze} still reports how many, so the reduction is
+     * recoverable and only ever affects the page.
+     *
+     * <p>Cells sum to exactly what they summed to before, which is what keeps the
+     * engraved bar check a check: the last run is measured back from the bar's
+     * own total rather than forward from a slot boundary, so no accumulated slot
+     * width can leave a bar a 64th short.
+     */
+    private static List<Bar> atHarmonicRhythm(List<Bar> bars) {
+        List<Bar> reduced = new ArrayList<>(bars.size());
+        for (Bar bar : bars) {
+            reduced.add(new Bar(bar.meter(), bar.meterChanged(),
+                    holdsTheLeadIn(bar) ? bar.cells() : written(bar.cells(), bar.meter())));
+        }
+        return named(reduced);
+    }
+
+    /**
+     * Whether a bar holds the gap before the first chord, which is the one thing
+     * here that is not a chord and must not be reduced away.
+     *
+     * <p><b>This is #83, and leaving it out reopened it.</b> How far into its
+     * first bar the harmony starts is the chart's only visible statement of the
+     * beat grid's phase, and {@code --first-downbeat} is how a user corrects that
+     * phase -- which {@code CLAUDE.md} calls one of the two highest-value actions
+     * available to them. Reduce this bar like any other and a grid one beat out
+     * writes the same page as a grid in phase, because a one-beat straddle is
+     * exactly what the rule absorbs. Measured on the click track of
+     * {@code ChordChartTest.theBarLinesFollowTheGridsDownbeats}: without this,
+     * phases 0 and 3 engrave identically, which is the defect #83 named.
+     *
+     * <p>So the whole bar is written as it stands, rather than the gap being
+     * pinned and the chords around it reduced. Pinning it would need the gap
+     * rounded onto a slot boundary, and both directions are wrong: rounding down
+     * deletes a short gap, which is the phase signal again, and rounding up
+     * lengthens it, which moves the first chord. One bar of a chart is a cheap
+     * price for a signal the user is meant to act on.
+     */
+    private static boolean holdsTheLeadIn(Bar bar) {
+        for (Cell cell : bar.cells()) {
+            if (cell.chord().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The cells one bar is written as.
+     *
+     * <p>Every offered division is scored and the cheapest wins, rather than the
+     * walk stopping at the first that is good enough. The scores are not monotone
+     * in the number of slots -- coverage rises with it and the chord count does
+     * not, since equal neighbouring slots merge -- so stopping early would pick a
+     * division a later one beats.
+     */
+    private static List<Cell> written(List<Cell> cells, TimeSignature meter) {
+        if (cells.size() < 2) {
+            return cells;
+        }
+        double total = 0;
+        for (Cell cell : cells) {
+            total += cell.lengthQuarters();
+        }
+        Written best = null;
+        for (int slots : divisorsOf(meter.beatsPerBar())) {
+            // A slot no duration could name is not a division this can offer.
+            // Unreachable from any meter the model admits -- a bar is a whole
+            // number of its own counted beats and a counted beat is a whole
+            // number of 64ths -- but a bar assembled to a total the meter does
+            // not agree with would otherwise reach LilyPondDuration and throw.
+            double step = total / slots;
+            if (Math.rint(step / LilyPondDuration.SHORTEST_QUARTERS)
+                    * LilyPondDuration.SHORTEST_QUARTERS != step) {
+                continue;
+            }
+            Written candidate = atDivision(cells, total, slots);
+            // Strictly cheaper, and the divisions are walked coarsest first, so
+            // a tie keeps the coarser. The ties are ordinary rather than exotic:
+            // a finer division whose slots all fall to the same chords writes the
+            // same cells at the same cost, which is every bar holding one chord.
+            // Breaking them the other way would make the answer depend on how
+            // many divisions the meter happens to offer.
+            if (best == null || candidate.cost(total) < best.cost(total)) {
+                best = candidate;
+            }
+        }
+        // Only when no division could be named, which the guard above cannot
+        // reach from a meter the model admits. The bar is then written as it
+        // stands, which drops nothing.
+        return best == null ? cells : best.cells();
+    }
+
+    /** One way of writing a bar, and how much of the bar it accounts for. */
+    private record Written(List<Cell> cells, double covered) {
+
+        /** What it costs to read: what it leaves out, plus every chord after the first. */
+        double cost(double total) {
+            return (total - covered) / total + EXTRA_CHORD_COST * (cells.size() - 1);
+        }
+    }
+
+    /**
+     * One bar written on a stated number of equal slots, each carrying the chord
+     * that fills most of it, with runs of equal symbols merged.
+     *
+     * <p>Ties within a slot go to the earlier chord, so a slot split evenly reads
+     * as the chord it opens on rather than as whichever the iteration order
+     * reached last.
+     *
+     * <p>Linear in the bar's cells for each slot, and both are small: a chart bar
+     * holds at most one cell per grid step and is offered at most one slot per
+     * counted beat.
+     */
+    private static Written atDivision(List<Cell> cells, double total, int slots) {
+        double step = total / slots;
+        Cell[] winners = new Cell[slots];
+        double covered = 0;
+        for (int slot = 0; slot < slots; slot++) {
+            double from = slot * step;
+            double to = slot + 1 == slots ? total : from + step;
+            Map<String, Double> held = new LinkedHashMap<>();
+            Map<String, Cell> first = new LinkedHashMap<>();
+            double at = 0;
+            for (Cell cell : cells) {
+                double overlap = Math.min(to, at + cell.lengthQuarters()) - Math.max(from, at);
+                at += cell.lengthQuarters();
+                if (overlap <= 0) {
+                    continue;
+                }
+                first.putIfAbsent(cell.symbol(), cell);
+                held.merge(cell.symbol(), overlap, Double::sum);
+            }
+            Cell best = null;
+            double most = 0;
+            for (Map.Entry<String, Double> entry : held.entrySet()) {
+                if (entry.getValue() > most) {
+                    most = entry.getValue();
+                    best = first.get(entry.getKey());
+                }
+            }
+            // Only where a slot lies wholly outside the cells, which cannot
+            // happen while they fill the bar. Falls back to the bar's first
+            // chord rather than to nothing, since a cell always carries either a
+            // chord or the gap before the first one.
+            winners[slot] = best == null ? cells.get(0) : best;
+            covered += most;
+        }
+
+        List<Cell> out = new ArrayList<>(slots);
+        int slot = 0;
+        while (slot < slots) {
+            int end = slot + 1;
+            while (end < slots && winners[end].symbol().equals(winners[slot].symbol())) {
+                end++;
+            }
+            // Measured back from the bar's own total for the final run, so the
+            // cells sum to exactly what they were handed however the slot width
+            // rounds.
+            double to = end == slots ? total : end * step;
+            out.add(new Cell(winners[slot].chord(), to - slot * step, false));
+            slot = end;
+        }
+        return new Written(List.copyOf(out), covered);
+    }
+
+    /**
+     * Every divisor of a positive count, ascending.
+     *
+     * <p>Ascending is load-bearing rather than tidy: {@link #written} walks these
+     * in order and keeps the first of any equal-cost pair, so the order is what
+     * makes a tie go to the coarser chart.
+     */
+    private static int[] divisorsOf(int count) {
+        int found = 0;
+        int[] divisors = new int[count];
+        for (int candidate = 1; candidate <= count; candidate++) {
+            if (count % candidate == 0) {
+                divisors[found++] = candidate;
+            }
+        }
+        return java.util.Arrays.copyOf(divisors, found);
     }
 
     /**
