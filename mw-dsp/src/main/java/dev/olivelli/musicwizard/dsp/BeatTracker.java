@@ -186,14 +186,24 @@ public final class BeatTracker {
      * what the correction buys. Correcting a half-rate seed <em>adds</em> beats,
      * and each one collects an onset the seed was stepping over; correcting a
      * double-rate seed <em>removes</em> beats that were sitting between onsets
-     * and were nearly free to keep. On a 120 BPM click track this envelope reads
-     * about +5.8 at an onset and −0.2 between, so at the old weight, where the
-     * penalty was 1.0, correcting upward was worth 9.6 against 5.8 and
-     * correcting downward 4.8 against 5.6 — which is the asymmetry, and it is
-     * arithmetic rather than a property of the search window. At the published
-     * weight the penalty is 48.1 and both corrections are far out of reach. See
-     * {@link #TIGHTNESS}, and
+     * and were nearly free to keep.
+     *
+     * <p>Measured on a 120 BPM click track, as the strength a rigid grid
+     * collects per beat, which is what the recursion sums: 7.06 at the true
+     * period, 7.07 at twice it, 3.42 at half it, against an envelope floor of
+     * −0.22 between onsets. So at the old weight, where a halving or doubling
+     * cost 1.00, correcting a half-rate seed was worth 12.12 against 7.07 and
+     * correcting a double-rate seed 6.06 against 6.84. That is the asymmetry,
+     * and it is arithmetic rather than a property of the search window. At the
+     * published weight the penalty is 48.05 and the same two corrections are
+     * worth −81.97 and −40.99, so neither happens. See {@link #TIGHTNESS}, and
      * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
+     *
+     * <p>An earlier version of this paragraph put the onset at 5.8, taken from a
+     * single frame offset applied to every click rather than from a grid phased
+     * where it collects most. All four comparisons shift with it, none of the
+     * four outcomes changes, and the margins were understated — which is the
+     * kind of error that survives because the conclusion it supports is right.
      *
      * <p>That is the algorithm working as designed rather than a hole opened by
      * fixing it — resolving the octave is what {@link TempoEstimator}'s
@@ -203,9 +213,11 @@ public final class BeatTracker {
      * here rather than only where the weight is set.
      *
      * <p><strong>It is visible on one of the benchmarks, and counting it as one
-     * window understates its shape.</strong> Across the five recordings'
-     * analysis windows the seed is on the music in all but a handful, and only
-     * one of those few is an octave: the first window of
+     * window understates its shape.</strong> Across the five recordings' 161
+     * analysis windows the seed is within 6% of the music in 133. Most of the
+     * shortfall is one recording — {@code bossa-cm.mp3} is on the music in 1 of
+     * its 26, the other 25 being at four thirds of it, which is #231 and is not
+     * an octave error at all — and only one window in the five is: the first of
      * {@code blues-shuffle-a-106bpm.mp3}. That recording's first ten intervals
      * are consequently about two beats of the music each, and those ten are most
      * of the thirteen slips {@code tools/ScoreBeats.java} still reports for it —
