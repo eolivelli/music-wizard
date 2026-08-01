@@ -71,8 +71,12 @@ the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
 largest remaining error.** How large is no longer known: the figure that used to
 sit here — on an eleven minute twelve-bar blues, the first twenty-five changes in
 the right bar and every one after that in the wrong one — was measured before
-both [#196][i196] and [#200][i200], each of which more than halved the drift it
-came from, and it has not been re-taken. What *is* current is the score of the
+both [#196][i196] and [#200][i200], and it has not been re-taken. Between them
+those two took a bar line placed by index from about seventeen beats away from
+the recording's own beats by the end to about one and a half. They did not do it
+in the same place, which is why the twenty-five wants re-measuring rather than
+adjusting: at the point that figure comes from, a hundred beats in, #196 left the
+error where it was and #200 halved it. What *is* current is the score of the
 printed chart, below.
 
 That twenty-five is the bar arithmetic measured on real *timing* with the chords

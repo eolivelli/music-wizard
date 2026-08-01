@@ -159,12 +159,12 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * other half of the same argument.
      *
      * <ul>
-     *   <li><b>Below 0.055 the band starts excluding beats that really are
+     *   <li><b>Below 0.0525 the band starts excluding beats that really are
      *       beats.</b> A tracked pulse population is a few percent wide on its
-     *       own: at 0.05 {@code blues-shuffle-a-106bpm.mp3} keeps 494 of its 576
-     *       intervals and reads +0.56%, which is <em>worse than the median it
-     *       replaces</em> at +0.45%. One step up, at 0.055, it keeps 545 and
-     *       reads +0.07%.
+     *       own: from 0.0425 down to 0.05 {@code blues-shuffle-a-106bpm.mp3}
+     *       keeps 494 of its 576 intervals and reads +0.56%, which is <em>worse
+     *       than the median it replaces</em> at +0.44%, and it degrades further
+     *       below that. One step up, at 0.0525, it keeps 545 and reads +0.07%.
      *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
      *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
      *       (#231), so it carries a population of intervals about 4/3 of its
