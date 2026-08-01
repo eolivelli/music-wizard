@@ -213,8 +213,9 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     # An earlier version checked it by rounding the derived tempo and comparing
     # with the printed header. Round 3 of review measured that the band such a
     # check accepts is half a BPM wide, and that the reported figure ranges over
-    # 24.4% to 36.1% inside it on `gmajorblues.mp3` -- wider than the error the
-    # check was added to catch. A check whose resolution is the size of the bug
+    # 24.4% to 36.1% inside it on `gmajorblues.mp3` -- both taken before #196
+    # changed that recording's beat grid, like the pair in the docstring above,
+    # and both still wider than the error the check was added to catch. A check whose resolution is the size of the bug
     # is not a check. This is the same defect one layer down: the rounded header
     # is the layer the problem was noticed at, and `estimatedTempo()`'s
     # conditions are the layer it lives at.

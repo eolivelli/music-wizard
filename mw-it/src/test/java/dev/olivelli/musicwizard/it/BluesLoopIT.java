@@ -222,10 +222,17 @@ class BluesLoopIT {
         // bars are one bar each in a turnaround, which is the hardest position
         // in the cycle to catch, and a third of them are still missed.
         //
-        // The C7 floor is now the closest to its measurement, by eight points
-        // rather than eleven. Left where it was rather than lowered: the run is
-        // deterministic, so a floor is only reached by behaviour changing, which
-        // is what it is for.
+        // The C7 floor is now much the closest to its measurement, by three and
+        // a half points rather than eleven -- 88.46 against 85.0. An earlier
+        // draft of this comment said eight, which is the kind of arithmetic
+        // nobody checks and the reason review caught it rather than a run.
+        //
+        // Left where it was rather than lowered. Three points is thin for a
+        // gate, and it would be thin if this were sampled; it is not. One
+        // committed file through deterministic code gives one answer, so the
+        // floor is reached only by behaviour changing, which is what it is for.
+        // What it does mean is that the next change to touch chord recognition
+        // on this recording should expect to see this one first.
         Labelling labelling = labelBars(CYCLE_SECONDS);
 
         assertThat(labelling.recall(7)).as("G7 bars found").isGreaterThan(78.0);
@@ -277,6 +284,13 @@ class BluesLoopIT {
         // wrong beat by beat, and that is precisely the state this recording was
         // in. Both bounds sit between the two populations rather than beside
         // either.
+        //
+        // The converse holds too, so this and #theTrackedTempoIsCloseToTheLoops
+        // are load-bearing together and neither covers the other. Intervals here
+        // are measured against the tracked grid's own median, so a grid that was
+        // uniformly an octave out would read 100% on grid and pass; it is the
+        // tempo band, which compares against the loop, that refuses that. Do not
+        // relax either on the grounds that the other has it.
         List<Double> beats = score.beatGrid().map(BeatGrid::beatTimes).orElseThrow();
         double[] intervals = new double[beats.size() - 1];
         for (int i = 0; i < intervals.length; i++) {

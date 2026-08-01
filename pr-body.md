@@ -46,17 +46,19 @@ Both harnesses, all five benchmarks, run against the shipped CLI on this branch 
 | blues-e-90bpm.mp3 | 72.6% | 98.2% |
 | bossa-cm.mp3 | 16.5% | 17.7% |
 
-**The beat grid itself**, against a reference grid derived from each recording's own loop (onset-envelope autocorrelation for the period, envelope energy for the phase), scored as the standard F-measure at 70 ms:
+**The beat grid itself**, which neither Python harness can see because a beat defect only reaches them through chord recognition. `tools/ScoreBeats.java` is added by this PR and is where these come from — it derives a reference grid from each recording's own loop (onset-envelope autocorrelation for the period, envelope energy for the phase) and scores the tracked pulses against it. Run it with `java -cp mw-cli/target/mw.jar tools/ScoreBeats.java`. Both columns below are its output, against a jar from this branch and one from `origin/main`:
 
-| recording | reference | before | after | beats before/after/true |
-|---|---|---|---|---|
-| gmajorblues.mp3 | 106.000 | 0.611 | 0.917 | 1281 / 1257 / 1257 |
-| blues-a-90bpm.mp3 | 89.998 | 0.970 | 0.977 | 453 / 453 / 456 |
-| blues-shuffle-a-106bpm.mp3 | 105.000 | 0.378 | 0.371 | 614 / 577 / 599 |
-| blues-e-90bpm.mp3 | 89.999 | 0.928 | 0.990 | 473 / 451 / 454 |
-| bossa-cm.mp3 | 74.944 | 0.195 | 0.259 | 624 / 502 / 393 |
+| recording | reference | slips before → after | beats before → after (true) | F before → after | on grid | two-thirds |
+|---|---|---|---|---|---|---|
+| gmajorblues.mp3 | 106.000 | **24 → 0** | 1281 → 1257 (1257) | 0.611 → 0.917 | 55.5% → 96.4% | 24.1% → 0.7% |
+| blues-a-90bpm.mp3 | 89.998 | **2 → 0** | 453 → 453 (456) | 0.970 → 0.977 | 95.8% → 96.5% | 1.8% → 0.2% |
+| blues-shuffle-a-106bpm.mp3 | 105.000 | **42 → 13** | 614 → 577 (599) | 0.378 → 0.371 | 45.8% → 96.4% | 33.4% → 0.7% |
+| blues-e-90bpm.mp3 | 89.999 | **22 → 0** | 473 → 451 (454) | 0.928 → 0.990 | 86.7% → 99.6% | 11.4% → 0.0% |
+| bossa-cm.mp3 | 74.944 | **232 → 110** | 624 → 502 (393) | 0.195 → 0.259 | 50.9% → 79.2% | 48.8% → 0.6% |
 
-On `gmajorblues.mp3` there is now **no place in the recording where the grid steps by other than one beat of the music** — zero index slips over all 1257 beats, against 24 net insertions before.
+A slip is a place where the tracked grid advances by other than one beat of the music. **They fall on all five**, and on three of them to zero: on `gmajorblues.mp3` there is now no point in twelve minutes at which the grid loses its place.
+
+The F-measure moves least and is the column to trust least, for a reason the harness prints beside it: at a 70 ms tolerance it is unforgiving of a constant offset, and `blues-shuffle-a-106bpm.mp3` sits 124 ms late throughout on both jars, so its F says almost nothing while its slips fall by two thirds and its on-grid share doubles. `bossa-cm.mp3` is limited by its tempo being read at four thirds of the truth (#231), not by its phase.
 
 ## The one number that goes down, and why it is not this change
 
@@ -69,9 +71,11 @@ Sweeping `--first-downbeat` across the four candidate phases on both grids:
 | downbeat phase | before | after |
 |---|---|---|
 | beat 0 (what ships) | 87.6% | 71.7% |
-| beat 1 | 93.0% | 91.2% |
+| beat 1 | 70.2% | 91.2% |
 | beat 2 | 93.0% | 96.5% |
 | beat 3 | 96.5% | 97.3% |
+
+*(Round 1 of review caught the `beat 1` before-cell in this table published as 93.0%, which was `beat 2`'s value copied up a row. Corrected here and on #233. The error mattered in both directions: as published the table refuted the sentence under it, and corrected it supports it — averaged over the four phases the branch wins 89.2 to 86.8.)*
 
 **The harness reading swings 25 points on which of four beats the anchor lands, the shipped answer is the worst of the four on both grids, and this branch is at least as good as `main` at every phase but the one it happens to have landed on.** The measures that use every downbeat rather than one move by a bar: model score 88.5% → 87.6%, beat F-measure 0.970 → 0.977. Filed as #233; it is #187's neighbour and I have deliberately not fixed it here.
 
@@ -124,7 +128,8 @@ Eighteen points of printed chart, on the same chords and the same beats. That is
 
 - `mvn -B verify` — 12 modules green.
 - `mvn -B -Pintegration verify` — 12 modules green; `BluesLoopIT` 7/7, `EndToEndIT` 7/7.
-- Both harnesses run end to end on all five benchmarks against a jar built from this branch and a jar built from `origin/main`, in one worktree with its own local Maven repository.
+- All three harnesses run end to end on all five benchmarks against a jar built from this branch and a jar built from `origin/main`, in one worktree with its own local Maven repository.
+- The five commercial recordings in `uncommitted/` run through both jars as well — see the comment below, since they are the only material here that is not a rigid loop.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
