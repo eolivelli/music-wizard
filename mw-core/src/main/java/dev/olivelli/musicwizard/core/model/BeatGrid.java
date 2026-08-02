@@ -145,9 +145,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * beat the tracker did not emit.
      *
      * <p><b>Chosen from the middle of a plateau, not tuned to an edge of one.</b>
-     * Measured over the seven scored tier-2 benchmarks against each recording's
-     * own tempo, which is a measurement of the music rather than of the tracker
-     * -- the distinction #207 was closed for missing.
+     * Measured over the seven scored tier-2 benchmarks there were then, against
+     * each recording's own tempo, which is a measurement of the music rather
+     * than of the tracker -- the distinction #207 was closed for missing.
      *
      * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
      * for five of the seven, from the onset envelope's autocorrelation: 106.000,

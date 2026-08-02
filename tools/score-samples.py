@@ -8,7 +8,7 @@ known 12-bar cycle at the best rotation, and reports per-bar accuracy.
 
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
-for all eleven. That table covers four files the chord table does not: their
+for all eleven. That table covers the files the chord table does not: their
 bar-by-bar changes are unconfirmed, but the key they are in is not in doubt.
 
 The committed CI gate for the committed sample lives in mw-it; this script is
@@ -47,6 +47,14 @@ BENCHMARKS = {
         "Eb7",
     "bossa-cm.mp3":
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
+    # Plain triads throughout, which is what a corpus of sevenths needs: it is
+    # where "found the seventh" and "reported one because nothing said not to"
+    # look different (#273). The grid is the uploader's stated one chord per
+    # bar, confirmed without ears -- the stated 120 BPM in four is a two-second
+    # bar, and 57 tracked bars fill the recording's 114 seconds. See
+    # samples/list.txt for what that argument does not settle.
+    "pop-c-g-am-f-120.mp3":
+        "C G Am F",
 }
 
 # The key each file is in, from samples/list.txt -- read off what it states,

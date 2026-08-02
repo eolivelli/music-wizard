@@ -70,12 +70,14 @@ import java.util.TreeMap;
  * four-note template beats the major triad on the same root exactly when that
  * share clears 2/sqrt(3) - 1.
  *
- * <p>Two recordings here are not scored: the pop backing tracks, whose chords
- * are plain triads. They are the negative control the seventh benchmarks need,
- * since a discriminator that fires on everything is not one. Their bar grids
- * are still unconfirmed (see {@code samples/list.txt}), so {@code score} skips
- * them deliberately — the b7 share is read off the decoded spans and needs no
- * grid, where a per-bar accuracy would need one.
+ * <p>The two pop backing tracks are here as the negative control the seventh
+ * benchmarks need, since a discriminator that fires on everything is not one:
+ * their chords are plain triads, so any four-note label on them is a false one
+ * and {@code profile} counts every label reported. {@code
+ * pop-c-g-am-f-120.mp3} is now scored as well; {@code pop-am-f-c-g-144.mp3}
+ * is not, because on its stated grid the estimator finds under half the roots
+ * and a quality column read off bars that wrong says nothing. The b7 share is
+ * read off the decoded spans and needs no grid either way.
  */
 public final class ChordSweep {
 
@@ -100,7 +102,7 @@ public final class ChordSweep {
             new Bench("eb7-vamp-130.mp3", "Eb7"),
             new Bench("bossa-cm.mp3",
                     "Cm7 Cm7 Fm6 Fm6 D0 G7 Cm6 Cm6 Ebm7 Ab7 DbM7 DbM7 D0 G7 Cm6 D0-G7"),
-            new Bench("pop-c-g-am-f-120.mp3", null),
+            new Bench("pop-c-g-am-f-120.mp3", "C G Am F"),
             new Bench("pop-am-f-c-g-144.mp3", null));
 
     public static void main(String[] args) throws Exception {
@@ -345,14 +347,16 @@ public final class ChordSweep {
             }
         }
 
-        int sevenths = 0;
+        // Every quality reported, not just the dominant seventh: on a recording
+        // whose chords are plain triads, any four-note label is a false one, and
+        // that is the only negative control this corpus has (#273).
+        Map<String, Integer> qualities = new TreeMap<>();
         for (Chord chord : chords.chords()) {
-            if (chord.quality() == ChordQuality.DOMINANT_SEVENTH) {
-                sevenths++;
-            }
+            qualities.merge(chord.quality().symbol().isEmpty() ? "maj"
+                    : chord.quality().symbol(), 1, Integer::sum);
         }
-        System.out.printf(Locale.ROOT, "%-26s spans=%d, of them dominant sevenths: %d%n",
-                b.file(), chords.size(), sevenths);
+        System.out.printf(Locale.ROOT, "%-26s spans=%d, by quality: %s%n",
+                b.file(), chords.size(), qualities);
         printProfile("combined", c.combined(), root);
         printProfile("treble", c.treble(), root);
         printProfile("bass", c.bass(), root);

@@ -67,9 +67,10 @@ What is now top is what all three exposed, in order. The chart still hangs its
 whole bar axis on one downbeat, which on a lead-in is the least reliable beat
 there is (#233), and one constant bar length still cannot follow a recording
 that does not hold one (#187). Then: one benchmark's tempo is read at four
-thirds of its true rate (#231), and the vocabulary has no minor seventh, major
-seventh or half-diminished, so one benchmark cannot be named at all however well
-it is heard and another only in part (#272).
+thirds of its true rate (#231), and the vocabulary still has no major seventh,
+sixth, minor sixth or half-diminished, each of which was measured and costs more
+than it buys until four-note candidates can be ranked on something better than
+which extra note is louder (#287, #274).
 
 Dominant sevenths are found now (#208) — they were found on two benchmarks and
 called plain triads on three others whose roots were read nearly perfectly. The
@@ -79,6 +80,21 @@ because different benchmarks needed different halves. A large net gain that
 closed nothing and cost a couple of points on the two benchmarks whose sevenths
 were already being found: `ChordEstimator` carries the mechanism and
 `tools/baselines/score-samples.txt` the current reading.
+
+Minor sevenths are found too (#272), and it took two things. **The decoder's
+vocabulary and the quality decision's are not the same one**: a quality the
+decoder may choose competes across roots, and `Am7` is a `C` triad with an A in
+it, so in the decoder it moves roots wherever the sixth degree sounds. And
+`C7` and `Cm7` differ in nothing but the third, so a minor-third candidate is
+scored on its notes' mass less whatever major third the root's own fifth
+partial cannot account for — subtract all of the major third instead and a
+blues third or a strongly voiced root turns minor chords major, which is how a
+B minor blues came to be named B major.
+
+**The corpus has a plain-triad benchmark now**, `pop-c-g-am-f-120.mp3`, every
+root right on the uploader's stated grid. It is what decided the size of that
+correction, and before it nothing in the scored set could tell a quality that is
+found from one that is reported because nothing said not to (#273).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

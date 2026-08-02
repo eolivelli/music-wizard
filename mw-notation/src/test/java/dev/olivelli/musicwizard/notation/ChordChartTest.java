@@ -1015,21 +1015,15 @@ class ChordChartTest {
         // of the eight go.
         //
         // Declining to reduce a bar whose harmony moves faster than the counted
-        // beat would save this one, and it is not a clean rule -- 3.2% to 38.3%
-        // of changes on the seven sample recordings are that fast against the
+        // beat would save this one, and it is not a clean rule: on some sample
+        // recordings a substantial minority of changes is that fast against the
         // beat their charts are spaced at, while none of them is against the
         // tracked beat grid the estimator used. See ChartLayout.atHarmonicRhythm,
-        // and tools/score-chart.py, which reports both.
+        // and tools/baselines/score-chart.txt, which carries both columns per
+        // recording.
         //
         // So this is a stated cost rather than a case to special-case. The model
         // still holds all eight, which the assertion above is on.
-        //
-        // Over the five benchmarks there were then, the range read 11.3% to
-        // 24.1% until #200 -- over the seven there are now it was 4.3% to
-        // 35.7%. The five-file figure is the one
-        // ChartLayout carried, and this comment kept it after that one was
-        // corrected -- the second reader of a moved value, found by the review
-        // check that exists for exactly that.
         assertThat(ChordChart.barLines(score)).containsExactly("| C           |");
     }
 

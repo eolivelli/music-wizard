@@ -41,6 +41,16 @@ class ChordEstimationTest {
         return ChordEstimator.estimate(Chroma.extract(audio).beatSynchronous(beats), beats);
     }
 
+    /** Beat-synchronous chroma: one vector per beat, so no frame rate. */
+    private static Chroma beats(double[]... vectors) {
+        return new Chroma(vectors, 0);
+    }
+
+    private static List<Double> beatTimes(int count) {
+        return java.util.stream.IntStream.rangeClosed(0, count)
+                .mapToObj(i -> i * 0.5).toList();
+    }
+
     @Nested
     @DisplayName("chroma")
     class ChromaExtraction {
@@ -181,16 +191,6 @@ class ChordEstimationTest {
     @Nested
     @DisplayName("dominant sevenths (#208)")
     class SeventhQuality {
-
-        /** Beat-synchronous chroma: one vector per beat, so no frame rate. */
-        private static Chroma beats(double[]... vectors) {
-            return new Chroma(vectors, 0);
-        }
-
-        private static List<Double> beatTimes(int count) {
-            return java.util.stream.IntStream.rangeClosed(0, count)
-                    .mapToObj(i -> i * 0.5).toList();
-        }
 
         /**
          * A chroma vector: the named pitch classes at the given shares, the rest
@@ -365,6 +365,110 @@ class ChordEstimationTest {
             assertThatIllegalArgumentException().isThrownBy(() -> ChordEstimator.estimate(
                             beats(v, v, v), beats(v, v), beatTimes(3)))
                     .withMessageContaining("the same beats");
+        }
+    }
+
+    /**
+     * #272: the minor seventh, which the quality decision may report and the
+     * decoder may not choose.
+     *
+     * <p>Chroma is built rather than synthesised, for the reason the class above
+     * gives. The two vamps' trebles are what {@code tools/ChordSweep.java
+     * profile} prints for those recordings; the pop bar is one span of {@code
+     * pop-c-g-am-f-120.mp3}, read off the treble the estimator actually gave the
+     * quality decision there; the two-thirds vector is constructed.
+     */
+    @Nested
+    @DisplayName("minor sevenths (#272)")
+    class MinorSeventhQuality {
+
+        /**
+         * A chroma vector from {@code pitchClass, share} pairs, the rest of the
+         * mass spread evenly over the pitch classes not named.
+         */
+        private static double[] chroma(double... pairs) {
+            double[] out = new double[12];
+            double named = 0;
+            for (int i = 0; i < pairs.length; i += 2) {
+                out[(int) pairs[i]] = pairs[i + 1];
+                named += pairs[i + 1];
+            }
+            double rest = (1 - named) / (12 - pairs.length / 2);
+            for (int i = 0; i < 12; i++) {
+                if (out[i] == 0) {
+                    out[i] = rest;
+                }
+            }
+            return out;
+        }
+
+        private static String reported(double[] combined, double[] treble) {
+            return ChordEstimator.estimate(beats(combined, combined, combined, combined),
+                            beats(treble, treble, treble, treble), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
+        /** A C minor triad, which is what the decoder answers on both vamps. */
+        private static double[] minorTriad() {
+            return chroma(0, 0.23, 3, 0.13, 7, 0.23);
+        }
+
+        @Test
+        @DisplayName("names the minor seventh the vocabulary used to have no word for")
+        void reportsAMinorSeventh() {
+            // fm7-vamp-110.mp3's treble: the minor third at 0.160 and the flat
+            // seventh at 0.091, against a major third at 0.044. Every bar of that
+            // recording is a minor seventh and every one came back a minor triad.
+            double[] treble = chroma(0, 0.191, 3, 0.160, 4, 0.044, 7, 0.230, 10, 0.091);
+
+            assertThat(reported(minorTriad(), treble)).isEqualTo("Cm7");
+        }
+
+        @Test
+        @DisplayName("keeps the dominant seventh when the major third is sounding too")
+        void doesNotTakeABlueThirdForAMinorChord() {
+            // eb7-vamp-130.mp3's treble, where the minor third is the louder of
+            // the two: 0.149 against 0.118. The recording is a dominant seventh
+            // throughout -- its comping riff is a tritone a half-step up, which
+            // states the minor third of the written chord -- so an argmax on the
+            // louder third alone answers every bar wrongly.
+            double[] treble = chroma(0, 0.152, 3, 0.149, 4, 0.118, 7, 0.151, 10, 0.111);
+
+            assertThat(reported(minorTriad(), treble)).isEqualTo("C7");
+        }
+
+        @Test
+        @DisplayName("the minor seventh cannot move a root")
+        void staysOnTheDecodersRoot() {
+            // A guard, not a fail-before test: it holds on origin/main too,
+            // where no vocabulary can express the wrong answer at all. It fails
+            // if the minor seventh is moved into DECODED, which is the mistake
+            // it is here to catch.
+            //
+            // C-E-G with an A: a C major triad and an A minor seventh are the
+            // same four notes, so a decoder offered both answers A -- 84.1% of
+            // gmajorblues.mp3's roots to 48.4% when this was measured. The
+            // decoder is not offered it, and the quality decision only ever
+            // considers the root the decoder found.
+            double[] four = chroma(0, 0.25, 4, 0.22, 7, 0.24, 9, 0.15);
+
+            assertThat(reported(four, four)).startsWith("C");
+        }
+
+        @Test
+        @DisplayName("a major third no louder than the root's own partial is not read")
+        void theRootsOwnPartialIsNotAMajorThird() {
+            // An A minor bar of pop-c-g-am-f-120.mp3: root and fifth at a third
+            // of the register each and both thirds an order of magnitude below
+            // that, the major third at 0.086 of the root, which is about what
+            // its fifth partial puts there. Subtracting all of it rather than
+            // the part the root cannot account for costs five of that file's
+            // fourteen A minor bars and names bm-blues-slow.mp3, a B minor
+            // blues, B major.
+            double[] barelyMinor = chroma(0, 0.3425, 3, 0.0475, 4, 0.0294,
+                    7, 0.3140, 10, 0.0290);
+
+            assertThat(reported(barelyMinor, barelyMinor)).isEqualTo("Cm");
         }
     }
 }
