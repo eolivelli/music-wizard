@@ -32,58 +32,42 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The project's first tier-2 gate: a real recording, measured against changes
- * that are known exactly rather than inferred.
+ * The committed tier-2 gate: a real recording, measured against changes that
+ * are known exactly rather than inferred.
  *
- * <p>{@code samples/gmajorblues.mp3} is 711 seconds of a twelve-bar blues in G
- * played round and round — {@code samples/list.txt} records the sequence, and
- * this file is committed and does not change, so the ground truth is a constant
- * rather than an estimate. That combination is rare enough to be worth a gate:
- * every other accuracy number in this repository comes from audio we
- * synthesised, and {@code CLAUDE.md} is blunt about what those are worth.
+ * <p>{@code samples/g-blues-shuffle-cc.mp3} is a twelve-bar blues in G played
+ * round and round — {@code samples/list.txt} records the sequence and where the
+ * recording came from, and the file is committed and does not change, so the
+ * ground truth is a constant rather than an estimate. That combination is rare
+ * enough to be worth a gate: every other accuracy number in this repository
+ * comes from audio we synthesised, and {@code CLAUDE.md} is blunt about what
+ * those are worth.
  *
  * <p>What it is guarding is a regression that already happened once. Before #3
- * this recording produced a single chord span, {@code N.C.}, covering all 711
- * seconds — the failure #185 describes — and nothing in the suite noticed,
- * because the synthetic fixtures were all green. Thresholds here are therefore
- * set well below what is measured, so that this fails when the pipeline stops
- * working rather than when it changes.
+ * a recording like this one produced a single {@code N.C.} span covering all of
+ * it — the failure #185 describes — and nothing in the suite noticed, because
+ * the synthetic fixtures were all green. Thresholds here are therefore set well
+ * below what is measured, so that this fails when the pipeline stops working
+ * rather than when it changes.
  *
- * <p>{@code *IT}, so it runs only under {@code -Pintegration}: it decodes and
- * analyses twelve minutes of audio. One analysis serves every assertion, which
- * is what keeps it to about seven seconds.
- *
- * <p>The recording it depends on carries no licence or provenance note in the
- * repository (#204). That is a question about the file rather than about this
- * test, and it is the reason this comment mentions it: a gate that depends on a
- * committed binary should say where the binary stands.
+ * <p>{@code *IT}, so it runs only under {@code -Pintegration}. One analysis
+ * serves every assertion.
  *
  * <p>This is the committed gate and not the whole picture. {@code
  * tools/score-samples.py} scores the same question over every benchmark whose
- * ground truth is known, four of which are local-only, with bars taken from the
- * tracked beat grid rather than from this file's measured loop. Its current
- * reading for all of them is {@code tools/baselines/score-samples.txt}, which
- * is not restated here: it moves whenever the estimator does, and a copy of it
- * in this comment has already gone stale once.
+ * ground truth is known, several of which are local-only, with bars taken from
+ * the tracked beat grid rather than from this file's measured loop. Its current
+ * reading is {@code tools/baselines/score-samples.txt}, which is not restated
+ * here: it moves whenever the estimator does, and a copy of it in this comment
+ * has already gone stale once.
  *
- * <p>Every benchmark that existed then scored 0.0% before #3, on a pipeline
- * returning one N.C. span per recording, so the direction is not in doubt. What
- * a maintainer reading that file should know is why its columns are not this
- * file's. The gap between its root column and the figure this file measures used
- * to be the beat grid drifting, and #196 closed most of it. Its root and quality
- * columns come apart for two different reasons: the estimator finds a root and
- * the vocabulary cannot name the chord on it, which was {@code
- * fm7-vamp-110.mp3} throughout until the minor seventh landed (#272) and is
- * still the minor-sixth, half-diminished and major-seventh bars of {@code
- * bossa-cm.mp3} (#287); or it can and the seventh is still missed, which #208 is a large net
- * gain against and closed nowhere — it costs a couple of points on the two
- * benchmarks whose sevenths were already being found, this recording among
- * them.
- *
- * <p>{@code bossa-cm.mp3} is the benchmark that is not about bars at all: the
- * tempo estimator reads that recording at about four thirds of its true rate,
- * so there is no phase at which its bars can be right. That is #231 and it is
- * untouched by this file.
+ * <p>This recording replaced {@code gmajorblues.mp3}, which had no licence or
+ * provenance and could not stay committed under the project's own tier-2 rule
+ * (#204). One difference between the two is worth knowing before reading the
+ * thresholds below: this one opens with a sparse intro that the tracker reads
+ * at half rate, so about a dozen pulses are missing and the end-to-end rate
+ * under-reads (#292). What that costs is confined to axes that count beats from
+ * the first one — the downbeats, and so the bars, come back.
  */
 class BluesLoopIT {
 
@@ -95,30 +79,28 @@ class BluesLoopIT {
      */
     private static final int[] CYCLE = {7, 7, 7, 7, 0, 0, 7, 7, 2, 0, 7, 2};
 
+    /** The recording's own rate, in beats a minute — the measurement itself. */
+    private static final double LOOP_TEMPO = 105.0;
+
     /**
      * How long one twelve-bar cycle lasts, in seconds.
      *
      * <p>A property of this recording, measured from it rather than assumed:
-     * the chroma's self-similarity over lag peaks at 27.15 s, which is 106.1
-     * beats a minute in four, and 26.2 cycles fill the recording.
+     * {@code tools/ScoreBeats.java} finds the onset envelope's autocorrelation
+     * peak at 105.000 beats a minute, which over 48 beats is this, and about
+     * eleven and a half cycles fill the recording.
      *
      * <p>Bars are taken from this rather than from the tracked beat grid, and
-     * the distinction still matters even now that the two agree. Until #196 the
-     * tracker reported 108.1 BPM, about 2% fast, so its bars slid against the
-     * music by a whole beat every cycle and by many bars over twelve minutes;
-     * scoring chords through that grid would have measured beat tracking and
-     * chord recognition together and blamed whichever was changed last. Keeping
-     * this axis independent of the tracker is what lets {@link
-     * #theBarGridFromTheTrackedBeatsAgreesWithTheLoop} say something: the two
-     * are now within a couple of points of each other, and that is a claim
-     * about beat tracking that a shared axis could not have made.
+     * that is what lets the two be compared. Scoring chords through the tracker
+     * would measure beat tracking and chord recognition together and blame
+     * whichever was changed last; here the tracker is what the loop axis is
+     * evidence about.
      *
-     * <p>The score is sensitive to this figure, because an error compounds over
-     * 26 cycles, and every neighbouring value scores lower — so a wrong constant
-     * here can only understate the result. That is an argument for the wide
-     * margin on the thresholds rather than against the measurement.
+     * <p>Per-bar accuracy is flat within a few hundredths of a second of this
+     * value and falls away steeply outside it, so the axis is not balanced on
+     * the last digit.
      */
-    private static final double CYCLE_SECONDS = 27.15;
+    private static final double CYCLE_SECONDS = 48 * 60.0 / LOOP_TEMPO;
 
     private static Score score;
     private static Path sample;
@@ -130,20 +112,21 @@ class BluesLoopIT {
     }
 
     /**
-     * Finds {@code samples/gmajorblues.mp3} by walking up from the working
-     * directory, which surefire sets to the module rather than the repository.
+     * Finds the sample by walking up from the working directory, which surefire
+     * sets to the module rather than the repository.
      */
     private static Path locateSample() {
         Path directory = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (directory != null) {
-            Path candidate = directory.resolve("samples").resolve("gmajorblues.mp3");
+            Path candidate = directory.resolve("samples").resolve("g-blues-shuffle-cc.mp3");
             if (Files.isRegularFile(candidate)) {
                 return candidate;
             }
             directory = directory.getParent();
         }
         throw new IllegalStateException(
-                "samples/gmajorblues.mp3 was not found above " + System.getProperty("user.dir")
+                "samples/g-blues-shuffle-cc.mp3 was not found above "
+                        + System.getProperty("user.dir")
                         + "; it is committed, so this means the checkout is incomplete");
     }
 
@@ -151,7 +134,7 @@ class BluesLoopIT {
     @DisplayName("the recording is not one long no-chord span")
     void theRecordingIsNotOneLongNoChordSpan() {
         // The #185 failure in its plainest form, and the one this file exists
-        // for. Before #3 both numbers below were on the far side of their
+        // for. In that state both numbers below are on the far side of their
         // bounds: one span, 100% of the duration.
         ChordProgression chords = score.chords();
         double noChordSeconds = 0;
@@ -164,14 +147,12 @@ class BluesLoopIT {
         assertThat(100 * noChordSeconds / score.durationSeconds())
                 .as("share of the recording labelled N.C.")
                 .isLessThan(10.0);
-        // Twenty-six cycles of three chords cannot be fewer than a few dozen
-        // spans. The upper bound is not idle either -- one span per beat would
-        // be about 1260, and a decoder that chatters that badly has stopped
-        // smoothing. The count itself is not asserted because every change to
-        // the beat grid or to how spans are merged moves it: #196 took it from
-        // 740 to 666 by removing spurious beats, and #208 took it down again by
-        // merging the runs the decoder split on quality alone.
-        assertThat(chords.size()).isBetween(100, 1100);
+        // Eleven cycles of three chords cannot be fewer than a few dozen spans.
+        // The upper bound is not idle either -- one span per beat would be about
+        // 540, and a decoder that chatters that badly has stopped smoothing. The
+        // count itself is not asserted because every change to the beat grid or
+        // to how spans are merged moves it.
+        assertThat(chords.size()).isBetween(60, 450);
     }
 
     @Test
@@ -179,11 +160,11 @@ class BluesLoopIT {
     void theThreeChordsAreAllFound() {
         List<String> symbols = score.chords().chords().stream().map(Chord::symbol).toList();
 
-        // Not merely present: present often. A single stray G7 among six hundred
+        // Not merely present: present often. A single stray G7 among two hundred
         // spans would satisfy contains() and mean nothing.
-        assertThat(symbols).filteredOn("G7"::equals).hasSizeGreaterThan(50);
-        assertThat(symbols).filteredOn("C7"::equals).hasSizeGreaterThan(20);
-        assertThat(symbols).filteredOn("D7"::equals).hasSizeGreaterThan(5);
+        assertThat(symbols).filteredOn("G7"::equals).hasSizeGreaterThan(25);
+        assertThat(symbols).filteredOn("C7"::equals).hasSizeGreaterThan(8);
+        assertThat(symbols).filteredOn("D7"::equals).hasSizeGreaterThan(10);
     }
 
     @Test
@@ -192,79 +173,65 @@ class BluesLoopIT {
         Labelling labelling = labelBars(CYCLE_SECONDS);
 
         // The floors are set well under what this scores: a gate against the
-        // pipeline breaking, not a record of its best day. The two columns are
-        // no longer equal -- #208 decides quality from the treble register and
-        // over whole chords, which loses this recording a few bars of quality
-        // and gains three other benchmarks a great deal.
+        // pipeline breaking, not a record of its best day.
         //
         // 58.3% is the number to beat rather than 0%, because seven of the
         // twelve bars are the tonic, so writing G7 in every bar scores that much
-        // while being no transcription at all. Both floors clear it.
+        // on both columns while being no transcription at all. The root floor
+        // clears it and the quality floor does not, which is honest rather than
+        // lax: on this recording the tonic is often heard as a plain triad, so
+        // the quality column runs only a little above what G7-everywhere would
+        // score. What refuses that labelling is
+        // #theSubdominantAndDominantAreFound, not this.
         assertThat(labelling.rootAccuracy())
                 .as("bars whose root matches the cycle")
-                .isGreaterThan(75.0);
+                .isGreaterThan(78.0);
         assertThat(labelling.rootAndQualityAccuracy())
                 .as("bars whose root and quality both match")
-                .isGreaterThan(72.0);
+                .isGreaterThan(55.0);
     }
 
     @Test
     @DisplayName("the IV and the V are found, not just the tonic")
     void theSubdominantAndDominantAreFound() {
         // The assertion that stops "G7 everywhere" from passing the one above.
-        // Measured: G 90%, C 88%, D 68%, against G 88%, C 96%, D 68% before
-        // #196. The D7 floor is the lowest because the figure is -- the two D7
-        // bars are one bar each in a turnaround, which is the hardest position
-        // in the cycle to catch, and a third of them are still missed.
-        //
-        // The C7 floor is now much the closest to its measurement, by three and
-        // a half points rather than eleven -- 88.46 against 85.0. An earlier
-        // draft of this comment said eight, which is the kind of arithmetic
-        // nobody checks and the reason review caught it rather than a run.
-        //
-        // Left where it was rather than lowered. Three points is thin for a
-        // gate, and it would be thin if this were sampled; it is not. One
-        // committed file through deterministic code gives one answer, so the
-        // floor is reached only by behaviour changing, which is what it is for.
-        // What it does mean is that the next change to touch chord recognition
-        // on this recording should expect to see this one first.
+        // The IV is the weakest of the three here and the V the strongest, which
+        // is the other way round from the recording this replaced: the two D7
+        // bars are the turnaround, which is the hardest position in the cycle to
+        // catch, and on this one they are caught.
         Labelling labelling = labelBars(CYCLE_SECONDS);
 
-        assertThat(labelling.recall(7)).as("G7 bars found").isGreaterThan(78.0);
-        assertThat(labelling.recall(0)).as("C7 bars found").isGreaterThan(85.0);
-        assertThat(labelling.recall(2)).as("D7 bars found").isGreaterThan(55.0);
+        assertThat(labelling.recall(7)).as("G7 bars found").isGreaterThan(80.0);
+        assertThat(labelling.recall(0)).as("C7 bars found").isGreaterThan(62.0);
+        assertThat(labelling.recall(2)).as("D7 bars found").isGreaterThan(85.0);
     }
 
     @Test
     @DisplayName("the tracked tempo is close to the loop's own")
     void theTrackedTempoIsCloseToTheLoops() {
-        // 48 beats to the cycle at 27.15 s is 106.1 BPM. The tracker used to say
-        // 108.1, which is 1.9% fast -- close enough to be the right tempo and
-        // wrong enough that the bar lines walked off the music over twelve
-        // minutes (#196). It now says 106.0.
+        // The end-to-end rate over every tracked beat, which is exactly the mean
+        // interval, so an inserted or dropped pulse moves it. That is what this
+        // gates -- #196, where a spacing penalty a forty-eighth of the published
+        // one left the grid for every loud offbeat and came back a beat later.
         //
-        // The band was 103 to 111 and is now about 1% either side, which is the
-        // point of the fix rather than a decoration on it. A rate error is a
-        // drift: after N beats the grid is N times the error away from the
-        // music, so the old band's upper edge -- 4.6% -- admitted a grid a
-        // whole bar out inside two of the recording's twenty-six cycles. The
-        // 1.9% the tracker actually ran at took four, which is what #196
-        // reported. A band is still the right shape, since the loop length this
-        // is compared against is itself a measurement, but it has to be narrow
-        // enough that passing it means the bars stay on the music.
+        // Written out rather than calling BeatGrid.steadyPulseRate, deliberately:
+        // steadyPulseRate is built not to notice a dropped pulse, which is right
+        // for spacing a bar line and wrong here. Substituting it would quietly
+        // retire #196's gate.
         //
-        // Written out rather than calling BeatGrid.steadyPulseRate, and that is
-        // deliberate rather than an oversight left behind by #200. What this
-        // gates is whether the tracker inserted or dropped pulses, and the
-        // end-to-end rate is the statistic that notices -- it is exactly the mean
-        // interval, so an inserted pulse moves it. steadyPulseRate is built to
-        // not notice, which is right for spacing a bar line and wrong here.
-        // Substituting it would quietly retire #196's gate.
+        // The band is wider than the recording this replaced could carry, and
+        // the reason is a defect rather than tolerance: through the sparse intro
+        // the tracker runs at half rate and drops about a dozen pulses, which
+        // pulls the mean roughly two percent under the loop's own 105.0. The
+        // upper edge stays tight against the loop, since nothing explains the
+        // tracker running fast here, and the lower edge sits just under what the
+        // intro costs. #theSpacingTempoAgreesWithTheLoop is the tight rate
+        // assertion of the two.
         List<Double> beats = score.beatGrid().map(BeatGrid::beatTimes).orElseThrow();
         double tracked = 60.0 * (beats.size() - 1)
                 / (beats.get(beats.size() - 1) - beats.get(0));
 
-        assertThat(tracked).isBetween(105.0, 107.2);
+        assertThat(tracked).isBetween(101.5, 105.6);
     }
 
     @Test
@@ -282,48 +249,41 @@ class BluesLoopIT {
         // than whether it agrees with the beat grid. #207 was refuted for
         // measuring the second and calling it the first.
         //
-        // Measured 105.912 against the loop's 106.077, which is 0.16% out. The
-        // median interval the accessor used to return is 105.469, which is 0.57%
-        // out and outside the band below -- so this test distinguishes the two
-        // rather than passing on either. The band is 0.4% either way: wide enough
-        // that the loop period being itself a measurement does not decide the
-        // outcome, narrow enough that passing it means the bar lines stay within
-        // a beat of the music over a twelve-bar cycle.
-        double loopTempo = 48 * 60.0 / CYCLE_SECONDS;
+        // The band is 0.4% either way: wide enough that the loop period being
+        // itself a measurement does not decide the outcome, narrow enough that
+        // passing it means the bar lines stay within a beat of the music over a
+        // twelve-bar cycle. The median interval the accessor used to return is
+        // outside it, so this distinguishes the two rather than passing on
+        // either.
         double spacing = score.estimatedTempo();
         double median = score.beatGrid().orElseThrow()
                 .medianTempo(score.tempoMap().initialTimeSignature());
 
         assertThat(spacing)
                 .as("the tempo the chart spaces its bars at")
-                .isBetween(loopTempo * 0.996, loopTempo * 1.004);
+                .isBetween(LOOP_TEMPO * 0.996, LOOP_TEMPO * 1.004);
         // And it is nearer the music than the statistic it replaced, which is a
         // comparison rather than a band and so cannot pass by a lucky constant.
-        assertThat(Math.abs(spacing - loopTempo))
+        assertThat(Math.abs(spacing - LOOP_TEMPO))
                 .as("distance from the loop's own tempo, against the median interval's")
-                .isLessThan(Math.abs(median - loopTempo));
+                .isLessThan(Math.abs(median - LOOP_TEMPO));
     }
 
     @Test
     @DisplayName("the tracked beats are one beat apart, not two thirds of one")
     void theTrackedBeatsAreOneBeatApart() {
-        // #196's mechanism on the recording itself, where the tempo band above
-        // only sees its consequence. This recording is a shuffle, so its loudest
-        // events are the swung eighths two thirds of the way through each beat.
-        // While the spacing penalty was a forty-eighth of the published one the
-        // dynamic program left the grid for them and came back a beat later, and
-        // the interval histogram says so plainly:
-        //
-        //   share of intervals   within 10% of      before #196   after
-        //   one beat                                   55.5%      96.4%
-        //   two thirds of a beat (the detour)          24.1%       0.7%
-        //   four thirds of a beat (the catch-up)       19.5%       0.4%
+        // #196's mechanism, where the tempo band above only sees its
+        // consequence. This recording is a shuffle, so its loudest events are
+        // the swung eighths two thirds of the way through each beat. While the
+        // spacing penalty was too small the dynamic program left the grid for
+        // them and came back a beat later, and an interval histogram says so
+        // plainly: the detour population sits at two thirds of a beat and the
+        // catch-up at four thirds.
         //
         // Worth a test of its own because it cannot be traded against anything:
         // a tempo that is right on average is compatible with a grid that is
-        // wrong beat by beat, and that is precisely the state this recording was
-        // in. Both bounds sit between the two populations rather than beside
-        // either.
+        // wrong beat by beat, and that is precisely the state #196 found. Both
+        // bounds sit between the two populations rather than beside either.
         //
         // The converse holds too, so this and #theTrackedTempoIsCloseToTheLoops
         // are load-bearing together and neither covers the other. Intervals here
@@ -362,39 +322,37 @@ class BluesLoopIT {
     }
 
     @Test
-    @DisplayName("the bar grid from the tracked beats agrees with the loop's")
+    @DisplayName("the bar grid from the tracked downbeats agrees with the loop's")
     void theBarGridFromTheTrackedBeatsAgreesWithTheLoop() {
-        // Deliberately measuring what a reader of the engraved chart would get,
-        // rather than what the chord stage alone is worth: bars of four tracked
-        // beats, which is how the chart is actually laid out.
-        //
-        // This test used to assert the opposite -- that this axis scored at
-        // least twenty points *worse* than the loop's -- and said that the day
-        // the gap closed the assertion should fail and be replaced. #196 closed
-        // it: 47.5% against 86.6% became 84.1% against 85.7%, and what is pinned
-        // now is that the two axes agree.
+        // Bars between consecutive tracked downbeats: the axis the chart takes
+        // its phase from, and the axis tools/score-samples.py scores every
+        // benchmark on. Deliberately not four beats counted from the first one.
+        // That is a different question on this recording and gets a much worse
+        // answer, because the pulses dropped through the intro are not a
+        // multiple of four and every bar line after them falls inside a bar of
+        // the music (#292). The downbeat estimator does not inherit that error,
+        // and this is where that is asserted rather than assumed.
         //
         // Agreement rather than a floor of its own, because that is the property
         // that says the beat grid is right. A floor could be met by both axes
         // drifting together; a gap of a few points cannot be, since the loop's
         // axis is measured from the recording and does not move when the tracker
         // does.
-        List<Double> beats = score.beatGrid().map(BeatGrid::beatTimes).orElseThrow();
-        int bars = (beats.size() - 1) / 4;
+        List<Double> downbeats = score.beatGrid().map(BeatGrid::downbeatTimes).orElseThrow();
+        int bars = downbeats.size() - 1;
         int[] roots = new int[bars];
         for (int bar = 0; bar < bars; bar++) {
-            roots[bar] = rootOverlapping(
-                    beats.get(bar * 4), beats.get(Math.min(bar * 4 + 4, beats.size() - 1)));
+            roots[bar] = rootOverlapping(downbeats.get(bar), downbeats.get(bar + 1));
         }
         double tracked = bestRotationAccuracy(roots, bars);
         double loop = labelBars(CYCLE_SECONDS).rootAccuracy();
 
         assertThat(tracked)
-                .as("bars from the tracked beat grid whose root matches")
+                .as("bars from the tracked downbeats whose root matches")
                 .isGreaterThan(75.0);
-        // Measured 1.6 points apart. Two-sided: the tracked axis running *ahead*
-        // of the loop's would mean the loop constant is wrong, not that beat
-        // tracking got better, and that is worth failing on too.
+        // Two-sided: the tracked axis running *ahead* of the loop's would mean
+        // the loop constant is wrong, not that beat tracking got better, and
+        // that is worth failing on too.
         assertThat(Math.abs(loop - tracked))
                 .as("how far the tracked bar grid is from the loop's")
                 .isLessThan(8.0);
@@ -448,9 +406,9 @@ class BluesLoopIT {
      * <p>The loop's phase is not known — the recording does not start on bar one
      * of a cycle and nothing says where it does — so every rotation is scored
      * and the best is taken. That is a free parameter with twelve values against
-     * 314 bars, which is not enough freedom to manufacture a result: labelling
-     * every bar G7 scores 58.3% at whichever rotation, and a random labelling
-     * about 8%.
+     * a hundred and thirty-odd bars, which is not enough freedom to manufacture
+     * a result: labelling every bar G7 scores 58.3% at whichever rotation, and a
+     * random labelling about 8%.
      */
     private Labelling labelBars(double cycleSeconds) {
         double barSeconds = cycleSeconds / 12;

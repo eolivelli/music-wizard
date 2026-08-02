@@ -27,16 +27,20 @@ models/
 *.log
 logs/
 
-# Local-only test audio: standard YouTube license, not redistributable.
-# Committed samples must be our own or permissively licensed.
+# Local-only test audio: not redistributable, so never committed. Committed
+# samples must be our own or permissively licensed — samples/list.txt records
+# which each file is, and how to fetch the ones that are missing.
 samples/blues-a-90bpm.mp3
 samples/blues-shuffle-a-106bpm.mp3
 samples/blues-e-90bpm.mp3
 samples/bossa-cm.mp3
+samples/slow-68-40.mp3
+samples/pop-am-f-c-g-144.mp3
+# No licence and no provenance were ever recorded for this one, so it was
+# untracked rather than replaced by a fetch command (#204).
+samples/gmajorblues.mp3
 
 # Commercial recordings for local evaluation only — never committed.
 # Only the descriptive list.txt is tracked.
 uncommitted/*
 !uncommitted/list.txt
-samples/slow-68-40.mp3
-samples/pop-am-f-c-g-144.mp3

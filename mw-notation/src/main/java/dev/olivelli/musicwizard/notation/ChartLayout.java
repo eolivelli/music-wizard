@@ -316,9 +316,9 @@ final class ChartLayout {
      *
      * <p>This is not cosmetic, and a fixed sixteenth was measured getting it
      * wrong. <b>The measurement supplies the chords rather than transcribing
-     * them, and that has to be said</b>: it laid the progression that
-     * {@code samples/list.txt} documents for {@code samples/gmajorblues.mp3} on
-     * that recording's own detected downbeats, one chord each. That measures
+     * them, and that has to be said</b>: it laid the known twelve-bar changes of
+     * the G blues that was then the gate recording on that recording's own
+     * detected downbeats, one chord each. That measures
      * this class's arithmetic against real timing and a known progression; it is
      * not a figure for what the product recognises, and it must not be quoted as
      * one.
