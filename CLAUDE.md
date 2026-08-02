@@ -57,17 +57,27 @@ which is not a rate and is quantised to the analysis hop, and it is now the mean
 of the intervals the tracker held steadily. Each of the five benchmarks that
 existed then improved or held **on the root column**, the reference recording by
 fifteen points and one other by twelve. Not on `root+quality`, which fell a point
-or two on two of them — that column is dominated by #208 and its small movements
-do not mean much either way, which is exactly why the two are quoted separately.
+or two on two of them — at the time that column was dominated by #208, whose
+small movements did not mean much either way, which is exactly why the two are
+quoted separately.
 Of the two benchmarks added since, one scores lower, and #242 measures why that
 cell is a tie-break artefact rather than a reading.
 
 What is now top is what all three exposed, in order. The chart still hangs its
 whole bar axis on one downbeat, which on a lead-in is the least reliable beat
 there is (#233), and one constant bar length still cannot follow a recording
-that does not hold one (#187). Then: dominant sevenths are found on two of the
-seven scored benchmarks and called plain triads on the other five (#208), and one
-benchmark's tempo is read at four thirds of its true rate (#231).
+that does not hold one (#187). Then: one benchmark's tempo is read at four
+thirds of its true rate (#231), and the vocabulary has no minor seventh, major
+seventh or half-diminished, so two benchmarks cannot be named at all however
+well they are heard (#272).
+
+Dominant sevenths are found now (#208). They were found on two benchmarks and
+called plain triads on three others whose roots were read nearly perfectly, and
+the cause was not the seventh's loudness but the bass: `combined()` folds in a
+register that can put well over half its energy on the root alone, which sets
+how large a share the seventh has to carry. The root is still decided from both
+registers and the quality now from the treble, once per chord rather than per
+beat. `ChordEstimator` carries the measurement.
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

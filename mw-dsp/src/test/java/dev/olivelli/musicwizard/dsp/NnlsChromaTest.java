@@ -267,10 +267,9 @@ class NnlsChromaTest {
 
             // Both registers, composed exactly as AudioTranscriber composes
             // them: the root from combined(), the quality from treble() (#208).
-            // Asserting this of one register alone -- as two earlier drafts did,
-            // each for the register that was then in fashion -- leaves the
-            // composition the pipeline actually runs uncovered at unit level,
-            // and it is a composition that has already been wrong once.
+            // Asserting this of one register alone would leave the composition
+            // the pipeline actually runs uncovered at unit level, and it is a
+            // composition that has already been wrong once.
             NnlsChroma registers = NnlsChroma.extract(audio);
             ChordProgression chords = ChordEstimator.estimate(
                     registers.combined().beatSynchronous(beats),

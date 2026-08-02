@@ -159,8 +159,11 @@ public final class ChordSweep {
         Chroma combined = registers.combined().beatSynchronous(beatTimes);
         DownbeatEstimator.Estimate down = DownbeatEstimator.estimate(
                 beatTimes, combined, envelope, TimeSignature.FOUR_FOUR.beatsPerBar());
+        // Written aside and moved into place, so an interrupted run leaves no
+        // truncated file for the next one to read back as complete.
+        Path partial = CACHE.resolve(mp3.getFileName() + ".bin.partial");
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(
-                Files.newOutputStream(CACHE.resolve(mp3.getFileName() + ".bin"))))) {
+                Files.newOutputStream(partial)))) {
             out.writeDouble(audio.durationSeconds());
             out.writeInt(down.phase());
             out.writeInt(down.beatsPerBar());
@@ -178,6 +181,9 @@ public final class ChordSweep {
                 }
             }
         }
+        Files.move(partial, CACHE.resolve(mp3.getFileName() + ".bin"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
 
     record Cached(double duration, int phase, int beatsPerBar, List<Double> beats,
@@ -339,6 +345,14 @@ public final class ChordSweep {
             }
         }
 
+        int sevenths = 0;
+        for (Chord chord : chords.chords()) {
+            if (chord.quality() == ChordQuality.DOMINANT_SEVENTH) {
+                sevenths++;
+            }
+        }
+        System.out.printf(Locale.ROOT, "%-26s spans=%d, of them dominant sevenths: %d%n",
+                b.file(), chords.size(), sevenths);
         printProfile(b.file(), "combined", c.combined(), root);
         printProfile("", "treble", c.treble(), root);
         printProfile("", "bass", c.bass(), root);
@@ -362,6 +376,11 @@ public final class ChordSweep {
             for (int interval = 0; interval < 12; interval++) {
                 mean[interval] += vectors[f][(root[f] + interval) % 12] / sum;
             }
+        }
+        if (counted == 0) {
+            System.out.printf(Locale.ROOT, "%-26s %-8s no chord span covers any beat%n",
+                    name, register);
+            return;
         }
         StringBuilder line =
                 new StringBuilder(String.format(Locale.ROOT, "%-26s %-8s", name, register));

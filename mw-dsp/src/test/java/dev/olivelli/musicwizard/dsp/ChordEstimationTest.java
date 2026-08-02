@@ -263,6 +263,62 @@ class ChordEstimationTest {
         }
 
         @Test
+        @DisplayName("says nothing about quality when the treble says nothing")
+        void keepsTheDecodersQualityOnNoEvidence() {
+            // A flat chroma scores 0.577 against a four-note template and 0.500
+            // against a three-note one, so an argmax over the two reports a
+            // dominant seventh on pure noise. The decoder cannot be fooled that
+            // way -- NO_CHORD_SIMILARITY is above both -- and this decision
+            // reads a chroma that guard never sees.
+            double[] minor = new double[12];
+            minor[9] = 0.30;
+            minor[0] = 0.24;
+            minor[4] = 0.28;
+            for (int i : new int[] {1, 2, 3, 5, 6, 7, 8, 10, 11}) {
+                minor[i] = 0.02;
+            }
+            double[] flat = new double[12];
+            java.util.Arrays.fill(flat, 1.0 / 12);
+            double[] silent = new double[12];
+
+            Chroma combined = beats(minor, minor, minor, minor);
+            List<Double> times = beatTimes(4);
+
+            assertThat(combined(combined, times)).containsExactly("Am");
+            assertThat(ChordEstimator.estimate(combined, beats(flat, flat, flat, flat), times)
+                    .chords()).extracting(Chord::symbol).containsExactly("Am");
+            assertThat(ChordEstimator
+                    .estimate(combined, beats(silent, silent, silent, silent), times)
+                    .chords()).extracting(Chord::symbol).containsExactly("Am");
+        }
+
+        @Test
+        @DisplayName("the seventh needs the share of the chord a four-note template asks for")
+        void theSeventhIsFoundExactlyWhereTheGeometrySaysItIs() {
+            // A four-note binary template beats the three-note one on the same
+            // root exactly when the flat seventh carries 2/sqrt(3) - 1 of the
+            // triad's mass. Nothing names that number, so pin the boundary: it
+            // moves if the templates or the score ever change, which #272 will
+            // do when the vocabulary grows.
+            double share = 2 / Math.sqrt(3) - 1;
+            assertThat(qualityAt(share - 0.001)).isEqualTo("C");
+            assertThat(qualityAt(share + 0.001)).isEqualTo("C7");
+        }
+
+        /** The reported chord when the b7 carries {@code share} of the triad's mass. */
+        private static String qualityAt(double share) {
+            double each = 0.15;
+            double[] v = chroma(each, each, each, share * 3 * each);
+            Chroma c = beats(v, v, v, v);
+            return ChordEstimator.estimate(c, c, beatTimes(4)).chords().get(0).symbol();
+        }
+
+        private static List<String> combined(Chroma chroma, List<Double> times) {
+            return ChordEstimator.estimate(chroma, chroma, times).chords().stream()
+                    .map(Chord::symbol).toList();
+        }
+
+        @Test
         @DisplayName("refuses two chromas that do not describe the same beats")
         void rejectsMismatchedChromas() {
             double[] v = chroma(0.25, 0.15, 0.2, 0.1);

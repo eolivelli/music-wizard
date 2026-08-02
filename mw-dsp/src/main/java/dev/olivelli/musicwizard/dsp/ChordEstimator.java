@@ -257,36 +257,33 @@ public final class ChordEstimator {
      * chroma by an amount that depends on how loud the bass was mixed, and the
      * chord's own colour is what gets scaled down.
      *
-     * <p>Mean chroma over each recording's decoded beats, as the share of the
-     * root-third-fifth sum carried by the flat seventh. A binary four-note
-     * template beats the three-note one on the same root exactly when that share
-     * clears 2/sqrt(3) - 1, or 0.155. Reproduced by {@code
-     * tools/ChordSweep.java profile}:
+     * <p>{@code tools/ChordSweep.java profile} prints the measurement, per
+     * register: the mean chroma above each recording's decoded root, and from it
+     * the share of the root-third-fifth mass that the flat seventh carries. A
+     * binary four-note template beats the <em>major</em> triad on the same root
+     * exactly when that share clears 2/sqrt(3) - 1.
      *
-     * <pre>
-     *   recording                  chords are    combined   treble   bass
-     *   gmajorblues.mp3            sevenths        0.282     0.324   0.201
-     *   blues-a-90bpm.mp3          sevenths        0.295     0.346   0.226
-     *   blues-shuffle-a-106bpm     sevenths        0.130     0.181   0.050
-     *   blues-e-90bpm.mp3          sevenths        0.106     0.227   0.033
-     *   eb7-vamp-130.mp3           sevenths        0.191     0.264   0.085
-     *   fm7-vamp-110.mp3           minor sevenths  0.138     0.196   0.064
-     *   pop-c-g-am-f-120.mp3       plain triads    0.037     0.023   0.083
-     *   pop-am-f-c-g-144.mp3       plain triads    0.045     0.046   0.043
-     * </pre>
-     *
-     * <p>In the treble column every recording whose chords carry a seventh
-     * clears the level and both recordings whose chords do not sit far under it,
-     * with nothing in between. In the combined column three of the six seventh
-     * recordings fall below. So the flat seventh is in the chroma on all of
-     * them, and the discriminator was being asked about a vector the bass had
-     * reweighted.
+     * <p>Read the treble column and the four benchmarks whose chords are
+     * dominant sevenths all clear the level, while the two whose chords are
+     * plain triads sit an order of magnitude under it. Read the combined column
+     * and two of those four fall below. So the flat seventh is in the chroma on
+     * all of them, and the discriminator was being asked about a vector the bass
+     * had reweighted.
      *
      * <p>The bass column says why, and its root row says it plainest: that
-     * register puts 0.19 of its energy on the root pitch class on {@code
-     * gmajorblues.mp3} and 0.60 on {@code blues-e-90bpm.mp3}. How loud the bass
-     * sits in the mix is an arrangement decision, and under one chroma it was
-     * deciding whether a dominant seventh got reported as one.
+     * register puts under a fifth of its energy on the root pitch class on
+     * {@code gmajorblues.mp3} and three fifths of it on {@code
+     * blues-e-90bpm.mp3}. How loud the bass sits in the mix is an arrangement
+     * decision, and under one chroma it was deciding whether a dominant seventh
+     * got reported as one.
+     *
+     * <p>Two rows of that table do not belong to this argument, and the
+     * threshold is why. It is derived against the major triad, so it says
+     * nothing about a chord whose third is minor: on {@code fm7-vamp-110.mp3}
+     * the seventh's share clears it in the treble and the minor triad wins all
+     * the same, which is right — the recording is minor sevenths throughout and
+     * this vocabulary cannot say so (#272). {@code bossa-cm.mp3} finds its root
+     * on too few bars for a mean above it to mean anything.
      *
      * <p>Quality is also decided once per run of beats sharing a root rather
      * than beat by beat, because a chord is one chord for its whole duration and
@@ -348,6 +345,14 @@ public final class ChordEstimator {
      * away before it can be used. On {@code samples/eb7-vamp-130.mp3} the
      * two-stage form calls almost every bar E-flat minor.
      *
+     * <p><b>A candidate has to explain the run better than a flat chroma would,
+     * or the decoder's own answer stands.</b> Without that the seventh wins on
+     * no evidence at all: see {@link #flatScore}. The decoder never needed the
+     * rule because {@link #NO_CHORD_SIMILARITY} sits above every template's flat
+     * score, so a frame carrying no harmony loses to "no chord" before the
+     * vocabulary can be biased. This decision reads a different chroma and has
+     * no no-chord state to lose to, so it carries the rule itself.
+     *
      * <p>Returns a new state path: same root and same no-chord decisions as the
      * decoder made, with the quality replaced. Feeding this back as a state index
      * rather than as a separate list of qualities keeps everything downstream —
@@ -365,8 +370,8 @@ public final class ChordEstimator {
             }
             if (start.quality() != ChordQuality.NONE) {
                 double[] summed = sum(qualityChroma, i, j);
-                int chosen = path[i];
-                double best = -1;
+                int chosen = -1;
+                double best = 0;
                 for (int t = 0; t < templates.size(); t++) {
                     Template candidate = templates.get(t);
                     if (candidate.quality() == ChordQuality.NONE
@@ -374,18 +379,41 @@ public final class ChordEstimator {
                         continue;
                     }
                     double score = cosine(summed, candidate.profile());
-                    if (score > best) {
+                    if (score > best && score > flatScore(candidate)) {
                         best = score;
                         chosen = t;
                     }
                 }
-                for (int frame = i; frame < j; frame++) {
-                    out[frame] = chosen;
+                // Nothing explained the run better than a flat chroma would, so
+                // there is nothing here to overrule the decoder with.
+                if (chosen >= 0) {
+                    for (int frame = i; frame < j; frame++) {
+                        out[frame] = chosen;
+                    }
                 }
             }
             i = j;
         }
         return out;
+    }
+
+    /**
+     * What a template scores against a chroma carrying no harmonic information —
+     * a flat one — which is sqrt(k/12) for a k-note binary template.
+     *
+     * <p>So a triad scores 0.500 on noise and a dominant seventh 0.577, and an
+     * argmax over the two picks the seventh every time on no evidence whatever,
+     * by template size alone. {@link #NO_CHORD_SIMILARITY} names the same
+     * asymmetry from the other side.
+     *
+     * <p>Used as a floor rather than subtracted off. Removing the size bias from
+     * the ranking as well — scoring by correlation, which is the textbook cure —
+     * costs a great deal on the recordings whose chords really are sevenths and
+     * buys almost nothing on the two whose chords are triads, so the bias is
+     * left where it is earning its keep and stopped where it is not.
+     */
+    private static double flatScore(Template template) {
+        return Math.sqrt(template.quality().intervals().length / 12.0);
     }
 
     /** Chroma summed over the beats {@code [from, to)}. */

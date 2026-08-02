@@ -57,34 +57,26 @@ import org.junit.jupiter.api.Test;
  * test, and it is the reason this comment mentions it: a gate that depends on a
  * committed binary should say where the binary stands.
  *
- * <p>This is the committed gate and not the whole picture, and the difference
- * is large enough to say here. {@code tools/score-samples.py} scores the same
- * question over every benchmark whose ground truth is known, three of which are
- * local-only. Through the shipped CLI, with bars taken from the tracked beat
- * grid rather than from this file's measured loop:
+ * <p>This is the committed gate and not the whole picture. {@code
+ * tools/score-samples.py} scores the same question over every benchmark whose
+ * ground truth is known, four of which are local-only, with bars taken from the
+ * tracked beat grid rather than from this file's measured loop. Its current
+ * reading for all of them is {@code tools/baselines/score-samples.txt}, which
+ * is not restated here: it moves whenever the estimator does, and a copy of it
+ * in this comment has already gone stale once.
  *
- * <pre>
- *   recording                     root    root+quality    before #196
- *   gmajorblues.mp3               84.1%      84.1%       50.2%   48.9%
- *   blues-a-90bpm.mp3             87.6%      84.1%       88.5%   83.2%
- *   blues-shuffle-a-106bpm.mp3    94.4%      16.8%       50.7%    3.3%
- *   blues-e-90bpm.mp3             99.1%      10.8%       48.7%    5.1%
- *   bossa-cm.mp3                  15.3%       2.4%       14.2%    1.9%
- * </pre>
+ * <p>Every benchmark scored 0.0% before #3, on a pipeline returning one N.C.
+ * span per recording, so the direction is not in doubt. What a maintainer
+ * reading that file should know is why its columns are not this file's. The gap
+ * between its root column and the figure this file measures used to be the beat
+ * grid drifting, and #196 closed most of it. Its root and quality columns come
+ * apart where the estimator finds a root and cannot name the chord on it —
+ * {@code fm7-vamp-110.mp3} is minor sevenths throughout and the vocabulary has
+ * none (#272).
  *
- * <p>Every one of those was 0.0% before #3, on a pipeline returning one N.C.
- * span per recording, so the direction is not in doubt. Two things in the
- * spread are worth a maintainer's attention rather than a footnote. The gap
- * between the first column and the 85.7% this file measures used to be the beat
- * grid drifting; #196 closed it, which is what moved four of the five rows and
- * left {@code blues-a-90bpm.mp3} — the one recording whose grid was already
- * right — where it was, one bar down. And the collapse of the quality column on
- * two of the blues tracks is the estimator finding the right roots and calling
- * their sevenths plain triads (#208).
- *
- * <p>{@code bossa-cm.mp3} is the row that is not about bars at all: the tempo
- * estimator reads that recording at about four thirds of its true rate, so
- * there is no phase at which its bars can be right. That is #231 and it is
+ * <p>{@code bossa-cm.mp3} is the benchmark that is not about bars at all: the
+ * tempo estimator reads that recording at about four thirds of its true rate,
+ * so there is no phase at which its bars can be right. That is #231 and it is
  * untouched by this file.
  */
 class BluesLoopIT {
@@ -167,11 +159,12 @@ class BluesLoopIT {
                 .as("share of the recording labelled N.C.")
                 .isLessThan(10.0);
         // Twenty-six cycles of three chords cannot be fewer than a few dozen
-        // spans. Measured: 666, from 740 before #196 -- span boundaries are
-        // tracked beat times, so removing 24 spurious beats removes the spans
-        // they could start. The upper bound is not idle either -- one span per
-        // beat would be about 1260, and a decoder that chatters that badly has
-        // stopped smoothing.
+        // spans. The upper bound is not idle either -- one span per beat would
+        // be about 1260, and a decoder that chatters that badly has stopped
+        // smoothing. The count itself is not asserted because every change to
+        // the beat grid or to how spans are merged moves it: #196 took it from
+        // 740 to 666 by removing spurious beats, and #208 took it down again by
+        // merging the runs the decoder split on quality alone.
         assertThat(chords.size()).isBetween(100, 1100);
     }
 
@@ -192,15 +185,11 @@ class BluesLoopIT {
     void mostBarsCarryTheRightChord() {
         Labelling labelling = labelBars(CYCLE_SECONDS);
 
-        // Measured 85.7% and 85.7%, from 86.6% and 86.3% before #196. The floors
-        // are set well under those: this is a gate against the pipeline
-        // breaking, not a record of its best day.
-        //
-        // The two figures moving together, and downwards, is expected rather
-        // than alarming: chroma is averaged per tracked beat, so changing which
-        // beats there are changes the spans, and this axis is the one the change
-        // could not help -- its bars were already on the music. The axis that
-        // could is #theBarGridFromTheTrackedBeatsAgreesWithTheLoop's.
+        // The floors are set well under what this scores: a gate against the
+        // pipeline breaking, not a record of its best day. The two columns are
+        // no longer equal -- #208 decides quality from the treble register and
+        // over whole chords, which loses this recording a few bars of quality
+        // and gains three other benchmarks a great deal.
         //
         // 58.3% is the number to beat rather than 0%, because seven of the
         // twelve bars are the tonic, so writing G7 in every bar scores that much
