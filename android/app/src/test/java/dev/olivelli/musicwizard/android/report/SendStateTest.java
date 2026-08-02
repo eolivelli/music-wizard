@@ -244,25 +244,49 @@ public class SendStateTest {
     }
 
     /**
-     * A send still running when its take is renamed or deleted files nothing.
+     * A send follows its take through a rename, and lands on the new name.
      *
-     * <p>It reports under the name it was started with, and that name now means
-     * something else or nothing at all. Marking it would put a filed flag on a
-     * take whose audio was never sent — the inherited-state hazard that
-     * {@link SendState#forget} exists to prevent, arriving by the back door.
+     * <p>The worker only ever knows the name the send was started under. If
+     * that is all this tracked, the renamed take would read as never sent —
+     * with the text already on GitHub still in its box and Send live, which is
+     * a duplicate one tap away.
      */
     @Test
-    public void aSendWhoseTakeChangedNameUnderItFilesNothing() {
+    public void aSendFollowsItsTakeThroughARename() {
+        drafts.put(TAKE, "G C D");
         state.beginSend(TAKE);
         state.moved(TAKE, OTHER);
 
+        assertTrue("the take is still sending, under its new name",
+                state.isSending(OTHER));
+        assertFalse(state.canSend(OTHER));
+        assertFalse("and not under the old one", state.isSending(TAKE));
+
         state.finishSend(TAKE, true, "Sent.\nhttps://…");
 
-        assertFalse("the old name must not be marked filed", state.isFiled(TAKE));
-        assertFalse("nor the new one, whose audio this was not", state.isFiled(OTHER));
-        assertNull(state.detailFor(TAKE));
-        assertFalse("and the new name must not read as still sending",
-                state.isSending(OTHER));
+        assertTrue("the result belongs to the take, which is now called this",
+                state.isFiled(OTHER));
+        assertEquals("Sent.\nhttps://…", state.detailFor(OTHER));
+        assertFalse("Send must not come back live on what was just sent",
+                state.canSend(OTHER));
+        assertNull("and the sent text is not left in the box", drafts.get(OTHER));
+        assertFalse(state.isFiled(TAKE));
+        assertFalse("nothing is left reading as in flight", state.isSending(OTHER));
+    }
+
+    /** Through two renames as well: each one moves the same send along. */
+    @Test
+    public void aSendFollowsItsTakeThroughASecondRename() {
+        state.beginSend(TAKE);
+        state.moved(TAKE, OTHER);
+        state.moved(OTHER, "third-name");
+
+        assertTrue(state.isSending("third-name"));
+
+        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+
+        assertTrue(state.isFiled("third-name"));
+        assertFalse(state.isSending("third-name"));
     }
 
     /** The same, for a take deleted mid-send. */

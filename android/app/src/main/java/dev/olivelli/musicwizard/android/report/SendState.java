@@ -16,8 +16,8 @@
 
 package dev.olivelli.musicwizard.android.report;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * What is known about sending each take: in flight, filed, and how the last one
@@ -57,7 +57,19 @@ public final class SendState {
     }
 
     private final Store store;
-    private final Set<String> inFlight = new HashSet<>();
+
+    /**
+     * Sends that are queued or running: the name each was started under, to the
+     * name its take goes by now.
+     *
+     * <p>Two names because the take can be renamed while its send runs, and the
+     * worker reports under the one it captured. Keying by the started name is
+     * what lets {@link #finishSend} find the send; the value is where the result
+     * belongs. Both are needed: keying by the current name loses the send when
+     * it is renamed, and keying only by the started name files the result under
+     * a name that no longer means the same take.
+     */
+    private final Map<String, String> inFlight = new LinkedHashMap<>();
 
     /**
      * How the most recent send ended, and which take it was.
@@ -73,8 +85,9 @@ public final class SendState {
         this.store = store;
     }
 
+    /** By the name the take goes by now, not the one its send was started under. */
     public boolean isSending(String take) {
-        return inFlight.contains(take);
+        return inFlight.containsValue(take);
     }
 
     /**
@@ -118,7 +131,7 @@ public final class SendState {
      * for the life of the process, with Send disabled on every future visit.
      */
     public void beginSend(String take) {
-        inFlight.add(take);
+        inFlight.put(take, take);
     }
 
     /**
@@ -127,13 +140,20 @@ public final class SendState {
      * @param detail the line for the screen — the comment's URL, or why there
      *               is none
      */
-    public void finishSend(String take, boolean worked, String detail) {
-        // Still the take this was started for? If not it was renamed or deleted
-        // while the send ran, and a name that now means something else — or
-        // nothing — must not be marked as filed. The comment is on GitHub
-        // either way; what is dropped is only the bookkeeping about a take that
-        // is no longer there.
-        if (!inFlight.remove(take)) {
+    /**
+     * Records how a send ended.
+     *
+     * @param startedAs the name the take had when {@link #beginSend} was called,
+     *                  which is the only name the worker knows; the result is
+     *                  filed against whatever that take is called now
+     * @param detail    the line for the screen — the comment's URL, or why there
+     *                  is none
+     */
+    public void finishSend(String startedAs, boolean worked, String detail) {
+        String take = inFlight.remove(startedAs);
+        if (take == null) {
+            // Deleted while the send ran. The comment is on GitHub either way;
+            // what is dropped is bookkeeping about a take that is not there.
             return;
         }
         if (worked) {
@@ -154,7 +174,8 @@ public final class SendState {
      * running, be marked filed by it.
      */
     public void forget(String take) {
-        inFlight.remove(take);
+        // By value: the send may have been started under an earlier name.
+        inFlight.values().remove(take);
         store.setDraft(take, "");
         store.setFiled(take, false);
         if (take.equals(lastTake)) {
@@ -164,13 +185,16 @@ public final class SendState {
     }
 
     /**
-     * Carries what is known about a take to its new name.
+     * Carries everything known about a take to its new name, a running send
+     * included.
      *
-     * <p>Everything but a send that is still running. That one keeps the name
-     * it was started under, so {@link #finishSend} finds it gone and discards
-     * its bookkeeping: the alternative is to move the mark and have the take
-     * read as sending for the life of the process, because the worker will
-     * report under the old name and nothing will ever clear the new one.
+     * <p>The send follows the take rather than the name: it stays keyed by the
+     * name it was started under, so the worker can still find it, and its result
+     * lands on the new name. Neither of the simpler answers works. Dropping the
+     * send leaves the renamed take reading as never sent, with the text already
+     * on GitHub still in the box and Send live — a duplicate one tap away.
+     * Re-keying it by the new name loses it, because the worker will report
+     * under the old one and nothing would ever clear the new.
      */
     public void moved(String from, String to) {
         if (from.equals(to)) {
@@ -179,16 +203,27 @@ public final class SendState {
         String draft = store.draft(from);
         boolean wasFiled = store.isFiled(from);
         String detail = detailFor(from);
-        // The destination name is being taken over: whatever was under it
-        // belonged to a take that is not there any more.
+
+        // The destination is written before the source is cleared. These are
+        // separate writes, so a process killed between them leaves either an
+        // unused key under the old name — which the next rename or delete of
+        // that name clears — or, the other way round, the typed sentence gone.
+        // Only one of those is acceptable.
         forget(to);
-        forget(from);
         store.setDraft(to, draft);
         store.setFiled(to, wasFiled);
         if (detail != null) {
             lastTake = to;
             lastDetail = detail;
         }
+
+        store.setDraft(from, "");
+        store.setFiled(from, false);
+        if (from.equals(lastTake)) {
+            lastTake = null;
+            lastDetail = null;
+        }
+        inFlight.replaceAll((startedAs, now) -> now.equals(from) ? to : now);
     }
 
     /**

@@ -30,16 +30,14 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 /**
- * Screen-level facts that live in XML and that nothing else in the build
- * checks: which activities inherit the system-bar padding, which insets that
- * padding counts, and whether the comment field lets the framework keep a
- * second copy of its text.
+ * Screen-level facts that nothing else in this build checks.
  *
- * <p>Nothing else in this build notices either one: a screen that forgets the
- * base class compiles, installs and runs, and is simply drawn underneath the
- * status and action bars on Android 15 — which on the result screen looked like
- * a blank page (#281). There is no emulator here, so these read the manifest and
- * the type mask; what the padding then measures out to is checked on a device.
+ * <p>Each is silent when it goes wrong: a screen that forgets the base class
+ * compiles, installs and runs, and is simply drawn underneath the status and
+ * action bars on Android 15 — which on the result screen looked like a blank
+ * page (#281). There is no emulator here, so these read the manifest, the
+ * layout and the type mask; what any of it measures out to is checked on a
+ * device.
  */
 public class MwActivityTest {
 
