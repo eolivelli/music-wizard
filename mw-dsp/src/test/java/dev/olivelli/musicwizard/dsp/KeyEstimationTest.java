@@ -103,10 +103,12 @@ class KeyEstimationTest {
         @Test
         @DisplayName("a blues is scored on its triads, not on its whole chord spellings")
         void bluesSeventhsAreNotScored() {
-            // The quick-change form, which is the one that separates the two.
             // Widen score()'s triadTones from three to the whole interval set
             // and this fixture answers C major; the canonical form above answers
-            // G major either way, so it cannot stand in for this.
+            // G major either way, so it cannot stand in for this. Widened, the
+            // two keys score identically and C major wins on the same-mode
+            // tie-break, so what this pins is the outcome rather than a margin
+            // -- #278 could change how that tie falls.
             assertThat(keyOf(bars(
                     "G7", "C7", "G7", "G7",
                     "C7", "C7", "G7", "G7",
@@ -169,10 +171,11 @@ class KeyEstimationTest {
         @Test
         @DisplayName("a minor tonic with its dominant stays minor")
         void aMinorWithItsDominantStaysMinor() {
-            // Without the raised-seventh rule this fixture answers E major, not
-            // C major: E7's G sharp is chromatic in both A minor's natural scale
-            // and C major, so the only key left explaining every note is the one
-            // built on the chord that is really the dominant.
+            // No key explains every note here: A minor leaves out E7's G sharp
+            // and E major leaves out Am's C natural, one tone each. Without the
+            // raised-seventh rule the two therefore score identically and the
+            // major prior takes it, so this fixture answers E major. The rule
+            // makes E7 fully diatonic to A minor and the tie becomes a margin.
             assertThat(keyOf(bars("Am", "E7", "Am", "E7", "Am", "E7", "Am", "E7")))
                     .isEqualTo("A minor");
         }
