@@ -681,23 +681,22 @@ final class ChartLayout {
      * no faster than the counted beat", and it is a worse discriminator than it
      * looks. Rounds 1 and 2 of review established why between them, and
      * {@code tools/score-chart.py} now reports both halves of it per recording.
-     * Measured against the <em>tracked</em> beat grid, no change on any of the
-     * seven benchmarks is faster than a beat, and that is structural rather than
-     * lucky: {@code ChordEstimator} takes both boundaries of every span from the
-     * tracked beat times. Measured against the beat the chart's bars are spaced
-     * at, which is the grid's steady rate, <b>3.2% to 38.3%</b> of changes are,
-     * over the seven benchmarks that existed when it was last measured. Over the
-     * five there were when this paragraph was written it is 7.8% to 24.1%, and that range was 12.0%
-     * to 32.9% before #196 and 11.3% to 24.1% before #200.
+     * Measured against the <em>tracked</em> beat grid, no change on any benchmark
+     * is faster than a beat, and that is structural rather than lucky: {@code
+     * ChordEstimator} takes both boundaries of every span from the tracked beat
+     * times. Measured against the beat the chart's bars are spaced at, which is
+     * the grid's steady rate, a good share of them are, and the share differs by
+     * an order of magnitude between recordings. Both columns are in {@code
+     * tools/baselines/score-chart.txt} per recording and are not restated here:
+     * they move whenever the estimator or the corpus does, and the range in this
+     * paragraph has gone stale twice.
      *
-     * <p>The wider spread strengthens the argument rather than complicating it,
-     * and the top of it is the clearest case. {@code eb7-vamp-130.mp3} is a
-     * one-chord vamp -- its harmony never moves -- so its 38.3% is entirely the
-     * estimator changing its mind mid-bar, and 149 of those 175 short gaps are
-     * within a twentieth of one counted beat rather than genuinely faster than
-     * one. That is the cohort effect the next paragraph describes, at its
-     * largest: a gate reading this column would decline to reduce more than a
-     * third of the changes on a recording whose harmony does not move at all.
+     * <p>The spread strengthens the argument rather than complicating it, and
+     * the top of it is the clearest case: it belongs to a one-chord vamp, whose
+     * harmony never moves at all, so every one of its short gaps is the
+     * estimator changing its mind mid-bar rather than harmony that is genuinely
+     * fast. Most of them are within a twentieth of one counted beat, which is
+     * the cohort effect the next paragraph describes, at its largest.
      *
      * <p><b>How much a recording's cell moves is not how much its rate moved</b>,
      * and a draft of this paragraph said it was. Chord gaps are whole multiples
