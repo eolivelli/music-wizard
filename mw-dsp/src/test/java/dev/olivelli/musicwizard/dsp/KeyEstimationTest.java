@@ -92,12 +92,23 @@ class KeyEstimationTest {
         @Test
         @DisplayName("a twelve-bar blues is in the key of its tonic chord")
         void aBluesIsInTheKeyOfItsTonicChord() {
-            // The property, asserted without a claim about which rule reaches
-            // it. Every chord here is a dominant seventh and none of the three
-            // flat sevenths is in G major, so a key finder that took a chord's
-            // whole spelling as evidence would be reading the blues idiom.
+            // The property, on the canonical form, with no claim about which
+            // rule reaches it.
             assertThat(keyOf(bars(
                     "G7", "G7", "G7", "G7",
+                    "C7", "C7", "G7", "G7",
+                    "D7", "C7", "G7", "D7"))).isEqualTo("G major");
+        }
+
+        @Test
+        @DisplayName("a blues is scored on its triads, not on its whole chord spellings")
+        void bluesSeventhsAreNotScored() {
+            // The quick-change form, which is the one that separates the two.
+            // Widen score()'s triadTones from three to the whole interval set
+            // and this fixture answers C major; the canonical form above answers
+            // G major either way, so it cannot stand in for this.
+            assertThat(keyOf(bars(
+                    "G7", "C7", "G7", "G7",
                     "C7", "C7", "G7", "G7",
                     "D7", "C7", "G7", "D7"))).isEqualTo("G major");
         }

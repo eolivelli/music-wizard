@@ -50,21 +50,27 @@ BENCHMARKS = {
 }
 
 # The key each file is in, and how much of that samples/list.txt actually says.
+# Every tonic below is beyond doubt; how much of the *mode* is stated is not,
+# and it varies file by file:
 #
-# Seven are named there outright ("Blues is G Major", "in E", "Bossa nova
-# backing track in C minor", "Slow B minor blues", "in C major"). The other four
-# are read off what it does state:
-#
-#   fm7-vamp-110, eb7-vamp-130   one chord, all the way through. Those two rows
-#       cannot fail -- the tonic-chord weight can name no other key for a
-#       recording holding one chord -- so they are closer to a tautology than a
-#       measurement. Eb7 throughout is as fairly called Eb Mixolydian; the
-#       estimator has no mode beyond major and minor, and Eb major is where it
-#       lands.
-#   waltz-am-e7-160              list.txt states the chords Am E7 and a meter,
-#       not a key. A minor is the reading, and it is the one #275 records.
-#   pop-am-f-c-g-144             likewise: stated as Am F C G, and A minor is
-#       what the file was fetched to probe.
+#   gmajorblues, bossa-cm, bm-blues-slow, pop-c-g-am-f-120
+#       tonic and mode both stated -- "Blues is G Major", "in C minor",
+#       "Slow B minor blues", "in C major".
+#   blues-a-90bpm, blues-shuffle-a-106bpm, blues-e-90bpm
+#       tonic only: "a blues backing track in A", "in E". Major is the reading,
+#       and these are dominant-tonic blues, so it is as fair to call them
+#       Mixolydian as it is for the Eb7 vamp below.
+#   waltz-am-e7-160, pop-am-f-c-g-144
+#       neither: list.txt gives chords and a tempo (Am E7; Am F C G). The minor
+#       reading is #275's, and for the second it is what the file was fetched
+#       to probe.
+#   fm7-vamp-110, eb7-vamp-130
+#       one chord, all the way through, so the key is read off that chord.
+#       Given a recording the estimator hears as one chord these two rows
+#       cannot fail -- the tonic-chord weight can name no other key for it --
+#       which makes them closer to a tautology than a measurement. They are not
+#       quite that in practice, since the estimator does not hear either file as
+#       one chord; the chord table above has how far off it is.
 #
 # The four blues rows are one shape transposed, so they are four readings of one
 # question rather than four questions.

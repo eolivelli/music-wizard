@@ -45,12 +45,11 @@ import java.util.Optional;
  *
  * <h2>Why the triad and not the whole chord</h2>
  *
- * <p>A seventh or a sixth is a colour tone, and in the material this project is
- * aimed at it routinely leaves the key: every chord of a blues is a dominant
- * seventh whose flat seventh the key does not contain. Scoring them asks how
- * bluesy the piece is rather than what key it is in. The triad is what makes a
- * chord that chord, so the triad is what is scored, and sevenths are read for
- * one thing only, below.
+ * <p>A seventh or a sixth is a colour tone that routinely leaves the key. The
+ * triad is what makes a chord that chord, so the triad is what is scored, and a
+ * chord's seventh is read for nothing at all: {@code score} takes three tones
+ * from every quality. The raised seventh below is the <em>key's</em>, and it
+ * reaches this code as a chord's third.
  *
  * <h2>The relative minor</h2>
  *
