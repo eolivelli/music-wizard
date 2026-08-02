@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.notation;
 
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
@@ -59,8 +60,7 @@ public final class ChordChart {
         TimeSignature meter = countedIn(score, bars);
         out.append(tempoLine(score, meter));
         out.append("Meter  ").append(meter).append('\n');
-        score.primaryKey().ifPresent(key -> out.append("Key    ")
-                .append(key.displayName()).append('\n'));
+        score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
         out.append('\n');
 
         for (String line : linesOf(bars)) {
@@ -113,6 +113,19 @@ public final class ChordChart {
         }
         return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
                 meter.countedTempo(quarterBpm), quarterBpm);
+    }
+
+    /**
+     * The key, with how much the pipeline trusts it.
+     *
+     * <p>Qualified rather than stated flat, because on the audio path this row
+     * is an estimate whose failure mode is invisible: a key and its relative
+     * minor share every note, so a wrong answer reads exactly as well as a right
+     * one and only the number distinguishes them.
+     */
+    private static String keyLine(Key key) {
+        return String.format(Locale.ROOT, "Key    %s (%.0f%% confidence)\n",
+                key.displayName(), 100 * key.confidence().value());
     }
 
     /**

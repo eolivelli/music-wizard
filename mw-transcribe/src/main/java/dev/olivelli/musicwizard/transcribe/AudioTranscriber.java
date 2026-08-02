@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
+import dev.olivelli.musicwizard.dsp.KeyEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
@@ -36,6 +37,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -354,9 +356,28 @@ public final class AudioTranscriber {
         ChordProgression chords = ChordEstimator.estimate(chroma, treble, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
+        // Over the whole recording rather than over the chords' own extent: a key
+        // is what the listener hears the piece as being in, and it does not stop
+        // at the last chord the estimator was able to name. Score.keyAt would
+        // otherwise answer nothing for the lead-in and the tail.
+        Optional<KeyEstimator.Estimate> key =
+                KeyEstimator.estimate(chords, 0, audio.durationSeconds());
+        key.ifPresentOrElse(
+                // Both halves reported, because they fail differently and the
+                // user correcting the answer by hand needs to know which one to
+                // look at: naming the signature is the reliable decision, and
+                // choosing between a key and its relative minor is not.
+                estimate -> progress.accept(String.format(Locale.ROOT,
+                        "key %s (signature %.0f%%, tonic over its relative %.0f%%)",
+                        estimate.key().displayName(),
+                        100 * estimate.signatureConfidence().value(),
+                        100 * estimate.tonicConfidence().value())),
+                () -> progress.accept("no chord sounds, so no key was estimated"));
+
         return Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
-                .withChords(chords);
+                .withChords(chords)
+                .withKeys(key.map(estimate -> List.of(estimate.key())).orElse(List.of()));
     }
 
     /**

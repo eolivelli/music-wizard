@@ -300,10 +300,17 @@ synthesised I-V-vi-IV signal and on an actual MP3 encoded from it.
 
 Done: M0 (reactor, domain model, workspace with content-addressed caching,
 layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
-tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
-Four review rounds on `mw-core`.
+tracking, tuning-corrected chroma, chord recognition, key naming, chord chart,
+LilyPond). Four review rounds on `mw-core`.
 
-Still missing: key detection, separation and melody (#8), lyrics (#9), piano
+Key detection (#275) reads the estimated chords, not chroma, and reports two
+confidences because it makes two decisions of very different reliability: the
+key signature, and which of a relative pair is home. The second is what fails —
+a loop that neither begins nor ends on its tonic gives it nothing to work with,
+and it answers at the coin-flip floor rather than pretending. `KeyEstimator`
+carries the rules and `tools/baselines/score-samples.txt` carries the scores.
+
+Still missing: separation and melody (#8), lyrics (#9), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing

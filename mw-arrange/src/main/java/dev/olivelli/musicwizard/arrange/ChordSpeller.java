@@ -49,8 +49,9 @@ import java.util.OptionalDouble;
  * is counted like a keyless score over its own chords, run by run, with the key
  * it abuts breaking a tie its chords cannot.
  *
- * <p>When the score carries no key at all, which is every score the audio path
- * produces, the region is counted the same way from the roots themselves: fewest
+ * <p>When the score carries no key at all -- a MIDI file that declares none, a
+ * hand-assembled score, or a recording nothing sounded in (#275) -- the region is
+ * counted the same way from the roots themselves: fewest
  * accidentals first, which is the
  * criterion #227 asks for with naturals free, and then least spread on the line
  * of fifths. The count alone does not decide the case this exists for -- A sharp

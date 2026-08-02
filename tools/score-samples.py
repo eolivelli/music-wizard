@@ -6,6 +6,11 @@ the instructions in samples/list.txt), this runs the shaded CLI, segments the
 estimated chords into bars on the recording's own tracked beats, aligns the
 known 12-bar cycle at the best rotation, and reports per-bar accuracy.
 
+It then reports the key each file was named with, against the key expected for
+it -- see KEYS below for where each of those comes from, which is not the same
+for all eleven. That table covers four files the chord table does not: their
+bar-by-bar changes are unconfirmed, but the key they are in is not in doubt.
+
 The committed CI gate for the committed sample lives in mw-it; this script is
 the local, all-samples view of the same question: is the tool getting closer
 to the charts a musician would write?
@@ -42,6 +47,37 @@ BENCHMARKS = {
         "Eb7",
     "bossa-cm.mp3":
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
+}
+
+# The key each file is in, from samples/list.txt -- read off what it states,
+# which for some files is a key and for others the chords and the framing. Where
+# it names no mode the reading is #275's.
+#
+# Two of these rows are weaker than the rest and it is worth knowing which. The
+# one-chord vamps cannot fail for a recording the estimator hears as one chord,
+# since the tonic-chord weight can then name no other key -- they are closer to
+# a tautology than a measurement, though not quite one in practice, because the
+# estimator does not hear either file as one chord; the chord table above has
+# how far off it is. And the four blues rows are one shape transposed, so they
+# are four readings of one question rather than four questions.
+#
+# The last two are the pair that is the point of the exercise: the same four
+# chords framed on C and framed on A minor. They share every note, so nothing
+# in the harmony separates them and only where the loop begins and ends does --
+# which is the least reliable thing on a recording. Expect the estimator to say
+# so in its confidence rather than to get both.
+KEYS = {
+    "gmajorblues.mp3": "G major",
+    "blues-a-90bpm.mp3": "A major",
+    "blues-shuffle-a-106bpm.mp3": "A major",
+    "blues-e-90bpm.mp3": "E major",
+    "fm7-vamp-110.mp3": "F minor",
+    "eb7-vamp-130.mp3": "Eb major",
+    "bossa-cm.mp3": "C minor",
+    "bm-blues-slow.mp3": "B minor",
+    "waltz-am-e7-160.mp3": "A minor",
+    "pop-c-g-am-f-120.mp3": "C major",
+    "pop-am-f-c-g-144.mp3": "A minor",
 }
 
 LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
@@ -105,8 +141,7 @@ def bar_label(spans, start: float, end: float):
     return chord_of(best) if best else None
 
 
-def score(mp3: Path, jar: Path, truth: list[str]) -> None:
-    doc = analyze(jar, mp3)
+def score(mp3: Path, doc: dict, truth: list[str]) -> None:
     spans = doc.get("chords", {}).get("chords", [])
     beats = doc.get("beatGrid", {}).get("beats", [])
     downbeats = [b["seconds"] for b in beats if b.get("downbeat")]
@@ -142,6 +177,26 @@ def score(mp3: Path, jar: Path, truth: list[str]) -> None:
           f"  N.C. {100 * nc_time / duration:.1f}% of {duration:.0f}s")
 
 
+def score_key(mp3: Path, doc: dict, want: str) -> None:
+    """The key the run named, against the one expected for the file."""
+    keys = doc.get("keys", [])
+    if not keys:
+        print(f"  key {mp3.name}: none named  want {want}  WRONG")
+        return
+    # The audio path emits one key over the whole recording; a later modulation
+    # stage (#228) would make this the longest, as Score.primaryKey does.
+    key = max(keys, key=lambda k: k["endSeconds"] - k["startSeconds"])
+    tonic = key["tonic"]
+    written = (tonic["letter"] + ACCIDENTAL_SIGN[tonic.get("accidental", "NATURAL")]
+               + " " + key["mode"].lower())
+    print(f"  key {mp3.name}: {written} at {100 * key['confidence']['value']:.0f}%"
+          f"  want {want}  {'OK' if written == want else 'WRONG'}")
+
+
+ACCIDENTAL_SIGN = {"NATURAL": "", "NONE": "", "SHARP": "#", "FLAT": "b",
+                   "DOUBLE_SHARP": "##", "DOUBLE_FLAT": "bb"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
@@ -150,16 +205,40 @@ def main() -> None:
     if not jar.exists():
         sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
 
+    # One analysis per file however many tables read it: the two below ask
+    # different questions of the same run, and analysing twice would let them
+    # disagree. Cached rather than done up front, so each line still appears as
+    # it is measured -- this takes tens of minutes, and a run that prints
+    # nothing until it is over looks hung both here and in the CI job log.
+    analysed = {}
+
+    def doc_for(name: str) -> dict | None:
+        if name not in analysed:
+            mp3 = REPO / "samples" / name
+            analysed[name] = analyze(jar, mp3) if mp3.exists() else None
+        return analysed[name]
+
     print("samples with known ground truth:")
     missing = []
     for name, truth in BENCHMARKS.items():
-        mp3 = REPO / "samples" / name
-        if mp3.exists():
-            score(mp3, jar, truth)
-        else:
+        doc = doc_for(name)
+        if doc is None:
             missing.append(name)
+        else:
+            score(REPO / "samples" / name, doc, truth)
     for name in missing:
         print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
+
+    print("keys, against the expected key for each file:")
+    missing = []
+    for name, want in KEYS.items():
+        doc = doc_for(name)
+        if doc is None:
+            missing.append(name)
+        else:
+            score_key(REPO / "samples" / name, doc, want)
+    for name in missing:
+        print(f"  key {name}: not present (local-only; see samples/list.txt to fetch)")
 
 
 if __name__ == "__main__":

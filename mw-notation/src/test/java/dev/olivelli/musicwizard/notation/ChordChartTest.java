@@ -24,6 +24,8 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -213,6 +215,24 @@ class ChordChartTest {
         Score empty = Score.empty(TempoMap.constant(120), 10);
 
         assertThat(ChordChart.toText(empty)).contains("no chords");
+    }
+
+    @Test
+    @DisplayName("heads the chart with the key and how much it is trusted")
+    void headsTheChartWithTheKey() {
+        // The confidence is on the line because the key's failure mode is
+        // invisible: a wrong relative reads exactly as well as a right one.
+        Score score = fourChordSong(1).withKeys(List.of(Key.ofSeconds(
+                new PitchSpelling(NoteLetter.A, Accidental.NATURAL, 4), Mode.MINOR,
+                0, 8.0, Confidence.of(0.25))));
+
+        assertThat(ChordChart.toText(score)).contains("Key    A minor (25% confidence)");
+    }
+
+    @Test
+    @DisplayName("leaves the key line out when no key was estimated")
+    void omitsTheKeyLineWithoutAKey() {
+        assertThat(ChordChart.toText(fourChordSong(1))).doesNotContain("Key");
     }
 
     @Test

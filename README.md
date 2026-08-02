@@ -272,8 +272,8 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 ## Milestones
 
 - **M0 — Foundation.** Reactor, domain model, workspace, config, CLI. *Done.*
-- **M1b — Audio track.** Decode → beats → chroma → chords. *Chords and chart
-  working; key detection and NNLS chroma still to come.*
+- **M1b — Audio track.** Decode → beats → chroma → chords → key. *Chords, key
+  and chart working.*
 - **M1a — Symbolic track.** MIDI in, MusicXML and MIDI out, staff notation.
 - **M2 — Separation, bass and melody.**
 - **M3 — Lyrics.**

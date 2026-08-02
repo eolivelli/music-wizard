@@ -406,15 +406,23 @@ final class AnalyzeCommand implements Callable<Integer> {
     /**
      * What the audio path reports.
      *
-     * <p>Unchanged, and meant to stay that way. Every figure here is an estimate,
-     * and the running commentary above it has already said so in the verbs it
-     * used.
+     * <p>Every figure here is an estimate, and the running commentary above it
+     * has already said so in the verbs it used. The key carries its confidence
+     * anyway, because it is the one row whose failure mode is invisible: a key
+     * and its relative minor are the same seven notes, so a wrong answer here
+     * reads as plausible as a right one and only the number says which was
+     * settled and which was a coin flip. The row is absent when nothing sounded
+     * and no key was estimated.
      */
     private static List<String> audioSummary(Score score) {
-        return List.of(
-                tempoLine(score),
-                "Meter   " + score.tempoMap().initialTimeSignature(),
-                "Chords  " + score.chords().size() + " spans");
+        List<String> lines = new ArrayList<>();
+        lines.add(tempoLine(score));
+        lines.add("Meter   " + score.tempoMap().initialTimeSignature());
+        score.primaryKey().ifPresent(key -> lines.add(String.format(Locale.ROOT,
+                "Key     %s (%.0f%% confidence)", key.displayName(),
+                100 * key.confidence().value())));
+        lines.add("Chords  " + score.chords().size() + " spans");
+        return List.copyOf(lines);
     }
 
     /**
