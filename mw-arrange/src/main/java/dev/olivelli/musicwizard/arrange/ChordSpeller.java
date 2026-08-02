@@ -304,10 +304,16 @@ public final class ChordSpeller {
      * write whatever the key does not cover, and that is counted over each run of
      * uncovered chords on its own. See {@link #respell(Score)}.
      *
+     * <p>Package-private rather than private because {@link Transposer} asks it
+     * where a keyless score sits, in order to choose the interval that puts the
+     * transposed chart nearest natural. Asking this rather than counting again is
+     * what stops a transposed chart being spelled from a different reading of the
+     * same chords than an untransposed one.
+     *
      * @param beside the region of the key the run abuts, which breaks a tie the
      *               chords cannot; empty when there is no key to abut
      */
-    private static double countedRegion(List<Chord> chords, OptionalDouble beside) {
+    static double countedRegion(List<Chord> chords, OptionalDouble beside) {
         List<Integer> sounding = new ArrayList<>();
         for (Chord chord : chords) {
             if (chord.isNoChord()) {

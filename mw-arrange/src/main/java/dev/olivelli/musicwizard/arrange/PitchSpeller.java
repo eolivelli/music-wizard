@@ -411,8 +411,22 @@ public final class PitchSpeller {
         return spellingOf(best, midiPitch).orElseThrow();
     }
 
-    /** The spelling at a point on the line of fifths, if it is writable. */
-    private static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
+    /**
+     * The spelling at a point on the line of fifths, if it is writable.
+     *
+     * <p>Package-private rather than private because {@link Transposer} writes a
+     * pitch at a position it has already chosen, where every other caller here
+     * searches for the position. Sharing it is the point: this and
+     * {@link #fifthsOf} are inverse, and a second copy of either could put B
+     * sharp somewhere this one does not.
+     *
+     * <p><b>The position is not checked against the pitch, and the answer does
+     * not always sound as it.</b> {@code spellingOf(0, 61)} is C in octave 4,
+     * which sounds 60. Every caller that searches has matched pitch classes
+     * before asking; the one that does not search must check the answer, and
+     * {@code Transposer.displace} does.
+     */
+    static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
         int alteration = Math.floorDiv(fifths + 1, 7);
         return atOctave(letterOfFifths(fifths - 7 * alteration),
                 Accidental.ofAlteration(alteration), midiPitch);
@@ -453,9 +467,11 @@ public final class PitchSpeller {
      * Places a letter and accidental in the octave that makes it sound as the
      * given MIDI pitch.
      *
-     * <p>The division is exact because the caller has already matched pitch
-     * classes, and it is what puts C flat in the octave above the B it sounds
-     * as: C flat 4 sounds as MIDI 59, which is B 3.
+     * <p>The division is what puts C flat in the octave above the B it sounds as:
+     * C flat 4 sounds as MIDI 59, which is B 3. It is exact only where the letter
+     * and accidental already sound as the pitch's class; where they do not, the
+     * answer lands in the octave nearest below and sounds as something else. See
+     * {@link #spellingOf}, which is where a caller can be handed one.
      */
     private static Optional<PitchSpelling> atOctave(NoteLetter letter, Accidental accidental,
                                                     int midiPitch) {
