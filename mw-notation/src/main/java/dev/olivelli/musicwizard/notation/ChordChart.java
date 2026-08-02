@@ -118,11 +118,10 @@ public final class ChordChart {
     /**
      * The key, with how much the pipeline trusts it.
      *
-     * <p>Qualified rather than stated flat. On the audio path the key is a guess
-     * from the estimated chords, and its weakest case -- a piece that shares
-     * every chord with its relative minor -- is one the estimator reports at
-     * barely better than a coin flip. A reader about to transpose from this line
-     * needs to know which of the two they have.
+     * <p>Qualified rather than stated flat, because on the audio path this row
+     * is an estimate whose failure mode is invisible: a key and its relative
+     * minor share every note, so a wrong answer reads exactly as well as a right
+     * one and only the number distinguishes them.
      */
     private static String keyLine(Key key) {
         return String.format(Locale.ROOT, "Key    %s (%.0f%% confidence)\n",

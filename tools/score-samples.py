@@ -6,10 +6,10 @@ the instructions in samples/list.txt), this runs the shaded CLI, segments the
 estimated chords into bars on the recording's own tracked beats, aligns the
 known 12-bar cycle at the best rotation, and reports per-bar accuracy.
 
-It then reports the key each file was named with, against the key stated in
-samples/list.txt. That table covers four files the chord table does not: their
-bar-by-bar changes are not confirmed, but the key they are in is, and the key
-is what is being scored.
+It then reports the key each file was named with, against the key expected for
+it -- see KEYS below for where each of those comes from, which is not the same
+for all eleven. That table covers four files the chord table does not: their
+bar-by-bar changes are unconfirmed, but the key they are in is not in doubt.
 
 The committed CI gate for the committed sample lives in mw-it; this script is
 the local, all-samples view of the same question: is the tool getting closer
@@ -49,16 +49,25 @@ BENCHMARKS = {
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
 }
 
-# The key each file is in.
+# The key each file is in, and how much of that samples/list.txt actually says.
 #
-# Stated by samples/list.txt for nine of them. The two vamps are not: list.txt
-# gives their one chord and the key here is read off it, so those two rows are
-# closer to a tautology than a measurement -- the tonic-chord weight cannot
-# name any other key for a recording holding one chord. (Eb7 throughout is as
-# fairly called Eb Mixolydian; the estimator has no mode beyond major and minor
-# and Eb major is where it puts it.) The four blues rows are one shape
-# transposed, so they are four readings of one question rather than four
-# questions.
+# Seven are named there outright ("Blues is G Major", "in E", "Bossa nova
+# backing track in C minor", "Slow B minor blues", "in C major"). The other four
+# are read off what it does state:
+#
+#   fm7-vamp-110, eb7-vamp-130   one chord, all the way through. Those two rows
+#       cannot fail -- the tonic-chord weight can name no other key for a
+#       recording holding one chord -- so they are closer to a tautology than a
+#       measurement. Eb7 throughout is as fairly called Eb Mixolydian; the
+#       estimator has no mode beyond major and minor, and Eb major is where it
+#       lands.
+#   waltz-am-e7-160              list.txt states the chords Am E7 and a meter,
+#       not a key. A minor is the reading, and it is the one #275 records.
+#   pop-am-f-c-g-144             likewise: stated as Am F C G, and A minor is
+#       what the file was fetched to probe.
+#
+# The four blues rows are one shape transposed, so they are four readings of one
+# question rather than four questions.
 #
 # The last two are the pair that is the point of the exercise: the same four
 # chords framed on C and framed on A minor. They share every note, so nothing
@@ -177,7 +186,7 @@ def score(mp3: Path, doc: dict, truth: list[str]) -> None:
 
 
 def score_key(mp3: Path, doc: dict, want: str) -> None:
-    """The key the run named, against the one samples/list.txt states."""
+    """The key the run named, against the one expected for the file."""
     keys = doc.get("keys", [])
     if not keys:
         print(f"  key {mp3.name}: none named  want {want}  WRONG")
@@ -228,7 +237,7 @@ def main() -> None:
     for name in missing:
         print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
 
-    print("keys, against the key stated in samples/list.txt:")
+    print("keys, against the expected key for each file:")
     missing = []
     for name, want in KEYS.items():
         doc = doc_for(name)

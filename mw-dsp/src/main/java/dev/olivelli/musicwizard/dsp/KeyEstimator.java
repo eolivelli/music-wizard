@@ -45,15 +45,12 @@ import java.util.Optional;
  *
  * <h2>Why the triad and not the whole chord</h2>
  *
- * <p>A seventh or a sixth is a colour tone that routinely leaves the key, and in
- * exactly the material this project is aimed at. In a blues the chord that
- * sounds most is the tonic and it is a dominant seventh, so its flat seventh is
- * foreign to the piece's own key and native to the subdominant's: in a G blues,
- * G7's F natural is in C major and not in G. Counting the sevenths therefore
- * docks the right answer on every tonic bar and the wrong one on none of them.
- * The triad is what makes a chord that chord, so the triad is what is scored;
- * on {@code samples/gmajorblues.mp3} counting all four tones instead comes back
- * C major. Sevenths are read for one thing only, below.
+ * <p>A seventh or a sixth is a colour tone, and in the material this project is
+ * aimed at it routinely leaves the key: every chord of a blues is a dominant
+ * seventh whose flat seventh the key does not contain. Scoring them asks how
+ * bluesy the piece is rather than what key it is in. The triad is what makes a
+ * chord that chord, so the triad is what is scored, and sevenths are read for
+ * one thing only, below.
  *
  * <h2>The relative minor</h2>
  *
@@ -256,6 +253,13 @@ public final class KeyEstimator {
         // Same reason and same shape as DownbeatEstimator's "there was enough of
         // it" factor, which exists because a margin arrived at cheaply reports
         // full confidence in a guess.
+        //
+        // It counts what the chords covered, which is not quite the same as what
+        // the music covered: the lead-in before the first tracked beat and the
+        // tail after the last carry no chord span and are docked here as though
+        // they were silent. On the benchmarks that is a point or two. On a track
+        // opening with a long unpitched intro it would dock a key the harmony
+        // settles outright, which is #280.
         double weighed = Math.clamp(sounding / (endSeconds - startSeconds), 0, 1);
         Confidence signature = confidence(SIGNATURE_BASE, best - otherSignature, weighed);
         Confidence tonic = confidence(TONIC_BASE, best - relative, weighed);
@@ -314,10 +318,10 @@ public final class KeyEstimator {
      * <p>An exact tie is not an edge case: a key and its relative minor score
      * identically whenever nothing in the progression separates them, which is
      * every loop built from the shared seven notes with no dominant in it and
-     * equal time on both tonics. Something has to decide, and scan order must
-     * not, because scan order is not transposition-invariant — deciding by
-     * pitch-class index made the same loop major in three keys and minor in the
-     * other nine, so the answer depended on what the piece was transposed to.
+     * equal time on both tonics. Something has to decide, and an array index
+     * must not: deciding a relative pair by pitch class makes the same loop
+     * major in three keys and minor in the other nine, so the answer moves when
+     * the music is transposed.
      *
      * <p><b>Major wins a tie.</b> With no evidence at all the question is which
      * answer is more often right in the repertoire this tool is aimed at, and
@@ -329,19 +333,23 @@ public final class KeyEstimator {
      * tonic-chord weight are for, and both outrank this.
      *
      * <p><b>A tie between two keys of the same mode goes to the simpler key
-     * signature</b>, and only then to the lowest pitch class. {@code Am Em}
-     * repeated is such a tie -- both chords are in both keys and each key owns
-     * one of them -- and A minor is what a musician writes, because nothing is
-     * asking for the sharp.
+     * signature</b>, and only then to the lowest pitch class. Unlike the step
+     * above it, this one <em>cannot</em> be transposition-invariant and is not:
+     * {@code C G} and {@code C F} are the same shape with opposite right
+     * answers — I–V and I–IV — so no function of the tied set gets both, and
+     * transposing a two-chord vamp moves the answer. It is an editorial
+     * preference, not a reading: with nothing to choose between, write the
+     * simpler key signature. #278 measures how often it is reached.
      *
      * <p>Ties are compared with a tolerance rather than for equality, and that
-     * is load-bearing rather than defensive. The score is a sum over chords in
-     * key order, so two keys that tie in exact arithmetic can differ in the last
-     * bit purely from the order the terms were added in — which is how
-     * {@code C A7 Dm G7} came out D minor. The tolerance sits far above that
-     * error, which grows with the chord count and stays near the precision of a
-     * double, and far below the narrowest margin any real recording here
-     * produces.
+     * is load-bearing rather than defensive. Two keys that tie in exact
+     * arithmetic can still differ in the last bit of a double, because the same
+     * terms are summed in a different order for each; four chords are enough.
+     * Compared for equality, the rules below would never be reached and the
+     * answer would be a function of summation order. The tolerance sits far
+     * above that error, which grows with the chord count and stays near the
+     * precision of a double, and far below the narrowest margin any real
+     * recording here produces.
      */
     private static boolean beats(double[][] scores, int tonic, Mode mode,
                                  int bestTonic, Mode bestMode) {

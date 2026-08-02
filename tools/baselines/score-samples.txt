@@ -6,7 +6,7 @@ samples with known ground truth:
   fm7-vamp-110.mp3: bars=137  root 127/137 (92.7%)  root+quality 0/137 (0.0%)  N.C. 0.3% of 328s
   eb7-vamp-130.mp3: bars=167  root 156/167 (93.4%)  root+quality 94/167 (56.3%)  N.C. 0.3% of 309s
   bossa-cm.mp3: bars=124  root 18/124 (14.5%)  root+quality 4/124 (3.2%)  N.C. 0.0% of 315s
-keys, against the key stated in samples/list.txt:
+keys, against the expected key for each file:
   key gmajorblues.mp3: G major at 29%  want G major  OK
   key blues-a-90bpm.mp3: A major at 45%  want A major  OK
   key blues-shuffle-a-106bpm.mp3: A major at 61%  want A major  OK
