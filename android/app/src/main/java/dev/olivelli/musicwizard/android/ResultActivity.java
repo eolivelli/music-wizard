@@ -16,7 +16,6 @@
 
 package dev.olivelli.musicwizard.android;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
@@ -36,7 +35,7 @@ import java.io.File;
  * still shown and the screen says so; {@code MwAnalysis.writeCache} records why
  * that is the usual case on Android today.
  */
-public final class ResultActivity extends Activity implements AnalysisJobs.Listener {
+public final class ResultActivity extends MwActivity implements AnalysisJobs.Listener {
 
     /** Absolute path of the WAV to show. */
     public static final String EXTRA_WAV = "wav";
