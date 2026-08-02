@@ -28,10 +28,12 @@ round, run:
 tools/premerge.sh
 ```
 
-on your branch merged with current `origin/main`. Its irreplaceable part is
-the harness diff against `tools/baselines/` — only this machine holds the
-local-only benchmark files, so CI cannot check those lines. Any harness
-movement fails it, including an improvement; an improvement is evidence —
+on your branch merged with current `origin/main`. It builds the jar and diffs
+the harnesses; it leaves the test suites to CI, and `--full` runs them here
+too. Its irreplaceable part is the harness diff against `tools/baselines/` —
+only this machine holds the local-only benchmark files, so CI cannot check
+those lines. Any harness movement fails it, including an improvement; an
+improvement is evidence —
 regenerate the baseline (`python3 tools/score-samples.py >
 tools/baselines/score-samples.txt`, same for `score-chart.py`) and commit it
 with your change so the movement is reviewed, never silently absorbed. Paste
@@ -61,17 +63,17 @@ is a useful handover, and it has been done here to good effect.
 
 ## Step 0 — Isolation
 
-Work in a dedicated git worktree with a dedicated local Maven repository,
-seeded from the pristine snapshot so the first build does not re-download the
-world:
+Work in a dedicated git worktree with a dedicated local Maven repository:
 
 ```sh
 git fetch origin
 git worktree add /tmp/wt-issue-<number> -b issue-<number>-<slug> origin/main
 cd /tmp/wt-issue-<number>
-rsync -a ~/.m2-pristine/ /tmp/wt-issue-<number>/.m2/
 export MAVEN_ARGS="-Dmaven.repo.local=/tmp/wt-issue-<number>/.m2"
 ```
+
+The first build in it downloads the dependency closure. That is the price of
+the isolation; pay it rather than sharing a repository.
 
 Pass `-am` on every module-scoped build so siblings come from your source
 tree. Never run `git checkout` in the shared clone. Remove the worktree and
