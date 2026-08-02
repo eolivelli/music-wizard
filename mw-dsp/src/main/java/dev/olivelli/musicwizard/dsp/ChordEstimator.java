@@ -415,11 +415,8 @@ public final class ChordEstimator {
      * winning on weak evidence, which is the cost of keeping the size bias
      * rather than removing it from the ranking as the textbook cures do.
      * {@code ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh} pins
-     * where that starts and stops, and <b>#274 carries the sweep, the two cures
-     * measured against the benchmarks, and why this corpus cannot yet settle
-     * it.</b> Deliberately not summarised here: three review rounds each
-     * corrected a one-sentence account of this behaviour and each account was
-     * wrong in a new way.
+     * three cells of it, and <b>#274 carries the sweep, the two cures measured
+     * against the benchmarks, and why this corpus cannot yet settle it.</b>
      */
     private static double flatScore(Template template) {
         return Math.sqrt(template.quality().intervals().length / 12.0);

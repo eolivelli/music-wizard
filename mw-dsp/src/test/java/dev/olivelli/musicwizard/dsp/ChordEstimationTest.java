@@ -304,10 +304,10 @@ class ChordEstimationTest {
             // as C7 until the triad carries about a quarter of the register.
             // The third assertion is there because the other two depend on a
             // dimension they do not sweep: with the flat seventh absent the
-            // answer is C at every dilution. Between absent and the background
-            // level the answer turns over somewhere that depends on the
-            // dilution, and #274 has the sweep -- do not infer that boundary
-            // from these three points.
+            // answer is C at every dilution. Where it turns over in between,
+            // and whether it turns over below the background level at all,
+            // depends on the dilution -- #274 has the sweep, and three cells
+            // cannot be interpolated.
             assertThat(dilutedTriad(0.15, 1.0)).isEqualTo("C7");
             assertThat(dilutedTriad(0.30, 1.0)).isEqualTo("C");
             assertThat(dilutedTriad(0.15, 0.0)).isEqualTo("C");
