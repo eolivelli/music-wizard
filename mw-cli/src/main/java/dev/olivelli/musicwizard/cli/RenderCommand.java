@@ -17,8 +17,10 @@
 package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.arrange.ChordSpeller;
+import dev.olivelli.musicwizard.arrange.Transposer;
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.ChordChart;
@@ -222,13 +224,14 @@ final class RenderCommand implements Callable<Integer> {
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
-            description = "Transpose every part by this many semitones. Has no effect "
-                    + "yet: nothing reads it (#129).")
+            description = "Transpose every part by this many semitones, up to "
+                    + Transposer.MAX_SEMITONES + " either way. The key moves with the "
+                    + "chords, and both are written for the key the piece lands in.")
     Integer transpose;
 
     @Option(names = "--paper", paramLabel = "SIZE",
             description = "Paper size, e.g. a4 or letter. Has no effect yet: nothing "
-                    + "reads it (#129).")
+                    + "reads it (#180).")
     String paperSize;
 
     @Option(names = "--no-pdf", description = "Write sources only; do not invoke LilyPond.")
@@ -239,6 +242,7 @@ final class RenderCommand implements Callable<Integer> {
         Workspace workspace = Workspace.open(workspaceDirectory);
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         List<Part> requested = requestedParts();
+        int semitones = requestedTransposition(config);
         warnAboutOptionsThatDoNothing(config);
 
         // The score is read before anything is announced, because what can be
@@ -247,6 +251,14 @@ final class RenderCommand implements Callable<Integer> {
         // for, one line further down the same command.
         Score score = workspace.readScore().orElseThrow(() -> new IllegalStateException(
                 "no transcription yet; run: mw analyze " + workspaceDirectory));
+
+        // Before the speller, and that order is the whole design: the transposer
+        // moves the key and every sounding pitch, and the speller then writes
+        // the harmony from the key the piece landed in. The other way round, the
+        // chart would be spelled for the key it came from.
+        Score asAnalysed = score;
+        Transposer.Result transposed = Transposer.transpose(score, semitones);
+        score = transposed.score();
 
         // Once, here, rather than in each emitter. The estimator writes every
         // black key as a sharp from a fixed table, so a chart in B flat major
@@ -272,9 +284,15 @@ final class RenderCommand implements Callable<Integer> {
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Parts      " + String.join(", ",
                 requested.stream().map(Part::partName).toList()));
+        if (semitones != 0) {
+            System.out.println("Transpose  " + transposition(semitones, asAnalysed, score));
+        }
 
         List<Path> written = new ArrayList<>();
-        List<String> warnings = new ArrayList<>();
+        // Seeded with whatever the shift could not move, so that a part left out
+        // is reported next to the files, under the same rule as a PDF whose bars
+        // do not sum.
+        List<String> warnings = new ArrayList<>(transposed.partsLeftOut());
         boolean chartWritten = false;
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
@@ -524,16 +542,64 @@ final class RenderCommand implements Callable<Integer> {
     }
 
     /**
+     * How far to move the score, from the flag or from the config file.
+     *
+     * <p>Read from the <em>effective</em> config, so {@code notation:
+     * transposeSemitones: -2} in {@code workspace.yaml} works exactly as the flag
+     * does -- which is what #129 asked for by name, and is a preference that
+     * belongs in a file rather than in every command line.
+     *
+     * <p>The bound is refused here as well as in {@link Transposer} because the
+     * two refusals are different things. This one is a usage error: it is the
+     * user's typo, and it is reported as picocli reports a bad flag, with exit
+     * code 2 and the usage text. The library's is a guard on a public API. The
+     * <em>comparison</em> is shared, which is
+     * {@link Transposer#isWithinRange}'s reason for existing.
+     */
+    private int requestedTransposition(MusicWizardConfig config) {
+        Integer requested = config.notation() == null ? null
+                : config.notation().transposeSemitones();
+        if (requested == null) {
+            return 0;
+        }
+        if (!Transposer.isWithinRange(requested)) {
+            throw new CommandLine.ParameterException(spec.commandLine(),
+                    "a transposition of " + requested + " semitones is beyond the "
+                            + Transposer.MAX_SEMITONES + " this accepts; pitch classes repeat"
+                            + " every twelve, so a larger shift would print a chart"
+                            + " indistinguishable from a correct one");
+        }
+        return requested;
+    }
+
+    /**
+     * The header line naming the shift and the keys either side of it.
+     *
+     * <p>The keys are named only when the score carries one, and they are
+     * {@code Score.primaryKey()} -- the longest-sounding key -- so on a piece that
+     * modulates this states the shift exactly and its endpoints loosely.
+     */
+    private static String transposition(int semitones, Score before, Score after) {
+        String shift = String.format(Locale.ROOT, "%+d semitone%s",
+                semitones, Math.abs(semitones) == 1 ? "" : "s");
+        Optional<String> from = before.primaryKey().map(Key::displayName);
+        Optional<String> to = after.primaryKey().map(Key::displayName);
+        return from.isPresent() && to.isPresent()
+                ? shift + ", " + from.get() + " to " + to.get()
+                : shift;
+    }
+
+    /**
      * Says which typed options this command will not act on.
      *
      * <p>The same treatment {@code analyze} gives {@code --skip-separation}, and
      * for the reason its javadoc records: silently ignoring a typed instruction
      * is the failure this project keeps finding. It is worse here than there.
-     * {@code --parts voice} names a reason and writes nothing; {@code --transpose
-     * -2} writes every file, exits 0, and hands a singer a chart in the wrong
-     * key -- a confident wrong answer rather than a missing one, which is the
-     * category this whole change exists to remove. Nothing reads either value
-     * (#129).
+     * {@code --parts voice} names a reason and writes nothing; a discarded
+     * notation setting writes every file and exits 0, which is a confident wrong
+     * answer rather than a missing one. {@code --transpose} was the worst of
+     * these and is honoured now (#129); what is left is listed below with the
+     * issue each is waiting on.
      *
      * <p>Read from the <em>effective</em> config rather than from the typed
      * fields, which is the opposite of what {@code analyze} does with its own
@@ -558,25 +624,26 @@ final class RenderCommand implements Callable<Integer> {
         // saying is that somebody asked for something other than what the tool
         // would have done anyway -- and asking for the default is not asking for
         // anything, since honouring it would produce the same chart.
+        // Each carries its own issue number rather than the one this list was
+        // filed under: #129 was two features and the transposition half of it is
+        // done, so a user reading "#129" about a paper size would find an issue
+        // closed by a change that did not touch it.
         List<String> ignored = new ArrayList<>();
-        if (differs(notation.transposeSemitones(), defaults.transposeSemitones())) {
-            ignored.add("the transposition");
-        }
         if (differs(notation.paperSize(), defaults.paperSize())) {
-            ignored.add("the paper size");
+            ignored.add("the paper size (#180)");
         }
         if (differs(notation.capo(), defaults.capo())) {
-            ignored.add("the capo");
+            ignored.add("the capo (#181)");
         }
         if (differs(notation.accidentalPreference(), defaults.accidentalPreference())) {
-            ignored.add("the accidental preference");
+            ignored.add("the accidental preference (#181)");
         }
         if (!ignored.isEmpty()) {
             System.err.println("warning: " + String.join(", ", ignored)
                     + (ignored.size() == 1 ? " has" : " have")
                     + " no effect yet, whether set on the command line or in the workspace"
-                    + " config; nothing reads any notation setting but lilypondPath, so the"
-                    + " chart is engraved exactly as the defaults would engrave it (#129)");
+                    + " config, so the chart is engraved exactly as the defaults would"
+                    + " engrave it");
         }
     }
 
