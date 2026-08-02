@@ -69,6 +69,14 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
 
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
+        // Not gated on there being an analysis: the recording and the player's
+        // own account of it are the ground truth worth filing, and the chart is
+        // whatever the phone happened to make of it.
+        findViewById(R.id.reportButton).setOnClickListener(view -> {
+            Intent intent = new Intent(this, ReportActivity.class);
+            intent.putExtra(ReportActivity.EXTRA_WAV, wav.getAbsolutePath());
+            startActivity(intent);
+        });
     }
 
     @Override

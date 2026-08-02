@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Where a field report goes. The only copy of these in the app.
+
+  The release is looked up by tag rather than by id, so it can be deleted and
+  re-made without an app release; the inbox issue is a number because there is
+  no other way to name an issue. Both must exist before the app can send
+  anything, and both are described where they live.
+-->
+<resources>
+    <string name="report_repo_owner" translatable="false">eolivelli</string>
+    <string name="report_repo_name" translatable="false">music-wizard</string>
+
+    <!-- The rolling prerelease that holds nothing but takes. -->
+    <string name="report_release_tag" translatable="false">field-takes</string>
+
+    <!-- github.com/eolivelli/music-wizard/issues/293, "Field takes inbox". -->
+    <integer name="report_inbox_issue">293</integer>
+</resources>
