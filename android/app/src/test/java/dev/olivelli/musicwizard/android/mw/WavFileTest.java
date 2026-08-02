@@ -212,6 +212,61 @@ public class WavFileTest {
         }
     }
 
+    /**
+     * The encoder gets the file's own bytes, not the mono float conversion.
+     *
+     * <p>FLAC is in the app because these takes are ground truth; feeding a
+     * lossless codec an averaged, rescaled copy would make the word meaningless.
+     * A stereo file is the case that shows it: {@link WavFile#read} would hand
+     * back three averaged samples where the payload holds six.
+     */
+    @Test
+    public void openPcmHandsBackThePayloadUnaltered() throws IOException {
+        File wav = folder.newFile("stereo.wav");
+        short[] samples = {1000, -1000, 32767, -32768, 7, 0};
+        writeWav(wav, 44_100, 2, samples);
+
+        try (WavFile.Pcm pcm = WavFile.openPcm(wav)) {
+            assertEquals(44_100, pcm.format().sampleRate());
+            assertEquals(2, pcm.format().channels());
+            assertEquals(samples.length * 2L, pcm.format().dataBytes());
+            assertEquals(samples.length / 2, pcm.format().frames());
+
+            byte[] payload = new byte[samples.length * 2];
+            int read = 0;
+            while (read < payload.length) {
+                int step = pcm.stream().read(payload, read, payload.length - read);
+                assertTrue("the payload ended early", step > 0);
+                read += step;
+            }
+            for (int i = 0; i < samples.length; i++) {
+                assertEquals("sample " + i, samples[i],
+                        (short) ((payload[2 * i] & 0xFF) | (payload[2 * i + 1] << 8)));
+            }
+        }
+    }
+
+    /** A chunk before the audio is walked past here too, not read as audio. */
+    @Test
+    public void openPcmSkipsChunksBeforeTheAudio() throws IOException {
+        File wav = folder.newFile("with-list.wav");
+        byte[] audio = {0x34, 0x12, 0x78, 0x56};
+        byte[] header = WavFile.header(44_100, 1, audio.length);
+        try (OutputStream out = new FileOutputStream(wav)) {
+            // Everything up to "data", then a LIST chunk, then the data chunk.
+            out.write(header, 0, 36);
+            out.write(new byte[] {'L', 'I', 'S', 'T', 4, 0, 0, 0, 'I', 'N', 'F', 'O'});
+            out.write(header, 36, 8);
+            out.write(audio);
+        }
+        try (WavFile.Pcm pcm = WavFile.openPcm(wav)) {
+            assertEquals(audio.length, pcm.format().dataBytes());
+            byte[] read = new byte[audio.length];
+            assertEquals(audio.length, pcm.stream().read(read));
+            assertArrayEquals(audio, read);
+        }
+    }
+
     /** Writes a canonical file the way {@code Recorder} does: header, then samples. */
     private static void writeWav(File file, int rate, int channels, short[] samples)
             throws IOException {

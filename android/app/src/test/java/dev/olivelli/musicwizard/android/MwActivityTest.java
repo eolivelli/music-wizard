@@ -30,14 +30,14 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 /**
- * Every screen the manifest declares must inherit the system-bar padding, and
- * the padding must count the cutout only where asking for it means anything.
+ * Screen-level facts that nothing else in this build checks.
  *
- * <p>Nothing else in this build notices either one: a screen that forgets the
- * base class compiles, installs and runs, and is simply drawn underneath the
- * status and action bars on Android 15 — which on the result screen looked like
- * a blank page (#281). There is no emulator here, so these read the manifest and
- * the type mask; what the padding then measures out to is checked on a device.
+ * <p>Each is silent when it goes wrong: a screen that forgets the base class
+ * compiles, installs and runs, and is simply drawn underneath the status and
+ * action bars on Android 15 — which on the result screen looked like a blank
+ * page (#281). There is no emulator here, so these read the manifest, the
+ * layout and the type mask; what any of it measures out to is checked on a
+ * device.
  */
 public class MwActivityTest {
 
@@ -46,10 +46,14 @@ public class MwActivityTest {
 
     private static final String MANIFEST = "src/main/AndroidManifest.xml";
 
+    private static final String REPORT_LAYOUT = "src/main/res/layout/activity_report.xml";
+
     private static final List<String> SCREENS = List.of(
             PACKAGE + ".RecordActivity",
             PACKAGE + ".LibraryActivity",
-            PACKAGE + ".ResultActivity");
+            PACKAGE + ".ResultActivity",
+            PACKAGE + ".ReportActivity",
+            PACKAGE + ".TokenActivity");
 
     @Test
     public void everyDeclaredActivityInheritsSystemBarPadding() throws Exception {
@@ -82,6 +86,43 @@ public class MwActivityTest {
                 bars, MwActivity.insetTypes(Build.VERSION_CODES.Q));
         assertEquals("the bars and the cutout from API 30",
                 bars | cutout, MwActivity.insetTypes(Build.VERSION_CODES.R));
+    }
+
+    /**
+     * The comment field must not have its text saved by the framework.
+     *
+     * <p>Its text already lives in the app's preferences, written by
+     * {@code onPause} and read back by {@code onCreate}. The framework's copy
+     * is the same fact stored twice, and restoring it dispatches a text change
+     * that nobody typed — which the send screen reads as "this comment is no
+     * longer the one that was sent" and uses to un-file a take already on
+     * GitHub, deleting the record that says so. Nothing else in the build
+     * notices: it needs a configuration change the manifest does not list, or
+     * a killed process.
+     */
+    @Test
+    public void theCommentFieldDoesNotLetTheFrameworkSaveItsText() throws Exception {
+        Element field = elementById(REPORT_LAYOUT, "@+id/comment");
+        assertEquals("android:saveEnabled on the comment field in " + REPORT_LAYOUT,
+                "false", field.getAttribute("android:saveEnabled"));
+    }
+
+    /** The one element in {@code layout} whose {@code android:id} is {@code id}. */
+    private static Element elementById(String layout, String id) throws Exception {
+        File file = new File(layout);
+        assertTrue("not found from " + new File(".").getAbsolutePath() + ": " + layout,
+                file.isFile());
+        NodeList all = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(file)
+                .getElementsByTagName("*");
+        for (int i = 0; i < all.getLength(); i++) {
+            Element element = (Element) all.item(i);
+            if (id.equals(element.getAttribute("android:id"))) {
+                return element;
+            }
+        }
+        throw new AssertionError("no element with android:id=\"" + id + "\" in " + layout);
     }
 
     /** The fully qualified name of every {@code <activity>} in the manifest. */
