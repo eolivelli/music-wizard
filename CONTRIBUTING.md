@@ -114,9 +114,8 @@ an intended improvement regenerates the baseline in the same PR so the
 movement is reviewed rather than silently absorbed. It does not run the test
 suites, because CI does that on the merge preview; `--full` runs them locally
 as well. **The final gate is CI on the pull request**: the full test matrix
-runs against the PR's merge preview,
-and a PR merges only when the reviewer has approved and every CI check is
-green on the approved head.
+runs against the PR's merge preview, and a PR merges only when the reviewer
+has approved and every CI check is green on the approved head.
 
 A number belongs in prose only if a test asserts it or a committed harness
 reproduces it; otherwise write the qualitative fact. The incidents behind

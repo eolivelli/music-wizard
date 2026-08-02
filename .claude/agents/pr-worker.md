@@ -33,11 +33,10 @@ the harnesses; it leaves the test suites to CI, and `--full` runs them here
 too. Its irreplaceable part is the harness diff against `tools/baselines/` —
 only this machine holds the local-only benchmark files, so CI cannot check
 those lines. Any harness movement fails it, including an improvement; an
-improvement is evidence —
-regenerate the baseline (`python3 tools/score-samples.py >
-tools/baselines/score-samples.txt`, same for `score-chart.py`) and commit it
-with your change so the movement is reviewed, never silently absorbed. Paste
-the gate's output in the PR.
+improvement is evidence — regenerate the baseline (`python3
+tools/score-samples.py > tools/baselines/score-samples.txt`, same for
+`score-chart.py`) and commit it with your change so the movement is reviewed,
+never silently absorbed. Paste the gate's output in the PR.
 
 **The final quality gate is CI on the pull request.** CI runs the full test
 matrix (fast suite, integration with real LilyPond, licensing, the corpus
@@ -157,8 +156,7 @@ rounds established.
 
 - **Round 1 is a full adversarial review** of the whole change.
 - **Later rounds are scoped to the delta**: the fixes and whatever they
-  touched. The full merged-with-`main` verification happens once, at the
-  merge gate — not in every round.
+  touched.
 - A round finding executable defects requires another round after it. Loop
   until a round finds nothing new (`APPROVE`), or only prose
   (`APPROVE_WITH_CORRECTIONS` → fix the text → delta pass on exactly that
