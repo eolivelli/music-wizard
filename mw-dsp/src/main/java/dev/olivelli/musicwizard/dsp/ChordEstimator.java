@@ -91,8 +91,9 @@ import java.util.Objects;
  * chroma and over different spans: the root beat by beat from both registers,
  * the quality once per chord from the treble alone. Why, and what it is worth,
  * is on {@link #estimate(Chroma, Chroma, List)}. The two also read different
- * vocabularies — {@link #DECODED} and {@link #QUALITY_ONLY} — because a
- * template that may not move a root can be admitted on weaker terms.
+ * vocabularies, {@link #DECODED} and {@link #QUALITY_ONLY}, because a template
+ * that competes across roots is a different risk from one that cannot move a
+ * root at all.
  */
 public final class ChordEstimator {
 
@@ -245,6 +246,17 @@ public final class ChordEstimator {
      * {@link #chooseQualities} for what keeps a minor seventh from being
      * reported wherever a dominant one is right, and #287 for the qualities
      * that are not here.
+     *
+     * <p>What it costs on material that has no sevenths in it is the question
+     * #273 is about, and the two plain-triad controls answer it differently.
+     * {@code tools/ChordSweep.java profile} labels every span of {@code
+     * pop-c-g-am-f-120.mp3} exactly as before — no four-note label anywhere, on
+     * a recording where the roots are all found. On {@code
+     * pop-am-f-c-g-144.mp3}, where under half the roots are found on its stated
+     * grid, four-note labels go from 12 spans of 247 to 35. Whether that is the
+     * minor seventh winning on weak evidence or a label on a root that was
+     * already wrong, this corpus cannot say; it is the rate #274 exists to
+     * bring down.
      */
     private static final ChordQuality[] QUALITY_ONLY = {ChordQuality.MINOR_SEVENTH};
 
@@ -527,14 +539,18 @@ public final class ChordEstimator {
 
     /**
      * What a candidate scores against a chroma carrying no harmonic information —
-     * a flat one — which is sqrt(k/12) for a k-note template, less what {@link
-     * #qualityScore} subtracts from a minor-third one, since a flat chroma
-     * carries as much of the major third as of the root.
+     * a flat one. Asked of {@link #qualityScore} rather than derived, because a
+     * second derivation of the same expression is a second thing to keep in
+     * step, and the first attempt at one was wrong above a share of 1.
      *
-     * <p>So a triad scores 0.500 on noise and a dominant seventh 0.577, and an
-     * argmax over the two picks the seventh every time on no evidence whatever,
-     * by template size alone. {@link #NO_CHORD_SIMILARITY} names the same
-     * asymmetry from the other side.
+     * <p>It is sqrt(k/12) for a k-note template — 0.500 for a triad on noise and
+     * 0.577 for a dominant seventh, so an argmax over the two picks the seventh
+     * every time on no evidence whatever, by template size alone; {@link
+     * #NO_CHORD_SIMILARITY} names the same asymmetry from the other side. A
+     * minor-third template scores less, 0.375 and 0.469, because a flat chroma
+     * carries as much of the major third as of anything else and the correction
+     * takes it off. Intended: the floor is the bar a candidate clears, and it
+     * has to be the bar that candidate is actually scored against.
      *
      * <p>Used as a floor rather than subtracted off, and <b>a floor rules out
      * exactly the candidates that fit worse than noise does — it does not rule
@@ -546,10 +562,9 @@ public final class ChordEstimator {
      * against the benchmarks, and why this corpus cannot yet settle it.</b>
      */
     private static double flatScore(Template template) {
-        int notes = template.quality().intervals().length;
-        double correction = template.quality().isMinorish()
-                ? 1 - ROOT_EXPLAINS_MAJOR_THIRD : 0;
-        return (notes - correction) / Math.sqrt(12.0 * notes);
+        double[] flat = new double[12];
+        java.util.Arrays.fill(flat, 1.0 / 12);
+        return qualityScore(flat, template);
     }
 
     /** Chroma summed over the beats {@code [from, to)}. */
@@ -617,6 +632,10 @@ public final class ChordEstimator {
         for (ChordQuality quality : QUALITY_ONLY) {
             addTemplates(templates, quality);
         }
+        if (templates.get(DECODED_STATES - 1).quality() != ChordQuality.NONE) {
+            throw new IllegalStateException("the decoder's states are the first "
+                    + DECODED_STATES + " templates and the last of them is no-chord");
+        }
         return templates;
     }
 
@@ -667,6 +686,11 @@ public final class ChordEstimator {
      * Viterbi decoding over a chain whose only structure is a preference for
      * staying put. This is what turns a chattering frame-wise argmax into
      * something that looks like a chord chart.
+     *
+     * <p>Decodes over the <em>first</em> {@code states} columns and ignores the
+     * rest, which is how {@link #QUALITY_ONLY} stays out of the decoder. The
+     * transition prior is 1/(states-1) per alternative, so the columns it
+     * ignores do not change what it decides either.
      */
     private static int[] viterbi(double[][] logLikelihood, int states) {
         int frames = logLikelihood.length;

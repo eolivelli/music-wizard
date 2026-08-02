@@ -372,8 +372,11 @@ class ChordEstimationTest {
      * #272: the minor seventh, which the quality decision may report and the
      * decoder may not choose.
      *
-     * <p>Shapes measured over the benchmarks by {@code tools/ChordSweep.java
-     * profile}, for the reason the class above gives.
+     * <p>Chroma is built rather than synthesised, for the reason the class above
+     * gives. The two vamps' trebles are what {@code tools/ChordSweep.java
+     * profile} prints for those recordings; the pop bar is one span of {@code
+     * pop-c-g-am-f-120.mp3}, read off the treble the estimator actually gave the
+     * quality decision there; the two-thirds vector is constructed.
      */
     @Nested
     @DisplayName("minor sevenths (#272)")

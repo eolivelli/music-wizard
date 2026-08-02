@@ -68,9 +68,9 @@ whole bar axis on one downbeat, which on a lead-in is the least reliable beat
 there is (#233), and one constant bar length still cannot follow a recording
 that does not hold one (#187). Then: one benchmark's tempo is read at four
 thirds of its true rate (#231), and the vocabulary still has no major seventh,
-sixth or half-diminished, each of which was measured and costs more than it buys
-until four-note candidates can be ranked on something better than which extra
-note is louder (#287, #274).
+sixth, minor sixth or half-diminished, each of which was measured and costs more
+than it buys until four-note candidates can be ranked on something better than
+which extra note is louder (#287, #274).
 
 Dominant sevenths are found now (#208) — they were found on two benchmarks and
 called plain triads on three others whose roots were read nearly perfectly. The

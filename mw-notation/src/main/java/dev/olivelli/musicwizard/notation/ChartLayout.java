@@ -686,7 +686,7 @@ final class ChartLayout {
      * lucky: {@code ChordEstimator} takes both boundaries of every span from the
      * tracked beat times. Measured against the beat the chart's bars are spaced
      * at, which is the grid's steady rate, <b>3.2% to 38.3%</b> of changes are,
-     * over the seven benchmarks there now are. Over the five there were when
+     * over the seven benchmarks there were then. Over the five there were when
      * this paragraph was written it is 7.8% to 24.1%, and that range was 12.0%
      * to 32.9% before #196 and 11.3% to 24.1% before #200.
      *

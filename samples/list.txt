@@ -61,7 +61,10 @@ D0   G7   Cm6  D0-G7
 # yt-dlp metadata. CC-BY files are committed WITH ATTRIBUTION as required;
 # two standard-license files are local-only (gitignored, fetch commands given).
 # Key/tempo/progression lines are the UPLOADER'S STATED CLAIMS, to be
-# confirmed by ear before a file is promoted to a scored benchmark.
+# confirmed before a file is promoted to a scored benchmark. By ear, unless
+# something independent of our own estimator confirms the grid -- see
+# pop-c-g-am-f-120.mp3, the one file promoted without ears so far, for what
+# that took and what it still does not settle (#273).
 # ============================================================================
 
 bm-blues-slow.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=hLeDkqjxWtw)
@@ -94,10 +97,15 @@ footprints-200.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch
 AND minor jazz. Expect failure today; keep as the horizon marker.
 
 pop-c-g-am-f-120.mp3   (CC-BY, RainbowMonkey, https://www.youtube.com/watch?v=B13A7mPu_cs)
-Pop backing track, stated C G Am F at 120 BPM in C major. THE pop progression.
-One chord per bar, as stated. Confirmed by construction rather than by ear:
-scored against that grid the estimator names every bar's root correctly, which
-no wrong grid would allow. Scored, and the corpus's only plain-triad benchmark:
+Pop backing track, stated C G Am F at 120 BPM in C major. THE pop progression,
+and plain triads throughout, which is what makes it worth scoring: it is the
+negative control for every quality the estimator can report (#273).
+Scored. One chord per bar, as stated, and the grid is confirmed without ears:
+the stated 120 BPM in four is a two-second bar, the recording is 114 seconds
+and the tracker finds 57 bars in it. The estimator then names every bar's root
+correctly, which says it does not contradict the stated changes anywhere --
+weaker than hearing them, and it leaves open whether the recording holds
+anything the four chords do not.
 C G Am F
 
 pop-am-f-c-g-144.mp3   (LOCAL ONLY — standard YouTube license)
@@ -116,7 +124,12 @@ trivially complete: every bar is Fm7. Tests harmonic-stasis honesty.
 Fm7
 
 eb7-vamp-130.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=ml4ICs8DKAE)
-One-chord vamp, dominant quality: Eb7 throughout, stated 130 bpm.
+One-chord vamp, dominant quality: Eb7 throughout, stated 130 bpm. The
+uploader's description says two things the truth string cannot: the bass riff
+plays the major seventh of the chord, and the comping riff is a tritone moving
+a half-step up, "D7 Eb7 or Ebm6 Eb7 depending on how you analyse it". So the
+minor third of the written chord really is sounding, which is why this file is
+the one that decides how a minor third is read (#272).
 Eb7
 
 g-blues-shuffle-cc.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=o5xCVtkOPVc)
