@@ -64,11 +64,11 @@ import java.util.TreeMap;
  * was visible and the two accuracy columns alone were not.
  *
  * <p>{@code profile} is the measurement #208 was diagnosed from and the one
- * {@link ChordEstimator#estimate(Chroma, Chroma, List)} tabulates: the mean
+ * {@link ChordEstimator#estimate(Chroma, Chroma, List)} argues from: the mean
  * chroma above the root the estimator itself decoded, per register, and the
  * share of the root-third-fifth mass carried by the flat seventh. A binary
- * four-note template beats the three-note one on the same root exactly when
- * that share clears 2/sqrt(3) - 1.
+ * four-note template beats the major triad on the same root exactly when that
+ * share clears 2/sqrt(3) - 1.
  *
  * <p>Two recordings here are not scored: the pop backing tracks, whose chords
  * are plain triads. They are the negative control the seventh benchmarks need,
@@ -353,7 +353,7 @@ public final class ChordSweep {
         }
         System.out.printf(Locale.ROOT, "%-26s spans=%d, of them dominant sevenths: %d%n",
                 b.file(), chords.size(), sevenths);
-        printProfile(b.file(), "combined", c.combined(), root);
+        printProfile("", "combined", c.combined(), root);
         printProfile("", "treble", c.treble(), root);
         printProfile("", "bass", c.bass(), root);
     }

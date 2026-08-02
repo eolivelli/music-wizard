@@ -263,12 +263,12 @@ public final class ChordEstimator {
      * binary four-note template beats the <em>major</em> triad on the same root
      * exactly when that share clears 2/sqrt(3) - 1.
      *
-     * <p>Read the treble column and the four benchmarks whose chords are
+     * <p>Read the treble column and the five benchmarks whose chords are
      * dominant sevenths all clear the level, while the two whose chords are
-     * plain triads sit an order of magnitude under it. Read the combined column
-     * and two of those four fall below. So the flat seventh is in the chroma on
-     * all of them, and the discriminator was being asked about a vector the bass
-     * had reweighted.
+     * plain triads sit far under it, with nothing in between. Read the combined
+     * column and two of those five fall below. So the flat seventh is in the
+     * chroma on all of them, and the discriminator was being asked about a
+     * vector the bass had reweighted.
      *
      * <p>The bass column says why, and its root row says it plainest: that
      * register puts under a fifth of its energy on the root pitch class on
@@ -277,8 +277,8 @@ public final class ChordEstimator {
      * decision, and under one chroma it was deciding whether a dominant seventh
      * got reported as one.
      *
-     * <p>Two rows of that table do not belong to this argument, and the
-     * threshold is why. It is derived against the major triad, so it says
+     * <p>Two of the recordings it prints do not belong to this argument, and
+     * the threshold is why. It is derived against the major triad, so it says
      * nothing about a chord whose third is minor: on {@code fm7-vamp-110.mp3}
      * the seventh's share clears it in the treble and the minor triad wins all
      * the same, which is right — the recording is minor sevenths throughout and
@@ -287,9 +287,9 @@ public final class ChordEstimator {
      *
      * <p>Quality is also decided once per run of beats sharing a root rather
      * than beat by beat, because a chord is one chord for its whole duration and
-     * its seventh need not sound on every beat of it. The table is a mean and so
-     * cannot show that; what it shows is where the evidence sits, not how much
-     * of it any one span gets. Both halves were needed —
+     * its seventh need not sound on every beat of it. A mean over beats cannot
+     * show that; what it shows is where the evidence sits, not how much of it
+     * any one span gets. Both halves were needed —
      * {@code samples/eb7-vamp-130.mp3} is five minutes of one chord and moves on
      * the grouping, {@code samples/blues-e-90bpm.mp3} moves on the register.
      *
@@ -346,12 +346,15 @@ public final class ChordEstimator {
      * two-stage form calls almost every bar E-flat minor.
      *
      * <p><b>A candidate has to explain the run better than a flat chroma would,
-     * or the decoder's own answer stands.</b> Without that the seventh wins on
-     * no evidence at all: see {@link #flatScore}. The decoder never needed the
-     * rule because {@link #NO_CHORD_SIMILARITY} sits above every template's flat
+     * or the decoder's own answer stands.</b> The decoder never needed that rule
+     * because {@link #NO_CHORD_SIMILARITY} sits above every template's flat
      * score, so a frame carrying no harmony loses to "no chord" before the
      * vocabulary can be biased. This decision reads a different chroma and has
      * no no-chord state to lose to, so it carries the rule itself.
+     *
+     * <p>It rejects evidence that is <em>worse</em> than noise, not evidence
+     * that is merely weak, and {@link #flatScore} is where the difference and
+     * its cost are written down.
      *
      * <p>Returns a new state path: same root and same no-chord decisions as the
      * decoder made, with the quality replaced. Feeding this back as a state index
@@ -406,11 +409,23 @@ public final class ChordEstimator {
      * by template size alone. {@link #NO_CHORD_SIMILARITY} names the same
      * asymmetry from the other side.
      *
-     * <p>Used as a floor rather than subtracted off. Removing the size bias from
-     * the ranking as well — scoring by correlation, which is the textbook cure —
-     * costs a great deal on the recordings whose chords really are sevenths and
-     * buys almost nothing on the two whose chords are triads, so the bias is
-     * left where it is earning its keep and stopped where it is not.
+     * <p>Used as a floor rather than subtracted off, and <b>a floor rules out
+     * exactly the candidates that fit worse than noise does — it does not rule
+     * out a bad fit that is still better than noise.</b> The seventh therefore
+     * keeps winning on weak evidence: a treble holding a major triad and no flat
+     * seventh at all is reported as a seventh until the triad carries something
+     * like a quarter of the register, which
+     * {@code ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh} pins
+     * either side of. #274.
+     *
+     * <p>That is a cost knowingly kept. Removing the size bias from the ranking
+     * as well — by correlation or by rescaling each score into its own headroom,
+     * the two textbook cures — was measured over the whole corpus and takes tens
+     * of points off every recording whose chords really are sevenths, to remove
+     * a handful of false sevenths on the two whose chords are triads. The bias is
+     * left where it is earning its keep and stopped where it is not, and this
+     * corpus cannot yet say more than that: six of its seven scored benchmarks
+     * are seventh recordings, so it has almost no negatives to weigh (#273).
      */
     private static double flatScore(Template template) {
         return Math.sqrt(template.quality().intervals().length / 12.0);

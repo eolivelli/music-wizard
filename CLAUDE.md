@@ -68,16 +68,16 @@ whole bar axis on one downbeat, which on a lead-in is the least reliable beat
 there is (#233), and one constant bar length still cannot follow a recording
 that does not hold one (#187). Then: one benchmark's tempo is read at four
 thirds of its true rate (#231), and the vocabulary has no minor seventh, major
-seventh or half-diminished, so two benchmarks cannot be named at all however
-well they are heard (#272).
+seventh or half-diminished, so one benchmark cannot be named at all however well
+it is heard and another only in part (#272).
 
-Dominant sevenths are found now (#208). They were found on two benchmarks and
-called plain triads on three others whose roots were read nearly perfectly, and
-the cause was not the seventh's loudness but the bass: `combined()` folds in a
-register that can put well over half its energy on the root alone, which sets
-how large a share the seventh has to carry. The root is still decided from both
-registers and the quality now from the treble, once per chord rather than per
-beat. `ChordEstimator` carries the measurement.
+Dominant sevenths are found now (#208) — they were found on two benchmarks and
+called plain triads on three others whose roots were read nearly perfectly. The
+root is still decided from both registers and the quality now from the treble,
+once per chord rather than per beat, which is two changes rather than one
+because different benchmarks needed different halves. It improved every one of
+them and closed none: `ChordEstimator` carries the measurement and
+`tools/baselines/score-samples.txt` the current reading.
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.

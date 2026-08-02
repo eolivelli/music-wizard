@@ -65,14 +65,15 @@ import org.junit.jupiter.api.Test;
  * is not restated here: it moves whenever the estimator does, and a copy of it
  * in this comment has already gone stale once.
  *
- * <p>Every benchmark scored 0.0% before #3, on a pipeline returning one N.C.
- * span per recording, so the direction is not in doubt. What a maintainer
- * reading that file should know is why its columns are not this file's. The gap
- * between its root column and the figure this file measures used to be the beat
- * grid drifting, and #196 closed most of it. Its root and quality columns come
- * apart where the estimator finds a root and cannot name the chord on it —
- * {@code fm7-vamp-110.mp3} is minor sevenths throughout and the vocabulary has
- * none (#272).
+ * <p>Every benchmark that existed then scored 0.0% before #3, on a pipeline
+ * returning one N.C. span per recording, so the direction is not in doubt. What
+ * a maintainer reading that file should know is why its columns are not this
+ * file's. The gap between its root column and the figure this file measures used
+ * to be the beat grid drifting, and #196 closed most of it. Its root and quality
+ * columns come apart for two different reasons, and both are still open: the
+ * estimator finds a root and the vocabulary cannot name the chord on it, which
+ * is {@code fm7-vamp-110.mp3} throughout (#272); or it can and the seventh is
+ * still missed, which #208 improved on every benchmark without closing on any.
  *
  * <p>{@code bossa-cm.mp3} is the benchmark that is not about bars at all: the
  * tempo estimator reads that recording at about four thirds of its true rate,

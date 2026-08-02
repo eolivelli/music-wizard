@@ -175,8 +175,8 @@ class ChordEstimationTest {
      * <p>Chroma is built here rather than synthesised, because the defect is
      * about the <em>proportions</em> between registers on a real mix and a
      * synthesised chord has whatever proportions the synthesiser was asked for.
-     * The vectors below are the shapes measured over the benchmarks, which
-     * {@link ChordEstimator#estimate(Chroma, Chroma, List)} tabulates.
+     * The vectors below are the shapes {@code tools/ChordSweep.java profile}
+     * measures over the benchmarks.
      */
     @Nested
     @DisplayName("dominant sevenths (#208)")
@@ -290,6 +290,38 @@ class ChordEstimationTest {
             assertThat(ChordEstimator
                     .estimate(combined, beats(silent, silent, silent, silent), times)
                     .chords()).extracting(Chord::symbol).containsExactly("Am");
+        }
+
+        @Test
+        @DisplayName("a treble that barely says anything is still called a seventh")
+        void weakTrebleEvidenceStillFavoursTheSeventh() {
+            // What the evidence floor does not do, pinned so that it is not
+            // mistaken for what it does. The floor rejects a candidate that fits
+            // worse than noise; it cannot reject one that fits badly but better
+            // than noise, and there the four-note template still wins on size.
+            //
+            // A C major triad diluted into an otherwise flat treble, with no
+            // flat seventh anywhere in it, comes back as C7 until the triad
+            // carries something like a quarter of the register. That is the cost
+            // of keeping the size bias, which the corpus says is worth keeping
+            // (see ChordEstimator.flatScore) and cannot yet say more about,
+            // having almost no triad recordings in it. #274.
+            assertThat(dilutedTriad(0.15)).isEqualTo("C7");
+            assertThat(dilutedTriad(0.30)).isEqualTo("C");
+        }
+
+        /** A C major triad carrying {@code share} of an otherwise flat treble. */
+        private static String dilutedTriad(double share) {
+            double[] treble = new double[12];
+            java.util.Arrays.fill(treble, (1 - share) / 12);
+            for (int i : new int[] {0, 4, 7}) {
+                treble[i] += share / 3;
+            }
+            double[] combined = chroma(0.28, 0.26, 0.26, 0);
+            return ChordEstimator.estimate(
+                            beats(combined, combined, combined, combined),
+                            beats(treble, treble, treble, treble), beatTimes(4))
+                    .chords().get(0).symbol();
         }
 
         @Test
