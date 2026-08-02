@@ -302,12 +302,12 @@ class ChordEstimationTest {
             //
             // A C major triad diluted into an otherwise flat treble comes back
             // as C7 until the triad carries about a quarter of the register.
-            // What makes that happen is that the flat seventh sits at the
-            // background level along with every other non-chord tone -- the
-            // third assertion is the one that says so, and it is the boundary
-            // #274 has to be measured against. Take the seventh below that floor
-            // and the answer is C at every dilution: this is a failure to tell a
-            // near-flat treble apart, not a seventh invented against evidence.
+            // The third assertion is there because the other two depend on a
+            // dimension they do not sweep: with the flat seventh absent the
+            // answer is C at every dilution. Between absent and the background
+            // level the answer turns over somewhere that depends on the
+            // dilution, and #274 has the sweep -- do not infer that boundary
+            // from these three points.
             assertThat(dilutedTriad(0.15, 1.0)).isEqualTo("C7");
             assertThat(dilutedTriad(0.30, 1.0)).isEqualTo("C");
             assertThat(dilutedTriad(0.15, 0.0)).isEqualTo("C");
