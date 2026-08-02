@@ -219,6 +219,22 @@ class TransposerTest {
         }
 
         @Test
+        @DisplayName("a chord root the shift pushes off the keyboard is still written")
+        void aRootTooHighToSoundIsStillASymbol() {
+            // A symbol has no printed octave, so a root that cannot sound where
+            // the shift puts it is written in the octave the estimators use
+            // rather than refusing the chart. B sharp in octave 9 sounds past
+            // MIDI 127 before anything moves; PitchSpelling says it may.
+            Score score = keyed("C4", Mode.MAJOR).withChords(progression("B#9"));
+
+            Chord moved = transpose(score, 2).score().chords().chords().get(0);
+
+            assertThat(moved.root().pitchClass())
+                    .isEqualTo(Math.floorMod(PitchSpelling.parse("B#9").pitchClass() + 2, 12));
+            assertThat(moved.root().midiPitch()).isBetween(0, 127);
+        }
+
+        @Test
         @DisplayName("everything about a chord but its written pitches is untouched")
         void onlyThePitchesMove() {
             Chord source = Chord.ofSeconds(PitchSpelling.parse("A#4"),
@@ -274,6 +290,26 @@ class TransposerTest {
         }
 
         @Test
+        @DisplayName("a note whose spelling does not sound as its own pitch is not made to sound wrong")
+        void aSpellingThatContradictsItsPitchIsRewrittenRatherThanDisplaced() {
+            // Nothing validates the two halves of a Note against each other, so
+            // a score read off disk can carry a pitch of 61 written as C4, which
+            // sounds 60. Displacing the position anyway would move the sound as
+            // well as the spelling.
+            Note contradictory = new Note(0, 1.0, 61, Note.DEFAULT_VELOCITY,
+                    Optional.of(PitchSpelling.parse("C4")), Optional.empty(),
+                    Optional.empty(), Confidence.of(0.8));
+            Score score = keyed("C4", Mode.MAJOR).withTrack(
+                    new NoteTrack(PartRole.LEAD_VOCAL, "melody", List.of(contradictory),
+                            Confidence.of(0.8)));
+
+            Note moved = transpose(score, 2).score().tracks().get(0).notes().get(0);
+
+            assertThat(moved.midiPitch()).isEqualTo(63);
+            assertThat(moved.spelling().orElseThrow().midiPitch()).isEqualTo(63);
+        }
+
+        @Test
         @DisplayName("a spelling the shift would push past a double sharp degrades to a printable one")
         void anUnprintableDisplacementFallsBack() {
             // B sharp sits twelve steps up the line of fifths; seven more would
@@ -305,6 +341,16 @@ class TransposerTest {
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(keyName(charted(transpose(cMajorPop(), Transposer.MAX_SEMITONES))))
                     .isEqualTo("C major");
+        }
+
+        @Test
+        @DisplayName("the most negative int is refused too, which an absolute value would not be")
+        void theOneShiftAnAbsoluteValueLetsThrough() {
+            // Math.abs(Integer.MIN_VALUE) is itself, and is negative, so a bound
+            // written that way passes exactly this input.
+            assertThat(Transposer.isWithinRange(Integer.MIN_VALUE)).isFalse();
+            assertThatThrownBy(() -> Transposer.transpose(cMajorPop(), Integer.MIN_VALUE))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test

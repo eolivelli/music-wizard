@@ -273,8 +273,7 @@ class RenderPartsTest {
         void reallyDoNothing() throws Exception {
             // The warning is only honest if the claim behind it is true. If a
             // paper size starts changing the chart, the warning is what to
-            // delete. --transpose was here too until #129 landed, which is what
-            // RenderTransposeTest now holds.
+            // delete.
             Path plain = audioWorkspace("plain", fourChords());
             Path shifted = audioWorkspace("shifted", fourChords());
 

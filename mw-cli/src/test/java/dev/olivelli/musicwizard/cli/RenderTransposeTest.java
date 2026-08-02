@@ -202,6 +202,21 @@ class RenderTransposeTest {
             assertThat(render.err()).contains("50").contains("24");
             assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
         }
+
+        @Test
+        @DisplayName("the most negative int is refused too, which an absolute value would not be")
+        void theOneShiftAnAbsoluteValueLetsThrough() {
+            // Math.abs(Integer.MIN_VALUE) is itself, and is negative, so a bound
+            // written that way passes exactly this input -- and it printed a
+            // chart in a key nobody asked for and exited 0.
+            Path workspace = cMajorWorkspace("song");
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--transpose", String.valueOf(Integer.MIN_VALUE), "--no-pdf");
+
+            assertThat(render.exitCode()).isEqualTo(2);
+            assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
+        }
     }
 
     @Nested
@@ -257,8 +272,11 @@ class RenderTransposeTest {
             CliRunner.Result render = CliRunner.run(
                     "render", workspace.toString(), "--transpose", "12", "--no-pdf");
 
-            assertThat(render.all().indexOf("was left out"))
-                    .isGreaterThan(render.all().indexOf("chords.ly"));
+            // transcript(), not all(): all() is stdout concatenated with
+            // stderr, so the notice would follow the file list in it whichever
+            // was written first. Only the interleaved capture can answer this.
+            assertThat(render.transcript().indexOf("was left out"))
+                    .isGreaterThan(render.transcript().indexOf("chords.ly"));
         }
     }
 

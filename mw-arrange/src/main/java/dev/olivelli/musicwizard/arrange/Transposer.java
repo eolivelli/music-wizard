@@ -68,15 +68,6 @@ import java.util.OptionalDouble;
  * <p>A note's spelling is displaced and never re-derived. A chromatic note the
  * source spelled deliberately -- a MIDI key signature, or a user's correction --
  * means something that re-deriving would guess at again.
- *
- * <h2>Two refusals</h2>
- *
- * <p>Beyond {@link #MAX_SEMITONES} either way is rejected, and a part holding a
- * note the shift would push outside MIDI 0..127 is left out and named. Both
- * exist because the alternative is a page that looks right: {@code --transpose
- * 50} typed for {@code --transpose 5} would otherwise print a chart two semitones
- * up and exit 0, and a part with one note left where it was would be correct
- * everywhere except there.
  */
 public final class Transposer {
 
@@ -103,7 +94,25 @@ public final class Transposer {
     private static final int MIN_PITCH = 0;
     private static final int MAX_PITCH = 127;
 
+    /** MIDI C4, the octave every estimator writes a chord root in. */
+    private static final int SYMBOL_OCTAVE = 60;
+
     private Transposer() {
+    }
+
+    /**
+     * Whether a shift is one this will perform.
+     *
+     * <p>Exposed so that the bound is compared in one place. {@code render}
+     * refuses an out-of-range shift as a usage error, before it opens the
+     * workspace, and needs its own wording for that -- but not its own
+     * comparison, which is how the two come apart. Written the obvious way, as
+     * {@code Math.abs(semitones) > MAX_SEMITONES}, both let {@link
+     * Integer#MIN_VALUE} through: its absolute value is itself, and is negative.
+     * That one input printed a chart in a key nobody asked for and exited 0.
+     */
+    public static boolean isWithinRange(int semitones) {
+        return semitones >= -MAX_SEMITONES && semitones <= MAX_SEMITONES;
     }
 
     /**
@@ -122,6 +131,7 @@ public final class Transposer {
     public record Result(Score score, List<String> partsLeftOut) {
         public Result {
             Objects.requireNonNull(score, "score");
+            Objects.requireNonNull(partsLeftOut, "partsLeftOut");
             partsLeftOut = List.copyOf(partsLeftOut);
         }
     }
@@ -141,7 +151,7 @@ public final class Transposer {
      */
     public static Result transpose(Score score, int semitones) {
         Objects.requireNonNull(score, "score");
-        if (Math.abs(semitones) > MAX_SEMITONES) {
+        if (!isWithinRange(semitones)) {
             throw new IllegalArgumentException("a transposition of " + semitones
                     + " semitones is beyond the " + MAX_SEMITONES + " this accepts");
         }
@@ -186,6 +196,13 @@ public final class Transposer {
      * are written a turn away from its own new signature. Its chord symbols are
      * not, because {@code render} re-spells those from the key in force under
      * them.
+     *
+     * <p>The keyless branch has a second gap of the same shape and is #299.
+     * "Nearest natural" is not quite the rank {@code ChordSpeller.cheapestRegion}
+     * applies, so at the F sharp against G flat boundary the two can choose
+     * regions a turn apart -- and there a note comes out written {@code Cb} under
+     * a symbol reading {@code B}. Only a score carrying spelled notes and no key
+     * reaches it, which no stage produces today.
      */
     private static int displacement(Score score, int semitones) {
         int source = score.primaryKey()
@@ -280,20 +297,18 @@ public final class Transposer {
     /**
      * A chord symbol's written pitch, moved.
      *
-     * <p>Folded back into the playable range by octaves when the shift leaves it,
-     * where a note's would refuse: an octave is part of what a note means and no
-     * part of what a symbol means, since nothing prints the octave of a chord
-     * root. Unreachable from the pipeline, whose estimators write every root in
-     * octave 4, and reachable from a score read off disk.
+     * <p>Rewritten into the octave the estimators use when the shift leaves the
+     * playable range, where a note's would refuse: an octave is part of what a
+     * note means and no part of what a symbol means, since nothing prints the
+     * octave of a chord root. Unreachable from the pipeline, which writes every
+     * root in octave 4, and reachable from a score read off disk -- a spelling
+     * may sound past MIDI 127 and {@link PitchSpelling} says so.
      */
     private static PitchSpelling displaceSymbol(PitchSpelling written, int semitones,
                                                 int displacement) {
         int pitch = written.midiPitch() + semitones;
-        while (pitch > MAX_PITCH) {
-            pitch -= 12;
-        }
-        while (pitch < MIN_PITCH) {
-            pitch += 12;
+        if (pitch < MIN_PITCH || pitch > MAX_PITCH) {
+            pitch = Math.floorMod(pitch, SEMITONES_PER_OCTAVE) + SYMBOL_OCTAVE;
         }
         return displace(written, pitch, displacement);
     }
@@ -312,7 +327,14 @@ public final class Transposer {
      */
     private static PitchSpelling displace(PitchSpelling written, int pitch, int displacement) {
         int moved = PitchSpeller.fifthsOf(written) + displacement;
-        if (moved >= PitchSpeller.MIN_FIFTHS && moved <= PitchSpeller.MAX_FIFTHS) {
+        // The position has to sound as the pitch, which it does whenever the
+        // source spelling sounded as the pitch it was displaced from. A score
+        // read off disk can carry one that does not -- nothing validates the two
+        // halves of a Note against each other -- and taking the position anyway
+        // would move the sound as well as the spelling.
+        if (Math.floorMod(moved * FIFTHS_PER_SEMITONE, SEMITONES_PER_OCTAVE)
+                        == Math.floorMod(pitch, SEMITONES_PER_OCTAVE)
+                && moved >= PitchSpeller.MIN_FIFTHS && moved <= PitchSpeller.MAX_FIFTHS) {
             Optional<PitchSpelling> exact = PitchSpeller.spellingOf(moved, pitch);
             if (exact.isPresent()) {
                 return exact.get();

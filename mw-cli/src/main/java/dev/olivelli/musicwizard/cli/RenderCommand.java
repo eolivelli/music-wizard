@@ -549,11 +549,12 @@ final class RenderCommand implements Callable<Integer> {
      * does -- which is what #129 asked for by name, and is a preference that
      * belongs in a file rather than in every command line.
      *
-     * <p>The bound is checked here as well as in {@link Transposer} because the
+     * <p>The bound is refused here as well as in {@link Transposer} because the
      * two refusals are different things. This one is a usage error: it is the
      * user's typo, it is reported as picocli reports a bad flag, and it happens
-     * before the workspace is read. The library's is a guard on a public API that
-     * no longer has this command as its only caller.
+     * before the workspace is read. The library's is a guard on a public API. The
+     * <em>comparison</em> is shared, which is
+     * {@link Transposer#isWithinRange}'s reason for existing.
      */
     private int requestedTransposition(MusicWizardConfig config) {
         Integer requested = config.notation() == null ? null
@@ -561,7 +562,7 @@ final class RenderCommand implements Callable<Integer> {
         if (requested == null) {
             return 0;
         }
-        if (Math.abs(requested) > Transposer.MAX_SEMITONES) {
+        if (!Transposer.isWithinRange(requested)) {
             throw new CommandLine.ParameterException(spec.commandLine(),
                     "a transposition of " + requested + " semitones is beyond the "
                             + Transposer.MAX_SEMITONES + " this accepts; pitch classes repeat"
