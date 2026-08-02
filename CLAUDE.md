@@ -241,9 +241,11 @@ them are in `docs/history.md`. The short version:
   current `origin/main`) — its irreplaceable part is the harness diff against
   `tools/baselines/`, which CI cannot run in full because the local-only
   benchmark files never leave this machine. Any movement fails; intended
-  improvements regenerate the baseline in the same PR. **Finally, CI on the
-  pull request is the quality gate**: full matrix against the merge preview;
-  merge only on reviewer approval plus every check green on the approved head.
+  improvements regenerate the baseline in the same PR. It leaves the test
+  suites to CI, which runs them on the merge preview anyway; `--full` runs
+  them locally too. **Finally, CI on the pull request is the quality gate**:
+  full matrix against the merge preview; merge only on reviewer approval plus
+  every check green on the approved head.
 - **Round 1 is a full adversarial review; later rounds are scoped to the
   delta.** Loop until a round finds nothing new, or only prose
   (`APPROVE_WITH_CORRECTIONS` → delta pass on the changed text → merge).
@@ -285,10 +287,10 @@ them are in `docs/history.md`. The short version:
   - When a fact changes, grep for every statement of it before editing one. That
     is the cheapest way to stop the next round.
 - **One git worktree per task, one local Maven repository per worktree**
-  (seed it: `rsync -a ~/.m2-pristine/ <worktree>/.m2/`, then
-  `-Dmaven.repo.local` via `MAVEN_ARGS` and `-am` on every build). Never
-  `git checkout` in the shared clone. The incidents behind each half are in
-  `docs/history.md`.
+  (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
+  build downloads the dependency closure; that is the price of the isolation.
+  Never `git checkout` in the shared clone. The incidents behind each half are
+  in `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.

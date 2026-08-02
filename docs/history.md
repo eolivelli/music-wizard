@@ -77,8 +77,11 @@ its commit landed on another agent's branch, silently. Hence one worktree per
 task. A shared `~/.m2` then carried one agent's `install`ed artifacts into
 another's build — six rounds of one PR's greens were resolved against a
 sibling another agent was actively rewriting (PR #81's report). Hence one
-local repository per worktree, `-am` on every build, seeded from
-`~/.m2-pristine` to avoid re-downloading.
+local repository per worktree and `-am` on every build, at the cost of one
+download of the dependency closure per worktree. Seeding that repository from
+a snapshot to skip the download was documented and never worked: the snapshot
+directory did not exist, so the `rsync` failed and every worktree downloaded
+anyway (#289).
 
 ## Refuted-by-measurement PRs, kept as precedent
 
