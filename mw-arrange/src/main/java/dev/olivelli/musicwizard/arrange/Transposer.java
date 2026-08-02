@@ -104,9 +104,9 @@ public final class Transposer {
      * Whether a shift is one this will perform.
      *
      * <p>Exposed so that the bound is compared in one place. {@code render}
-     * refuses an out-of-range shift as a usage error, before it opens the
-     * workspace, and needs its own wording for that -- but not its own
-     * comparison, which is how the two come apart. Written the obvious way, as
+     * refuses an out-of-range shift as a usage error and needs its own wording
+     * for that -- but not its own comparison, which is how the two come apart.
+     * Written the obvious way, as
      * {@code Math.abs(semitones) > MAX_SEMITONES}, both let {@link
      * Integer#MIN_VALUE} through: its absolute value is itself, and is negative.
      * That one input printed a chart in a key nobody asked for and exited 0.
@@ -327,15 +327,16 @@ public final class Transposer {
      */
     private static PitchSpelling displace(PitchSpelling written, int pitch, int displacement) {
         int moved = PitchSpeller.fifthsOf(written) + displacement;
-        // The position has to sound as the pitch, which it does whenever the
-        // source spelling sounded as the pitch it was displaced from. A score
-        // read off disk can carry one that does not -- nothing validates the two
-        // halves of a Note against each other -- and taking the position anyway
-        // would move the sound as well as the spelling.
-        if (Math.floorMod(moved * FIFTHS_PER_SEMITONE, SEMITONES_PER_OCTAVE)
-                        == Math.floorMod(pitch, SEMITONES_PER_OCTAVE)
-                && moved >= PitchSpeller.MIN_FIFTHS && moved <= PitchSpeller.MAX_FIFTHS) {
-            Optional<PitchSpelling> exact = PitchSpeller.spellingOf(moved, pitch);
+        if (moved >= PitchSpeller.MIN_FIFTHS && moved <= PitchSpeller.MAX_FIFTHS) {
+            // Asked of the answer rather than of a pitch-class table of its own,
+            // which would be a second copy of the mapping PitchSpeller warns
+            // against keeping two of. The position sounds as the pitch whenever
+            // the source spelling sounded as the pitch it was displaced from; a
+            // score read off disk can carry one that does not, since nothing
+            // validates the two halves of a Note against each other, and taking
+            // the position anyway would move the sound as well as the spelling.
+            Optional<PitchSpelling> exact = PitchSpeller.spellingOf(moved, pitch)
+                    .filter(candidate -> candidate.midiPitch() == pitch);
             if (exact.isPresent()) {
                 return exact.get();
             }

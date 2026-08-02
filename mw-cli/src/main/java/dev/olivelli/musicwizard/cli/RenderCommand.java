@@ -225,8 +225,8 @@ final class RenderCommand implements Callable<Integer> {
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
             description = "Transpose every part by this many semitones, up to "
-                    + "24 either way. The key moves with the chords, and both are "
-                    + "written for the key the piece lands in.")
+                    + Transposer.MAX_SEMITONES + " either way. The key moves with the "
+                    + "chords, and both are written for the key the piece lands in.")
     Integer transpose;
 
     @Option(names = "--paper", paramLabel = "SIZE",
@@ -551,8 +551,8 @@ final class RenderCommand implements Callable<Integer> {
      *
      * <p>The bound is refused here as well as in {@link Transposer} because the
      * two refusals are different things. This one is a usage error: it is the
-     * user's typo, it is reported as picocli reports a bad flag, and it happens
-     * before the workspace is read. The library's is a guard on a public API. The
+     * user's typo, and it is reported as picocli reports a bad flag, with exit
+     * code 2 and the usage text. The library's is a guard on a public API. The
      * <em>comparison</em> is shared, which is
      * {@link Transposer#isWithinRange}'s reason for existing.
      */

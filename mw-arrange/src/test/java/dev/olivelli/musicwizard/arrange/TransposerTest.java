@@ -179,9 +179,11 @@ class TransposerTest {
         @Test
         @DisplayName("a keyless score is moved from where its own chords sit")
         void aKeylessScoreIsMovedFromItsChords() {
-            // The MIDI path with no key signature, and what the audio path was
-            // before #275. There is no signature to move, so the interval comes
-            // from the region ChordSpeller would count for these chords.
+            // A MIDI file declaring no key signature, and a recording nothing
+            // sounded in: KeyEstimator returns nothing when every span is
+            // N.C., so the audio path reaches here too. There is no signature to
+            // move, so the interval comes from the region ChordSpeller would
+            // count for these chords.
             Score keyless = Score.empty(TempoMap.constant(120), 8.0)
                     .withChords(progression("A#4", "F4", "G4", "D#4"));
 
@@ -231,7 +233,7 @@ class TransposerTest {
 
             assertThat(moved.root().pitchClass())
                     .isEqualTo(Math.floorMod(PitchSpelling.parse("B#9").pitchClass() + 2, 12));
-            assertThat(moved.root().midiPitch()).isBetween(0, 127);
+            assertThat(moved.root().octave()).isEqualTo(4);
         }
 
         @Test

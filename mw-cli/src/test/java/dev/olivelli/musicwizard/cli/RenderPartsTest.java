@@ -275,12 +275,12 @@ class RenderPartsTest {
             // paper size starts changing the chart, the warning is what to
             // delete.
             Path plain = audioWorkspace("plain", fourChords());
-            Path shifted = audioWorkspace("shifted", fourChords());
+            Path lettered = audioWorkspace("lettered", fourChords());
 
             CliRunner.run("render", plain.toString(), "--no-pdf");
-            CliRunner.run("render", shifted.toString(), "--paper", "letter", "--no-pdf");
+            CliRunner.run("render", lettered.toString(), "--paper", "letter", "--no-pdf");
 
-            assertThat(java.nio.file.Files.readString(shifted.resolve("out/chords.ly")))
+            assertThat(java.nio.file.Files.readString(lettered.resolve("out/chords.ly")))
                     .as("#180 has landed; delete the warning and this test")
                     .isEqualTo(java.nio.file.Files.readString(plain.resolve("out/chords.ly")));
         }
