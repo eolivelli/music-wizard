@@ -317,7 +317,8 @@ public final class ChordChart {
      * bars -- by {@code tools/score-chart.py}, which scores what the chart
      * prints, and by {@code ChordChartEngravingIT}, which counts them against
      * the bar lines LilyPond drew. Here nothing but chords is ever written on
-     * one.
+     * one. {@code Dynamics} is the context LilyPond provides for exactly this:
+     * a lane of spanners and markup with no notes of its own.
      *
      * <p>The spacers mirror the chord block cell for cell, through the same
      * {@link LilyPondDuration#scaled} call, so the two timelines cannot come

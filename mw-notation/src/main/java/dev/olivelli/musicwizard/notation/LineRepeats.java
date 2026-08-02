@@ -34,7 +34,10 @@ import java.util.Optional;
  * instead from the chords behind the line -- which is what a first version of
  * this did -- lets the page contradict itself, because the chart prints only
  * the cells {@link ChartLayout.Cell#named()} marks, so a mid-bar change it
- * cannot show can make two identical-looking lines differ underneath.
+ * cannot show can make two identical-looking lines differ underneath. What the
+ * line does not print is not read here either: two lines of the same chords in
+ * different meters are tagged alike, because the chart states one meter for the
+ * whole of itself (#191).
  *
  * <p><b>A tag is a claim about its own line and nothing further.</b> Every
  * occurrence carries it, and none of them says a section starts, ends, or runs
