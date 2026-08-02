@@ -1559,6 +1559,10 @@ class ChordChartTest {
         // one -- which on a real recording meant a section announced over
         // scores of bars nothing had looked at.
         assertThat(textTags(fourChordSong(3))).isEqualTo("AAA");
+        // With the one line that says what a tag is. Its absence is asserted on
+        // a chart that does not repeat; without this, deleting it outright would
+        // leave the suite green.
+        assertThat(ChordChart.toText(fourChordSong(3))).contains("Tags   [A]");
     }
 
     @Test
@@ -1700,9 +1704,8 @@ class ChordChartTest {
         // in pieces; each piece takes the label and the closing hook unless it
         // is told not to, and then reads as a whole bracket over part of a line.
         // Like the bar-extent request above, this only says the request is made.
-        // ChordChartEngravingIT engraves a bracket across a break and reads the
-        // labels back out of LilyPond; the hook has no separate signal there,
-        // because the label carries one of its own.
+        // ChordChartEngravingIT engraves a bracket across a break and counts the
+        // labels and the hooks LilyPond drew.
         String source = ChordChart.toLilyPond(fourChordSong(3));
 
         assertThat(source)

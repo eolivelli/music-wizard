@@ -485,8 +485,8 @@ class ChordChartEngravingIT {
     @Test
     @DisplayName("the repeating fixture really repeats, so the brackets are engraved at all")
     void theRepeatingFixtureIsNotInert() {
-        // Without this, a change to the layout that stopped the three lines
-        // printing alike would leave the fixture in charts() engraving a chart
+        // Without this, a change to the layout that stopped the fixture's
+        // lines printing alike would leave the fixture in charts() engraving a chart
         // with no brackets on it, and every test above would still pass while
         // covering nothing. The same trap #212's 7/8 fixture fell into.
         Score score = repeatedLines();
@@ -495,19 +495,27 @@ class ChordChartEngravingIT {
                 .hasSize(2);
         assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[B]")))
                 .hasSize(2);
-        assertThat(ChordChart.toLilyPond(score).split("\\\\startTextSpan", -1)).hasSize(5);
+        String source = ChordChart.toLilyPond(score);
+        assertThat(source.split("\\\\startTextSpan", -1)).hasSize(5);
+        // And that the first bar of a line still holds two chords, which is the
+        // other half of what this fixture is for: a bracket opening on a cell
+        // shorter than its bar. Were the split to go, every assertion above
+        // would still pass.
+        assertThat(source).contains("s2\\startTextSpan");
     }
 
     /**
      * A probe that reports, for each piece of each repeat bracket, whether
-     * LilyPond drew a label on it -- on a line narrow enough that it has to
-     * break some of them into pieces.
+     * LilyPond drew a label on it and how many end hooks it drew -- on a line
+     * narrow enough that it has to break some of them into pieces.
      *
-     * <p>Read off the stencil rather than measured: a piece that drew its tag
+     * <p>Read off the stencil rather than measured. A piece that drew its tag
      * has a text primitive in it and a piece that drew only the bracket has
      * none, which is the question, where any measurement of the drawing is a
-     * stand-in for it. An earlier version of this test compared heights, and a
-     * bold {@code A} and a bold {@code B} are not the same height.
+     * stand-in for it: an earlier version compared heights, and a bold {@code A}
+     * and a bold {@code B} are not the same height. The hooks are counted the
+     * same way, from the same string, because the two ends of a bracket are
+     * asked for separately and each can be lost on its own.
      *
      * <p>The narrow line is the point rather than a convenience. Where LilyPond
      * breaks a system has nothing to do with the chart's four-bar line, so a
@@ -521,24 +529,32 @@ class ChordChartEngravingIT {
                   \\Dynamics
                   \\override TextSpanner.after-line-breaking =
                     #(lambda (grob)
-                       (ly:message "MW-BRACKET ~a"
-                         (if (string-contains
-                               (format #f "~a"
-                                 (ly:stencil-expr (ly:grob-property grob 'stencil)))
-                               "utf-8-string")
-                             "labelled" "plain")))
+                       (let* ((drawn (format #f "~a"
+                                (ly:stencil-expr (ly:grob-property grob 'stencil))))
+                              (hooks (let count ((from 0) (seen 0))
+                                       (let ((at (string-contains drawn "0 0 0 -1" from)))
+                                         (if at (count (+ at 1) (+ seen 1)) seen)))))
+                         (ly:message "MW-BRACKET ~a ~a"
+                                     (if (string-contains drawn "utf-8-string")
+                                         "labelled" "plain")
+                                     hooks)))
                 }
               }
             """;
 
-    private static final Pattern BRACKET_PIECE = Pattern.compile("MW-BRACKET (\\S+)");
+    private static final Pattern BRACKET_PIECE =
+            Pattern.compile("MW-BRACKET (\\S+) (\\d+)");
 
-    /** One entry per bracket piece LilyPond drew, {@code true} where it drew a label. */
-    private static List<Boolean> bracketPieces(String lilypondOutput) {
-        List<Boolean> pieces = new ArrayList<>();
+    /** One entry per bracket piece LilyPond drew: did it draw the label, and how many hooks. */
+    private record Piece(boolean labelled, int hooks) {
+    }
+
+    private static List<Piece> bracketPieces(String lilypondOutput) {
+        List<Piece> pieces = new ArrayList<>();
         Matcher matcher = BRACKET_PIECE.matcher(lilypondOutput);
         while (matcher.find()) {
-            pieces.add("labelled".equals(matcher.group(1)));
+            pieces.add(new Piece("labelled".equals(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2))));
         }
         return pieces;
     }
@@ -555,20 +571,23 @@ class ChordChartEngravingIT {
                 tempDirectory.resolve("broken/chart.ly"),
                 source.replace("  \\layout { }\n", BRACKET_PROBE));
 
-        List<Boolean> pieces = bracketPieces(result.output());
+        // Each piece of a broken bracket takes the label and the closing hook
+        // unless it is told not to, and then reads as a whole bracket over part
+        // of a line -- a claim about bars the chart never grouped, made
+        // silently, since LilyPond has nothing to warn about.
+        List<Piece> pieces = bracketPieces(result.output());
         assertThat(pieces).as("the narrow line really did break a bracket: %s",
                 result.output()).hasSizeGreaterThan(opened);
-        // Each piece of a broken bracket takes the label unless it is told not
-        // to, and then reads as a whole bracket over part of a line -- a claim
-        // about bars the chart never grouped, made silently, since LilyPond has
-        // nothing to warn about. The closing hook at the break is the other half
-        // of the same statement and is asserted on the emitted source in
-        // ChordChartTest, there being nothing in LilyPond's output that
-        // separates it from the one the label carries.
-        assertThat(pieces.stream().filter(Boolean::booleanValue).count())
+        assertThat(pieces.stream().filter(Piece::labelled).count())
                 .as("one label for each bracket, not one for each piece of one: %s",
                         result.output())
                 .isEqualTo(opened);
+        // Two hooks to a bracket however many pieces it is drawn in: the one
+        // under its label and the one that closes it. A hook at a break makes a
+        // third, and says the group ended where the page ran out.
+        assertThat(pieces.stream().mapToInt(Piece::hooks).sum())
+                .as("two ends for each bracket, and none at a break: %s", result.output())
+                .isEqualTo(2 * opened);
         assertEngravedCleanly("the broken-bracket page", result);
     }
 }
