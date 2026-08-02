@@ -152,18 +152,21 @@ class ChordChartTest {
 
     /** Four bars per chord cycle at 120 BPM: one bar is exactly 2 seconds. */
     private static Score fourChordSong(int cycles) {
+        return aChordPerBar(4 * cycles);
+    }
+
+    /** The same cycle, cut to a bar count that need not be a whole number of lines. */
+    private static Score aChordPerBar(int bars) {
         List<Chord> chords = new ArrayList<>();
         NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
         ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MAJOR,
                 ChordQuality.MINOR, ChordQuality.MAJOR};
 
         double time = 0;
-        for (int cycle = 0; cycle < cycles; cycle++) {
-            for (int i = 0; i < 4; i++) {
-                chords.add(Chord.ofSeconds(root(roots[i]), qualities[i],
-                        time, time + 2.0, Confidence.of(0.9)));
-                time += 2.0;
-            }
+        for (int bar = 0; bar < bars; bar++) {
+            chords.add(Chord.ofSeconds(root(roots[bar % 4]), qualities[bar % 4],
+                    time, time + 2.0, Confidence.of(0.9)));
+            time += 2.0;
         }
 
         List<Double> beats = new ArrayList<>();
@@ -1466,5 +1469,262 @@ class ChordChartTest {
         Score empty = Score.empty(TempoMap.constant(120), 10);
 
         assertThat(ChordChart.toLilyPond(empty)).doesNotContain("\\bar");
+    }
+
+    // -------------------------------------------------------------- #218 ----
+
+    /** One repeat bracket the emitter wrote: its tag, and the bars it covers. */
+    private record Bracket(String tag, int firstBar, int lastBar) {
+    }
+
+    private static final Pattern BRACKET_TAG = Pattern.compile(
+            "\\\\once \\\\override TextSpanner\\.bound-details\\.left\\.text = "
+                    + "\\\\markup \\{ \\\\bold \"([A-Z]+)\" .*");
+
+    /**
+     * The brackets, read back out of the annotation context bar by bar.
+     *
+     * <p>Read structurally rather than by looking for a substring of the whole
+     * source. #223's tempo mark is a {@code \markup}, and {@code \markup}
+     * contains {@code \mark}: an earlier draft of this feature probed the file
+     * for {@code \mark}, which made one test that was named for "no repeat, no
+     * annotation" pass on a source that always carries a markup. Counting the
+     * ends of each span against the bars they fall on cannot be satisfied that
+     * way.
+     */
+    private static List<Bracket> bracketsOf(String source) {
+        int open = source.indexOf("\\new Dynamics");
+        if (open < 0) {
+            return List.of();
+        }
+        int body = source.indexOf("  } {\n", open) + "  } {\n".length();
+        List<Bracket> brackets = new ArrayList<>();
+        String pending = null;
+        String tag = null;
+        int firstBar = 0;
+        int bar = -1;
+        for (String line : source.substring(body, source.indexOf("\n  }\n", body)).split("\n")) {
+            String stripped = line.strip();
+            Matcher label = BRACKET_TAG.matcher(stripped);
+            if (label.matches()) {
+                pending = label.group(1);
+                continue;
+            }
+            bar++;
+            if (stripped.contains("\\startTextSpan")) {
+                tag = pending;
+                firstBar = bar;
+                pending = null;
+            }
+            if (stripped.contains("\\stopTextSpan")) {
+                brackets.add(new Bracket(tag, firstBar, bar));
+                tag = null;
+            }
+        }
+        assertThat(tag).as("every bracket the emitter opened, it closed").isNull();
+        assertThat(pending).as("every label the emitter wrote belongs to a bracket").isNull();
+        return brackets;
+    }
+
+    /** The text chart's tag for each printed line, {@code "."} where it has none. */
+    private static String textTags(Score score) {
+        StringBuilder tags = new StringBuilder();
+        for (String line : ChordChart.toText(score).lines().toList()) {
+            if (line.startsWith("|")) {
+                Matcher tag = Pattern.compile("\\[([A-Z]+)]$").matcher(line);
+                tags.append(tag.find() ? tag.group(1) : ".");
+            }
+        }
+        return tags.toString();
+    }
+
+    @Test
+    @DisplayName("says nothing at all about a chart that never repeats a line")
+    void aChartThatDoesNotRepeatIsNotAnnotated() {
+        Score once = fourChordSong(1);
+
+        assertThat(textTags(once)).isEqualTo(".");
+        assertThat(ChordChart.toText(once)).doesNotContain("Tags");
+        assertThat(bracketsOf(ChordChart.toLilyPond(once))).isEmpty();
+        assertThat(ChordChart.toLilyPond(once))
+                .as("no annotation, no context to carry it")
+                .doesNotContain("\\new Dynamics");
+    }
+
+    @Test
+    @DisplayName("tags every printing of a repeated line, not only the first")
+    void everyPrintingOfARepeatedLineIsTagged() {
+        // The bounded reading, and the point of #218's rework: a tag on the
+        // first occurrence alone is a heading, and a heading runs to the next
+        // one -- which on a real recording meant a section announced over
+        // scores of bars nothing had looked at.
+        assertThat(textTags(fourChordSong(3))).isEqualTo("AAA");
+        // With the one line that says what a tag is. Its absence is asserted on
+        // a chart that does not repeat; without this, deleting it outright would
+        // leave the suite green.
+        assertThat(ChordChart.toText(fourChordSong(3))).contains("Tags   [A]");
+    }
+
+    @Test
+    @DisplayName("brackets exactly the bars of the line it tags")
+    void aBracketCoversItsOwnLine() {
+        assertThat(bracketsOf(ChordChart.toLilyPond(fourChordSong(3))))
+                .containsExactly(new Bracket("A", 0, 3),
+                        new Bracket("A", 4, 7),
+                        new Bracket("A", 8, 11));
+    }
+
+    @Test
+    @DisplayName("the page and the text chart tag the same lines")
+    void bothOutputsReadOneAnswer() {
+        // #174's failure mode, at the level of the annotation: two outputs of
+        // one score deriving the same thing separately and disagreeing. Both
+        // read LineRepeats over the same printed lines, so the tags and the
+        // lines they fall on have to match.
+        Score score = fourChordSong(3);
+        String tags = textTags(score);
+
+        List<Bracket> brackets = bracketsOf(ChordChart.toLilyPond(score));
+        assertThat(brackets).hasSize((int) tags.chars().filter(c -> c != '.').count());
+        for (Bracket bracket : brackets) {
+            assertThat(bracket.tag())
+                    .isEqualTo(String.valueOf(tags.charAt(bracket.firstBar() / 4)));
+        }
+    }
+
+    @Test
+    @DisplayName("writes the brackets on the same durations as the chords under them")
+    void theBracketsRideOnTheChordTimeline() {
+        // What keeps a bracket's ends where its line's ends are: the spacers it
+        // is spelled against are the chord cells' own durations, written by the
+        // same call. If the two timelines could come apart, a bracket would
+        // still be emitted and would simply cover the wrong bars.
+        String source = ChordChart.toLilyPond(aSplitBarLineTwice());
+
+        assertThat(spacerDurations(source)).isEqualTo(chordDurations(source));
+    }
+
+    /** {@link #twoChordsInABar}'s line printed twice, so a bracket covers a split bar. */
+    private static Score aSplitBarLineTwice() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.A, NoteLetter.F, NoteLetter.G};
+        ChordQuality[] qualities = {ChordQuality.MAJOR, ChordQuality.MINOR,
+                ChordQuality.MAJOR, ChordQuality.MAJOR};
+        List<Chord> chords = new ArrayList<>();
+        for (int cycle = 0; cycle < 2; cycle++) {
+            double offset = 16 * cycle;
+            for (int i = 0; i < roots.length; i++) {
+                chords.add(quantized(map, root(roots[i]), qualities[i],
+                        offset + 2 * i, offset + 2 * i + 2));
+            }
+            // Not C, so the next cycle's opening C is a change and is named:
+            // a cell is printed only where the chord differs from the one
+            // before it, which is exactly what makes two lines of one harmony
+            // able to print differently.
+            chords.add(quantized(map, root(NoteLetter.D), ChordQuality.MAJOR,
+                    offset + 8, offset + 16));
+        }
+        return Score.empty(map, map.beatsToSeconds(32))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    private static Chord quantized(TempoMap map, PitchSpelling chordRoot, ChordQuality quality,
+            double fromBeat, double toBeat) {
+        return Chord.ofSeconds(chordRoot, quality, map.beatsToSeconds(fromBeat),
+                        map.beatsToSeconds(toBeat), Confidence.of(0.9))
+                .quantizedTo(fromBeat, toBeat);
+    }
+
+    private static final Pattern CHORD_DURATION = Pattern.compile(
+            "^(?:r|[a-g](?:is|es)*)(\\d+\\.?(?:\\*\\d+(?:/\\d+)?)?)");
+
+    private static final Pattern SPACER_DURATION = Pattern.compile(
+            "^s(\\d+\\.?(?:\\*\\d+(?:/\\d+)?)?)(?:\\\\\\w+)*$");
+
+    /** Every chord cell's written duration, in order. */
+    private static List<String> chordDurations(String source) {
+        List<String> durations = new ArrayList<>();
+        for (String line : chordModeOf(source)) {
+            if (line.startsWith("\\")) {
+                continue;
+            }
+            for (String token : line.substring(0, line.length() - 1).trim().split(" +")) {
+                Matcher duration = CHORD_DURATION.matcher(token);
+                assertThat(duration.find()).as("chordmode token %s", token).isTrue();
+                durations.add(duration.group(1));
+            }
+        }
+        return durations;
+    }
+
+    /** Every spacer's written duration in the annotation context, in order. */
+    private static List<String> spacerDurations(String source) {
+        int open = source.indexOf("\\new Dynamics");
+        assertThat(open).as("the chart carries an annotation context").isNotNegative();
+        int body = source.indexOf("  } {\n", open) + "  } {\n".length();
+        List<String> durations = new ArrayList<>();
+        for (String line : source.substring(body, source.indexOf("\n  }\n", body)).split("\n")) {
+            String stripped = line.strip();
+            if (stripped.startsWith("\\")) {
+                continue;
+            }
+            for (String token : stripped.split(" +")) {
+                Matcher duration = SPACER_DURATION.matcher(token);
+                assertThat(duration.matches()).as("annotation token %s", token).isTrue();
+                durations.add(duration.group(1));
+            }
+        }
+        return durations;
+    }
+
+    @Test
+    @DisplayName("keeps the annotation off the lines a bar check closes")
+    void nothingButChordsShareALineWithABarCheck() {
+        // Those lines are read back as the chart's bars -- by
+        // tools/score-chart.py, which scores what the chart prints, and by
+        // ChordChartEngravingIT, which counts them against the bar lines
+        // LilyPond drew. Both take a line ending in a bar check and not opening
+        // with a backslash, and both would break on a chord carrying a
+        // post-event. It is why the brackets ride in a context of their own.
+        for (String line : ChordChart.toLilyPond(fourChordSong(3)).lines().toList()) {
+            String stripped = line.strip();
+            if (!stripped.endsWith("|") || stripped.startsWith("\\")) {
+                continue;
+            }
+            assertThat(stripped.substring(0, stripped.length() - 1).trim().split(" +"))
+                    .as("%s", stripped)
+                    .allSatisfy(token -> assertThat(token).doesNotContain("\\"));
+        }
+    }
+
+    @Test
+    @DisplayName("asks for a broken bracket to be drawn as one bracket, not two")
+    void aBrokenBracketIsAskedToKeepOneOfEachEnd() {
+        // LilyPond may break a system anywhere, so a bracket is routinely drawn
+        // in pieces; each piece takes the label and the closing hook unless it
+        // is told not to, and then reads as a whole bracket over part of a line.
+        // Like the bar-extent request above, this only says the request is made.
+        // ChordChartEngravingIT engraves a bracket across a break and counts the
+        // labels and the hooks LilyPond drew.
+        String source = ChordChart.toLilyPond(fourChordSong(3));
+
+        assertThat(source)
+                .contains("\\override TextSpanner.bound-details.left-broken.text = ##f")
+                .contains("\\override TextSpanner.bound-details.right-broken.text = ##f");
+    }
+
+    @Test
+    @DisplayName("never tags a line short of a full one, however much the chart repeats")
+    void aShortLastLineIsNeverTagged() {
+        // A short line prints fewer bar lines, so it is never character-equal to
+        // a full one and never carries a tag. The emitter depends on that: a
+        // tagged line always holds at least two cells, so no bracket is ever
+        // asked to open and close on one moment, which LilyPond refuses.
+        Score score = aChordPerBar(9);
+
+        assertThat(textTags(score)).isEqualTo("AA.");
+        assertThat(bracketsOf(ChordChart.toLilyPond(score)))
+                .allSatisfy(bracket -> assertThat(bracket.lastBar())
+                        .isGreaterThan(bracket.firstBar()));
     }
 }

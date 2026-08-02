@@ -219,6 +219,50 @@ class ChordChartEngravingIT {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
+    /**
+     * Two four-bar lines, each printed twice, with a chord change inside the
+     * first bar of each.
+     *
+     * <p>The only fixture here whose chart repeats itself, so the only one that
+     * engraves #218's repeat brackets at all: they ride in a context beside the
+     * chord names, spelled against spacers that mirror the chord cells, and a
+     * bracket whose ends do not land on an event is a LilyPond warning rather
+     * than a wrong page. Two distinct lines rather than one repeated, because
+     * two tags are two different letters and a test that measured brackets by
+     * how tall they were drawn would pass on one letter and fail on two. Four
+     * lines, so brackets meet end to end, and a split first bar, so a bracket
+     * opens on a cell shorter than its bar.
+     *
+     * <p>Each line ends on a chord neither line opens with: a cell is printed
+     * only where the chord differs from the one before it, so a line ending on
+     * the chord the next one begins with would print differently the second
+     * time and the chart would not repeat at all.
+     */
+    private static Score repeatedLines() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteLetter[][] lines = {
+                {NoteLetter.C, NoteLetter.A, NoteLetter.F, NoteLetter.G, NoteLetter.D},
+                {NoteLetter.G, NoteLetter.E, NoteLetter.C, NoteLetter.F, NoteLetter.A}};
+        List<Chord> chords = new ArrayList<>();
+        for (int line = 0; line < 4; line++) {
+            double offset = 16 * line;
+            NoteLetter[] roots = lines[line % 2];
+            for (int i = 0; i < 4; i++) {
+                chords.add(quantized(map, roots[i], offset + 2 * i, offset + 2 * i + 2));
+            }
+            chords.add(quantized(map, roots[4], offset + 8, offset + 16));
+        }
+        return Score.empty(map, map.beatsToSeconds(64))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    private static Chord quantized(TempoMap map, NoteLetter letter,
+            double fromBeat, double toBeat) {
+        return Chord.ofSeconds(root(letter), ChordQuality.MAJOR, map.beatsToSeconds(fromBeat),
+                        map.beatsToSeconds(toBeat), Confidence.of(0.9))
+                .quantizedTo(fromBeat, toBeat);
+    }
+
     static Stream<Arguments> charts() {
         return Stream.of(
                         // #64: a bar that is not four quarters long.
@@ -238,7 +282,10 @@ class ChordChartEngravingIT {
                         // #212: bars whose cell lengths the reduction rewrote,
                         // in the two meters whose bar it cannot halve.
                         Arguments.of("chattering-five-four", aChatteringFiveFour()),
-                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()));
+                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()),
+                        // #218: the chart repeats itself, so the page carries
+                        // brackets over the lines it repeats.
+                        Arguments.of("repeated-lines", repeatedLines()));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -433,5 +480,114 @@ class ChordChartEngravingIT {
         // the diagnostics is the only thing that catches this.
         assertThat(result.failedBarChecks()).as("%s", result.output()).contains("1/2");
         assertThat(result.succeeded()).as("%s", result.output()).isTrue();
+    }
+
+    @Test
+    @DisplayName("the repeating fixture really repeats, so the brackets are engraved at all")
+    void theRepeatingFixtureIsNotInert() {
+        // Without this, a change to the layout that stopped the fixture's
+        // lines printing alike would leave the fixture in charts() engraving a chart
+        // with no brackets on it, and every test above would still pass while
+        // covering nothing. The same trap #212's 7/8 fixture fell into.
+        Score score = repeatedLines();
+
+        assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[A]")))
+                .hasSize(2);
+        assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[B]")))
+                .hasSize(2);
+        String source = ChordChart.toLilyPond(score);
+        assertThat(source.split("\\\\startTextSpan", -1)).hasSize(5);
+        // And that the first bar of a line still holds two chords, which is the
+        // other half of what this fixture is for: a bracket opening on a cell
+        // shorter than its bar. Were the split to go, every assertion above
+        // would still pass.
+        assertThat(source).contains("s2\\startTextSpan");
+    }
+
+    /**
+     * A probe that reports, for each piece of each repeat bracket, whether
+     * LilyPond drew a label on it and how many end hooks it drew -- on a line
+     * narrow enough that it has to break some of them into pieces.
+     *
+     * <p>Read off the stencil rather than measured. A piece that drew its tag
+     * has a text primitive in it and a piece that drew only the bracket has
+     * none, which is the question, where any measurement of the drawing is a
+     * stand-in for it: an earlier version compared heights, and a bold {@code A}
+     * and a bold {@code B} are not the same height. The hooks are counted the
+     * same way, from the same string, because the two ends of a bracket are
+     * asked for separately and each can be lost on its own.
+     *
+     * <p>The narrow line is the point rather than a convenience. Where LilyPond
+     * breaks a system has nothing to do with the chart's four-bar line, so a
+     * bracket straddling a break is ordinary on any real chart and is reached
+     * here on purpose instead of being waited for.
+     */
+    private static final String BRACKET_PROBE = """
+              \\layout {
+                line-width = 42\\mm
+                \\context {
+                  \\Dynamics
+                  \\override TextSpanner.after-line-breaking =
+                    #(lambda (grob)
+                       (let* ((drawn (format #f "~a"
+                                (ly:stencil-expr (ly:grob-property grob 'stencil))))
+                              (hooks (let count ((from 0) (seen 0))
+                                       (let ((at (string-contains drawn "0 0 0 -1" from)))
+                                         (if at (count (+ at 1) (+ seen 1)) seen)))))
+                         (ly:message "MW-BRACKET ~a ~a"
+                                     (if (string-contains drawn "utf-8-string")
+                                         "labelled" "plain")
+                                     hooks)))
+                }
+              }
+            """;
+
+    private static final Pattern BRACKET_PIECE =
+            Pattern.compile("MW-BRACKET (\\S+) (\\d+)");
+
+    /** One entry per bracket piece LilyPond drew: did it draw the label, and how many hooks. */
+    private record Piece(boolean labelled, int hooks) {
+    }
+
+    private static List<Piece> bracketPieces(String lilypondOutput) {
+        List<Piece> pieces = new ArrayList<>();
+        Matcher matcher = BRACKET_PIECE.matcher(lilypondOutput);
+        while (matcher.find()) {
+            pieces.add(new Piece("labelled".equals(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2))));
+        }
+        return pieces;
+    }
+
+    @Test
+    @DisplayName("a bracket a system break cuts in two is still one labelled bracket")
+    void aBrokenBracketIsNotDrawnAsTwo() {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        String source = ChordChart.toLilyPond(repeatedLines());
+        int opened = source.split("\\\\startTextSpan", -1).length - 1;
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond).renderSource(
+                tempDirectory.resolve("broken/chart.ly"),
+                source.replace("  \\layout { }\n", BRACKET_PROBE));
+
+        // Each piece of a broken bracket takes the label and the closing hook
+        // unless it is told not to, and then reads as a whole bracket over part
+        // of a line -- a claim about bars the chart never grouped, made
+        // silently, since LilyPond has nothing to warn about.
+        List<Piece> pieces = bracketPieces(result.output());
+        assertThat(pieces).as("the narrow line really did break a bracket: %s",
+                result.output()).hasSizeGreaterThan(opened);
+        assertThat(pieces.stream().filter(Piece::labelled).count())
+                .as("one label for each bracket, not one for each piece of one: %s",
+                        result.output())
+                .isEqualTo(opened);
+        // Two hooks to a bracket however many pieces it is drawn in: the one
+        // under its label and the one that closes it. A hook at a break makes a
+        // third, and says the group ended where the page ran out.
+        assertThat(pieces.stream().mapToInt(Piece::hooks).sum())
+                .as("two ends for each bracket, and none at a break: %s", result.output())
+                .isEqualTo(2 * opened);
+        assertEngravedCleanly("the broken-bracket page", result);
     }
 }

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -61,10 +62,23 @@ public final class ChordChart {
         out.append(tempoLine(score, meter));
         out.append("Meter  ").append(meter).append('\n');
         score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
+
+        List<String> lines = linesOf(bars);
+        List<Optional<String>> tags = LineRepeats.tagsOf(lines);
+        // Only when there is something to read: a legend for a notation the
+        // chart does not use is a line of the header spent on nothing. Named
+        // in seven characters, like the rows above it.
+        if (tags.stream().anyMatch(Optional::isPresent)) {
+            out.append("Tags   [A] marks lines that print identically\n");
+        }
         out.append('\n');
 
-        for (String line : linesOf(bars)) {
-            out.append(line).append('\n');
+        for (int i = 0; i < lines.size(); i++) {
+            out.append(lines.get(i));
+            // After the closing bar line, so a tag cannot be read as a chord in
+            // the last bar, and so an untagged chart prints what it always did.
+            tags.get(i).ifPresent(tag -> out.append("  [").append(tag).append(']'));
+            out.append('\n');
         }
         return out.toString();
     }
@@ -207,6 +221,12 @@ public final class ChordChart {
         out.append("}\n\n");
 
         out.append("\\score {\n");
+        List<Optional<String>> tags = LineRepeats.tagsOf(linesOf(bars));
+        boolean tagged = tags.stream().anyMatch(Optional::isPresent);
+        if (tagged) {
+            out.append("  <<\n");
+            repeatBrackets(out, bars, tags);
+        }
         // chordChanges, so a chord held across a bar line has its name printed
         // once. The bar checks below require every bar to be written out, and
         // without this the page would say "C C C" where the text chart says
@@ -271,9 +291,90 @@ public final class ChordChart {
             out.append("    \\bar \"|.\"\n");
         }
         out.append("  }\n");
+        if (tagged) {
+            out.append("  >>\n");
+        }
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
+    }
+
+    /**
+     * A bracket over each line the chart prints more than once, labelled with
+     * {@link LineRepeats}' tag for it.
+     *
+     * <p>A bracket rather than a {@code \mark}: a mark is a rehearsal mark and
+     * names a point, and a bracket states both of its ends, which is as much as
+     * one repeated line supports. See {@link LineRepeats} for why that
+     * difference is the whole of #218. The bracket runs from the line's first
+     * chord to its last, so two adjacent tagged lines read as two brackets
+     * rather than one.
+     *
+     * <p>It rides in a context of its own beside the chord names, and the
+     * reason is the bar lines: {@code \startTextSpan} is a post-event, so
+     * inside {@code \chordmode} it would have to be written against a chord, on
+     * the line the bar check closes. Those lines are read back as the chart's
+     * bars -- by {@code tools/score-chart.py}, which scores what the chart
+     * prints, and by {@code ChordChartEngravingIT}, which counts them against
+     * the bar lines LilyPond drew. Here nothing but chords is ever written on
+     * one. {@code Dynamics} is the context LilyPond provides for exactly this:
+     * a lane of spanners and markup with no notes of its own.
+     *
+     * <p>The spacers mirror the chord block cell for cell, from the same cell
+     * list and through the same {@link LilyPondDuration#scaled} call, so that a
+     * bracket ends on the moment its line's last chord starts. That is two
+     * loops agreeing rather than one derivation, which is the shape {@link
+     * ChartLayout}'s own javadoc is about, so a test compares the two token for
+     * token. A tagged line always holds at least
+     * two of them -- a line short of {@link #BARS_PER_LINE} bars prints fewer
+     * bar lines, so it is never character-equal to a full one and never tagged,
+     * and every bar holds at least one cell -- so no bracket is ever asked to
+     * begin and end on one moment, which LilyPond would refuse.
+     */
+    private static void repeatBrackets(StringBuilder out, List<ChartLayout.Bar> bars,
+            List<Optional<String>> tags) {
+        out.append("  \\new Dynamics \\with {\n");
+        out.append("    \\override TextSpanner.style = #'line\n");
+        out.append("    \\override TextSpanner.bound-details.left.stencil-align-dir-y = #CENTER\n");
+        out.append("    \\override TextSpanner.bound-details.right.text ="
+                + " \\markup { \\draw-line #'(0 . -1) }\n");
+        // The two ends a broken bracket grows, which are not ends of anything.
+        // LilyPond may break a system anywhere in the chart, and the four-bar
+        // line has no say in where -- so a bracket is routinely drawn in two
+        // pieces. Left to inherit the settings above, each piece takes the
+        // label and the closing hook and reads as a whole bracket over part of
+        // a line, which is the one thing this annotation must not say. Silent:
+        // LilyPond has nothing to warn about.
+        out.append("    \\override TextSpanner.bound-details.left-broken.text = ##f\n");
+        out.append("    \\override TextSpanner.bound-details.right-broken.text = ##f\n");
+        out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
+        out.append("  } {\n");
+        for (int line = 0; line < tags.size(); line++) {
+            int first = line * BARS_PER_LINE;
+            int last = Math.min(first + BARS_PER_LINE, bars.size()) - 1;
+            Optional<String> tag = tags.get(line);
+            if (tag.isPresent()) {
+                out.append("      \\once \\override TextSpanner.bound-details.left.text ="
+                                + " \\markup { \\bold \"")
+                        .append(tag.orElseThrow())
+                        .append("\" \\draw-line #'(0 . -1) }\n");
+            }
+            for (int i = first; i <= last; i++) {
+                List<ChartLayout.Cell> cells = bars.get(i).cells();
+                out.append("     ");
+                for (int c = 0; c < cells.size(); c++) {
+                    out.append(" s").append(LilyPondDuration.scaled(cells.get(c).lengthQuarters()));
+                    if (tag.isPresent() && i == first && c == 0) {
+                        out.append("\\startTextSpan");
+                    }
+                    if (tag.isPresent() && i == last && c == cells.size() - 1) {
+                        out.append("\\stopTextSpan");
+                    }
+                }
+                out.append('\n');
+            }
+        }
+        out.append("  }\n");
     }
 
     /**
