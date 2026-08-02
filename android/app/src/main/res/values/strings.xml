@@ -36,12 +36,15 @@
     <string name="report_no_token">No GitHub token yet — paste one under “GitHub
         token”.</string>
     <string name="report_encoding">Compressing and uploading…</string>
-    <string name="report_no_flac">This phone has no FLAC encoder; sending the WAV
-        instead.</string>
+    <!-- Always says why. "This phone has no FLAC encoder" was the only wording
+         and it claimed that for a full disk and an unreadable take too. -->
+    <string name="report_wav_instead">Not compressed, so the WAV went instead:
+        %1$s</string>
     <string name="report_sent">Sent.</string>
     <string name="report_sent_toast">Take sent to the repository.</string>
-    <string name="report_failed">Not sent. Your comment is kept; press Send to try
-        again.</string>
+    <string name="report_failed">Not sent. Your comment is kept; press Send to repo
+        to try again.</string>
+    <string name="report_no_reason">The send stopped without saying why.</string>
 
     <string name="token_title">GitHub token</string>
     <string name="token_explanation">A fine-grained personal access token for this

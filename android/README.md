@@ -79,10 +79,11 @@ exists to prevent, and it is silent.
 ## What the checks are for
 
 `./gradlew test` runs the JVM unit tests: the WAV header, the recordings
-directory, the analysis glue, the background-job lifecycle, and the three
-requests a field report is assembled from. There are no emulator tests, so the
-one piece of the reporting path with no unit test is the FLAC encoding —
-`MediaCodec` exists only on a device.
+directory, the analysis glue, the background-job lifecycle, and the reporting
+path — the three requests a field report is assembled from, what leaves the
+socket when they are sent, and how a send ends when something fails. There are
+no emulator tests, so the one piece of that path with no unit test is the FLAC
+encoding: `MediaCodec` exists only on a device.
 
 `checkDexedApiLevel` runs after `assembleDebug` and fails the build if the dex
 still calls a JDK method Android does not have at `minSdk`. It exists because

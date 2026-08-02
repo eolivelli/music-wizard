@@ -257,9 +257,8 @@ public class GitHubReporterTest {
     /**
      * Asset names are unique per send and hold only what GitHub keeps verbatim.
      *
-     * <p>A release refuses a second asset of the same name with a 422, and the
-     * comment's link is written from this name before the asset exists — so a
-     * name GitHub would rewrite is a dead link.
+     * <p>A release refuses a second asset of the same name with a 422, and
+     * re-sending a take is a thing someone will do.
      */
     @Test
     public void assetNamesAreSafeAndUniquePerSend() {

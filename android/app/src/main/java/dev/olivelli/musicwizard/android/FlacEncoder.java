@@ -60,6 +60,17 @@ final class FlacEncoder {
      */
     private static final int COMPRESSION_LEVEL = 5;
 
+    /**
+     * How many turns of the loop the codec may do nothing at all for.
+     *
+     * <p>At {@link #DEQUEUE_TIMEOUT_MICROS} a turn, several seconds of a codec
+     * that has neither taken audio nor produced any. The loop otherwise ends
+     * only on end-of-stream, so a codec that stops without failing would spin
+     * for the life of the process — and because the sender is one thread for
+     * the whole app, every later send would queue behind it and never run.
+     */
+    private static final int MAX_IDLE_TURNS = 500;
+
     private FlacEncoder() {
     }
 
@@ -109,11 +120,14 @@ final class FlacEncoder {
         byte[] header = null;
         boolean wroteAnything = false;
         boolean inputDone = false;
+        int idleTurns = 0;
 
         while (true) {
+            boolean moved = false;
             if (!inputDone) {
                 int index = codec.dequeueInputBuffer(DEQUEUE_TIMEOUT_MICROS);
                 if (index >= 0) {
+                    moved = true;
                     ByteBuffer buffer = codec.getInputBuffer(index);
                     buffer.clear();
                     // Whole frames only: half a stereo frame would shift every
@@ -139,16 +153,15 @@ final class FlacEncoder {
 
             int index = codec.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_MICROS);
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                ByteBuffer csd = codec.getOutputFormat().getByteBuffer("csd-0");
-                if (csd != null) {
-                    header = bytesOf(csd);
-                }
+                moved = true;
+                header = betterHeader(header, codec.getOutputFormat().getByteBuffer("csd-0"));
             } else if (index >= 0) {
+                moved = true;
                 ByteBuffer buffer = codec.getOutputBuffer(index);
                 buffer.position(info.offset);
                 buffer.limit(info.offset + info.size);
                 if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                    header = bytesOf(buffer);
+                    header = betterHeader(header, buffer);
                 } else if (info.size > 0) {
                     if (!wroteAnything) {
                         if (header == null) {
@@ -165,10 +178,31 @@ final class FlacEncoder {
                     break;
                 }
             }
+
+            idleTurns = moved ? 0 : idleTurns + 1;
+            if (idleTurns > MAX_IDLE_TURNS) {
+                throw new IOException("the FLAC encoder stopped responding");
+            }
         }
         if (!wroteAnything) {
             throw new IOException("the FLAC encoder produced no audio");
         }
+    }
+
+    /**
+     * Keeps whichever of the two stream headers is real.
+     *
+     * <p>The header arrives on the output format, or as a codec-config buffer,
+     * or — on a device that does both — twice. An empty second one must not
+     * replace a good first one: an empty header is not null, so the check
+     * before the frames are written would pass and the upload would be a file
+     * with no {@code fLaC} magic and no {@code STREAMINFO}, reported as sent.
+     */
+    private static byte[] betterHeader(byte[] current, ByteBuffer candidate) {
+        if (candidate == null || candidate.remaining() == 0) {
+            return current;
+        }
+        return bytesOf(candidate);
     }
 
     /** Where in the take this buffer starts. FLAC is not timed, but MediaCodec wants it. */

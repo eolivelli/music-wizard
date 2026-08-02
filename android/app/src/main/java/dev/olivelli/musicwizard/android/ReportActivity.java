@@ -23,6 +23,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -30,12 +32,11 @@ import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.report.GitHubReporter;
-import dev.olivelli.musicwizard.android.report.Http;
+import dev.olivelli.musicwizard.android.report.ReportJob;
 import dev.olivelli.musicwizard.android.report.TakeReport;
 import dev.olivelli.musicwizard.android.report.UrlConnectionHttp;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
-import java.io.IOException;
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -66,8 +67,9 @@ public final class ReportActivity extends MwActivity {
      * One send at a time, process-wide.
      *
      * <p>Static so that backing out of this screen mid-upload does not abandon
-     * the request or leave a thread behind per visit; the result is reported to
-     * whichever screen is still there, or as a toast if none is.
+     * the request or leave a thread behind per visit. The result goes to the
+     * screen that started it if that screen is still there, and as a toast if
+     * it is not.
      */
     private static final ExecutorService SENDER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "mw-report");
@@ -86,8 +88,16 @@ public final class ReportActivity extends MwActivity {
     private boolean sending;
     private volatile boolean alive = true;
 
-    /** Set once the comment is on GitHub, so leaving the screen does not re-save it. */
-    private boolean sent;
+    /**
+     * Set once this comment is on GitHub, and cleared when the field is edited.
+     *
+     * <p>It does two things. Leaving the screen does not re-save a draft that
+     * has been filed, so it does not reappear next time looking like something
+     * still to send. And Send stays disabled until there is something new to
+     * say: a second tap on a screen reading "Sent." would otherwise upload a
+     * second asset and post a second comment for the same take.
+     */
+    private boolean filed;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,6 +122,26 @@ public final class ReportActivity extends MwActivity {
 
         header.setText(takeName + "  ·  " + RecordingStore.formatDuration(durationSeconds));
         comment.setText(ReportSettings.draft(this, takeName));
+        comment.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                // Only ever un-files. The clear that follows a successful send
+                // happens while this flag is still false, so it is not mistaken
+                // for someone typing.
+                if (filed) {
+                    filed = false;
+                    sendButton.setEnabled(true);
+                }
+            }
+        });
         sendButton.setOnClickListener(view -> send());
         findViewById(R.id.tokenButton).setOnClickListener(
                 view -> startActivity(new Intent(this, TokenActivity.class)));
@@ -120,7 +150,7 @@ public final class ReportActivity extends MwActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!sending && !sent) {
+        if (!sending && !filed) {
             status.setText(ReportSettings.hasToken(this)
                     ? getString(R.string.report_ready)
                     : getString(R.string.report_no_token));
@@ -130,9 +160,7 @@ public final class ReportActivity extends MwActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Not once it is filed: the draft would then reappear the next time this
-        // take is opened, looking like something still to send.
-        if (!sent && wav != null) {
+        if (!filed && wav != null) {
             ReportSettings.setDraft(this, takeName, comment.getText().toString());
         }
     }
@@ -161,6 +189,10 @@ public final class ReportActivity extends MwActivity {
 
         sending = true;
         sendButton.setEnabled(false);
+        // Disabled too, not just the button: anything typed after this point
+        // would be wiped by the clear that follows a successful send, having
+        // never been sent — the one thing this screen promises cannot happen.
+        comment.setEnabled(false);
         status.setText(R.string.report_encoding);
 
         TakeReport report = new TakeReport(takeName, durationSeconds, typed, chartText(),
@@ -172,76 +204,75 @@ public final class ReportActivity extends MwActivity {
         int inboxIssue = getResources().getInteger(R.integer.report_inbox_issue);
         File encoded = new File(getCacheDir(), "report-upload.flac");
         Context application = getApplicationContext();
+        File take = wav;
 
         SENDER.execute(() -> {
-            String failure = null;
-            GitHubReporter.Sent result = null;
-            File payload = wav;
-            String contentType = "audio/wav";
-            String extension = ".wav";
+            ReportJob.Outcome outcome;
             try {
-                try {
-                    FlacEncoder.encode(wav, encoded);
-                    payload = encoded;
-                    contentType = "audio/flac";
-                    extension = ".flac";
-                } catch (IOException | RuntimeException e) {
-                    // A device with no FLAC encoder — possible below Android 10,
-                    // which this app still runs on. The WAV is lossless too and
-                    // is what the corpus wants; it is only bigger, and the asset
-                    // name says which one went up.
-                    report(application, application.getString(R.string.report_no_flac));
-                }
-                String assetName = GitHubReporter.assetName(takeName, Instant.now(), extension);
-                result = reporter.send(releaseTag, inboxIssue, assetName,
-                        Http.Body.file(payload, contentType), report);
-            } catch (IOException | RuntimeException e) {
-                failure = describe(e);
-            } finally {
-                //noinspection ResultOfMethodCallIgnored
-                encoded.delete();
+                outcome = ReportJob.run(FlacEncoder::encode, reporter, releaseTag, inboxIssue,
+                        take, encoded, takeName, report, Instant.now());
+            } catch (Throwable t) {
+                // run() is written not to throw, and says so. If it ever does,
+                // the screen still has to be answered: a send that goes
+                // unanswered leaves Send disabled for the life of the process.
+                outcome = null;
             }
-            String message = failure;
-            GitHubReporter.Sent sentTo = result;
-            main.post(() -> finished(application, sentTo, message));
+            ReportJob.Outcome result = outcome;
+            main.post(() -> finished(application, result));
         });
     }
 
-    private void finished(Context application, GitHubReporter.Sent result, String failure) {
-        if (result != null) {
-            sent = true;
+    private void finished(Context application, ReportJob.Outcome outcome) {
+        boolean worked = outcome != null && outcome.sent() != null;
+        if (worked) {
             ReportSettings.setDraft(application, takeName, "");
         }
         if (!alive) {
-            report(application, result != null
+            report(application, worked
                     ? application.getString(R.string.report_sent_toast)
-                    : failure);
+                    : application.getString(R.string.report_failed));
             return;
         }
         sending = false;
-        sendButton.setEnabled(true);
-        if (result != null) {
+        comment.setEnabled(true);
+
+        StringBuilder line = new StringBuilder();
+        if (worked) {
+            // Cleared before the flag is set, so the watcher installed in
+            // onCreate reads this as the app's doing rather than as an edit.
             comment.setText("");
-            status.setText(getString(R.string.report_sent) + "\n" + result.commentUrl());
+            filed = true;
+            sendButton.setEnabled(false);
+            line.append(getString(R.string.report_sent)).append('\n')
+                    .append(outcome.sent().commentUrl());
         } else {
             // The typed comment is still in the field and still in the draft:
             // pressing send again is the whole retry.
-            status.setText(getString(R.string.report_failed) + "\n" + failure);
+            sendButton.setEnabled(true);
+            line.append(getString(R.string.report_failed)).append('\n')
+                    // Neither an outcome nor a reason means run() itself threw,
+                    // which is what a second OutOfMemoryError looks like.
+                    .append(outcome == null || outcome.failure() == null
+                            ? getString(R.string.report_no_reason) : outcome.failure());
         }
+        if (outcome != null && outcome.encoderFailure() != null) {
+            line.append('\n')
+                    .append(getString(R.string.report_wav_instead, outcome.encoderFailure()));
+        }
+        status.setText(line.toString());
     }
 
     /** A toast from the application context, for a result no screen is left to show. */
     private static void report(Context application, String message) {
-        new Handler(Looper.getMainLooper()).post(
-                () -> Toast.makeText(application, message, Toast.LENGTH_LONG).show());
+        Toast.makeText(application, message, Toast.LENGTH_LONG).show();
     }
 
     /**
      * The chart the phone has for this take, or null if it has none.
      *
-     * <p>Same order the result screen reads them in: the last finished run first,
-     * because below Android 35 that is the only copy there is, and the file
-     * beside the audio second.
+     * <p>Same order the result screen reads them in: the last finished run
+     * first, because the file beside the audio usually cannot be written at all
+     * ({@link MwAnalysis#writeCache}), and that file second.
      */
     private String chartText() {
         AnalysisJobs.Result last = AnalysisJobs.get().lastResult(wav);
@@ -264,12 +295,5 @@ public final class ReportActivity extends MwActivity {
     private static String platform() {
         return "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), "
                 + Build.MODEL;
-    }
-
-    /** A sentence for the screen; an exception with no message says nothing on its own. */
-    private static String describe(Throwable failure) {
-        String message = failure.getMessage();
-        return message == null || message.isEmpty()
-                ? failure.getClass().getSimpleName() : message;
     }
 }

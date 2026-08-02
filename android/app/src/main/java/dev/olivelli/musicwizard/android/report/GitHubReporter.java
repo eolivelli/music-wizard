@@ -111,10 +111,10 @@ public final class GitHubReporter {
     /**
      * The name an asset is uploaded under: the take, then when it was sent.
      *
-     * <p>Reduced to the characters GitHub keeps verbatim in an asset name, so
-     * that the link written into the comment is the link the asset actually
-     * gets. A take name is typed by a person and the library allows spaces,
-     * accents and emoji in one.
+     * <p>Reduced to the characters GitHub keeps verbatim, so that the name in
+     * the comment is the name on the release — a take name is typed by a person
+     * and the library allows spaces, accents and emoji in one. The link itself
+     * is GitHub's own {@code browser_download_url} and is right either way.
      */
     public static String assetName(String takeName, Instant sentAt, String extension) {
         String raw = takeName == null ? "" : takeName;
@@ -226,9 +226,9 @@ public final class GitHubReporter {
      * The sentence the screen shows for a refused request.
      *
      * <p>GitHub's own {@code message} where there is one — "Bad credentials",
-     * "Not Found", "Validation Failed" — because it names the thing to fix, and
-     * the status alone does not: a 404 here is a token without access to the
-     * repository just as often as it is a missing release.
+     * "Not Found" — because it names the thing to fix, and the status alone
+     * does not: a 404 here is a token without access to the repository just as
+     * often as it is a missing release.
      */
     private static Failure failure(Http.Response response, String doing) {
         JsonNode body = parse(response.body());
