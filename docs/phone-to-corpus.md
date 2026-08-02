@@ -22,9 +22,8 @@ and its `list.txt` header says why they are looked at rather than scored.
 Being scored is a further step, and a later one: `tools/score-samples.py` looks
 for every benchmark under `samples/` and reads its changes from the `BENCHMARKS`
 table in that same script (`score-chart.py` imports it). A file's `list.txt`
-entry does not put it there — `samples/list.txt` says changes are confirmed by
-ear before a file is promoted — and adding one means regenerating the baselines
-under `tools/baselines/` in the same PR.
+entry does not put it there: `samples/list.txt` says changes are confirmed by
+ear before a file is promoted.
 
 ## 3. Write the `list.txt` entry
 
