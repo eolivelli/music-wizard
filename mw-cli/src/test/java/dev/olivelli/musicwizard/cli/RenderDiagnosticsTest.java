@@ -235,8 +235,9 @@ class RenderDiagnosticsTest {
         // Round 1 of review: String.format without a Locale localises %d, so on
         // an ar_EG machine this sentence read "LilyPond reported ١٠ failed bar
         // checks" with every other word in English. The same class of defect as
-        // LilyPondRenderer.speakEnglish, one process in, and the reason
-        // StaffNotation's tempo mark already carries Locale.ROOT.
+        // LilyPondRenderer.speakEnglish, one process in, and the reason the
+        // engraved tempo mark already carries Locale.ROOT -- in mw-notation's
+        // TempoMark, which is where both renderers get the mark from.
         String[] ten = new String[10];
         for (int bar = 0; bar < ten.length; bar++) {
             ten[bar] = "chords.ly:1:1: warning: bar check failed at: " + (bar + 1) + "/4";

@@ -3,7 +3,9 @@
 Sheet music from a recording. MP3 in; melody, bass line, chords, lyrics and a
 simplified piano arrangement out, engraved as one PDF per part.
 
-Java 25, Maven, Apache-2.0. CLI now, web UI much later.
+Built on JDK 25, compiled to Java 21 bytecode — Android's D8 reads no newer,
+and the field-recording app (#236) links the shared modules. Maven, Apache-2.0.
+CLI now, web UI much later.
 Repo: https://github.com/eolivelli/music-wizard
 
 ## Build and run
@@ -29,11 +31,11 @@ measurement gives +0.356 the other way. **The sign flips between synthetic and
 real.**
 
 That was read as meaning no constant in `ChordEstimator` could fix it, and #3
-showed otherwise. On `samples/gmajorblues.mp3` — a different recording, and the
-one with exactly known changes — the estimator's three changes together take
-*plain* chroma from 0.0% to 58.9% of bars correct, before any front end. The
-flat no-chord template scores highest exactly when a frame looks least like
-music, so it wins on a real mix whatever the chroma is.
+showed otherwise. On the G blues that was the reference recording then — a
+different recording, with exactly known changes — the estimator's three changes
+together take *plain* chroma from 0.0% to 58.9% of bars correct, before any
+front end. The flat no-chord template scores highest exactly when a frame looks
+least like music, so it wins on a real mix whatever the chroma is.
 
 No single constant does it, though, and the first draft of this paragraph
 claimed one did — three changes reach 58.9% and the largest of them alone
@@ -45,9 +47,54 @@ stale in four separate files. The lesson is not "a constant can fix it" but
 So: work that makes real audio work outranks work that polishes what already
 works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
 every benchmark with known ground truth went from 0% of bars correct to between
-14% and 89%, and from one `N.C.` span per recording to none. What is now top is
-what that exposed: the beat grid drifts (#196), and dominant sevenths are found
-on two of the five benchmarks and called plain triads on the other three (#208).
+14% and 89%, and from one `N.C.` span per recording to none. The beat drift that
+exposed is fixed too (#196): the tracker's spacing penalty was a forty-eighth of
+the published one, so it left the grid for any loud offbeat, and the benchmarks
+now score between 15% and 99% of bars correct on the tracker's own downbeats.
+
+The chart's bar *rate* is fixed too (#200): it was the median tracked interval,
+which is not a rate and is quantised to the analysis hop, and it is now the mean
+of the intervals the tracker held steadily. Each of the five benchmarks that
+existed then improved or held **on the root column**, the reference recording by
+fifteen points and one other by twelve. Not on `root+quality`, which fell a point
+or two on two of them — at the time that column was dominated by #208, whose
+small movements did not mean much either way, which is exactly why the two are
+quoted separately.
+Of the two benchmarks added since, one scores lower, and #242 measures why that
+cell is a tie-break artefact rather than a reading.
+
+What is now top is what all three exposed, in order. The chart still hangs its
+whole bar axis on one downbeat, which on a lead-in is the least reliable beat
+there is (#233), and one constant bar length still cannot follow a recording
+that does not hold one (#187). Then: one benchmark's tempo is read at four
+thirds of its true rate (#231), and the vocabulary still has no major seventh,
+sixth, minor sixth or half-diminished, each of which was measured and costs more
+than it buys until four-note candidates can be ranked on something better than
+which extra note is louder (#287, #274).
+
+Dominant sevenths are found now (#208) — they were found on two benchmarks and
+called plain triads on three others whose roots were read nearly perfectly. The
+root is still decided from both registers and the quality now from the treble,
+once per chord rather than per beat, which is two changes rather than one
+because different benchmarks needed different halves. A large net gain that
+closed nothing and cost a couple of points on the two benchmarks whose sevenths
+were already being found: `ChordEstimator` carries the mechanism and
+`tools/baselines/score-samples.txt` the current reading.
+
+Minor sevenths are found too (#272), and it took two things. **The decoder's
+vocabulary and the quality decision's are not the same one**: a quality the
+decoder may choose competes across roots, and `Am7` is a `C` triad with an A in
+it, so in the decoder it moves roots wherever the sixth degree sounds. And
+`C7` and `Cm7` differ in nothing but the third, so a minor-third candidate is
+scored on its notes' mass less whatever major third the root's own fifth
+partial cannot account for — subtract all of the major third instead and a
+blues third or a strongly voiced root turns minor chords major, which is how a
+B minor blues came to be named B major.
+
+**The corpus has a plain-triad benchmark now**, `pop-c-g-am-f-120.mp3`, every
+root right on the uploader's stated grid. It is what decided the size of that
+correction, and before it nothing in the scored set could tell a quality that is
+found from one that is reported because nothing said not to (#273).
 
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.
@@ -95,6 +142,10 @@ mw-it         slow integration tests
 
 **`mw-core` is the only module everything may depend on. `mw-notation` must not
 depend on `mw-ml`. `mw-cli` is the only module that wires everything together.**
+(As of #247 the stronger statement is also true — `mw-cli` is the *only* module
+that depends on `mw-ml` — but that is current state, not the rule: when melody
+lands, `mw-transcribe` will need a provider SPI again. The rule above survives
+that; the fact does not.)
 This is what lets the symbolic and audio tracks be built in parallel without
 colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
@@ -102,7 +153,10 @@ and changes to `mw-core` go through a separate serialized PR.
 One edge between non-core modules is new and worth naming: **`mw-notation`
 depends on `mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. It
 joins the ones the pipeline already had — `mw-dsp` on `mw-audio`, and
-`mw-transcribe` on all three of `mw-audio`, `mw-dsp` and `mw-ml`. The notation
+`mw-transcribe` on both `mw-audio` and `mw-dsp`. (`mw-transcribe` declared
+`mw-ml` too and never wrote a line against it, which put ONNX Runtime's desktop
+natives in the Android app's compile closure for nothing; #247 moved that
+declaration to `mw-cli`, at runtime scope, where the wiring belongs.) The notation
 layer needs the quantizer's tuplet decision and cannot re-derive it — three
 onsets a third of a beat apart and three a half beat apart are both legal on the
 sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
@@ -179,59 +233,30 @@ downloads a model or shells out to LilyPond belongs in `mw-it`.
 
 ## Review process
 
-Every patch gets **at least three review rounds** (see `.claude/agents/`), and
-the reason is empirical rather than ceremonial: on this project, round two has
-caught a round-one *fix* that was worse than the bug it replaced, and round
-three caught two round-two fixes that were bypassable. Specifically:
+Serialized: **one PR in flight at a time.** The rules live in
+`.claude/agents/pr-worker.md` and `pr-reviewer.md`; the incidents that shaped
+them are in `docs/history.md`. The short version:
 
-- A lead-in fix silently misaligned the whole tempo map by up to half a beat —
-  and every existing test started at `t=0.0`, so none exercised the branch the
-  fix was written for.
-- A path-traversal fix normalised the path but never resolved symlinks, so a
-  shared workspace could still read `~/.ssh/id_rsa`.
-- A hash-collision fix added a byte-length prefix, but UTF-8 encoding is itself
-  lossy for unpaired surrogates, so the collision survived.
-
-The pattern worth remembering: **fixes tend to stop at the layer where the bug
-was noticed, not the layer where it lives.** Reviewers confirm findings by
-execution and label them `CONFIRMED` or `PLAUSIBLE`.
-
-Writing that pattern down here has not reduced how often it happens — four
-changes in a single night each shipped a first fix that reached one caller and
-missed another. So one thing is now a **mechanical check the reviewer runs
-rather than a judgement call**: enumerate every reader of the value that
-changed. See `.claude/agents/pr-reviewer.md`.
-
-A second check was tried and withdrawn: re-running every new test against the
-code without its fix. It was correct in principle — a fixture starting at
-`t=0.0` tests nothing about tempo, because every derivation agrees at the origin
-— but it cost far more than it returned. Reading the test finds the same thing,
-most reverts only confirmed what the reviewer already believed, and the revert
-itself (`git checkout -- <file>`, which discards *all* uncommitted changes to
-that file) destroyed half-written fixes repeatedly. It is now reserved for
-troubleshooting something genuinely hard to reproduce. Mutation sweeps were
-never required at all; they were a generalisation of that check, and they
-produced more false numbers than findings.
-
-Two further observations from the same night. When a fix needs the same edit in
-a *third* place, the structural change that removes the choice is cheaper than
-the third edit — that is where `Score.estimatedTempo()` came from. And once late
-rounds stop finding defects in executable code, what they find instead is claims
-that outrun their evidence: a result measured at one point written up as
-general, a javadoc describing the design that was replaced. On a tool whose
-output is estimates users act on, an overstated confidence is a defect.
-
-That last observation eventually restructured the process. Measured over the
-long reviews, executable defects stopped by round three-to-five and everything
-after was prose — real findings, wrongly priced, since a wrong sentence was
-costing a full adversarial round and one PR ran to eighteen. Reviews now have
-**two tiers**: findings that touch executable code or tests force a fresh full
-round, findings that are prose-only are fixed and confirmed in a delta pass on
-exactly the changed text (`APPROVE_WITH_CORRECTIONS`). Two writing rules shrink
-the prose tier at its source: when a reviewer corrects a fact, grep for every
-other statement of that fact before replying; and a number may appear in prose
-only if a test asserts it or a committed harness reproduces it — otherwise
-state the qualitative fact.
+- **Two-stage gate.** Locally, `tools/premerge.sh` (branch merged with
+  current `origin/main`) — its irreplaceable part is the harness diff against
+  `tools/baselines/`, which CI cannot run in full because the local-only
+  benchmark files never leave this machine. Any movement fails; intended
+  improvements regenerate the baseline in the same PR. It leaves the test
+  suites to CI, which runs them on the merge preview anyway; `--full` runs
+  them locally too. **Finally, CI on the pull request is the quality gate**:
+  full matrix against the merge preview; merge only on reviewer approval plus
+  every check green on the approved head.
+- **Round 1 is a full adversarial review; later rounds are scoped to the
+  delta.** Loop until a round finds nothing new, or only prose
+  (`APPROVE_WITH_CORRECTIONS` → delta pass on the changed text → merge).
+  Findings are `CONFIRMED` by execution or honestly `PLAUSIBLE`.
+- **The one mechanical check every round: enumerate every reader of the value
+  that changed.** It is the project's dominant defect class and reasoning
+  about it has repeatedly failed where running it succeeded.
+- **Prose discipline:** no number outside a test or committed harness; when a
+  fact is corrected, grep for its every other statement before replying.
+- Revert-the-fix verification and mutation sweeps are **not** used; both were
+  tried and withdrawn (`docs/history.md`).
 
 ## Conventions
 
@@ -243,17 +268,29 @@ state the qualitative fact.
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
-- **One git worktree per concurrent task**, never the shared checkout. A
-  `git checkout` moves HEAD for every process in that clone; a commit made
-  during the move lands on another branch, silently.
-- **One local Maven repository per worktree**, passed as
-  `-Dmaven.repo.local=<worktree>/.m2` on every invocation. The worktree isolates
-  the source; `~/.m2` is the channel it does not isolate. Whatever one agent
-  installs becomes another's dependency, so a build can silently resolve a
-  sibling module from somebody else's uncommitted work. It has already produced
-  a false result here: a `mvn -pl mw-dsp` mutation sweep picked up a stale
-  `mw-audio`, ten mutants failed to *build*, and the summary counted them as
-  killed. Build with `-am` too, so siblings come from the source tree.
+- **Keep prose short.** Comments, javadoc, commit messages, issue and PR bodies:
+  write what a future reader strictly needs and stop. Reviewing prose is the
+  most expensive thing this project does per unit of value, and every sentence
+  is a claim someone has to check.
+  - **Prefer the qualitative fact to the figure.** A number invites
+    verification, dates as soon as anything moves, and has to be restated
+    everywhere it appears. Give one only where it decides something.
+  - **No superlative that is a ranking of the current corpus** — *worst*,
+    *furthest*, *the only one* — since it dates the moment a benchmark is added.
+    Point at the committed baseline instead. A superlative that follows from a
+    mechanism is fine and often the clearest thing to write, because growth
+    cannot falsify it. On #200 four successive drafts of one paragraph each
+    claimed a ranking the data did not hold.
+  - **Do not narrate the review.** "An earlier draft said", "round 3 found",
+    "corrected in review" is process history; it belongs in the commit message
+    or the PR, once, not in the source. Fix the sentence and move on.
+  - When a fact changes, grep for every statement of it before editing one. That
+    is the cheapest way to stop the next round.
+- **One git worktree per task, one local Maven repository per worktree**
+  (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
+  build downloads the dependency closure; that is the price of the isolation.
+  Never `git checkout` in the shared clone. The incidents behind each half are
+  in `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
@@ -281,13 +318,21 @@ synthesised I-V-vi-IV signal and on an actual MP3 encoded from it.
 
 Done: M0 (reactor, domain model, workspace with content-addressed caching,
 layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
-tracking, tuning-corrected chroma, chord recognition, chord chart, LilyPond).
-Four review rounds on `mw-core`.
+tracking, tuning-corrected chroma, chord recognition, key naming, chord chart,
+LilyPond). Four review rounds on `mw-core`.
 
-Still missing: key detection, the whole symbolic/notation track (#1),
-separation and melody (#8), lyrics (#9), piano (#10), advisor (#11). NNLS chroma
-(#3) has landed; `tools/score-samples.py` is the standing measurement of what it
-is worth.
+Key detection (#275) reads the estimated chords, not chroma, and reports two
+confidences because it makes two decisions of very different reliability: the
+key signature, and which of a relative pair is home. The second is what fails —
+a loop that neither begins nor ends on its tonic gives it nothing to work with,
+and it answers at the coin-flip floor rather than pretending. `KeyEstimator`
+carries the rules and `tools/baselines/score-samples.txt` carries the scores.
+
+Still missing: separation and melody (#8), lyrics (#9), piano
+(#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
+NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
+`tools/score-samples.py` and `tools/score-chart.py` are the standing
+measurement of what they are worth, with baselines under `tools/baselines/`.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
 `design-gap` issues before treating it as frozen — especially #4 (no beat unit,
@@ -296,7 +341,15 @@ so compound meters mis-bar) and #5 (notation-facing gaps).
 
 ## Sample files
 
-The directory "./samples" contains a selection of real mp3 files that are 
-expected to work.
-The file samples/list.txt contains a description of the contents of each file.
-This is the ultimate reference test set to evaluate the quality of the results
+`samples/` is the corpus MW is measured on, and the reference test set for
+whether the output is any good. `samples/list.txt` says what is in each
+recording — changes confirmed by ear, which is what makes them ground truth
+rather than description — and where it came from. Committed files are CC BY and
+attributed in `NOTICE`; anything not redistributable is gitignored with the
+fetch command beside it, so a fresh clone is short of benchmarks rather than
+short of a licence (#204).
+
+`tools/score-samples.py` scores every grid written down there and
+`BluesLoopIT` gates one recording in CI. `docs/phone-to-corpus.md` is the route
+a recording made with the phone app takes into `uncommitted/` or `samples/`,
+and what to write down beside it.

@@ -109,9 +109,16 @@ public final class PitchSpeller {
     /**
      * The range of the line of fifths that a legal {@link Accidental} can reach:
      * F double flat at -15 through B double sharp at 19.
+     *
+     * <p>Package-private because {@link ChordSpeller} searches the same band for
+     * a region, for the same reason: a region outside it cannot be reached by
+     * any spelling that can be printed.
      */
-    private static final int MIN_FIFTHS = -15;
-    private static final int MAX_FIFTHS = 19;
+    static final int MIN_FIFTHS = -15;
+    static final int MAX_FIFTHS = 19;
+
+    /** Accidentals a spelling can carry at all: a double sharp or a double flat. */
+    static final int MAX_WRITABLE_ACCIDENTALS = 2;
 
     /**
      * Octaves a spelling may be placed in: the band
@@ -238,8 +245,15 @@ public final class PitchSpeller {
      * -- and the accidental is whatever makes that letter sound right. That is
      * what gives B diminished seventh the A flat it needs rather than the G
      * sharp a pitch-class table would produce.
+     *
+     * <p>Package-private because {@link ChordSpeller} needs the same answer for a
+     * slash chord's bass. Written on its own from the line of fifths, the bass of
+     * E major in a flat-leaning piece comes out A flat -- a note that is not in
+     * the chord it is printed under. Callers wanting the bass <em>derived</em>
+     * rather than honoured must pass a chord with no bass on it, since the branch
+     * below returns a written bass unchanged.
      */
-    private static Optional<PitchSpelling> asChordTone(int midiPitch, Chord chord) {
+    static Optional<PitchSpelling> asChordTone(int midiPitch, Chord chord) {
         if (chord.isNoChord()) {
             return Optional.empty();
         }
@@ -344,12 +358,32 @@ public final class PitchSpeller {
      * printed as a double flat.
      */
     static PitchSpelling onLineOfFifths(int midiPitch, double centre) {
+        return onLineOfFifths(midiPitch, centre, MAX_WRITABLE_ACCIDENTALS);
+    }
+
+    /**
+     * The same, refusing any spelling that needs more than a given number of
+     * accidentals.
+     *
+     * <p>For {@link ChordSpeller}, which caps a chord symbol at one. A note on a
+     * staff may legitimately need a double sharp, and reads as one because the
+     * key signature and the notes around it say what it is; a chord symbol has
+     * neither, and {@code Bbb7} standing alone over a bar is a chord nobody can
+     * play at sight. Every pitch class can meet a cap of one -- only D, G and A
+     * have a single such spelling, and the other nine have two.
+     *
+     * @param maxAccidentals the widest accidental the answer may carry
+     */
+    static PitchSpelling onLineOfFifths(int midiPitch, double centre, int maxAccidentals) {
         int pitchClass = Math.floorMod(midiPitch, 12);
         int best = Integer.MIN_VALUE;
         double bestDistance = Double.MAX_VALUE;
         int bestAccidentals = Integer.MAX_VALUE;
         for (int fifths = MIN_FIFTHS; fifths <= MAX_FIFTHS; fifths++) {
             if (Math.floorMod(fifths * 7, 12) != pitchClass) {
+                continue;
+            }
+            if (Math.abs(Math.floorDiv(fifths + 1, 7)) > maxAccidentals) {
                 continue;
             }
             if (spellingOf(fifths, midiPitch).isEmpty()) {
@@ -368,21 +402,45 @@ public final class PitchSpeller {
             }
         }
         if (best == Integer.MIN_VALUE) {
-            throw new IllegalStateException(
-                    "no spelling within two accidentals for pitch class " + pitchClass);
+            // Names the cap it was actually given, since it is a parameter: it
+            // read "within two accidentals" while the caller may have asked for
+            // one, which sends whoever reads it looking at the wrong table.
+            throw new IllegalStateException("no spelling within " + maxAccidentals
+                    + " accidentals for pitch class " + pitchClass);
         }
         return spellingOf(best, midiPitch).orElseThrow();
     }
 
-    /** The spelling at a point on the line of fifths, if it is writable. */
-    private static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
+    /**
+     * The spelling at a point on the line of fifths, if it is writable.
+     *
+     * <p>Package-private rather than private because {@link Transposer} writes a
+     * pitch at a position it has already chosen, where every other caller here
+     * searches for the position. Sharing it is the point: this and
+     * {@link #fifthsOf} are inverse, and a second copy of either could put B
+     * sharp somewhere this one does not.
+     *
+     * <p><b>The position is not checked against the pitch, and the answer does
+     * not always sound as it.</b> {@code spellingOf(0, 61)} is C in octave 4,
+     * which sounds 60. Every caller that searches has matched pitch classes
+     * before asking; the one that does not search must check the answer, and
+     * {@code Transposer.displace} does.
+     */
+    static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
         int alteration = Math.floorDiv(fifths + 1, 7);
         return atOctave(letterOfFifths(fifths - 7 * alteration),
                 Accidental.ofAlteration(alteration), midiPitch);
     }
 
-    /** Position of a written pitch on the line of fifths, C being zero. */
-    private static int fifthsOf(PitchSpelling spelling) {
+    /**
+     * Position of a written pitch on the line of fifths, C being zero.
+     *
+     * <p>Package-private rather than private because {@link ChordSpeller} asks
+     * where a spelling landed in order to price it. Sharing this one is the
+     * point: a second copy of the mapping could disagree about where B sharp is,
+     * and the two would then spell the same music differently.
+     */
+    static int fifthsOf(PitchSpelling spelling) {
         return LETTER_FIFTHS[spelling.letter().diatonicStep()] + 7 * spelling.accidental().alteration();
     }
 
@@ -409,9 +467,11 @@ public final class PitchSpeller {
      * Places a letter and accidental in the octave that makes it sound as the
      * given MIDI pitch.
      *
-     * <p>The division is exact because the caller has already matched pitch
-     * classes, and it is what puts C flat in the octave above the B it sounds
-     * as: C flat 4 sounds as MIDI 59, which is B 3.
+     * <p>The division is what puts C flat in the octave above the B it sounds as:
+     * C flat 4 sounds as MIDI 59, which is B 3. It is exact only where the letter
+     * and accidental already sound as the pitch's class; where they do not, the
+     * answer lands in the octave nearest below and sounds as something else. See
+     * {@link #spellingOf}, which is where a caller can be handed one.
      */
     private static Optional<PitchSpelling> atOctave(NoteLetter letter, Accidental accidental,
                                                     int midiPitch) {

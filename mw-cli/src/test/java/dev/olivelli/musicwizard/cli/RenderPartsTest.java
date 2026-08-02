@@ -175,12 +175,12 @@ class RenderPartsTest {
     class InertOptions {
 
         @Test
-        @DisplayName("--transpose and --paper are named rather than silently discarded")
+        @DisplayName("--paper is named rather than silently discarded")
         void areReported() {
             // The worst variant of #82 and the one it did not name: --parts voice
-            // writes nothing and says why, while --transpose -2 wrote every file,
-            // exited 0, and handed a singer a chart in the wrong key. Nothing
-            // reads either value (#129).
+            // writes nothing and says why, while a discarded notation setting
+            // writes every file and exits 0. --transpose was the worst of these
+            // and is honoured now (#129); the paper size is #180.
             Path workspace = audioWorkspace("song", fourChords());
 
             CliRunner.Result render = CliRunner.run("render", workspace.toString(),
@@ -188,9 +188,9 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("the transposition, the paper size")
+                    .contains("the paper size (#180)")
                     .contains("no effect yet")
-                    .contains("#129");
+                    .doesNotContain("the transposition");
         }
 
         @Test
@@ -212,9 +212,8 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("the capo")
-                    .contains("the accidental preference")
-                    .contains("#129");
+                    .contains("the capo (#181)")
+                    .contains("the accidental preference (#181)");
         }
 
         @Test
@@ -257,7 +256,7 @@ class RenderPartsTest {
             // that merely does not apply to this run; these apply to no run.
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, "letter", -2, null, null),
+                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(
@@ -265,25 +264,24 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
-                    .contains("the transposition, the paper size")
-                    .contains("whether set on the command line or in the workspace config")
-                    .contains("#129");
+                    .contains("the paper size (#180)")
+                    .contains("whether set on the command line or in the workspace config");
         }
 
         @Test
         @DisplayName("and the chart really is unchanged by them, which is why they warn")
         void reallyDoNothing() throws Exception {
-            // The warning is only honest if the claim behind it is true. If
-            // #129 lands and this starts failing, the warning is what to delete.
+            // The warning is only honest if the claim behind it is true. If a
+            // paper size starts changing the chart, the warning is what to
+            // delete.
             Path plain = audioWorkspace("plain", fourChords());
-            Path shifted = audioWorkspace("shifted", fourChords());
+            Path lettered = audioWorkspace("lettered", fourChords());
 
             CliRunner.run("render", plain.toString(), "--no-pdf");
-            CliRunner.run("render", shifted.toString(),
-                    "--transpose", "5", "--paper", "letter", "--no-pdf");
+            CliRunner.run("render", lettered.toString(), "--paper", "letter", "--no-pdf");
 
-            assertThat(java.nio.file.Files.readString(shifted.resolve("out/chords.ly")))
-                    .as("#129 has landed; delete the warning and this test")
+            assertThat(java.nio.file.Files.readString(lettered.resolve("out/chords.ly")))
+                    .as("#180 has landed; delete the warning and this test")
                     .isEqualTo(java.nio.file.Files.readString(plain.resolve("out/chords.ly")));
         }
     }

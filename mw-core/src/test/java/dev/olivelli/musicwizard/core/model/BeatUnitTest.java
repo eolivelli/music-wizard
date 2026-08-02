@@ -598,8 +598,8 @@ class BeatUnitTest {
             assertThat(bare.estimatedTempo()).isEqualTo(measured.averageTempo(10.0));
             assertThat(bare.estimatedTempo()).isCloseTo(72.0, within(1e-9));
 
-            // A grid too short to have a median falls through to the map rather
-            // than asking it for one: BeatGrid.medianPulseRate throws below two
+            // A grid too short to have a rate falls through to the map rather
+            // than asking it for one: BeatGrid.steadyPulseRate throws below two
             // beats, so the size check is load-bearing, not defensive.
             Score oneBeat = Score.empty(measured, 10.0)
                     .withBeatGrid(BeatGrid.ofTimes(List.of(0.05),
@@ -648,9 +648,14 @@ class BeatUnitTest {
             Score changing = Score.empty(twoTempi, 12.0).withBeatGrid(
                     BeatGrid.ofTimes(List.of(0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0),
                             TimeSignature.FOUR_FOUR, Confidence.of(0.9)));
+            // steadyTempo rather than medianTempo since #200. This grid holds two
+            // intervals of a full beat among four of half a beat, so the plain
+            // mean would answer 90 here and the assertion does separate the
+            // fall-through from that -- but not from the median, which this grid
+            // also puts at 120. SteadyRateTest separates all three.
             assertThat(changing.estimatedTempo())
                     .isEqualTo(changing.beatGrid().orElseThrow()
-                            .medianTempo(TimeSignature.FOUR_FOUR));
+                            .steadyTempo(TimeSignature.FOUR_FOUR));
 
             // And with no grid there is nothing to identify the lead-in against,
             // so the same anchored map falls back rather than guessing.

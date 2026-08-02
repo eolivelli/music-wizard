@@ -1,0 +1,46 @@
+# Fires on android-v* tags: builds the debug APK and attaches it to the
+# GitHub release for that tag, which is how a testable build reaches a
+# real phone. Debug-signed on purpose — installable everywhere, no signing
+# secrets in CI; see android.yml for the reasoning.
+name: android-release
+
+on:
+  push:
+    tags: ['android-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Two JDKs, for the reason android.yml spells out (#252): the reactor's
+      # enforcer requires a build JDK of 25 or newer, AGP does not run on one,
+      # and the last setup-java wins for JAVA_HOME. This job is only reachable
+      # by pushing an android-v* tag, so unlike android.yml it cannot be proved
+      # by a pull request -- the first tag is its first run.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+      - name: Install shared MW modules
+        run: mvn -B --no-transfer-progress -DskipTests install
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: gradle
+      - name: Build and test the app
+        working-directory: android
+        run: ./gradlew --no-daemon test assembleDebug
+      - name: Attach the APK to the release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          gh release create "$GITHUB_REF_NAME" --prerelease --generate-notes \
+            --title "MW Android $GITHUB_REF_NAME (debug build for field testing)" \
+            "$apk" 2>/dev/null || gh release upload "$GITHUB_REF_NAME" "$apk" --clobber

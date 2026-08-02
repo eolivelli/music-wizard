@@ -1,55 +1,213 @@
-# This directory contains a list of real mp3 files
+# The sample corpus: real recordings, what is in them, and where they came from.
+#
+# Licensing is a gate, not a note. A file is committed only if it is our own or
+# permissively licensed; anything else is gitignored and listed here with the
+# command to fetch it, so a checkout without it is short of benchmarks rather
+# than short of a licence. Attribution for the committed CC-BY files is in
+# NOTICE as well as here.
+#
+# Chords are lead-sheet shorthand, spelled as the tool spells them: 7 dominant,
+# m7 minor seventh, maj7 major seventh, m6 minor sixth, m7b5 half-diminished,
+# dim diminished, a plain letter a major triad. One token is one bar, four bars
+# to a line; X-Y is one bar holding both chords.
+#
+# Every grid below was confirmed against the recording by ear, and that is what
+# lets it be ground truth: tools/score-samples.py scores it, and
+# tools/baselines/score-samples.txt is the current reading. Where an entry is
+# not scored it says why, and pop-c-g-am-f-120.mp3 says what a grid confirmed
+# without ears is worth instead. Keys and tempos attributed to the uploader are
+# claims, not measurements, and are marked as such.
 
-gmajorblues.mp3
 
-This is a simple Blues is G Major.
-It's 12 bars repeated many times.
-The sequence is: 
+# ============================================================================
+# Committed
+# ============================================================================
+
+g-blues-shuffle-cc.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=o5xCVtkOPVc)
+Blues shuffle in G, 5:16, at a measured 105 BPM. The committed tier-2 gate:
+BluesLoopIT scores it bar by bar against this cycle, on a bar axis measured
+from the recording rather than taken from the beat tracker. It replaced
+gmajorblues.mp3 when that file's provenance could not be established (#204).
+A sparse intro that the tracker reads at half rate is its own finding (#292).
+
 G7 G7 G7 G7
 C7 C7 G7 G7
 D7 C7 G7 D7
 
-blues-a-90bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
+bm-blues-slow.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=hLeDkqjxWtw)
+Slow B minor blues. A minor key that stays minor, which is what a corpus of
+dominant sevenths cannot ask: here a major third on the tonic is an error
+rather than the answer.
 
-A blues backing track in A at 90 BPM, 5:04. Not redistributable, so the
-file itself is gitignored; fetch it yourself for local testing:
+Bm Bm Bm Bm
+Em Em Bm Bm
+G7 F#7 Bm Bm
+
+cm-blues-68-95.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=bCXILhgRXG4)
+C minor blues, 6/8 fusion groove, stated 95 bpm. The first compound meter in
+the corpus, so it is also the probe for #4 — a 6/8 bar holds three quarter
+beats, and nothing downstream knows that yet.
+
+Cm7 Cm7 Cm7 C7
+Fm7 Fm7 Cm7 Cm7
+Ab7 G7 Cm7 G7
+
+waltz-am-e7-160.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=t4ULKM39g6E)
+Waltz in 3/4, stated Am E7 at 160 bpm. The first real 3/4: eight bars, so the
+bar axis is only as good as the meter.
+
+Am Am Am E7
+E7 E7 E7 Am
+
+f-blues-swing-170.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=llh6bcVyXDs)
+F jazz blues, swing, stated 170 bpm. The fast-tempo probe. Four of its bars
+hold two changes, and one holds a diminished chord, which the estimator has no
+template for.
+
+F7 Bb7 F7 F7
+Bb7 Bdim F7 Am7b5-D7
+Gm7 C7 F7-D7 Gm7-C7
+
+jazz-251-c-140.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=45u1nwqITh4)
+ii-V-I in C, stated 140 bpm. Half of it is a major seventh, which the
+estimator cannot name at all (#287), so its root and root+quality columns are
+expected to come apart rather than move together.
+
+Dm7 Dm7 G7 G7
+Cmaj7 Cmaj7 Cmaj7 Cmaj7
+
+fm7-vamp-110.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=IHPGsOe97qA)
+Latin-jazz one-chord vamp, stated 110 bpm. Ground truth is trivially complete:
+every bar is Fm7. Tests harmonic-stasis honesty.
+
+Fm7
+
+eb7-vamp-130.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=ml4ICs8DKAE)
+One-chord vamp, dominant quality, stated 130 bpm. The uploader's description
+says two things the truth string cannot: the bass riff plays the major seventh
+of the chord, and the comping riff is a tritone moving a half-step up, "D7 Eb7
+or Ebm6 Eb7 depending on how you analyse it". So the minor third of the
+written chord really is sounding, which is why this file is the one that
+decides how a minor third is read (#272).
+
+Eb7
+
+pop-c-g-am-f-120.mp3   (CC-BY, RainbowMonkey, https://www.youtube.com/watch?v=B13A7mPu_cs)
+Pop backing track, stated C G Am F at 120 BPM in C major. THE pop progression,
+and plain triads throughout, which is what makes it worth scoring: it is the
+negative control for every quality the estimator can report (#273).
+
+This is the one grid here that was confirmed without ears, and it is worth
+knowing what that is worth. The stated 120 BPM in four is a two-second bar, the
+recording is 114 seconds and the tracker finds 57 bars in it; the estimator
+then names every bar's root correctly, which says only that it contradicts the
+stated changes nowhere, and leaves open whether the recording holds anything
+the four chords do not.
+
+C G Am F
+
+ballad-wine-roses-65.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=aIdXtd8wa0Q)
+"Days of Wine and Roses" at a stated 65 bpm — the slow-tempo octave-error
+probe. Not scored: this is a 32-bar standard rather than a loop, and its
+changes carry a bass note and a suspension that the harness has nowhere to
+put. The changes are here because the file is worth analysing by hand.
+
+Fmaj7   Eb7    Am7     D7
+Gm7     Gm7    Bbm7    Eb7
+Am7     Dm7    Gm7     C7
+Em7b5-A7  Dm7-G7  C7sus4  C7
+
+Fmaj7   Eb7    Am7     D7
+Gm7     Gm7    Bbm7    Eb7
+Am7     Dm7/C  Bm7b5   E7
+Am7-Dm7  Gm7-C7  F6     Gm7-C7
+
+footprints-200.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=4QUIK0sVhO0)
+"Footprints" at a stated 200 bpm in three. The deliberate stress ceiling: fast
+and ternary and minor jazz at once. Expect failure today; keep it as the
+horizon marker. Not scored: in three, so the bars a 4/4 downbeat sequence cuts
+are not this recording's bars.
+
+intro:
+Cm7 Cm7 Cm7 Cm7
+
+main:
+Cm7 Cm7 Cm7 Cm7
+Fm7 Fm7 Cm7 Cm7
+F#m7b5-F7 E7-A7 Cm7 Cm7
+
+
+# ============================================================================
+# Local only — standard YouTube licence, not redistributable, so gitignored.
+# Fetch them to score the full corpus; the harnesses report them as skipped
+# rather than failing when they are absent, which is how CI runs.
+# ============================================================================
+
+blues-a-90bpm.mp3
+Blues backing track in A at 90 BPM, 5:04. Slow change, E7 turnaround.
   yt-dlp -x --audio-format mp3 -o samples/blues-a-90bpm.mp3 \
     https://www.youtube.com/watch?v=Z3euxRLOQec
-12 bars repeated, slow change, E7 turnaround:
+
 A7 A7 A7 A7
 D7 D7 A7 A7
 E7 D7 A7 E7
 
-blues-shuffle-a-106bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
-
-Blues shuffle in A at 106 BPM, 5:43. Same source channel and same licensing
-posture as blues-a-90bpm.mp3; fetch locally:
+blues-shuffle-a-106bpm.mp3
+Blues shuffle in A, 5:43. Named for 106 BPM; its loop measures 105.000,
+robustly, and the discrepancy is unresolved (tools/ScoreBeats.java).
   yt-dlp -x --audio-format mp3 -o samples/blues-shuffle-a-106bpm.mp3 \
     https://www.youtube.com/watch?v=lFV6mqP7rfY
-Same 12-bar sequence as blues-a-90bpm.mp3, shuffled feel:
+
 A7 A7 A7 A7
 D7 D7 A7 A7
 E7 D7 A7 E7
 
-blues-e-90bpm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
-
-Blues backing track in E at 90 BPM, 5:02. Same source channel and licensing
-posture as the other backing tracks; fetch locally:
+blues-e-90bpm.mp3
+Blues backing track in E at 90 BPM, 5:02.
   yt-dlp -x --audio-format mp3 -o samples/blues-e-90bpm.mp3 \
     https://www.youtube.com/watch?v=36X3wecT2z8
-Same 12-bar shape as the A-blues tracks, in E:
+
 E7 E7 E7 E7
 A7 A7 E7 E7
 B7 A7 E7 B7
 
-bossa-cm.mp3   (LOCAL ONLY — not committed; standard YouTube license)
+slow-68-40.mp3
+The extreme slow case: stated 40 bpm in 6/8.
+  yt-dlp -x --audio-format mp3 -o samples/slow-68-40.mp3 \
+    https://www.youtube.com/watch?v=k5sun2UIAwc
 
-Bossa nova backing track in C minor. Fetch locally:
+A7 A7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
+
+bossa-cm.mp3
+Bossa nova in C minor, sixteen bars. The tempo estimator reads it at about
+four thirds of its true rate (#231), so there is no phase at which its bars can
+be right — every column it scores is bounded by that rather than by harmony.
   yt-dlp -x --audio-format mp3 -o samples/bossa-cm.mp3 \
     https://www.youtube.com/watch?v=7H7Xg6U7P5g
-16 bars; "0" is half-diminished, "DELTA" a major seventh; the last bar
-holds two chords, half a bar each:
-Cm7  Cm7  Fm6  Fm6
-D0   G7   Cm6  Cm6
-Ebm7 Ab7  DbDELTA DbDELTA
-D0   G7   Cm6  D0-G7
+
+Cm7    Cm7  Fm6     Fm6
+Dm7b5  G7   Cm6     Cm6
+Ebm7   Ab7  Dbmaj7  Dbmaj7
+Dm7b5  G7   Cm6     Dm7b5-G7
+
+pop-am-f-c-g-144.mp3
+The same four chords as pop-c-g-am-f-120.mp3, minor-framed: stated Am F C G at
+144 bpm. A direct probe of relative-minor tonic framing, which is the decision
+key detection reports its lower confidence for (#275). Its bar-by-bar grid is
+not written down, so only its key is scored.
+  yt-dlp -x --audio-format mp3 -o samples/pop-am-f-c-g-144.mp3 \
+    https://www.youtube.com/watch?v=TeHQd4gTmZA
+
+
+# ============================================================================
+# Retired
+# ============================================================================
+
+gmajorblues.mp3
+The G blues that was the reference recording until #204: no licence and no
+provenance were ever recorded for it, and the project's own tier-2 rule makes
+saying so a gate, so it is no longer committed or scored. Figures citing it in
+javadoc are measurements taken while it was, and stand as history rather than
+as something a checkout can reproduce.

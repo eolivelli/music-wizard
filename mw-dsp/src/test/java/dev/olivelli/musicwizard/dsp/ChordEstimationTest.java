@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -38,6 +39,16 @@ class ChordEstimationTest {
         AudioBuffer audio = new AudioBuffer(samples, RATE);
         List<Double> beats = BeatTracker.track(OnsetEnvelope.fromAudio(audio)).beatTimes();
         return ChordEstimator.estimate(Chroma.extract(audio).beatSynchronous(beats), beats);
+    }
+
+    /** Beat-synchronous chroma: one vector per beat, so no frame rate. */
+    private static Chroma beats(double[]... vectors) {
+        return new Chroma(vectors, 0);
+    }
+
+    private static List<Double> beatTimes(int count) {
+        return java.util.stream.IntStream.rangeClosed(0, count)
+                .mapToObj(i -> i * 0.5).toList();
     }
 
     @Nested
@@ -164,6 +175,300 @@ class ChordEstimationTest {
                 assertThat(list.get(i).startSeconds())
                         .isCloseTo(list.get(i - 1).endSeconds(), within(0.05));
             }
+        }
+    }
+
+    /**
+     * #208: the seventh is decided from the treble register and over the whole
+     * chord, not from both registers and not beat by beat.
+     *
+     * <p>Chroma is built here rather than synthesised, because the defect is
+     * about the <em>proportions</em> between registers on a real mix and a
+     * synthesised chord has whatever proportions the synthesiser was asked for.
+     * The vectors below are the shapes {@code tools/ChordSweep.java profile}
+     * measures over the benchmarks.
+     */
+    @Nested
+    @DisplayName("dominant sevenths (#208)")
+    class SeventhQuality {
+
+        /**
+         * A chroma vector: the named pitch classes at the given shares, the rest
+         * of the mass spread evenly over the other nine.
+         */
+        private static double[] chroma(double root, double third, double fifth, double seventh) {
+            double[] out = new double[12];
+            out[0] = root;
+            out[4] = third;
+            out[7] = fifth;
+            out[10] = seventh;
+            double rest = (1 - root - third - fifth - seventh) / 8;
+            for (int i : new int[] {1, 2, 3, 5, 6, 8, 9, 11}) {
+                out[i] = rest;
+            }
+            return out;
+        }
+
+        @Test
+        @DisplayName("finds the seventh the bass register was hiding")
+        void trebleFindsWhatCombinedCannot() {
+            // The shapes of blues-e-90bpm.mp3: in the treble the flat seventh
+            // carries 0.226 of the triad's mass, well over the 0.155 a four-note
+            // binary template needs; added to a bass that puts 0.6 of its energy
+            // on the root alone, the same seventh carries 0.106 and loses.
+            double[] treble = chroma(0.115, 0.133, 0.164, 0.093);
+            double[] combined = chroma(0.329, 0.084, 0.174, 0.062);
+            Chroma both = beats(combined, combined, combined, combined);
+            List<Double> times = beatTimes(4);
+
+            // The defect: quality decided from the chroma the root came from.
+            assertThat(ChordEstimator.estimate(both, both, times).chords().get(0).symbol())
+                    .isEqualTo("C");
+
+            // The fix: quality decided from the treble, same root, same spans.
+            ChordProgression fixed = ChordEstimator.estimate(both,
+                    beats(treble, treble, treble, treble), times);
+            assertThat(fixed.chords()).extracting(Chord::symbol).containsExactly("C7");
+        }
+
+        @Test
+        @DisplayName("a seventh voiced on some beats of a chord still names the chord")
+        void poolsTheSeventhOverTheWholeChord() {
+            // Three beats of the eight carry the seventh. Beat by beat the
+            // majority holds no seventh at all, and summed over the chord it
+            // carries 0.29 of the triad's mass.
+            double[] with = chroma(0.15, 0.15, 0.15, 0.35);
+            double[] without = chroma(0.15, 0.15, 0.15, 0.0);
+            double[][] span = {with, without, without, with, without, without, with, without};
+
+            ChordProgression chords =
+                    ChordEstimator.estimate(beats(span), beats(span), beatTimes(span.length));
+
+            assertThat(chords.chords()).extracting(Chord::symbol).containsExactly("C7");
+        }
+
+        @Test
+        @DisplayName("leaves a plain triad alone")
+        void doesNotInventSevenths() {
+            // pop-c-g-am-f-120.mp3's treble puts 0.023 of the triad's mass on the
+            // flat seventh. Nothing in this change may promote that to a C7 --
+            // which is the risk #198 named when the seventh templates landed.
+            double[] triad = chroma(0.281, 0.152, 0.269, 0.016);
+
+            ChordProgression chords = ChordEstimator.estimate(
+                    beats(triad, triad, triad, triad), beats(triad, triad, triad, triad),
+                    beatTimes(4));
+
+            assertThat(chords.chords()).extracting(Chord::symbol).containsExactly("C");
+        }
+
+        @Test
+        @DisplayName("says nothing about quality when the treble says nothing")
+        void keepsTheDecodersQualityOnNoEvidence() {
+            // A flat chroma scores 0.577 against a four-note template and 0.500
+            // against a three-note one, so an argmax over the two reports a
+            // dominant seventh on pure noise. The decoder cannot be fooled that
+            // way -- NO_CHORD_SIMILARITY is above both -- and this decision
+            // reads a chroma that guard never sees.
+            double[] minor = new double[12];
+            minor[9] = 0.30;
+            minor[0] = 0.24;
+            minor[4] = 0.28;
+            for (int i : new int[] {1, 2, 3, 5, 6, 7, 8, 10, 11}) {
+                minor[i] = 0.02;
+            }
+            double[] flat = new double[12];
+            java.util.Arrays.fill(flat, 1.0 / 12);
+            double[] silent = new double[12];
+
+            Chroma combined = beats(minor, minor, minor, minor);
+            List<Double> times = beatTimes(4);
+
+            assertThat(combined(combined, times)).containsExactly("Am");
+            assertThat(ChordEstimator.estimate(combined, beats(flat, flat, flat, flat), times)
+                    .chords()).extracting(Chord::symbol).containsExactly("Am");
+            assertThat(ChordEstimator
+                    .estimate(combined, beats(silent, silent, silent, silent), times)
+                    .chords()).extracting(Chord::symbol).containsExactly("Am");
+        }
+
+        @Test
+        @DisplayName("a treble that barely says anything is still called a seventh")
+        void weakTrebleEvidenceStillFavoursTheSeventh() {
+            // What the evidence floor does not do, pinned so that it is not
+            // mistaken for what it does. The floor rejects a candidate that fits
+            // worse than noise; it cannot reject one that fits badly but better
+            // than noise, and there the four-note template wins on size.
+            //
+            // A C major triad diluted into an otherwise flat treble comes back
+            // as C7 until the triad carries about a quarter of the register.
+            // The third assertion is there because the other two depend on a
+            // dimension they do not sweep: with the flat seventh absent the
+            // answer is C at every dilution. Where it turns over in between,
+            // and whether it turns over below the background level at all,
+            // depends on the dilution -- #274 has the sweep, and three cells
+            // cannot be interpolated.
+            assertThat(dilutedTriad(0.15, 1.0)).isEqualTo("C7");
+            assertThat(dilutedTriad(0.30, 1.0)).isEqualTo("C");
+            assertThat(dilutedTriad(0.15, 0.0)).isEqualTo("C");
+        }
+
+        /**
+         * A C major triad carrying {@code share} of an otherwise flat treble,
+         * with the flat seventh at {@code b7} times the background level.
+         */
+        private static String dilutedTriad(double share, double b7) {
+            double background = (1 - share) / 12;
+            double[] treble = new double[12];
+            java.util.Arrays.fill(treble, background);
+            for (int i : new int[] {0, 4, 7}) {
+                treble[i] += share / 3;
+            }
+            treble[10] = background * b7;
+            double[] combined = chroma(0.28, 0.26, 0.26, 0);
+            return ChordEstimator.estimate(
+                            beats(combined, combined, combined, combined),
+                            beats(treble, treble, treble, treble), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
+        @Test
+        @DisplayName("the seventh needs the share of the chord a four-note template asks for")
+        void theSeventhIsFoundExactlyWhereTheGeometrySaysItIs() {
+            // A four-note binary template beats the three-note one on the same
+            // root exactly when the flat seventh carries 2/sqrt(3) - 1 of the
+            // triad's mass. Nothing names that number, so pin the boundary: it
+            // moves if the templates or the score ever change, which #272 will
+            // do when the vocabulary grows.
+            double share = 2 / Math.sqrt(3) - 1;
+            assertThat(qualityAt(share - 0.001)).isEqualTo("C");
+            assertThat(qualityAt(share + 0.001)).isEqualTo("C7");
+        }
+
+        /** The reported chord when the b7 carries {@code share} of the triad's mass. */
+        private static String qualityAt(double share) {
+            double each = 0.15;
+            double[] v = chroma(each, each, each, share * 3 * each);
+            Chroma c = beats(v, v, v, v);
+            return ChordEstimator.estimate(c, c, beatTimes(4)).chords().get(0).symbol();
+        }
+
+        private static List<String> combined(Chroma chroma, List<Double> times) {
+            return ChordEstimator.estimate(chroma, chroma, times).chords().stream()
+                    .map(Chord::symbol).toList();
+        }
+
+        @Test
+        @DisplayName("refuses two chromas that do not describe the same beats")
+        void rejectsMismatchedChromas() {
+            double[] v = chroma(0.25, 0.15, 0.2, 0.1);
+            assertThatIllegalArgumentException().isThrownBy(() -> ChordEstimator.estimate(
+                            beats(v, v, v), beats(v, v), beatTimes(3)))
+                    .withMessageContaining("the same beats");
+        }
+    }
+
+    /**
+     * #272: the minor seventh, which the quality decision may report and the
+     * decoder may not choose.
+     *
+     * <p>Chroma is built rather than synthesised, for the reason the class above
+     * gives. The two vamps' trebles are what {@code tools/ChordSweep.java
+     * profile} prints for those recordings; the pop bar is one span of {@code
+     * pop-c-g-am-f-120.mp3}, read off the treble the estimator actually gave the
+     * quality decision there; the two-thirds vector is constructed.
+     */
+    @Nested
+    @DisplayName("minor sevenths (#272)")
+    class MinorSeventhQuality {
+
+        /**
+         * A chroma vector from {@code pitchClass, share} pairs, the rest of the
+         * mass spread evenly over the pitch classes not named.
+         */
+        private static double[] chroma(double... pairs) {
+            double[] out = new double[12];
+            double named = 0;
+            for (int i = 0; i < pairs.length; i += 2) {
+                out[(int) pairs[i]] = pairs[i + 1];
+                named += pairs[i + 1];
+            }
+            double rest = (1 - named) / (12 - pairs.length / 2);
+            for (int i = 0; i < 12; i++) {
+                if (out[i] == 0) {
+                    out[i] = rest;
+                }
+            }
+            return out;
+        }
+
+        private static String reported(double[] combined, double[] treble) {
+            return ChordEstimator.estimate(beats(combined, combined, combined, combined),
+                            beats(treble, treble, treble, treble), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
+        /** A C minor triad, which is what the decoder answers on both vamps. */
+        private static double[] minorTriad() {
+            return chroma(0, 0.23, 3, 0.13, 7, 0.23);
+        }
+
+        @Test
+        @DisplayName("names the minor seventh the vocabulary used to have no word for")
+        void reportsAMinorSeventh() {
+            // fm7-vamp-110.mp3's treble: the minor third at 0.160 and the flat
+            // seventh at 0.091, against a major third at 0.044. Every bar of that
+            // recording is a minor seventh and every one came back a minor triad.
+            double[] treble = chroma(0, 0.191, 3, 0.160, 4, 0.044, 7, 0.230, 10, 0.091);
+
+            assertThat(reported(minorTriad(), treble)).isEqualTo("Cm7");
+        }
+
+        @Test
+        @DisplayName("keeps the dominant seventh when the major third is sounding too")
+        void doesNotTakeABlueThirdForAMinorChord() {
+            // eb7-vamp-130.mp3's treble, where the minor third is the louder of
+            // the two: 0.149 against 0.118. The recording is a dominant seventh
+            // throughout -- its comping riff is a tritone a half-step up, which
+            // states the minor third of the written chord -- so an argmax on the
+            // louder third alone answers every bar wrongly.
+            double[] treble = chroma(0, 0.152, 3, 0.149, 4, 0.118, 7, 0.151, 10, 0.111);
+
+            assertThat(reported(minorTriad(), treble)).isEqualTo("C7");
+        }
+
+        @Test
+        @DisplayName("the minor seventh cannot move a root")
+        void staysOnTheDecodersRoot() {
+            // A guard, not a fail-before test: it holds on origin/main too,
+            // where no vocabulary can express the wrong answer at all. It fails
+            // if the minor seventh is moved into DECODED, which is the mistake
+            // it is here to catch.
+            //
+            // C-E-G with an A: a C major triad and an A minor seventh are the
+            // same four notes, so a decoder offered both answers A -- 84.1% of
+            // gmajorblues.mp3's roots to 48.4% when this was measured. The
+            // decoder is not offered it, and the quality decision only ever
+            // considers the root the decoder found.
+            double[] four = chroma(0, 0.25, 4, 0.22, 7, 0.24, 9, 0.15);
+
+            assertThat(reported(four, four)).startsWith("C");
+        }
+
+        @Test
+        @DisplayName("a major third no louder than the root's own partial is not read")
+        void theRootsOwnPartialIsNotAMajorThird() {
+            // An A minor bar of pop-c-g-am-f-120.mp3: root and fifth at a third
+            // of the register each and both thirds an order of magnitude below
+            // that, the major third at 0.086 of the root, which is about what
+            // its fifth partial puts there. Subtracting all of it rather than
+            // the part the root cannot account for costs five of that file's
+            // fourteen A minor bars and names bm-blues-slow.mp3, a B minor
+            // blues, B major.
+            double[] barelyMinor = chroma(0, 0.3425, 3, 0.0475, 4, 0.0294,
+                    7, 0.3140, 10, 0.0290);
+
+            assertThat(reported(barelyMinor, barelyMinor)).isEqualTo("Cm");
         }
     }
 }

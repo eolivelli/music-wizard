@@ -135,7 +135,75 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
     }
 
     /**
+     * How far from the median an interval may sit and still be counted as one
+     * pulse, as a share of the median.
+     *
+     * <p>See {@link #steadyPulseRate()}. Read as the answer to "is this one beat
+     * or is it the tracker having lost the beat", which is a question about
+     * shape rather than about any recording: an interval a fifth away from
+     * typical is still a beat pushed or pulled, and one half again as long is a
+     * beat the tracker did not emit.
+     *
+     * <p><b>Chosen from the middle of a plateau, not tuned to an edge of one.</b>
+     * Measured over the seven scored tier-2 benchmarks there were then, against
+     * each recording's own tempo, which is a measurement of the music rather
+     * than of the tracker -- the distinction #207 was closed for missing.
+     *
+     * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
+     * for five of the seven, from the onset envelope's autocorrelation: 106.000,
+     * 105.000, 89.998, 89.999 and 74.944. The two vamps' 110 and 130 are not in
+     * it, and nothing committed sweeps this constant -- both are #245. So the
+     * axis is re-runnable and the plateau below is not; those figures were taken
+     * by hand and confirmed independently in review.
+     *
+     * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
+     * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
+     * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
+     * {@code bossa-cm.mp3}, inside 0.71% of four thirds of its tempo, which is
+     * the pulse its tracker is actually following (#231). <b>The plateau spans a
+     * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
+     * evidence that this is not fitted to a handful of files.
+     *
+     * <p>The corpus grew from five to seven while this was in review, and the
+     * two files added are the ones on which the rejected alternatives are worst
+     * of all -- the median 0.64% out on {@code eb7-vamp-130.mp3}, the plain mean
+     * 7.7% out on {@code fm7-vamp-110.mp3}. The widening exercised the choice
+     * rather than padding it, and did not move which recording or half-width is
+     * worst.
+     *
+     * <p>Both edges have a mechanism rather than a fitted value, which is the
+     * other half of the same argument.
+     *
+     * <ul>
+     *   <li><b>Below 0.0525 the band starts excluding beats that really are
+     *       beats.</b> A tracked pulse population is a few percent wide on its
+     *       own: from 0.05 down to 0.0425 {@code blues-shuffle-a-106bpm.mp3}
+     *       keeps 494 of its 576 intervals and reads +0.56%, which is <em>worse
+     *       than the median it replaces</em> at +0.44%, and below 0.0425 it
+     *       degrades further -- 465 kept and +0.76% at 0.04. One step up from
+     *       that run, at 0.0525, it keeps 545 and reads +0.07%.
+     *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
+     *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
+     *       (#231), so it carries a population of intervals about 4/3 of its
+     *       median -- 54 of its 501 sit between 1.30x and 1.36x -- and a band
+     *       reaching 1/3 lets them in. Against four thirds of ScoreBeats'
+     *       74.944: 0.33% out at the value chosen here, 0.71% at 0.30, then
+     *       2.82% at 0.325 and 3.91% at 0.35.
+     * </ul>
+     */
+    private static final double STEADY_BAND = 0.2;
+
+    /**
      * Median rate of the tracked pulses, in pulses per minute.
+     *
+     * <p><b>How long one interval typically is, which is not the rate the grid
+     * ran at.</b> Use {@link #steadyPulseRate()} to place anything counted in
+     * pulses, and this only to describe a typical interval. Nothing outside
+     * tests reads this today, and the reason to check before making something
+     * the first reader is that {@link Score#estimatedTempo()} used to be one:
+     * the median is quantised to the analysis hop, being an interval that was
+     * actually observed, and a figure a bar index multiplies cannot be. See
+     * {@link #steadyPulseRate()} for the measurement.
      *
      * <p>Deliberately not called a tempo. A grid holds pulses, and a pulse is a
      * quarter note only in simple time, so this is 1.5x under the quarter-note
@@ -147,25 +215,185 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         if (beats.size() < 2) {
             throw new IllegalStateException("cannot infer tempo from fewer than two beats");
         }
-        double[] intervals = new double[beats.size() - 1];
-        for (int i = 0; i < intervals.length; i++) {
-            intervals[i] = beats.get(i + 1).seconds() - beats.get(i).seconds();
-        }
-        java.util.Arrays.sort(intervals);
-        int middle = intervals.length / 2;
-        double median = intervals.length % 2 == 1
-                ? intervals[middle]
-                : (intervals[middle - 1] + intervals[middle]) / 2.0;
-        return 60.0 / median;
+        return 60.0 / medianOf(intervals());
     }
 
     /**
      * Median tempo in quarter notes per minute, the unit every other tempo in the
      * model is in.
+     *
+     * <p>A typical interval, not a rate: see {@link #medianPulseRate()} and
+     * {@link #steadyTempo(TimeSignature)}.
      */
     public double medianTempo(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
         return medianPulseRate() * timeSignature.beatUnitQuarters();
+    }
+
+    /**
+     * The rate the grid ran at over the pulses it tracked steadily, in pulses per
+     * minute: the mean of the intervals within {@link #STEADY_BAND} of the
+     * median, ignoring the rest.
+     *
+     * <p><b>A rate per pulse index, which is what places anything counted in
+     * pulses.</b> Pulse {@code k} sits at {@code first + k * 60 / this}, and that
+     * is the arithmetic a bar line, a chart cell and a metronome mark all do.
+     * {@link #medianPulseRate()} answers a different question -- how long one
+     * interval typically is -- and the two are equal only on an even grid.
+     *
+     * <p>Two things are wrong with the median here and only the first was ever
+     * argued. It is not a rate. And <b>it is quantised</b>: it is one of the
+     * observed intervals, and beat times come off a frame axis, so at these
+     * tempos it moves in steps of about 2% and lands on the same value for
+     * recordings that are not at the same tempo -- {@code gmajorblues.mp3} and
+     * {@code blues-shuffle-a-106bpm.mp3} both get 105.46875 pulses a minute
+     * against measured tempos of 106.0 and 105.0. A mean is not quantised,
+     * because the step averages away over the intervals.
+     *
+     * <p><b>Why the plain mean is not the answer either, which is the whole of
+     * why this is trimmed.</b> The mean interval is exactly the end-to-end rate,
+     * since consecutive differences telescope, so it folds a gap where the
+     * tracker missed a beat into the rate as if the music had slowed there.
+     * {@code blues-shuffle-a-106bpm.mp3} holds eleven intervals longer than 1.5x
+     * its median, one of them 3.79 s, and they drag the plain mean to 102.5
+     * against a measured 105.0 -- which cost 28 points of the emitted chart when
+     * it was tried (#200, #207). The band drops exactly those.
+     *
+     * <p>So this concedes neither of the two cases #205 is open for, where the
+     * median and the mean each concede one. On an even 20-pulse grid at 120 BPM:
+     * with one pulse dropped the doubled interval falls outside the band and the
+     * answer is exactly 120, where the plain mean gives 113.68; with one spurious
+     * pulse both halves fall outside and the answer is again exactly 120, where
+     * the plain mean gives 126.32.
+     *
+     * <p>What it does not fix is a grid tracked an octave out for <em>part</em> of
+     * a recording, which {@code BeatTracker.tempoOf}'s own javadoc says the
+     * autocorrelation peak is prone to. Half a recording at double rate makes the
+     * two rates two populations rather than a population and some outliers, and
+     * the median picks the larger one where this picks whichever the median
+     * lands in. Nothing here bounds that, and no benchmark exhibits it.
+     *
+     * @throws IllegalStateException if the grid holds fewer than two pulses,
+     *                               which carry no interval to measure
+     */
+    public double steadyPulseRate() {
+        if (beats.size() < 2) {
+            throw new IllegalStateException("cannot infer tempo from fewer than two beats");
+        }
+        return steadyRateOf(intervals());
+    }
+
+    /**
+     * The same rate, for a caller holding pulse times but no grid yet.
+     *
+     * <p>Exists for one caller. The transcriber reports the rate it tracked
+     * before the downbeat phase is known, so there is no grid to ask -- and
+     * chroma extraction runs in between, which takes seconds on a real
+     * recording, so reporting it after the grid is built would pay for the
+     * overload in the one currency a progress message is for. An overload rather
+     * than the arithmetic written out at the call site, because two copies of a
+     * rate is how one command came to print two tempos for one recording.
+     *
+     * <p>The list is copied once and then validated and measured off the copy, so
+     * the figure returned is the rate of times that were actually checked. What
+     * is checked is what a grid demands -- finite, non-negative, strictly
+     * increasing -- since a caller bypassing the grid must not bypass its
+     * invariant.
+     *
+     * @param pulseSeconds pulse times, ordered and holding at least two
+     * @throws NullPointerException     if the list or any element is null
+     * @throws IllegalArgumentException if there are fewer than two, or any is not
+     *                                  finite and non-negative, or they do not
+     *                                  strictly increase
+     */
+    public static double steadyPulseRate(List<Double> pulseSeconds) {
+        Objects.requireNonNull(pulseSeconds, "pulseSeconds");
+        // Copied before anything is checked, and the size read once, so that what
+        // is measured is what was validated. A list that changes underneath then
+        // yields the rate of the snapshot, which is the only contract that can be
+        // implemented: noticing that a list lied would take a second read, and a
+        // list that lies once can lie twice.
+        double[] times = new double[pulseSeconds.size()];
+        for (int i = 0; i < times.length; i++) {
+            times[i] = Objects.requireNonNull(pulseSeconds.get(i), "pulseSeconds[" + i + "]");
+        }
+        if (times.length < 2) {
+            throw new IllegalArgumentException(
+                    "cannot infer tempo from fewer than two beats, got: " + times.length);
+        }
+        // Finiteness before ordering, matching the order a grid checks in: Beat
+        // rejects a non-finite time as each beat is built, and only the canonical
+        // constructor then looks at ordering. So a list holding both faults has
+        // to report the non-finite one, whichever comes first in the list.
+        for (double at : times) {
+            if (!Double.isFinite(at) || at < 0) {
+                throw new IllegalArgumentException(
+                        "beat time must be finite and non-negative, got: " + at);
+            }
+        }
+        double[] intervals = new double[times.length - 1];
+        for (int i = 0; i < intervals.length; i++) {
+            if (!(times[i + 1] > times[i])) {
+                throw new IllegalArgumentException(
+                        "beats must strictly increase in time; beat " + (i + 1) + " at "
+                                + times[i + 1] + "s does not follow beat " + i
+                                + " at " + times[i] + "s");
+            }
+            intervals[i] = times[i + 1] - times[i];
+        }
+        return steadyRateOf(intervals);
+    }
+
+    /**
+     * The rate the grid ran at, in quarter notes per minute -- the unit every
+     * other tempo in the model is in.
+     *
+     * <p>What {@link Score#estimatedTempo()} answers with when nothing has
+     * corrected the tracked beats. See {@link #steadyPulseRate()} for why it is
+     * this rather than the median or the plain mean.
+     */
+    public double steadyTempo(TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return steadyPulseRate() * timeSignature.beatUnitQuarters();
+    }
+
+    /** The intervals between consecutive pulses. Never empty: the caller checks. */
+    private double[] intervals() {
+        double[] intervals = new double[beats.size() - 1];
+        for (int i = 0; i < intervals.length; i++) {
+            intervals[i] = beats.get(i + 1).seconds() - beats.get(i).seconds();
+        }
+        return intervals;
+    }
+
+    /** Sorts in place and returns the median. */
+    private static double medianOf(double[] intervals) {
+        java.util.Arrays.sort(intervals);
+        int middle = intervals.length / 2;
+        return intervals.length % 2 == 1
+                ? intervals[middle]
+                : (intervals[middle - 1] + intervals[middle]) / 2.0;
+    }
+
+    /** The one definition, so the two public forms cannot drift apart. */
+    private static double steadyRateOf(double[] intervals) {
+        double median = medianOf(intervals);
+        double low = median * (1.0 - STEADY_BAND);
+        double high = median * (1.0 + STEADY_BAND);
+        double total = 0.0;
+        int kept = 0;
+        for (double interval : intervals) {
+            if (interval >= low && interval <= high) {
+                total += interval;
+                kept++;
+            }
+        }
+        // An even count takes the median between the two middle intervals, and
+        // those two can both fall outside the band around their own average --
+        // two intervals an order of magnitude apart do. There is nothing to
+        // average then, so the median answers, which is the figure the band was
+        // drawn around.
+        return kept == 0 ? 60.0 / median : 60.0 * kept / total;
     }
 
     /** Index of the beat nearest a given time. */

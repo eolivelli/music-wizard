@@ -10,7 +10,7 @@
     \clef "bass_8"
     \key ees \major
     \time #'(1 1 1 1) 4/4
-    \tempo 4 = 120
+    \tempo \markup { \italic "ca." } 4 = 120
     ees,4 ees,4 aes,4 bes,4 |
     aes,,1 |
     \bar "|."

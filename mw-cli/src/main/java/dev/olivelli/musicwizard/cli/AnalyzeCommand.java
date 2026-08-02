@@ -177,18 +177,22 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
-        Score score = result.score();
+        Score score = titled(workspace, result.score());
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
         // next run, and losing minutes of DSP because a cache write failed is a
         // poor trade in either order -- but this order also means the failure
         // cannot happen before the deliverable is safe.
-        workspace.updateMetadata(
-                workspace.title().orElse(null), workspace.artist().orElse(null));
         workspace.writeScore(score);
         if (!result.fromCache()) {
-            storeQuietly(workspace.cache(), result.key(), score);
+            // The transcription, not the titled score. The key covers the
+            // recording and the options and says nothing about the metadata, so
+            // an entry carrying a title would be served to a workspace that
+            // names the piece differently -- and titled() runs on the way out of
+            // the cache as well as past it, so nothing is lost by leaving it
+            // out.
+            storeQuietly(workspace.cache(), result.key(), result.score());
         }
 
         System.out.println();
@@ -199,6 +203,39 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
         System.out.println("Next: mw render " + workspace.root().getFileName());
         return 0;
+    }
+
+    /**
+     * The score with the workspace's title and artist on it.
+     *
+     * <p>The workspace knows them and the score is what the engraver reads, so
+     * without this step {@code mw init --title} reached {@code workspace.yaml}
+     * and stopped there: every chart the audio path produced was headed
+     * "Untitled", with no artist, however carefully the workspace had been
+     * labelled. That is #216. The line this replaces wrote the workspace's own
+     * metadata back to the workspace, which was a no-op in every field.
+     *
+     * <p><b>The workspace outranks the transcription, field by field.</b> A
+     * title in {@code workspace.yaml} was typed by a person about this
+     * recording; the one {@link MidiTranscriber} finds is the first track name
+     * in a file, which is a title only by convention -- and where the workspace
+     * says nothing, that convention is still better than nothing, so the
+     * transcription's value is kept rather than cleared. Per field, because a
+     * workspace naming the artist and not the piece must not discard a title the
+     * file did carry.
+     *
+     * <p>Applied here rather than inside a transcriber because the workspace is
+     * the CLI's to know, and here rather than in {@code render} because a
+     * renderer that re-read the workspace would be the second reader of a fact
+     * -- {@code RenderCommand} answers from the score and nothing else, for
+     * reasons #120 records. The cost is that a workspace analysed before this
+     * change keeps its untitled score until {@code analyze} runs again, which
+     * costs nothing beyond a cache hit.
+     */
+    private static Score titled(Workspace workspace, Score score) {
+        return score.withMetadata(
+                workspace.title().or(score::title).orElse(null),
+                workspace.artist().or(score::artist).orElse(null));
     }
 
     // ------------------------------------------------------------------- cache
@@ -369,15 +406,23 @@ final class AnalyzeCommand implements Callable<Integer> {
     /**
      * What the audio path reports.
      *
-     * <p>Unchanged, and meant to stay that way. Every figure here is an estimate,
-     * and the running commentary above it has already said so in the verbs it
-     * used.
+     * <p>Every figure here is an estimate, and the running commentary above it
+     * has already said so in the verbs it used. The key carries its confidence
+     * anyway, because it is the one row whose failure mode is invisible: a key
+     * and its relative minor are the same seven notes, so a wrong answer here
+     * reads as plausible as a right one and only the number says which was
+     * settled and which was a coin flip. The row is absent when nothing sounded
+     * and no key was estimated.
      */
     private static List<String> audioSummary(Score score) {
-        return List.of(
-                tempoLine(score),
-                "Meter   " + score.tempoMap().initialTimeSignature(),
-                "Chords  " + score.chords().size() + " spans");
+        List<String> lines = new ArrayList<>();
+        lines.add(tempoLine(score));
+        lines.add("Meter   " + score.tempoMap().initialTimeSignature());
+        score.primaryKey().ifPresent(key -> lines.add(String.format(Locale.ROOT,
+                "Key     %s (%.0f%% confidence)", key.displayName(),
+                100 * key.confidence().value())));
+        lines.add("Chords  " + score.chords().size() + " spans");
+        return List.copyOf(lines);
     }
 
     /**

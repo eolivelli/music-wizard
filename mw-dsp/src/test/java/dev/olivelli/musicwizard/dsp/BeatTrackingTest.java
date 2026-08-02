@@ -64,16 +64,53 @@ class BeatTrackingTest {
 
     /** Clicks with the same shape as {@link SignalFactory#clickTrack}, at given times. */
     private static float[] clicksAt(List<Double> times, double seconds) {
+        List<double[]> uniform = new ArrayList<>(times.size());
+        for (double time : times) {
+            uniform.add(new double[] {time, 0.8});
+        }
+        return clicksWithGains(uniform, seconds);
+    }
+
+    /**
+     * The same clicks, each with its own gain, so a fixture can make an offbeat
+     * louder than the beat it hangs off.
+     *
+     * @param timesAndGains one {@code {seconds, gain}} pair per click
+     */
+    private static float[] clicksWithGains(List<double[]> timesAndGains, double seconds) {
         float[] out = new float[(int) Math.round(seconds * RATE)];
         int clickLength = Math.max(1, RATE / 100);
-        for (double time : times) {
-            int start = (int) Math.round(time * RATE);
+        for (double[] click : timesAndGains) {
+            int start = (int) Math.round(click[0] * RATE);
             for (int i = 0; i < clickLength && start + i < out.length; i++) {
                 double decay = Math.exp(-8.0 * i / clickLength);
-                out[start + i] += (float) (0.8 * decay * Math.sin(2 * Math.PI * 1000 * i / RATE));
+                out[start + i] +=
+                        (float) (click[1] * decay * Math.sin(2 * Math.PI * 1000 * i / RATE));
             }
         }
         return out;
+    }
+
+    /**
+     * A shuffle whose loudest events are not on the beat: a quiet click on odd
+     * beats, a loud one on the backbeat, and a swung eighth two thirds of the
+     * way through every beat that is louder than the beat it follows.
+     *
+     * <p>This is the shape the real benchmarks have and the synthetic ones did
+     * not. {@code SignalFactory.clickTrack} puts every event on a beat, so the
+     * beat tracker's spacing penalty is never asked to overrule the onset
+     * evidence and its weight cannot be measured from it — which is how the
+     * weight came to be wrong by a factor of 48 with every tier-0 test green.
+     */
+    private static float[] swungClicks(double beatsPerMinute, double seconds) {
+        double period = 60.0 / beatsPerMinute;
+        List<double[]> clicks = new ArrayList<>();
+        int beat = 0;
+        for (double t = 0; t < seconds; t += period, beat++) {
+            clicks.add(new double[] {t, beat % 2 == 1 ? 1.5 : 0.35});
+            clicks.add(new double[] {t + 2 * period / 3, 0.9});
+        }
+        return clicksWithGains(clicks, seconds);
     }
 
     private static float[] whiteNoise(double seconds, long seed) {
@@ -1124,6 +1161,85 @@ class BeatTrackingTest {
                 worst = Math.max(worst, Math.abs(beat - nearest));
             }
             assertThat(worst).isLessThan(0.09);
+        }
+
+        @Test
+        @DisplayName("a louder offbeat does not buy itself a beat")
+        void aLouderOffbeatDoesNotBuyItselfABeat() {
+            // The mechanism behind #196, at a scale small enough to assert on.
+            // The spacing penalty is what stops the dynamic program leaving the
+            // grid for a loud event between two beats, and while it was written
+            // in log base 2 at a weight of 1 it was one forty-eighth of the
+            // published one -- an extra beat cost two units against an offbeat
+            // worth several, so the tracker took the detour and came back.
+            //
+            // Measured on this fixture: at the old weight 67 of the 100
+            // intervals are a beat long and 17 are the two-thirds detour; at
+            // the published one, 96 of 99 and one. The bounds sit between those
+            // two populations rather than beside either.
+            double bpm = 100;
+            double period = 60.0 / bpm;
+            BeatTracker.Result result = BeatTracker.track(envelopeOf(swungClicks(bpm, 60)));
+
+            List<Double> beats = result.beatTimes();
+            int onGrid = 0;
+            int detours = 0;
+            for (int i = 1; i < beats.size(); i++) {
+                double ratio = (beats.get(i) - beats.get(i - 1)) / period;
+                if (Math.abs(ratio - 1) < 0.10) {
+                    onGrid++;
+                } else if (Math.abs(ratio - 2.0 / 3) < 0.10) {
+                    detours++;
+                }
+            }
+
+            assertThat(onGrid)
+                    .as("intervals within a tenth of one beat, of %d", beats.size() - 1)
+                    .isGreaterThan(90);
+            assertThat(detours)
+                    .as("intervals that are the swung eighth's two thirds of a beat")
+                    .isLessThan(5);
+        }
+
+        @ParameterizedTest(name = "the dynamic program follows a seed an octave out at {0} BPM")
+        @ValueSource(doubles = {90, 120, 160})
+        void theDynamicProgramFollowsItsSeedRatherThanFixingIt(double bpm) {
+            // A limitation, pinned deliberately, because it is the cost of the
+            // spacing weight being what Ellis published rather than a
+            // forty-eighth of it, and because the comment on tempoOf used to
+            // claim the opposite.
+            //
+            // Under the old weight a seed at *half* the true rate was
+            // overridden by the clicks -- 45 gave back 89.9 -- and a seed at
+            // double it was not. The penalties are symmetric, so that asymmetry
+            // is not in the search window: correcting upward adds beats that
+            // each collect an onset, and correcting downward removes beats that
+            // sat between onsets and cost almost nothing to keep. See
+            // BeatTracker.tempoOf, which has the arithmetic. Now neither is
+            // corrected. Resolving the octave is TempoEstimator's job, and this
+            // asserts that BeatTracker will not paper over it.
+            //
+            // On the fixture rather than through track(), because track() would
+            // supply a correct seed and the point is what happens when the seed
+            // is wrong.
+            OnsetEnvelope envelope = envelopeOf(SignalFactory.clickTrack(bpm, 20, RATE));
+
+            for (double factor : new double[] {0.5, 2.0}) {
+                List<Double> beats =
+                        BeatTracker.trackFixedTempo(envelope, bpm * factor, 0, envelope.length());
+                assertThat(beats).hasSizeGreaterThan(4);
+
+                double[] intervals = new double[beats.size() - 1];
+                for (int i = 0; i < intervals.length; i++) {
+                    intervals[i] = beats.get(i + 1) - beats.get(i);
+                }
+                java.util.Arrays.sort(intervals);
+                double tracked = 60.0 / intervals[intervals.length / 2];
+
+                assertThat(tracked)
+                        .as("tracked rate from a seed at %s of the true one", factor)
+                        .isCloseTo(bpm * factor, within(bpm * factor * 0.03));
+            }
         }
 
         @Test

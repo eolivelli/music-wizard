@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
+import dev.olivelli.musicwizard.dsp.KeyEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
@@ -36,6 +37,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -214,8 +216,41 @@ public final class AudioTranscriber {
         // Named as beats per minute rather than as a tempo on purpose: the
         // tracker counts pulses, and a pulse is a quarter note only in simple
         // time, so this figure is 1.5x under the quarter-note tempo in 6/8.
+        //
+        // The grid's own statistic rather than the tracker's median, and not for
+        // tidiness. The comment beside --tempo below tells the user they may type
+        // back "the rate this very run just reported", and a supplied tempo beats
+        // the grid -- so a figure here that differs from the one the chart is
+        // headed with is a documented route back to the defect #200 removes.
+        // BeatTracker.Result.beatsPerMinute is the tracker's median interval,
+        // which since #200 is not what Score.estimatedTempo answers with.
+        //
+        // Read off the times rather than off a grid because there is no grid yet:
+        // the downbeat phase is chosen from chroma, which is extracted below, and
+        // holding this message back until then would delay the one line that says
+        // beat tracking worked at all past the slowest stage in the run.
+        //
+        // The ternary's other arm does NOT hold that property, and saying so is
+        // the point of naming it. A lone tracked pulse carries no interval, so
+        // there is no rate in it for either accessor to return, and this falls
+        // back to the tracker's own figure -- which on that path is the
+        // autocorrelation seed rather than any median, and on a clip this short
+        // that seed is a function of the clip's length rather than of the music.
+        // The mechanism is two lines of TempoEstimator rather than anything
+        // observed: maxLag is min(envelope.length() - 1, the lag of MIN_TEMPO),
+        // so below the 1.5s that 40 BPM needs, the slowest tempo the estimator
+        // is permitted to consider is set by how long the clip is -- and shorter
+        // still, maxLag <= minLag and it returns PREFERRED_TEMPO outright. One
+        // 0.40s clip here printed 188 beats/min, then said the clip carries no
+        // tempo, then headed the chart 120.
+        // That predates #200 and is unchanged by it, so it is #240 rather than
+        // something to fix under cover of this change; what #200 did was make it
+        // the only remaining path on which the two figures can disagree.
         progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
-                beatTimes.size(), beats.beatsPerMinute()));
+                beatTimes.size(),
+                beatTimes.size() >= 2
+                        ? BeatGrid.steadyPulseRate(beatTimes)
+                        : beats.beatsPerMinute()));
 
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of
@@ -281,7 +316,12 @@ public final class AudioTranscriber {
         //
         // Both registers, not the treble alone: the two fail on different chords
         // and adding them takes per-bar root accuracy on that recording from
-        // 42.7% to 86.6%. The margin figures above rank the two the other way
+        // 42.7% to 86.6%. Both of those, and the 77.7% below, were measured on
+        // the beat grid as it was before #196; chroma is averaged per tracked
+        // beat, so they move with it. ChordEstimator's class javadoc states
+        // that and #232 tracks re-measuring them -- the comparisons are not in
+        // doubt, the cells just read as current. The margin figures above rank
+        // the two the other way
         // round, which is worth knowing rather than smoothing over -- #185's
         // probe asks whether a frame looks like some triad, and the sum looks
         // less like one while naming the right one more often. See
@@ -292,7 +332,14 @@ public final class AudioTranscriber {
         // register separately, which makes every beat half treble and half bass
         // whatever they actually contained; on this recording that ordering
         // scores 77.7% where this one scores 86.6%.
-        Chroma chroma = NnlsChroma.extract(audio).combined().beatSynchronous(beatTimes);
+        NnlsChroma registers = NnlsChroma.extract(audio);
+        Chroma chroma = registers.combined().beatSynchronous(beatTimes);
+        // The treble alone, for the quality half of chord recognition only --
+        // ChordEstimator.estimate(Chroma, Chroma, List) has the measurement. Not
+        // combined(), so this one is beat-synchronised on its own: the question
+        // it answers is what share of the *chordal* register each pitch class
+        // holds, and normalising the sum would put the bass back into it.
+        Chroma treble = registers.treble().beatSynchronous(beatTimes);
 
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.
@@ -306,12 +353,31 @@ public final class AudioTranscriber {
                                 beatTimes, chroma, envelope, meter.beatsPerBar()));
 
         progress.accept("estimating chords");
-        ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);
+        ChordProgression chords = ChordEstimator.estimate(chroma, treble, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
+
+        // Over the whole recording rather than over the chords' own extent: a key
+        // is what the listener hears the piece as being in, and it does not stop
+        // at the last chord the estimator was able to name. Score.keyAt would
+        // otherwise answer nothing for the lead-in and the tail.
+        Optional<KeyEstimator.Estimate> key =
+                KeyEstimator.estimate(chords, 0, audio.durationSeconds());
+        key.ifPresentOrElse(
+                // Both halves reported, because they fail differently and the
+                // user correcting the answer by hand needs to know which one to
+                // look at: naming the signature is the reliable decision, and
+                // choosing between a key and its relative minor is not.
+                estimate -> progress.accept(String.format(Locale.ROOT,
+                        "key %s (signature %.0f%%, tonic over its relative %.0f%%)",
+                        estimate.key().displayName(),
+                        100 * estimate.signatureConfidence().value(),
+                        100 * estimate.tonicConfidence().value())),
+                () -> progress.accept("no chord sounds, so no key was estimated"));
 
         return Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
-                .withChords(chords);
+                .withChords(chords)
+                .withKeys(key.map(estimate -> List.of(estimate.key())).orElse(List.of()));
     }
 
     /**

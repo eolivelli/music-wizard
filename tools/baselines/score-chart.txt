@@ -1,0 +1,15 @@
+charts emitted for samples with known ground truth:
+  blues-a-90bpm.mp3: bars=113  chords/bar 1.31  root 109/113 (96.5%)  root+quality 108/113 (95.6%)  short: tracked 0.0%, chart 0.0%
+  blues-shuffle-a-106bpm.mp3: bars=148  chords/bar 1.01  root 140/148 (94.6%)  root+quality 80/148 (54.1%)  short: tracked 0.0%, chart 18.5%
+  blues-e-90bpm.mp3: bars=113  chords/bar 1.02  root 111/113 (98.2%)  root+quality 93/113 (82.3%)  short: tracked 0.0%, chart 0.0%
+  slow-68-40.mp3: bars=182  chords/bar 1.08  root 104/182 (57.1%)  root+quality 81/182 (44.5%)  short: tracked 0.0%, chart 12.1%
+  g-blues-shuffle-cc.mp3: bars=137  chords/bar 1.01  root 116/137 (84.7%)  root+quality 83/137 (60.6%)  short: tracked 0.0%, chart 13.0%
+  bm-blues-slow.mp3: bars=188  chords/bar 1.01  root 103/188 (54.8%)  root+quality 70/188 (37.2%)  short: tracked 0.0%, chart 20.5%
+  cm-blues-68-95.mp3: bars=274  chords/bar 1.12  root 63/274 (23.0%)  root+quality 27/274 (9.9%)  short: tracked 0.0%, chart 11.2%
+  waltz-am-e7-160.mp3: bars=209  chords/bar 1.00  root 106/209 (50.7%)  root+quality 106/209 (50.7%)  short: tracked 0.0%, chart 0.0%
+  f-blues-swing-170.mp3: bars=111  chords/bar 1.08  root 24/111 (21.6%)  root+quality 14/111 (12.6%)  short: tracked 0.0%, chart 28.7%
+  jazz-251-c-140.mp3: bars=89  chords/bar 1.13  root 13/89 (14.6%)  root+quality 13/89 (14.6%)  short: tracked 0.0%, chart 18.1%
+  fm7-vamp-110.mp3: bars=149  chords/bar 1.03  root 130/149 (87.2%)  root+quality 81/149 (54.4%)  short: tracked 0.0%, chart 1.9%
+  eb7-vamp-130.mp3: bars=167  chords/bar 1.21  root 125/167 (74.9%)  root+quality 73/167 (43.7%)  short: tracked 0.0%, chart 24.0%
+  bossa-cm.mp3: bars=130  chords/bar 1.18  root 24/130 (18.5%)  root+quality 7/130 (5.4%)  short: tracked 0.0%, chart 13.8%
+  pop-c-g-am-f-120.mp3: bars=57  chords/bar 1.00  root 57/57 (100.0%)  root+quality 56/57 (98.2%)  short: tracked 0.0%, chart 5.1%

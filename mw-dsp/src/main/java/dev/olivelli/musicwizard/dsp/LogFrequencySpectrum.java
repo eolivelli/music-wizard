@@ -93,6 +93,14 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      *       36        +0.065     +0.168     65.9%       65.6%
      * </pre>
      *
+     * <p>The per-bar figures in this table were measured on the beat grid as
+     * it was before #196: chroma is averaged per tracked beat, so removing
+     * that grid's 1.9% rate error moves them. The comparison the table is
+     * for is not in doubt -- the differences down it are tens of points and
+     * the anchor moved by one -- but the cells read as current and are not.
+     * {@link ChordEstimator} carries the statement of this and #232 tracks
+     * re-measuring them.
+     *
      * <p>What that table does and does not settle. It settles the upper end
      * decisively: everything from nine upward gives away ten to twenty points of
      * accuracy, so the octave-wide window is not an arbitrary pick among

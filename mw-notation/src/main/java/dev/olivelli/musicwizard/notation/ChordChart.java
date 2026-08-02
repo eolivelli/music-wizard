@@ -18,13 +18,13 @@ package dev.olivelli.musicwizard.notation;
 
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -57,27 +57,36 @@ public final class ChordChart {
         }
 
         List<ChartLayout.Bar> bars = ChartLayout.of(score);
-        // The meter of the chart's own first bar, not the piece's. They differ
-        // only when the harmony starts after a meter change, and then it is the
-        // header that is wrong: it would name a meter no bar of the chart is in,
-        // and -- because tempoLine reads the same meter to decide whether the
-        // counted beat is a quarter -- hand a 6/8 chart a metronome mark 50%
-        // fast, which is the failure tempoLine exists to prevent, arriving by
-        // the other door. Round 2 of review found that; the header still names
-        // one meter where a chart can hold several, which is #191.
-        TimeSignature meter = bars.isEmpty()
-                ? score.tempoMap().initialTimeSignature()
-                : bars.get(0).meter();
+        TimeSignature meter = countedIn(score, bars);
         out.append(tempoLine(score, meter));
         out.append("Meter  ").append(meter).append('\n');
-        score.primaryKey().ifPresent(key -> out.append("Key    ")
-                .append(key.displayName()).append('\n'));
+        score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
         out.append('\n');
 
-        for (String line : annotatedLinesOf(bars)) {
+        for (String line : linesOf(bars)) {
             out.append(line).append('\n');
         }
         return out.toString();
+    }
+
+    /**
+     * The meter the chart is read in: its own first bar's, not the piece's.
+     *
+     * <p>The two differ only when the harmony starts after a meter change, and
+     * then it is the piece's that is wrong: it would name a meter no bar of the
+     * chart is in, and -- because the tempo is counted in this same meter --
+     * hand a 6/8 chart a metronome mark 50% fast, which is the failure the
+     * counted beat exists to prevent, arriving by the other door. Round 2 of
+     * review found that on the text chart; it is answered here rather than
+     * there because the engraving now needs the same answer, and a second copy
+     * of the rule is a second chance for the two charts of one score to be
+     * counted differently. The header still names one meter where a chart can
+     * hold several, which is #191.
+     */
+    private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
+        return bars.isEmpty()
+                ? score.tempoMap().initialTimeSignature()
+                : bars.get(0).meter();
     }
 
     /**
@@ -91,14 +100,32 @@ public final class ChordChart {
     private static String tempoLine(Score score, TimeSignature meter) {
         double quarterBpm = score.estimatedTempo();
         // Locale.ROOT, because this number is meant to be typed back in via
-        // --tempo and picocli parses it with Double.valueOf. Under fr_FR the
-        // chart would print "120,0", which that rejects; under ar_EG it would
-        // print Arabic-Indic digits.
+        // --tempo and picocli parses it with Double.valueOf. What a default
+        // locale changes here is the digits and not the separator: %.0f prints
+        // no fractional part, so no decimal comma can arise from it, but under
+        // ar_EG it prints Arabic-Indic digits, which Double.valueOf rejects.
+        // Round 2 of review on #216 found this comment claiming the comma --
+        // AnalyzeCommand prints the same tempo with %.1f, where it is real, and
+        // the sentence had been carried across to a formatter that cannot
+        // reach it.
         if (meter.beatUnitQuarters() == 1.0) {
             return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
         }
         return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
                 meter.countedTempo(quarterBpm), quarterBpm);
+    }
+
+    /**
+     * The key, with how much the pipeline trusts it.
+     *
+     * <p>Qualified rather than stated flat, because on the audio path this row
+     * is an estimate whose failure mode is invisible: a key and its relative
+     * minor share every note, so a wrong answer reads exactly as well as a right
+     * one and only the number distinguishes them.
+     */
+    private static String keyLine(Key key) {
+        return String.format(Locale.ROOT, "Key    %s (%.0f%% confidence)\n",
+                key.displayName(), 100 * key.confidence().value());
     }
 
     /**
@@ -114,7 +141,18 @@ public final class ChordChart {
         return linesOf(ChartLayout.of(score));
     }
 
-    private static List<String> linesOf(List<ChartLayout.Bar> bars) {
+    /**
+     * The same, over a layout the caller has already taken.
+     *
+     * <p>Both emitters take a {@code List<Bar>} as well as a {@link Score},
+     * because the layout is two stages with two different promises --
+     * {@link ChartLayout#unreduced} drops nothing and {@link ChartLayout#of}
+     * reduces on purpose -- and a suite that could only see the second could not
+     * tell a chord absorbed deliberately from one lost to arithmetic. That
+     * distinction is #174 against #212, and it is the one this file's history
+     * turns on.
+     */
+    static List<String> linesOf(List<ChartLayout.Bar> bars) {
         List<String> lines = new ArrayList<>();
         StringBuilder line = new StringBuilder();
         int onThisLine = 0;
@@ -137,34 +175,28 @@ public final class ChordChart {
     }
 
     /**
-     * {@link #linesOf}, with a bare section-label line inserted before any
-     * line {@link SectionLayout} says opens one.
-     *
-     * <p>Kept separate from {@link #linesOf} rather than folded into it,
-     * because {@link #barLines} hands its result straight to tests that count
-     * and index bar lines one-for-one against {@link ChartLayout}'s bars --
-     * inserting label lines there would shift every one of those indices for
-     * a chart with any detected repeat.
-     */
-    private static List<String> annotatedLinesOf(List<ChartLayout.Bar> bars) {
-        List<String> barLines = linesOf(bars);
-        List<Optional<String>> labels = SectionLayout.labelsPerLine(bars, BARS_PER_LINE);
-        List<String> out = new ArrayList<>(barLines.size() + labels.size());
-        for (int i = 0; i < barLines.size(); i++) {
-            labels.get(i).ifPresent(out::add);
-            out.add(barLines.get(i));
-        }
-        return out;
-    }
-
-    /**
      * Renders the chart as LilyPond source.
      *
      * <p>Emitted directly from the model rather than by converting MusicXML,
      * which loses information on the way through.
+     *
+     * <p>The page carries what the text chart's first three lines carry: the
+     * title, the artist and how fast it goes. A chart is printed to be handed
+     * to somebody, and one headed {@code Untitled} with no tempo asks them to
+     * remember which recording it came from and to find the tempo by ear --
+     * which is #216, observed on the first real commercial recording tried.
+     *
+     * <p>It also carries the bars, which the text chart has always drawn and
+     * the page did not: see the {@code ChordNames} context settings in {@link
+     * #lilyPondOf}.
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
+        return lilyPondOf(score, ChartLayout.of(score));
+    }
+
+    /** The same, over a layout the caller has already taken. See {@link #linesOf}. */
+    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -180,23 +212,42 @@ public final class ChordChart {
         // without this the page would say "C C C" where the text chart says
         // "| C | % | % |" -- the same disagreement between the two outputs that
         // deciding the bars twice used to produce.
-        out.append("  \\new ChordNames \\with { chordChanges = ##t } {\n");
+        //
+        // Bar_engraver, because ChordNames is not given one: the | that closes
+        // every bar below is only a check, and a check draws nothing. The page
+        // was a continuous stream of chord names, so a bar holding "C G" could
+        // not be told from two bars holding one chord each -- which is the one
+        // thing a chart is read for (#217).
+        //
+        // bar-extent, because the engraver alone is not enough. A bar line is
+        // drawn the height of its staff, and a ChordNames context has no staff,
+        // so the lines engrave with an empty vertical extent: present in the
+        // score, invisible on the page. LilyPond's own Lyrics context carries
+        // the same override for the same reason, and 2 staff spaces either side
+        // of the chord names is the value its manual uses for ChordNames.
+        //
+        // Bar lines cost one thing, and it is #225: LilyPond may break a system
+        // only where there is one, so a bar wider than the line no longer wraps
+        // -- it runs past the margin and then off the sheet, silently. It takes
+        // far more chords in one bar than any real recording tried has produced,
+        // and how many depends on how wide their names are, but the bar holding
+        // the lead-in is exempt from the harmonic-rhythm reduction and so is not
+        // bounded by the meter. ChordChartEngravingIT reads each system's right
+        // edge back out of LilyPond, since LilyPond itself says nothing about
+        // it.
+        out.append("  \\new ChordNames \\with {\n");
+        out.append("    chordChanges = ##t\n");
+        out.append("    \\consists \"Bar_engraver\"\n");
+        out.append("    \\override BarLine.bar-extent = #'(-2 . 2)\n");
+        out.append("  } {\n");
+        // Outside \chordmode, which is where a mark belongs that is not a chord:
+        // inside it, every line of the block is a bar whose durations have to
+        // sum to the meter, and this one has no duration at all.
+        TempoMark.of(score, countedIn(score, bars))
+                .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 
-        List<ChartLayout.Bar> bars = ChartLayout.of(score);
-        List<Optional<String>> sectionLabels = SectionLayout.labelsPerLine(bars, BARS_PER_LINE);
-        for (int i = 0; i < bars.size(); i++) {
-            ChartLayout.Bar bar = bars.get(i);
-            // One \mark per printed line, at the same boundary and under the
-            // same label the text chart uses -- SectionLayout is the one
-            // reader of "where does a repeat start", so the two outputs read
-            // it rather than each deriving their own answer and risking the
-            // #174 failure mode of disagreeing about a boundary.
-            if (i % BARS_PER_LINE == 0) {
-                sectionLabels.get(i / BARS_PER_LINE)
-                        .ifPresent(label -> out.append("      \\mark \"")
-                                .append(escape(label)).append("\"\n"));
-            }
+        for (ChartLayout.Bar bar : bars) {
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }
@@ -208,7 +259,18 @@ public final class ChordChart {
             // number it prints names the bar that does not add up.
             out.append("|\n");
         }
-        out.append("    }\n  }\n");
+        out.append("    }\n");
+        // Outside \chordmode for the same reason the tempo mark is: it has no
+        // duration, and every line inside that block is a bar that has to sum to
+        // the meter. Written at all so the chart ends the way the staff parts
+        // do -- StaffNotation closes every part with the same mark, and a reader
+        // handed both should not have to wonder whether the chart's last page
+        // is the last page. Skipped when there are no bars, because a final bar
+        // line after no bars marks the end of nothing.
+        if (!bars.isEmpty()) {
+            out.append("    \\bar \"|.\"\n");
+        }
+        out.append("  }\n");
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();

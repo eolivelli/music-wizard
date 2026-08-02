@@ -37,6 +37,8 @@ import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -149,6 +151,74 @@ class ChordChartEngravingIT {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
+    /**
+     * A progression that chatters, in a meter whose bar the reduction cannot
+     * halve.
+     *
+     * <p>#212 rewrites a bar's cell lengths, so a bar that no longer sums to its
+     * meter is a bar this file exists to catch. The awkward case is a meter whose
+     * only divisions are one slot and all of them: a 5/4 bar written on five
+     * slots merges runs of them into cells of one, two and three quarters, none
+     * of which is a length the unreduced chart would ever have produced here.
+     *
+     * <p>Sixteen chords over four 5/4 bars, changing on beats the reduction will
+     * partly absorb: 2+1+1+1 quarters a bar, so the first bar is written whole
+     * and the rest are not.
+     */
+    private static Score aChatteringFiveFour() {
+        TimeSignature meter = new TimeSignature(5, 4);
+        double quarter = 0.5;
+        double[] lengths = {2, 1, 1, 1};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C, NoteLetter.C,
+                NoteLetter.A, NoteLetter.A, NoteLetter.F, NoteLetter.A,
+                NoteLetter.C, NoteLetter.G, NoteLetter.G, NoteLetter.G,
+                NoteLetter.F, NoteLetter.C, NoteLetter.F, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            double length = lengths[i % lengths.length];
+            chords.add(chord(roots[i], ChordQuality.MAJOR, at * quarter,
+                    (at + length) * quarter));
+            at += length;
+        }
+        return Score.empty(TempoMap.constant(120, meter), at * quarter)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    /**
+     * A 7/8 chart whose bars the reduction rewrites.
+     *
+     * <p>Three and a half quarters to a bar and seven counted beats, so the only
+     * divisions are one slot and seven, and a second chord has to hold most of
+     * the bar to be worth its place. Each bar here is laid out as three cells and
+     * written as one, so the length LilyPond is asked to check — seven eighths of
+     * a whole note, which no single note value names — is one this change
+     * computed rather than one it passed through.
+     *
+     * <p>Round 1 of review found the first draft of this fixture inert: its
+     * boundaries were tidied by the layout's own snapping before the reduction
+     * saw them, so it engraved the same page either way and tested nothing.
+     */
+    private static Score aChatteringSevenEight() {
+        TimeSignature meter = new TimeSignature(7, 8);
+        double quarter = 0.5;
+        double[] lengths = {1.5, 0.5, 1.5};
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.C,
+                NoteLetter.A, NoteLetter.F, NoteLetter.A,
+                NoteLetter.G, NoteLetter.C, NoteLetter.G,
+                NoteLetter.F, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        double at = 0;
+        for (int i = 0; i < roots.length; i++) {
+            double length = lengths[i % lengths.length];
+            chords.add(chord(roots[i], ChordQuality.MAJOR, at * quarter,
+                    (at + length) * quarter));
+            at += length;
+        }
+        return Score.empty(TempoMap.constant(120, meter), at * quarter)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
     static Stream<Arguments> charts() {
         return Stream.of(
                         // #64: a bar that is not four quarters long.
@@ -164,7 +234,11 @@ class ChordChartEngravingIT {
                         Arguments.of("forced-tempo", eightChordsAtAForcedTempo()),
                         Arguments.of("ornamental", anOrnamentalChord()),
                         // A meter change mid-chart, which needs a second \time.
-                        Arguments.of("meter-change", aMeterChange()));
+                        Arguments.of("meter-change", aMeterChange()),
+                        // #212: bars whose cell lengths the reduction rewrote,
+                        // in the two meters whose bar it cannot halve.
+                        Arguments.of("chattering-five-four", aChatteringFiveFour()),
+                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -186,6 +260,151 @@ class ChordChartEngravingIT {
         // tuplet number and a beam, and a chord chart has neither.
         assertEngravedCleanly(name, result);
         assertThat(result.pdf()).isPresent();
+    }
+
+    // ---------------------------------------------------------------- #217 --
+
+    /**
+     * A probe that makes the page report two things about itself: how tall each
+     * bar line LilyPond drew is, and how far right each system reached.
+     *
+     * <p>Substituted for the chart's own empty {@code \layout} block, so what is
+     * engraved is the emitter's source and not a hand copy of it. {@code
+     * MidiChordChartIT} patches the same anchor to ask for MIDI, though it
+     * appends beside the block rather than replacing it. Neither {@code BarLine}
+     * nor {@code System} carries an {@code after-line-breaking} of its own, so
+     * this adds callbacks rather than displacing any.
+     *
+     * <p>The bar line reports a length rather than an interval because an undrawn
+     * one has the <em>empty</em> interval, printed {@code (+inf.0 . -inf.0)},
+     * which is not a pair of numbers a test can subtract; {@code
+     * interval-length} answers 0 for it. The system reports the right end of its
+     * interval and the line width beside it, because what matters is only which
+     * way the right edge falls: a system's left end sits a little outside the
+     * line on every page, where the bar number is printed.
+     */
+    private static final String LAYOUT_PROBE = """
+              \\layout {
+                \\context {
+                  \\ChordNames
+                  \\override BarLine.after-line-breaking =
+                    #(lambda (grob)
+                       (ly:message "MW-BAR-HEIGHT ~a"
+                                   (interval-length (ly:grob-extent grob grob Y))))
+                }
+                \\context {
+                  \\Score
+                  \\override System.after-line-breaking =
+                    #(lambda (grob)
+                       (ly:message "MW-SYSTEM-RIGHT ~a ~a"
+                                   (cdr (ly:grob-extent grob grob X))
+                                   (ly:output-def-lookup (ly:grob-layout grob) 'line-width)))
+                }
+              }
+            """;
+
+    /** The chart's own source with the probe in place of its {@code \layout}. */
+    private static String probed(Score score) {
+        String source = ChordChart.toLilyPond(score);
+        assertThat(source).as("the emitter still writes the block the probe replaces")
+                .contains("  \\layout { }\n");
+        return source.replace("  \\layout { }\n", LAYOUT_PROBE);
+    }
+
+    private static final Pattern BAR_HEIGHT =
+            Pattern.compile("MW-BAR-HEIGHT (\\S+)");
+
+    private static final Pattern SYSTEM_RIGHT =
+            Pattern.compile("MW-SYSTEM-RIGHT (\\S+) (\\S+)");
+
+    /** Every bar-line height the probe reported, in the order LilyPond drew them. */
+    private static List<Double> barLineHeights(String lilypondOutput) {
+        List<Double> heights = new ArrayList<>();
+        Matcher matcher = BAR_HEIGHT.matcher(lilypondOutput);
+        while (matcher.find()) {
+            heights.add(Double.parseDouble(matcher.group(1)));
+        }
+        return heights;
+    }
+
+    /** How far each system overran the line, in staff spaces; negative is room to spare. */
+    private static List<Double> systemOverruns(String lilypondOutput) {
+        List<Double> overruns = new ArrayList<>();
+        Matcher matcher = SYSTEM_RIGHT.matcher(lilypondOutput);
+        while (matcher.find()) {
+            overruns.add(Double.parseDouble(matcher.group(1))
+                    - Double.parseDouble(matcher.group(2)));
+        }
+        return overruns;
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("charts")
+    @DisplayName("every bar boundary is drawn, not merely counted")
+    void barLinesAreEngravedWithAHeight(String name, Score score) {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve(name + "/drawn.ly"), probed(score));
+
+        // Two distinct failures, and neither can be told from a chart that is
+        // right, because neither puts a bar line on the page. Without a
+        // Bar_engraver there is no BarLine grob at all and this list is empty;
+        // with one but no bar-extent there is a grob per boundary, each of
+        // height zero. The chart shipped in the first state until #217.
+        List<Double> heights = barLineHeights(result.output());
+        assertThat(heights).as("%s", result.output()).isNotEmpty();
+        assertThat(heights).as("%s", result.output()).allSatisfy(
+                height -> assertThat(height).isGreaterThan(0.0));
+        // One per bar: the boundary after each bar but the last, plus the one
+        // LilyPond draws at the end of the score. That last one is not evidence
+        // of the chart's \bar "|." -- LilyPond draws it either way, and the mark
+        // only chooses the glyph, so what closes the chart is asserted on the
+        // text in ChordChartTest. Counted from the bar checks the emitter wrote,
+        // which catches a bar line lost against a bar kept and nothing more:
+        // both sides come from the same text, so a bar dropped in ChartLayout
+        // takes its bar line with it and this still passes. Round 4 of review
+        // dropped ChartLayout's last bar and measured which tests noticed --
+        // not this one, and not the two-outputs comparison either, since both
+        // its sides read one layout. The ones that fail are the ones asserting
+        // what is in which bar against an expectation formed outside the
+        // layout, ChordChartTest.printsOneChordPerBar and
+        // theBarLinesFollowTheGridsDownbeats among them.
+        long bars = probed(score).lines().filter(line -> line.strip().endsWith("|")).count();
+        assertThat(heights).as("%s", result.output()).hasSize((int) bars);
+        assertEngravedCleanly(name, result);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("charts")
+    @DisplayName("no system runs off the page, which bar lines made possible")
+    void noBarIsTooWideForTheLine(String name, Score score) {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve(name + "/width.ly"), probed(score));
+
+        // The cost of the bar lines, and the reason this test exists (#225).
+        // Without a Bar_engraver LilyPond could break a system between any two
+        // chord names, so a bar wider than the line simply wrapped; with one,
+        // breaks fall only at bar lines, as in any engraved music, and a single
+        // over-wide bar is set past the margin and then past the edge of the
+        // sheet, where the chord names are gone. LilyPond exits zero and says
+        // nothing about it, so assertEngravedCleanly cannot be the guard.
+        //
+        // No fixture here is anywhere near the limit -- a bar has to hold far
+        // more chords than any real recording tried has put in one, and how
+        // many depends on how wide their names are -- so this passes today and
+        // is here to fail when a future ChartLayout change makes a chart clip.
+        List<Double> overruns = systemOverruns(result.output());
+        assertThat(overruns).as("%s", result.output()).isNotEmpty();
+        // A hair of tolerance, not a threshold: a system that fills its line
+        // reports a right edge equal to the line width to within rounding, and
+        // the overrun that matters is tens of staff spaces.
+        assertThat(overruns).as("%s", result.output()).allSatisfy(
+                overrun -> assertThat(overrun).isLessThan(1e-6));
     }
 
     @Test

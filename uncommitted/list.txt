@@ -18,3 +18,125 @@ First real commercial pop recording tried end to end (2026-08-01). MW read
 the song, judged it a very good job by ear. Known weaknesses on this track:
 Am/A7/A flip-flopping on sustained A chords, and the final ~10 bars degrade
 into chromatic noise (fade-out, or the beat drift of #196).
+
+la-canzone-del-sole.mp3
+
+"La canzone del sole" (Lucio Battisti), 5:55. Classic Italian pop, acoustic
+guitar driven. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/la-canzone-del-sole.mp3 \
+    https://www.youtube.com/watch?v=XXOIqni93AY
+Remembered by ear (explicitly uncertain): essentially A E D E throughout,
+with maybe some small variation. A recollection, not ground truth.
+Run 2026-08-01. MW read 89.1 BPM in 4/4 and a chart whose whole vocabulary is
+G#, D#, C# with occasional D#7 and A#7 — exactly the remembered A, E, D (plus
+an occasional B7-shaped dominant) transposed down one semitone, so the harmony
+matches the recollection up to a global half-step (pitched upload or tuning
+call; spelled in sharps where flats would read better). No N.C. spans at all.
+Two weaknesses: the chart is choppy — 281 spans, median 1.35 s, constant
+G#/D# flip-flopping where the ear expects one chord per bar — and the beat
+grid wobbles badly (windowed tempo drifts from ~93 to ~109 BPM across the
+song, inter-beat gaps from 0.28 s to 1.4 s, the #196 pattern), so the printed
+89 BPM is a median over an unsteady grid. The final ~10 s (fade-out) degrades
+into low-confidence chromatic noise: A#m F7 C7 G.
+
+gli-anni.mp3
+
+"Gli anni" (883), 3:41. Italian pop/rock, band arrangement. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/gli-anni.mp3 \
+    https://www.youtube.com/watch?v=dSypLaaqwKQ
+Remembered by ear: not remembered ahead of time; Enrico will judge the chart
+against memory after seeing MW's output. A recollection, not ground truth.
+Run 2026-08-01. MW read 99.4 BPM in 4/4 and a chart whose vocabulary is G, D,
+C, Em, Am plus occasional E7/D7/A7 (secondary dominants) — a diatonic G-major
+set (I-V-IV-vi-ii) that reads as musically coherent for a pop/rock song. No
+N.C. spans in the underlying chord data; the printed chart shows "N.C." only
+as a sub-beat filler before the very first chord (0.0-0.12 s), harmless. 153
+spans over 220 s, median 1.24 s — choppy in the same way as the other two
+entries above, more chord changes printed than a guitarist would actually
+play. Confidence sits in the 0.4-0.8 range throughout, including the final
+bars (last span is a 7.2 s G, confidence 0.55) — no sign of the fade-out
+chromatic-noise degradation (#196) seen on the previous two tracks; this
+recording's ending held up. One flag: 99 BPM is on the slow side for what is
+remembered as an up-tempo rock song, so a beat-tracking octave error (half
+the true tempo) is plausible but unconfirmed — worth checking by ear against
+the render.
+Enrico's verdict (2026-08-01): the sequence "looks pretty good", confirming
+the progression is right, but he remembers the song as being in Em, not G —
+classic relative-minor confusion. MW's G-major reading (G-D-Em-C, tonic G) and
+Enrico's Em recollection (tonic Em) share the same key signature and the same
+set of chords, just disagree on which chord is heard as "home"; the chart's
+harmony is not contradicted, only its major/minor framing.
+
+karma-chameleon.mp3
+
+"Karma Chameleon" (Culture Club), 4:13. 80s pop, synth/harmonica-driven.
+Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/karma-chameleon.mp3 \
+    https://www.youtube.com/watch?v=JFvXvV0oZIo
+Remembered by ear: not remembered ahead of time; Enrico will judge the chart
+against memory after seeing MW's output. A recollection, not ground truth.
+Run 2026-08-01. MW read 95.7 BPM in 4/4 and a chart whose vocabulary is A#
+(Bb), F, Gm, D# (Eb) and C7, in that order of prominence by total duration
+(25.6%, 20.4%, 17.0%, 12.3%, 8.0%) — a diatonic Bb-major set (I-V-vi-IV, plus
+C7 as V7/V) that reads as a coherent, very common pop loop. Smaller amounts of
+Dm, Cm, F7, Am, D7, A7, D#7, C, A, G7 appear as passing/secondary-dominant
+colour. No N.C. spans in the underlying chord data; the printed chart shows
+"N.C." only as a sub-beat filler before the first chord (0.0-0.11 s),
+harmless, matching the pattern seen on gli-anni. 182 spans over 253 s, median
+1.29 s — choppy in the same way as every prior entry, more chord changes
+printed than a guitarist would actually play; confidence is generally low
+(median 0.47, 8 of 182 spans below 0.20) with no systematic collapse. The
+final ~20 s (240-252 s) stays on the same Gm-D#-A#-F-G7 material as the rest
+of the song at broadly similar confidence (0.26-0.66) — no sign of the
+fade-out chromatic-noise degradation (#196) seen on hanno-ucciso-luomo-ragno
+and la-canzone-del-sole. Enrico's recollection was not captured before this
+run, so no comparison to memory is recorded yet; pending his verdict after
+listening against the render.
+
+islanda.mp3
+
+"Islanda" (Pinguini Tattici Nucleari), 3:43. Italian pop/rock. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/islanda.mp3 \
+    https://www.youtube.com/watch?v=xbCuG8vgJhg
+Remembered by ear: not captured ahead of time; Enrico will judge the chart
+against memory after seeing MW's output. A recollection, not ground truth.
+Run 2026-08-01. MW read 159.0 BPM in 4/4 and a chart whose vocabulary by total
+duration is A (50.5%), F#m (15.9%), D (14.5%), E7 (3.7%), C#m (2.8%), plus
+smaller amounts of F#7, B7, C#7, E, A7, A#7, G#, B, Bm as passing/secondary
+colour — a diatonic A-major I-vi-IV-V loop, a very common and coherent pop/
+rock shape. One N.C. span, ~4.7 s at the very start before the harmony
+settles in (0.24-4.99 s) -- an intro gap, not the #185 pathology (which is a
+single span covering most of a recording). 154 spans over 222 s, median
+1.16 s -- choppy in the same way as every prior entry. The first ~4 s after
+the N.C. gap carries very low confidence (G7 at 0.34, Gm at 0.11, F#7 at
+0.01) before settling into the stable A/F#m/D loop by ~8.75 s -- likely a
+transient intro riff the estimator has not locked onto yet, not a systematic
+problem. The last ~2 s show a milder version of the #196 fade-out pattern:
+confidence drops to 0.20 and 0.10 and the very last chord (A#7) is chromatic
+to A major, but it is a couple of seconds, not the 10-20 s chromatic tail
+seen on hanno-ucciso-luomo-ragno and la-canzone-del-sole. Enrico's
+recollection was not captured before this run, so no comparison to memory is
+recorded yet; pending his verdict after listening against the render.
+Checked 2026-08-01 against a published chord sheet (Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/italiani/pinguini-tattici-nucleari/islanda/
+-- a fan transcription, not authoritative ground truth either, but an
+independent second read of the harmony). Its chords, translated from Italian
+solfege (DO=C, RE=D, MI=E, FA=F, SOL=G, LA=A, SI=B) and stripped of
+color extensions MW's model cannot represent (add9, 6/9), reduce to F#m -
+Dadd9 - A - (Aadd9/C#), with C#m and E as the other two chords, all through
+the song -- exactly the same five chords MW's top-5-by-duration names (A,
+F#m, D, E7, C#m), in a close match on relative prominence too (site token
+counts A=38, D=38, F#m=28, E=9, C#m=8, against MW's duration-share order
+A > F#m > D > E7 > C#m -- F#m and D swap places but stay adjacent). Two
+differences worth naming: MW hears the E as a dominant seventh (E7) where
+the sheet has a plain E triad, the #208 pattern; and MW's smaller passing
+chords (F#7, B7, C#7, A7, A#7, G#, B, Bm) appear nowhere in the sheet, so
+they read as estimation noise rather than harmony the sheet missed. MW
+also never recognises the sheet's Aadd9/C# slash-bass inversion --
+ChordEstimator does not appear to emit a bass note at all on this track,
+worth checking whether that is systematic. This is the best chart-to-
+external-reference agreement seen across every recording tried so far.
