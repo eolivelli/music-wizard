@@ -16,7 +16,6 @@
 
 package dev.olivelli.musicwizard.android;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
@@ -47,7 +46,7 @@ import java.util.List;
  * {@code samples/} or {@code uncommitted/} this way, which is what the app is
  * for.
  */
-public final class LibraryActivity extends Activity {
+public final class LibraryActivity extends MwActivity {
 
     private RecordingStore store;
     private ListView list;

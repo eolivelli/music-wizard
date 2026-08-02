@@ -17,7 +17,6 @@
 package dev.olivelli.musicwizard.android;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -35,7 +34,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 
 /** The record screen: one button, a level meter, and a way to the library. */
-public final class RecordActivity extends Activity implements Recorder.Listener {
+public final class RecordActivity extends MwActivity implements Recorder.Listener {
 
     private static final int REQUEST_MICROPHONE = 1;
 
