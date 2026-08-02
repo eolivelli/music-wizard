@@ -114,3 +114,8 @@ anyway (#289).
 - `#196`: the beat tracker's Ellis spacing penalty was transcribed in log₂ at
   weight 1 where the reference is natural-log at weight 100 — a factor of 48.
   Two lines fixed what months of downstream tuning could not reach.
+- `#204`: an 11 MB recording was committed with no licence and no provenance,
+  and became the tier-2 gate before anyone asked. The source could not be
+  found afterwards, so it was retired rather than cleared — and the blob is in
+  the history of every clone forever either way. Hence the licence goes in
+  `NOTICE` and `samples/list.txt` when the file goes in, not later.

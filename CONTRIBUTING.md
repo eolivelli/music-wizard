@@ -25,6 +25,13 @@ Two consequences worth knowing before you reach for the obvious thing:
   CC BY-NC-SA and cannot be used or vendored. Clean alternatives exist for every
   one: Demucs ONNX (MIT), CREPE ONNX (MIT), basic-pitch (Apache-2.0), and the
   OpenScore Lieder corpus (CC0).
+- **Audio under `samples/` is a licensing decision too, and the same one.** A
+  recording is committed only if it is our own or permissively licensed; what
+  the corpus actually holds is CC BY, so `NOTICE` carries the attribution that
+  requires. Anything else is gitignored and `samples/list.txt` gives the command
+  to fetch it. Record the licence when the file is added rather than after: a
+  committed binary cannot be quietly undone, and one that arrived without a
+  provenance note ended up retired rather than cleared (#204).
 
 LilyPond is GPL-3.0, which is fine because it is invoked as a separate process,
 never linked or redistributed, and the program works without it.

@@ -42,6 +42,30 @@ Models under non-commercial terms (CC BY-NC-SA), including the madmom
 pretrained models and the Open-Unmix "umxl" weights, are deliberately NOT used.
 
 --------------------------------------------------------------------------------
+Sample recordings
+--------------------------------------------------------------------------------
+
+The recordings committed under samples/ are third-party audio used as test
+material. Each is offered under Creative Commons Attribution (CC BY), and the
+attribution required is the uploader and the source URL, both recorded per file
+in samples/list.txt:
+
+  ballad-wine-roses-65.mp3   Guitar Improvisation (Martin Gioani)
+  bm-blues-slow.mp3          Guitar Improvisation (Martin Gioani)
+  cm-blues-68-95.mp3         Guitar Improvisation (Martin Gioani)
+  eb7-vamp-130.mp3           Guitar Improvisation (Martin Gioani)
+  f-blues-swing-170.mp3      Guitar Improvisation (Martin Gioani)
+  fm7-vamp-110.mp3           Guitar Improvisation (Martin Gioani)
+  footprints-200.mp3         Guitar Improvisation (Martin Gioani)
+  g-blues-shuffle-cc.mp3     Guitar Improvisation (Martin Gioani)
+  jazz-251-c-140.mp3         Guitar Improvisation (Martin Gioani)
+  waltz-am-e7-160.mp3        Guitar Improvisation (Martin Gioani)
+  pop-c-g-am-f-120.mp3       RainbowMonkey
+
+Recordings under any other terms are not committed. They are gitignored and
+samples/list.txt says how to fetch them, so this list and the tree agree.
+
+--------------------------------------------------------------------------------
 External tools
 --------------------------------------------------------------------------------
 

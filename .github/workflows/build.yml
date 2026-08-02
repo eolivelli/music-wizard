@@ -71,8 +71,10 @@ jobs:
     runs-on: ubuntu-latest
     # Every committed sample is decoded and analyzed once for the table and
     # again by each harness, so this is the long job of the matrix; the bound
-    # is there to stop a hung analysis holding a runner for six hours.
-    timeout-minutes: 60
+    # is there to stop a hung analysis holding a runner for six hours. It grows
+    # with the corpus, not with the code: every grid confirmed in
+    # samples/list.txt adds a file to both harnesses.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
