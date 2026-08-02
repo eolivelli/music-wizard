@@ -213,10 +213,10 @@ public final class SendState {
      * text already on GitHub still in the box and Send live — a duplicate one
      * tap away.
      *
-     * <p>What has already gone to GitHub keeps the old name, since the comment
-     * and the asset were written before the rename. The corpus record and the
-     * phone disagree about what the take is called; re-reading the name at post
-     * time would only move the race.
+     * <p>What goes to GitHub keeps the old name, since the worker carries the
+     * name the send was started under. The corpus record and the phone then
+     * disagree about what the take is called; re-reading the name at post time
+     * would only move the race.
      */
     public void moved(String from, String to) {
         if (from.equals(to)) {

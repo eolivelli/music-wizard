@@ -322,9 +322,10 @@ public class SendStateTest {
      *
      * <p>The screen matches what comes back against the take it is showing. Given
      * the started name it would refuse to redraw the renamed take — leaving it on
-     * "Compressing and uploading…" with no way back, since the disabled field
-     * cannot fire the watcher — or, worse, match a different take that has since
-     * been renamed onto the freed name and wipe its unsent comment.
+     * "Compressing and uploading…" until the next {@code onResume}, since the
+     * disabled field cannot fire the watcher — or, worse, match a different take
+     * that has since been renamed onto the freed name and wipe its unsent
+     * comment.
      */
     @Test
     public void finishSendAnswersWithTheNameToDrawOn() {
