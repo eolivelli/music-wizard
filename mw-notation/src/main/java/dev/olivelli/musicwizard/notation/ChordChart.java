@@ -336,6 +336,15 @@ public final class ChordChart {
         out.append("    \\override TextSpanner.bound-details.left.stencil-align-dir-y = #CENTER\n");
         out.append("    \\override TextSpanner.bound-details.right.text ="
                 + " \\markup { \\draw-line #'(0 . -1) }\n");
+        // The two ends a broken bracket grows, which are not ends of anything.
+        // LilyPond may break a system anywhere in the chart, and the four-bar
+        // line has no say in where -- so a bracket is routinely drawn in two
+        // pieces. Left to inherit the settings above, each piece takes the
+        // label and the closing hook and reads as a whole bracket over part of
+        // a line, which is the one thing this annotation must not say. Silent:
+        // LilyPond has nothing to warn about.
+        out.append("    \\override TextSpanner.bound-details.left-broken.text = ##f\n");
+        out.append("    \\override TextSpanner.bound-details.right-broken.text = ##f\n");
         out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
         out.append("  } {\n");
         for (int line = 0; line < tags.size(); line++) {

@@ -489,4 +489,70 @@ class ChordChartEngravingIT {
                 .hasSize(3);
         assertThat(ChordChart.toLilyPond(score).split("\\\\startTextSpan", -1)).hasSize(4);
     }
+
+    /**
+     * A probe that reports how tall LilyPond drew each piece of each repeat
+     * bracket, on a line narrow enough that it has to break some of them.
+     *
+     * <p>Height is what tells a bracket's one labelled piece from the pieces a
+     * system break made: the label is a bold letter above the line and nothing
+     * else in the grob is. LilyPond exposes no "did you draw the label" and says
+     * nothing when it draws it twice, so this is the observation available.
+     *
+     * <p>The narrow line is the point rather than a convenience. Where LilyPond
+     * breaks a system has nothing to do with the chart's four-bar line, so a
+     * bracket straddling a break is ordinary on any real chart and is reached
+     * here on purpose instead of being waited for.
+     */
+    private static final String BRACKET_PROBE = """
+              \\layout {
+                line-width = 42\\mm
+                \\context {
+                  \\Dynamics
+                  \\override TextSpanner.after-line-breaking =
+                    #(lambda (grob)
+                       (ly:message "MW-BRACKET ~a"
+                                   (interval-length (ly:grob-extent grob grob Y))))
+                }
+              }
+            """;
+
+    private static final Pattern BRACKET_HEIGHT = Pattern.compile("MW-BRACKET (\\S+)");
+
+    private static List<Double> bracketHeights(String lilypondOutput) {
+        List<Double> heights = new ArrayList<>();
+        Matcher matcher = BRACKET_HEIGHT.matcher(lilypondOutput);
+        while (matcher.find()) {
+            heights.add(Double.parseDouble(matcher.group(1)));
+        }
+        return heights;
+    }
+
+    @Test
+    @DisplayName("a bracket a system break cuts in two is still one labelled bracket")
+    void aBrokenBracketIsNotDrawnAsTwo() {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+
+        String source = ChordChart.toLilyPond(aRepeatedLine());
+        int opened = source.split("\\\\startTextSpan", -1).length - 1;
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond).renderSource(
+                tempDirectory.resolve("broken/chart.ly"),
+                source.replace("  \\layout { }\n", BRACKET_PROBE));
+
+        List<Double> heights = bracketHeights(result.output());
+        assertThat(heights).as("the narrow line really did break a bracket: %s",
+                result.output()).hasSizeGreaterThan(opened);
+        // Each piece of a broken bracket inherits the label and the closing hook
+        // unless it is told not to, and then reads as a whole bracket over part
+        // of a line -- a claim about bars the chart never grouped. Counted
+        // against the tallest piece rather than a written-down height, so the
+        // test says "one label per bracket" and not "labels are 2.7 tall".
+        double tallest = heights.stream().mapToDouble(Double::doubleValue).max().orElseThrow();
+        assertThat(heights.stream().filter(height -> height > tallest - 1e-6).count())
+                .as("one label for each bracket, not one for each piece of one: %s",
+                        result.output())
+                .isEqualTo(opened);
+        assertEngravedCleanly("the broken-bracket page", result);
+    }
 }
