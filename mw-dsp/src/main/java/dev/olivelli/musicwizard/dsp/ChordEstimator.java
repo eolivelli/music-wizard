@@ -270,8 +270,8 @@ public final class ChordEstimator {
      * <p>Every cell below is per-bar {@code root+quality} from {@code
      * tools/ChordSweep.java score} with the minor seventh in the vocabulary, so
      * the left-hand column is not a baseline — without a correction of some size
-     * the minor seventh cannot be admitted at all. The four scored benchmarks
-     * that move, and how many of the eleven rows of {@code
+     * the minor seventh cannot be admitted at all. The scored benchmarks that
+     * move by more than a bar, and how many of the eleven rows of {@code
      * tools/score-samples.py}'s key table name the right key:
      *
      * <pre>
@@ -547,10 +547,12 @@ public final class ChordEstimator {
      * 0.577 for a dominant seventh, so an argmax over the two picks the seventh
      * every time on no evidence whatever, by template size alone; {@link
      * #NO_CHORD_SIMILARITY} names the same asymmetry from the other side. A
-     * minor-third template scores less, 0.375 and 0.469, because a flat chroma
-     * carries as much of the major third as of anything else and the correction
-     * takes it off. Intended: the floor is the bar a candidate clears, and it
-     * has to be the bar that candidate is actually scored against.
+     * minor-third template scores less, 0.375 and 0.469 at the share shipped,
+     * because a flat chroma carries as much of the major third as of the root
+     * and the correction takes off the part the root cannot account for — so
+     * these two move with {@link #ROOT_EXPLAINS_MAJOR_THIRD}. Intended: the
+     * floor is the bar a candidate clears, and it has to be the bar that
+     * candidate is actually scored against.
      *
      * <p>Used as a floor rather than subtracted off, and <b>a floor rules out
      * exactly the candidates that fit worse than noise does — it does not rule

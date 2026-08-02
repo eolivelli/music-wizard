@@ -74,7 +74,7 @@ import org.junit.jupiter.api.Test;
  * columns come apart for two different reasons: the estimator finds a root and
  * the vocabulary cannot name the chord on it, which was {@code
  * fm7-vamp-110.mp3} throughout until the minor seventh landed (#272) and is
- * still the sixth, half-diminished and major-seventh bars of {@code
+ * still the minor-sixth, half-diminished and major-seventh bars of {@code
  * bossa-cm.mp3} (#287); or it can and the seventh is still missed, which #208 is a large net
  * gain against and closed nowhere — it costs a couple of points on the two
  * benchmarks whose sevenths were already being found, this recording among
