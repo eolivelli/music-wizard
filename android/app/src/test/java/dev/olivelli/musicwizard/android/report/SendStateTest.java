@@ -108,10 +108,10 @@ public class SendStateTest {
         drafts.put(TAKE, "G C D");
         // The screen drew once before the send — the read the old code kept.
         assertTrue(state.canSend(TAKE));
-        state.beginSend(TAKE);
+        SendState.Send send = state.beginSend(TAKE);
 
         // Nobody asks anything while it runs; this is the paused screen.
-        state.finishSend(TAKE, true, "Sent.\nhttps://github.com/o/r/issues/7#c1");
+        state.finishSend(send, true, "Sent.\nhttps://github.com/o/r/issues/7#c1");
 
         assertFalse("Send must not come back live on a take just filed",
                 state.canSend(TAKE));
@@ -129,8 +129,8 @@ public class SendStateTest {
     @Test
     public void whereItLandedIsStillThereOnTheNextLook() {
         String detail = "Sent.\nhttps://github.com/o/r/issues/7#c1";
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, true, detail);
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, true, detail);
 
         assertEquals(detail, state.detailFor(TAKE));
         assertNull("another take's screen must not show this one's result",
@@ -141,8 +141,8 @@ public class SendStateTest {
     @Test
     public void aFailedSendLeavesTheTakeSendableAndTheDraftIntact() {
         drafts.put(TAKE, "G C D");
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, false, "Not sent.\nBad credentials");
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, false, "Not sent.\nBad credentials");
 
         assertTrue(state.canSend(TAKE));
         assertFalse(state.isFiled(TAKE));
@@ -158,8 +158,8 @@ public class SendStateTest {
      */
     @Test
     public void editingReopensTheTakeAndOnlyThenReportsAChange() {
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         assertTrue("the first edit after a send changes something",
                 state.edited(TAKE));
@@ -175,8 +175,8 @@ public class SendStateTest {
     /** A filed comment is not a draft, so leaving the screen must not re-save it. */
     @Test
     public void aFiledCommentIsNotKeptAsADraft() {
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         // What onPause does with whatever is still in the field.
         state.keepDraft(TAKE, "G C D");
@@ -191,10 +191,8 @@ public class SendStateTest {
     /** One result is kept, and it is the most recent one. */
     @Test
     public void onlyTheLastResultIsKept() {
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, false, "first");
-        state.beginSend(OTHER);
-        state.finishSend(OTHER, false, "second");
+        state.finishSend(state.beginSend(TAKE), false, "first");
+        state.finishSend(state.beginSend(OTHER), false, "second");
 
         assertNull(state.detailFor(TAKE));
         assertEquals("second", state.detailFor(OTHER));
@@ -204,8 +202,8 @@ public class SendStateTest {
     @Test
     public void forgettingATakeLeavesNothingForTheNextTakeOfThatName() {
         drafts.put(TAKE, "G C D");
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         state.forget(TAKE);
 
@@ -220,8 +218,8 @@ public class SendStateTest {
     @Test
     public void renamingCarriesEverythingToTheNewName() {
         drafts.put(TAKE, "G C D");
-        state.beginSend(TAKE);
-        state.finishSend(TAKE, false, "Not sent.\nBad credentials");
+        SendState.Send send = state.beginSend(TAKE);
+        state.finishSend(send, false, "Not sent.\nBad credentials");
 
         state.moved(TAKE, OTHER);
 
@@ -254,7 +252,7 @@ public class SendStateTest {
     @Test
     public void aSendFollowsItsTakeThroughARename() {
         drafts.put(TAKE, "G C D");
-        state.beginSend(TAKE);
+        SendState.Send send = state.beginSend(TAKE);
         state.moved(TAKE, OTHER);
 
         assertTrue("the take is still sending, under its new name",
@@ -262,7 +260,7 @@ public class SendStateTest {
         assertFalse(state.canSend(OTHER));
         assertFalse("and not under the old one", state.isSending(TAKE));
 
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         assertTrue("the result belongs to the take, which is now called this",
                 state.isFiled(OTHER));
@@ -277,25 +275,93 @@ public class SendStateTest {
     /** Through two renames as well: each one moves the same send along. */
     @Test
     public void aSendFollowsItsTakeThroughASecondRename() {
-        state.beginSend(TAKE);
+        SendState.Send send = state.beginSend(TAKE);
         state.moved(TAKE, OTHER);
         state.moved(OTHER, "third-name");
 
         assertTrue(state.isSending("third-name"));
 
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         assertTrue(state.isFiled("third-name"));
         assertFalse(state.isSending("third-name"));
     }
 
+    /**
+     * Reusing the freed name for a second send does not lose the first.
+     *
+     * <p>A rename frees the old name, and the library refuses only names that
+     * are *taken*, so a different take can legally be renamed onto it and sent.
+     * While a send was identified by the name it started under, that second
+     * send replaced the first: one take ended up on GitHub reading as never
+     * sent, and another marked filed by someone else's upload.
+     */
+    @Test
+    public void reusingAFreedNameDoesNotLoseTheSendStillRunningUnderIt() {
+        SendState.Send first = state.beginSend(TAKE);
+        state.moved(TAKE, OTHER);
+
+        // TAKE is free again; a different recording is renamed onto it and sent.
+        SendState.Send second = state.beginSend(TAKE);
+        assertTrue("the first send is still running, as take-B",
+                state.isSending(OTHER));
+        assertTrue(state.isSending(TAKE));
+
+        assertEquals(OTHER, state.finishSend(first, true, "first"));
+        assertTrue("the renamed take is filed by its own send", state.isFiled(OTHER));
+        assertFalse("and not by the other one", state.isFiled(TAKE));
+        assertTrue("whose send is still running", state.isSending(TAKE));
+
+        assertEquals(TAKE, state.finishSend(second, true, "second"));
+        assertTrue(state.isFiled(TAKE));
+        assertFalse(state.isSending(TAKE));
+    }
+
+    /**
+     * The name to draw a result on is the take's name now, not the started one.
+     *
+     * <p>The screen matches what comes back against the take it is showing. Given
+     * the started name it would refuse to redraw the renamed take — leaving it on
+     * "Compressing and uploading…" with no way back, since the disabled field
+     * cannot fire the watcher — or, worse, match a different take that has since
+     * been renamed onto the freed name and wipe its unsent comment.
+     */
+    @Test
+    public void finishSendAnswersWithTheNameToDrawOn() {
+        SendState.Send send = state.beginSend(TAKE);
+        state.moved(TAKE, OTHER);
+
+        assertEquals(OTHER, state.finishSend(send, true, "Sent.\nhttps://…"));
+    }
+
+    /** A deleted take has no name to draw on, and says so. */
+    @Test
+    public void finishSendAnswersWithNothingWhenTheTakeIsGone() {
+        SendState.Send send = state.beginSend(TAKE);
+        state.forget(TAKE);
+
+        assertNull(state.finishSend(send, true, "Sent.\nhttps://…"));
+    }
+
+    /** Deleting a take that was renamed mid-send still drops its send. */
+    @Test
+    public void deletingATakeRenamedMidSendStillDropsIt() {
+        SendState.Send send = state.beginSend(TAKE);
+        state.moved(TAKE, OTHER);
+        state.forget(OTHER);
+
+        assertNull(state.finishSend(send, true, "Sent.\nhttps://…"));
+        assertFalse(state.isFiled(OTHER));
+        assertFalse(state.isFiled(TAKE));
+    }
+
     /** The same, for a take deleted mid-send. */
     @Test
     public void aSendWhoseTakeWasDeletedUnderItFilesNothing() {
-        state.beginSend(TAKE);
+        SendState.Send send = state.beginSend(TAKE);
         state.forget(TAKE);
 
-        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+        state.finishSend(send, true, "Sent.\nhttps://…");
 
         assertFalse(state.isFiled(TAKE));
         assertNull(state.detailFor(TAKE));

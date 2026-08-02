@@ -273,7 +273,7 @@ public final class ReportActivity extends MwActivity {
         // Marked last, immediately before the work is handed over: anything
         // throwing between the mark and the executor would leave the take in
         // flight for the life of the process, Send disabled on every visit.
-        sends(this).beginSend(take);
+        SendState.Send send = sends(this).beginSend(take);
         draw();
 
         SENDER.execute(() -> {
@@ -290,7 +290,7 @@ public final class ReportActivity extends MwActivity {
                 outcome = null;
             }
             ReportJob.Outcome result = outcome;
-            MAIN.post(() -> finished(application, take, result));
+            MAIN.post(() -> finished(application, send, result));
         });
     }
 
@@ -301,15 +301,19 @@ public final class ReportActivity extends MwActivity {
      * one to tell — it may be gone, or replaced by a second visit to the same
      * take — and because the marking has to happen either way.
      */
-    private static void finished(Context application, String take, ReportJob.Outcome outcome) {
+    private static void finished(Context application, SendState.Send send,
+                                 ReportJob.Outcome outcome) {
         boolean worked = outcome != null && outcome.sent() != null;
         // Recorded before anything is drawn, and whether or not a screen is
         // left to draw on: the record is what every screen reads, now and on
-        // its next visit.
-        sends(application).finishSend(take, worked, detailOf(application, outcome, worked));
+        // its next visit. What comes back is the take's name *now* — the take
+        // may have been renamed while this ran, and the name the send was
+        // started under may by then belong to a different take altogether.
+        String take = sends(application).finishSend(send, worked,
+                detailOf(application, outcome, worked));
 
         ReportActivity screen = visible;
-        if (screen == null || !take.equals(screen.takeName)) {
+        if (take == null || screen == null || !take.equals(screen.takeName)) {
             // With the reason, not just "not sent": backing out during a slow
             // upload is what someone on a bad connection does, and they are the
             // ones who most need to know which of the two it was.
