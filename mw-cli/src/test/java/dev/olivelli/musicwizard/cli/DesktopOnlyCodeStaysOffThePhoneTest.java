@@ -46,12 +46,11 @@ import org.junit.jupiter.api.io.TempDir;
  * must not carry desktop-only machinery onto the phone.
  *
  * <p>A phone has no {@code javax.sound}, cannot load ffsampledsp's or ONNX
- * Runtime's desktop natives, and has no LilyPond to run. What the app calls of
- * those modules is a handful of methods — {@code Resampler.resample}, {@code
- * AudioTranscriber.transcribe(AudioBuffer, Options)}, {@code
- * ChordChart.toText(Score)} — and the run below is those, in that order.
- * Everything else in those jars is desktop code that happens to ship beside
- * them.
+ * Runtime's desktop natives, and has no LilyPond to run. What the run below
+ * calls of those modules is {@code Resampler.resample}, {@code
+ * AudioTranscriber.transcribe(AudioBuffer, Options)} and {@code
+ * ChordChart.toText(Score)}, in the app's order. Everything else in those jars
+ * is desktop code that happens to ship beside them.
  *
  * <p>So the rule is not "these modules never mention a desktop API": three
  * classes exist to use one, and deleting them would cost the desktop its MP3
@@ -71,17 +70,19 @@ import org.junit.jupiter.api.io.TempDir;
  *       fails here with {@code NoClassDefFoundError} while confinement stays
  *       green. Its limit is the other side of the same coin — it sees the calls
  *       the fixture makes, so a branch not taken is a branch not checked, and
- *       what the app itself does beyond these three calls is not covered.
+ *       what the app does beyond these three calls is not covered. It caches
+ *       its score through {@code ScoreJson}, for one, which needs Jackson and
+ *       so is deliberately off the classpath below.
  * </ul>
  *
  * <p>LilyPond is the one family whose ban needed a decision, since emitting
  * {@code .ly} text is part of the notation module's job. The ban is on
  * <em>invoking</em> the binary — {@code java.lang.Process} and friends — and not
- * on writing the source, so the run below engraves a chart to LilyPond text and
- * then fails to start {@link
- * dev.olivelli.musicwizard.notation.LilyPondRenderer}. Nothing on the app's seam
- * calls {@code toLilyPond} today; it is exercised because a boundary nobody
- * crosses is a boundary nobody has checked.
+ * on writing the source. So the run engraves a chart to LilyPond text, and
+ * {@link #theConfinedClassesTripTheRefusal} then fails to start {@link
+ * dev.olivelli.musicwizard.notation.LilyPondRenderer} under the same loader.
+ * Nothing the app calls reaches {@code toLilyPond} today; it is exercised
+ * because a boundary nobody crosses is a boundary nobody has checked.
  *
  * <p>mw-cli is not among the six, deliberately: it is the desktop entry point,
  * it declares ONNX Runtime at runtime scope on purpose (#247), and the app does
@@ -113,13 +114,19 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             String probe,
             List<String> confinedTo) {
 
-        /** The package prefix the phone classloader refuses by. */
-        String packagePrefix() {
+        /**
+         * The needle in source form, which has two readers: the phone
+         * classloader refuses a class whose name starts with it, and {@link
+         * #isNamedIn} looks for it in a constant pool beside the internal form.
+         * A prefix of a package for three of the four families and of a class
+         * name for {@code java.lang.Process}.
+         */
+        String dottedPrefix() {
             return needle.replace('/', '.');
         }
 
         boolean isNamedIn(List<String> constants) {
-            String dotted = packagePrefix();
+            String dotted = dottedPrefix();
             return constants.stream()
                     .anyMatch(text -> text.contains(needle) || text.contains(dotted));
         }
@@ -399,7 +406,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             protected Class<?> loadClass(String name, boolean resolve)
                     throws ClassNotFoundException {
                 for (DesktopOnly family : FAMILIES) {
-                    if (name.startsWith(family.packagePrefix())) {
+                    if (name.startsWith(family.dottedPrefix())) {
                         throw new ClassNotFoundException(
                                 name + " is " + family.name() + ", which an Android build"
                                         + " does not have: " + family.confinedTo()

@@ -40,8 +40,9 @@ import java.util.jar.JarFile;
  * modules and get different answers from it — {@link AndroidBytecodeTargetTest}
  * reads each class file's version, {@link DesktopOnlyCodeStaysOffThePhoneTest}
  * reads its constant pool. A module missing from a copy of the list fails
- * neither test; it just stops being checked, which is the failure this file
- * exists to make impossible.
+ * neither test; it just stops being checked, which is why the two tests read one
+ * list. The app's own copy, in {@code android/app/build.gradle}, is a third and
+ * is not cross-checked against this one (#268).
  */
 final class AppFacingModules {
 
@@ -140,7 +141,6 @@ final class AppFacingModules {
         return found;
     }
 
-    /** {@code dev/olivelli/.../ChordChart$Bar.class} to its binary name. */
     private static String binaryNameOf(String path) {
         return path.substring(0, path.length() - ".class".length())
                 .replace('\\', '.')
