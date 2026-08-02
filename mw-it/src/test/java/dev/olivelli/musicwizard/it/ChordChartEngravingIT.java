@@ -219,6 +219,44 @@ class ChordChartEngravingIT {
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
     }
 
+    /**
+     * A four-bar line printed three times, with a chord change inside its first
+     * bar.
+     *
+     * <p>The only fixture here whose chart repeats itself, so the only one that
+     * engraves #218's repeat brackets at all: they ride in a context beside the
+     * chord names, spelled against spacers that mirror the chord cells, and a
+     * bracket whose ends do not land on an event is a LilyPond warning rather
+     * than a wrong page. Three lines rather than two so two brackets meet
+     * end to end, and a split first bar so a bracket opens on a cell shorter
+     * than its bar.
+     *
+     * <p>The held chord is a D, not the C the next line opens with: a cell is
+     * printed only where the chord differs from the one before it, so a C
+     * across the line break would make the second line print differently from
+     * the first and the chart would not repeat at all.
+     */
+    private static Score aRepeatedLine() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        List<Chord> chords = new ArrayList<>();
+        for (int line = 0; line < 3; line++) {
+            double offset = 16 * line;
+            for (int i = 0; i < ROOTS.length; i++) {
+                chords.add(quantized(map, ROOTS[i], offset + 2 * i, offset + 2 * i + 2));
+            }
+            chords.add(quantized(map, NoteLetter.D, offset + 8, offset + 16));
+        }
+        return Score.empty(map, map.beatsToSeconds(48))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    private static Chord quantized(TempoMap map, NoteLetter letter,
+            double fromBeat, double toBeat) {
+        return Chord.ofSeconds(root(letter), ChordQuality.MAJOR, map.beatsToSeconds(fromBeat),
+                        map.beatsToSeconds(toBeat), Confidence.of(0.9))
+                .quantizedTo(fromBeat, toBeat);
+    }
+
     static Stream<Arguments> charts() {
         return Stream.of(
                         // #64: a bar that is not four quarters long.
@@ -238,7 +276,10 @@ class ChordChartEngravingIT {
                         // #212: bars whose cell lengths the reduction rewrote,
                         // in the two meters whose bar it cannot halve.
                         Arguments.of("chattering-five-four", aChatteringFiveFour()),
-                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()));
+                        Arguments.of("chattering-seven-eight", aChatteringSevenEight()),
+                        // #218: the chart repeats itself, so the page carries
+                        // brackets over the lines it repeats.
+                        Arguments.of("repeated-line", aRepeatedLine()));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -433,5 +474,19 @@ class ChordChartEngravingIT {
         // the diagnostics is the only thing that catches this.
         assertThat(result.failedBarChecks()).as("%s", result.output()).contains("1/2");
         assertThat(result.succeeded()).as("%s", result.output()).isTrue();
+    }
+
+    @Test
+    @DisplayName("the repeating fixture really repeats, so the brackets are engraved at all")
+    void theRepeatingFixtureIsNotInert() {
+        // Without this, a change to the layout that stopped the three lines
+        // printing alike would leave the fixture in charts() engraving a chart
+        // with no brackets on it, and every test above would still pass while
+        // covering nothing. The same trap #212's 7/8 fixture fell into.
+        Score score = aRepeatedLine();
+
+        assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[A]")))
+                .hasSize(3);
+        assertThat(ChordChart.toLilyPond(score).split("\\\\startTextSpan", -1)).hasSize(4);
     }
 }
