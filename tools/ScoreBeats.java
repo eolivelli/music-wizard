@@ -67,9 +67,10 @@ import java.util.Set;
  * {@code samples/list.txt}: two of those three agree, at 89.998 and 89.999
  * against 90, and {@code blues-shuffle-a-106bpm.mp3} does not — its loop
  * measures 105.000 over 27.4285 s, robustly, and the discrepancy with the name
- * is unresolved. The other two state none: {@code gmajorblues.mp3} measures
- * 106.000 and {@code bossa-cm.mp3} 74.944, and neither has anything to be
- * checked against except its own plausibility.
+ * is unresolved. The other two state none: {@code g-blues-shuffle-cc.mp3}
+ * measures 105.000 — the same rate, on a different recording in a different key
+ * — and {@code bossa-cm.mp3} 74.944, and neither has anything to be checked
+ * against except its own plausibility.
  *
  * <h2>The columns</h2>
  *
@@ -131,7 +132,7 @@ public final class ScoreBeats {
     private record Job(String file, int barsPerCycle, double lowSeconds, double highSeconds) {}
 
     private static final List<Job> JOBS = List.of(
-            new Job("gmajorblues.mp3", 12, 20, 40),
+            new Job("g-blues-shuffle-cc.mp3", 12, 20, 40),
             new Job("blues-a-90bpm.mp3", 12, 24, 44),
             new Job("blues-shuffle-a-106bpm.mp3", 12, 20, 40),
             new Job("blues-e-90bpm.mp3", 12, 24, 44),

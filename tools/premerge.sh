@@ -18,8 +18,8 @@
 # the diff is reviewed rather than silently absorbed.
 #
 # Benchmarks missing locally (the licensing-bound ones; see samples/list.txt)
-# are reported and skipped, never failed: the committed CI can only gate the
-# committed sample, and this script is honest about which lines it checked.
+# are reported and skipped, never failed: CI can only gate the samples that are
+# committed, and this script is honest about which lines it checked.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"

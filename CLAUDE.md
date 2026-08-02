@@ -31,11 +31,11 @@ measurement gives +0.356 the other way. **The sign flips between synthetic and
 real.**
 
 That was read as meaning no constant in `ChordEstimator` could fix it, and #3
-showed otherwise. On `samples/gmajorblues.mp3` — a different recording, and the
-one with exactly known changes — the estimator's three changes together take
-*plain* chroma from 0.0% to 58.9% of bars correct, before any front end. The
-flat no-chord template scores highest exactly when a frame looks least like
-music, so it wins on a real mix whatever the chroma is.
+showed otherwise. On the G blues that was the reference recording then — a
+different recording, with exactly known changes — the estimator's three changes
+together take *plain* chroma from 0.0% to 58.9% of bars correct, before any
+front end. The flat no-chord template scores highest exactly when a frame looks
+least like music, so it wins on a real mix whatever the chroma is.
 
 No single constant does it, though, and the first draft of this paragraph
 claimed one did — three changes reach 58.9% and the largest of them alone
@@ -341,10 +341,15 @@ so compound meters mis-bar) and #5 (notation-facing gaps).
 
 ## Sample files
 
-The directory "./samples" contains a selection of real mp3 files that are 
-expected to work.
-The file samples/list.txt contains a description of the contents of each file.
-This is the ultimate reference test set to evaluate the quality of the results
+`samples/` is the corpus MW is measured on, and the reference test set for
+whether the output is any good. `samples/list.txt` says what is in each
+recording — changes confirmed by ear, which is what makes them ground truth
+rather than description — and where it came from. Committed files are CC BY and
+attributed in `NOTICE`; anything not redistributable is gitignored with the
+fetch command beside it, so a fresh clone is short of benchmarks rather than
+short of a licence (#204).
 
-`docs/phone-to-corpus.md` is the route a recording made with the phone app takes
-into `uncommitted/` or `samples/`, and what to write down beside it.
+`tools/score-samples.py` scores every grid written down there and
+`BluesLoopIT` gates one recording in CI. `docs/phone-to-corpus.md` is the route
+a recording made with the phone app takes into `uncommitted/` or `samples/`,
+and what to write down beside it.

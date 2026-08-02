@@ -94,14 +94,22 @@ public final class ChordSweep {
     }
 
     static final List<Bench> BENCHMARKS = List.of(
-            new Bench("gmajorblues.mp3", "G7 G7 G7 G7 C7 C7 G7 G7 D7 C7 G7 D7"),
+            new Bench("g-blues-shuffle-cc.mp3", "G7 G7 G7 G7 C7 C7 G7 G7 D7 C7 G7 D7"),
             new Bench("blues-a-90bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
             new Bench("blues-shuffle-a-106bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
             new Bench("blues-e-90bpm.mp3", "E7 E7 E7 E7 A7 A7 E7 E7 B7 A7 E7 B7"),
+            new Bench("slow-68-40.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
+            new Bench("bm-blues-slow.mp3", "Bm Bm Bm Bm Em Em Bm Bm G7 F#7 Bm Bm"),
+            new Bench("cm-blues-68-95.mp3", "Cm7 Cm7 Cm7 C7 Fm7 Fm7 Cm7 Cm7 Ab7 G7 Cm7 G7"),
+            new Bench("waltz-am-e7-160.mp3", "Am Am Am E7 E7 E7 E7 Am"),
+            new Bench("f-blues-swing-170.mp3",
+                    "F7 Bb7 F7 F7 Bb7 Bdim F7 Am7b5-D7 Gm7 C7 F7-D7 Gm7-C7"),
+            new Bench("jazz-251-c-140.mp3", "Dm7 Dm7 G7 G7 Cmaj7 Cmaj7 Cmaj7 Cmaj7"),
             new Bench("fm7-vamp-110.mp3", "Fm7"),
             new Bench("eb7-vamp-130.mp3", "Eb7"),
             new Bench("bossa-cm.mp3",
-                    "Cm7 Cm7 Fm6 Fm6 D0 G7 Cm6 Cm6 Ebm7 Ab7 DbM7 DbM7 D0 G7 Cm6 D0-G7"),
+                    "Cm7 Cm7 Fm6 Fm6 Dm7b5 G7 Cm6 Cm6 Ebm7 Ab7 Dbmaj7 Dbmaj7 "
+                            + "Dm7b5 G7 Cm6 Dm7b5-G7"),
             new Bench("pop-c-g-am-f-120.mp3", "C G Am F"),
             new Bench("pop-am-f-c-g-144.mp3", null));
 
@@ -427,18 +435,14 @@ public final class ChordSweep {
             pitchClass += rest.charAt(0) == '#' ? 1 : -1;
             rest = rest.substring(1);
         }
-        // The same shorthand score-samples.py parses; keep the two in step.
-        ChordQuality quality = switch (rest) {
-            case "" -> ChordQuality.MAJOR;
-            case "m" -> ChordQuality.MINOR;
-            case "7" -> ChordQuality.DOMINANT_SEVENTH;
-            case "m7" -> ChordQuality.MINOR_SEVENTH;
-            case "m6" -> ChordQuality.MINOR_SIXTH;
-            case "6" -> ChordQuality.SIXTH;
-            case "0" -> ChordQuality.HALF_DIMINISHED_SEVENTH;
-            case "M7" -> ChordQuality.MAJOR_SEVENTH;
-            default -> throw new IllegalArgumentException(symbol);
-        };
+        // ChordQuality's own symbols, which is what score-samples.py parses too:
+        // one spelling for the truth, the tool's own, so the two harnesses
+        // cannot come to disagree about what the right answer is.
+        String suffix = rest;
+        ChordQuality quality = Arrays.stream(ChordQuality.values())
+                .filter(q -> q != ChordQuality.NONE && q.symbol().equals(suffix))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(symbol));
         return new int[] {Math.floorMod(pitchClass, 12), quality.ordinal()};
     }
 }
