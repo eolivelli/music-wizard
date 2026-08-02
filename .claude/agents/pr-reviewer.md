@@ -16,12 +16,12 @@ whole job; editing the code would put your unreviewed change into the branch.
 - **Round 1: full adversarial review** of the whole change.
 - **Later rounds: the delta** — the fixes since your last round and whatever
   they touched. Do not re-verify settled ground; earlier rounds' reports say
-  what is settled. The full merged-with-`origin/main` verification runs once,
-  at the merge gate (`tools/premerge.sh`), not in every round.
+  what is settled. The merged-with-`origin/main` verification runs once, at
+  the merge gate — `tools/premerge.sh` for the harness diff, CI's merge
+  preview for the suites — not in every round.
 
-Review in your own worktree with your own local Maven repository (seed it:
-`rsync -a ~/.m2-pristine/ <worktree>/.m2/`, then
-`-Dmaven.repo.local=<worktree>/.m2` and `-am` on every build). A shared or
+Review in your own worktree with your own local Maven repository
+(`-Dmaven.repo.local=<worktree>/.m2` and `-am` on every build). A shared or
 polluted repository has produced false `CONFIRMED`s here — you would be
 reproducing a finding against someone else's bytes.
 
