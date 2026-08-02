@@ -89,6 +89,11 @@ import java.util.Objects;
  *
  * <p>The vocabulary is major and minor triads and dominant sevenths on all
  * twelve roots, plus "no chord".
+ *
+ * <p><b>The root and the quality are decided separately</b>, from different
+ * chroma and over different spans: the root beat by beat from both registers,
+ * the quality once per chord from the treble alone. Why, and what it is worth,
+ * is on {@link #estimate(Chroma, Chroma, List)}.
  */
 public final class ChordEstimator {
 
@@ -225,14 +230,87 @@ public final class ChordEstimator {
     }
 
     /**
-     * Estimates chords over beat-synchronous chroma.
+     * Estimates chords over beat-synchronous chroma, deciding quality from the
+     * same chroma as the root.
+     *
+     * <p>What a caller with only one chroma to offer should use. A caller that
+     * has the treble register separately should hand it over — see
+     * {@link #estimate(Chroma, Chroma, List)} for what it is worth and why.
      *
      * @param chroma    beat-synchronous chroma, one vector per inter-beat span
      * @param beatTimes the beat instants those spans lie between
      */
     public static ChordProgression estimate(Chroma chroma, List<Double> beatTimes) {
+        return estimate(chroma, chroma, beatTimes);
+    }
+
+    /**
+     * Estimates chords, deciding the root from one chroma and the quality from
+     * another.
+     *
+     * <p>The two questions want different evidence, which is #208. The root is
+     * best read from both registers added together: {@link NnlsChroma#combined()}
+     * measures the bass as worth tens of points of root accuracy, because it is
+     * where a root is actually played. The quality is best read from the treble
+     * alone, because that same bass is what destroys it — a bass part states the
+     * root and little else, so adding it in scales up the root's share of the
+     * chroma by an amount that depends on how loud the bass was mixed, and the
+     * chord's own colour is what gets scaled down.
+     *
+     * <p>{@code tools/ChordSweep.java profile} prints the measurement, per
+     * register: the mean chroma above each recording's decoded root, and from it
+     * the share of the root-third-fifth mass that the flat seventh carries. A
+     * binary four-note template beats the <em>major</em> triad on the same root
+     * exactly when that share clears 2/sqrt(3) - 1.
+     *
+     * <p>Read the treble column and the five benchmarks whose chords are
+     * dominant sevenths all clear the level, while the two whose chords are
+     * plain triads sit far under it, with nothing in between. Read the combined
+     * column and two of those five fall below. So the flat seventh is in the
+     * chroma on all of them, and the discriminator was being asked about a
+     * vector the bass had reweighted.
+     *
+     * <p>The bass column says why, and its root row says it plainest: that
+     * register puts under a fifth of its energy on the root pitch class on
+     * {@code gmajorblues.mp3} and three fifths of it on {@code
+     * blues-e-90bpm.mp3}. How loud the bass sits in the mix is an arrangement
+     * decision, and under one chroma it was deciding whether a dominant seventh
+     * got reported as one.
+     *
+     * <p>Two of the recordings it prints do not belong to this argument, and
+     * the threshold is why. It is derived against the major triad, so it says
+     * nothing about a chord whose third is minor: on {@code fm7-vamp-110.mp3}
+     * the seventh's share clears it in the treble and the minor triad wins all
+     * the same, which is right — the recording is minor sevenths throughout and
+     * this vocabulary cannot say so (#272). {@code bossa-cm.mp3} finds its root
+     * on too few bars for a mean above it to mean anything.
+     *
+     * <p>Quality is also decided once per run of beats sharing a root rather
+     * than beat by beat, because a chord is one chord for its whole duration and
+     * its seventh need not sound on every beat of it. A mean over beats cannot
+     * show that; what it shows is where the evidence sits, not how much of it
+     * any one span gets. Both halves were needed —
+     * {@code samples/eb7-vamp-130.mp3} is five minutes of one chord and moves on
+     * the grouping, {@code samples/blues-e-90bpm.mp3} moves on the register.
+     *
+     * @param chroma        beat-synchronous chroma the root and the chord
+     *                      boundaries are decoded from
+     * @param qualityChroma beat-synchronous chroma, over the same beats, the
+     *                      quality is decided from
+     * @param beatTimes     the beat instants those spans lie between
+     * @throws IllegalArgumentException if the two chromas do not describe the
+     *     same frames
+     */
+    public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
+                                            List<Double> beatTimes) {
         Objects.requireNonNull(chroma, "chroma");
+        Objects.requireNonNull(qualityChroma, "qualityChroma");
         Objects.requireNonNull(beatTimes, "beatTimes");
+        if (chroma.frameCount() != qualityChroma.frameCount()) {
+            throw new IllegalArgumentException("chroma has " + chroma.frameCount()
+                    + " frames and qualityChroma has " + qualityChroma.frameCount()
+                    + "; the two describe the same beats");
+        }
         if (chroma.frameCount() == 0 || beatTimes.size() < 2) {
             return ChordProgression.empty();
         }
@@ -247,11 +325,128 @@ public final class ChordEstimator {
             }
         }
         int[] path = viterbi(logLikelihood, templates.size());
+        int[] chosen = chooseQualities(path, templates, qualityChroma);
 
         // Confidence is reported from the raw similarity, not the sharpened
         // score: the exponent exists to make the decoder behave, and letting it
         // leak into a number a user reads would make every chord look shaky.
-        return toProgression(path, templates, beatTimes, similarity);
+        return toProgression(chosen, templates, beatTimes, similarity);
+    }
+
+    /**
+     * Re-decides each chord's quality over the whole run of beats the decoder put
+     * on one root, from the summed chroma of that run.
+     *
+     * <p>One argmax over the three qualities, not a triad decision followed by a
+     * seventh decision. Deciding the third first and then asking about the
+     * seventh was tried and is much worse: the flat seventh is itself evidence
+     * for the major third, so a chord whose third is ambiguous between the two
+     * templates is resolved by it, and taking the third alone first throws that
+     * away before it can be used. On {@code samples/eb7-vamp-130.mp3} the
+     * two-stage form calls almost every bar E-flat minor.
+     *
+     * <p><b>A candidate has to explain the run better than a flat chroma would,
+     * or the decoder's own answer stands.</b> The decoder never needed that rule
+     * because {@link #NO_CHORD_SIMILARITY} sits above every template's flat
+     * score, so a frame carrying no harmony loses to "no chord" before the
+     * vocabulary can be biased. This decision reads a different chroma and has
+     * no no-chord state to lose to, so it carries the rule itself.
+     *
+     * <p>It rejects evidence that is <em>worse</em> than noise, not evidence
+     * that is merely weak, and {@link #flatScore} is where the difference and
+     * its cost are written down.
+     *
+     * <p>Returns a new state path: same root and same no-chord decisions as the
+     * decoder made, with the quality replaced. Feeding this back as a state index
+     * rather than as a separate list of qualities keeps everything downstream —
+     * span merging, confidence, spelling — reading one array as it did before.
+     */
+    private static int[] chooseQualities(int[] path, List<Template> templates,
+                                         Chroma qualityChroma) {
+        int[] out = path.clone();
+        int i = 0;
+        while (i < path.length) {
+            Template start = templates.get(path[i]);
+            int j = i;
+            while (j < path.length && sameChord(templates.get(path[j]), start)) {
+                j++;
+            }
+            if (start.quality() != ChordQuality.NONE) {
+                double[] summed = sum(qualityChroma, i, j);
+                int chosen = -1;
+                double best = 0;
+                for (int t = 0; t < templates.size(); t++) {
+                    Template candidate = templates.get(t);
+                    if (candidate.quality() == ChordQuality.NONE
+                            || candidate.rootPitchClass() != start.rootPitchClass()) {
+                        continue;
+                    }
+                    double score = cosine(summed, candidate.profile());
+                    if (score > best && score > flatScore(candidate)) {
+                        best = score;
+                        chosen = t;
+                    }
+                }
+                // Nothing explained the run better than a flat chroma would, so
+                // there is nothing here to overrule the decoder with.
+                if (chosen >= 0) {
+                    for (int frame = i; frame < j; frame++) {
+                        out[frame] = chosen;
+                    }
+                }
+            }
+            i = j;
+        }
+        return out;
+    }
+
+    /**
+     * What a template scores against a chroma carrying no harmonic information —
+     * a flat one — which is sqrt(k/12) for a k-note binary template.
+     *
+     * <p>So a triad scores 0.500 on noise and a dominant seventh 0.577, and an
+     * argmax over the two picks the seventh every time on no evidence whatever,
+     * by template size alone. {@link #NO_CHORD_SIMILARITY} names the same
+     * asymmetry from the other side.
+     *
+     * <p>Used as a floor rather than subtracted off, and <b>a floor rules out
+     * exactly the candidates that fit worse than noise does — it does not rule
+     * out a bad fit that is still better than noise.</b> So the seventh goes on
+     * winning on weak evidence, which is the cost of keeping the size bias
+     * rather than removing it from the ranking as the textbook cures do.
+     * {@code ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh} pins
+     * three cells of it, and <b>#274 carries the sweep, the two cures measured
+     * against the benchmarks, and why this corpus cannot yet settle it.</b>
+     */
+    private static double flatScore(Template template) {
+        return Math.sqrt(template.quality().intervals().length / 12.0);
+    }
+
+    /** Chroma summed over the beats {@code [from, to)}. */
+    private static double[] sum(Chroma chroma, int from, int to) {
+        double[] out = new double[12];
+        for (int frame = from; frame < to; frame++) {
+            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                out[pitchClass] += chroma.vectors()[frame][pitchClass];
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Whether two states are the same chord for the purpose of grouping beats:
+     * the same root, or both no-chord.
+     *
+     * <p>Quality is deliberately not part of it. A run the decoder split into
+     * "C then C7" is one chord whose seventh was audible for part of it, and
+     * deciding its quality twice from half the evidence each time is the defect
+     * this grouping exists to avoid.
+     */
+    private static boolean sameChord(Template a, Template b) {
+        if (a.quality() == ChordQuality.NONE || b.quality() == ChordQuality.NONE) {
+            return a.quality() == b.quality();
+        }
+        return a.rootPitchClass() == b.rootPitchClass();
     }
 
     /**
@@ -402,9 +597,18 @@ public final class ChordEstimator {
                 continue;
             }
 
-            // Confidence is how well the winning template matched, averaged over
-            // the span and rescaled from cosine similarity into something a
+            // Confidence is how well the reported template matched, averaged
+            // over the span and rescaled from cosine similarity into something a
             // reader can interpret.
+            //
+            // Against the chroma the root was decoded from, not the one the
+            // quality was: the number answers "how well does this chord explain
+            // the mix", and the mix is both registers. The consequence is that a
+            // seventh found on the treble's evidence (#208) reports a lower
+            // confidence than the triad it replaced, because it explains the
+            // combined chroma less well -- which is exactly why the combined
+            // chroma was not asked. Truthful about the fit and misleading about
+            // the chord; #201 is where the reported number is being reworked.
             double total = 0;
             for (int frame = spanStart; frame < i; frame++) {
                 total += similarity[frame][path[spanStart]];

@@ -330,7 +330,14 @@ public final class AudioTranscriber {
         // register separately, which makes every beat half treble and half bass
         // whatever they actually contained; on this recording that ordering
         // scores 77.7% where this one scores 86.6%.
-        Chroma chroma = NnlsChroma.extract(audio).combined().beatSynchronous(beatTimes);
+        NnlsChroma registers = NnlsChroma.extract(audio);
+        Chroma chroma = registers.combined().beatSynchronous(beatTimes);
+        // The treble alone, for the quality half of chord recognition only --
+        // ChordEstimator.estimate(Chroma, Chroma, List) has the measurement. Not
+        // combined(), so this one is beat-synchronised on its own: the question
+        // it answers is what share of the *chordal* register each pitch class
+        // holds, and normalising the sum would put the bass back into it.
+        Chroma treble = registers.treble().beatSynchronous(beatTimes);
 
         // Pulses per bar, not the numerator: the tracker emits one pulse per
         // counted beat, and 6/8 counts two of them to a bar rather than six.
@@ -344,7 +351,7 @@ public final class AudioTranscriber {
                                 beatTimes, chroma, envelope, meter.beatsPerBar()));
 
         progress.accept("estimating chords");
-        ChordProgression chords = ChordEstimator.estimate(chroma, beatTimes);
+        ChordProgression chords = ChordEstimator.estimate(chroma, treble, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
         return Score.empty(tempoMap, audio.durationSeconds())
