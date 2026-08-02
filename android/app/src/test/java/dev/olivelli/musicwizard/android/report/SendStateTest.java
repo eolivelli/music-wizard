@@ -29,11 +29,8 @@ import org.junit.Test;
 /**
  * When Send may be pressed, and what the screen is told.
  *
- * <p>This is the state a screen used to keep for itself, and every way it went
- * wrong cost a duplicate asset and a duplicate comment on the same take. The
- * ways were all variations on one thing — a copy of a fact that had changed
- * since — so what is tested here is that the answers track the record rather
- * than a moment.
+ * <p>What is checked is that the answers track the record rather than a
+ * moment: see the class's own javadoc for why that is the whole point of it.
  */
 public class SendStateTest {
 
@@ -194,10 +191,90 @@ public class SendStateTest {
     /** One result is kept, and it is the most recent one. */
     @Test
     public void onlyTheLastResultIsKept() {
+        state.beginSend(TAKE);
         state.finishSend(TAKE, false, "first");
+        state.beginSend(OTHER);
         state.finishSend(OTHER, false, "second");
 
         assertNull(state.detailFor(TAKE));
         assertEquals("second", state.detailFor(OTHER));
+    }
+
+    /** A deleted take takes its draft, its mark and its result with it. */
+    @Test
+    public void forgettingATakeLeavesNothingForTheNextTakeOfThatName() {
+        drafts.put(TAKE, "G C D");
+        state.beginSend(TAKE);
+        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+
+        state.forget(TAKE);
+
+        assertFalse(state.isFiled(TAKE));
+        assertNull(drafts.get(TAKE));
+        assertNull(state.detailFor(TAKE));
+        assertTrue("a later take renamed onto this name starts clean",
+                state.canSend(TAKE));
+    }
+
+    /** A rename carries the unsent comment, the mark and the result across. */
+    @Test
+    public void renamingCarriesEverythingToTheNewName() {
+        drafts.put(TAKE, "G C D");
+        state.beginSend(TAKE);
+        state.finishSend(TAKE, false, "Not sent.\nBad credentials");
+
+        state.moved(TAKE, OTHER);
+
+        assertEquals("G C D", drafts.get(OTHER));
+        assertEquals("Not sent.\nBad credentials", state.detailFor(OTHER));
+        assertNull(drafts.get(TAKE));
+        assertNull(state.detailFor(TAKE));
+    }
+
+    /** And the destination's own leftovers go, since that name is being taken over. */
+    @Test
+    public void renamingOverwritesWhateverWasUnderTheNewName() {
+        drafts.put(OTHER, "an older take's comment");
+        filed.put(OTHER, true);
+
+        state.moved(TAKE, OTHER);
+
+        assertNull(drafts.get(OTHER));
+        assertFalse(state.isFiled(OTHER));
+    }
+
+    /**
+     * A send still running when its take is renamed or deleted files nothing.
+     *
+     * <p>It reports under the name it was started with, and that name now means
+     * something else or nothing at all. Marking it would put a filed flag on a
+     * take whose audio was never sent — the inherited-state hazard that
+     * {@link SendState#forget} exists to prevent, arriving by the back door.
+     */
+    @Test
+    public void aSendWhoseTakeChangedNameUnderItFilesNothing() {
+        state.beginSend(TAKE);
+        state.moved(TAKE, OTHER);
+
+        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+
+        assertFalse("the old name must not be marked filed", state.isFiled(TAKE));
+        assertFalse("nor the new one, whose audio this was not", state.isFiled(OTHER));
+        assertNull(state.detailFor(TAKE));
+        assertFalse("and the new name must not read as still sending",
+                state.isSending(OTHER));
+    }
+
+    /** The same, for a take deleted mid-send. */
+    @Test
+    public void aSendWhoseTakeWasDeletedUnderItFilesNothing() {
+        state.beginSend(TAKE);
+        state.forget(TAKE);
+
+        state.finishSend(TAKE, true, "Sent.\nhttps://…");
+
+        assertFalse(state.isFiled(TAKE));
+        assertNull(state.detailFor(TAKE));
+        assertTrue(state.canSend(TAKE));
     }
 }

@@ -24,6 +24,13 @@
             android:text="@string/report_prompt"
             android:textSize="14sp" />
 
+        <!-- saveEnabled="false" because this field's text is already saved, in
+             the app's preferences: onPause writes it and onCreate reads it
+             back. The framework's own copy is the same fact stored a second
+             time, and a second copy of a fact is what every duplicate send on
+             this screen has come from — restoring it dispatches a text change
+             that is not a person typing, which un-files a take already on
+             GitHub and deletes the record saying so. -->
         <EditText
             android:id="@+id/comment"
             android:layout_width="match_parent"
@@ -33,6 +40,7 @@
             android:importantForAutofill="no"
             android:inputType="textMultiLine|textCapSentences"
             android:minLines="5"
+            android:saveEnabled="false"
             android:textSize="14sp" />
 
         <LinearLayout

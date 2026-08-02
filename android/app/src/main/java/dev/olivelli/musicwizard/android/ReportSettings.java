@@ -106,40 +106,4 @@ final class ReportSettings {
         }
         editor.apply();
     }
-
-    /**
-     * Drops what is remembered about a take, because it no longer exists.
-     *
-     * <p>Same reason {@code AnalysisJobs.forget} exists and called from beside
-     * it: these are keyed by the take's name, and a name is reusable, so a
-     * later take renamed onto a deleted one's would inherit its draft.
-     */
-    static void forget(Context context, String takeName) {
-        prefs(context).edit()
-                .remove(DRAFT_PREFIX + takeName)
-                .remove(FILED_PREFIX + takeName)
-                .apply();
-    }
-
-    /** Carries a take's unsent comment to its new name, for the same reason. */
-    static void moved(Context context, String from, String to) {
-        if (from.equals(to)) {
-            return;
-        }
-        SharedPreferences prefs = prefs(context);
-        String draft = prefs.getString(DRAFT_PREFIX + from, "");
-        boolean filed = prefs.getBoolean(FILED_PREFIX + from, false);
-        SharedPreferences.Editor editor = prefs.edit()
-                .remove(DRAFT_PREFIX + from)
-                .remove(FILED_PREFIX + from)
-                .remove(DRAFT_PREFIX + to)
-                .remove(FILED_PREFIX + to);
-        if (!draft.trim().isEmpty()) {
-            editor.putString(DRAFT_PREFIX + to, draft);
-        }
-        if (filed) {
-            editor.putBoolean(FILED_PREFIX + to, true);
-        }
-        editor.apply();
-    }
 }

@@ -55,11 +55,9 @@ import java.util.concurrent.Executors;
  * GitHub has answered. A recording can be sent again; the sentence someone typed
  * about what they were playing cannot be recovered by trying again.
  *
- * <p>A send outlives the screen that started it, so nothing about a send is
- * kept in an instance: it all lives in {@link SendState}, and this screen asks
- * it every time it draws. Every duplicate asset and duplicate comment this
- * screen has produced came from a copy of one of those facts that had changed
- * since it was read.
+ * <p>A send outlives the screen that started it, so nothing about one is kept
+ * in an instance: it lives in {@link SendState}, and this screen asks it every
+ * time it draws.
  *
  * <p>It also declares {@code configChanges} for orientation in the manifest, so
  * that turning the phone during an upload does not tear the screen down under an
@@ -117,7 +115,7 @@ public final class ReportActivity extends MwActivity {
     private boolean settingText;
 
     /** The one instance, over this app's preferences. Main thread only. */
-    private static SendState state(Context context) {
+    static SendState sends(Context context) {
         if (state == null) {
             Context application = context.getApplicationContext();
             state = new SendState(new SendState.Store() {
@@ -167,7 +165,7 @@ public final class ReportActivity extends MwActivity {
         TextView header = findViewById(R.id.reportHeader);
 
         header.setText(takeName + "  ·  " + RecordingStore.formatDuration(durationSeconds));
-        setCommentText(state(this).draft(takeName));
+        setCommentText(sends(this).draft(takeName));
         comment.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -180,7 +178,7 @@ public final class ReportActivity extends MwActivity {
             @Override
             public void afterTextChanged(Editable s) {
                 // What was last sent is not what is in the box any more.
-                if (!settingText && state(ReportActivity.this).edited(takeName)) {
+                if (!settingText && sends(ReportActivity.this).edited(takeName)) {
                     draw();
                 }
             }
@@ -207,7 +205,7 @@ public final class ReportActivity extends MwActivity {
             visible = null;
         }
         if (wav != null) {
-            state(this).keepDraft(takeName, comment.getText().toString());
+            sends(this).keepDraft(takeName, comment.getText().toString());
         }
     }
 
@@ -220,7 +218,7 @@ public final class ReportActivity extends MwActivity {
      * here rather than remembered, so there is one place that can be wrong.
      */
     private void draw() {
-        SendState sends = state(this);
+        SendState sends = sends(this);
         boolean sending = sends.isSending(takeName);
         // The field, not only the button: anything typed during a send would be
         // wiped by the clear that follows success, having never been sent — the
@@ -245,7 +243,7 @@ public final class ReportActivity extends MwActivity {
     }
 
     private void send() {
-        if (!state(this).canSend(takeName)) {
+        if (!sends(this).canSend(takeName)) {
             return;
         }
         String typed = comment.getText().toString();
@@ -275,7 +273,7 @@ public final class ReportActivity extends MwActivity {
         // Marked last, immediately before the work is handed over: anything
         // throwing between the mark and the executor would leave the take in
         // flight for the life of the process, Send disabled on every visit.
-        state(this).beginSend(take);
+        sends(this).beginSend(take);
         draw();
 
         SENDER.execute(() -> {
@@ -308,7 +306,7 @@ public final class ReportActivity extends MwActivity {
         // Recorded before anything is drawn, and whether or not a screen is
         // left to draw on: the record is what every screen reads, now and on
         // its next visit.
-        state(application).finishSend(take, worked, detailOf(application, outcome, worked));
+        sends(application).finishSend(take, worked, detailOf(application, outcome, worked));
 
         ReportActivity screen = visible;
         if (screen == null || !take.equals(screen.takeName)) {

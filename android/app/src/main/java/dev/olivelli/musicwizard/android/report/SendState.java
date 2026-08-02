@@ -128,15 +128,67 @@ public final class SendState {
      *               is none
      */
     public void finishSend(String take, boolean worked, String detail) {
-        // First, and whether or not a screen is left to tell: this is what lets
-        // the take be sent again.
-        inFlight.remove(take);
+        // Still the take this was started for? If not it was renamed or deleted
+        // while the send ran, and a name that now means something else — or
+        // nothing — must not be marked as filed. The comment is on GitHub
+        // either way; what is dropped is only the bookkeeping about a take that
+        // is no longer there.
+        if (!inFlight.remove(take)) {
+            return;
+        }
         if (worked) {
             store.setDraft(take, "");
             store.setFiled(take, true);
         }
         lastTake = take;
         lastDetail = detail;
+    }
+
+    /**
+     * Drops everything known about a take, because it no longer exists.
+     *
+     * <p>Called when a recording is deleted, and here rather than on the store
+     * because the in-memory half has to go too: these are keyed by the take's
+     * name and a name is reusable, so a later take renamed onto a deleted one's
+     * would otherwise inherit its unsent comment — and, if a send were still
+     * running, be marked filed by it.
+     */
+    public void forget(String take) {
+        inFlight.remove(take);
+        store.setDraft(take, "");
+        store.setFiled(take, false);
+        if (take.equals(lastTake)) {
+            lastTake = null;
+            lastDetail = null;
+        }
+    }
+
+    /**
+     * Carries what is known about a take to its new name.
+     *
+     * <p>Everything but a send that is still running. That one keeps the name
+     * it was started under, so {@link #finishSend} finds it gone and discards
+     * its bookkeeping: the alternative is to move the mark and have the take
+     * read as sending for the life of the process, because the worker will
+     * report under the old name and nothing will ever clear the new one.
+     */
+    public void moved(String from, String to) {
+        if (from.equals(to)) {
+            return;
+        }
+        String draft = store.draft(from);
+        boolean wasFiled = store.isFiled(from);
+        String detail = detailFor(from);
+        // The destination name is being taken over: whatever was under it
+        // belonged to a take that is not there any more.
+        forget(to);
+        forget(from);
+        store.setDraft(to, draft);
+        store.setFiled(to, wasFiled);
+        if (detail != null) {
+            lastTake = to;
+            lastDetail = detail;
+        }
     }
 
     /**

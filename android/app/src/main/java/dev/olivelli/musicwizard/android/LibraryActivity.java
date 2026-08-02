@@ -169,7 +169,7 @@ public final class LibraryActivity extends MwActivity {
                         // And an unsent comment about this take, which is keyed
                         // by the take's name and would otherwise be left behind
                         // for whichever take is called that next.
-                        ReportSettings.moved(this, recording.displayName(),
+                        ReportActivity.sends(this).moved(recording.displayName(),
                                 renamed.displayName());
                     } catch (IOException e) {
                         Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -190,7 +190,7 @@ public final class LibraryActivity extends MwActivity {
                     // for another take to be renamed onto. The unsent comment
                     // is keyed by the name, and so is the same hazard.
                     AnalysisJobs.get().forget(recording.wav());
-                    ReportSettings.forget(this, recording.displayName());
+                    ReportActivity.sends(this).forget(recording.displayName());
                     reload();
                 })
                 .show();
