@@ -41,8 +41,8 @@ import java.util.jar.JarFile;
  * reads each class file's version, {@link DesktopOnlyCodeStaysOffThePhoneTest}
  * reads its constant pool. A module missing from a copy of the list fails
  * neither test; it just stops being checked, which is why the two tests read one
- * list. The app's own copy, in {@code android/app/build.gradle}, is a third and
- * is not cross-checked against this one (#268).
+ * list. The app's own copy, in {@code android/app/build.gradle}, is not
+ * cross-checked against this one (#268).
  */
 final class AppFacingModules {
 

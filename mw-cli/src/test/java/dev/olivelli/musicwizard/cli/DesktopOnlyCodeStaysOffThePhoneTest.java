@@ -71,8 +71,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       green. Its limit is the other side of the same coin — it sees the calls
  *       the fixture makes, so a branch not taken is a branch not checked, and
  *       what the app does beyond these three calls is not covered. It caches
- *       its score through {@code ScoreJson}, for one, which needs Jackson and
- *       so is deliberately off the classpath below.
+ *       its score through {@code ScoreJson}, for one, and Jackson is
+ *       deliberately off the classpath below.
  * </ul>
  *
  * <p>LilyPond is the one family whose ban needed a decision, since emitting
