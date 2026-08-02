@@ -217,21 +217,24 @@ llm:
   enabled: true
 ```
 
-Most of this is read, layered, and then read by nothing. What reaches the
-pipeline is `analysis`, apart from `skipSeparation`, and
-`notation.lilypondPath`.
+Much of this is read, layered, and then read by nothing. What reaches the
+pipeline is `analysis`, apart from `skipSeparation`, plus
+`notation.lilypondPath` and `notation.transposeSemitones` — the last moves the
+chords, the key and the spelling together, exactly as `render --transpose` does.
 
 The keys that do nothing divide in two. `analyze` and `render` **warn** about
-`analysis.skipSeparation` and about every `notation` key but `lilypondPath`
-([#129][i129]) — from a flag or from this file — rather than producing the
-default output in silence. All of `arrangement` and `ml` is equally inert, since
-`mw-arrange` and `mw-ml` hold no code, and nothing warns about those: they have
+`analysis.skipSeparation`, `notation.paperSize` ([#180][i180]) and
+`notation.capo` and `notation.accidentalPreference` ([#181][i181]) — from a flag
+or from this file — rather than producing the default output in silence. All of
+`arrangement` and `ml` is equally inert, and nothing warns about those: they have
 no flags, and no command to warn from yet ([#144][i144]). The advisor is the
 section below.
 
 [i144]: https://github.com/eolivelli/music-wizard/issues/144
 
-[i129]: https://github.com/eolivelli/music-wizard/issues/129
+[i180]: https://github.com/eolivelli/music-wizard/issues/180
+
+[i181]: https://github.com/eolivelli/music-wizard/issues/181
 
 
 ## The Claude advisor (optional, and not built yet)

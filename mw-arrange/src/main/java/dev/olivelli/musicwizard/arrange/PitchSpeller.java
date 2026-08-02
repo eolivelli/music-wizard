@@ -411,8 +411,16 @@ public final class PitchSpeller {
         return spellingOf(best, midiPitch).orElseThrow();
     }
 
-    /** The spelling at a point on the line of fifths, if it is writable. */
-    private static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
+    /**
+     * The spelling at a point on the line of fifths, if it is writable.
+     *
+     * <p>Package-private rather than private because {@link Transposer} writes a
+     * pitch at a position it has already chosen, where every other caller here
+     * searches for the position. Sharing it is the point: this and
+     * {@link #fifthsOf} are inverse, and a second copy of either could put B
+     * sharp somewhere this one does not.
+     */
+    static Optional<PitchSpelling> spellingOf(int fifths, int midiPitch) {
         int alteration = Math.floorDiv(fifths + 1, 7);
         return atOctave(letterOfFifths(fifths - 7 * alteration),
                 Accidental.ofAlteration(alteration), midiPitch);
