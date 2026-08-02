@@ -217,15 +217,18 @@ public class ReportJobTest {
     }
 
     /**
-     * A failure that cannot be described is still an outcome.
+     * A failure that cannot be described still says that it happened.
      *
      * <p>{@code describe} builds a string, which is exactly what a heap at the
      * wall cannot do, so the throwable it is handed can throw again on the way
-     * out. The screen turns a null reason into "the send stopped without saying
-     * why"; what must not happen is the job escaping and answering nobody.
+     * out. What must not come back is null: both readers take null to mean
+     * "there was no such failure", so a null here would send the uncompressed
+     * WAV and report it as though it were a FLAC.
      */
     @Test
-    public void anIndescribableFailureIsStillAnOutcome() {
+    public void anIndescribableEncoderFailureStillSaysItFailed() {
+        FakeHttp http = workingHub();
+
         ReportJob.Outcome outcome = run((in, out) -> {
             throw new Error() {
                 @Override
@@ -233,12 +236,12 @@ public class ReportJobTest {
                     throw new IllegalStateException("not even this");
                 }
             };
-        }, workingHub());
+        }, http);
 
-        // The encoder failed indescribably; the WAV still went, so the send
-        // itself worked.
         assertNotNull(outcome.sent());
-        assertNull(outcome.encoderFailure());
+        assertEquals(ReportJob.UNDESCRIBABLE, outcome.encoderFailure());
+        // Which is the point: the WAV is what went, and the screen can say so.
+        assertEquals("audio/wav", http.sent.get(1).body().contentType());
         assertFalse(scratch.exists());
     }
 

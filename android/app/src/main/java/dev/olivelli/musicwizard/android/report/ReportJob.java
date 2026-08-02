@@ -46,8 +46,10 @@ public final class ReportJob {
      * @param sent           where it landed, or null if it did not
      * @param failure        why it did not, or null if it did
      * @param encoderFailure why the WAV went up uncompressed, or null when the
-     *                       FLAC did — orthogonal to the other two, because a
-     *                       take that could not be compressed still sends
+     *                       FLAC did. Orthogonal to the other two, because a
+     *                       take that could not be compressed still sends, and
+     *                       never null when the encoder failed — see
+     *                       {@link #UNDESCRIBABLE}
      */
     public record Outcome(GitHubReporter.Sent sent, String failure, String encoderFailure) {
     }
@@ -59,13 +61,10 @@ public final class ReportJob {
      * Runs the send, answering with an {@link Outcome} for every failure it can
      * put into words.
      *
-     * <p>It is not an absolute: {@link #describe} builds a string, and a heap
-     * at the wall cannot, so a second {@link OutOfMemoryError} escapes past
-     * both catches. The caller must still guard — a send that ends without
-     * answering leaves the take marked in flight and Send disabled for the life
-     * of the process, which is the failure {@code AnalysisJobs} carries a
-     * paragraph about. What is promised here is that no <em>describable</em>
-     * failure gets out, and that the scratch file is gone either way.
+     * <p>Not an absolute, and the caller must still guard: a send that ends
+     * without answering leaves the take marked in flight and Send disabled for
+     * the life of the process, which is the failure {@code AnalysisJobs}
+     * carries a paragraph about. The scratch file is gone either way.
      *
      * @param scratch where the compressed copy is written; deleted before this
      *                returns, whatever happened
@@ -104,19 +103,23 @@ public final class ReportJob {
         }
     }
 
+    /** Stands in when a throwable cannot even be turned into a sentence. */
+    static final String UNDESCRIBABLE = "the reason could not be read";
+
     /**
-     * {@link #describe}, or null when even that failed.
+     * {@link #describe}, or {@link #UNDESCRIBABLE} when even that failed.
      *
-     * <p>Null is not nothing: the screen turns it into "the send stopped
-     * without saying why", which is worse than a reason and much better than a
-     * failure that escapes and answers nobody. What gets here is a throwable
-     * whose own {@code getMessage} throws.
+     * <p>A string rather than null, and a constant rather than a built one:
+     * both readers of these fields treat null as "there was no such failure",
+     * so returning null here would say the encoder had not failed when it had,
+     * and the screen would report a WAV upload as though it were a FLAC. A
+     * constant also allocates nothing, which is the case this exists for.
      */
     private static String safeDescribe(Throwable failure) {
         try {
             return describe(failure);
         } catch (Throwable t) {
-            return null;
+            return UNDESCRIBABLE;
         }
     }
 

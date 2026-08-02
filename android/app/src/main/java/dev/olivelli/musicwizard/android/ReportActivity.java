@@ -33,13 +33,12 @@ import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.report.GitHubReporter;
 import dev.olivelli.musicwizard.android.report.ReportJob;
+import dev.olivelli.musicwizard.android.report.SendState;
 import dev.olivelli.musicwizard.android.report.TakeReport;
 import dev.olivelli.musicwizard.android.report.UrlConnectionHttp;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -57,11 +56,10 @@ import java.util.concurrent.Executors;
  * about what they were playing cannot be recovered by trying again.
  *
  * <p>A send outlives the screen that started it, so nothing about a send is
- * kept in an instance. What is in flight and what has been filed are held at
- * the sender's scope and in {@link ReportSettings}; a screen reads them in
- * {@link #onResume} and draws whatever is true, which is what makes backing out
- * of an upload and coming back show the upload rather than offer to start a
- * second one.
+ * kept in an instance: it all lives in {@link SendState}, and this screen asks
+ * it every time it draws. Every duplicate asset and duplicate comment this
+ * screen has produced came from a copy of one of those facts that had changed
+ * since it was read.
  *
  * <p>It also declares {@code configChanges} for orientation in the manifest, so
  * that turning the phone during an upload does not tear the screen down under an
@@ -87,17 +85,11 @@ public final class ReportActivity extends MwActivity {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     /**
-     * Names of takes with a send queued or running, at {@link #SENDER}'s scope.
-     *
-     * <p>A per-screen flag would be the wrong scope and would hide a duplicate
-     * rather than prevent one: back out mid-upload, open the take again, and a
-     * fresh instance knows nothing and queues a second send behind the first —
-     * two assets and two comments, which is the harm the disabled button is for.
-     *
-     * <p>Read and written on the main thread only, like everything in
-     * {@code AnalysisJobs}; the worker reaches it by posting.
+     * Everything known about sending, at {@link #SENDER}'s scope rather than a
+     * screen's. See {@link SendState}, which is where it is reasoned about and
+     * where it is tested.
      */
-    private static final Set<String> IN_FLIGHT = new HashSet<>();
+    private static SendState state;
 
     /**
      * The resumed screen, or null when none is.
@@ -117,18 +109,41 @@ public final class ReportActivity extends MwActivity {
     private TextView status;
 
     /**
-     * Whether this take's current comment is already on GitHub.
+     * True while the app, rather than the user, is changing the comment field.
      *
-     * <p>It does two things. Leaving the screen does not re-save a draft that
-     * has been filed, so it does not reappear next time looking like something
-     * still to send. And Send stays disabled until there is something new to
-     * say: a second tap on a screen reading "Sent." would otherwise upload a
-     * second asset and post a second comment for the same take.
-     *
-     * <p>Mirrored into {@link ReportSettings} so that it outlives the screen,
-     * and read back in {@link #onCreate}.
+     * <p>The watcher below has to tell the two apart, and doing it by ordering
+     * the writes was load-bearing and subtle twice over. This says it outright.
      */
-    private boolean filed;
+    private boolean settingText;
+
+    /** The one instance, over this app's preferences. Main thread only. */
+    private static SendState state(Context context) {
+        if (state == null) {
+            Context application = context.getApplicationContext();
+            state = new SendState(new SendState.Store() {
+                @Override
+                public String draft(String take) {
+                    return ReportSettings.draft(application, take);
+                }
+
+                @Override
+                public void setDraft(String take, String text) {
+                    ReportSettings.setDraft(application, take, text);
+                }
+
+                @Override
+                public boolean isFiled(String take) {
+                    return ReportSettings.isFiled(application, take);
+                }
+
+                @Override
+                public void setFiled(String take, boolean filed) {
+                    ReportSettings.setFiled(application, take, filed);
+                }
+            });
+        }
+        return state;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,8 +167,7 @@ public final class ReportActivity extends MwActivity {
         TextView header = findViewById(R.id.reportHeader);
 
         header.setText(takeName + "  ·  " + RecordingStore.formatDuration(durationSeconds));
-        filed = ReportSettings.isFiled(this, takeName);
-        comment.setText(ReportSettings.draft(this, takeName));
+        setCommentText(state(this).draft(takeName));
         comment.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -165,13 +179,9 @@ public final class ReportActivity extends MwActivity {
 
             @Override
             public void afterTextChanged(Editable s) {
-                // Only ever un-files. The clear that follows a successful send
-                // happens while this flag is still false, so it is not mistaken
-                // for someone typing.
-                if (filed) {
-                    filed = false;
-                    ReportSettings.setFiled(ReportActivity.this, takeName, false);
-                    sendButton.setEnabled(true);
+                // What was last sent is not what is in the box any more.
+                if (!settingText && state(ReportActivity.this).edited(takeName)) {
+                    draw();
                 }
             }
         });
@@ -196,8 +206,8 @@ public final class ReportActivity extends MwActivity {
         if (visible == this) {
             visible = null;
         }
-        if (wav != null && !filed) {
-            ReportSettings.setDraft(this, takeName, comment.getText().toString());
+        if (wav != null) {
+            state(this).keepDraft(takeName, comment.getText().toString());
         }
     }
 
@@ -210,15 +220,22 @@ public final class ReportActivity extends MwActivity {
      * here rather than remembered, so there is one place that can be wrong.
      */
     private void draw() {
-        boolean sending = IN_FLIGHT.contains(takeName);
+        SendState sends = state(this);
+        boolean sending = sends.isSending(takeName);
         // The field, not only the button: anything typed during a send would be
         // wiped by the clear that follows success, having never been sent — the
         // one thing this screen promises cannot happen.
         comment.setEnabled(!sending);
-        sendButton.setEnabled(!sending && !filed);
+        sendButton.setEnabled(sends.canSend(takeName));
+
+        String detail = sends.detailFor(takeName);
         if (sending) {
             status.setText(R.string.report_encoding);
-        } else if (filed) {
+        } else if (detail != null) {
+            // The comment's URL is the only proof the take arrived, so it has
+            // to survive a screen timeout rather than only the moment it lands.
+            status.setText(detail);
+        } else if (sends.isFiled(takeName)) {
             status.setText(R.string.report_sent);
         } else {
             status.setText(ReportSettings.hasToken(this)
@@ -228,7 +245,7 @@ public final class ReportActivity extends MwActivity {
     }
 
     private void send() {
-        if (IN_FLIGHT.contains(takeName)) {
+        if (!state(this).canSend(takeName)) {
             return;
         }
         String typed = comment.getText().toString();
@@ -243,9 +260,6 @@ public final class ReportActivity extends MwActivity {
         // mid-upload does not take the sentence with it.
         ReportSettings.setDraft(this, takeName, typed);
 
-        IN_FLIGHT.add(takeName);
-        draw();
-
         String take = takeName;
         TakeReport report = new TakeReport(take, durationSeconds, typed, chartText(),
                 appVersion(), platform());
@@ -257,6 +271,12 @@ public final class ReportActivity extends MwActivity {
         File encoded = new File(getCacheDir(), "report-upload.flac");
         Context application = getApplicationContext();
         File audio = wav;
+
+        // Marked last, immediately before the work is handed over: anything
+        // throwing between the mark and the executor would leave the take in
+        // flight for the life of the process, Send disabled on every visit.
+        state(this).beginSend(take);
+        draw();
 
         SENDER.execute(() -> {
             ReportJob.Outcome outcome;
@@ -284,14 +304,11 @@ public final class ReportActivity extends MwActivity {
      * take — and because the marking has to happen either way.
      */
     private static void finished(Context application, String take, ReportJob.Outcome outcome) {
-        // First, and whether or not any screen is left to tell: this is what
-        // lets the take be sent again.
-        IN_FLIGHT.remove(take);
         boolean worked = outcome != null && outcome.sent() != null;
-        if (worked) {
-            ReportSettings.setDraft(application, take, "");
-            ReportSettings.setFiled(application, take, true);
-        }
+        // Recorded before anything is drawn, and whether or not a screen is
+        // left to draw on: the record is what every screen reads, now and on
+        // its next visit.
+        state(application).finishSend(take, worked, detailOf(application, outcome, worked));
 
         ReportActivity screen = visible;
         if (screen == null || !take.equals(screen.takeName)) {
@@ -304,34 +321,40 @@ public final class ReportActivity extends MwActivity {
                             + reasonOf(application, outcome), Toast.LENGTH_LONG).show();
             return;
         }
-        screen.show(outcome, worked);
+        if (worked) {
+            screen.setCommentText("");
+        }
+        screen.draw();
     }
 
-    /** Draws one finished send: the steady state, then what only this run knows. */
-    private void show(ReportJob.Outcome outcome, boolean worked) {
-        if (worked) {
-            // Cleared before the flag is set, so the watcher installed in
-            // onCreate reads this as the app's doing rather than as an edit.
-            comment.setText("");
-            filed = true;
+    /** Sets the field without the watcher reading it as someone typing. */
+    private void setCommentText(String text) {
+        settingText = true;
+        try {
+            comment.setText(text);
+        } finally {
+            settingText = false;
         }
-        draw();
+    }
 
+    /** The line the screen shows for a finished send, and keeps showing. */
+    private static String detailOf(Context context, ReportJob.Outcome outcome, boolean worked) {
         StringBuilder line = new StringBuilder();
         if (worked) {
-            line.append(getString(R.string.report_sent)).append('\n')
+            line.append(context.getString(R.string.report_sent)).append('\n')
                     .append(outcome.sent().commentUrl());
         } else {
             // The typed comment is still in the field and still in the draft:
             // pressing Send again is the whole retry.
-            line.append(getString(R.string.report_failed)).append('\n')
-                    .append(reasonOf(this, outcome));
+            line.append(context.getString(R.string.report_failed)).append('\n')
+                    .append(reasonOf(context, outcome));
         }
         if (outcome != null && outcome.encoderFailure() != null) {
             line.append('\n')
-                    .append(getString(R.string.report_wav_instead, outcome.encoderFailure()));
+                    .append(context.getString(R.string.report_wav_instead,
+                            outcome.encoderFailure()));
         }
-        status.setText(line.toString());
+        return line.toString();
     }
 
     /**
