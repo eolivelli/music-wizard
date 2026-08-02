@@ -6,6 +6,11 @@ the instructions in samples/list.txt), this runs the shaded CLI, segments the
 estimated chords into bars on the recording's own tracked beats, aligns the
 known 12-bar cycle at the best rotation, and reports per-bar accuracy.
 
+It then reports the key each file was named with, against the key stated in
+samples/list.txt. That table covers four files the chord table does not: their
+bar-by-bar changes are not confirmed, but the key they are in is, and the key
+is what is being scored.
+
 The committed CI gate for the committed sample lives in mw-it; this script is
 the local, all-samples view of the same question: is the tool getting closer
 to the charts a musician would write?
@@ -42,6 +47,27 @@ BENCHMARKS = {
         "Eb7",
     "bossa-cm.mp3":
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
+}
+
+# The key each file is in, from samples/list.txt.
+#
+# Nine of these are unambiguous. The last two are the pair that is the point of
+# the exercise: the same four chords framed on C and framed on A minor. They
+# share every note, so nothing in the harmony separates them and only where the
+# loop begins and ends does -- which is the least reliable thing on a recording.
+# Expect the estimator to say so in its confidence rather than to get both.
+KEYS = {
+    "gmajorblues.mp3": "G major",
+    "blues-a-90bpm.mp3": "A major",
+    "blues-shuffle-a-106bpm.mp3": "A major",
+    "blues-e-90bpm.mp3": "E major",
+    "fm7-vamp-110.mp3": "F minor",
+    "eb7-vamp-130.mp3": "Eb major",
+    "bossa-cm.mp3": "C minor",
+    "bm-blues-slow.mp3": "B minor",
+    "waltz-am-e7-160.mp3": "A minor",
+    "pop-c-g-am-f-120.mp3": "C major",
+    "pop-am-f-c-g-144.mp3": "A minor",
 }
 
 LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
@@ -105,8 +131,7 @@ def bar_label(spans, start: float, end: float):
     return chord_of(best) if best else None
 
 
-def score(mp3: Path, jar: Path, truth: list[str]) -> None:
-    doc = analyze(jar, mp3)
+def score(mp3: Path, doc: dict, truth: list[str]) -> None:
     spans = doc.get("chords", {}).get("chords", [])
     beats = doc.get("beatGrid", {}).get("beats", [])
     downbeats = [b["seconds"] for b in beats if b.get("downbeat")]
@@ -142,6 +167,26 @@ def score(mp3: Path, jar: Path, truth: list[str]) -> None:
           f"  N.C. {100 * nc_time / duration:.1f}% of {duration:.0f}s")
 
 
+def score_key(mp3: Path, doc: dict, want: str) -> None:
+    """The key the run named, against the one samples/list.txt states."""
+    keys = doc.get("keys", [])
+    if not keys:
+        print(f"  key {mp3.name}: none named  want {want}  WRONG")
+        return
+    # The audio path emits one key over the whole recording; a later modulation
+    # stage (#228) would make this the longest, as Score.primaryKey does.
+    key = max(keys, key=lambda k: k["endSeconds"] - k["startSeconds"])
+    tonic = key["tonic"]
+    written = (tonic["letter"] + ACCIDENTAL_SIGN[tonic.get("accidental", "NATURAL")]
+               + " " + key["mode"].lower())
+    print(f"  key {mp3.name}: {written} at {100 * key['confidence']['value']:.0f}%"
+          f"  want {want}  {'OK' if written == want else 'WRONG'}")
+
+
+ACCIDENTAL_SIGN = {"NATURAL": "", "NONE": "", "SHARP": "#", "FLAT": "b",
+                   "DOUBLE_SHARP": "##", "DOUBLE_FLAT": "bb"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
@@ -150,16 +195,33 @@ def main() -> None:
     if not jar.exists():
         sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
 
+    # One analysis per file, read by both tables: the two ask different
+    # questions of the same run, and analysing twice would let them disagree.
+    analysed = {}
+    for name in list(BENCHMARKS) + [n for n in KEYS if n not in BENCHMARKS]:
+        mp3 = REPO / "samples" / name
+        if mp3.exists():
+            analysed[name] = analyze(jar, mp3)
+
     print("samples with known ground truth:")
     missing = []
     for name, truth in BENCHMARKS.items():
-        mp3 = REPO / "samples" / name
-        if mp3.exists():
-            score(mp3, jar, truth)
+        if name in analysed:
+            score(REPO / "samples" / name, analysed[name], truth)
         else:
             missing.append(name)
     for name in missing:
         print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
+
+    print("keys, against the key stated in samples/list.txt:")
+    missing = []
+    for name, want in KEYS.items():
+        if name in analysed:
+            score_key(REPO / "samples" / name, analysed[name], want)
+        else:
+            missing.append(name)
+    for name in missing:
+        print(f"  key {name}: not present (local-only; see samples/list.txt to fetch)")
 
 
 if __name__ == "__main__":

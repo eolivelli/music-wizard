@@ -16,17 +16,14 @@
 
 package dev.olivelli.musicwizard.transcribe;
 
-import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
-import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
-import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -902,7 +899,7 @@ public final class MidiTranscriber {
             if (!(endSeconds > startSeconds)) {
                 continue;
             }
-            keys.add(new Key(tonicOf(signature[0], mode), mode,
+            keys.add(new Key(Key.tonicOf(signature[0], mode), mode,
                     startSeconds, endSeconds,
                     Optional.of(startBeat), Optional.of(endBeat),
                     Confidence.CERTAIN));
@@ -912,33 +909,6 @@ public final class MidiTranscriber {
                     + keys.get(0).displayName());
         }
         return keys;
-    }
-
-    /**
-     * The tonic a key signature names.
-     *
-     * <p>Walked round the circle of fifths rather than looked up in a table, so
-     * that it is the same arithmetic {@link Key#keySignatureAccidentals()} runs
-     * in reverse and the two cannot drift apart. Each step along the circle moves
-     * four letters up the ladder and every seventh step adds an accidental; a
-     * minor key sits three steps further round than the major that shares its
-     * signature, which is what makes A minor and C major both zero sharps.
-     *
-     * <p>The octave is arbitrary because {@link Key} reads only the letter and
-     * the accidental from its tonic; 4 is the octave of middle C.
-     */
-    private static PitchSpelling tonicOf(int sharpsOrFlats, Mode mode) {
-        int fifths = mode == Mode.MINOR ? sharpsOrFlats + 3 : sharpsOrFlats;
-        NoteLetter letter = NoteLetter.ofDiatonicStep(Math.floorMod(fifths * 4, 7));
-        int alteration = Math.floorDiv(fifths + 1, 7);
-        Accidental accidental = switch (alteration) {
-            case -1 -> Accidental.FLAT;
-            case 0 -> Accidental.NATURAL;
-            case 1 -> Accidental.SHARP;
-            default -> throw new IllegalArgumentException(
-                    "a key signature of " + sharpsOrFlats + " cannot be spelled");
-        };
-        return new PitchSpelling(letter, accidental, 4);
     }
 
     // ------------------------------------------------------------------ naming

@@ -20,6 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Mode;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -123,6 +126,50 @@ class AnalyzeCommandTest {
                             .as("parseable under %s", locale)
                             .isEqualTo(120.0);
                 }
+            } finally {
+                Locale.setDefault(original);
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("the key line")
+    class KeyLine {
+
+        @Test
+        @DisplayName("names the key and how much it is trusted")
+        void namesTheKeyWithItsConfidence() {
+            // With the number, because the row's failure mode is invisible: a
+            // key and its relative minor share every note, so a wrong answer
+            // reads exactly as well as a right one.
+            Score score = trackedAt(0.5, TimeSignature.FOUR_FOUR)
+                    .withKeys(List.of(Key.ofSeconds(PitchSpelling.parse("A4"), Mode.MINOR,
+                            0, 12.0, Confidence.of(0.25))));
+
+            assertThat(AnalyzeCommand.summary(SourceKind.AUDIO, score))
+                    .contains("Key     A minor (25% confidence)");
+        }
+
+        @Test
+        @DisplayName("says nothing at all when no key was estimated")
+        void omitsTheRowWithoutAKey() {
+            assertThat(AnalyzeCommand.summary(SourceKind.AUDIO,
+                    trackedAt(0.5, TimeSignature.FOUR_FOUR)))
+                    .noneSatisfy(line -> assertThat(line).startsWith("Key"));
+        }
+
+        @Test
+        @DisplayName("prints a percentage a non-English locale can still read back")
+        void isLocaleIndependent() {
+            Locale original = Locale.getDefault();
+            try {
+                Locale.setDefault(Locale.forLanguageTag("ar-EG"));
+                Score score = trackedAt(0.5, TimeSignature.FOUR_FOUR)
+                        .withKeys(List.of(Key.ofSeconds(PitchSpelling.parse("A4"), Mode.MINOR,
+                                0, 12.0, Confidence.of(0.25))));
+
+                assertThat(AnalyzeCommand.summary(SourceKind.AUDIO, score))
+                        .contains("Key     A minor (25% confidence)");
             } finally {
                 Locale.setDefault(original);
             }

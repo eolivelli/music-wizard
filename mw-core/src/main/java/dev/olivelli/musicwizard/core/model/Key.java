@@ -123,6 +123,35 @@ public record Key(
         return mode == Mode.MINOR ? fifths - 3 : fifths;
     }
 
+    /**
+     * The tonic a key signature names, written.
+     *
+     * <p>The inverse of {@link #keySignatureAccidentals()}, and walked round the
+     * circle of fifths rather than looked up in a table so that the two run the
+     * same arithmetic in opposite directions and cannot drift apart. Each step
+     * round the circle moves four letters up the ladder and every seventh step
+     * adds an accidental; a minor key sits three steps further round than the
+     * major sharing its signature, which is what makes A minor and C major both
+     * zero sharps.
+     *
+     * <p>The octave is arbitrary because {@code Key} reads only the letter and
+     * the accidental from its tonic; 4 is the octave of middle C.
+     *
+     * @param sharpsOrFlats sharps positive, flats negative
+     * @throws IllegalArgumentException if the signature needs a double accidental
+     */
+    public static PitchSpelling tonicOf(int sharpsOrFlats, Mode mode) {
+        Objects.requireNonNull(mode, "mode");
+        int fifths = mode == Mode.MINOR ? sharpsOrFlats + 3 : sharpsOrFlats;
+        NoteLetter letter = NoteLetter.ofDiatonicStep(Math.floorMod(fifths * 4, 7));
+        int alteration = Math.floorDiv(fifths + 1, 7);
+        if (alteration < -1 || alteration > 1) {
+            throw new IllegalArgumentException(
+                    "a key signature of " + sharpsOrFlats + " cannot be spelled");
+        }
+        return new PitchSpelling(letter, Accidental.ofAlteration(alteration), 4);
+    }
+
     /** True when the key signature is written with flats. */
     @JsonIgnore
     public boolean isFlatKey() {
