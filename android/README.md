@@ -1,12 +1,38 @@
 # Music Wizard on a phone
 
 A field-recording instrument for the corpus, not a product: record a take, run
-the MW harmony analysis on the device, read the chart as text, and share the WAV
-out so it can join `samples/` or `uncommitted/` on the desktop. Epic #236, built
-in #249.
+the MW harmony analysis on the device, read the chart as text, and get the take
+off the phone so it can join `samples/` or `uncommitted/` on the desktop. Epic
+#236, built in #249.
 
-Plain Java, `minSdk` 26, `RECORD_AUDIO` as the only permission, app-private
-storage, no network, no PDF and no LilyPond.
+Plain Java, `minSdk` 26, app-private storage, no PDF and no LilyPond.
+
+## Sending a take to the repository
+
+Epic #236 listed "no network" as a v1 non-goal. #291 overrode it: the corpus
+loop otherwise depends on someone remembering, later, what was played, and later
+is when that is lost. "Send to repo" — on a library long-press and on the result
+screen — files a take at the moment it is freshest.
+
+The override is narrow, and the shape of it is the point:
+
+- **`INTERNET`, and one screen that uses it.** `ReportActivity` is the only class
+  that opens a socket, and only when its Send button is pressed. Recording and
+  analysis run with the phone in flight mode, as before.
+- **The audio goes up as a release asset**, FLAC-encoded on the device by
+  `MediaCodec`, on the rolling `field-takes` prerelease. Lossless because these
+  files are ground truth. There is no API for attaching a file to an issue.
+- **The account of it goes up as one comment** on the standing "field takes
+  inbox" issue: the player's own words, the asset's link, the chart the phone
+  made of it, and the versions. `res/values/report.xml` is the only place the
+  repository, the release tag and the inbox issue's number appear.
+- **A fine-grained personal access token**, pasted once into `TokenActivity` and
+  kept in this app's private `SharedPreferences`. No OAuth: that would mean a
+  client secret inside an APK. What that storage is and is not proof against is
+  in `ReportSettings`'s javadoc.
+
+Both GitHub-side pieces have to exist for any of it to work, and both say so in
+their own text; the release is a container and holds no build.
 
 ## Building
 
@@ -53,8 +79,10 @@ exists to prevent, and it is silent.
 ## What the checks are for
 
 `./gradlew test` runs the JVM unit tests: the WAV header, the recordings
-directory, the analysis glue, and the background-job lifecycle. There are no
-emulator tests.
+directory, the analysis glue, the background-job lifecycle, and the three
+requests a field report is assembled from. There are no emulator tests, so the
+one piece of the reporting path with no unit test is the FLAC encoding —
+`MediaCodec` exists only on a device.
 
 `checkDexedApiLevel` runs after `assembleDebug` and fails the build if the dex
 still calls a JDK method Android does not have at `minSdk`. It exists because

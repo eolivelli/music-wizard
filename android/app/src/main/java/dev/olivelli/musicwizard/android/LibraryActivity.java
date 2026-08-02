@@ -39,12 +39,12 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * The library: every take on the phone, and the four things to do with one.
+ * The library: every take on the phone, and the five things to do with one.
  *
- * <p>"Share" hands the WAV to another app through {@link FileProvider}. That is
- * the corpus-export path — a take recorded in the room reaches the desktop's
- * {@code samples/} or {@code uncommitted/} this way, which is what the app is
- * for.
+ * <p>Two of them get a take off the phone and into the corpus, which is what the
+ * app is for. "Share" hands the WAV to another app through {@link FileProvider},
+ * for a cable or a cloud drive; "Send to repo" ({@link ReportActivity}) files it
+ * on GitHub there and then, together with what the player says was played.
  */
 public final class LibraryActivity extends MwActivity {
 
@@ -97,21 +97,35 @@ public final class LibraryActivity extends MwActivity {
     private void showActions(Recording recording) {
         String[] actions = {
                 getString(R.string.share_wav),
+                getString(R.string.report_send),
                 getString(R.string.rename),
                 getString(R.string.delete),
         };
         new AlertDialog.Builder(this)
                 .setTitle(recording.displayName())
                 .setItems(actions, (dialog, which) -> {
-                    if (which == 0) {
-                        shareWav(recording);
-                    } else if (which == 1) {
-                        askForName(recording);
-                    } else {
-                        confirmDelete(recording);
+                    switch (which) {
+                        case 0:
+                            shareWav(recording);
+                            break;
+                        case 1:
+                            report(recording.wav());
+                            break;
+                        case 2:
+                            askForName(recording);
+                            break;
+                        default:
+                            confirmDelete(recording);
+                            break;
                     }
                 })
                 .show();
+    }
+
+    private void report(File wav) {
+        Intent intent = new Intent(this, ReportActivity.class);
+        intent.putExtra(ReportActivity.EXTRA_WAV, wav.getAbsolutePath());
+        startActivity(intent);
     }
 
     private void shareWav(Recording recording) {
