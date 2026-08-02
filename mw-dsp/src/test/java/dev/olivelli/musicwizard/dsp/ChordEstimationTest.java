@@ -298,25 +298,33 @@ class ChordEstimationTest {
             // What the evidence floor does not do, pinned so that it is not
             // mistaken for what it does. The floor rejects a candidate that fits
             // worse than noise; it cannot reject one that fits badly but better
-            // than noise, and there the four-note template still wins on size.
+            // than noise, and there the four-note template wins on size.
             //
-            // A C major triad diluted into an otherwise flat treble, with no
-            // flat seventh anywhere in it, comes back as C7 until the triad
-            // carries something like a quarter of the register. That is the cost
-            // of keeping the size bias, which the corpus says is worth keeping
-            // (see ChordEstimator.flatScore) and cannot yet say more about,
-            // having almost no triad recordings in it. #274.
-            assertThat(dilutedTriad(0.15)).isEqualTo("C7");
-            assertThat(dilutedTriad(0.30)).isEqualTo("C");
+            // A C major triad diluted into an otherwise flat treble comes back
+            // as C7 until the triad carries about a quarter of the register.
+            // What makes that happen is that the flat seventh sits at the
+            // background level along with every other non-chord tone -- the
+            // third assertion is the one that says so, and it is the boundary
+            // #274 has to be measured against. Take the seventh below that floor
+            // and the answer is C at every dilution: this is a failure to tell a
+            // near-flat treble apart, not a seventh invented against evidence.
+            assertThat(dilutedTriad(0.15, 1.0)).isEqualTo("C7");
+            assertThat(dilutedTriad(0.30, 1.0)).isEqualTo("C");
+            assertThat(dilutedTriad(0.15, 0.0)).isEqualTo("C");
         }
 
-        /** A C major triad carrying {@code share} of an otherwise flat treble. */
-        private static String dilutedTriad(double share) {
+        /**
+         * A C major triad carrying {@code share} of an otherwise flat treble,
+         * with the flat seventh at {@code b7} times the background level.
+         */
+        private static String dilutedTriad(double share, double b7) {
+            double background = (1 - share) / 12;
             double[] treble = new double[12];
-            java.util.Arrays.fill(treble, (1 - share) / 12);
+            java.util.Arrays.fill(treble, background);
             for (int i : new int[] {0, 4, 7}) {
                 treble[i] += share / 3;
             }
+            treble[10] = background * b7;
             double[] combined = chroma(0.28, 0.26, 0.26, 0);
             return ChordEstimator.estimate(
                             beats(combined, combined, combined, combined),

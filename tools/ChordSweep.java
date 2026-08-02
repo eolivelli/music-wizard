@@ -353,12 +353,12 @@ public final class ChordSweep {
         }
         System.out.printf(Locale.ROOT, "%-26s spans=%d, of them dominant sevenths: %d%n",
                 b.file(), chords.size(), sevenths);
-        printProfile("", "combined", c.combined(), root);
-        printProfile("", "treble", c.treble(), root);
-        printProfile("", "bass", c.bass(), root);
+        printProfile("combined", c.combined(), root);
+        printProfile("treble", c.treble(), root);
+        printProfile("bass", c.bass(), root);
     }
 
-    static void printProfile(String name, String register, double[][] vectors, int[] root) {
+    static void printProfile(String register, double[][] vectors, int[] root) {
         double[] mean = new double[12];
         int counted = 0;
         for (int f = 0; f < vectors.length; f++) {
@@ -379,11 +379,11 @@ public final class ChordSweep {
         }
         if (counted == 0) {
             System.out.printf(Locale.ROOT, "%-26s %-8s no chord span covers any beat%n",
-                    name, register);
+                    "", register);
             return;
         }
         StringBuilder line =
-                new StringBuilder(String.format(Locale.ROOT, "%-26s %-8s", name, register));
+                new StringBuilder(String.format(Locale.ROOT, "%-26s %-8s", "", register));
         for (int interval = 0; interval < 12; interval++) {
             line.append(String.format(Locale.ROOT, "%6.3f", mean[interval] / counted));
         }

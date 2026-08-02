@@ -73,7 +73,9 @@ import org.junit.jupiter.api.Test;
  * columns come apart for two different reasons, and both are still open: the
  * estimator finds a root and the vocabulary cannot name the chord on it, which
  * is {@code fm7-vamp-110.mp3} throughout (#272); or it can and the seventh is
- * still missed, which #208 improved on every benchmark without closing on any.
+ * still missed, which #208 is a large net gain against and closed nowhere — it
+ * costs a couple of points on the two benchmarks whose sevenths were already
+ * being found, this recording among them.
  *
  * <p>{@code bossa-cm.mp3} is the benchmark that is not about bars at all: the
  * tempo estimator reads that recording at about four thirds of its true rate,

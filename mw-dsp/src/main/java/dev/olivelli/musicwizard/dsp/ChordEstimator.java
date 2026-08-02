@@ -412,20 +412,24 @@ public final class ChordEstimator {
      * <p>Used as a floor rather than subtracted off, and <b>a floor rules out
      * exactly the candidates that fit worse than noise does — it does not rule
      * out a bad fit that is still better than noise.</b> The seventh therefore
-     * keeps winning on weak evidence: a treble holding a major triad and no flat
-     * seventh at all is reported as a seventh until the triad carries something
-     * like a quarter of the register, which
-     * {@code ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh} pins
-     * either side of. #274.
+     * keeps winning on weak evidence: a treble holding a major triad whose flat
+     * seventh is left at the background level is reported as a seventh until the
+     * triad carries about a quarter of the register. Take that seventh below the
+     * background and the answer is the triad at every dilution, so this is a
+     * failure to tell a near-flat treble apart rather than a seventh invented
+     * against evidence. {@code
+     * ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh} pins all
+     * three points; #274 carries the question.
      *
      * <p>That is a cost knowingly kept. Removing the size bias from the ranking
      * as well — by correlation or by rescaling each score into its own headroom,
-     * the two textbook cures — was measured over the whole corpus and takes tens
-     * of points off every recording whose chords really are sevenths, to remove
-     * a handful of false sevenths on the two whose chords are triads. The bias is
-     * left where it is earning its keep and stopped where it is not, and this
-     * corpus cannot yet say more than that: six of its seven scored benchmarks
-     * are seventh recordings, so it has almost no negatives to weigh (#273).
+     * the two textbook cures — was measured against the benchmarks and costs
+     * every recording whose chords really are sevenths, by up to tens of points,
+     * to remove a handful of false sevenths on the two whose chords are triads.
+     * The bias is left where it is earning its keep and stopped where it is not,
+     * and this corpus cannot yet say more than that: <b>not one of its seven
+     * scored benchmarks is a plain-triad recording</b>, so it has no negatives
+     * to weigh at all (#273).
      */
     private static double flatScore(Template template) {
         return Math.sqrt(template.quality().intervals().length / 12.0);

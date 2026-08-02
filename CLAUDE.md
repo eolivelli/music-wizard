@@ -75,8 +75,9 @@ Dominant sevenths are found now (#208) — they were found on two benchmarks and
 called plain triads on three others whose roots were read nearly perfectly. The
 root is still decided from both registers and the quality now from the treble,
 once per chord rather than per beat, which is two changes rather than one
-because different benchmarks needed different halves. It improved every one of
-them and closed none: `ChordEstimator` carries the measurement and
+because different benchmarks needed different halves. A large net gain that
+closed nothing and cost a couple of points on the two benchmarks whose sevenths
+were already being found: `ChordEstimator` carries the mechanism and
 `tools/baselines/score-samples.txt` the current reading.
 
 Judge a change by what it does to a real recording. If that cannot be measured,
