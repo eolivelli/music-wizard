@@ -67,7 +67,7 @@ public final class ChordChart {
         List<Optional<String>> tags = LineRepeats.tagsOf(lines);
         // Only when there is something to read: a legend for a notation the
         // chart does not use is a line of the header spent on nothing. Named
-        // in seven characters like the rows above it, so the four line up.
+        // in seven characters, like the rows above it.
         if (tags.stream().anyMatch(Optional::isPresent)) {
             out.append("Tags   [A] marks lines that print identically\n");
         }

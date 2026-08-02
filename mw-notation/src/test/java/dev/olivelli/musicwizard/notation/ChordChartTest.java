@@ -1544,7 +1544,7 @@ class ChordChartTest {
         Score once = fourChordSong(1);
 
         assertThat(textTags(once)).isEqualTo(".");
-        assertThat(ChordChart.toText(once)).doesNotContain("marks lines that print");
+        assertThat(ChordChart.toText(once)).doesNotContain("Tags");
         assertThat(bracketsOf(ChordChart.toLilyPond(once))).isEmpty();
         assertThat(ChordChart.toLilyPond(once))
                 .as("no annotation, no context to carry it")
@@ -1691,6 +1691,23 @@ class ChordChartTest {
                     .as("%s", stripped)
                     .allSatisfy(token -> assertThat(token).doesNotContain("\\"));
         }
+    }
+
+    @Test
+    @DisplayName("asks for a broken bracket to be drawn as one bracket, not two")
+    void aBrokenBracketIsAskedToKeepOneOfEachEnd() {
+        // LilyPond may break a system anywhere, so a bracket is routinely drawn
+        // in pieces; each piece takes the label and the closing hook unless it
+        // is told not to, and then reads as a whole bracket over part of a line.
+        // Like the bar-extent request above, this only says the request is made.
+        // ChordChartEngravingIT engraves a bracket across a break and reads the
+        // labels back out of LilyPond; the hook has no separate signal there,
+        // because the label carries one of its own.
+        String source = ChordChart.toLilyPond(fourChordSong(3));
+
+        assertThat(source)
+                .contains("\\override TextSpanner.bound-details.left-broken.text = ##f")
+                .contains("\\override TextSpanner.bound-details.right-broken.text = ##f");
     }
 
     @Test
