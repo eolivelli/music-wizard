@@ -46,12 +46,14 @@ import java.util.Optional;
  * <h2>Why the triad and not the whole chord</h2>
  *
  * <p>A seventh or a sixth is a colour tone that routinely leaves the key, and in
- * exactly the material this project is aimed at. A blues in G is
- * {@code G7 C7 D7}, whose sevenths put an F natural and a B flat against a
- * signature holding neither, and both of those belong to C major — so counting
- * them makes the subdominant fit the piece better than the piece's own key does.
- * The triad is what makes a chord that chord, so the triad is what is scored.
- * Sevenths are read for one thing only, below.
+ * exactly the material this project is aimed at. In a blues the chord that
+ * sounds most is the tonic and it is a dominant seventh, so its flat seventh is
+ * foreign to the piece's own key and native to the subdominant's: in a G blues,
+ * G7's F natural is in C major and not in G. Counting the sevenths therefore
+ * docks the right answer on every tonic bar and the wrong one on none of them.
+ * The triad is what makes a chord that chord, so the triad is what is scored;
+ * on {@code samples/gmajorblues.mp3} counting all four tones instead comes back
+ * C major. Sevenths are read for one thing only, below.
  *
  * <h2>The relative minor</h2>
  *
@@ -74,6 +76,11 @@ import java.util.Optional;
  *
  * <p>The mode is taken from the chord's third, so a suspended chord on the tonic
  * counts for both modes rather than for neither: it is still the tonic.
+ *
+ * <p>When neither of the two says anything the pair really is undecidable, and
+ * {@link #beats} breaks it on a stated prior — which is not the same as leaning
+ * on one, since any margin at all outranks it and the tonic confidence reports
+ * that the prior was all there was.
  *
  * <h2>What is deliberately not used</h2>
  *
@@ -114,6 +121,9 @@ public final class KeyEstimator {
 
     /** How much the key's own tonic chord is worth beyond fitting the scale. */
     private static final double TONIC_CHORD_WEIGHT = 0.5;
+
+    /** Scores this close are one score; see {@link #beats}. */
+    private static final double TIE = 1e-9;
 
     /**
      * The margin between two keys at which the better of them is taken as
@@ -209,15 +219,11 @@ public final class KeyEstimator {
             }
         }
 
-        // Strictly greater, so an exact tie keeps the first candidate scanned.
-        // Reachable -- a lone suspended chord fits several keys identically --
-        // and then the answer is arbitrary rather than wrong; the confidence
-        // that comes back says so.
         int bestTonic = 0;
         Mode bestMode = Mode.MAJOR;
         for (int tonic = 0; tonic < 12; tonic++) {
             for (Mode mode : Mode.values()) {
-                if (scores[tonic][mode.ordinal()] > scores[bestTonic][bestMode.ordinal()]) {
+                if (beats(scores, tonic, mode, bestTonic, bestMode)) {
                     bestTonic = tonic;
                     bestMode = mode;
                 }
@@ -242,8 +248,17 @@ public final class KeyEstimator {
             }
         }
 
-        Confidence signature = confidence(SIGNATURE_BASE, best - otherSignature);
-        Confidence tonic = confidence(TONIC_BASE, best - relative);
+        // How much of the span the chords actually accounted for. A margin says
+        // which key won; it says nothing about how much was weighed, and the two
+        // come apart badly -- half a second of one chord inside four minutes of
+        // silence produces a maximal margin, because the score is an average
+        // over the sounding time and half a second of it averages perfectly.
+        // Same reason and same shape as DownbeatEstimator's "there was enough of
+        // it" factor, which exists because a margin arrived at cheaply reports
+        // full confidence in a guess.
+        double weighed = Math.clamp(sounding / (endSeconds - startSeconds), 0, 1);
+        Confidence signature = confidence(SIGNATURE_BASE, best - otherSignature, weighed);
+        Confidence tonic = confidence(TONIC_BASE, best - relative, weighed);
         Key key = Key.ofSeconds(
                 Key.tonicOf(signatureOf(bestTonic, bestMode), bestMode), bestMode,
                 startSeconds, endSeconds, signature.and(tonic));
@@ -294,6 +309,59 @@ public final class KeyEstimator {
     }
 
     /**
+     * Whether one candidate key beats another, ties included.
+     *
+     * <p>An exact tie is not an edge case: a key and its relative minor score
+     * identically whenever nothing in the progression separates them, which is
+     * every loop built from the shared seven notes with no dominant in it and
+     * equal time on both tonics. Something has to decide, and scan order must
+     * not, because scan order is not transposition-invariant — deciding by
+     * pitch-class index made the same loop major in three keys and minor in the
+     * other nine, so the answer depended on what the piece was transposed to.
+     *
+     * <p><b>Major wins a tie.</b> With no evidence at all the question is which
+     * answer is more often right in the repertoire this tool is aimed at, and
+     * that is the major. It is a prior, not a reading, so it never overrides
+     * evidence — any margin at all decides first — and the tonic confidence
+     * comes back at its coin-flip floor to say the prior is all there was. What
+     * a detector must not do is answer the relative major when the harmony
+     * <em>does</em> say minor; that is what the harmonic-minor dominant and the
+     * tonic-chord weight are for, and both outrank this.
+     *
+     * <p><b>A tie between two keys of the same mode goes to the simpler key
+     * signature</b>, and only then to the lowest pitch class. {@code Am Em}
+     * repeated is such a tie -- both chords are in both keys and each key owns
+     * one of them -- and A minor is what a musician writes, because nothing is
+     * asking for the sharp.
+     *
+     * <p>Ties are compared with a tolerance rather than for equality, and that
+     * is load-bearing rather than defensive. The score is a sum over chords in
+     * key order, so two keys that tie in exact arithmetic can differ in the last
+     * bit purely from the order the terms were added in — which is how
+     * {@code C A7 Dm G7} came out D minor. The tolerance sits far above that
+     * error, which grows with the chord count and stays near the precision of a
+     * double, and far below the narrowest margin any real recording here
+     * produces.
+     */
+    private static boolean beats(double[][] scores, int tonic, Mode mode,
+                                 int bestTonic, Mode bestMode) {
+        double score = scores[tonic][mode.ordinal()];
+        double best = scores[bestTonic][bestMode.ordinal()];
+        if (Math.abs(score - best) > TIE) {
+            return score > best;
+        }
+        if (mode != bestMode) {
+            return mode == Mode.MAJOR;
+        }
+        int accidentals = Math.abs(signatureOf(tonic, mode));
+        int bestAccidentals = Math.abs(signatureOf(bestTonic, bestMode));
+        if (accidentals != bestAccidentals) {
+            return accidentals < bestAccidentals;
+        }
+        return tonic < bestTonic;
+    }
+
+    /**
      * The tonic of the relative key: the minor a third below a major, and the
      * major a third above a minor.
      */
@@ -301,10 +369,21 @@ public final class KeyEstimator {
         return Math.floorMod(tonic + (mode == Mode.MAJOR ? 9 : 3), 12);
     }
 
-    /** A margin turned into a confidence above the floor chance leaves. */
-    private static Confidence confidence(double base, double margin) {
+    /**
+     * A margin turned into a confidence above the floor chance leaves.
+     *
+     * <p>The two terms multiply rather than average, so either one failing brings
+     * the number down instead of being outvoted: a wide margin over almost no
+     * music is not a confident answer, and neither is a whole recording that
+     * barely prefers one key.
+     *
+     * @param base    what the answer is worth with no evidence at all
+     * @param margin  how far the winner is clear of the runner-up
+     * @param weighed the share of the span that carried a chord
+     */
+    private static Confidence confidence(double base, double margin, double weighed) {
         double decided = Math.clamp(margin / DECISIVE_MARGIN, 0, 1);
-        return Confidence.clamped(base + (1 - base) * decided);
+        return Confidence.clamped(base + (1 - base) * decided * weighed);
     }
 
     private static boolean hasInterval(int[] intervals, int count, int semitones) {

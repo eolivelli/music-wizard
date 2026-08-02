@@ -49,13 +49,22 @@ BENCHMARKS = {
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
 }
 
-# The key each file is in, from samples/list.txt.
+# The key each file is in.
 #
-# Nine of these are unambiguous. The last two are the pair that is the point of
-# the exercise: the same four chords framed on C and framed on A minor. They
-# share every note, so nothing in the harmony separates them and only where the
-# loop begins and ends does -- which is the least reliable thing on a recording.
-# Expect the estimator to say so in its confidence rather than to get both.
+# Stated by samples/list.txt for nine of them. The two vamps are not: list.txt
+# gives their one chord and the key here is read off it, so those two rows are
+# closer to a tautology than a measurement -- the tonic-chord weight cannot
+# name any other key for a recording holding one chord. (Eb7 throughout is as
+# fairly called Eb Mixolydian; the estimator has no mode beyond major and minor
+# and Eb major is where it puts it.) The four blues rows are one shape
+# transposed, so they are four readings of one question rather than four
+# questions.
+#
+# The last two are the pair that is the point of the exercise: the same four
+# chords framed on C and framed on A minor. They share every note, so nothing
+# in the harmony separates them and only where the loop begins and ends does --
+# which is the least reliable thing on a recording. Expect the estimator to say
+# so in its confidence rather than to get both.
 KEYS = {
     "gmajorblues.mp3": "G major",
     "blues-a-90bpm.mp3": "A major",
@@ -195,31 +204,38 @@ def main() -> None:
     if not jar.exists():
         sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
 
-    # One analysis per file, read by both tables: the two ask different
-    # questions of the same run, and analysing twice would let them disagree.
+    # One analysis per file however many tables read it: the two below ask
+    # different questions of the same run, and analysing twice would let them
+    # disagree. Cached rather than done up front, so each line still appears as
+    # it is measured -- this takes tens of minutes, and a run that prints
+    # nothing until it is over looks hung both here and in the CI job log.
     analysed = {}
-    for name in list(BENCHMARKS) + [n for n in KEYS if n not in BENCHMARKS]:
-        mp3 = REPO / "samples" / name
-        if mp3.exists():
-            analysed[name] = analyze(jar, mp3)
+
+    def doc_for(name: str) -> dict | None:
+        if name not in analysed:
+            mp3 = REPO / "samples" / name
+            analysed[name] = analyze(jar, mp3) if mp3.exists() else None
+        return analysed[name]
 
     print("samples with known ground truth:")
     missing = []
     for name, truth in BENCHMARKS.items():
-        if name in analysed:
-            score(REPO / "samples" / name, analysed[name], truth)
-        else:
+        doc = doc_for(name)
+        if doc is None:
             missing.append(name)
+        else:
+            score(REPO / "samples" / name, doc, truth)
     for name in missing:
         print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
 
     print("keys, against the key stated in samples/list.txt:")
     missing = []
     for name, want in KEYS.items():
-        if name in analysed:
-            score_key(REPO / "samples" / name, analysed[name], want)
-        else:
+        doc = doc_for(name)
+        if doc is None:
             missing.append(name)
+        else:
+            score_key(REPO / "samples" / name, doc, want)
     for name in missing:
         print(f"  key {name}: not present (local-only; see samples/list.txt to fetch)")
 

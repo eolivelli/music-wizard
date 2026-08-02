@@ -29,6 +29,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * What {@link KeyEstimator} reads out of a chord sequence.
@@ -92,9 +94,9 @@ class KeyEstimationTest {
         void bluesIsNotReadAsItsSubdominant() {
             // The quick-change form, whose second bar is the IV: it holds fewer
             // bars of the tonic than the plain form, so nothing but the harmony
-            // itself is left to pull the answer to G. Every seventh here lies
-            // outside G major and inside C major, which is the pull the triad
-            // rule removes.
+            // itself is left to pull the answer to G. G7's F natural is in C
+            // major and not in G, and it sounds on more bars than any other
+            // chord, so counting the sevenths pulls this to the subdominant.
             assertThat(keyOf(bars(
                     "G7", "C7", "G7", "G7",
                     "C7", "C7", "G7", "G7",
@@ -113,22 +115,40 @@ class KeyEstimationTest {
         @Test
         @DisplayName("a plain pop loop names the key its chords are diatonic to")
         void popLoopNamesItsKey() {
-            assertThat(keyOf(bars("C", "G", "Am", "F", "C", "G", "Am", "F")))
+            // Deliberately without the vi. A loop holding both C and Am scores
+            // C major and A minor identically -- see RelativePair -- so it would
+            // pass on the tie-break rather than on the diatonic fit this names.
+            assertThat(keyOf(bars("C", "F", "G", "C", "F", "G", "C", "G")))
+                    .isEqualTo("C major");
+        }
+
+        @Test
+        @DisplayName("a turnaround with a secondary dominant is still in its own key")
+        void aSecondaryDominantDoesNotMoveTheKey() {
+            // I VI7 ii V in C. A7's C sharp is chromatic in C major and is D
+            // minor's raised seventh, so the dominant rule hands D minor a
+            // perfect fit for it and the two keys score identically -- the
+            // secondary dominant is indistinguishable from a real one on this
+            // scoring. What decides is the major prior, and the low confidence
+            // that comes back is the honest reading of a genuine tie.
+            assertThat(keyOf(bars("C", "A7", "Dm", "G7", "C", "A7", "Dm", "G7")))
                     .isEqualTo("C major");
         }
 
         @Test
         @DisplayName("the tonic is weighed by how long it sounds, not by how often")
         void durationDecidesRatherThanCount() {
-            // One long G against three short ones elsewhere: counting chords
-            // would answer C, and the piece is in G.
+            // One long E against a short C-F-G, which is three chords of C major
+            // including its tonic. Counted a chord at a time the piece is in C;
+            // weighed by the time each chord sounds it is in E, and it is E that
+            // a listener hears.
             List<Chord> chords = List.of(
-                    chord("G", 0, 24),
+                    chord("E", 0, 24),
                     chord("C", 24, 26),
-                    chord("Am", 26, 28),
-                    chord("D", 28, 30));
+                    chord("F", 26, 28),
+                    chord("G", 28, 30));
             assertThat(keyOf(new ChordProgression(chords, Confidence.of(0.8))))
-                    .isEqualTo("G major");
+                    .isEqualTo("E major");
         }
     }
 
@@ -139,11 +159,21 @@ class KeyEstimationTest {
         @Test
         @DisplayName("a minor tonic with its dominant stays minor")
         void aMinorWithItsDominantStaysMinor() {
-            // Am and E7 share a diatonic set with C major, and E7's G sharp is
-            // in neither C major nor the natural minor -- it is A minor's raised
-            // seventh, and that is the whole of the evidence.
+            // Without the raised-seventh rule this fixture answers E major, not
+            // C major: E7's G sharp is chromatic in both A minor's natural scale
+            // and C major, so the only key left explaining every note is the one
+            // built on the chord that is really the dominant.
             assertThat(keyOf(bars("Am", "E7", "Am", "E7", "Am", "E7", "Am", "E7")))
                     .isEqualTo("A minor");
+        }
+
+        @Test
+        @DisplayName("two minor chords each other's neighbour take the simpler signature")
+        void anUndecidableMinorPairTakesTheSimplerSignature() {
+            // i-v repeated: both chords sit in both keys and each key owns one
+            // of them, so nothing separates A minor from E minor. A minor is
+            // what a musician writes, because nothing here asks for the sharp.
+            assertThat(keyOf(bars("Am", "Em", "Am", "Em"))).isEqualTo("A minor");
         }
 
         @Test
@@ -207,6 +237,49 @@ class KeyEstimationTest {
                     .isCloseTo(0.5, org.assertj.core.data.Offset.offset(0.05));
         }
 
+        @ParameterizedTest(name = "the I-V-vi-IV loop in {0}")
+        @CsvSource({
+            // The expected column is spelled from the conventional signature,
+            // which is why the black keys read flat: D flat major needs five
+            // flats where C sharp major needs seven sharps.
+            "C, C major", "C#, Db major", "D, D major", "D#, Eb major",
+            "E, E major", "F, F major", "F#, Gb major", "G, G major",
+            "G#, Ab major", "A, A major", "A#, Bb major", "B, B major",
+        })
+        @DisplayName("the answer to an undecidable pair transposes with the music")
+        void theTieBreakIsTranspositionInvariant(String tonic, String expected) {
+            // A pair nothing separates has to be broken by something, and that
+            // something must not be an array index: deciding by pitch class made
+            // this loop major in three keys and minor in the other nine, so the
+            // answer moved when the music was transposed and the corpus score
+            // was a function of what key the benchmarks happened to be in. Major
+            // is the stated prior; the point of the sweep is that it is the same
+            // answer twelve times.
+            assertThat(keyOf(transposed(tonic, 0, 7, 9, 5)))
+                    .as("the shared prior, whatever the music is transposed to")
+                    .isEqualTo(expected);
+            assertThat(estimate(transposed(tonic, 0, 7, 9, 5)).tonicConfidence().value())
+                    .as("and it is a prior, so it reports no evidence")
+                    .isEqualTo(0.5);
+        }
+
+        /** The I-V-vi-IV loop built on a tonic, as semitone offsets from it. */
+        private ChordProgression transposed(String tonic, int... offsets) {
+            int root = PitchSpelling.parse(tonic + "4").pitchClass();
+            List<Chord> chords = new ArrayList<>();
+            for (int i = 0; i < offsets.length; i++) {
+                int pitchClass = Math.floorMod(root + offsets[i], 12);
+                // The vi is the minor one; the sharp spelling is what
+                // ChordEstimator hands up and carries no intent.
+                chords.add(new Chord(
+                        PitchSpelling.ofMidiPitchSharp(60 + pitchClass),
+                        offsets[i] == 9 ? ChordQuality.MINOR : ChordQuality.MAJOR,
+                        Optional.empty(), i * BAR, (i + 1) * BAR,
+                        Optional.empty(), Optional.empty(), Confidence.of(0.8)));
+            }
+            return new ChordProgression(chords, Confidence.of(0.8));
+        }
+
         @Test
         @DisplayName("the raised seventh separates the pair, and says so in the confidence")
         void theDominantRaisesTheTonicConfidence() {
@@ -240,18 +313,39 @@ class KeyEstimationTest {
         }
 
         @Test
-        @DisplayName("no-chord spans are passed over rather than scored")
-        void noChordSpansAreIgnored() {
-            // A lead-in of silence in front of the same four bars must not move
-            // the answer, and must not dilute the confidence either: it is
-            // absence of evidence, not evidence.
+        @DisplayName("no-chord spans decide nothing, so the key does not move")
+        void noChordSpansAreNotScored() {
+            // Silence is not evidence for any key, so a lead-in in front of the
+            // same four bars cannot change which key is named.
             KeyEstimator.Estimate plain = estimate(bars("Am", "E7", "Am", "E7"));
             KeyEstimator.Estimate withLeadIn =
                     estimate(bars("N.C.", "N.C.", "Am", "E7", "Am", "E7"));
+
             assertThat(withLeadIn.key().displayName()).isEqualTo(plain.key().displayName());
-            assertThat(withLeadIn.key().confidence().value())
-                    .isCloseTo(plain.key().confidence().value(),
-                            org.assertj.core.data.Offset.offset(1e-9));
+        }
+
+        @Test
+        @DisplayName("a margin over almost no music is not a confident answer")
+        void confidenceFallsWithHowLittleWasWeighed() {
+            // The score is an average over the sounding time, so half a second
+            // of one chord averages as perfectly as five minutes of it and
+            // produces the same margin. Without a term for how much was weighed,
+            // a chart headed by four minutes of silence claimed a certain key.
+            ChordProgression sparse = new ChordProgression(
+                    List.of(chord("Fm7", 0, 0.5)), Confidence.of(0.8));
+            ChordProgression solid = new ChordProgression(
+                    List.of(chord("Fm7", 0, 240)), Confidence.of(0.8));
+
+            KeyEstimator.Estimate thin = KeyEstimator.estimate(sparse, 0, 240).orElseThrow();
+            KeyEstimator.Estimate full = KeyEstimator.estimate(solid, 0, 240).orElseThrow();
+
+            assertThat(thin.key().displayName())
+                    .as("the same key, from the same one chord")
+                    .isEqualTo(full.key().displayName());
+            assertThat(full.key().confidence().value()).isGreaterThan(0.9);
+            assertThat(thin.key().confidence().value())
+                    .as("half a second inside four minutes")
+                    .isLessThan(0.1);
         }
     }
 

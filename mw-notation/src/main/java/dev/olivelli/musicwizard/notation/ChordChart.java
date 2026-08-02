@@ -121,9 +121,8 @@ public final class ChordChart {
      * <p>Qualified rather than stated flat. On the audio path the key is a guess
      * from the estimated chords, and its weakest case -- a piece that shares
      * every chord with its relative minor -- is one the estimator reports at
-     * barely better than a coin flip. A reader who is going to transpose from
-     * this line needs to know that; one reading a MIDI import's declared key,
-     * which is certain, sees 100%.
+     * barely better than a coin flip. A reader about to transpose from this line
+     * needs to know which of the two they have.
      */
     private static String keyLine(Key key) {
         return String.format(Locale.ROOT, "Key    %s (%.0f%% confidence)\n",
