@@ -34,6 +34,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -44,16 +47,20 @@ import org.junit.rules.TemporaryFolder;
  * The transport against a real socket.
  *
  * <p>{@link GitHubReporterTest} asserts what the reporter asks for; this asserts
- * that what it asks for is what leaves the machine. The two are not the same
- * check, and the gap between them is where a header that is set but never sent
- * lives — {@code Content-Length} in particular is set by no line of this code
- * but by {@code setFixedLengthStreamingMode}, and losing it would turn a take
- * into a chunked upload buffered whole in memory first.
+ * that what it asks for is what leaves the machine, which is not the same check
+ * — a header can be set on a connection and never sent.
  *
- * <p>The server is thirty lines on a {@link ServerSocket} rather than a library
- * or the JDK's own: Android's unit-test compile classpath does not carry
- * {@code com.sun.net.httpserver}, and a mock web server would be a dependency
- * added to check that the app has none.
+ * <p>What {@code setFixedLengthStreamingMode} buys is <em>only</em> that the
+ * body is not buffered first. {@code HttpURLConnection} sends a
+ * {@code Content-Length} either way and chunks only if asked to, so no
+ * assertion about the headers can see the call at all;
+ * {@link #aBodyReachesTheSocketWhileItIsStillBeingWritten} is the one that can,
+ * and it is there because a take is the size of a take.
+ *
+ * <p>The server is a few dozen lines on a {@link ServerSocket} rather than a
+ * library or the JDK's own: Android's unit-test compile classpath does not
+ * carry {@code com.sun.net.httpserver}, and a mock web server would be a
+ * dependency added to check that the app has none.
  */
 public class UrlConnectionHttpTest {
 
@@ -68,6 +75,9 @@ public class UrlConnectionHttpTest {
     private volatile String seenRequestLine;
     private volatile Map<String, String> seenHeaders;
     private volatile byte[] seenBody;
+
+    /** Counted down as soon as one byte of a request body has been read. */
+    private final CountDownLatch firstBodyByte = new CountDownLatch(1);
 
     private volatile String replyStatus = "200 OK";
     private volatile byte[] replyBody = "{}".getBytes(StandardCharsets.UTF_8);
@@ -96,8 +106,13 @@ public class UrlConnectionHttpTest {
                 seenRequestLine = readLine(in);
                 for (String line = readLine(in); !line.isEmpty(); line = readLine(in)) {
                     int colon = line.indexOf(':');
-                    headers.put(line.substring(0, colon).toLowerCase(Locale.ROOT),
-                            line.substring(colon + 1).trim());
+                    // A header with no colon is not something HttpURLConnection
+                    // sends; skipping it beats an exception that would kill this
+                    // thread and leave the test hanging on connect.
+                    if (colon > 0) {
+                        headers.put(line.substring(0, colon).toLowerCase(Locale.ROOT),
+                                line.substring(colon + 1).trim());
+                    }
                 }
                 String length = headers.get("content-length");
                 byte[] body = new byte[length == null ? 0 : Integer.parseInt(length)];
@@ -107,6 +122,7 @@ public class UrlConnectionHttpTest {
                         break;
                     }
                     read += step;
+                    firstBodyByte.countDown();
                 }
                 seenHeaders = headers;
                 seenBody = body;
@@ -181,9 +197,57 @@ public class UrlConnectionHttpTest {
         assertEquals("POST /assets?name=take.flac HTTP/1.1", seenRequestLine);
         assertEquals("audio/flac", seenHeaders.get("content-type"));
         assertEquals(String.valueOf(audio.length), seenHeaders.get("content-length"));
-        assertNull("a fixed-length body must not be sent chunked",
-                seenHeaders.get("transfer-encoding"));
+        // True either way — this pins the shape GitHub is sent, not the
+        // streaming; the test below is the one that can see that.
+        assertNull(seenHeaders.get("transfer-encoding"));
         assertArrayEquals(audio, seenBody);
+    }
+
+    /**
+     * The body goes to the socket as it is written, not into memory first.
+     *
+     * <p>The only observable difference {@code setFixedLengthStreamingMode}
+     * makes, and the reason it is there: without it a take is held a second
+     * time in a heap already sized for the analysis. The headers cannot show
+     * it — {@code Content-Length} is sent either way — so this holds the write
+     * open and asks whether the far end has the first byte yet.
+     */
+    @Test
+    public void aBodyReachesTheSocketWhileItIsStillBeingWritten() throws IOException {
+        AtomicBoolean arrivedEarly = new AtomicBoolean();
+        Http.Body halting = new Http.Body() {
+            @Override
+            public String contentType() {
+                return "audio/flac";
+            }
+
+            @Override
+            public long length() {
+                return 2;
+            }
+
+            @Override
+            public void writeTo(OutputStream out) throws IOException {
+                out.write(1);
+                out.flush();
+                try {
+                    // Bounded, so a buffered body fails the assertion rather
+                    // than hanging the suite.
+                    arrivedEarly.set(firstBodyByte.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(e);
+                }
+                out.write(2);
+            }
+        };
+
+        new UrlConnectionHttp().send(
+                new Http.Request("POST", base + "/assets", new LinkedHashMap<>(), halting));
+
+        assertTrue("the body was buffered whole before anything was sent",
+                arrivedEarly.get());
+        assertArrayEquals(new byte[] {1, 2}, seenBody);
     }
 
     /** The comment's JSON arrives as UTF-8, non-ASCII included. */

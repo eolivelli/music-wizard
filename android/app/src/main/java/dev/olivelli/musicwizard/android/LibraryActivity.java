@@ -164,8 +164,13 @@ public final class LibraryActivity extends MwActivity {
                         Recording renamed = store.rename(recording, input.getText().toString());
                         // The store moves the cached analysis with the audio;
                         // the copy held in memory has to move with it too, and
-                        // below Android 35 that is the only copy there is.
+                        // that is often the only copy there is.
                         AnalysisJobs.get().moved(recording.wav(), renamed.wav());
+                        // And an unsent comment about this take, which is keyed
+                        // by the take's name and would otherwise be left behind
+                        // for whichever take is called that next.
+                        ReportSettings.moved(this, recording.displayName(),
+                                renamed.displayName());
                     } catch (IOException e) {
                         Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
                     }
@@ -182,8 +187,10 @@ public final class LibraryActivity extends MwActivity {
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
                     store.delete(recording);
                     // The analysis is keyed by path, and this path is now free
-                    // for another take to be renamed onto.
+                    // for another take to be renamed onto. The unsent comment
+                    // is keyed by the name, and so is the same hazard.
                     AnalysisJobs.get().forget(recording.wav());
+                    ReportSettings.forget(this, recording.displayName());
                     reload();
                 })
                 .show();

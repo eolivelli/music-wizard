@@ -56,12 +56,16 @@ public final class ReportJob {
     }
 
     /**
-     * Runs the send. Does not throw: every outcome is an {@link Outcome}.
+     * Runs the send, answering with an {@link Outcome} for every failure it can
+     * put into words.
      *
-     * <p>That is the contract the screen depends on. A send that ends without
-     * answering leaves the Send button disabled under "uploading…" for the life
-     * of the process, and every retry short-circuits — the same failure
-     * {@code AnalysisJobs} carries a paragraph about.
+     * <p>It is not an absolute: {@link #describe} builds a string, and a heap
+     * at the wall cannot, so a second {@link OutOfMemoryError} escapes past
+     * both catches. The caller must still guard — a send that ends without
+     * answering leaves the take marked in flight and Send disabled for the life
+     * of the process, which is the failure {@code AnalysisJobs} carries a
+     * paragraph about. What is promised here is that no <em>describable</em>
+     * failure gets out, and that the scratch file is gone either way.
      *
      * @param scratch where the compressed copy is written; deleted before this
      *                returns, whatever happened
@@ -86,17 +90,33 @@ public final class ReportJob {
                 // WAV is lossless too, only bigger. Why it happened travels with
                 // the outcome, because "no FLAC encoder" is one of several
                 // reasons and the screen would otherwise claim it every time.
-                encoderFailure = describe(t);
+                encoderFailure = safeDescribe(t);
             }
             GitHubReporter.Sent sent = reporter.send(releaseTag, inboxIssue,
                     GitHubReporter.assetName(takeName, sentAt, extension),
                     Http.Body.file(payload, contentType), report);
             return new Outcome(sent, null, encoderFailure);
         } catch (Throwable t) {
-            return new Outcome(null, describe(t), encoderFailure);
+            return new Outcome(null, safeDescribe(t), encoderFailure);
         } finally {
             //noinspection ResultOfMethodCallIgnored
             scratch.delete();
+        }
+    }
+
+    /**
+     * {@link #describe}, or null when even that failed.
+     *
+     * <p>Null is not nothing: the screen turns it into "the send stopped
+     * without saying why", which is worse than a reason and much better than a
+     * failure that escapes and answers nobody. What gets here is a throwable
+     * whose own {@code getMessage} throws.
+     */
+    private static String safeDescribe(Throwable failure) {
+        try {
+            return describe(failure);
+        } catch (Throwable t) {
+            return null;
         }
     }
 

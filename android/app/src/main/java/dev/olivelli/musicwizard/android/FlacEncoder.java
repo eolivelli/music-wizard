@@ -198,7 +198,7 @@ final class FlacEncoder {
      * before the frames are written would pass and the upload would be a file
      * with no {@code fLaC} magic and no {@code STREAMINFO}, reported as sent.
      */
-    private static byte[] betterHeader(byte[] current, ByteBuffer candidate) {
+    static byte[] betterHeader(byte[] current, ByteBuffer candidate) {
         if (candidate == null || candidate.remaining() == 0) {
             return current;
         }

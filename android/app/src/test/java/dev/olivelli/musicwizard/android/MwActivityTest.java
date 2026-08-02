@@ -49,7 +49,9 @@ public class MwActivityTest {
     private static final List<String> SCREENS = List.of(
             PACKAGE + ".RecordActivity",
             PACKAGE + ".LibraryActivity",
-            PACKAGE + ".ResultActivity");
+            PACKAGE + ".ResultActivity",
+            PACKAGE + ".ReportActivity",
+            PACKAGE + ".TokenActivity");
 
     @Test
     public void everyDeclaredActivityInheritsSystemBarPadding() throws Exception {

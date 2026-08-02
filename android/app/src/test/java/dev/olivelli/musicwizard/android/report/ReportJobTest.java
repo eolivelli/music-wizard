@@ -70,7 +70,6 @@ public class ReportJobTest {
         final List<Request> sent = new ArrayList<>();
         final List<byte[]> bodies = new ArrayList<>();
         final Deque<Response> replies = new ArrayDeque<>();
-        RuntimeException blowUp;
 
         FakeHttp(Response... scripted) {
             for (Response reply : scripted) {
@@ -86,9 +85,6 @@ public class ReportJobTest {
                 request.body().writeTo(captured);
             }
             bodies.add(captured.toByteArray());
-            if (blowUp != null) {
-                throw blowUp;
-            }
             return replies.removeFirst();
         }
     }
@@ -186,9 +182,6 @@ public class ReportJobTest {
      */
     @Test
     public void anErrorWhileUploadingIsReportedRatherThanThrown() throws IOException {
-        FakeHttp http = workingHub();
-        http.blowUp = null;
-
         ReportJob.Outcome outcome = ReportJob.run((in, out) -> {
             try (OutputStream stream = new FileOutputStream(out)) {
                 stream.write(new byte[] {1});
@@ -220,6 +213,32 @@ public class ReportJobTest {
         assertTrue(outcome.failure(), outcome.failure().contains("Bad credentials"));
         assertNull("the FLAC was written, so nothing failed to encode",
                 outcome.encoderFailure());
+        assertFalse(scratch.exists());
+    }
+
+    /**
+     * A failure that cannot be described is still an outcome.
+     *
+     * <p>{@code describe} builds a string, which is exactly what a heap at the
+     * wall cannot do, so the throwable it is handed can throw again on the way
+     * out. The screen turns a null reason into "the send stopped without saying
+     * why"; what must not happen is the job escaping and answering nobody.
+     */
+    @Test
+    public void anIndescribableFailureIsStillAnOutcome() {
+        ReportJob.Outcome outcome = run((in, out) -> {
+            throw new Error() {
+                @Override
+                public String getMessage() {
+                    throw new IllegalStateException("not even this");
+                }
+            };
+        }, workingHub());
+
+        // The encoder failed indescribably; the WAV still went, so the send
+        // itself worked.
+        assertNotNull(outcome.sent());
+        assertNull(outcome.encoderFailure());
         assertFalse(scratch.exists());
     }
 
