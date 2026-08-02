@@ -70,12 +70,14 @@ import org.junit.jupiter.api.Test;
  * a maintainer reading that file should know is why its columns are not this
  * file's. The gap between its root column and the figure this file measures used
  * to be the beat grid drifting, and #196 closed most of it. Its root and quality
- * columns come apart for two different reasons, and both are still open: the
- * estimator finds a root and the vocabulary cannot name the chord on it, which
- * is {@code fm7-vamp-110.mp3} throughout (#272); or it can and the seventh is
- * still missed, which #208 is a large net gain against and closed nowhere — it
- * costs a couple of points on the two benchmarks whose sevenths were already
- * being found, this recording among them.
+ * columns come apart for two different reasons: the estimator finds a root and
+ * the vocabulary cannot name the chord on it, which was {@code
+ * fm7-vamp-110.mp3} throughout until the minor seventh landed (#272) and is
+ * still the half-diminished and major-seventh bars of {@code bossa-cm.mp3}
+ * (#287); or it can and the seventh is still missed, which #208 is a large net
+ * gain against and closed nowhere — it costs a couple of points on the two
+ * benchmarks whose sevenths were already being found, this recording among
+ * them.
  *
  * <p>{@code bossa-cm.mp3} is the benchmark that is not about bars at all: the
  * tempo estimator reads that recording at about four thirds of its true rate,

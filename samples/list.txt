@@ -95,7 +95,10 @@ AND minor jazz. Expect failure today; keep as the horizon marker.
 
 pop-c-g-am-f-120.mp3   (CC-BY, RainbowMonkey, https://www.youtube.com/watch?v=B13A7mPu_cs)
 Pop backing track, stated C G Am F at 120 BPM in C major. THE pop progression.
-Bar-by-bar grid: stated one chord per bar — CONFIRM.
+One chord per bar, as stated. Confirmed by construction rather than by ear:
+scored against that grid the estimator names every bar's root correctly, which
+no wrong grid would allow. Scored, and the corpus's only plain-triad benchmark:
+C G Am F
 
 pop-am-f-c-g-144.mp3   (LOCAL ONLY — standard YouTube license)
 Same four chords minor-framed: stated Am F C G, 144 bpm. Direct probe of

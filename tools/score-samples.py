@@ -47,6 +47,14 @@ BENCHMARKS = {
         "Eb7",
     "bossa-cm.mp3":
         "Cm7 Cm7 Fm6 Fm6  D0 G7 Cm6 Cm6  Ebm7 Ab7 DbM7 DbM7  D0 G7 Cm6 D0-G7",
+    # The corpus's plain-triad recording, and the only benchmark here that can
+    # tell "found the seventh" from "reported one because nothing said not to"
+    # (#273). Its grid is the uploader's stated one chord per bar, confirmed by
+    # construction rather than by ear: read against that grid the estimator gets
+    # every bar's root right, so the grid the truth is written on is the one the
+    # recording holds.
+    "pop-c-g-am-f-120.mp3":
+        "C G Am F",
 }
 
 # The key each file is in, from samples/list.txt -- read off what it states,
