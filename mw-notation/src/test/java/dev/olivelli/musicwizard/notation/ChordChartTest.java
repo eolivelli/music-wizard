@@ -1015,13 +1015,12 @@ class ChordChartTest {
         // of the eight go.
         //
         // Declining to reduce a bar whose harmony moves faster than the counted
-        // beat would save this one, and it is not a clean rule: on the sample
-        // recordings a real share of changes is that fast against the beat their
-        // charts are spaced at, while none of them is against the tracked beat
-        // grid the estimator used. See ChartLayout.atHarmonicRhythm, and
-        // tools/baselines/score-chart.txt, which carries both columns per
-        // recording -- no figure for them is restated here, because the one that
-        // was went stale twice.
+        // beat would save this one, and it is not a clean rule: on some sample
+        // recordings a substantial minority of changes is that fast against the
+        // beat their charts are spaced at, while none of them is against the
+        // tracked beat grid the estimator used. See ChartLayout.atHarmonicRhythm,
+        // and tools/baselines/score-chart.txt, which carries both columns per
+        // recording.
         //
         // So this is a stated cost rather than a case to special-case. The model
         // still holds all eight, which the assertion above is on.
