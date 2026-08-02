@@ -15,8 +15,10 @@ for now; a web UI later.
 ```
 $ mw init song.mp3 && mw analyze song.mwz && mw render song.mwz
 
-| C           | G           | Am          | F           |
-| C           | G           | Am          | F           |
+Tags   [A] marks lines that print identically
+
+| C           | G           | Am          | F           |  [A]
+| C           | G           | Am          | F           |  [A]
 ```
 
 ## What to expect

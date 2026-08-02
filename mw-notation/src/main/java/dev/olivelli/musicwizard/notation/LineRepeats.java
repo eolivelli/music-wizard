@@ -41,10 +41,10 @@ import java.util.Optional;
  *
  * <p><b>A tag is a claim about its own line and nothing further.</b> Every
  * occurrence carries it, and none of them says a section starts, ends, or runs
- * on: "Section A" printed once over a returning chorus is a claim about all the
- * bars up to the next such heading, and on a real recording that came out as
- * one heading over more than a hundred bars (#218). What the estimate supports
- * is smaller and is stated instead -- this line is printed elsewhere too.
+ * on: "Section A" printed once over a returning chorus is a claim about every
+ * bar up to the next such heading, and on a real recording, where a repeat is
+ * found rarely, that is most of the chart (#218). What the estimate supports is
+ * smaller and is stated instead -- this line is printed elsewhere too.
  *
  * <p><b>Exact match only.</b> A real recording's chord estimate is noisy bar to
  * bar, and the chart's bar axis is one constant bar length over a recording

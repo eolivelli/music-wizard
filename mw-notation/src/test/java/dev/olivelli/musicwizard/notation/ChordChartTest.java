@@ -1544,7 +1544,7 @@ class ChordChartTest {
         Score once = fourChordSong(1);
 
         assertThat(textTags(once)).isEqualTo(".");
-        assertThat(ChordChart.toText(once)).doesNotContain("Repeats");
+        assertThat(ChordChart.toText(once)).doesNotContain("marks lines that print");
         assertThat(bracketsOf(ChordChart.toLilyPond(once))).isEmpty();
         assertThat(ChordChart.toLilyPond(once))
                 .as("no annotation, no context to carry it")

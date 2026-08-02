@@ -66,9 +66,10 @@ public final class ChordChart {
         List<String> lines = linesOf(bars);
         List<Optional<String>> tags = LineRepeats.tagsOf(lines);
         // Only when there is something to read: a legend for a notation the
-        // chart does not use is a line of the header spent on nothing.
+        // chart does not use is a line of the header spent on nothing. Named
+        // in seven characters like the rows above it, so the four line up.
         if (tags.stream().anyMatch(Optional::isPresent)) {
-            out.append("Repeats  [A] marks lines that print identically\n");
+            out.append("Tags   [A] marks lines that print identically\n");
         }
         out.append('\n');
 
@@ -302,13 +303,12 @@ public final class ChordChart {
      * A bracket over each line the chart prints more than once, labelled with
      * {@link LineRepeats}' tag for it.
      *
-     * <p>A bracket rather than a {@code \mark}, because a mark is a rehearsal
-     * mark: it names a point and scopes forward to the next one, so the page
-     * would announce a section running to wherever the next repeat happened to
-     * fall -- a hundred bars away on the recording #218 was filed from. A
-     * bracket states both of its ends, which is exactly as much as one repeated
-     * line supports. It runs from the line's first chord to its last, so two
-     * adjacent tagged lines read as two brackets rather than one.
+     * <p>A bracket rather than a {@code \mark}: a mark is a rehearsal mark and
+     * names a point, and a bracket states both of its ends, which is as much as
+     * one repeated line supports. See {@link LineRepeats} for why that
+     * difference is the whole of #218. The bracket runs from the line's first
+     * chord to its last, so two adjacent tagged lines read as two brackets
+     * rather than one.
      *
      * <p>It rides in a context of its own beside the chord names, and the
      * reason is the bar lines: {@code \startTextSpan} is a post-event, so
@@ -320,10 +320,12 @@ public final class ChordChart {
      * one. {@code Dynamics} is the context LilyPond provides for exactly this:
      * a lane of spanners and markup with no notes of its own.
      *
-     * <p>The spacers mirror the chord block cell for cell, through the same
-     * {@link LilyPondDuration#scaled} call, so the two timelines cannot come
-     * apart: a bracket ends on the moment its group's last chord starts because
-     * it is spelled against the same event. A tagged line always holds at least
+     * <p>The spacers mirror the chord block cell for cell, from the same cell
+     * list and through the same {@link LilyPondDuration#scaled} call, so that a
+     * bracket ends on the moment its line's last chord starts. That is two
+     * loops agreeing rather than one derivation, which is the shape {@link
+     * ChartLayout}'s own javadoc is about, so a test compares the two token for
+     * token. A tagged line always holds at least
      * two of them -- a line short of {@link #BARS_PER_LINE} bars prints fewer
      * bar lines, so it is never character-equal to a full one and never tagged,
      * and every bar holds at least one cell -- so no bracket is ever asked to
