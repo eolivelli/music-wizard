@@ -117,14 +117,24 @@ public final class BeatTracker {
      * assumption the recursion depends on.
      */
     public static Result track(OnsetEnvelope envelope) {
+        return track(envelope, HarmonicRhythm.none());
+    }
+
+    /**
+     * The same, with the recording's harmonic rhythm weighing every window's
+     * tempo candidates — see
+     * {@link TempoEstimator#estimate(OnsetEnvelope, HarmonicRhythm)}.
+     */
+    public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(rhythm, "rhythm");
         if (envelope.length() < 16 || envelope.isFlat()) {
             return new Result(List.of(), TempoEstimator.PREFERRED_TEMPO, Confidence.UNKNOWN);
         }
 
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
-            TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope);
+            TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope, rhythm);
             List<Double> beats = trackFixedTempo(envelope, tempo.beatsPerMinute(), 0, envelope.length());
             return new Result(beats, tempoOf(beats, tempo.beatsPerMinute()),
                     Confidence.clamped(tempo.strength()));
@@ -148,7 +158,8 @@ public final class BeatTracker {
             if (end - start < 16) {
                 break;
             }
-            TempoEstimator.Estimate seed = TempoEstimator.estimateWindow(envelope, start, end);
+            TempoEstimator.Estimate seed =
+                    TempoEstimator.estimateWindow(envelope, start, end, rhythm);
             bounds.add(new int[] {start, end});
             seeds.add(seed);
             // The tail window can be a fraction of a second -- the guard above
@@ -316,10 +327,12 @@ public final class BeatTracker {
      * before tracking — see {@link #divideOutSubdivision} — so the limitation
      * above is one the tracker is no longer asked to work around. A window whose
      * seed disagrees with the recording by something that is <em>not</em> a
-     * subdivision is left alone and still lands where the seed points, which is
-     * {@code bossa-cm.mp3}: its windows read three eighths of that recording's
-     * bar, which is #231 and is not an octave error at all. That is one and a
-     * half quarter notes, since the bar holds four.
+     * subdivision is left alone and still lands where the seed points. That was
+     * {@code bossa-cm.mp3}, whose windows read three eighths of the bar -- one
+     * and a half quarter notes, no subdivision and no octave -- until the
+     * harmonic-rhythm weighting removed the candidate itself (#231); the case
+     * this clause now serves is any window at a rate the table has no business
+     * correcting.
      *
      * <p>Median rather than mean so that one dropped or doubled beat does not
      * drag the answer.
