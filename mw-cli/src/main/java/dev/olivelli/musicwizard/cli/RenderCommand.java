@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
+import dev.olivelli.musicwizard.notation.LyricSheet;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -98,6 +99,7 @@ final class RenderCommand implements Callable<Integer> {
      */
     private enum Part {
         CHORDS("chords", null, RenderCommand::writeChordChart),
+        LYRICS("lyrics", null, RenderCommand::writeLyricSheet),
         VOICE("voice", "melody transcription is not implemented yet (#8)", null),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
@@ -166,6 +168,21 @@ final class RenderCommand implements Callable<Integer> {
             }
             if (this == CHORDS && score.chords().isEmpty()) {
                 return "this score holds no chord progression, " + MissingHarmony.explain(score);
+            }
+            // Gated on lyrics and not on harmony: a lyric sheet with no chords
+            // is still a lyric sheet, which is exactly the case MissingHarmony's
+            // javadoc names when it says this output needs neither a chord
+            // progression nor a note track to be worth printing.
+            //
+            // Names no source kind, for the reason the rest of this method does
+            // not: what would fill this field differs by path -- recognition on
+            // one, lyric meta events on the other -- and this command cannot
+            // tell which score it is holding. Saying "from audio" here sent a
+            // MIDI user looking for the wrong missing stage, which is what
+            // RenderPartsTest.doesNotGuessAtProvenance exists to catch.
+            if (this == LYRICS && score.lyrics().isEmpty()) {
+                return "this score holds no lyrics; pass --lyrics to analyze with an"
+                        + " LRC file, since nothing produces them automatically yet (#9)";
             }
             return null;
         }
@@ -424,6 +441,29 @@ final class RenderCommand implements Callable<Integer> {
             throw new UncheckedIOException("could not write output", e);
         }
         return new Emitted(written, warnings);
+    }
+
+    /**
+     * Writes the chords-and-lyrics sheet.
+     *
+     * <p>Text only, and no {@link #engrave} call: the engraved sheet is #309,
+     * and until it lands there is no {@code .ly} for this part to hand over.
+     * That makes this the one emitter that does not go through {@code engrave},
+     * which its javadoc calls mandatory — the rule is about not forgetting to
+     * read the bar checks of a file you did engrave, and there is no such file
+     * here.
+     */
+    private static Emitted writeLyricSheet(
+            Workspace workspace, Score score, Optional<Path> lilypond) {
+        Path out = workspace.outputDirectory();
+        try {
+            Files.createDirectories(out);
+            Path txt = out.resolve("chords-lyrics.txt");
+            Files.writeString(txt, LyricSheet.toText(score));
+            return new Emitted(List.of(txt), List.of());
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write output", e);
+        }
     }
 
     /**

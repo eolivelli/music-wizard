@@ -50,18 +50,8 @@ public final class ChordChart {
             return "(no chords were found)\n";
         }
 
-        StringBuilder out = new StringBuilder();
-        score.title().ifPresent(title -> out.append(title).append('\n'));
-        score.artist().ifPresent(artist -> out.append(artist).append('\n'));
-        if (out.length() > 0) {
-            out.append('\n');
-        }
-
         List<ChartLayout.Bar> bars = ChartLayout.of(score);
-        TimeSignature meter = countedIn(score, bars);
-        out.append(tempoLine(score, meter));
-        out.append("Meter  ").append(meter).append('\n');
-        score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
+        StringBuilder out = new StringBuilder(header(score, bars));
 
         List<String> lines = linesOf(bars);
         List<Optional<String>> tags = LineRepeats.tagsOf(lines);
@@ -80,6 +70,35 @@ public final class ChordChart {
             tags.get(i).ifPresent(tag -> out.append("  [").append(tag).append(']'));
             out.append('\n');
         }
+        return out.toString();
+    }
+
+    /**
+     * The rows every text output opens with: title, artist, tempo, meter, key.
+     *
+     * <p>Shared rather than written twice. The two text files are two views of
+     * one score, and a reader holding them side by side must not find them
+     * disagreeing about the tempo — least of all in a compound meter, where
+     * {@link #tempoLine} and {@link #countedIn} between them decide a number
+     * that is wrong by half if either is skipped.
+     *
+     * <p>Takes the bars rather than computing them, because {@link #countedIn}
+     * answers from the chart's own first bar and a caller that already has them
+     * must not have them derived a second time. A score with no harmony yields
+     * an empty list and gets the piece's meter, which is the answer that case
+     * has always had.
+     */
+    static String header(Score score, List<ChartLayout.Bar> bars) {
+        StringBuilder out = new StringBuilder();
+        score.title().ifPresent(title -> out.append(title).append('\n'));
+        score.artist().ifPresent(artist -> out.append(artist).append('\n'));
+        if (out.length() > 0) {
+            out.append('\n');
+        }
+        TimeSignature meter = countedIn(score, bars);
+        out.append(tempoLine(score, meter));
+        out.append("Meter  ").append(meter).append('\n');
+        score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
         return out.toString();
     }
 
