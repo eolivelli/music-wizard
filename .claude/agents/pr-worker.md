@@ -154,6 +154,14 @@ unsure about. Two writing rules that keep review cheap:
 Invoke `pr-reviewer` with the PR number, branch, issue, and what earlier
 rounds established.
 
+**Start the round as soon as the branch is pushed. Do not wait for CI first.**
+The two are independent signals over the same commit and each takes minutes, so
+serialising them doubles the wall-clock cost of a round and buys nothing: a
+reviewer finding is worth having whether or not the checks have reported, and a
+red check does not invalidate a review, it only adds a finding. Watch CI while
+the round runs and fold both into one fix pass. This is parallelism *within* one
+PR, which is allowed; it is not licence to open a second PR.
+
 - **Round 1 is a full adversarial review** of the whole change.
 - **Later rounds are scoped to the delta**: the fixes and whatever they
   touched.
