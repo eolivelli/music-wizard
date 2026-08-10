@@ -181,9 +181,26 @@ D7 D7 A7 A7
 E7 D7 A7 E7
 
 bossa-cm.mp3
-Bossa nova in C minor, sixteen bars. The tempo estimator reads it at about
-four thirds of its true rate (#231), so there is no phase at which its bars can
-be right — every column it scores is bounded by that rather than by harmony.
+Bossa nova in C minor, sixteen bars, one chord to a bar. A bar here is half the
+bar tools/ScoreBeats.java assumes: the sixteen chords turn in half the 51.2 s
+cycle it records, so that harness counts them two to a bar and the rate it
+reports for this file is a half-bar rate (#322). Fitting the stated progression
+to the chroma rejects the longer reading outright, and the bass settles it —
+root then fifth, one turn to a bar here, which a bar twice as long could not
+hold on its halves (#302). The period itself is not restated here: that harness
+measures it, and a copy in this file would only go stale against it.
+
+The tracker's pulse is three eighths of a bar, so four of them span a bar and a
+half of the music — and not exactly, so the drawn bars drift through the music
+as well and no phase holds them (#231). What makes that pulse attractive is the
+comping figure: the clave runs three, three, four, three, three eighths across
+two bars, so four of its five accents sit three eighths apart and a steady
+three-eighth grid collects four in five. Every column this recording scores is
+bounded by that rather than by harmony.
+
+Some of its bars carry a chord that pitch class alone cannot tell from a chord
+on another root — Fm6 and Dm7b5 are the same four notes, and so are Cm6 and
+Am7b5. That is a ceiling on this recording rather than a defect, and it is #316.
   yt-dlp -x --audio-format mp3 -o samples/bossa-cm.mp3 \
     https://www.youtube.com/watch?v=7H7Xg6U7P5g
 
