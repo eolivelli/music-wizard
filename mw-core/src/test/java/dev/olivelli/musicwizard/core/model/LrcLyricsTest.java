@@ -100,12 +100,17 @@ class LrcLyricsTest {
             // A mistyped minute in an A2 tag put one line's end past several
             // later ones, and the sheet's cursor then handed it every chord they
             // should have had.
+            // The gap after the first line is a break, so the line takes the
+            // branch that reads its own word tags rather than simply ending at
+            // its successor -- which is where the clamp that stops it outliving
+            // them has to hold.
             Lyrics lyrics = LrcLyrics.parse("""
-                    [00:00.00]<00:00.00>held <01:00.00>oooon
-                    [00:10.00]next line
-                    [00:14.00]third
-                    [00:18.00]fourth
-                    [00:22.00]fifth
+                    [00:00.00]one
+                    [00:04.00]two
+                    [00:08.00]three
+                    [00:12.00]<01:39.00>solo carrier
+                    [01:40.00]after
+                    [01:44.00]later
                     """, 300.0);
 
             for (int i = 0; i + 1 < lyrics.lines().size(); i++) {
@@ -156,31 +161,11 @@ class LrcLyricsTest {
         }
 
         @Test
-        @DisplayName("a file with two natural line lengths keeps the longer ones")
-        void twoLineLengthsBothSurvive() {
-            // Short verse lines and chorus lines held longer. Both are ordinary
-            // and neither is a break.
-            Lyrics lyrics = LrcLyrics.parse("""
-                    [00:00.00]v1
-                    [00:02.00]v2
-                    [00:04.00]v3
-                    [00:06.00]v4
-                    [00:08.00]c1
-                    [00:13.00]c2
-                    [00:18.00]c3
-                    """, 200.0);
-
-            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(13.0);
-            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(18.0);
-        }
-
-        @Test
-        @DisplayName("lines differing by more than the break multiple are cut, and that is the trade")
-        void anExtremeRatioIsCutAndSaysSo() {
-            // The limitation, pinned rather than left to be rediscovered. No
-            // statistic over gaps alone can tell a chorus held eight times longer
-            // than the verse from a solo, and missing a solo is the worse of the
-            // two: it puts a whole instrumental section's harmony over one line.
+        @DisplayName("a held chorus keeps its lines, however much longer than the verse")
+        void aHeldChorusIsNotABreak() {
+            // Verse lines rattled off, chorus lines held eight times longer. The
+            // chorus gaps are as long as a solo's, and what separates them is
+            // that there are several in a row.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]v1
                     [00:01.00]v2
@@ -188,6 +173,26 @@ class LrcLyricsTest {
                     [00:03.00]v4
                     [00:04.00]c1
                     [00:12.00]c2
+                    [00:20.00]c3
+                    """, 200.0);
+
+            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(12.0);
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
+        @DisplayName("a lone long gap is a break even where a run of them is not")
+        void oneLongGapIsStillABreak() {
+            // The same shape with a single held line rather than a run of them.
+            // One long gap between short ones is what a solo looks like.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:01.00]v2
+                    [00:02.00]v3
+                    [00:03.00]v4
+                    [00:04.00]c1
+                    [00:12.00]v5
+                    [00:13.00]v6
                     """, 200.0);
 
             assertThat(lyrics.lines().get(4).endSeconds()).isLessThan(12.0);

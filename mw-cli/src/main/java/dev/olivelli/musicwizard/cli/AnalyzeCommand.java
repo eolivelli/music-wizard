@@ -250,58 +250,6 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The score with lyrics on it: from {@code --lyrics} when given, and
-     * otherwise carried across from the score already in the workspace.
-     *
-     * <p><b>Carried, not dropped.</b> Lyrics are the one thing in the score that
-     * no stage produces, so a run without the option has nothing to put there
-     * and would leave the field empty — which meant that correcting the tempo,
-     * the highest-value action this tool offers, silently discarded the lyrics
-     * supplied a moment earlier. That is the same reasoning {@link #titled}
-     * applies one method along: what the transcription cannot know, it must not
-     * overwrite. Passing {@code --lyrics} again replaces them.
-     *
-     * <p>Applied here rather than inside the transcription, and deliberately
-     * outside the cache: lyrics are supplied, not derived, so keying the
-     * analysis on them would throw away minutes of DSP every time a typo in the
-     * lyric file was corrected. What the cache holds stays a function of the
-     * recording and the options that shaped the listening — which is the
-     * property {@link #transcriptionKey} exists to protect, read from the other
-     * side.
-     *
-     * <p>A file that cannot be read, or that carries no lyrics, is a warning and
-     * not a failure. The analysis is the expensive thing and it has already
-     * succeeded; losing it over a mistyped path would be the same poor trade the
-     * cache writer is guarded against. {@link LrcLyrics#parse} is total for that
-     * reason too — a lyric file must not be able to raise past this method.
-     */
-    /**
-     * The score with lyrics on it: from {@code --lyrics} when given, and
-     * otherwise carried across from the score already in the workspace.
-     *
-     * <p><b>Carried, not dropped.</b> Lyrics are the one thing in the score that
-     * no stage produces, so a run without the option has nothing to put there
-     * and would leave the field empty — which meant that correcting the tempo,
-     * the highest-value action this tool offers, silently discarded the lyrics
-     * supplied a moment earlier. That is the same reasoning {@link #titled}
-     * applies one method along: what the transcription cannot know, it must not
-     * overwrite. Passing {@code --lyrics} again replaces them.
-     *
-     * <p>Applied here rather than inside the transcription, and deliberately
-     * outside the cache: lyrics are supplied, not derived, so keying the
-     * analysis on them would throw away minutes of DSP every time a typo in the
-     * lyric file was corrected. What the cache holds stays a function of the
-     * recording and the options that shaped the listening — which is the
-     * property {@link #transcriptionKey} exists to protect, read from the other
-     * side.
-     *
-     * <p>A file that cannot be read, or that carries no lyrics, is a warning and
-     * not a failure. The analysis is the expensive thing and it has already
-     * succeeded; losing it over a mistyped path would be the same poor trade the
-     * cache writer is guarded against. {@link LrcLyrics#parse} is total for that
-     * reason too — a lyric file must not be able to raise past this method.
-     */
-    /**
      * The lyrics already in this workspace's score, or none.
      *
      * <p>Guarded, and the guard is the point. {@code readScore} raises on a
@@ -333,6 +281,21 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
     }
 
+    /**
+     * The score with lyrics on it: from {@code --lyrics} when given, and
+     * otherwise {@link #carriedForward} from the workspace.
+     *
+     * <p>Applied outside the transcription cache. Lyrics are supplied rather
+     * than derived, so keying the analysis on them would throw away minutes of
+     * DSP every time a typo in the lyric file was corrected; what the cache holds
+     * stays a function of the recording and the options that shaped the
+     * listening.
+     *
+     * <p>A file that cannot be read, or that carries no lyrics, is a warning and
+     * not a failure — the analysis is the expensive thing and it has already
+     * succeeded. {@link LrcLyrics#parse} is total for the same reason: a lyric
+     * file must not be able to raise past this method.
+     */
     private Score withSuppliedLyrics(Workspace workspace, Score score) {
         if (lyricsFile == null) {
             return carriedForward(workspace, score);

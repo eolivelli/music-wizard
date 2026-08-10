@@ -48,7 +48,7 @@ import java.util.Objects;
 public final class LyricSheet {
 
     /**
-     * How wide a chord row may run before it wraps.
+     * How wide a chord row with no words beneath it may run before it wraps.
      *
      * <p>Seventy-five columns and a monospaced font is the whole of what the
      * chords-over-lyrics convention ever had written down — the 1997 archive
@@ -158,43 +158,32 @@ public final class LyricSheet {
      * see that two changes fall close together whereas a truncated symbol tells
      * them nothing at all.
      *
-     * <p>Pushing right is unbounded on its own — the words below do not limit it,
-     * because a line can hold more changes than it has letters — so the overflow
-     * past the end of the words wraps rather than running off the page.
+     * <p>The row is <b>never wrapped</b>, so it can run wider than the page when
+     * a line holds more changes than it has letters. Wrapping moves a symbol to
+     * column zero of a new row, and column zero is the line's <em>first</em>
+     * word — so
+     * whatever test decides when to wrap, the symbol it moves lands over a word
+     * it did not accompany. Guarding on where the symbol came from does not help,
+     * because the hazard is where it goes. A wide row is ugly; a chord over the
+     * wrong word is wrong, and placement is the whole of what this file offers
+     * over {@link ChordChart}.
      *
-     * <p><b>Only for a line that fits the page in the first place.</b> Wrapping
-     * moves a symbol to column zero, which reads as the chord on the line's
-     * <em>first</em> word, so it is only safe once the symbols being moved are
-     * ones that stand over no word at all. On a lyric line wider than
-     * {@link #ROW_COLUMNS} — ordinary, and not itself wrapped — every column is
-     * still a real word's, and wrapping would both misplace a chord and fail to
-     * bound the row, because the symbol after it pads straight back out. Such a
-     * row is left as wide as the words it belongs to. An over-wide row is the
-     * lesser failure; placement is what this file is for.
+     * <p>A row with no words beneath it has no such column to collide with, and
+     * {@link #appendChordsBefore} does wrap.
      *
-     * @return the row, or several separated by newlines, or empty for no chords
+     * @return the row, or empty when there are no chords
      */
     private static String chordRow(List<Placed> chords, Laid laid) {
-        boolean wrappable = laid.text().length() <= ROW_COLUMNS;
-        StringBuilder out = new StringBuilder();
         StringBuilder row = new StringBuilder();
         for (Placed chord : chords) {
-            String symbol = chord.symbol();
             int column = laid.columnAt(chord.seconds());
             int at = row.length() > 0 ? Math.max(column, row.length() + 1) : column;
-            boolean pastTheWords = at >= laid.text().length();
-            if (wrappable && pastTheWords && at + symbol.length() > ROW_COLUMNS
-                    && row.length() > 0) {
-                out.append(row).append('\n');
-                row.setLength(0);
-                at = 0;
-            }
             while (row.length() < at) {
                 row.append(' ');
             }
-            row.append(symbol);
+            row.append(chord.symbol());
         }
-        return out.append(row).toString();
+        return row.toString();
     }
 
     /**

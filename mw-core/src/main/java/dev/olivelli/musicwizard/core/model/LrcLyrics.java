@@ -146,8 +146,8 @@ public final class LrcLyrics {
         double shift = offsetSeconds;
         // Whole-file constants, so read once rather than per line.
         double[] gaps = gapsOf(timed);
-        double typicalLine = typicalLine(gaps);
-        double breakAfter = breakAfter(typicalLine);
+        double typicalLine = typicalLine(gaps.clone());
+        boolean[] isBreak = breaks(gaps, BREAK_MULTIPLE * typicalLine);
         List<LyricLine> lines = new ArrayList<>();
         for (int i = 0; i < timed.size(); i++) {
             Timed entry = timed.get(i);
@@ -168,11 +168,15 @@ public final class LrcLyrics {
             // have had.
             double lastTag = Math.min(lastTagIn(entry.body(), shift), next);
             // An ordinary line runs to its successor, however far above the
-            // typical length it sits. Only an outlying gap -- and the open end
-            // after the last line, whose gap is infinite -- is cut back to a
-            // plausible length, leaving the remainder as the instrumental it is.
-            double end = next - start > breakAfter
-                    ? Math.min(next, plausibleEnd(start, lastTag, typicalLine, recordingSeconds))
+            // typical length it sits. Only the silence of a break -- and the
+            // open end after the last line, which has no successor at all -- is
+            // cut back to a plausible length, leaving the remainder as the
+            // instrumental it is.
+            // The last entry has no gap and so no entry in isBreak; it is cut
+            // for the stronger reason that nothing follows it to end it.
+            boolean cut = i + 1 >= timed.size() || isBreak[i];
+            double end = cut
+                    ? Math.min(next, plausibleEnd(start, lastTag, typicalLine))
                     : next;
             // The recording bounds every line, not only the last: a file timed
             // against a longer edit of the song runs past the end of this one.
@@ -216,21 +220,18 @@ public final class LrcLyrics {
      * would carry the whole solo's harmony, and the closing line of a file
      * covering one verse would carry the rest of the song.
      *
-     * <p>So a line whose successor is an outlying distance away — see {@link
-     * #breakAfter} — lasts as long as a line typically does in this file,
-     * measured from the last moment the line itself times, and never runs past
-     * the recording. An ordinary line is not touched: it still ends where the
-     * next one begins.
+     * <p>So a line followed by a break — see {@link #breaks} — lasts as long as
+     * a line typically does in this file, measured from the last moment the line
+     * itself times. An ordinary line is not touched: it still ends where the next
+     * one begins. The recording's own end bounds both, and is the caller's to
+     * apply so that only one place reads it.
      */
-    private static double plausibleEnd(double start, double lastTag, double typicalLine,
-                                       double recordingSeconds) {
+    private static double plausibleEnd(double start, double lastTag, double typicalLine) {
         // Measured from the last thing the line itself times, not from its
         // start: a word tag is the file stating that the line was still being
         // sung then, so a nominal length counted from the start could end before
         // the line's own last word begins.
-        double end = Math.max(start, lastTag) + typicalLine;
-        boolean bounded = Double.isFinite(recordingSeconds) && recordingSeconds > start;
-        return bounded ? Math.min(end, recordingSeconds) : end;
+        return Math.max(start, lastTag) + typicalLine;
     }
 
     /** The last word tag in a line's text, or the line's start when it has none. */
@@ -244,13 +245,12 @@ public final class LrcLyrics {
         return last;
     }
 
-    /** Every gap between consecutive timestamps, sorted. */
+    /** Every gap between consecutive timestamps, in file order. */
     private static double[] gapsOf(List<Timed> timed) {
         double[] gaps = new double[Math.max(0, timed.size() - 1)];
         for (int i = 0; i < gaps.length; i++) {
             gaps[i] = timed.get(i + 1).start() - timed.get(i).start();
         }
-        java.util.Arrays.sort(gaps);
         return gaps;
     }
 
@@ -265,36 +265,44 @@ public final class LrcLyrics {
         if (gaps.length == 0) {
             return NOMINAL_LINE_SECONDS;
         }
-        double median = gaps[gaps.length / 2];
+        java.util.Arrays.sort(gaps);
+        // The lower of the two middle values on an even count. The upper one is
+        // a break in a file that is half breaks, and a typical line read off a
+        // break makes every break look ordinary.
+        double median = gaps[(gaps.length - 1) / 2];
         return median > 0 ? median : NOMINAL_LINE_SECONDS;
     }
 
     /**
-     * The gap above which the silence after a line is an instrumental break
-     * rather than part of the line.
+     * Which gaps are instrumental breaks rather than the end of a line.
      *
-     * <p>A line normally runs until the next one starts. Cutting every line at
-     * the typical length instead would be wrong for the longer half of an
-     * ordinary file, because the typical length is a median and half the lines
-     * exceed it: hand-timed lyrics jitter, and both that and a truncated line
-     * grow a false instrumental break in the middle of a verse.
+     * <p>Two things have to be true. The gap is <b>long</b> — more than
+     * {@link #BREAK_MULTIPLE} typical lines — and it is <b>alone</b>: neither
+     * neighbour in file order is long too.
      *
-     * <p>A plain multiple of the median, because the median is what outliers
-     * cannot move. A threshold read off the spread of the gaps — a quantile
-     * fence — is pushed <em>up</em> by the very gaps it exists to find, so two
-     * breaks in one file hide each other, and its quantile indices degenerate on
-     * the short files that are most common. This has one behaviour at every
-     * length and none to get wrong.
+     * <p>Length on its own cannot decide it. A chorus whose lines are held far
+     * longer than the verse's produces gaps as long as a solo does, and sorting
+     * them destroys the one thing that separates the two: <b>a held chorus is
+     * several long gaps in a row, and a solo is one long gap between short
+     * ones.</b> Cutting on length alone truncates every chorus line and grows a
+     * false break inside the chorus; not cutting at all puts a whole solo's
+     * harmony over the line before it.
      *
-     * <p>The limitation is a file holding two natural line lengths that differ
-     * by more than this multiple — verse lines rattled off and chorus lines
-     * held far longer. Its chorus lines are cut and the sheet grows a break row
-     * inside the chorus. That is a misread of where a stanza ends, not a lost or
-     * misplaced word, and no statistic over gaps alone can tell that file from
-     * one with a solo in it.
+     * <p>A run of long gaps at the very start or end of a file has only one
+     * neighbour, and one is enough — a lone long gap is a break wherever it sits.
      */
-    private static double breakAfter(double typicalLine) {
-        return BREAK_MULTIPLE * typicalLine;
+    private static boolean[] breaks(double[] gaps, double breakAfter) {
+        boolean[] longGap = new boolean[gaps.length];
+        for (int i = 0; i < gaps.length; i++) {
+            longGap[i] = gaps[i] > breakAfter;
+        }
+        boolean[] isBreak = new boolean[gaps.length];
+        for (int i = 0; i < gaps.length; i++) {
+            boolean neighbourIsLong = (i > 0 && longGap[i - 1])
+                    || (i + 1 < gaps.length && longGap[i + 1]);
+            isBreak[i] = longGap[i] && !neighbourIsLong;
+        }
+        return isBreak;
     }
 
     /** A run of text with the time it starts at, and whether a tag said so. */
