@@ -62,6 +62,13 @@ is a useful handover, and it has been done here to good effect.
 
 ## Step 0 — Isolation
 
+**One PR in flight per session.** Carry one issue from triage to merge and do
+not start a second in the same session; several PRs at once is what several
+sessions are for. So another session's open PR is not a reason to wait — but
+it is a reason to expect `origin/main` to move under you, which is what the
+re-sync before the final review round is for, and a reason to stay inside your
+own module footprint where you can.
+
 Work in a dedicated git worktree with a dedicated local Maven repository:
 
 ```sh
