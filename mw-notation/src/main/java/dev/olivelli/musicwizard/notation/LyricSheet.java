@@ -37,25 +37,25 @@ import java.util.Objects;
  * them would give a file that is worse at both — and would break every reader of
  * {@code chords.txt}, which includes the measurement harness.
  *
- * <p><b>No bar lines and no beat axis.</b> Placement here is by time and column,
- * which is all the format has ever offered: the convention has no grammar and
- * never had one, and the only thing ever written down about it is that the file
- * is monospaced. That is a feature for this stage — a syllable needs the note it
- * is sung on before it can go on a beat (#150), and nothing here pretends
- * otherwise. Engraving, where a syllable does have to land on a bar line, is
- * #309.
+ * <p><b>No bar lines and no beat axis.</b> Placement here is by time and column.
+ * That suits this stage — a syllable needs the note it is sung on before it can
+ * go on a beat (#150) — and it is also why the sheet does not apply the
+ * bar-level reduction the chart does: {@code ChartLayout} decides how many
+ * chords a <em>bar</em> can hold, and there are no bars here. The sheet prints
+ * every change; the chart prints what fits. Engraving, where a syllable does
+ * have to land on a bar line, is #309.
  */
 public final class LyricSheet {
 
     /**
-     * How wide a chord row with no words under it may run.
+     * How wide a chord row may run before it wraps.
      *
      * <p>Seventy-five columns and a monospaced font is the whole of what the
      * chords-over-lyrics convention ever had written down — the 1997 archive
-     * submission rules that named the {@code .crd} file. The geometry was never
-     * specified anywhere, but the width was, so it is worth keeping.
+     * submission rules that named the {@code .crd} file. Where a symbol sits
+     * was never specified anywhere; how wide the page is, was.
      */
-    private static final int BREAK_COLUMNS = 75;
+    private static final int ROW_COLUMNS = 75;
 
     private LyricSheet() {
     }
@@ -117,13 +117,10 @@ public final class LyricSheet {
      * Prints the chords falling before a moment as rows with no words under
      * them, and returns the index of the first chord after them.
      *
-     * <p>Wrapped, unlike a chord row over a line, whose width the words it sits
-     * above already bound. Nothing bounds this one: an instrumental stretch — or
-     * a lyric file that covers only the first verse, which is the ordinary case
-     * while lyrics are supplied by hand — leaves every remaining change with
-     * nowhere else to go. On a real recording that ran to hundreds of symbols on
-     * one line. The width is the one thing the chords-over-lyrics convention has
-     * ever actually specified: monospaced, and no wider than a terminal.
+     * <p>Wrapped at {@link #ROW_COLUMNS}. Nothing else bounds it: an
+     * instrumental stretch, or the tail of a song whose supplied lyrics cover
+     * only the first verse, leaves every remaining change with nowhere else to
+     * go.
      */
     private static int appendChordsBefore(StringBuilder out, List<Placed> chords, int from,
                                           double untilSeconds) {
@@ -138,7 +135,7 @@ public final class LyricSheet {
         for (int i = from; i < next; i++) {
             String symbol = chords.get(i).symbol();
             if (row.length() > 0) {
-                if (row.length() + 1 + symbol.length() > BREAK_COLUMNS) {
+                if (row.length() + 1 + symbol.length() > ROW_COLUMNS) {
                     out.append(row).append('\n');
                     row.setLength(0);
                 } else {
@@ -160,20 +157,35 @@ public final class LyricSheet {
      * is correct: two chord symbols cannot occupy one column, and a reader can
      * see that two changes fall close together whereas a truncated symbol tells
      * them nothing at all.
+     *
+     * <p>Pushing right is unbounded on its own — the words below do not limit it,
+     * because a line can hold more changes than it has letters — so the row wraps
+     * at {@link #ROW_COLUMNS} like any other. A wrapped continuation is not
+     * aligned to anything: it holds the symbols that ran off the end of the
+     * words, and there is nothing under them to align to.
+     *
+     * @return the row, or several separated by newlines, or empty for no chords
      */
     private static String chordRow(List<Placed> chords, Laid laid) {
+        StringBuilder out = new StringBuilder();
         StringBuilder row = new StringBuilder();
         for (Placed chord : chords) {
+            String symbol = chord.symbol();
             int at = laid.columnAt(chord.seconds());
             if (row.length() > 0) {
                 at = Math.max(at, row.length() + 1);
             }
+            if (at + symbol.length() > ROW_COLUMNS && row.length() > 0) {
+                out.append(row).append('\n');
+                row.setLength(0);
+                at = 0;
+            }
             while (row.length() < at) {
                 row.append(' ');
             }
-            row.append(chord.symbol());
+            row.append(symbol);
         }
-        return row.toString();
+        return out.append(row).toString();
     }
 
     /**

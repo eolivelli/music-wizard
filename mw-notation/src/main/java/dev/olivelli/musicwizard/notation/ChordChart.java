@@ -82,11 +82,11 @@ public final class ChordChart {
      * {@link #tempoLine} and {@link #countedIn} between them decide a number
      * that is wrong by half if either is skipped.
      *
-     * <p>Takes the bars rather than computing them, because {@link #countedIn}
-     * answers from the chart's own first bar and a caller that already has them
-     * must not have them derived a second time. A score with no harmony yields
-     * an empty list and gets the piece's meter, which is the answer that case
-     * has always had.
+     * <p>Takes the bars because {@link #countedIn} answers from the chart's own
+     * first bar rather than from the piece's meter, and the two differ whenever
+     * the harmony starts after a meter change. A score with no harmony yields an
+     * empty list and gets the piece's meter, which is the answer that case has
+     * always had.
      */
     static String header(Score score, List<ChartLayout.Bar> bars) {
         StringBuilder out = new StringBuilder();

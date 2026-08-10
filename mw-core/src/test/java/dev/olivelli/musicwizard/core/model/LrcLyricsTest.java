@@ -195,13 +195,77 @@ class LrcLyricsTest {
         }
 
         @Test
-        @DisplayName("two fraction digits are hundredths and three are milliseconds")
-        void fractionDigitsDecideTheScale() {
-            Lyrics hundredths = LrcLyrics.parse("[00:01.5]x\n[00:09.00]y\n", RECORDING);
-            Lyrics millis = LrcLyrics.parse("[00:01.500]x\n[00:09.00]y\n", RECORDING);
+        @DisplayName("the fraction is read as a decimal, at one, two or three digits")
+        void fractionIsADecimal() {
+            assertThat(LrcLyrics.parse("[00:01.5]x\n[00:09.00]y\n", RECORDING)
+                    .lines().get(0).startSeconds()).isEqualTo(1.5);
+            assertThat(LrcLyrics.parse("[00:01.50]x\n[00:09.00]y\n", RECORDING)
+                    .lines().get(0).startSeconds()).isEqualTo(1.5);
+            assertThat(LrcLyrics.parse("[00:01.500]x\n[00:09.00]y\n", RECORDING)
+                    .lines().get(0).startSeconds()).isEqualTo(1.5);
+            assertThat(LrcLyrics.parse("[00:01.05]x\n[00:09.00]y\n", RECORDING)
+                    .lines().get(0).startSeconds()).isEqualTo(1.05);
+        }
 
-            assertThat(hundredths.lines().get(0).startSeconds()).isEqualTo(1.5);
-            assertThat(millis.lines().get(0).startSeconds()).isEqualTo(1.5);
+        @Test
+        @DisplayName("an offset that is not a finite number is ignored, not propagated")
+        void nonFiniteOffsetIsIgnored() {
+            // Double.parseDouble accepts these, and a non-finite shift reaches
+            // LyricWord's constructor, which rejects it -- out of a public
+            // parser, past the caller's read guard, after the analysis it was
+            // decorating had already succeeded.
+            for (String bad : new String[] {"NaN", "-Infinity", "Infinity", "-1e999", "1e999"}) {
+                Lyrics lyrics = LrcLyrics.parse(
+                        "[offset:" + bad + "]\n[00:10.00]sung\n[00:20.00]again\n", RECORDING);
+
+                assertThat(lyrics.lines()).as(bad).hasSize(2);
+                assertThat(lyrics.lines().get(0).startSeconds()).as(bad).isEqualTo(10.0);
+            }
+        }
+
+        @Test
+        @DisplayName("a byte order mark does not eat the first line")
+        void byteOrderMarkIsStripped() {
+            // What Windows editors write by default, and LRC is largely authored
+            // on them. Left in place it defeats the tag match on line one -- and
+            // if that line is the offset tag, the whole lyric silently moves.
+            Lyrics lyrics = LrcLyrics.parse(
+                    "\uFEFF[offset:+2000]\n[00:10.00]first\n[00:20.00]second\n", RECORDING);
+
+            assertThat(lyrics.lines()).hasSize(2);
+            assertThat(lyrics.lines().get(0).startSeconds()).isEqualTo(8.0);
+            assertThat(lyrics.lines().get(0).text()).isEqualTo("first");
+        }
+
+        @Test
+        @DisplayName("repeated line tags may be separated by spaces")
+        void spacedRepeatTagsBothCount() {
+            Lyrics lyrics = LrcLyrics.parse(
+                    "[00:10.00] [00:20.00]chorus\n[00:30.00]verse\n", RECORDING);
+
+            assertThat(lyrics.lines()).hasSize(3);
+            // Not "[00:20.00]chorus": a tag left inside the body prints as a word.
+            assertThat(lyrics.lines().get(0).text()).isEqualTo("chorus");
+            assertThat(lyrics.lines().get(1).startSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
+        @DisplayName("an instrumental gap is not part of the line before it")
+        void aLongGapIsNotPartOfTheLine() {
+            // Four-second lines, then a minute of solo before the next. Reading
+            // the line as lasting until its successor makes the whole solo part
+            // of it, and everything asking which chords fall inside the line
+            // then answers with the solo's.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]one
+                    [00:04.00]two
+                    [00:08.00]three
+                    [01:08.00]after the solo
+                    """, 200.0);
+
+            assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(12.0);
+            // An ordinary line is still bounded by its successor.
+            assertThat(lyrics.lines().get(0).endSeconds()).isEqualTo(4.0);
         }
 
         @Test

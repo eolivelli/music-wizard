@@ -58,8 +58,8 @@ public final class LrcLyrics {
      */
     private static final Confidence SPREAD_WORD = Confidence.of(0.5);
 
-    /** How long the last line is given when nothing says, in seconds. */
-    private static final double TRAILING_LINE_SECONDS = 4.0;
+    /** How long a line is taken to last when the file gives nothing to learn from. */
+    private static final double NOMINAL_LINE_SECONDS = 4.0;
 
     /** {@code [mm:ss.xx]}, also accepting {@code :} for the fraction and 1-3 digits. */
     private static final Pattern LINE_TAG =
@@ -90,6 +90,14 @@ public final class LrcLyrics {
         Objects.requireNonNull(text, "text");
 
         double offsetSeconds = 0;
+        // A byte order mark is not whitespace, so strip() leaves it on the first
+        // line and the tag there stops matching at position zero. The line is
+        // then dropped in silence -- and if it was the [offset:] tag, the whole
+        // lyric moves. Editors on Windows write this mark by default and LRC is
+        // largely authored on them.
+        if (text.startsWith("\uFEFF")) {
+            text = text.substring(1);
+        }
         List<Timed> timed = new ArrayList<>();
 
         for (String raw : text.split("\\R")) {
@@ -107,7 +115,10 @@ public final class LrcLyrics {
             Matcher tag = LINE_TAG.matcher(line);
             List<Double> starts = new ArrayList<>();
             int consumed = 0;
-            while (tag.find() && tag.start() == consumed) {
+            // Spaces between the repeats are tolerated. Requiring them to abut
+            // left the second tag inside the lyric text, so the sheet printed
+            // the timestamp as though it were a word.
+            while (tag.find(consumed) && line.substring(consumed, tag.start()).isBlank()) {
                 starts.add(secondsOf(tag.group(1), tag.group(2), tag.group(3)));
                 consumed = tag.end();
             }
@@ -139,10 +150,12 @@ public final class LrcLyrics {
                 continue;
             }
             double start = Math.max(0, entry.start() - shift);
-            double end = i + 1 < timed.size()
+            double next = i + 1 < timed.size()
                     ? Math.max(start, timed.get(i + 1).start() - shift)
-                    : trailingEnd(start, lastTagIn(entry.body(), shift),
-                            typicalLine(timed), recordingSeconds);
+                    : Double.POSITIVE_INFINITY;
+            double end = Math.min(next,
+                    plausibleEnd(start, lastTagIn(entry.body(), shift),
+                            typicalLine(timed), recordingSeconds));
             List<LyricWord> words = wordsOf(entry.body(), start, end, shift);
             if (!words.isEmpty()) {
                 lines.add(new LyricLine(words, weakest(words)));
@@ -169,18 +182,26 @@ public final class LrcLyrics {
     }
 
     /**
-     * Where the last line ends, which nothing in the file states.
+     * The longest a line can plausibly last, which nothing in the file states.
      *
-     * <p>It lasts as long as a line typically does in this file, and never runs
-     * past the recording. <b>Not to the end of the recording</b>, which is the
-     * obvious reading of "the display clears here" and is wrong for a lyric: a
-     * file covering only the first verse would give its closing line the whole
-     * remaining song, and everything that asks which chords fall inside a line
-     * would then answer with all of them. Measured on a real recording, that put
-     * some two hundred chord changes over four words.
+     * <p>An LRC times where each line <em>begins</em> and nothing else, so the
+     * obvious reading — a line runs until the next one starts, and the last runs
+     * to the end of the recording — makes every instrumental stretch part of the
+     * line before it. That is harmless to a player, which only wants to know
+     * what to display; it is wrong for anything asking which chords fall inside
+     * a line, because the answer becomes all of them. A verse line before a solo
+     * would carry the whole solo's harmony, and the closing line of a file
+     * covering one verse would carry the rest of the song.
+     *
+     * <p>So a line lasts at most as long as a line typically does in this file,
+     * measured from the last moment the line itself times, and never runs past
+     * the recording. The caller takes the earlier of this and the next line's
+     * start, so an ordinary line is still bounded by its successor and only an
+     * implausibly long one is cut — leaving the remainder as the instrumental it
+     * is.
      */
-    private static double trailingEnd(double start, double lastTag, double typicalLine,
-                                      double recordingSeconds) {
+    private static double plausibleEnd(double start, double lastTag, double typicalLine,
+                                       double recordingSeconds) {
         // Measured from the last thing the line itself times, not from its
         // start: a word tag is the file stating that the line was still being
         // sung then, so a nominal length counted from the start could end before
@@ -210,7 +231,7 @@ public final class LrcLyrics {
      */
     private static double typicalLine(List<Timed> timed) {
         if (timed.size() < 2) {
-            return TRAILING_LINE_SECONDS;
+            return NOMINAL_LINE_SECONDS;
         }
         double[] gaps = new double[timed.size() - 1];
         for (int i = 0; i < gaps.length; i++) {
@@ -218,7 +239,7 @@ public final class LrcLyrics {
         }
         java.util.Arrays.sort(gaps);
         double median = gaps[gaps.length / 2];
-        return median > 0 ? median : TRAILING_LINE_SECONDS;
+        return median > 0 ? median : NOMINAL_LINE_SECONDS;
     }
 
     /** A run of text with the time it starts at, and whether a tag said so. */
@@ -316,7 +337,13 @@ public final class LrcLyrics {
             return null;
         }
         try {
-            return Double.parseDouble(id.group(2).strip().replace("+", "")) / 1000.0;
+            double offset = Double.parseDouble(id.group(2).strip().replace("+", "")) / 1000.0;
+            // A finite shift or none. Double.parseDouble accepts "NaN" and
+            // "-Infinity", and an overlong decimal overflows to one, and a
+            // non-finite shift reaches LyricWord's constructor, which rejects it
+            // -- out of a public parser, past the caller's read guard, after the
+            // analysis it was decorating had already succeeded.
+            return Double.isFinite(offset) ? offset : null;
         } catch (NumberFormatException e) {
             return null;
         }
@@ -325,10 +352,6 @@ public final class LrcLyrics {
     private static double secondsOf(String minutes, String seconds, String fraction) {
         double value = Integer.parseInt(minutes) * 60 + Integer.parseInt(seconds);
         if (fraction != null && !fraction.isEmpty()) {
-            // Two digits are hundredths and three are milliseconds, which is the
-            // one place the dialects differ silently: read 5 as 0.05 in a
-            // hundredths file and 0.005 in a milliseconds one, and a lyric drifts
-            // by nothing anybody would notice -- so the digit count decides.
             value += Integer.parseInt(fraction) / Math.pow(10, fraction.length());
         }
         return value;

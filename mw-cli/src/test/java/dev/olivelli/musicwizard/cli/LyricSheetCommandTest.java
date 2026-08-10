@@ -184,6 +184,51 @@ class LyricSheetCommandTest {
     }
 
     @Test
+    @DisplayName("a later analyze without --lyrics keeps the lyrics already supplied")
+    void lyricsSurviveAReanalyze() throws IOException {
+        Path root = analysed(LRC);
+
+        // Correcting the tempo is the highest-value action the README names, and
+        // it must not silently discard the lyrics supplied a moment earlier.
+        CliRunner.Result again = CliRunner.run("analyze", root.toString(), "--tempo", "100");
+
+        assertThat(again.exitCode()).as(again.all()).isZero();
+        assertThat(Workspace.open(root).readScore().orElseThrow().lyrics().text())
+                .isEqualTo("one two\nthree four");
+    }
+
+    @Test
+    @DisplayName("an offset that is not a number does not cost the analysis")
+    void badOffsetDoesNotFailTheRun() throws IOException {
+        Path source = directory.resolve("nan.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 3.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("nan.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                .isZero();
+        Path lyrics = directory.resolve("nan.lrc");
+        Files.writeString(lyrics, "[offset:NaN]\n[00:00.50]one two\n[00:01.50]three\n");
+
+        CliRunner.Result analyze = CliRunner.run(
+                "analyze", root.toString(), "--lyrics", lyrics.toString());
+
+        // The DSP had already run. Losing the score and its cache entry over a
+        // malformed tag in a decoration is the trade this whole path avoids.
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(root.resolve("score/score.json")).exists();
+        assertThat(Workspace.open(root).readScore().orElseThrow().lyrics().isEmpty()).isFalse();
+    }
+
+    @Test
+    @DisplayName("the --parts help names lyrics as something that can be produced")
+    void helpNamesTheLyricsPart() {
+        CliRunner.Result help = CliRunner.run("render", "--help");
+
+        assertThat(help.all()).contains("lyrics");
+    }
+
+    @Test
     @DisplayName("lyrics are not baked into the transcription cache")
     void lyricsStayOutOfTheCache() throws IOException {
         Path root = analysed(LRC);

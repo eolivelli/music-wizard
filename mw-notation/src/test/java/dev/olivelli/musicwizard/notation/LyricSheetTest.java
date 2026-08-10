@@ -217,6 +217,28 @@ class LyricSheetTest {
     }
 
     @Test
+    @DisplayName("no row runs wider than the page, over words or without them")
+    void everyRowIsBounded() {
+        // Forty changes over four letters. The words below do not bound the row:
+        // a line can hold more changes than it has letters, and pushing colliding
+        // symbols right is unbounded on its own.
+        List<Object> spec = new ArrayList<>();
+        NoteLetter[] cycle = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        for (int i = 0; i < 40; i++) {
+            spec.add(cycle[i % 4]);
+            spec.add(i * 0.1);
+        }
+        Score score = song(60, spec.toArray())
+                .withLyrics(lrc("[00:00.00]<00:00.00>word\n", 8.0));
+
+        String sheet = LyricSheet.toText(score);
+
+        assertThat(sheet.lines()).allSatisfy(line ->
+                assertThat(line.length()).isLessThanOrEqualTo(75));
+        assertThat(sheet).contains("word");
+    }
+
+    @Test
     @DisplayName("nothing in the sheet can be read as a chord-chart bar line")
     void noLineLooksLikeABarLine() {
         Score score = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)

@@ -81,8 +81,9 @@ import picocli.CommandLine.Spec;
  * nothing engraved here could fail a bar check and the fact existed only in
  * {@code StaffNotation}'s output, which only {@code mw-it} engraved. #160 gave
  * the chord chart a {@code \time} and a bar check per bar, so a defect in the
- * one part this command writes today now reaches the user as this warning
- * instead of as a silently wrong page. No valid input produces one, which is
+ * one part this command engraves today now reaches the user as this warning
+ * instead of as a silently wrong page. The lyric sheet is text only and reaches
+ * none of this; engraving it is #309. No valid input produces one, which is
  * what the checks are for; what changed is the failure mode. A staff part
  * (#8, #10) adds a second source of it rather than the first.
  */
@@ -127,8 +128,8 @@ final class RenderCommand implements Callable<Integer> {
          * {@code switch} on the constant -- and a part marked implemented with no
          * branch to match would have been selected, produced nothing, and ended
          * the run with "Nothing could be written." and no reason: #82's defect
-         * reached from the inside. Unreachable while chords are the only
-         * implemented part, and reachable the moment #8 or #10 lands, which is
+         * reached from the inside. Unreachable while every implemented part has
+         * an emitter, and reachable the moment one is added without, which is
          * when nobody will be looking for it.
          */
         boolean isImplemented() {
@@ -177,9 +178,7 @@ final class RenderCommand implements Callable<Integer> {
             // Names no source kind, for the reason the rest of this method does
             // not: what would fill this field differs by path -- recognition on
             // one, lyric meta events on the other -- and this command cannot
-            // tell which score it is holding. Saying "from audio" here sent a
-            // MIDI user looking for the wrong missing stage, which is what
-            // RenderPartsTest.doesNotGuessAtProvenance exists to catch.
+            // tell which score it is holding.
             if (this == LYRICS && score.lyrics().isEmpty()) {
                 return "this score holds no lyrics; pass --lyrics to analyze with an"
                         + " LRC file, since nothing produces them automatically yet (#9)";
@@ -235,9 +234,10 @@ final class RenderCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
-            description = "Which parts to render: chords, voice, bass, piano. Only "
-                    + "chords can be produced today; naming any of the others reports "
-                    + "why it cannot. Defaults to every part that is implemented.")
+            description = "Which parts to render: chords, lyrics, voice, bass, piano. "
+                    + "Only chords and lyrics can be produced today; naming any of the "
+                    + "others reports why it cannot. Defaults to every part that is "
+                    + "implemented.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",

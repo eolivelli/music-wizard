@@ -188,7 +188,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
-        Score score = withSuppliedLyrics(titled(workspace, result.score()));
+        Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
@@ -243,8 +243,23 @@ final class AnalyzeCommand implements Callable<Integer> {
      * change keeps its untitled score until {@code analyze} runs again, which
      * costs nothing beyond a cache hit.
      */
+    private static Score titled(Workspace workspace, Score score) {
+        return score.withMetadata(
+                workspace.title().or(score::title).orElse(null),
+                workspace.artist().or(score::artist).orElse(null));
+    }
+
     /**
-     * The score with {@code --lyrics} applied, or unchanged when none was given.
+     * The score with lyrics on it: from {@code --lyrics} when given, and
+     * otherwise carried across from the score already in the workspace.
+     *
+     * <p><b>Carried, not dropped.</b> Lyrics are the one thing in the score that
+     * no stage produces, so a run without the option has nothing to put there
+     * and would leave the field empty — which meant that correcting the tempo,
+     * the highest-value action this tool offers, silently discarded the lyrics
+     * supplied a moment earlier. That is the same reasoning {@link #titled}
+     * applies one method along: what the transcription cannot know, it must not
+     * overwrite. Passing {@code --lyrics} again replaces them.
      *
      * <p>Applied here rather than inside the transcription, and deliberately
      * outside the cache: lyrics are supplied, not derived, so keying the
@@ -257,11 +272,16 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>A file that cannot be read, or that carries no lyrics, is a warning and
      * not a failure. The analysis is the expensive thing and it has already
      * succeeded; losing it over a mistyped path would be the same poor trade the
-     * cache writer is guarded against.
+     * cache writer is guarded against. {@link LrcLyrics#parse} is total for that
+     * reason too — a lyric file must not be able to raise past this method.
      */
-    private Score withSuppliedLyrics(Score score) {
+    private Score withSuppliedLyrics(Workspace workspace, Score score) {
         if (lyricsFile == null) {
-            return score;
+            return workspace.readScore()
+                    .map(Score::lyrics)
+                    .filter(existing -> !existing.isEmpty())
+                    .map(score::withLyrics)
+                    .orElse(score);
         }
         String text;
         try {
@@ -283,12 +303,6 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println("  read " + lyrics.lines().size() + " lyric lines from "
                 + lyricsFile.getFileName());
         return score.withLyrics(lyrics);
-    }
-
-    private static Score titled(Workspace workspace, Score score) {
-        return score.withMetadata(
-                workspace.title().or(score::title).orElse(null),
-                workspace.artist().or(score::artist).orElse(null));
     }
 
     // ------------------------------------------------------------------- cache
