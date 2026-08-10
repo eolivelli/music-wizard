@@ -151,16 +151,23 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *
      * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
      * for five of the seven, from the onset envelope's autocorrelation: 106.000,
-     * 105.000, 89.998, 89.999 and 74.944. The two vamps' 110 and 130 are not in
+     * 105.000, 89.998, 89.999 and 149.889. The two vamps' 110 and 130 are not in
      * it, and nothing committed sweeps this constant -- both are #245. So the
      * axis is re-runnable and the plateau below is not; those figures were taken
      * by hand and confirmed independently in review.
      *
+     * <p>The last of those was 74.944 until #322: that harness was counting the
+     * bossa's repeat as sixteen bars where it holds thirty-two, so the figure it
+     * printed was a half-bar rate. The pulse the sweep below is measured against
+     * is unmoved -- two thirds of 149.889 is four thirds of 74.944 -- so every
+     * percentage in it stands; only the unit it is named in has changed.
+     *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
      * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
-     * {@code bossa-cm.mp3}, inside 0.71% of four thirds of its tempo, which is
-     * the pulse its tracker is actually following (#231). <b>The plateau spans a
+     * {@code bossa-cm.mp3}, inside 0.71% of two thirds of the rate
+     * {@code ScoreBeats} prints for it, which is the pulse its tracker is
+     * actually following (#231). <b>The plateau spans a
      * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
      * evidence that this is not fitted to a handful of files.
      *
@@ -183,12 +190,12 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *       degrades further -- 465 kept and +0.76% at 0.04. One step up from
      *       that run, at 0.0525, it keeps 545 and reads +0.07%.
      *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
-     *       {@code bossa-cm.mp3} is tracked at four thirds of its true rate
-     *       (#231), so it carries a population of intervals about 4/3 of its
-     *       median -- 54 of its 501 sit between 1.30x and 1.36x -- and a band
-     *       reaching 1/3 lets them in. Against four thirds of ScoreBeats'
-     *       74.944: 0.33% out at the value chosen here, 0.71% at 0.30, then
-     *       2.82% at 0.325 and 3.91% at 0.35.
+     *       {@code bossa-cm.mp3} is tracked at two thirds of the rate
+     *       {@code ScoreBeats} prints for it (#231), so it carries a population
+     *       of intervals about 4/3 of its median -- 54 of its 501 sit between
+     *       1.30x and 1.36x -- and a band reaching 1/3 lets them in. Against
+     *       two thirds of ScoreBeats' 149.889: 0.33% out at the value chosen
+     *       here, 0.71% at 0.30, then 2.82% at 0.325 and 3.91% at 0.35.
      * </ul>
      */
     private static final double STEADY_BAND = 0.2;

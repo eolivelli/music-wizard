@@ -69,8 +69,16 @@ import java.util.Set;
  * measures 105.000 over 27.4285 s, robustly, and the discrepancy with the name
  * is unresolved. The other two state none: {@code g-blues-shuffle-cc.mp3}
  * measures 105.000 — the same rate, on a different recording in a different key
- * — and {@code bossa-cm.mp3} 74.944, and neither has anything to be checked
+ * — and {@code bossa-cm.mp3} 149.889, and neither has anything to be checked
  * against except its own plausibility.
+ *
+ * <p>That last one is the cautionary case, and its own plausibility is exactly
+ * what failed to catch it: it read 74.944 until #322, because the cycle held
+ * twice the bars this file declared for it, and 74.944 is a perfectly plausible
+ * bossa tempo. Nothing in this harness can find that — the autocorrelation
+ * measures the repeat, and how many bars are in one is a fact only the grid in
+ * {@code samples/list.txt} carries. A reference tempo here is a check on the
+ * tracker, never on the bar count it was derived from.
  *
  * <h2>The columns</h2>
  *
@@ -136,7 +144,11 @@ public final class ScoreBeats {
             new Job("blues-a-90bpm.mp3", 12, 24, 44),
             new Job("blues-shuffle-a-106bpm.mp3", 12, 20, 40),
             new Job("blues-e-90bpm.mp3", 12, 24, 44),
-            new Job("bossa-cm.mp3", 16, 24, 56));
+            // Thirty-two, not sixteen: the repeat this finds at 51.2 s holds two
+            // turns of the sixteen-chord progression in samples/list.txt, one
+            // chord to a bar. Counting it as sixteen bars made every beat figure
+            // for this row a half-bar figure -- see #322 for how that read.
+            new Job("bossa-cm.mp3", 32, 24, 56));
 
     /** Half the standard beat-tracking tolerance, either side. */
     private static final double TOLERANCE_SECONDS = 0.070;
@@ -235,8 +247,17 @@ public final class ScoreBeats {
      *
      * <p>The far search is bounded to a fraction of one beat so it cannot slide
      * onto the neighbouring cycle's peak, which is what an earlier version did
-     * on the bossa: its 16-bar cycle sits at 51.2 s and a wide window found the
-     * 15-bar repeat instead, reporting 74.94 BPM as 79.94.
+     * on the bossa: its repeat sits at 51.2 s and a wide window found the one a
+     * bar short instead, reporting the period as if the cycle were shorter than
+     * it is.
+     *
+     * <p>The period this returns is the cycle divided by {@link Job#barsPerCycle}
+     * times four, so <b>it is only a beat period if that count is right</b>. It
+     * was not for the bossa, whose repeat holds twice the bars it was declared
+     * with, and the figure printed for that row was consequently a half-bar
+     * period wearing a beat's name (#322). Nothing here can catch that: the
+     * autocorrelation finds the repeat, and how many bars are in it is a fact
+     * about the music that only the grid in {@code samples/list.txt} carries.
      */
     private static double referencePeriod(OnsetEnvelope envelope, Job job) {
         double[] strength = envelope.strength();
