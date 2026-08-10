@@ -140,3 +140,51 @@ also never recognises the sheet's Aadd9/C# slash-bass inversion --
 ChordEstimator does not appear to emit a bass note at all on this track,
 worth checking whether that is systematic. This is the best chart-to-
 external-reference agreement seen across every recording tried so far.
+
+generale.mp3
+
+"Generale" (Francesco De Gregori), 4:21. Italian singer-songwriter, acoustic
+guitar/strings ballad. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/generale.mp3 \
+    https://www.youtube.com/watch?v=C-G0QmbQNO4
+Reference chords (not remembered by ear; taken from a published fan
+transcription, Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/italiani/de-gregori-francesco/generale-2/
+-- not authoritative ground truth, an independent second read). Translated
+from Italian solfege (LA=A, RE=D, MI=E, FA#m=F#m, SIm=Bm): verses in A, moving
+A - D - A - F#m - Bm - A - E - A; the "Rit." tag lines give D A / D E A as the
+turnaround/link figure. Whole song in A major, five chords total: A, D, F#m,
+Bm, E.
+Run 2026-08-10. MW read 116.9 BPM in 4/4 and key A major (39% confidence).
+Chart vocabulary by total duration: A (49.5%), D (28.6%), E (9.7%), Bm/Bm7
+(5.7% combined), F#m/F#m7 (3.7% combined) -- exactly the five chords the
+Accordi e Spartiti sheet gives, in the same order of prominence, with the
+same tonic (A). Smaller passing/secondary-dominant colour (C#m, C#7, B7, G#,
+A7, C#, F7) reads as plausible diatonic/secondary harmony in A major (iii,
+V7/vi, V7/V) rather than noise. Only two N.C. spans, both under 0.6 s (one at
+the very start, one at 84.6 s) -- no trace of the #185 pathology. 87 spans
+over 261 s, median 3.56 s -- markedly less choppy than every earlier entry in
+this file (previous medians 1.2-1.35 s), closer to one chord change per bar.
+Confidence sits mostly 0.45-0.7 throughout, including the last 60 s (0.5-0.7,
+steady) -- no #196/#187 fade-out collapse; the only blemish is the very last
+chord, a 1 s Em at 0.35 confidence where the tonic A would be expected,
+consistent with the mild tail instability seen on other tracks but far
+smaller. The beat tracker double-times to ~220 BPM (an octave error) for the
+first ~13 s of rubato guitar intro before locking to a steady 110-130 BPM
+band for the remaining ~248 s -- a #233-shaped lead-in problem, but confined
+to the intro and not recurring at the end, unlike the drift seen on
+la-canzone-del-sole. Overall this is the closest chord-chart-to-published-
+chart match seen in this file, on par with islanda.
+Also tested the lyrics-under-chords feature (#309) landed this session, since
+nothing transcribes lyrics from audio yet (#9): fetched synced lyrics for
+this recording from the public LRCLIB database (a different album take,
+259 s vs this upload's 261.2 s, so timing is only approximately right) and
+ran `mw analyze --lyrics generale.lrc` then `mw render`. All 29 LRC lines
+were read and placed correctly under their matching lines of the chord chart
+in both chords-lyrics.txt and the engraved PDF -- checked by eye at 150 dpi,
+lyrics sit under the right chord symbols line by line for all four verses
+and the choruses, and the instrumental outro (bars ~100-116) correctly
+carries chords with no lyric line forced under it. No misalignment or
+garbled text found; the feature works as documented on a real Italian-
+language recording.
