@@ -79,6 +79,14 @@ class LyricEngravingTest {
         return score.withLyrics(LrcLyrics.parse(lrc, score.durationSeconds()));
     }
 
+    /** The same, with the lyrics tagged so their words are split into syllables. */
+    private static Score sungIn(String language, int bars, String lrc) {
+        Score score = sung(bars, lrc);
+        Lyrics tagged = new Lyrics(score.lyrics().lines(), language,
+                score.lyrics().confidence());
+        return score.withLyrics(tagged);
+    }
+
     /** The lines between {@code \lyricmode {} and its closing brace. */
     private static List<String> lyricBars(String lilyPond) {
         List<String> bars = new ArrayList<>();
@@ -343,6 +351,61 @@ class LyricEngravingTest {
 
         assertThat(bars.get(0)).isEqualTo("\\skip 1 |");
         assertThat(bars.get(1)).startsWith("\\skip 4 \"late\"");
+    }
+
+    @Test
+    @DisplayName("a word is split into the syllables it is sung on")
+    void wordsAreSplitIntoSyllables() {
+        Score score = sungIn("it", 4, "[00:00.00]<00:00.00>amore <00:02.00>canzone\n");
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).contains("\"a\"").contains("\"mo\"").contains("\"re\"");
+        assertThat(block).contains("\"can\"").contains("\"zo\"").contains("\"ne\"");
+        assertThat(block).doesNotContain("\"amore\"");
+    }
+
+    @Test
+    @DisplayName("syllables of one word are joined by hyphens, and the last is not")
+    void syllablesAreHyphenated() {
+        Score score = sungIn("it", 4, "[00:00.00]<00:00.00>amore <00:02.00>sole\n");
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).contains("-- \"mo\"").contains("-- \"re\"");
+        // "re" ends its word, so nothing hyphenates it to "so".
+        int re = block.indexOf("\"re\"");
+        int so = block.indexOf("\"so\"");
+        assertThat(block.substring(re, so)).doesNotContain("--");
+    }
+
+    @Test
+    @DisplayName("without a language the words stay whole")
+    void noLanguageNoSplit() {
+        // An LRC file does not state one, and splitting on the wrong language's
+        // rules is worse than not splitting.
+        Score score = sung(4, "[00:00.00]<00:00.00>amore <00:02.00>canzone\n");
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).contains("\"amore\"").contains("\"canzone\"");
+        assertThat(block).doesNotContain("--");
+    }
+
+    @Test
+    @DisplayName("splitting a word does not move it out of its bar or unbalance one")
+    void splittingKeepsTheBarsSumming() {
+        Score score = sungIn("it", 4, """
+                [00:00.00]<00:00.20>respiravamo <00:01.60>piano
+                [00:02.00]<00:02.30>particolare <00:03.40>sole
+                """);
+
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
+
+        assertThat(bars.get(0)).contains("\"re\"").contains("\"pia\"");
+        assertThat(bars.get(1)).contains("\"par\"").contains("\"so\"");
+        assertThat(bars).allSatisfy(bar ->
+                assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9)));
     }
 
     @Test

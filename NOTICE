@@ -66,6 +66,26 @@ Recordings under any other terms are not committed. They are gitignored and
 samples/list.txt says how to fetch them, so this list and the tree agree.
 
 --------------------------------------------------------------------------------
+Hyphenation patterns
+--------------------------------------------------------------------------------
+
+mw-core/src/main/resources/hyphenation/ holds two pattern files taken verbatim
+from the hyph-utf8 project (http://www.hyphenation.org/tex), used to split lyric
+words into syllables. They are data, not code, and each carries its own terms.
+
+hyph-it.pat.txt -- Italian
+  Copyright (C) 2008-2011 Claudio Beccari
+  Available under any of several licences, of which this project takes the MIT
+  one. (The copies distributed with Apache FOP are LPPL-only: that conversion
+  predates the relicensing, which is why these are taken from the source.)
+
+hyph-en-us.pat.txt -- American English
+  Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken
+  "Copying and distribution of this file, with or without modification, are
+  permitted in any medium without royalty provided the copyright notice and
+  this notice are preserved."
+
+--------------------------------------------------------------------------------
 External tools
 --------------------------------------------------------------------------------
 

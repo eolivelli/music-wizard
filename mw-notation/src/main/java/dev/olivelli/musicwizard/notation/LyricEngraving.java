@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.text.Hyphenator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +101,11 @@ final class LyricEngraving {
         // centred on theirs, so without this a syllable sits half its width to
         // the left of the chord it belongs to.
         out.append("    \\override LyricText.self-alignment-X = #LEFT\n");
+        // LilyPond drops a hyphen it cannot fit, and syllables of a sung word
+        // sit close together -- so "go -- te" came out as "go te" on a real
+        // page, reading as two words rather than one split in two. This is the
+        // gap it will make room for rather than drop the hyphen.
+        out.append("    \\override LyricHyphen.minimum-distance = #0.8\n");
         out.append("  } \\lyricmode {\n");
 
         int at = 0;
@@ -187,23 +193,42 @@ final class LyricEngraving {
      */
     private static List<Syllable> placed(Score score, List<ChartLayout.Bar> bars,
                                          long[] barStart) {
+        // Absent for a language with no patterns, and for the "und" a lyric file
+        // carries until something establishes one -- then a word stays whole,
+        // which is what the page did before syllables were split at all.
+        Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
         List<Syllable> syllables = new ArrayList<>();
         long chartEnd = barStart[bars.size()];
         long previous = Long.MIN_VALUE;
         for (LyricLine line : score.lyrics().lines()) {
             for (LyricWord word : line.words()) {
-                long unit = unitOf(word.startSeconds(), bars, barStart);
-                // Strictly increasing, so every syllable gets a duration of at
-                // least one grid step. Two words can land on one unit -- the
-                // grid is finer than any singer, but a recognition segment can
-                // still hand out equal onsets -- and a zero-length syllable is
-                // one LilyPond cannot name.
-                unit = Math.max(unit, previous + 1);
-                if (unit >= chartEnd) {
-                    continue;
+                List<String> parts = hyphenator
+                        .map(h -> h.syllables(word.text()))
+                        .orElseGet(() -> List.of(word.text()));
+                for (int i = 0; i < parts.size(); i++) {
+                    // Spread evenly across the word. Nothing knows where inside a
+                    // word its second syllable begins -- that is the note it is
+                    // sung on, and there is no melody yet (#8) -- so the even
+                    // share is the honest guess, and it keeps the syllables in
+                    // the bar the word was sung in.
+                    double at = word.startSeconds() + (word.endSeconds() - word.startSeconds())
+                            * i / parts.size();
+                    long unit = unitOf(at, bars, barStart);
+                    // Strictly increasing, so every syllable gets a duration of
+                    // at least one grid step. Two can land on one unit -- the
+                    // grid is finer than any singer, and a short word's
+                    // syllables are closer together than it -- and a zero-length
+                    // syllable is one LilyPond cannot name.
+                    unit = Math.max(unit, previous + 1);
+                    if (unit >= chartEnd) {
+                        continue;
+                    }
+                    // Every syllable but the last joins the next with a hyphen;
+                    // the last carries whatever the word itself said.
+                    boolean joins = i + 1 < parts.size() || word.hyphenatedToNext();
+                    syllables.add(new Syllable(unit, parts.get(i), joins));
+                    previous = unit;
                 }
-                syllables.add(new Syllable(unit, word.text(), word.hyphenatedToNext()));
-                previous = unit;
             }
         }
         return syllables;
