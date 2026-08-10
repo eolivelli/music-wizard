@@ -66,8 +66,7 @@ cell is a tie-break artefact rather than a reading.
 What is now top is what all three exposed, in order. The chart still hangs its
 whole bar axis on one downbeat, which on a lead-in is the least reliable beat
 there is (#233), and one constant bar length still cannot follow a recording
-that does not hold one (#187). Then: one benchmark's tempo is read at two
-thirds of its true rate (#231), and the vocabulary still has no major seventh,
+that does not hold one (#187). Then: the vocabulary still has no major seventh,
 sixth, minor sixth or half-diminished, each of which was measured and costs more
 than it buys until four-note candidates can be ranked on something better than
 which extra note is louder (#287, #274).

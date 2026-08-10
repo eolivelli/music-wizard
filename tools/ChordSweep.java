@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
+import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.io.BufferedInputStream;
@@ -162,11 +163,15 @@ public final class ChordSweep {
     static void cache(Path mp3) throws Exception {
         AudioBuffer audio = AudioDecoder.decode(mp3);
         OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
-        List<Double> beatTimes = BeatTracker.track(envelope).beatTimes();
-        // The pipeline's own composition, and the order matters: see
-        // NnlsChroma.combined for why folding must precede beat-synchronising.
+        // The pipeline's own composition, and both orderings matter: chroma is
+        // extracted before the beats so the tracker can weigh tempo candidates
+        // by the harmonic rhythm (#231), and folding precedes
+        // beat-synchronising -- see NnlsChroma.combined.
         NnlsChroma registers = NnlsChroma.extract(audio);
-        Chroma combined = registers.combined().beatSynchronous(beatTimes);
+        Chroma combinedFrames = registers.combined();
+        List<Double> beatTimes = BeatTracker
+                .track(envelope, HarmonicRhythm.of(combinedFrames)).beatTimes();
+        Chroma combined = combinedFrames.beatSynchronous(beatTimes);
         DownbeatEstimator.Estimate down = DownbeatEstimator.estimate(
                 beatTimes, combined, envelope, TimeSignature.FOUR_FOUR.beatsPerBar());
         // Written aside and moved into place, so an interrupted run leaves no

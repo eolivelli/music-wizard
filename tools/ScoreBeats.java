@@ -17,6 +17,8 @@
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
+import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,7 +102,12 @@ import java.util.Set;
  *       sits most of a beat late will cross the boundary on jitter alone and be
  *       counted as slipping. The count is only about place-keeping while the
  *       {@code offset} column beside it is small; at an offset approaching half
- *       a period it degenerates into a jitter count. Read the two together.</dd>
+ *       a period it degenerates into a jitter count. Read the two together.
+ *       <p>And a grid at a clean fraction of the reference rate maxes it out
+ *       while keeping perfect time: at half rate every step advances two
+ *       reference beats, so every interval is a "slip". On such a row the
+ *       column measures the rate mismatch, already visible in {@code beats},
+ *       and nothing else.</dd>
  *   <dt>offset</dt>
  *   <dd>Mean and root-mean-square distance from the nearest reference beat, over
  *       <em>every</em> tracked beat. There is no filter and there cannot be one:
@@ -111,18 +118,22 @@ import java.util.Set;
  *       rate entirely wanders uniformly across the reference's period, and the
  *       RMS of a uniform distribution over {@code [-p/2, +p/2]} is
  *       {@code p / (2 * sqrt(3))} — 0.1156 s at the bossa's period, where it
- *       measures 0.129. On {@code blues-e-90bpm.mp3} it is 0.013 s against a
- *       floor of 0.192, which is a tracked grid on the reference.
- *       <p>Being at the floor is not the only way to carry nothing, and the
- *       bossa is the case that shows it: its tracked pulse is a bar's three
- *       eighths, which is 1.508 reference beats, so every second tracked beat
- *       lands on a reference beat and the one between sits near {@code ±p/2}.
- *       That is a bimodal distribution reading a shade above the uniform floor,
- *       and it is why {@code P} on that row is near a half. <b>Read {@code P}
- *       for that, not this column</b>: a rate related to the reference by a
- *       ratio of small integers puts a fixed share of beats exactly on it,
- *       which is a fact about phase that an average over every beat cannot
- *       show.</dd>
+ *       measures 0.115: at the floor, which on that row is the half-rate
+ *       grid's geometry speaking rather than phase — see below. On
+ *       {@code blues-e-90bpm.mp3} it is 0.013 s against a floor of 0.192,
+ *       which is a tracked grid on the reference.
+ *       <p>The floor is also reached by geometry rather than by chaos, and
+ *       the bossa shows it. Its tracked pulse is two reference
+ *       beats — the half-tempo reading that remains after #231 — so half the
+ *       reference grid is never visited at all: {@code R} caps at a half and
+ *       {@code F} at two thirds however well the visited beats align, and this
+ *       column averages hits with the unvisited grid's geometry. <b>Read
+ *       {@code P} and {@code on grid} for that row</b>: a rate related to the
+ *       reference by a ratio of small integers puts a fixed share of beats
+ *       exactly on it, which is a fact about phase that an average over every
+ *       beat cannot show. (Before #231 the pulse was a bar's three eighths,
+ *       1.508 reference beats, and the same reasoning put {@code P} near a
+ *       half.)</dd>
  *   <dt>on grid, 2/3</dt>
  *   <dd>Share of tracked intervals within a tenth of the tracked median, and
  *       within a tenth <em>of the median</em> of two thirds of it. The band is
@@ -195,7 +206,12 @@ public final class ScoreBeats {
         double duration = envelope.length() / envelope.frameRate();
         int expected = (int) Math.floor((duration - phase) / period) + 1;
 
-        List<Double> beats = BeatTracker.track(envelope).beatTimes();
+        // The rhythm-weighted path, because it is the pipeline's: since #231
+        // the tracker weighs tempo candidates by whether the harmony can be
+        // barred by them, and a harness that tracked without the chroma would
+        // silently measure a grid the pipeline no longer produces.
+        HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
+        List<Double> beats = BeatTracker.track(envelope, rhythm).beatTimes();
         if (beats.size() < 2) {
             System.out.printf("%-28s %9.3f  no usable grid%n", job.file(), 60 / period);
             return;
