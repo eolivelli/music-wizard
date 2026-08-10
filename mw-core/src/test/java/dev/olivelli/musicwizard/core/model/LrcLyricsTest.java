@@ -197,6 +197,50 @@ class LrcLyricsTest {
 
             assertThat(lyrics.lines().get(1).endSeconds()).isEqualTo(64.0);
             assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(124.0);
+            // And the misses inflate what an ordinary line is taken to be, since
+            // the two stretches stay in the pool that measures it -- so the
+            // closing line is given an instrumental's length. Asserted here so
+            // that answering #323 shows its effect on duration too.
+            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(188.0);
+        }
+
+        @Test
+        @DisplayName("an instrumental gap does not count as a line when lines are measured")
+        void breaksAreLeftOutOfTheLineLength() {
+            // Half the gaps are instrumental. Measuring a line across all of them
+            // makes an ordinary line as long as a solo, and every cut line with
+            // it.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]a
+                    [00:04.00]b
+                    [01:04.00]c
+                    [01:08.00]d
+                    [02:08.00]e
+                    [02:12.00]f
+                    [03:12.00]g
+                    [03:16.00]h
+                    [04:16.00]i
+                    """, 400.0);
+
+            assertThat(lyrics.lines().get(8).endSeconds()).isEqualTo(260.0);
+        }
+
+        @Test
+        @DisplayName("timestamps sharing a moment do not shrink the line length to nothing")
+        void duplicateTimestampsAreLeftOutOfTheLineLength() {
+            // Several lines on one moment is what a repeated chorus writes. They
+            // are zero-length gaps, and counting them as lines makes the measure
+            // zero -- which gives every cut line no duration at all.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]a
+                    [00:00.00]b
+                    [00:00.00]c
+                    [00:00.00]d
+                    [00:10.00]e
+                    [00:20.00]f
+                    """, 400.0);
+
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(30.0);
         }
 
         @Test

@@ -222,10 +222,10 @@ public final class LrcLyrics {
      * covering one verse would carry the rest of the song.
      *
      * <p>So a line followed by a break — see {@link #breaks} — lasts as long as
-     * an ordinary line does in this file (see {@link #lineLength}), measured
-     * from the last moment the line itself times. An ordinary line is not touched: it still ends where the next
-     * one begins. The recording's own end bounds both, and is the caller's to
-     * apply so that only one place reads it.
+     * an ordinary line does in this file (see {@link #lineLength}), measured from
+     * the last moment the line itself times. An ordinary line is not touched: it
+     * still ends where the next one begins. The recording's own end bounds both,
+     * and is the caller's to apply so that only one place reads it.
      */
     private static double plausibleEnd(double start, double lastTag, double lineLength) {
         // Measured from the last thing the line itself times, not from its
@@ -274,12 +274,9 @@ public final class LrcLyrics {
             return NOMINAL_LINE_SECONDS;
         }
         // Copied, not sorted in place: the caller's array is in file order and
-        // {@link #breaks} depends on it staying that way.
+        // breaks depends on it staying that way.
         double[] gaps = fileOrder.clone();
         java.util.Arrays.sort(gaps);
-        // The lower of the two middle values on an even count. The upper one is
-        // a break in a file that is half breaks, and a typical line read off a
-        // break makes every break look ordinary.
         double median = gaps[(gaps.length - 1) / 2];
         return median > 0 ? median : NOMINAL_LINE_SECONDS;
     }
@@ -329,7 +326,8 @@ public final class LrcLyrics {
      *
      * <p><b>Two breaks with a single line between them are both missed</b>, since
      * each is the other's long neighbour: one line sung between two instrumental
-     * stretches keeps both of them. #323.
+     * stretches keeps both of them, and inflates what {@link #lineLength} takes an
+     * ordinary line to be. #323.
      */
     private static boolean[] breaks(double[] gaps, double breakAfter) {
         boolean[] longGap = new boolean[gaps.length];
