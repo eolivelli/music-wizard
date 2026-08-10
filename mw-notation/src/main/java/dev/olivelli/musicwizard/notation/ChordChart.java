@@ -225,11 +225,24 @@ public final class ChordChart {
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");
-        return lilyPondOf(score, ChartLayout.of(score));
+        return lilyPondOf(score, ChartLayout.of(score), false);
     }
 
     /** The same, over a layout the caller has already taken. See {@link #linesOf}. */
     static String lilyPondOf(Score score, List<ChartLayout.Bar> bars) {
+        return lilyPondOf(score, bars, false);
+    }
+
+    /**
+     * The same, optionally with the lyrics engraved beneath the chords.
+     *
+     * <p>Off for {@code chords.ly}, on for the lyric sheet's own. The chart and
+     * the sheet are two engravings of one score for the same reason they are two
+     * text files: a reader who wants the changes and their lengths is reading a
+     * different thing from one who wants the words, and adding lyrics to the
+     * chart would silently change what {@code chords.pdf} has always been.
+     */
+    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars, boolean withLyrics) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -242,8 +255,15 @@ public final class ChordChart {
         out.append("\\score {\n");
         List<Optional<String>> tags = LineRepeats.tagsOf(linesOf(bars));
         boolean tagged = tags.stream().anyMatch(Optional::isPresent);
-        if (tagged) {
+        // The lyric block is built before anything is written, because whether
+        // there is one decides that the score needs a parallel block at all.
+        Optional<String> lyrics = withLyrics
+                ? LyricEngraving.block(score, bars) : Optional.empty();
+        boolean parallel = tagged || lyrics.isPresent();
+        if (parallel) {
             out.append("  <<\n");
+        }
+        if (tagged) {
             repeatBrackets(out, bars, tags);
         }
         // chordChanges, so a chord held across a bar line has its name printed
@@ -310,7 +330,11 @@ public final class ChordChart {
             out.append("    \\bar \"|.\"\n");
         }
         out.append("  }\n");
-        if (tagged) {
+        // After the chord names, not before: the staff affinities of the three
+        // contexts must not increase read top to bottom, and this one points
+        // down like the two above it.
+        lyrics.ifPresent(out::append);
+        if (parallel) {
             out.append("  >>\n");
         }
         out.append("  \\layout { }\n");

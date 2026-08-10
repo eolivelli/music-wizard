@@ -37,13 +37,14 @@ import java.util.Objects;
  * them would give a file that is worse at both — and would break every reader of
  * {@code chords.txt}, which includes the measurement harness.
  *
- * <p><b>No bar lines and no beat axis.</b> Placement here is by time and column.
- * That suits this stage — a syllable needs the note it is sung on before it can
- * go on a beat (#150) — and it is also why the sheet does not apply the
- * bar-level reduction the chart does: {@code ChartLayout} decides how many
- * chords a <em>bar</em> can hold, and there are no bars here. The sheet prints
- * every change; the chart prints what fits. Engraving, where a syllable does
- * have to land on a bar line, is #309.
+ * <p><b>The text sheet has no bar lines and no beat axis</b>: placement in
+ * {@link #toText} is by time and column. That is also why it does not apply the
+ * bar-level reduction the chart does — {@code ChartLayout} decides how many
+ * chords a <em>bar</em> can hold, and there are no bars there. The text sheet
+ * prints every change; the chart prints what fits. {@link #toLilyPond} does have
+ * bars, since a page needs them, and that difference is why the two can disagree
+ * about which words appear. Syllables stay in seconds either way: putting one on
+ * a beat needs the note it is sung on, which is #150.
  */
 public final class LyricSheet {
 
@@ -111,6 +112,24 @@ public final class LyricSheet {
             }
         }
         return out.toString();
+    }
+
+    /**
+     * The sheet as LilyPond: the chord chart with the lyrics engraved under it.
+     *
+     * <p>A separate engraving from {@link ChordChart#toLilyPond}, not a flag on
+     * it, for the reason the text files are separate — the chart is read for the
+     * changes and their lengths, the sheet for where the words fall, and putting
+     * lyrics on the chart would change what {@code chords.pdf} has always been.
+     *
+     * <p>The two sheets can differ about which words appear and where: this one
+     * hangs syllables on bars, and a bar axis cannot carry everything a column
+     * can. {@link LyricEngraving} is where that rule is derived and is the one
+     * place it is stated.
+     */
+    public static String toLilyPond(Score score) {
+        Objects.requireNonNull(score, "score");
+        return ChordChart.lilyPondOf(score, ChartLayout.of(score), true);
     }
 
     /**

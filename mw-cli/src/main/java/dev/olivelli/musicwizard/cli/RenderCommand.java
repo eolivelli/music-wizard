@@ -80,10 +80,10 @@ import picocli.CommandLine.Spec;
  * written.</b> {@code ChordChart.toLilyPond} emitted no {@code |} at all, so
  * nothing engraved here could fail a bar check and the fact existed only in
  * {@code StaffNotation}'s output, which only {@code mw-it} engraved. #160 gave
- * the chord chart a {@code \time} and a bar check per bar, so a defect in the
- * one part this command engraves today now reaches the user as this warning
- * instead of as a silently wrong page. The lyric sheet is text only and reaches
- * none of this; engraving it is #309. No valid input produces one, which is
+ * the chord chart a {@code \time} and a bar check per bar, so a defect in what
+ * this command engraves now reaches the user as this warning instead of as a
+ * silently wrong page. The lyric sheet is engraved too, and its bar checks cover
+ * the lyric line as well as the chords. No valid input produces one, which is
  * what the checks are for; what changed is the failure mode. A staff part
  * (#8, #10) adds a second source of it rather than the first.
  */
@@ -443,27 +443,29 @@ final class RenderCommand implements Callable<Integer> {
         return new Emitted(written, warnings);
     }
 
-    /**
-     * Writes the chords-and-lyrics sheet.
-     *
-     * <p>Text only, and no {@link #engrave} call: the engraved sheet is #309,
-     * and until it lands there is no {@code .ly} for this part to hand over.
-     * That makes this the one emitter that does not go through {@code engrave},
-     * which its javadoc calls mandatory — the rule is about not forgetting to
-     * read the bar checks of a file you did engrave, and there is no such file
-     * here.
-     */
+    /** Writes the chords-and-lyrics sheet, and its PDF where there is an engraver. */
     private static Emitted writeLyricSheet(
             Workspace workspace, Score score, Optional<Path> lilypond) {
         Path out = workspace.outputDirectory();
+        List<Path> written = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         try {
             Files.createDirectories(out);
             Path txt = out.resolve("chords-lyrics.txt");
             Files.writeString(txt, LyricSheet.toText(score));
-            return new Emitted(List.of(txt), List.of());
+            written.add(txt);
+
+            Path ly = out.resolve("chords-lyrics.ly");
+            Files.writeString(ly, LyricSheet.toLilyPond(score));
+            written.add(ly);
+
+            Emitted engraved = engrave(lilypond, ly);
+            written.addAll(engraved.files());
+            warnings.addAll(engraved.warnings());
         } catch (IOException e) {
             throw new UncheckedIOException("could not write output", e);
         }
+        return new Emitted(written, warnings);
     }
 
     /**
