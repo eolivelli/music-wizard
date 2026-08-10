@@ -277,9 +277,9 @@ class LrcLyricsTest {
         @Test
         @DisplayName("timestamps sharing a moment do not shrink the line length to nothing")
         void duplicateTimestampsAreLeftOutOfTheLineLength() {
-            // Several lines on one moment is what a repeated chorus writes. They
-            // are zero-length gaps, and counting them as lines makes the measure
-            // zero -- which gives every cut line no duration at all.
+            // Several lines on one moment are zero-length gaps, and counting
+            // them as lines makes the measure zero -- which gives every cut line
+            // no duration at all.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]a
                     [00:00.00]b

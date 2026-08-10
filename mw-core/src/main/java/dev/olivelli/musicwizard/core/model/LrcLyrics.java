@@ -316,8 +316,8 @@ public final class LrcLyrics {
      *
      * <p>Named rather than written out, because every statistic over these gaps
      * has to agree on it: the scale the threshold is measured against, the length
-     * a cut line is given, and which gaps count as a neighbour. A line's own
-     * extent is decided elsewhere and does not ask — that is #340.
+     * a cut line is given, and which gaps count as a neighbour. The end a line
+     * takes from the next timestamp does not ask — that is #340.
      *
      * <p>Exact, and only exact. Two timestamps a hundredth of a second apart say
      * as little about a line as two on the same moment, and this admits them;
