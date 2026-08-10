@@ -311,6 +311,67 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("a whisper out of digital silence does not outscore the music above it")
+        void silenceArtefactDoesNotOutscoreTheMusic() {
+            // #306. A decibel scale is unbounded below, so before the band floor
+            // was made relative the step from digital silence to an inaudible
+            // sample was a bigger rise than any attack in the recording: on
+            // eb7-vamp-130.mp3 the decay at the end produced the joint-largest
+            // frame in the whole envelope, out of audio peaking near -90 dBFS.
+            //
+            // Clicks, a second of true silence, then a burst 100 dB down. The
+            // burst is inaudible and the clicks are not, so the envelope must
+            // rank them that way round.
+            float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+            float[] tail = SignalFactory.silence(1, RATE);
+            float[] whisper = SignalFactory.sine(440, 0.05, RATE);
+            float[] audio = new float[clicks.length + tail.length + whisper.length];
+            System.arraycopy(clicks, 0, audio, 0, clicks.length);
+            for (int i = 0; i < whisper.length; i++) {
+                audio[clicks.length + tail.length + i] = (float) (whisper[i] * 1e-5);
+            }
+
+            OnsetEnvelope envelope = envelopeOf(audio);
+            double loudestClick = 0;
+            double loudestWhisper = 0;
+            for (int frame = 0; frame < envelope.length(); frame++) {
+                double at = envelope.timeOf(frame);
+                if (at < 20) {
+                    loudestClick = Math.max(loudestClick, envelope.strength()[frame]);
+                } else if (at > 20.5) {
+                    loudestWhisper = Math.max(loudestWhisper, envelope.strength()[frame]);
+                }
+            }
+
+            // A quarter, because the fixed floor this replaced already put the
+            // burst under a half: it reaches 0.43 of the loudest click there and
+            // 0.17 here, so a looser bound would pass either way and pin
+            // nothing.
+            assertThat(loudestWhisper)
+                    .as("the loudest frame the inaudible burst produces")
+                    .isLessThan(0.25 * loudestClick);
+        }
+
+        @Test
+        @DisplayName("the envelope is unchanged by the recording's gain")
+        void theEnvelopeDoesNotDependOnGain() {
+            // The floor is a share of the recording's loudest band rather than
+            // an absolute magnitude, so turning the input down must not change
+            // what the envelope says. A fixed floor fails this: quieter audio
+            // sits closer to it and its onsets are compressed against it.
+            double[] loud = envelopeOf(SignalFactory.clickTrack(120, 12, RATE)).strength();
+            double[] quiet = envelopeOf(scaled(SignalFactory.clickTrack(120, 12, RATE), 1e-3))
+                    .strength();
+
+            assertThat(quiet).hasSameSizeAs(loud);
+            double worst = 0;
+            for (int i = 0; i < loud.length; i++) {
+                worst = Math.max(worst, Math.abs(loud[i] - quiet[i]));
+            }
+            assertThat(worst).as("largest difference over the whole envelope").isLessThan(1e-6);
+        }
+
+        @Test
         @DisplayName("the band low-pass copes with envelopes too short to filter")
         void antiAliasHandlesDegenerateInput() {
             // compute() returns early below two frames, but the filter is

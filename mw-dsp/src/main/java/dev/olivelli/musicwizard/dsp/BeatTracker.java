@@ -261,9 +261,11 @@ public final class BeatTracker {
      * floor</b>, and how loud the onsets are never enters it. That is not
      * "always": the form says the tracker should start correcting just below
      * {@code p = -F}, and it does. On a 120 BPM click track that fixture's
-     * {@code F} of −0.217 puts the crossing at a {@link #TIGHTNESS} of 0.4517,
-     * and the dynamic program follows a double-rate seed at 0.46 and corrects it
-     * at 0.45. What matters here is that the condition holds at every weight
+     * {@code F} of −0.221 puts the crossing at a {@link #TIGHTNESS} of
+     * 0.4596, and the dynamic program was swept either side of it and does
+     * change there. The sweep's step is far coarser than the margin, so read it
+     * as the form predicting where the behaviour turns and not as a bound on
+     * where. What matters here is that the condition holds at every weight
      * this tracker has had, and by a wide margin at both, so <b>raising the
      * weight cannot have taken that rescue away — there was never one to
      * take</b>. <b>A half-rate seed is corrected exactly while an onset is worth
@@ -274,13 +276,10 @@ public final class BeatTracker {
      * <p><strong>The measured value of {@code A} is deliberately not quoted
      * here, and that is the fourth answer to this question rather than the
      * first.</strong> ({@code F} is quoted above, where the closed form is
-     * checked against the tracker, because unlike {@code A} it has never moved:
-     * every measurement of it has landed between −0.19 and −0.33 — −0.19 to
-     * −0.25 over the three click-track tempi above, −0.25 to −0.33 over ten
-     * recordings of which five are real music — and it is the envelope's mean
-     * over its standard deviation rather than a peak that has to be found. At
-     * the deepest of them the crossing above is still three times below the old
-     * weight.) Four review passes went on
+     * checked against the tracker, because it is the envelope's mean over its
+     * standard deviation rather than a peak that has to be found. It is not a
+     * constant of the code: #306 rescaled the envelope and moved it, which is
+     * exactly why the closed forms are written to need only its sign.) Four review passes went on
      * correcting figures in this paragraph — an onset of 5.8, then 7.06, then
      * 7.23, each a better measurement of a quantity nothing asserts, the first
      * two of them a phase swept too coarsely. Then the trouble moved to the
