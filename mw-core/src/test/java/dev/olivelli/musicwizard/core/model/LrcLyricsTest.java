@@ -100,10 +100,10 @@ class LrcLyricsTest {
             // A mistyped minute in an A2 tag put one line's end past several
             // later ones, and the sheet's cursor then handed it every chord they
             // should have had.
-            // The gap after the first line is a break, so the line takes the
-            // branch that reads its own word tags rather than simply ending at
-            // its successor -- which is where the clamp that stops it outliving
-            // them has to hold.
+            // The gap after "solo carrier" is the break, so that line is the one
+            // taking the branch that reads its own word tags rather than simply
+            // ending at its successor -- which is where the bound that stops it
+            // outliving the lines after it has to hold.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]one
                     [00:04.00]two
@@ -178,6 +178,45 @@ class LrcLyricsTest {
 
             assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(12.0);
             assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
+        @DisplayName("two breaks around a single line are both missed, which is #323")
+        void twoBreaksAroundOneLineAreBothMissed() {
+            // Each break is the other's long neighbour, so the isolation test
+            // clears neither. One line sung between two instrumental stretches
+            // therefore keeps both. Pinned rather than left to be rediscovered;
+            // a fix shows up as this test changing.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]first
+                    [00:04.00]second
+                    [01:04.00]bridge alone
+                    [02:04.00]chorus
+                    [02:08.00]more
+                    """, 300.0);
+
+            assertThat(lyrics.lines().get(1).endSeconds()).isEqualTo(64.0);
+            assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(124.0);
+        }
+
+        @Test
+        @DisplayName("the closing line lasts as long as an ordinary line, not as long as the shortest")
+        void closingLineUsesOrdinaryLines() {
+            // The scale the break threshold is read against takes the lower of
+            // two middle gaps on purpose; how long a cut line lasts must not
+            // inherit that bias, or the closing line of a file with long lines
+            // is reported as a short one.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:01.00]v2
+                    [00:02.00]v3
+                    [00:03.00]v4
+                    [00:11.00]c1
+                    [00:19.00]c2
+                    [00:27.00]c3
+                    """, 300.0);
+
+            assertThat(lyrics.lines().get(6).endSeconds()).isEqualTo(35.0);
         }
 
         @Test

@@ -259,11 +259,13 @@ class LyricSheetTest {
 
         List<String> body = body(LyricSheet.toText(score));
 
-        assertThat(body.get(1)).isEqualTo(words);
-        // One row, and nothing at column zero: the first chord arrives at 8s,
-        // long after "Somebody" is sung.
+        // One row above the words, wider than the page and correctly placed.
+        // Under a wrapping chordRow the words would be pushed to body[2] and a
+        // continuation row would sit here carrying a symbol at column zero -- the
+        // line's first word, which the first chord arrives eight seconds after.
+        assertThat(body.get(0)).hasSizeGreaterThan(75);
         assertThat(body.get(0).charAt(0)).isEqualTo(' ');
-        assertThat(body.get(2)).isNotEqualTo(words);
+        assertThat(body.get(1)).isEqualTo(words);
     }
 
     @Test

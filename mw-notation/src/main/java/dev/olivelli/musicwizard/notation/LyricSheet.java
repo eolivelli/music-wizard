@@ -161,12 +161,11 @@ public final class LyricSheet {
      * <p>The row is <b>never wrapped</b>, so it can run wider than the page when
      * a line holds more changes than it has letters. Wrapping moves a symbol to
      * column zero of a new row, and column zero is the line's <em>first</em>
-     * word — so
-     * whatever test decides when to wrap, the symbol it moves lands over a word
-     * it did not accompany. Guarding on where the symbol came from does not help,
-     * because the hazard is where it goes. A wide row is ugly; a chord over the
-     * wrong word is wrong, and placement is the whole of what this file offers
-     * over {@link ChordChart}.
+     * word, so whatever test decides when to wrap, the symbol it moves lands over
+     * a word it did not accompany. Guarding on where the symbol came from does
+     * not help, because the hazard is where it goes. A wide row is ugly; a chord
+     * over the wrong word is wrong, and placement is the whole of what this file
+     * offers over {@link ChordChart}.
      *
      * <p>A row with no words beneath it has no such column to collide with, and
      * {@link #appendChordsBefore} does wrap.

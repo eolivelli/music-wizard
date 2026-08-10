@@ -146,8 +146,8 @@ public final class LrcLyrics {
         double shift = offsetSeconds;
         // Whole-file constants, so read once rather than per line.
         double[] gaps = gapsOf(timed);
-        double typicalLine = typicalLine(gaps.clone());
-        boolean[] isBreak = breaks(gaps, BREAK_MULTIPLE * typicalLine);
+        boolean[] isBreak = breaks(gaps, BREAK_MULTIPLE * typicalLine(gaps));
+        double lineLength = lineLength(gaps, isBreak);
         List<LyricLine> lines = new ArrayList<>();
         for (int i = 0; i < timed.size(); i++) {
             Timed entry = timed.get(i);
@@ -161,22 +161,23 @@ public final class LrcLyrics {
             double next = i + 1 < timed.size()
                     ? Math.max(start, timed.get(i + 1).start() - shift)
                     : Double.POSITIVE_INFINITY;
-            // Lines never overlap, so the successor bounds this one whatever the
-            // body says. A word tag is only evidence about the line it is in: a
-            // mistyped minute in one puts that line's end past several later
-            // ones, and the sheet's cursor then hands it every chord they should
-            // have had.
-            double lastTag = Math.min(lastTagIn(entry.body(), shift), next);
+            double lastTag = lastTagIn(entry.body(), shift);
             // An ordinary line runs to its successor, however far above the
             // typical length it sits. Only the silence of a break -- and the
             // open end after the last line, which has no successor at all -- is
             // cut back to a plausible length, leaving the remainder as the
             // instrumental it is.
+            // Lines never overlap, and the min below is what holds that: a word
+            // tag is only evidence about the line it is in, so a mistyped minute
+            // in one would otherwise put that line's end past several later
+            // ones, and the sheet's cursor would hand it every chord they should
+            // have had.
+            //
             // The last entry has no gap and so no entry in isBreak; it is cut
             // for the stronger reason that nothing follows it to end it.
             boolean cut = i + 1 >= timed.size() || isBreak[i];
             double end = cut
-                    ? Math.min(next, plausibleEnd(start, lastTag, typicalLine))
+                    ? Math.min(next, plausibleEnd(start, lastTag, lineLength))
                     : next;
             // The recording bounds every line, not only the last: a file timed
             // against a longer edit of the song runs past the end of this one.
@@ -221,17 +222,17 @@ public final class LrcLyrics {
      * covering one verse would carry the rest of the song.
      *
      * <p>So a line followed by a break — see {@link #breaks} — lasts as long as
-     * a line typically does in this file, measured from the last moment the line
-     * itself times. An ordinary line is not touched: it still ends where the next
+     * an ordinary line does in this file (see {@link #lineLength}), measured
+     * from the last moment the line itself times. An ordinary line is not touched: it still ends where the next
      * one begins. The recording's own end bounds both, and is the caller's to
      * apply so that only one place reads it.
      */
-    private static double plausibleEnd(double start, double lastTag, double typicalLine) {
+    private static double plausibleEnd(double start, double lastTag, double lineLength) {
         // Measured from the last thing the line itself times, not from its
         // start: a word tag is the file stating that the line was still being
         // sung then, so a nominal length counted from the start could end before
         // the line's own last word begins.
-        return Math.max(start, lastTag) + typicalLine;
+        return Math.max(start, lastTag) + lineLength;
     }
 
     /** The last word tag in a line's text, or the line's start when it has none. */
@@ -255,22 +256,57 @@ public final class LrcLyrics {
     }
 
     /**
-     * How long a line lasts in this file: the median gap between timestamps.
+     * The scale the break threshold is read against: the median gap, taking the
+     * lower of the two middle values on an even count.
      *
      * <p>The median rather than the mean, because an LRC's gaps include the
-     * instrumental ones — the pause between verse and chorus is a gap like any
-     * other — and one long break should not stretch every line's estimate.
+     * instrumental ones and one long break should not stretch the estimate. The
+     * <em>lower</em> middle value because the upper one is itself a break in a
+     * file that is half breaks, and a scale read off a break makes every break
+     * look ordinary.
+     *
+     * <p>Only the threshold wants this bias. How long a cut line should last is
+     * {@link #lineLength}, which is a different question and answers it from a
+     * different set of gaps.
      */
-    private static double typicalLine(double[] gaps) {
-        if (gaps.length == 0) {
+    private static double typicalLine(double[] fileOrder) {
+        if (fileOrder.length == 0) {
             return NOMINAL_LINE_SECONDS;
         }
+        // Copied, not sorted in place: the caller's array is in file order and
+        // {@link #breaks} depends on it staying that way.
+        double[] gaps = fileOrder.clone();
         java.util.Arrays.sort(gaps);
         // The lower of the two middle values on an even count. The upper one is
         // a break in a file that is half breaks, and a typical line read off a
         // break makes every break look ordinary.
         double median = gaps[(gaps.length - 1) / 2];
         return median > 0 ? median : NOMINAL_LINE_SECONDS;
+    }
+
+    /**
+     * How long a line lasts here, for the lines whose own end nothing states.
+     *
+     * <p>Read from the gaps that are <em>not</em> breaks, which is the quantity
+     * actually wanted: the length of an ordinary line. Reading it from every gap
+     * mixes in the instrumental ones, and reading it from the same biased
+     * statistic the threshold uses makes the closing line of a file with long
+     * lines a short one — the two uses pull opposite ways, so they are two
+     * methods.
+     */
+    private static double lineLength(double[] gaps, boolean[] isBreak) {
+        double[] ordinary = new double[gaps.length];
+        int count = 0;
+        for (int i = 0; i < gaps.length; i++) {
+            if (!isBreak[i] && gaps[i] > 0) {
+                ordinary[count++] = gaps[i];
+            }
+        }
+        if (count == 0) {
+            return NOMINAL_LINE_SECONDS;
+        }
+        java.util.Arrays.sort(ordinary, 0, count);
+        return ordinary[count / 2];
     }
 
     /**
@@ -290,6 +326,10 @@ public final class LrcLyrics {
      *
      * <p>A run of long gaps at the very start or end of a file has only one
      * neighbour, and one is enough — a lone long gap is a break wherever it sits.
+     *
+     * <p><b>Two breaks with a single line between them are both missed</b>, since
+     * each is the other's long neighbour: one line sung between two instrumental
+     * stretches keeps both of them. #323.
      */
     private static boolean[] breaks(double[] gaps, double breakAfter) {
         boolean[] longGap = new boolean[gaps.length];
