@@ -122,8 +122,9 @@ public final class LyricSheet {
      * lyrics on the chart would change what {@code chords.pdf} has always been.
      *
      * <p>Where the two sheets differ is worth knowing: the text one prints every
-     * word, and this one drops any sung after the last chord, because the bars
-     * it hangs them on stop there. {@link LyricEngraving} carries that rule.
+     * word, and this one drops any that has no bar to sit in, because the bars it
+     * hangs them on span the harmony rather than the song.
+     * {@link LyricEngraving} carries that rule.
      */
     public static String toLilyPond(Score score) {
         Objects.requireNonNull(score, "score");

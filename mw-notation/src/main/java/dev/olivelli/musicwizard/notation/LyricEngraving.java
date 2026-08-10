@@ -118,9 +118,14 @@ final class LyricEngraving {
                         ? Math.min(syllables.get(at + 1).unit(), to) : to;
                 line.append('"').append(escape(syllable.text())).append('"')
                         .append(LilyPondDuration.scaled((until - cursor) * UNIT));
-                // A hyphen joins this syllable to the next one on the page, and
-                // is written between them with spaces of its own.
-                line.append(syllable.hyphenated() ? " -- " : " ");
+                // A hyphen joins this syllable to the next one, so it is written
+                // only when there is a next one to join: a chain running off the
+                // end of the lyric, or one whose next syllable did not fit the
+                // chart, leaves a hyphen with nothing on its right and LilyPond
+                // reports an unterminated hyphen -- into the output this tool
+                // reads to decide whether engraving went well.
+                boolean joins = syllable.hyphenated() && at + 1 < syllables.size();
+                line.append(joins ? " -- " : " ");
                 cursor = until;
                 at++;
             }
@@ -163,11 +168,14 @@ final class LyricEngraving {
      * one: the bars already carry both their position and their moment, and the
      * two routes that build them disagree about how seconds and beats relate.
      *
-     * <p><b>Words past the end of the chart are dropped.</b> The chart spans the
-     * harmony, and a lyric sung after the last chord has no bar to sit in; the
-     * alternative is piling them onto the final unit, where they would print on
-     * top of one another and the bar would no longer sum. The text sheet shows
-     * every word and is the output to read when the two differ.
+     * <p><b>A word with no bar to sit in is dropped, and only that word.</b> The
+     * chart spans the harmony, so a lyric sung after the last chord has nowhere
+     * to go; piling such words onto the final unit would print them over one
+     * another and stop the bar summing. Skipped rather than treated as the end
+     * of the lyric, because words are not globally ordered — see
+     * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()} — so one
+     * stray onset says nothing about the next word. The text sheet shows every
+     * word and is the output to read when the two differ.
      */
     private static List<Syllable> placed(Score score, List<ChartLayout.Bar> bars,
                                          long[] barStart) {
@@ -184,7 +192,12 @@ final class LyricEngraving {
                 // one LilyPond cannot name.
                 unit = Math.max(unit, previous + 1);
                 if (unit >= chartEnd) {
-                    return syllables;
+                    // Skipped, not returned. Words are not globally ordered --
+                    // Lyrics.allWords()'s own javadoc says recognition spans on
+                    // sung speech overlap -- so one word past the end says
+                    // nothing about the next, and abandoning the rest would drop
+                    // a whole verse for one stray onset.
+                    continue;
                 }
                 syllables.add(new Syllable(unit, word.text(), word.hyphenatedToNext()));
                 previous = unit;
@@ -200,31 +213,12 @@ final class LyricEngraving {
             index++;
         }
         ChartLayout.Bar bar = bars.get(index);
-        double perQuarter = secondsPerQuarter(bars, index);
+        // The bar's own rate, so the last bar is measured like every other and a
+        // tempo change inside the chart cannot be read at a neighbour's tempo.
+        double perQuarter = bar.secondsPerQuarter();
         double into = perQuarter > 0 ? (seconds - bar.startSeconds()) / perQuarter : 0;
         long unit = barStart[index] + Math.round(into / UNIT);
         return Math.max(barStart[0], Math.min(unit, barStart[index + 1]));
-    }
-
-    /**
-     * How long a quarter beat lasts in one bar, measured from the bar after it.
-     *
-     * <p>Measured rather than taken from {@link Score#estimatedTempo()} because
-     * the chart's bars are where the two routes have already agreed: on a piece
-     * that changes tempo, one estimated rate would place a syllable in a
-     * different bar from the chord sounding under it.
-     */
-    private static double secondsPerQuarter(List<ChartLayout.Bar> bars, int index) {
-        int from = Math.min(index, bars.size() - 2);
-        if (from < 0) {
-            // A one-bar chart has no next bar to measure against. Its own length
-            // is all there is, and a syllable inside it is placed by proportion.
-            ChartLayout.Bar only = bars.get(0);
-            return only.lengthQuarters() > 0 ? 1.0 / only.lengthQuarters() : 0;
-        }
-        double span = bars.get(from + 1).startSeconds() - bars.get(from).startSeconds();
-        double quarters = bars.get(from).lengthQuarters();
-        return quarters > 0 ? span / quarters : 0;
     }
 
     private static String skip(long units) {

@@ -27,6 +27,9 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.LrcLyrics;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -38,6 +41,7 @@ import dev.olivelli.musicwizard.notation.LyricSheet;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
@@ -119,7 +123,47 @@ class LyricEngravingIT {
                 Arguments.of("with-repeats", sung(8, 2.0, TimeSignature.FOUR_FOUR, 120, """
                         [00:00.00]<00:00.00>first <00:01.00>time
                         [00:08.00]<00:08.00>second <00:09.00>time
-                        """)));
+                        """)),
+                // One bar, which has no neighbour to borrow a rate from.
+                Arguments.of("one-bar", sung(1, 2.0, TimeSignature.FOUR_FOUR, 120, """
+                        [00:00.00]<00:00.00>a <00:00.50>b <00:01.00>c <00:01.50>d
+                        """)),
+                // Hyphenated syllables, including a chain running to the end of
+                // the lyric: a hyphen with nothing on its right is an
+                // unterminated hyphen, which assertEngravedCleanly rejects.
+                Arguments.of("hyphenated", hyphenated()),
+                // Chords stated on the beat axis, which is the other route
+                // through ChartLayout and the one a MIDI import takes.
+                Arguments.of("quantized-chords", quantized()));
+    }
+
+    /** Every syllable hyphenated, so the chain runs off the end of the lyric. */
+    private static Score hyphenated() {
+        Score score = sung(4, 2.0, TimeSignature.FOUR_FOUR, 120,
+                "[00:00.00]<00:00.00>Hal <00:01.00>le <00:02.00>lu <00:03.00>jah\n");
+        List<LyricWord> words = new ArrayList<>();
+        for (LyricWord word : score.lyrics().lines().get(0).words()) {
+            words.add(word.withHyphenToNext(true));
+        }
+        return score.withLyrics(new Lyrics(
+                List.of(new LyricLine(words, Confidence.of(0.9))), "und", Confidence.of(0.9)));
+    }
+
+    /** A progression on the beat axis, which sends ChartLayout down fromBeats. */
+    private static Score quantized() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        for (int i = 0; i < 4; i++) {
+            chords.add(new Chord(root(roots[i]), ChordQuality.MAJOR, Optional.empty(),
+                    i * 2.0, (i + 1) * 2.0,
+                    Optional.of(i * 4.0), Optional.of((i + 1) * 4.0), Confidence.of(0.9)));
+        }
+        Score score = Score.empty(map, 8.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)))
+                .withMetadata("Quantized", "Tester");
+        return score.withLyrics(LrcLyrics.parse(
+                "[00:00.00]<00:00.00>on <00:01.00>the <00:02.50>beat <00:05.00>axis\n", 8.0));
     }
 
     @ParameterizedTest(name = "{0}")

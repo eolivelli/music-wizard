@@ -162,11 +162,24 @@ final class ChartLayout {
      * @param cells        the chords sounding, in order
      */
     record Bar(TimeSignature meter, boolean meterChanged, List<Cell> cells,
-               double startQuarters, double startSeconds) {
+               double startQuarters, double startSeconds, double endSeconds) {
 
         /** How long this bar is, in quarter beats. */
         double lengthQuarters() {
             return meter.quarterBeatsPerBar();
+        }
+
+        /**
+         * How long a quarter beat lasts in this bar.
+         *
+         * <p>Carried rather than differenced against the next bar, because the
+         * last bar has no next one and every consumer that tried to work around
+         * that guessed: borrowing the previous bar's rate is wrong across a
+         * tempo change, and a chart of one bar has nothing to borrow at all.
+         */
+        double secondsPerQuarter() {
+            double length = lengthQuarters();
+            return length > 0 ? (endSeconds - startSeconds) / length : 0;
         }
     }
 
@@ -181,10 +194,11 @@ final class ChartLayout {
      *
      * <p>Supplied by whichever route built the chart, because only it knows the
      * origin the axis is counted from and how the two units relate — a constant
-     * quarter length on the seconds route, the tempo map on the beat route.
-     * Anything downstream that has to place a moment against these bars asks
-     * here rather than reconstructing an origin of its own, which is the defect
-     * #103 and #150 are both about.
+     * quarter length on the seconds route, the tempo map on the beat route. It is
+     * read here and nowhere else: what leaves this class is each bar's own two
+     * ends, so a consumer placing a moment against these bars never has to
+     * rebuild an origin or a rate, which is the defect #103 and #150 are both
+     * about.
      */
     @FunctionalInterface
     private interface QuartersToSeconds {
@@ -599,8 +613,10 @@ final class ChartLayout {
 
         List<Bar> bars = new ArrayList<>(barStarts.size());
         for (int i = 0; i < barStarts.size(); i++) {
+            double from = barStarts.get(i);
+            double to = from + meters.get(i).quarterBeatsPerBar();
             bars.add(new Bar(meters.get(i), i == 0 || !meters.get(i).equals(meters.get(i - 1)),
-                    cells.get(i), barStarts.get(i), clock.secondsAt(barStarts.get(i))));
+                    cells.get(i), from, clock.secondsAt(from), clock.secondsAt(to)));
         }
         return named(bars);
     }
@@ -648,7 +664,7 @@ final class ChartLayout {
                 previous = cell.symbol();
             }
             out.add(new Bar(bar.meter(), bar.meterChanged(), List.copyOf(cells),
-                    bar.startQuarters(), bar.startSeconds()));
+                    bar.startQuarters(), bar.startSeconds(), bar.endSeconds()));
         }
         return List.copyOf(out);
     }
@@ -785,7 +801,7 @@ final class ChartLayout {
         for (Bar bar : bars) {
             reduced.add(new Bar(bar.meter(), bar.meterChanged(),
                     holdsTheLeadIn(bar) ? bar.cells() : written(bar.cells(), bar.meter()),
-                    bar.startQuarters(), bar.startSeconds()));
+                    bar.startQuarters(), bar.startSeconds(), bar.endSeconds()));
         }
         return named(reduced);
     }
@@ -975,7 +991,7 @@ final class ChartLayout {
             named = namesIt ? chord.symbol() : named;
             bars.add(new Bar(meter, i == 0, List.of(
                     new Cell(Optional.of(chord), meter.quarterBeatsPerBar(), namesIt)),
-                    i * meter.quarterBeatsPerBar(), chord.startSeconds()));
+                    i * meter.quarterBeatsPerBar(), chord.startSeconds(), chord.endSeconds()));
         }
         return List.copyOf(bars);
     }

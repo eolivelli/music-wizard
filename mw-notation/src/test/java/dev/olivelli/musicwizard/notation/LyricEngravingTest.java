@@ -202,6 +202,94 @@ class LyricEngravingTest {
     }
 
     @Test
+    @DisplayName("a word past the chart does not take the words after it with it")
+    void oneDroppedWordDoesNotAbandonTheRest() {
+        // Built directly rather than from LRC, which clamps every word into its
+        // own line and so cannot produce one past the chart. Words are not
+        // globally ordered -- Lyrics.allWords()'s javadoc says recognition spans
+        // on sung speech overlap -- so a stray onset says nothing about the next
+        // word, and returning there dropped whole verses.
+        Confidence sure = Confidence.of(0.9);
+        Lyrics strays = new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("early", 0.5, 1.0, sure),
+                        LyricWord.ofSeconds("strayed", 20.0, 20.5, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("still", 2.5, 3.0, sure),
+                        LyricWord.ofSeconds("here", 4.5, 5.0, sure)), sure)),
+                "und", sure);
+        Score score = chart(4).withLyrics(strays);
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).contains("\"early\"").contains("\"still\"").contains("\"here\"");
+        assertThat(block).doesNotContain("\"strayed\"");
+    }
+
+    @Test
+    @DisplayName("a hyphen is written only where there is a syllable to join")
+    void noDanglingHyphen() {
+        // LilyPond reports an unterminated hyphen, into the output this tool
+        // reads -- and a chain running off the end of the lyric is the ordinary
+        // way to produce one.
+        Score plain = sung(4, "[00:00.00]<00:00.00>Hal <00:01.00>le\n");
+        LyricLine line = plain.lyrics().lines().get(0);
+        Lyrics trailing = new Lyrics(List.of(new LyricLine(List.of(
+                line.words().get(0).withHyphenToNext(true),
+                line.words().get(1).withHyphenToNext(true)),
+                Confidence.of(0.9))), "und", Confidence.of(0.9));
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(plain.withLyrics(trailing))));
+
+        assertThat(block).contains("\"Hal\"2 -- \"le\"");
+        assertThat(block.strip()).doesNotContain("-- |").doesNotEndWith("--");
+    }
+
+    @Test
+    @DisplayName("a one-bar chart measures its bar rather than assuming a length for it")
+    void oneBarChartUsesItsOwnRate() {
+        // Nothing to borrow a rate from, and a hard-coded one placed every word
+        // as though the bar lasted a second.
+        Score score = sung(1, "[00:00.00]<00:00.00>a <00:00.50>b <00:01.00>c <00:01.50>d\n");
+
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
+
+        assertThat(bars).hasSize(1);
+        assertThat(bars.get(0)).isEqualTo("\"a\"4 \"b\"4 \"c\"4 \"d\"4 |");
+    }
+
+    @Test
+    @DisplayName("a bar is read at its own tempo, not at its neighbour's")
+    void aTempoChangeIsReadPerBar() {
+        // Three bars at 120 then one at 40, so the last bar is three times as
+        // long in seconds as the ones before it. Measured at a neighbour's rate,
+        // everything sung in it piles into its first beat or falls off the end.
+        TempoMap map = TempoMap.fromBeatTimes(
+                List.of(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5,
+                        4.0, 4.5, 5.0, 5.5, 6.0, 7.5, 9.0, 10.5),
+                TimeSignature.FOUR_FOUR);
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            double from = i < 3 ? i * 2.0 : 6.0;
+            double to = i < 3 ? (i + 1) * 2.0 : 12.0;
+            chords.add(Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
+                    from, to, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(map, 12.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+        score = score.withLyrics(LrcLyrics.parse(
+                "[00:06.00]<00:06.00>slow <00:09.00>er <00:10.50>still\n", 12.0));
+
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
+
+        // Measured at a neighbour's rate the final bar looks a third as long,
+        // so the two words late in it fall off the end of the chart entirely.
+        String last = bars.get(bars.size() - 1);
+        assertThat(last).contains("\"er\"").contains("\"still\"");
+        assertThat(String.join(" ", bars)).contains("\"slow\"");
+    }
+
+    @Test
     @DisplayName("a syllable lands in the bar the word is sung in")
     void syllablesLandInTheirBar() {
         // Second bar starts at two seconds; the word is sung a beat into it.
