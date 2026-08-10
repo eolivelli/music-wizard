@@ -409,6 +409,22 @@ class LyricEngravingTest {
     }
 
     @Test
+    @DisplayName("a word near the chart's end is placed whole or not at all, never in pieces")
+    void aWordIsNeverTruncated() {
+        // Each syllable claims a grid unit, so a long word close to the end runs
+        // off it partway through. Printing what fitted leaves "par ti co" on the
+        // page -- a non-word, which reads as a transcription rather than as the
+        // omission it is.
+        Score score = sungIn("it", 2, "[00:00.00]<00:03.90>particolare <00:03.95>amore\n");
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).doesNotContain("\"par\"").doesNotContain("\"ti\"");
+        // The whole word is tried when its syllables will not fit.
+        assertThat(block).contains("\"particolare\"");
+    }
+
+    @Test
     @DisplayName("the lyric context points down, like the two above it")
     void staffAffinityPointsDown() {
         // ChordNames is DOWN and the repeat lane is DOWN. A Lyrics context on

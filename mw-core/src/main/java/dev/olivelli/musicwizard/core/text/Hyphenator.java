@@ -37,22 +37,18 @@ import java.util.Optional;
  * scores every position between two letters, and an odd score is a break. The
  * patterns are the licensed part and are vendored verbatim from {@code
  * hyph-utf8} — Italian dual-licensed with an MIT arm, American English under its
- * author's royalty-free grant, both attributed in {@code NOTICE}. Taking them
- * from the source matters: the copies that travel with Apache FOP are LPPL only,
- * because that conversion predates the Italian relicensing.
+ * author's royalty-free grant, both attributed in {@code NOTICE}.
  *
  * <p>Implemented here rather than taken from a library because the patterns have
  * to be vendored and attributed either way, and what is left is a short
  * well-understood algorithm — the same trade this project makes for its DSP.
  *
- * <p><b>Both minima are one.</b> The pattern files state the minima their
- * language wants for <em>typesetting</em>: two letters before the first break
- * and two or three after the last, so that no line ends in a stranded letter.
- * Those are rules about paper, and applying them to singing is wrong in the one
- * direction that matters — Italian <i>amore</i> is sung on three notes, and
- * typesetting minima forbid both <i>a-more</i> and <i>amo-re</i>, leaving a word
- * of three syllables with two. A syllable a singer gives a note to gets one
- * here, however short.
+ * <p><b>A syllable of one letter is allowed at the front.</b> The pattern files
+ * state the minima their language wants for <em>typesetting</em>: two letters
+ * before the first break, so that no printed line begins with a stranded one.
+ * That is a rule about paper and it costs a note — it forbids <i>a-more</i>, and
+ * Italian <i>amore</i> is sung on three. See {@link #LEFT_MINIMUM} and
+ * {@link #RIGHT_MINIMUM}, which are not the same number and say why.
  *
  * <p>What this is not: a pronunciation dictionary. Liang's patterns give the
  * breaks a typesetter would take, which for English are orthographic rather than
@@ -70,13 +66,25 @@ public final class Hyphenator {
     private static final Map<String, Hyphenator> LOADED = new HashMap<>();
 
     /**
-     * How many letters must lie before the first break and after the last.
+     * How many letters must lie before the first break.
      *
-     * <p>One and one, against the two and two or three the pattern files
-     * recommend. See the class javadoc: those are typesetting rules, and a sung
-     * syllable is a syllable however short.
+     * <p>One, against the two the pattern files recommend for typesetting. That
+     * recommendation exists so a printed line never begins or ends with a
+     * stranded letter, and it costs a syllable a singer holds: it forbids
+     * <i>a-more</i>, and Italian <i>amore</i> is sung on three notes.
      */
-    private static final int MINIMUM = 1;
+    private static final int LEFT_MINIMUM = 1;
+
+    /**
+     * How many letters must lie after the last break.
+     *
+     * <p>Two, not one. A final consonant on its own is not a syllable in either
+     * language — one gives <i>abandon-s</i> and <i>abbot-s</i> in English, and in
+     * Italian only a handful of foreign words like <i>gol-f</i>. The asymmetry is
+     * deliberate: a vowel can open a syllable alone and a consonant cannot close
+     * one alone.
+     */
+    private static final int RIGHT_MINIMUM = 2;
 
     /** Pattern letters to the scores between them, one longer than the letters. */
     private final Map<String, byte[]> patterns;
@@ -151,36 +159,28 @@ public final class Hyphenator {
     /**
      * The word split into syllables, in order, joining back to the original.
      *
-     * <p>A word with no break comes back as one syllable, and so does anything
-     * that is not letters — digits and punctuation are left alone rather than
-     * guessed at, since a lyric carries years and worse.
+     * <p>The token is handed to the patterns as it stands, punctuation and all.
+     * <b>An apostrophe is a letter here</b>, which is what the data expects: the
+     * Italian file ships a pattern for every position an elision can take, in
+     * both the typewriter and the typographic quote, so {@code dell'amore} comes
+     * out {@code del-l'a-mo-re} — four notes, the elided article breaking away
+     * from the article before it. A rule of our own that split at the apostrophe
+     * and glued the prefix on whole got that word wrong and missed {@code ’}
+     * entirely, which is the quote every lyric file actually contains.
      *
-     * <p><b>An elided article is carried onto the syllable it is sung with.</b>
-     * Italian writes {@code l'innocenza} and {@code dell'amore}, and the elided
-     * piece is not a syllable of its own: it is sung on the first syllable of
-     * what follows, which is what a singer sees on the page. So the stem is
-     * split and the piece before the apostrophe joins the front of it. Without
-     * this such a word is not letters at all and stays whole, which in Italian
-     * is most of the articles in the song.
+     * <p>Nothing else needs a gate either. No pattern matches a digit, so
+     * {@code 1999} and {@code 24/7} come back whole without being tested for;
+     * trailing punctuation simply carries on the syllable it is attached to.
+     * The one exception is a full stop, which is the character the patterns use
+     * to mean a word boundary — a token holding one would be scored as though it
+     * were several words.
      */
     public List<String> syllables(String word) {
         Objects.requireNonNull(word, "word");
-        int elision = word.lastIndexOf('\'');
-        if (elision >= 0 && elision + 1 < word.length()) {
-            String prefix = word.substring(0, elision + 1);
-            List<String> stem = syllables(word.substring(elision + 1));
-            List<String> joined = new ArrayList<>(stem.size());
-            joined.add(prefix + stem.get(0));
-            joined.addAll(stem.subList(1, stem.size()));
-            return List.copyOf(joined);
-        }
-        if (word.length() < 2 * MINIMUM + 1) {
+        if (word.length() < LEFT_MINIMUM + RIGHT_MINIMUM || word.indexOf('.') >= 0) {
             return List.of(word);
         }
         String lower = word.toLowerCase(Locale.ROOT);
-        if (!isLetters(lower)) {
-            return List.of(word);
-        }
 
         // The word is scored with a boundary marker at each end, which is what
         // the leading and trailing "." in a pattern matches.
@@ -201,7 +201,7 @@ public final class Hyphenator {
         int start = 0;
         // scores[i + 1] scores the gap after the i-th letter of the word, the
         // offset coming from the boundary marker in front of it.
-        for (int i = MINIMUM; i <= word.length() - MINIMUM - 1; i++) {
+        for (int i = LEFT_MINIMUM; i <= word.length() - RIGHT_MINIMUM; i++) {
             if (scores[i + 1] % 2 == 1) {
                 syllables.add(word.substring(start, i));
                 start = i;
@@ -216,12 +216,4 @@ public final class Hyphenator {
         return syllables(word).size();
     }
 
-    private static boolean isLetters(String word) {
-        for (int i = 0; i < word.length(); i++) {
-            if (!Character.isLetter(word.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
 }

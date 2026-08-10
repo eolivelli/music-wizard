@@ -181,8 +181,8 @@ mw render song.mwz                   # writes the chords-lyrics files as well
 ```
 
 `--lyrics-language` splits words into the syllables they are sung on, so the
-engraved sheet reads `a -- mo -- re` under three chords rather than one word under
-the first. Italian and English have patterns; an LRC file does not say which
+engraved sheet reads *a-mo-re* where it used to carry the word whole. Italian and
+English have patterns; an LRC file does not say which
 language it is in, and splitting on the wrong one is worse than not splitting, so
 without the option words stay whole. It also decides how a plain (un-timed) line
 shares itself out among its words.

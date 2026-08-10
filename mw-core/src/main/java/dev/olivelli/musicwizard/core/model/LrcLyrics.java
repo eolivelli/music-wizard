@@ -35,9 +35,10 @@ import java.util.regex.Pattern;
  *
  * <p>Which one a file uses decides how much this can promise. Word tags are read
  * as given. A plain line has one timestamp and several words, so the words are
- * spread across it by {@link LyricWord#syllableEstimate()} — the same
- * apportioning that type exists for, and the reason it does not need a
- * pronunciation dictionary to be useful. A word placed that way is a guess
+ * spread across it by syllable count — from
+ * {@link dev.olivelli.musicwizard.core.text.Hyphenator} when the language is
+ * known, and otherwise from {@link LyricWord#syllableEstimate()}, which needs no
+ * language and no pronunciation dictionary. A word placed that way is a guess
  * inside a known line, which is why the two dialects are given different
  * confidences rather than the same one.
  *

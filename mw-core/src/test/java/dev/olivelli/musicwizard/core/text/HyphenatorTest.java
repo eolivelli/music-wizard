@@ -55,25 +55,47 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a syllable of one letter is still a syllable")
-        void oneLetterSyllables() {
-            // The typesetting minima the pattern file recommends forbid a break
-            // within two letters of either end, which leaves amore with two
-            // syllables where a singer gives it three.
+        @DisplayName("a syllable of one letter is allowed at the front but not at the end")
+        void theTwoMinimaDiffer() {
+            // A vowel opens a syllable alone, so the typesetting minimum of two
+            // on the left costs a note: it forbids a-more, and amore is sung on
+            // three. A consonant does not close one alone, so the right minimum
+            // stays at two and golf is one syllable rather than gol-f.
             assertThat(split("it", "amore")).isEqualTo("a-mo-re");
             assertThat(split("it", "ora")).isEqualTo("o-ra");
+            assertThat(split("it", "golf")).isEqualTo("golf");
         }
 
         @ParameterizedTest(name = "{0} -> {1}")
         @CsvSource({
             "l'innocenza, l'in-no-cen-za",
-            "dell'amore, dell'a-mo-re",
+            "dell'amore, del-l'a-mo-re",
+            "sull'erba, sul-l'er-ba",
+            "quell'uomo, quel-l'uo-mo",
+            "all'improvviso, al-l'im-prov-vi-so",
             "un'altra, un'al-tra",
             "c'era, c'e-ra",
             "d'amore, d'a-mo-re",
         })
-        @DisplayName("an elided article is sung on the syllable after it")
+        @DisplayName("an elision breaks where the patterns say, not where a rule of ours does")
         void elision(String word, String expected) {
+            // The apostrophe goes through Liang like any other character: the
+            // Italian file ships a pattern for every position an elision can
+            // take. Gluing the whole prefix onto the stem instead made
+            // dell'amore three syllables where it is sung on four.
+            assertThat(split("it", word)).isEqualTo(expected);
+        }
+
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource({
+            "dell\u2019amore, del-l\u2019a-mo-re",
+            "l\u2019innocenza, l\u2019in-no-cen-za",
+            "nell\u2019aria, nel-l\u2019a-ria",
+        })
+        @DisplayName("the typographic quote is an apostrophe too, as the patterns assume")
+        void typographicQuote(String word, String expected) {
+            // Every apostrophe pattern in the file has a U+2019 twin, and it is
+            // the quote lyric files and word processors actually emit.
             assertThat(split("it", word)).isEqualTo(expected);
         }
 
@@ -100,6 +122,16 @@ class HyphenatorTest {
         void ordinaryWords(String word, String expected) {
             assertThat(split("en", word)).isEqualTo(expected);
         }
+
+        @Test
+        @DisplayName("a lone final consonant is not a syllable")
+        void theRightMinimumIsTwo() {
+            // The left minimum of one is what gives "a-ban-dons" its first
+            // syllable; a right minimum of one would go on to strand the plural
+            // as "abandon-s", which no one sings.
+            assertThat(split("en", "abandons")).isEqualTo("a-ban-dons");
+            assertThat(split("en", "abbots")).doesNotEndWith("-s");
+        }
     }
 
     @Nested
@@ -107,11 +139,28 @@ class HyphenatorTest {
     class LeavesAlone {
 
         @Test
-        @DisplayName("digits and punctuation are left whole rather than guessed at")
-        void notLetters() {
+        @DisplayName("digits are left whole, because no pattern matches one")
+        void digits() {
             assertThat(split("it", "1999")).isEqualTo("1999");
             assertThat(split("en", "24/7")).isEqualTo("24/7");
             assertThat(split("it", "po'")).isEqualTo("po'");
+        }
+
+        @Test
+        @DisplayName("trailing punctuation rides the syllable it is attached to")
+        void punctuationRidesAlong() {
+            // A gate that refused any token with punctuation gave these one
+            // syllable, which is fewer than the crude count it replaced.
+            assertThat(split("it", "amore,")).isEqualTo("a-mo-re,");
+            assertThat(split("it", "canzone!")).isEqualTo("can-zo-ne!");
+            assertThat(split("it", "citt\u00e0,")).isEqualTo("cit-t\u00e0,");
+        }
+
+        @Test
+        @DisplayName("a full stop is what the patterns mean by a word boundary")
+        void fullStops() {
+            // Scoring "U.S.A." would treat each piece as its own word.
+            assertThat(split("en", "U.S.A.")).isEqualTo("U.S.A.");
         }
 
         @Test

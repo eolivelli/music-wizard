@@ -205,33 +205,59 @@ final class LyricEngraving {
                 List<String> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
                         .orElseGet(() -> List.of(word.text()));
-                for (int i = 0; i < parts.size(); i++) {
-                    // Spread evenly across the word. Nothing knows where inside a
-                    // word its second syllable begins -- that is the note it is
-                    // sung on, and there is no melody yet (#8) -- so the even
-                    // share is the honest guess, and it keeps the syllables in
-                    // the bar the word was sung in.
-                    double at = word.startSeconds() + (word.endSeconds() - word.startSeconds())
-                            * i / parts.size();
-                    long unit = unitOf(at, bars, barStart);
-                    // Strictly increasing, so every syllable gets a duration of
-                    // at least one grid step. Two can land on one unit -- the
-                    // grid is finer than any singer, and a short word's
-                    // syllables are closer together than it -- and a zero-length
-                    // syllable is one LilyPond cannot name.
-                    unit = Math.max(unit, previous + 1);
-                    if (unit >= chartEnd) {
-                        continue;
-                    }
-                    // Every syllable but the last joins the next with a hyphen;
-                    // the last carries whatever the word itself said.
-                    boolean joins = i + 1 < parts.size() || word.hyphenatedToNext();
-                    syllables.add(new Syllable(unit, parts.get(i), joins));
-                    previous = unit;
+                // All of a word or none of it. Each syllable claims a grid unit,
+                // so a long word near the end of the chart can run off it partway
+                // through and leave "par ti co" on the page -- a non-word, which
+                // reads as a transcription rather than as the omission it is.
+                // The whole word is tried instead, and only when that will not
+                // fit either is the word dropped.
+                List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
+                if (placed.isEmpty() && parts.size() > 1) {
+                    placed = fitted(List.of(word.text()), word, bars, barStart,
+                            chartEnd, previous);
+                }
+                if (!placed.isEmpty()) {
+                    syllables.addAll(placed);
+                    previous = placed.get(placed.size() - 1).unit();
                 }
             }
         }
         return syllables;
+    }
+
+    /**
+     * One word's syllables on the grid, or empty when they do not all fit.
+     *
+     * <p>All or nothing, so the page never shows part of a word. The units are
+     * strictly increasing from {@code previous}, which is what gives every
+     * syllable a duration of at least one grid step: two can otherwise land
+     * together, the grid being finer than any singer and a short word's
+     * syllables closer together still, and a zero-length syllable is one
+     * LilyPond cannot name.
+     */
+    private static List<Syllable> fitted(List<String> parts, LyricWord word,
+                                         List<ChartLayout.Bar> bars, long[] barStart,
+                                         long chartEnd, long previous) {
+        List<Syllable> placed = new ArrayList<>(parts.size());
+        long cursor = previous;
+        for (int i = 0; i < parts.size(); i++) {
+            // Spread evenly across the word. Nothing knows where inside a word
+            // its second syllable begins -- that is the note it is sung on, and
+            // there is no melody yet (#8) -- so the even share is the honest
+            // guess, and it keeps the syllables in the bar the word was sung in.
+            double at = word.startSeconds()
+                    + (word.endSeconds() - word.startSeconds()) * i / parts.size();
+            long unit = Math.max(unitOf(at, bars, barStart), cursor + 1);
+            if (unit >= chartEnd) {
+                return List.of();
+            }
+            // Every syllable but the last joins the next with a hyphen; the last
+            // carries whatever the word itself said.
+            boolean joins = i + 1 < parts.size() || word.hyphenatedToNext();
+            placed.add(new Syllable(unit, parts.get(i), joins));
+            cursor = unit;
+        }
+        return placed;
     }
 
     /** Where a moment falls on the grid, by the bar holding it. */
