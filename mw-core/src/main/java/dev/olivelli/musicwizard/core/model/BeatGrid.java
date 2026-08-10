@@ -253,11 +253,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p><b>Why the plain mean is not the answer either, which is the whole of
      * why this is trimmed.</b> The mean interval is exactly the end-to-end rate,
      * since consecutive differences telescope, so it folds a gap where the
-     * tracker missed a beat into the rate as if the music had slowed there.
-     * {@code blues-shuffle-a-106bpm.mp3} holds eleven intervals longer than 1.5x
-     * its median, one of them 3.79 s, and they drag the plain mean to 102.5
-     * against a measured 105.0 -- which cost 28 points of the emitted chart when
-     * it was tried (#200, #207). The band drops exactly those.
+     * tracker missed a beat into the rate as if the music had slowed there. A
+     * recording holding a handful of intervals longer than 1.5x its median is
+     * dragged under its true rate by exactly those, and using the plain mean
+     * cost 28 points of the emitted chart when it was tried (#200, #207). The
+     * band drops them.
      *
      * <p>So this concedes neither of the two cases #205 is open for, where the
      * median and the mean each concede one. On an even 20-pulse grid at 120 BPM:
@@ -266,12 +266,16 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * pulse both halves fall outside and the answer is again exactly 120, where
      * the plain mean gives 126.32.
      *
-     * <p>What it does not fix is a grid tracked an octave out for <em>part</em> of
-     * a recording, which {@code BeatTracker.tempoOf}'s own javadoc says the
-     * autocorrelation peak is prone to. Half a recording at double rate makes the
-     * two rates two populations rather than a population and some outliers, and
-     * the median picks the larger one where this picks whichever the median
-     * lands in. Nothing here bounds that, and no benchmark exhibits it.
+     * <p>What it does not fix is a grid tracked a subdivision out for
+     * <em>part</em> of a recording. Part of it at another rate makes the two
+     * rates two populations rather than a population and some outliers, and the
+     * median picks the larger one where this picks whichever the median lands
+     * in. Nothing here bounds that, and it is not hypothetical: a benchmark in
+     * the scored corpus has its tail tracked at three halves of its median.
+     * Three halves is a relation the tracker does correct, but it reads the
+     * window's seed rather than the tracked interval, and that seed's ratio
+     * lands just outside the tolerance (#306). #292 removed the common cause
+     * and did not remove the shape.
      *
      * @throws IllegalStateException if the grid holds fewer than two pulses,
      *                               which carry no interval to measure

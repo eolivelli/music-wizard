@@ -45,8 +45,19 @@ public final class TempoEstimator {
     /** Prior width in octaves. */
     private static final double PRIOR_WIDTH_OCTAVES = 1.4;
 
-    private static final double MIN_TEMPO = 40;
-    private static final double MAX_TEMPO = 240;
+    /**
+     * The range of rates this estimator will return, and so the range any
+     * consumer correcting one of its answers must stay inside.
+     *
+     * <p>Package-private rather than private because {@link BeatTracker} divides
+     * a subdivision out of a window's seed and must stop where the estimator
+     * itself would have: a corrected rate outside this range is one no window
+     * could have been seeded with in the first place.
+     */
+    static final double MIN_TEMPO = 40;
+
+    /** See {@link #MIN_TEMPO}. */
+    static final double MAX_TEMPO = 240;
 
     /**
      * The kurtosis of Gaussian noise, and so the reference point for "no
