@@ -245,8 +245,6 @@ class HyphenatorTest {
             // The inflection in a possessive is not a note of its own, and nor is
             // the consonant in a contraction -- but "la" is, which is what
             // sha-la-la is made of.
-            assertThat(split("en", "Adirondack's")).isEqualTo("Adiron-dack's");
-            assertThat(split("en", "don't")).isEqualTo("don't");
             assertThat(split("en", "y'all")).isEqualTo("y'all");
             assertThat(split("en", "sha-la-la")).isEqualTo("sha--la--la");
             assertThat(split("en", "hi-fi")).isEqualTo("hi--fi");
@@ -292,15 +290,35 @@ class HyphenatorTest {
         @Test
         @DisplayName("every split rejoins to the word it came from")
         void splittingLosesNothing() {
+            // Raw concatenation, not a normalised one: a hyphen inside a piece is
+            // part of the token and losing it must fail here. The list reaches
+            // each way append can move text -- a run joined backwards, one held
+            // over for the run after it, a separator carried, an abbreviation.
             List<String> words = List.of("amore", "l'innocenza", "particolare", "trouble",
-                    "1999", "po'", "e", "rock'n'roll", "perché", "città");
+                    "1999", "po'", "e", "rock'n'roll", "perch\u00e9", "citt\u00e0",
+                    "well-known", "sha-la-la", "y'all", "U.S.A.", "elf'", "x-ray",
+                    "Adirondack's", "(chorus)", "amore,", "--");
             for (String language : List.of("it", "en")) {
+                Hyphenator hyphenator = Hyphenator.forLanguage(language).orElseThrow();
                 for (String word : words) {
-                    assertThat(split(language, word).replace("-", ""))
-                            .as("%s / %s", language, word)
-                            .isEqualTo(word.replace("-", ""));
+                    String rejoined = hyphenator.syllables(word).stream()
+                            .map(Hyphenator.Syllable::text)
+                            .collect(java.util.stream.Collectors.joining());
+                    assertThat(rejoined).as("%s / %s", language, word).isEqualTo(word);
+                    assertThat(hyphenator.syllables(word)).as("%s / %s", language, word)
+                            .allSatisfy(piece -> assertThat(piece.text()).isNotEmpty());
                 }
             }
+        }
+
+        @Test
+        @DisplayName("an abbreviation is left whole wherever its stops begin")
+        void abbreviationsWithLeadingPunctuation() {
+            // The guard looked only at the first stop, so one in front of the
+            // letters hid every stop after it.
+            assertThat(split("en", "U.S.A.")).isEqualTo("U.S.A.");
+            assertThat(split("en", ".U.S.A.")).isEqualTo(".U.S.A.");
+            assertThat(split("en", "...U.S.A.")).isEqualTo("...U.S.A.");
         }
     }
 

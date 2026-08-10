@@ -240,9 +240,14 @@ public final class Hyphenator {
      * as it should.
      */
     private static boolean hasInternalStop(String word) {
-        int stop = word.indexOf('.');
-        return stop > 0 && stop < word.length() - 1
-                && firstLetter(word) < stop && lastLetter(word) > stop;
+        int first = firstLetter(word);
+        int last = lastLetter(word);
+        for (int i = first + 1; i < last; i++) {
+            if (word.charAt(i) == '.') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Whether this character is part of a word rather than something between two. */
@@ -265,6 +270,11 @@ public final class Hyphenator {
      * which is what {@code sha-la-la} is made of. Backwards where there is
      * something to join, and otherwise held over for the run that follows, so
      * {@code y'all} is one note and not two.
+     *
+     * <p>{@code y} is not counted as a vowel, which is what makes {@code y'all}
+     * come out right and what leaves {@code x-ray} and {@code by-pass} on one
+     * note apiece. English needs a rule finer than a character set to have both;
+     * that is #332.
      */
     private static void append(List<Syllable> pieces, StringBuilder pending,
                                List<String> syllables) {
@@ -372,7 +382,9 @@ public final class Hyphenator {
         // Bounded by the run's letters rather than its length: an apostrophe is
         // word material in Italian, and counted against the minima it fills the
         // slot RIGHT_MINIMUM reserves -- elf' would break as el-f'.
-        // scores[i + 1] scores the gap after the i-th character of the run.
+        // scores[i + 1] scores the gap in front of the run's i-th character, the
+        // offset coming from the boundary marker before it; a break at i puts
+        // that character at the head of the next syllable.
         for (int i = first + LEFT_MINIMUM; i <= last + 1 - RIGHT_MINIMUM; i++) {
             if (scores[i + 1] % 2 == 1) {
                 syllables.add(run.substring(start, i));
