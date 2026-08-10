@@ -1336,8 +1336,7 @@ class BeatTrackingTest {
             // compensates for. Invert the fixture above -- dense first, sparse
             // for the rest -- so the windows reading half the rate are the
             // majority, and the correction runs backwards: the opening, which
-            // has an onset on every beat and was tracked on every beat, is
-            // pulled onto the subdivision. #305.
+            // has an onset on every beat, is pulled onto the subdivision. #305.
             //
             // Measured over the dense opening rather than the whole recording,
             // and that is the point of the test rather than a detail of it. Two
