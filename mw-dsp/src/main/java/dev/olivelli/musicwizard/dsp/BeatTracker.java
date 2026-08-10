@@ -274,13 +274,12 @@ public final class BeatTracker {
      * <p><strong>The measured value of {@code A} is deliberately not quoted
      * here, and that is the fourth answer to this question rather than the
      * first.</strong> ({@code F} is quoted above, where the closed form is
-     * checked against the tracker, because unlike {@code A} it has never moved:
-     * every measurement of it has landed between −0.19 and −0.33 — −0.19 to
-     * −0.25 over the three click-track tempi above, −0.25 to −0.33 over ten
-     * recordings of which five are real music — and it is the envelope's mean
-     * over its standard deviation rather than a peak that has to be found. At
-     * the deepest of them the crossing above is still three times below the old
-     * weight.) Four review passes went on
+     * checked against the tracker, because it is the envelope's mean over its
+     * standard deviation rather than a peak that has to be found, and every
+     * measurement of it has been deep enough to leave the crossing above three
+     * times below the old weight. It is not a constant of the code: #306
+     * rescaled the envelope and moved it, which is exactly why the closed forms
+     * are written to need only its sign.) Four review passes went on
      * correcting figures in this paragraph — an onset of 5.8, then 7.06, then
      * 7.23, each a better measurement of a quantity nothing asserts, the first
      * two of them a phase swept too coarsely. Then the trouble moved to the
