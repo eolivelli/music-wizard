@@ -61,6 +61,9 @@ public final class LrcLyrics {
     /** How long a line is taken to last when the file gives nothing to learn from. */
     private static final double NOMINAL_LINE_SECONDS = 4.0;
 
+    /** How many typical lines a gap must exceed before it reads as instrumental. */
+    private static final double BREAK_MULTIPLE = 3.0;
+
     /** {@code [mm:ss.xx]}, also accepting {@code :} for the fraction and 1-3 digits. */
     private static final Pattern LINE_TAG =
             Pattern.compile("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]");
@@ -80,10 +83,11 @@ public final class LrcLyrics {
      * Parses an LRC document.
      *
      * @param text            the file's contents
-     * @param recordingSeconds how long the recording is, which bounds the last
-     *                         line; a value that cannot be right — not positive,
-     *                         or before that line starts — is ignored, because a
-     *                         line ending before it began would not construct
+     * @param recordingSeconds how long the recording is, which bounds every line
+     *                         that starts inside it; a value that cannot be right
+     *                         for a line — not positive, or before that line
+     *                         starts — is ignored for it, because a line ending
+     *                         before it began would not construct
      * @return the lyrics, empty when the file times nothing
      */
     public static Lyrics parse(String text, double recordingSeconds) {
@@ -143,7 +147,7 @@ public final class LrcLyrics {
         // Whole-file constants, so read once rather than per line.
         double[] gaps = gapsOf(timed);
         double typicalLine = typicalLine(gaps);
-        double breakAfter = breakAfter(gaps, typicalLine);
+        double breakAfter = breakAfter(typicalLine);
         List<LyricLine> lines = new ArrayList<>();
         for (int i = 0; i < timed.size(); i++) {
             Timed entry = timed.get(i);
@@ -157,14 +161,24 @@ public final class LrcLyrics {
             double next = i + 1 < timed.size()
                     ? Math.max(start, timed.get(i + 1).start() - shift)
                     : Double.POSITIVE_INFINITY;
+            // Lines never overlap, so the successor bounds this one whatever the
+            // body says. A word tag is only evidence about the line it is in: a
+            // mistyped minute in one puts that line's end past several later
+            // ones, and the sheet's cursor then hands it every chord they should
+            // have had.
+            double lastTag = Math.min(lastTagIn(entry.body(), shift), next);
             // An ordinary line runs to its successor, however far above the
-            // median it sits. Only an outlying gap -- and the open end after the
-            // last line, whose gap is infinite -- is cut back to a plausible
-            // length, leaving the remainder as the instrumental it is.
+            // typical length it sits. Only an outlying gap -- and the open end
+            // after the last line, whose gap is infinite -- is cut back to a
+            // plausible length, leaving the remainder as the instrumental it is.
             double end = next - start > breakAfter
-                    ? plausibleEnd(start, lastTagIn(entry.body(), shift),
-                            typicalLine, recordingSeconds)
+                    ? Math.min(next, plausibleEnd(start, lastTag, typicalLine, recordingSeconds))
                     : next;
+            // The recording bounds every line, not only the last: a file timed
+            // against a longer edit of the song runs past the end of this one.
+            if (Double.isFinite(recordingSeconds) && recordingSeconds > start) {
+                end = Math.min(end, recordingSeconds);
+            }
             List<LyricWord> words = wordsOf(entry.body(), start, end, shift);
             if (!words.isEmpty()) {
                 lines.add(new LyricLine(words, weakest(words)));
@@ -262,26 +276,25 @@ public final class LrcLyrics {
      * <p>A line normally runs until the next one starts. Cutting every line at
      * the typical length instead would be wrong for the longer half of an
      * ordinary file, because the typical length is a median and half the lines
-     * exceed it: hand-timed lyrics jitter, and a file whose chorus lines are held
-     * longer than its verse lines would have every chorus line truncated. Both
-     * would grow a false instrumental break in the middle of a verse.
+     * exceed it: hand-timed lyrics jitter, and both that and a truncated line
+     * grow a false instrumental break in the middle of a verse.
      *
-     * <p>So a gap is cut only when it is an <em>outlier</em> among this file's
-     * gaps — Tukey's upper fence, the standard robust test, which adapts to a
-     * file holding two natural line lengths instead of assuming one. Floored at
-     * twice the typical line because the fence collapses onto the data when the
-     * gaps barely vary: a file of near-identical gaps has an interquartile range
-     * of nearly zero, and without the floor its ordinary jitter would read as
-     * outlying.
+     * <p>A plain multiple of the median, because the median is what outliers
+     * cannot move. A threshold read off the spread of the gaps — a quantile
+     * fence — is pushed <em>up</em> by the very gaps it exists to find, so two
+     * breaks in one file hide each other, and its quantile indices degenerate on
+     * the short files that are most common. This has one behaviour at every
+     * length and none to get wrong.
+     *
+     * <p>The limitation is a file holding two natural line lengths that differ
+     * by more than this multiple — verse lines rattled off and chorus lines
+     * held far longer. Its chorus lines are cut and the sheet grows a break row
+     * inside the chorus. That is a misread of where a stanza ends, not a lost or
+     * misplaced word, and no statistic over gaps alone can tell that file from
+     * one with a solo in it.
      */
-    private static double breakAfter(double[] gaps, double typicalLine) {
-        double floor = 2 * typicalLine;
-        if (gaps.length < 4) {
-            return floor;
-        }
-        double lower = gaps[gaps.length / 4];
-        double upper = gaps[(3 * gaps.length) / 4];
-        return Math.max(floor, upper + 1.5 * (upper - lower));
+    private static double breakAfter(double typicalLine) {
+        return BREAK_MULTIPLE * typicalLine;
     }
 
     /** A run of text with the time it starts at, and whether a tag said so. */
@@ -321,8 +334,13 @@ public final class LrcLyrics {
         List<LyricWord> words = new ArrayList<>();
         for (int i = 0; i < runs.size(); i++) {
             Run run = runs.get(i);
-            double end = i + 1 < runs.size() ? runs.get(i + 1).start() : lineEnd;
-            words.addAll(spread(run.text(), run.start(), Math.max(run.start(), end),
+            double to = i + 1 < runs.size() ? runs.get(i + 1).start() : lineEnd;
+            // Clamped into the line's own span, so a tag naming a moment outside
+            // it cannot carry the line past its successor. The line's extent is
+            // read off its words, so an unclamped word is an unclamped line.
+            double runStart = Math.clamp(run.start(), lineStart, lineEnd);
+            to = Math.clamp(to, runStart, lineEnd);
+            words.addAll(spread(run.text(), runStart, to,
                     run.tagged() ? TIMED_WORD : SPREAD_WORD));
         }
         return words;

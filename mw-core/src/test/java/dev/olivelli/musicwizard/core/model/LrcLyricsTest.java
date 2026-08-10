@@ -67,6 +67,73 @@ class LrcLyricsTest {
         }
 
         @Test
+        @DisplayName("a break is found on a short file, and two breaks do not hide each other")
+        void breaksAreFoundAtEveryFileLength() {
+            // A threshold read off the spread of the gaps is pushed up by the
+            // very gaps it exists to find, and its quantile indices degenerate on
+            // short files -- so a five-line file with one solo, and any file with
+            // two, stopped finding them at all.
+            Lyrics one = LrcLyrics.parse("""
+                    [00:00.00]a
+                    [00:04.00]b
+                    [00:08.00]c
+                    [01:08.00]d
+                    [01:12.00]e
+                    """, 300.0);
+            assertThat(one.lines().get(2).endSeconds()).isEqualTo(12.0);
+
+            Lyrics two = LrcLyrics.parse("""
+                    [00:00.00]a
+                    [00:04.00]b
+                    [01:04.00]c
+                    [01:08.00]d
+                    [02:08.00]e
+                    [02:12.00]f
+                    """, 300.0);
+            assertThat(two.lines().get(1).endSeconds()).isEqualTo(8.0);
+            assertThat(two.lines().get(3).endSeconds()).isEqualTo(72.0);
+        }
+
+        @Test
+        @DisplayName("no line outlives its successor, whatever a word tag says")
+        void linesNeverOverlap() {
+            // A mistyped minute in an A2 tag put one line's end past several
+            // later ones, and the sheet's cursor then handed it every chord they
+            // should have had.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]<00:00.00>held <01:00.00>oooon
+                    [00:10.00]next line
+                    [00:14.00]third
+                    [00:18.00]fourth
+                    [00:22.00]fifth
+                    """, 300.0);
+
+            for (int i = 0; i + 1 < lyrics.lines().size(); i++) {
+                assertThat(lyrics.lines().get(i).endSeconds())
+                        .as("line %d must not outlive line %d", i, i + 1)
+                        .isLessThanOrEqualTo(lyrics.lines().get(i + 1).startSeconds());
+            }
+        }
+
+        @Test
+        @DisplayName("no line that starts inside the recording runs past its end")
+        void everyLineIsBoundedByTheRecording() {
+            // A file timed against a longer edit of the song. A line beginning
+            // after the recording has ended is left alone -- there is no end to
+            // clamp it to that would not fall before its own start.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]a
+                    [00:04.00]b
+                    [00:08.00]c
+                    [00:12.00]d
+                    """, 6.0);
+
+            assertThat(lyrics.lines()).filteredOn(line -> line.startSeconds() < 6.0)
+                    .allSatisfy(line ->
+                            assertThat(line.endSeconds()).isLessThanOrEqualTo(6.0));
+        }
+
+        @Test
         @DisplayName("ordinary jitter is not an instrumental break")
         void jitteringGapsAreLeftAlone() {
             // Hand-timed lines jitter around four seconds. Cutting every line at
@@ -91,8 +158,29 @@ class LrcLyricsTest {
         @Test
         @DisplayName("a file with two natural line lengths keeps the longer ones")
         void twoLineLengthsBothSurvive() {
-            // Short verse lines and held chorus lines. The median is the verse's,
-            // so a median cap would truncate every chorus line.
+            // Short verse lines and chorus lines held longer. Both are ordinary
+            // and neither is a break.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:02.00]v2
+                    [00:04.00]v3
+                    [00:06.00]v4
+                    [00:08.00]c1
+                    [00:13.00]c2
+                    [00:18.00]c3
+                    """, 200.0);
+
+            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(13.0);
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(18.0);
+        }
+
+        @Test
+        @DisplayName("lines differing by more than the break multiple are cut, and that is the trade")
+        void anExtremeRatioIsCutAndSaysSo() {
+            // The limitation, pinned rather than left to be rediscovered. No
+            // statistic over gaps alone can tell a chorus held eight times longer
+            // than the verse from a solo, and missing a solo is the worse of the
+            // two: it puts a whole instrumental section's harmony over one line.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]v1
                     [00:01.00]v2
@@ -100,11 +188,9 @@ class LrcLyricsTest {
                     [00:03.00]v4
                     [00:04.00]c1
                     [00:12.00]c2
-                    [00:20.00]c3
                     """, 200.0);
 
-            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(12.0);
-            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(20.0);
+            assertThat(lyrics.lines().get(4).endSeconds()).isLessThan(12.0);
         }
 
         @Test

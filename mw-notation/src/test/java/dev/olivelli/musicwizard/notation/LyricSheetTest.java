@@ -238,6 +238,38 @@ class LyricSheetTest {
     }
 
     @Test
+    @DisplayName("a wide line never wraps, so no symbol lands over a word it does not belong to")
+    void aWideLineNeverWraps() {
+        // Ten changes across the tail of an 88-column line. Wrapping moves a
+        // symbol to column zero, where it reads as the chord on the first word --
+        // and buys no bound either, because the symbol after it pads straight
+        // back out.
+        String words = "Somebody once told me the world was gonna roll me, "
+                + "I ain't the sharpest tool in the shed";
+        StringBuilder lrc = new StringBuilder("[00:00.00]");
+        String[] tokens = words.split(" ");
+        for (int i = 0; i < tokens.length; i++) {
+            lrc.append(String.format("<00:%02d.00>%s ", i, tokens[i]));
+        }
+        List<Object> spec = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            spec.add(i % 2 == 0 ? NoteLetter.C : NoteLetter.G);
+            spec.add(8.0 + i);
+        }
+        Score score = song(60, spec.toArray())
+                .withLyrics(lrc(lrc.append("\n").toString(), 40.0));
+
+        List<String> body = body(LyricSheet.toText(score));
+
+        assertThat(body.get(1)).isEqualTo(words);
+        // One chord row, not several, and nothing at column zero that did not
+        // belong there.
+        assertThat(body.get(0)).isNotBlank();
+        assertThat(body.get(2)).isNotEqualTo(words);
+        assertThat(body.get(0).charAt(0)).isEqualTo(' ');
+    }
+
+    @Test
     @DisplayName("symbols pushed past the end of the words wrap instead of running off")
     void everyRowIsBounded() {
         // Forty changes over four letters. The words below do not bound the row:

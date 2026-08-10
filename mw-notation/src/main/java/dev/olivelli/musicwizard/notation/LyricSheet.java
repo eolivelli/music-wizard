@@ -159,18 +159,23 @@ public final class LyricSheet {
      * them nothing at all.
      *
      * <p>Pushing right is unbounded on its own — the words below do not limit it,
-     * because a line can hold more changes than it has letters — so a symbol
-     * pushed past the end of the words wraps rather than running off the page.
-     * <b>Only past the end of them.</b> A lyric line longer than
-     * {@link #ROW_COLUMNS} is ordinary and is not itself wrapped, so a symbol
-     * standing over a word at column eighty is correctly placed; moving it to a
-     * fresh row would put it above the line's <em>first</em> word instead, which
-     * is not an over-wide row but a wrong chord. An over-wide row is the lesser
-     * failure, and placement is what this file is for.
+     * because a line can hold more changes than it has letters — so the overflow
+     * past the end of the words wraps rather than running off the page.
+     *
+     * <p><b>Only for a line that fits the page in the first place.</b> Wrapping
+     * moves a symbol to column zero, which reads as the chord on the line's
+     * <em>first</em> word, so it is only safe once the symbols being moved are
+     * ones that stand over no word at all. On a lyric line wider than
+     * {@link #ROW_COLUMNS} — ordinary, and not itself wrapped — every column is
+     * still a real word's, and wrapping would both misplace a chord and fail to
+     * bound the row, because the symbol after it pads straight back out. Such a
+     * row is left as wide as the words it belongs to. An over-wide row is the
+     * lesser failure; placement is what this file is for.
      *
      * @return the row, or several separated by newlines, or empty for no chords
      */
     private static String chordRow(List<Placed> chords, Laid laid) {
+        boolean wrappable = laid.text().length() <= ROW_COLUMNS;
         StringBuilder out = new StringBuilder();
         StringBuilder row = new StringBuilder();
         for (Placed chord : chords) {
@@ -178,7 +183,8 @@ public final class LyricSheet {
             int column = laid.columnAt(chord.seconds());
             int at = row.length() > 0 ? Math.max(column, row.length() + 1) : column;
             boolean pastTheWords = at >= laid.text().length();
-            if (pastTheWords && at + symbol.length() > ROW_COLUMNS && row.length() > 0) {
+            if (wrappable && pastTheWords && at + symbol.length() > ROW_COLUMNS
+                    && row.length() > 0) {
                 out.append(row).append('\n');
                 row.setLength(0);
                 at = 0;
