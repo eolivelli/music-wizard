@@ -165,9 +165,40 @@ mw render song.mwz                                   # engrave what can be engra
 mw info song.mwz                                     # what has been computed
 ```
 
-`render` defaults to the parts that are implemented, which today is the chord
-chart. Ask for one that is not — `--parts voice` — and it says so and why,
-rather than listing it and writing nothing.
+`render` defaults to the parts that are implemented, which today are the chord
+chart and the chords-and-lyrics sheet. Ask for one that is not — `--parts
+voice` — and it says so and why, rather than listing it and writing nothing.
+
+### Lyrics
+
+Nothing transcribes lyrics from a recording yet ([#9][i9]). What works today is
+supplying them: point `analyze` at an [LRC][lrc] file and they are placed under
+the chords.
+
+```sh
+mw analyze song.mwz --lyrics song.lrc
+mw render song.mwz                   # writes out/chords-lyrics.txt as well
+```
+
+Word timings are read from the file where it has them — the `<mm:ss.xx>` tags of
+"enhanced" LRC — and estimated within each line where it does not. A file that
+cannot be read, or that carries no timestamps, is a warning and never a failed
+analysis: the listening is the expensive part and a mistyped path must not cost
+it.
+
+Lyrics are kept out of the transcription cache key, so correcting the lyric file
+re-reads it without re-analysing the recording — and a later `analyze` **without**
+`--lyrics` keeps the ones already there, so correcting the tempo does not throw
+them away. Pass `--lyrics` again to replace them.
+
+**Two files, not one.** `out/chords.txt` is unchanged — a bar grid, which is
+what to read when there is nothing to sing. `out/chords-lyrics.txt` puts each
+chord symbol over the word it arrives on, which is what to read when there is.
+Neither is the other with rows added; they answer different questions, and the
+grid is what the measurement harness parses.
+
+[i9]: https://github.com/eolivelli/music-wizard/issues/9
+[lrc]: https://en.wikipedia.org/wiki/LRC_(file_format)
 
 **`init` also takes a Standard MIDI File.** The input is identified by its
 header rather than its extension, and a MIDI file is read symbolically rather

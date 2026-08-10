@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
+import dev.olivelli.musicwizard.notation.LyricSheet;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -80,8 +81,9 @@ import picocli.CommandLine.Spec;
  * nothing engraved here could fail a bar check and the fact existed only in
  * {@code StaffNotation}'s output, which only {@code mw-it} engraved. #160 gave
  * the chord chart a {@code \time} and a bar check per bar, so a defect in the
- * one part this command writes today now reaches the user as this warning
- * instead of as a silently wrong page. No valid input produces one, which is
+ * one part this command engraves today now reaches the user as this warning
+ * instead of as a silently wrong page. The lyric sheet is text only and reaches
+ * none of this; engraving it is #309. No valid input produces one, which is
  * what the checks are for; what changed is the failure mode. A staff part
  * (#8, #10) adds a second source of it rather than the first.
  */
@@ -98,6 +100,7 @@ final class RenderCommand implements Callable<Integer> {
      */
     private enum Part {
         CHORDS("chords", null, RenderCommand::writeChordChart),
+        LYRICS("lyrics", null, RenderCommand::writeLyricSheet),
         VOICE("voice", "melody transcription is not implemented yet (#8)", null),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
@@ -125,8 +128,8 @@ final class RenderCommand implements Callable<Integer> {
          * {@code switch} on the constant -- and a part marked implemented with no
          * branch to match would have been selected, produced nothing, and ended
          * the run with "Nothing could be written." and no reason: #82's defect
-         * reached from the inside. Unreachable while chords are the only
-         * implemented part, and reachable the moment #8 or #10 lands, which is
+         * reached from the inside. Unreachable while every implemented part has
+         * an emitter, and reachable the moment one is added without, which is
          * when nobody will be looking for it.
          */
         boolean isImplemented() {
@@ -166,6 +169,19 @@ final class RenderCommand implements Callable<Integer> {
             }
             if (this == CHORDS && score.chords().isEmpty()) {
                 return "this score holds no chord progression, " + MissingHarmony.explain(score);
+            }
+            // Gated on lyrics and not on harmony: a lyric sheet with no chords
+            // is still a lyric sheet, which is exactly the case MissingHarmony's
+            // javadoc names when it says this output needs neither a chord
+            // progression nor a note track to be worth printing.
+            //
+            // Names no source kind, for the reason the rest of this method does
+            // not: what would fill this field differs by path -- recognition on
+            // one, lyric meta events on the other -- and this command cannot
+            // tell which score it is holding.
+            if (this == LYRICS && score.lyrics().isEmpty()) {
+                return "this score holds no lyrics; pass --lyrics to analyze with an"
+                        + " LRC file, since nothing produces them automatically yet (#9)";
             }
             return null;
         }
@@ -218,9 +234,10 @@ final class RenderCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
-            description = "Which parts to render: chords, voice, bass, piano. Only "
-                    + "chords can be produced today; naming any of the others reports "
-                    + "why it cannot. Defaults to every part that is implemented.")
+            description = "Which parts to render: chords, lyrics, voice, bass, piano. "
+                    + "Only chords and lyrics can be produced today; naming any of the "
+                    + "others reports why it cannot. Defaults to every part that is "
+                    + "implemented.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
@@ -424,6 +441,29 @@ final class RenderCommand implements Callable<Integer> {
             throw new UncheckedIOException("could not write output", e);
         }
         return new Emitted(written, warnings);
+    }
+
+    /**
+     * Writes the chords-and-lyrics sheet.
+     *
+     * <p>Text only, and no {@link #engrave} call: the engraved sheet is #309,
+     * and until it lands there is no {@code .ly} for this part to hand over.
+     * That makes this the one emitter that does not go through {@code engrave},
+     * which its javadoc calls mandatory — the rule is about not forgetting to
+     * read the bar checks of a file you did engrave, and there is no such file
+     * here.
+     */
+    private static Emitted writeLyricSheet(
+            Workspace workspace, Score score, Optional<Path> lilypond) {
+        Path out = workspace.outputDirectory();
+        try {
+            Files.createDirectories(out);
+            Path txt = out.resolve("chords-lyrics.txt");
+            Files.writeString(txt, LyricSheet.toText(score));
+            return new Emitted(List.of(txt), List.of());
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write output", e);
+        }
     }
 
     /**

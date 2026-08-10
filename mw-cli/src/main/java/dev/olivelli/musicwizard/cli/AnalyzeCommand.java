@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.LrcLyrics;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
@@ -29,6 +31,8 @@ import dev.olivelli.musicwizard.core.workspace.StageCache;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import dev.olivelli.musicwizard.transcribe.MidiTranscriber;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -143,6 +147,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "forces a recompute.")
     boolean noLlm;
 
+    @Option(names = "--lyrics", paramLabel = "FILE",
+            description = "Read lyrics from an LRC file and place them under the "
+                    + "chords. Word timings are used when the file carries them "
+                    + "and estimated within each line when it does not. Nothing "
+                    + "transcribes lyrics from audio yet (#9).")
+    Path lyricsFile;
+
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
     boolean force;
 
@@ -177,7 +188,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
-        Score score = titled(workspace, result.score());
+        Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
@@ -236,6 +247,79 @@ final class AnalyzeCommand implements Callable<Integer> {
         return score.withMetadata(
                 workspace.title().or(score::title).orElse(null),
                 workspace.artist().or(score::artist).orElse(null));
+    }
+
+    /**
+     * The lyrics already in this workspace's score, or none.
+     *
+     * <p>Guarded, and the guard is the point. {@code readScore} raises on a
+     * {@code score.json} that is truncated, half-written or not valid UTF-8 —
+     * and unguarded here that would abort {@code analyze} after the pipeline had
+     * run, before the new score could be written, leaving the corrupt file in
+     * place and the workspace unrecoverable through the tool: {@code render}
+     * fails the same way, and the one command that would overwrite the bad file
+     * is the one that will not run.
+     *
+     * <p>That is the failure this whole path is shaped to avoid, arriving by the
+     * other door: the previous score is a decoration on an analysis that has
+     * already succeeded, exactly as a lyric file is, so it gets the same
+     * treatment. Warn, carry nothing, and let the good score overwrite the bad
+     * one.
+     */
+    private static Score carriedForward(Workspace workspace, Score score) {
+        try {
+            return workspace.readScore()
+                    .map(Score::lyrics)
+                    .filter(existing -> !existing.isEmpty())
+                    .map(score::withLyrics)
+                    .orElse(score);
+        } catch (RuntimeException e) {
+            System.err.println("warning: the score already in this workspace could not be"
+                    + " read, so any lyrics it held are not carried over; it is being"
+                    + " replaced: " + e.getMessage());
+            return score;
+        }
+    }
+
+    /**
+     * The score with lyrics on it: from {@code --lyrics} when given, and
+     * otherwise {@link #carriedForward} from the workspace.
+     *
+     * <p>Applied outside the transcription cache. Lyrics are supplied rather
+     * than derived, so keying the analysis on them would throw away minutes of
+     * DSP every time a typo in the lyric file was corrected; what the cache holds
+     * stays a function of the recording and the options that shaped the
+     * listening.
+     *
+     * <p>A file that cannot be read, or that carries no lyrics, is a warning and
+     * not a failure — the analysis is the expensive thing and it has already
+     * succeeded. {@link LrcLyrics#parse} is total for the same reason: a lyric
+     * file must not be able to raise past this method.
+     */
+    private Score withSuppliedLyrics(Workspace workspace, Score score) {
+        if (lyricsFile == null) {
+            return carriedForward(workspace, score);
+        }
+        String text;
+        try {
+            text = Files.readString(lyricsFile);
+        } catch (IOException | RuntimeException e) {
+            System.err.println("warning: the lyrics file could not be read, so this"
+                    + " analysis has no lyrics: " + e.getMessage());
+            return score;
+        }
+        Lyrics lyrics = LrcLyrics.parse(text, score.durationSeconds());
+        if (lyrics.isEmpty()) {
+            System.err.println(LrcLyrics.looksLikeLrc(text)
+                    ? "warning: the lyrics file has timestamps but no words under them,"
+                            + " so this analysis has no lyrics."
+                    : "warning: the lyrics file carries no [mm:ss.xx] timestamps, so it"
+                            + " cannot be placed; expected an LRC file.");
+            return score;
+        }
+        System.out.println("  read " + lyrics.lines().size() + " lyric lines from "
+                + lyricsFile.getFileName());
+        return score.withLyrics(lyrics);
     }
 
     // ------------------------------------------------------------------- cache
