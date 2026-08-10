@@ -142,7 +142,7 @@ class LrcLyricsTest {
         @DisplayName("several lines on one moment do not make every gap a break (#324)")
         void duplicateTimestampsDoNotTruncateEveryLine() {
             // Two source lines on the same instant -- a second voice, a
-            // two-line display -- so most of this file's gaps are zero.
+            // two-line display.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]a1
                     [00:00.00]a2

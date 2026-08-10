@@ -307,39 +307,17 @@ public final class LrcLyrics {
         return spaced[(count - 1) / 2];
     }
 
-    /** The nearest gap before this one that measures a line, or -1. */
-    private static int measuredBefore(double[] gaps, int index) {
-        for (int i = index - 1; i >= 0; i--) {
-            if (measures(gaps[i])) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /** The nearest gap after this one that measures a line, or -1. */
-    private static int measuredAfter(double[] gaps, int index) {
-        for (int i = index + 1; i < gaps.length; i++) {
-            if (measures(gaps[i])) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     /**
      * Whether a gap says anything about how long a line lasts.
      *
      * <p>A zero-length one does not: two timestamps on the same moment are one
      * moment written twice — a second voice, a two-line display, a duplicated
-     * tag — and they measure no line. (Not a repeated chorus, which an LRC writes
-     * as several leading tags on one source line and which yields a gap the
-     * length of the chorus.)
+     * tag — and they measure no line.
      *
-     * <p>Named rather than written out, because every reading of these gaps has
-     * to agree on it: the scale the threshold is measured against, the length a
-     * cut line is given, and which gaps count as a neighbour when a run of long
-     * ones is told from a lone one.
+     * <p>Named rather than written out, because every statistic over these gaps
+     * has to agree on it: the scale the threshold is measured against, the length
+     * a cut line is given, and which gaps count as a neighbour. A line's own
+     * extent is decided elsewhere and does not ask — that is #340.
      *
      * <p>Exact, and only exact. Two timestamps a hundredth of a second apart say
      * as little about a line as two on the same moment, and this admits them;
@@ -379,7 +357,11 @@ public final class LrcLyrics {
      *
      * <p>Two things have to be true. The gap is <b>long</b> — more than
      * {@link #BREAK_MULTIPLE} typical lines — and it is <b>alone</b>: neither
-     * neighbour in file order is long too.
+     * neighbour is long too. The neighbours are the nearest gaps that
+     * {@link #measures measure a line}, not the adjacent entries, because a
+     * zero-length gap is never long and one sitting between two long ones would
+     * otherwise make each of them look alone — which is the arrangement this
+     * test exists to tell apart.
      *
      * <p>Length on its own cannot decide it. A chorus whose lines are held far
      * longer than the verse's produces gaps as long as a solo does, and sorting
@@ -402,18 +384,29 @@ public final class LrcLyrics {
         for (int i = 0; i < gaps.length; i++) {
             longGap[i] = gaps[i] > breakAfter;
         }
+        // Each gap's neighbours, stated once in two passes rather than searched
+        // for at every index: a file written mostly on one moment makes each
+        // search walk the run, and the answer is the same one every time.
+        boolean[] longBefore = new boolean[gaps.length];
+        boolean[] longAfter = new boolean[gaps.length];
+        boolean carried = false;
+        for (int i = 0; i < gaps.length; i++) {
+            longBefore[i] = carried;
+            if (measures(gaps[i])) {
+                carried = longGap[i];
+            }
+        }
+        carried = false;
+        for (int i = gaps.length - 1; i >= 0; i--) {
+            longAfter[i] = carried;
+            if (measures(gaps[i])) {
+                carried = longGap[i];
+            }
+        }
+
         boolean[] isBreak = new boolean[gaps.length];
         for (int i = 0; i < gaps.length; i++) {
-            // The neighbours are the nearest gaps that measure a line, not the
-            // adjacent array entries. A zero-length gap is one moment written
-            // twice: it is never long, so counting it as a neighbour puts a
-            // short one between two long ones and breaks a run into isolated
-            // gaps -- which is the arrangement this test exists to tell apart.
-            int before = measuredBefore(gaps, i);
-            int after = measuredAfter(gaps, i);
-            boolean neighbourIsLong = (before >= 0 && longGap[before])
-                    || (after >= 0 && longGap[after]);
-            isBreak[i] = longGap[i] && !neighbourIsLong;
+            isBreak[i] = longGap[i] && !longBefore[i] && !longAfter[i];
         }
         return isBreak;
     }
