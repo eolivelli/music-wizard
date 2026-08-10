@@ -411,10 +411,8 @@ class LyricEngravingTest {
     @Test
     @DisplayName("a word near the chart's end is placed whole or not at all, never in pieces")
     void aWordIsNeverTruncated() {
-        // Each syllable claims a grid unit, so a long word close to the end runs
-        // off it partway through. Printing what fitted leaves "par ti co" on the
-        // page -- a non-word, which reads as a transcription rather than as the
-        // omission it is.
+        // particolare is five syllables and the chart has room for three of
+        // them.
         Score score = sungIn("it", 2, "[00:00.00]<00:03.90>particolare <00:03.95>amore\n");
 
         String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));

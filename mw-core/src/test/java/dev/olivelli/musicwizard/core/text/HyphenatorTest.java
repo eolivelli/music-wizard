@@ -77,12 +77,11 @@ class HyphenatorTest {
             "c'era, c'e-ra",
             "d'amore, d'a-mo-re",
         })
-        @DisplayName("an elision breaks where the patterns say, not where a rule of ours does")
+        @DisplayName("an elision breaks where the patterns say")
         void elision(String word, String expected) {
-            // The apostrophe goes through Liang like any other character: the
+            // An apostrophe is part of the word, not punctuation around it: the
             // Italian file ships a pattern for every position an elision can
-            // take. Gluing the whole prefix onto the stem instead made
-            // dell'amore three syllables where it is sung on four.
+            // take, so the elided article breaks away from the article before it.
             assertThat(split("it", word)).isEqualTo(expected);
         }
 
@@ -94,8 +93,7 @@ class HyphenatorTest {
         })
         @DisplayName("the typographic quote is an apostrophe too, as the patterns assume")
         void typographicQuote(String word, String expected) {
-            // Every apostrophe pattern in the file has a U+2019 twin, and it is
-            // the quote lyric files and word processors actually emit.
+            // Every apostrophe pattern in the file has a U+2019 twin.
             assertThat(split("it", word)).isEqualTo(expected);
         }
 
@@ -147,20 +145,62 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("trailing punctuation rides the syllable it is attached to")
+        @DisplayName("punctuation rides the syllable it touches, at either end")
         void punctuationRidesAlong() {
-            // A gate that refused any token with punctuation gave these one
-            // syllable, which is fewer than the crude count it replaced.
             assertThat(split("it", "amore,")).isEqualTo("a-mo-re,");
             assertThat(split("it", "canzone!")).isEqualTo("can-zo-ne!");
             assertThat(split("it", "citt\u00e0,")).isEqualTo("cit-t\u00e0,");
+            assertThat(split("en", "(chorus)")).isEqualTo("(cho-rus)");
+            assertThat(split("it", "\"cuore\"")).isEqualTo("\"cuo-re\"");
         }
 
         @Test
-        @DisplayName("a full stop is what the patterns mean by a word boundary")
+        @DisplayName("punctuation does not fill a slot the minima reserve for a letter")
+        void punctuationDoesNotCountTowardsTheMinima() {
+            // The minima count sung sounds. Measured over characters instead, a
+            // trailing comma occupies the right minimum's second slot and strands
+            // the final consonant -- the split RIGHT_MINIMUM exists to prevent --
+            // and a leading bracket makes itself a syllable.
+            assertThat(split("en", "abandons,")).isEqualTo("a-ban-dons,");
+            assertThat(split("en", "hearts,")).isEqualTo("hearts,");
+            assertThat(split("it", "golf,")).isEqualTo("golf,");
+            assertThat(split("it", "non,")).isEqualTo("non,");
+            // The same word bare and punctuated splits the same way.
+            for (String word : List.of("abandons", "abbots", "wisdom")) {
+                assertThat(split("en", word + ",")).as(word)
+                        .isEqualTo(split("en", word) + ",");
+            }
+        }
+
+        @Test
+        @DisplayName("a sentence-final word still splits; a dotted one does not")
         void fullStops() {
-            // Scoring "U.S.A." would treat each piece as its own word.
+            // The full stop is what the patterns mean by a word boundary, so a
+            // token holding one among its letters would be scored as several
+            // words. One after them is just punctuation.
+            assertThat(split("it", "amore.")).isEqualTo("a-mo-re.");
+            assertThat(split("en", "goodbye.")).isEqualTo("good-bye.");
+            assertThat(split("it", "dell'amore.")).isEqualTo("del-l'a-mo-re.");
             assertThat(split("en", "U.S.A.")).isEqualTo("U.S.A.");
+        }
+
+        @Test
+        @DisplayName("a letter that lowercases to two characters is left whole")
+        void lengthChangingLowercase() {
+            // Turkish dotted capital I is the one code point in Unicode whose
+            // lowercase is longer, and the scores are read at the token's own
+            // offsets -- so a token holding one would be cut at gaps belonging to
+            // other letters.
+            assertThat(split("it", "\u0130mmagine")).isEqualTo("\u0130mmagine");
+            assertThat(split("en", "\u0130nteresting")).isEqualTo("\u0130nteresting");
+        }
+
+        @Test
+        @DisplayName("a token with no letters at all is left whole")
+        void noLetters() {
+            assertThat(split("it", "--")).isEqualTo("--");
+            assertThat(split("en", "...")).isEqualTo("...");
+            assertThat(split("it", "!?!")).isEqualTo("!?!");
         }
 
         @Test

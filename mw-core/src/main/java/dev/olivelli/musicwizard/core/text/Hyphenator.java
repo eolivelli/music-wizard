@@ -45,9 +45,9 @@ import java.util.Optional;
  *
  * <p><b>A syllable of one letter is allowed at the front.</b> The pattern files
  * state the minima their language wants for <em>typesetting</em>: two letters
- * before the first break, so that no printed line begins with a stranded one.
- * That is a rule about paper and it costs a note — it forbids <i>a-more</i>, and
- * Italian <i>amore</i> is sung on three. See {@link #LEFT_MINIMUM} and
+ * must stay behind before a break, so a printed line never ends in a stranded
+ * one. That is a rule about paper and it costs a note — it forbids <i>a-more</i>,
+ * and Italian <i>amore</i> is sung on three. See {@link #LEFT_MINIMUM} and
  * {@link #RIGHT_MINIMUM}, which are not the same number and say why.
  *
  * <p>What this is not: a pronunciation dictionary. Liang's patterns give the
@@ -69,20 +69,20 @@ public final class Hyphenator {
      * How many letters must lie before the first break.
      *
      * <p>One, against the two the pattern files recommend for typesetting. That
-     * recommendation exists so a printed line never begins or ends with a
-     * stranded letter, and it costs a syllable a singer holds: it forbids
-     * <i>a-more</i>, and Italian <i>amore</i> is sung on three notes.
+     * recommendation keeps a printed line from ending in a stranded letter, and
+     * it costs a syllable a singer holds: it forbids <i>a-more</i>, and Italian
+     * <i>amore</i> is sung on three notes.
      */
     private static final int LEFT_MINIMUM = 1;
 
     /**
      * How many letters must lie after the last break.
      *
-     * <p>Two, not one. A final consonant on its own is not a syllable in either
-     * language — one gives <i>abandon-s</i> and <i>abbot-s</i> in English, and in
-     * Italian only a handful of foreign words like <i>gol-f</i>. The asymmetry is
-     * deliberate: a vowel can open a syllable alone and a consonant cannot close
-     * one alone.
+     * <p>Two, not one, and it bounds what a break may carry onto the next line.
+     * A final consonant on its own is not a syllable in either language — one
+     * gives <i>abandon-s</i> and <i>abbot-s</i> in English, and in Italian a
+     * handful of foreign words like <i>gol-f</i>. The asymmetry is deliberate: a
+     * vowel can open a syllable alone and a consonant cannot close one alone.
      */
     private static final int RIGHT_MINIMUM = 2;
 
@@ -159,30 +159,48 @@ public final class Hyphenator {
     /**
      * The word split into syllables, in order, joining back to the original.
      *
-     * <p>The token is handed to the patterns as it stands, punctuation and all.
-     * <b>An apostrophe is a letter here</b>, which is what the data expects: the
-     * Italian file ships a pattern for every position an elision can take, in
-     * both the typewriter and the typographic quote, so {@code dell'amore} comes
-     * out {@code del-l'a-mo-re} — four notes, the elided article breaking away
-     * from the article before it. A rule of our own that split at the apostrophe
-     * and glued the prefix on whole got that word wrong and missed {@code ’}
-     * entirely, which is the quote every lyric file actually contains.
+     * <p>Only the token's <b>letters</b> are hyphenated. Anything before the
+     * first letter or after the last is carried along on the syllable it touches,
+     * because the minima count sung sounds and punctuation is not one: measured
+     * over characters instead, a trailing comma fills the slot the right minimum
+     * reserves and {@code abandons,} comes out {@code a-ban-don-s,} — the very
+     * split {@link #RIGHT_MINIMUM} exists to prevent. A full stop is the same
+     * mistake wearing a different hat, since it is the character the patterns use
+     * for a word boundary, so a token with one <em>inside</em> its letters is left
+     * whole rather than scored as several words.
      *
-     * <p>Nothing else needs a gate either. No pattern matches a digit, so
-     * {@code 1999} and {@code 24/7} come back whole without being tested for;
-     * trailing punctuation simply carries on the syllable it is attached to.
-     * The one exception is a full stop, which is the character the patterns use
-     * to mean a word boundary — a token holding one would be scored as though it
-     * were several words.
+     * <p>An apostrophe is not punctuation here but part of the word, which is
+     * what the data expects: the Italian file ships a pattern for every position
+     * an elision can take, in both the typewriter and the typographic quote, so
+     * {@code dell'amore} comes out {@code del-l'a-mo-re} — four notes, the elided
+     * article breaking away from the article before it.
+     *
+     * <p>Nothing else needs a gate. No pattern matches a digit, so {@code 1999}
+     * and {@code 24/7} come back whole without being tested for.
      */
     public List<String> syllables(String word) {
         Objects.requireNonNull(word, "word");
-        if (word.length() < LEFT_MINIMUM + RIGHT_MINIMUM || word.indexOf('.') >= 0) {
+        int first = firstLetter(word);
+        int last = lastLetter(word);
+        if (first < 0 || last - first + 1 < LEFT_MINIMUM + RIGHT_MINIMUM) {
             return List.of(word);
         }
-        String lower = word.toLowerCase(Locale.ROOT);
+        String prefix = word.substring(0, first);
+        String core = word.substring(first, last + 1);
+        String suffix = word.substring(last + 1);
+        if (core.indexOf('.') >= 0) {
+            return List.of(word);
+        }
 
-        // The word is scored with a boundary marker at each end, which is what
+        String lower = core.toLowerCase(Locale.ROOT);
+        // One code point in Unicode lowercases to two -- Turkish dotted capital
+        // I -- and the scores below are read at this token's own offsets, so a
+        // token holding one would be cut at gaps belonging to other letters.
+        if (lower.length() != core.length()) {
+            return List.of(word);
+        }
+
+        // The core is scored with a boundary marker at each end, which is what
         // the leading and trailing "." in a pattern matches.
         String bounded = "." + lower + ".";
         byte[] scores = new byte[bounded.length() + 1];
@@ -199,16 +217,42 @@ public final class Hyphenator {
 
         List<String> syllables = new ArrayList<>();
         int start = 0;
-        // scores[i + 1] scores the gap after the i-th letter of the word, the
+        // scores[i + 1] scores the gap after the i-th character of the core, the
         // offset coming from the boundary marker in front of it.
-        for (int i = LEFT_MINIMUM; i <= word.length() - RIGHT_MINIMUM; i++) {
+        for (int i = LEFT_MINIMUM; i <= core.length() - RIGHT_MINIMUM; i++) {
             if (scores[i + 1] % 2 == 1) {
-                syllables.add(word.substring(start, i));
+                syllables.add(core.substring(start, i));
                 start = i;
             }
         }
-        syllables.add(word.substring(start));
-        return List.copyOf(syllables);
+        syllables.add(core.substring(start));
+
+        // The punctuation rejoins the syllable it was attached to, so the pieces
+        // still concatenate to the token they came from.
+        List<String> whole = new ArrayList<>(syllables);
+        whole.set(0, prefix + whole.get(0));
+        whole.set(whole.size() - 1, whole.get(whole.size() - 1) + suffix);
+        return List.copyOf(whole);
+    }
+
+    /** Where the token's letters begin, or -1 when it has none. */
+    private static int firstLetter(String word) {
+        for (int i = 0; i < word.length(); i++) {
+            if (Character.isLetter(word.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Where the token's letters end, or -1 when it has none. */
+    private static int lastLetter(String word) {
+        for (int i = word.length() - 1; i >= 0; i--) {
+            if (Character.isLetter(word.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** How many syllables this word is sung on. */

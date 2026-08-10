@@ -205,12 +205,9 @@ final class LyricEngraving {
                 List<String> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
                         .orElseGet(() -> List.of(word.text()));
-                // All of a word or none of it. Each syllable claims a grid unit,
-                // so a long word near the end of the chart can run off it partway
-                // through and leave "par ti co" on the page -- a non-word, which
-                // reads as a transcription rather than as the omission it is.
-                // The whole word is tried instead, and only when that will not
-                // fit either is the word dropped.
+                // All of a word or none of it -- see fitted. The unsplit word is
+                // tried when the syllables will not fit, and only then is the
+                // word dropped.
                 List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
                 if (placed.isEmpty() && parts.size() > 1) {
                     placed = fitted(List.of(word.text()), word, bars, barStart,
@@ -228,7 +225,10 @@ final class LyricEngraving {
     /**
      * One word's syllables on the grid, or empty when they do not all fit.
      *
-     * <p>All or nothing, so the page never shows part of a word. The units are
+     * <p>All or nothing. Each syllable claims a grid unit, so a long word near
+     * the end of the chart can run off it partway through, and printing what
+     * fitted leaves a fragment on the page — which reads as a transcription
+     * rather than as the omission it is. The units are
      * strictly increasing from {@code previous}, which is what gives every
      * syllable a duration of at least one grid step: two can otherwise land
      * together, the grid being finer than any singer and a short word's
