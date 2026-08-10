@@ -272,9 +272,8 @@ public final class Hyphenator {
      * {@code y'all} is one note and not two.
      *
      * <p>{@code y} is not counted as a vowel, which is what makes {@code y'all}
-     * come out right and what leaves {@code x-ray} and {@code by-pass} on one
-     * note apiece. English needs a rule finer than a character set to have both;
-     * that is #332.
+     * come out right and what leaves {@code by-pass} on one note. English needs a
+     * rule finer than a character set to have both; that is #332.
      */
     private static void append(List<Syllable> pieces, StringBuilder pending,
                                List<String> syllables) {
