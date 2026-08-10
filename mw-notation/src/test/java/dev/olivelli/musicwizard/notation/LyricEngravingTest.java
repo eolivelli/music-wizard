@@ -205,9 +205,9 @@ class LyricEngravingTest {
     @Test
     @DisplayName("a word past the chart does not take the words after it with it")
     void oneDroppedWordDoesNotAbandonTheRest() {
-        // Built directly rather than from LRC, whose lines and words are both
-        // sorted, so it cannot produce a word past the chart followed by an
-        // earlier one. Words in general are not ordered -- Lyrics.allWords()'s
+        // Built directly rather than from LRC, which clamps every word into its
+        // own line and keeps lines from overlapping, so its words come out
+        // globally ordered. Words in general are not -- Lyrics.allWords()'s
         // javadoc says recognition spans on sung speech overlap -- so a stray
         // onset says nothing about the next word, and returning there dropped
         // whole verses.
@@ -250,8 +250,8 @@ class LyricEngravingTest {
         List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
 
         // The overlapping line is not engraved where it was sung: its words are
-        // pushed up behind the lane's cursor and come out crammed against the
-        // end, and the one that runs off is dropped outright.
+        // pushed forward to the units after the lane's cursor and come out
+        // crammed against it, and the one that runs off the end is dropped.
         assertThat(bars.get(0)).contains("\"open\"").doesNotContain("\"verse\"");
         assertThat(bars.get(1)).contains("\"late\"")
                 .contains("\"verse\"").contains("\"carries\"");

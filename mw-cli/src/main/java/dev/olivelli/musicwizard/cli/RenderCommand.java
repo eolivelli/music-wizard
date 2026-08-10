@@ -80,10 +80,10 @@ import picocli.CommandLine.Spec;
  * written.</b> {@code ChordChart.toLilyPond} emitted no {@code |} at all, so
  * nothing engraved here could fail a bar check and the fact existed only in
  * {@code StaffNotation}'s output, which only {@code mw-it} engraved. #160 gave
- * the chord chart a {@code \time} and a bar check per bar, so a defect in the
- * one part this command engraves today now reaches the user as this warning
- * instead of as a silently wrong page. The lyric sheet is text only and reaches
- * none of this; engraving it is #309. No valid input produces one, which is
+ * the chord chart a {@code \time} and a bar check per bar, so a defect in what
+ * this command engraves now reaches the user as this warning instead of as a
+ * silently wrong page. The lyric sheet is engraved too, and its bar checks cover
+ * the lyric line as well as the chords. No valid input produces one, which is
  * what the checks are for; what changed is the failure mode. A staff part
  * (#8, #10) adds a second source of it rather than the first.
  */
