@@ -150,6 +150,17 @@ class LyricEngravingIT {
                         TimeSignature.FOUR_FOUR, 120, """
                         [00:00.00]<00:00.00>Somebody <00:01.20>once <00:01.80>told
                         [00:02.00]<00:02.40>trouble <00:03.30>wisdom
+                        """))),
+                // The tokens a real lyric is full of and the patterns say least
+                // about: possessives and contractions, whose apostrophe English
+                // never mentions, and hyphenated compounds, whose hyphen neither
+                // language does.
+                Arguments.of("possessives-and-compounds", inLanguage("en", sung(6, 2.0,
+                        TimeSignature.FOUR_FOUR, 120, """
+                        [00:00.00]<00:00.00>Anderson's <00:00.90>heart <00:01.50>don't
+                        [00:02.00]<00:02.30>well-known <00:03.10>sing-along
+                        [00:04.00]<00:04.20>trouble, <00:05.00>wisdom.
+                        [00:08.00]<00:08.40>(chorus) <00:09.60>abandons
                         """))));
     }
 

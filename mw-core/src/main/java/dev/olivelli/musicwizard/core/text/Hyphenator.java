@@ -24,11 +24,13 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Splits a word into the syllables it is sung on.
@@ -43,10 +45,9 @@ import java.util.Optional;
  * to be vendored and attributed either way, and what is left is a short
  * well-understood algorithm — the same trade this project makes for its DSP.
  *
- * <p><b>A syllable of one letter is allowed at the front.</b> The pattern files
- * state the minima their language wants for <em>typesetting</em>: two letters
- * must stay behind before a break, so a printed line never ends in a stranded
- * one. That is a rule about paper and it costs a note — it forbids <i>a-more</i>,
+ * <p><b>A syllable of one letter is allowed at the front.</b> Typesetting wants
+ * two letters to stay behind before a break, so a printed line never ends in a
+ * stranded one. That is a rule about paper and it costs a note — it forbids <i>a-more</i>,
  * and Italian <i>amore</i> is sung on three. See {@link #LEFT_MINIMUM} and
  * {@link #RIGHT_MINIMUM}, which are not the same number and say why.
  *
@@ -68,8 +69,8 @@ public final class Hyphenator {
     /**
      * How many letters must lie before the first break.
      *
-     * <p>One, against the two the pattern files recommend for typesetting. That
-     * recommendation keeps a printed line from ending in a stranded letter, and
+     * <p>One, against the two typesetting wants. That convention keeps a printed
+     * line from ending in a stranded letter, and
      * it costs a syllable a singer holds: it forbids <i>a-more</i>, and Italian
      * <i>amore</i> is sung on three notes.
      */
@@ -89,8 +90,22 @@ public final class Hyphenator {
     /** Pattern letters to the scores between them, one longer than the letters. */
     private final Map<String, byte[]> patterns;
 
-    private Hyphenator(Map<String, byte[]> patterns) {
+    /**
+     * The non-letters this language's patterns actually mention, less the word
+     * boundary marker.
+     *
+     * <p>Read off the data rather than listed here, because the answer differs by
+     * language and only the data knows it: the Italian file carries a pattern for
+     * every position an elision can take, in both quote characters, and the
+     * English file mentions no apostrophe at all. A character outside this set is
+     * not word material for this language — it separates one run of word from the
+     * next, exactly as the space around the token does.
+     */
+    private final Set<Character> wordCharacters;
+
+    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters) {
         this.patterns = patterns;
+        this.wordCharacters = wordCharacters;
     }
 
     /**
@@ -136,7 +151,16 @@ public final class Hyphenator {
         } catch (IOException e) {
             throw new UncheckedIOException("could not read " + resource, e);
         }
-        return new Hyphenator(patterns);
+        Set<Character> wordCharacters = new HashSet<>();
+        for (String letters : patterns.keySet()) {
+            for (int i = 0; i < letters.length(); i++) {
+                char c = letters.charAt(i);
+                if (!Character.isLetter(c) && c != '.') {
+                    wordCharacters.add(c);
+                }
+            }
+        }
+        return new Hyphenator(patterns, Set.copyOf(wordCharacters));
     }
 
     /** Splits one TeX pattern into its letters and the scores between them. */
@@ -159,49 +183,109 @@ public final class Hyphenator {
     /**
      * The word split into syllables, in order, joining back to the original.
      *
-     * <p>Only the token's <b>letters</b> are hyphenated. Anything before the
-     * first letter or after the last is carried along on the syllable it touches,
-     * because the minima count sung sounds and punctuation is not one: measured
-     * over characters instead, a trailing comma fills the slot the right minimum
-     * reserves and {@code abandons,} comes out {@code a-ban-don-s,} — the very
-     * split {@link #RIGHT_MINIMUM} exists to prevent. A full stop is the same
-     * mistake wearing a different hat, since it is the character the patterns use
-     * for a word boundary, so a token with one <em>inside</em> its letters is left
-     * whole rather than scored as several words.
+     * <p>The token is cut into <b>runs of word material</b> and each run is
+     * hyphenated on its own. What counts as word material is read from the
+     * loaded language's patterns — its letters, plus whatever non-letters those
+     * patterns actually mention — so Italian treats an apostrophe as part of the
+     * word and English, whose file never mentions one, does not. Anything else
+     * separates one run from the next and rides the syllable it touches.
      *
-     * <p>An apostrophe is not punctuation here but part of the word, which is
-     * what the data expects: the Italian file ships a pattern for every position
-     * an elision can take, in both the typewriter and the typographic quote, so
-     * {@code dell'amore} comes out {@code del-l'a-mo-re} — four notes, the elided
-     * article breaking away from the article before it.
+     * <p>That is what keeps punctuation out of the minima's slots. Scored as
+     * though it were word material, a trailing comma fills the slot
+     * {@link #RIGHT_MINIMUM} reserves and {@code abandons,} comes out
+     * {@code a-ban-don-s,} — the very split that constant exists to prevent —
+     * and an English possessive puts {@code 's} on a note of its own. A run too
+     * short to hold a break joins the piece before it for the same reason.
+     *
+     * <p>A full stop is word material for neither language and is also what the
+     * patterns use to mean a word boundary, so {@code U.S.A.} becomes runs of one
+     * and two letters and is left as it stands.
      *
      * <p>Nothing else needs a gate. No pattern matches a digit, so {@code 1999}
      * and {@code 24/7} come back whole without being tested for.
      */
     public List<String> syllables(String word) {
         Objects.requireNonNull(word, "word");
-        int first = firstLetter(word);
-        int last = lastLetter(word);
-        if (first < 0 || last - first + 1 < LEFT_MINIMUM + RIGHT_MINIMUM) {
-            return List.of(word);
+        List<String> pieces = new ArrayList<>();
+        StringBuilder pending = new StringBuilder();
+        int at = 0;
+        while (at < word.length()) {
+            if (!isWordMaterial(word.charAt(at))) {
+                pending.append(word.charAt(at++));
+                continue;
+            }
+            int from = at;
+            while (at < word.length() && isWordMaterial(word.charAt(at))) {
+                at++;
+            }
+            append(pieces, pending, split(word.substring(from, at)));
         }
-        String prefix = word.substring(0, first);
-        String core = word.substring(first, last + 1);
-        String suffix = word.substring(last + 1);
-        if (core.indexOf('.') >= 0) {
-            return List.of(word);
+        if (pending.length() > 0) {
+            append(pieces, pending, List.of());
         }
+        return pieces.isEmpty() ? List.of(word) : List.copyOf(pieces);
+    }
 
-        String lower = core.toLowerCase(Locale.ROOT);
+    /** Whether this character is part of a word rather than something between two. */
+    private boolean isWordMaterial(char c) {
+        return Character.isLetter(c) || wordCharacters.contains(c);
+    }
+
+    /**
+     * Adds one run's syllables, carrying whatever separated it from the last.
+     *
+     * <p>What is not word material rides the syllable before it, or the one after
+     * it at the start of a token, so the pieces still concatenate to what came
+     * in. A run too short to hold a break joins the piece before it rather than
+     * standing alone: {@code Adirondack's} is sung on the syllables of
+     * {@code Adirondack} with the inflection on the last, not with {@code 's} on
+     * a note of its own.
+     */
+    private static void append(List<String> pieces, StringBuilder pending,
+                               List<String> syllables) {
+        String between = pending.toString();
+        pending.setLength(0);
+        if (syllables.isEmpty()) {
+            if (pieces.isEmpty()) {
+                pieces.add(between);
+            } else {
+                pieces.set(pieces.size() - 1, pieces.get(pieces.size() - 1) + between);
+            }
+            return;
+        }
+        List<String> run = new ArrayList<>(syllables);
+        boolean joinsBack = !pieces.isEmpty()
+                && (run.size() == 1 && run.get(0).length() < LEFT_MINIMUM + RIGHT_MINIMUM);
+        if (joinsBack) {
+            pieces.set(pieces.size() - 1,
+                    pieces.get(pieces.size() - 1) + between + run.get(0));
+            return;
+        }
+        if (!between.isEmpty()) {
+            if (pieces.isEmpty()) {
+                run.set(0, between + run.get(0));
+            } else {
+                pieces.set(pieces.size() - 1, pieces.get(pieces.size() - 1) + between);
+            }
+        }
+        pieces.addAll(run);
+    }
+
+    /** One run of word material, split where the patterns say. */
+    private List<String> split(String run) {
+        if (run.length() < LEFT_MINIMUM + RIGHT_MINIMUM || firstLetter(run) < 0) {
+            return List.of(run);
+        }
+        String lower = run.toLowerCase(Locale.ROOT);
         // One code point in Unicode lowercases to two -- Turkish dotted capital
-        // I -- and the scores below are read at this token's own offsets, so a
-        // token holding one would be cut at gaps belonging to other letters.
-        if (lower.length() != core.length()) {
-            return List.of(word);
+        // I -- and the scores below are read at this run's own offsets, so a run
+        // holding one would be cut at gaps belonging to other letters.
+        if (lower.length() != run.length()) {
+            return List.of(run);
         }
 
-        // The core is scored with a boundary marker at each end, which is what
-        // the leading and trailing "." in a pattern matches.
+        // The run is scored with a boundary marker at each end, which is what the
+        // leading and trailing "." in a pattern matches.
         String bounded = "." + lower + ".";
         byte[] scores = new byte[bounded.length() + 1];
         for (int from = 0; from < bounded.length(); from++) {
@@ -217,22 +301,16 @@ public final class Hyphenator {
 
         List<String> syllables = new ArrayList<>();
         int start = 0;
-        // scores[i + 1] scores the gap after the i-th character of the core, the
+        // scores[i + 1] scores the gap after the i-th character of the run, the
         // offset coming from the boundary marker in front of it.
-        for (int i = LEFT_MINIMUM; i <= core.length() - RIGHT_MINIMUM; i++) {
+        for (int i = LEFT_MINIMUM; i <= run.length() - RIGHT_MINIMUM; i++) {
             if (scores[i + 1] % 2 == 1) {
-                syllables.add(core.substring(start, i));
+                syllables.add(run.substring(start, i));
                 start = i;
             }
         }
-        syllables.add(core.substring(start));
-
-        // The punctuation rejoins the syllable it was attached to, so the pieces
-        // still concatenate to the token they came from.
-        List<String> whole = new ArrayList<>(syllables);
-        whole.set(0, prefix + whole.get(0));
-        whole.set(whole.size() - 1, whole.get(whole.size() - 1) + suffix);
-        return List.copyOf(whole);
+        syllables.add(run.substring(start));
+        return syllables;
     }
 
     /** Where the token's letters begin, or -1 when it has none. */

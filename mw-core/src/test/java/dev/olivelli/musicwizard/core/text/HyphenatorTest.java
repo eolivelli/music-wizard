@@ -196,6 +196,30 @@ class HyphenatorTest {
         }
 
         @Test
+        @DisplayName("a character the language's patterns never mention separates two runs")
+        void foreignCharactersSeparateRuns() {
+            // The English file mentions no apostrophe at all, so one is not word
+            // material there: scored as though it were, it fills a slot the
+            // minima reserve and "'s" ends up a syllable with a note of its own.
+            assertThat(split("en", "Adirondack's")).isEqualTo("Adiron-dack's");
+            assertThat(split("en", "Anderson's")).isEqualTo("An-der-son's");
+            assertThat(split("en", "don't")).isEqualTo("don't");
+            // Neither file mentions a hyphen, so a compound is two runs and the
+            // hyphen rides the syllable before it rather than taking a note.
+            assertThat(split("it", "bio-vita")).isEqualTo("bio--vi-ta");
+            assertThat(split("en", "well-known")).isEqualTo("well--known");
+        }
+
+        @Test
+        @DisplayName("the apostrophe is word material in Italian, where the patterns use it")
+        void apostropheIsLanguageSpecific() {
+            // The same character, read from the data rather than from a rule of
+            // ours: Italian breaks inside the elision, English does not.
+            assertThat(split("it", "dell'amore")).isEqualTo("del-l'a-mo-re");
+            assertThat(split("en", "hack's")).isEqualTo("hack's");
+        }
+
+        @Test
         @DisplayName("a token with no letters at all is left whole")
         void noLetters() {
             assertThat(split("it", "--")).isEqualTo("--");
