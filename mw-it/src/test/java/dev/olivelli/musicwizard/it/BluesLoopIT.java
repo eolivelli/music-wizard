@@ -63,11 +63,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>This recording replaced {@code gmajorblues.mp3}, which had no licence or
  * provenance and could not stay committed under the project's own tier-2 rule
- * (#204). One difference between the two is worth knowing before reading the
- * thresholds below: this one opens with a sparse intro that the tracker reads
- * at half rate, so about a dozen pulses are missing and the end-to-end rate
- * under-reads (#292). What that costs is confined to axes that count beats from
- * the first one — the downbeats, and so the bars, come back.
+ * (#204). It opens with a sparse intro, which the tracker used to read at half
+ * rate — about a dozen pulses missing and the end-to-end rate under-reading by
+ * roughly two percent. #292 corrects the seed that caused it, and the rate
+ * assertion below is tight against the loop again rather than banded around the
+ * defect.
  */
 class BluesLoopIT {
 
@@ -219,19 +219,19 @@ class BluesLoopIT {
         // for spacing a bar line and wrong here. Substituting it would quietly
         // retire #196's gate.
         //
-        // The band is wider than the recording this replaced could carry, and
-        // the reason is a defect rather than tolerance: through the sparse intro
-        // the tracker runs at half rate and drops about a dozen pulses, which
-        // pulls the mean roughly two percent under the loop's own 105.0. The
-        // upper edge stays tight against the loop, since nothing explains the
-        // tracker running fast here, and the lower edge sits just under what the
-        // intro costs. #theSpacingTempoAgreesWithTheLoop is the tight rate
-        // assertion of the two.
+        // This band used to run down to 101.5, to accommodate the sparse intro
+        // being tracked at half rate: the missing pulses are in the end-to-end
+        // rate by construction, since the mean interval is that rate. #292
+        // removed the cause, and the measured figure moved from 102.99 to
+        // 104.91 against the loop's own 105.0 -- from two percent under to
+        // under a tenth of one. The lower edge follows it down to a percent,
+        // which is the room a dropped pulse or two still needs; the upper edge
+        // is unchanged, since nothing explains the tracker running fast here.
         List<Double> beats = score.beatGrid().map(BeatGrid::beatTimes).orElseThrow();
         double tracked = 60.0 * (beats.size() - 1)
                 / (beats.get(beats.size() - 1) - beats.get(0));
 
-        assertThat(tracked).isBetween(101.5, 105.6);
+        assertThat(tracked).isBetween(103.9, 105.6);
     }
 
     @Test

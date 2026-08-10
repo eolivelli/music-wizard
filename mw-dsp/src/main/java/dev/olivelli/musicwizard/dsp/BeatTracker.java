@@ -132,31 +132,64 @@ public final class BeatTracker {
 
         // Half-overlapping windows; each contributes only its first half, so
         // every beat comes from a window where it sits away from the edge.
-        List<Double> beats = new ArrayList<>();
-        double tempoSum = 0;
-        double strengthSum = 0;
-        int windows = 0;
         int step = windowFrames / 2;
 
+        // Every window's seed is estimated before any of them is tracked, so
+        // that each can be read against the pulse the recording as a whole
+        // settled on. Tracking inside the estimation loop is what made a window
+        // an island: the seed is per-window by design -- that is what follows a
+        // drifting tempo -- but which subdivision of the beat it names is a
+        // property of the recording, and nothing was comparing the two.
+        List<int[]> bounds = new ArrayList<>();
+        List<TempoEstimator.Estimate> seeds = new ArrayList<>();
+        List<TempoEstimator.Estimate> voters = new ArrayList<>();
         for (int start = 0; start < envelope.length(); start += step) {
             int end = Math.min(envelope.length(), start + windowFrames);
             if (end - start < 16) {
                 break;
             }
-            TempoEstimator.Estimate tempo = TempoEstimator.estimateWindow(envelope, start, end);
-            List<Double> windowBeats = trackFixedTempo(
-                    envelope, tempo.beatsPerMinute(), start, end);
+            TempoEstimator.Estimate seed = TempoEstimator.estimateWindow(envelope, start, end);
+            bounds.add(new int[] {start, end});
+            seeds.add(seed);
+            // The tail window can be a fraction of a second -- the guard above
+            // admits sixteen frames, about a tenth of one -- and a rate measured
+            // over that is not a reading of the recording. Such a window is
+            // still tracked, since its beats are wanted, but it does not get a
+            // vote on what the rest of the recording's pulse is. On a recording
+            // barely longer than one window that would leave nothing to count,
+            // so the full set stands in below.
+            if (end - start >= step) {
+                voters.add(seed);
+            }
+        }
 
+        double reference = pulseReference(voters.isEmpty() ? seeds : voters);
+
+        List<Double> beats = new ArrayList<>();
+        double tempoSum = 0;
+        double strengthSum = 0;
+        int windows = bounds.size();
+
+        for (int w = 0; w < windows; w++) {
+            int start = bounds.get(w)[0];
+            int end = bounds.get(w)[1];
+            TempoEstimator.Estimate seed = seeds.get(w);
+            double beatsPerMinute = divideOutSubdivision(seed.beatsPerMinute(), reference);
+            List<Double> windowBeats = trackFixedTempo(envelope, beatsPerMinute, start, end);
+
+            // The gap test below scales with the period actually tracked, not
+            // the one the estimator proposed, or a corrected window would go on
+            // rejecting beats at the uncorrected spacing.
+            double periodSeconds = 60.0 / beatsPerMinute;
             double acceptUntil = (start + step) / envelope.frameRate();
             boolean lastWindow = end >= envelope.length();
             for (double beat : windowBeats) {
-                if ((lastWindow || beat < acceptUntil) && isNewBeat(beats, beat, tempo)) {
+                if ((lastWindow || beat < acceptUntil) && isNewBeat(beats, beat, periodSeconds)) {
                     beats.add(beat);
                 }
             }
-            tempoSum += tempo.beatsPerMinute();
-            strengthSum += tempo.strength();
-            windows++;
+            tempoSum += beatsPerMinute;
+            strengthSum += seed.strength();
         }
 
         double meanStrength = windows > 0 ? strengthSum / windows : 0;
@@ -278,18 +311,15 @@ public final class BeatTracker {
      * it does move where an octave error becomes visible, so it is worth saying
      * here rather than only where the weight is set.
      *
-     * <p><strong>It is visible on one of the benchmarks, and counting it as one
-     * window understates its shape.</strong> Across the five recordings' 161
-     * analysis windows the seed is within 6% of the music in 133. Most of the
-     * shortfall is one recording — {@code bossa-cm.mp3} is on the music in 1 of
-     * its 26, the other 25 being at four thirds of it, which is #231 and is not
-     * an octave error at all — and only one window in the five is: the first of
-     * {@code blues-shuffle-a-106bpm.mp3}. That recording's first ten intervals
-     * are consequently about two beats of the music each, and those ten are most
-     * of the thirteen slips {@code tools/ScoreBeats.java} still reports for it —
-     * the only benchmark whose slip count does not reach zero. So the cost of
-     * this trade is small, concentrated, and is the visible residue in the one
-     * row of that table that has any.
+     * <p><strong>Seeds an octave out still occur; they no longer reach the
+     * recursion.</strong> {@link #track} reads every window's seed against the
+     * pulse the rest of the recording agrees on and divides out the subdivision
+     * before tracking — see {@link #divideOutSubdivision} — so the limitation
+     * above is one the tracker is no longer asked to work around. A window whose
+     * seed disagrees with the recording by something that is <em>not</em> a
+     * subdivision is left alone and still lands where the seed points, which is
+     * {@code bossa-cm.mp3}: its windows read four thirds of the music, which is
+     * #231 and is not an octave error at all.
      *
      * <p>Median rather than mean so that one dropped or doubled beat does not
      * drag the answer.
@@ -312,12 +342,129 @@ public final class BeatTracker {
 
     /** Rejects a beat that would land on top of one already accepted. */
     private static boolean isNewBeat(List<Double> beats, double candidate,
-                                     TempoEstimator.Estimate tempo) {
+                                     double beatPeriodSeconds) {
         if (beats.isEmpty()) {
             return true;
         }
         double last = beats.get(beats.size() - 1);
-        return candidate - last > 0.4 * tempo.beatPeriodSeconds();
+        return candidate - last > 0.4 * beatPeriodSeconds;
+    }
+
+    /**
+     * The ratios by which a window's seed may be a subdivision of the
+     * recording's pulse rather than a different tempo.
+     *
+     * <p><b>Not the powers of two, and that is the whole of why this is a list.</b>
+     * The obvious correction is an octave fold, and on a corpus of duple
+     * material it looks right. It is wrong on the two recordings here that need
+     * anything else: {@code cm-blues-68-95.mp3} is in 6/8 and its bad windows
+     * read three times the pulse, {@code fm7-vamp-110.mp3} has two that read two
+     * thirds of it. Folding those by powers of two lands on 1/4 and 4/3 of the
+     * true rate -- further from it than the seed they replaced, and no longer a
+     * whole subdivision of anything.
+     *
+     * <p>So the relations that matter are the ones a beat is actually divided
+     * by: halves and quarters, thirds for compound time, and the two-against-
+     * three of {@code 3/2}. Anything else is left alone, because a window that
+     * is not a subdivision of the recording's pulse is a window at a different
+     * tempo, which is what the per-window seed exists to follow.
+     */
+    private static final double[] SUBDIVISIONS =
+            {1.0 / 4, 1.0 / 3, 1.0 / 2, 2.0 / 3, 3.0 / 2, 2.0, 3.0, 4.0};
+
+    /**
+     * How far a ratio may sit from a subdivision and still be read as one.
+     *
+     * <p>Wide enough to cover the estimator's own quantisation -- the seeds this
+     * corrects sit within 1% of an exact ratio -- and far narrower than the gap
+     * between adjacent entries in {@link #SUBDIVISIONS}, the closest pair being
+     * {@code 3/2} and {@code 2}. A genuine tempo change of a few percent is
+     * nowhere near any of them and passes through untouched.
+     */
+    private static final double SUBDIVISION_TOLERANCE = 0.05;
+
+    /**
+     * The pulse the recording is read against: the median of the window seeds.
+     *
+     * <p>Median rather than mean, and rather than
+     * {@link TempoEstimator#estimate} over the whole envelope, because both of
+     * those answer this recording's question wrongly. A mean sits between two
+     * subdivisions and is neither. The whole-envelope estimate is not a summary
+     * of the windows at all -- on {@code g-blues-shuffle-cc.mp3} it reads 52.5
+     * where 25 of the 26 windows read about 105, since one autocorrelation over
+     * five minutes of shuffle has its strongest peak at the half-bar. Anchoring
+     * on it would correct the whole recording <em>to</em> the rate this exists
+     * to correct away from.
+     *
+     * <p>The median is a vote, so it is only right where most windows are. That
+     * is the assumption this rests on and there is no stronger signal available
+     * here: a recording whose windows mostly read a subdivision would be
+     * normalised onto it, which is what {@link TempoEstimator}'s perceptual
+     * prior is for and not something a consensus can second-guess.
+     *
+     * <p><b>Always an observed rate, never the average of two.</b> The usual
+     * even-length median would average the two middle seeds, and where those
+     * straddle a subdivision boundary -- nine of this corpus's 6/8 windows read
+     * three times what the other nineteen do -- the average is a rate no window
+     * proposed and no subdivision of. Every seed would then be measured against
+     * a fiction. Taking the upper of the two costs nothing on an even spread and
+     * keeps the reference something the recording actually said.
+     */
+    private static double pulseReference(List<TempoEstimator.Estimate> seeds) {
+        double[] rates = new double[seeds.size()];
+        for (int i = 0; i < rates.length; i++) {
+            rates[i] = seeds.get(i).beatsPerMinute();
+        }
+        java.util.Arrays.sort(rates);
+        return rates[rates.length / 2];
+    }
+
+    /**
+     * Divides a subdivision out of a window's seed, where the seed is one of the
+     * recording's pulse.
+     *
+     * <p>This is the correction the dynamic program cannot make for itself.
+     * {@link #tempoOf} derives why: at the shipped {@link #TIGHTNESS} a
+     * half-rate seed is followed rather than corrected, because correcting it
+     * has to pay two spacing penalties to collect two onsets and the penalty is
+     * the larger of the two. So a window seeded a subdivision out tracks a
+     * subdivision out for its whole length, however plain the onsets underneath
+     * it are. The seed is the only place it can be fixed.
+     *
+     * <p>The seed is divided by the ratio rather than replaced by the reference,
+     * so that a window keeps its own reading of the tempo where the recording
+     * drifts -- which is what the per-window seed is for. The two differ by
+     * whatever that window has drifted.
+     *
+     * <p>Left alone if the correction would leave {@link TempoEstimator}'s own
+     * range, since a rate outside it is one no window could have been seeded
+     * with.
+     *
+     * <p>Package-private so the ratio table can be asserted directly. Reaching
+     * it through {@link #track} would need a fixture per entry, and the entry
+     * that matters most is the one no duple fixture has: the compound-time 3.
+     */
+    static double divideOutSubdivision(double beatsPerMinute, double reference) {
+        if (!(beatsPerMinute > 0) || !(reference > 0)) {
+            return beatsPerMinute;
+        }
+        double observed = beatsPerMinute / reference;
+        double bestRatio = 1.0;
+        double bestDistance = SUBDIVISION_TOLERANCE;
+        for (double ratio : SUBDIVISIONS) {
+            // Compared as a relative distance so that 1/3 and 3 are held to the
+            // same standard; an absolute one would be three times slacker on the
+            // multiples than on the divisors.
+            double distance = Math.abs(observed - ratio) / ratio;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestRatio = ratio;
+            }
+        }
+        double corrected = beatsPerMinute / bestRatio;
+        return corrected >= TempoEstimator.MIN_TEMPO && corrected <= TempoEstimator.MAX_TEMPO
+                ? corrected
+                : beatsPerMinute;
     }
 
     /**

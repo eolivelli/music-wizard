@@ -1,16 +1,16 @@
 samples with known ground truth:
   blues-a-90bpm.mp3: bars=113  root 102/113 (90.3%)  root+quality 101/113 (89.4%)  N.C. 0.0% of 304s
-  blues-shuffle-a-106bpm.mp3: bars=143  root 136/143 (95.1%)  root+quality 78/143 (54.5%)  N.C. 0.0% of 343s
+  blues-shuffle-a-106bpm.mp3: bars=146  root 127/146 (87.0%)  root+quality 70/146 (47.9%)  N.C. 0.0% of 343s
   blues-e-90bpm.mp3: bars=111  root 110/111 (99.1%)  root+quality 92/111 (82.9%)  N.C. 0.0% of 302s
   slow-68-40.mp3: bars=181  root 102/181 (56.4%)  root+quality 80/181 (44.2%)  N.C. 0.0% of 372s
-  g-blues-shuffle-cc.mp3: bars=133  root 116/133 (87.2%)  root+quality 83/133 (62.4%)  N.C. 0.4% of 316s
-  bm-blues-slow.mp3: bars=182  root 98/182 (53.8%)  root+quality 66/182 (36.3%)  N.C. 0.0% of 336s
-  cm-blues-68-95.mp3: bars=157  root 35/157 (22.3%)  root+quality 17/157 (10.8%)  N.C. 0.5% of 347s
+  g-blues-shuffle-cc.mp3: bars=136  root 118/136 (86.8%)  root+quality 84/136 (61.8%)  N.C. 0.5% of 316s
+  bm-blues-slow.mp3: bars=187  root 99/187 (52.9%)  root+quality 66/187 (35.3%)  N.C. 0.1% of 336s
+  cm-blues-68-95.mp3: bars=91  root 22/91 (24.2%)  root+quality 11/91 (12.1%)  N.C. 0.5% of 347s
   waltz-am-e7-160.mp3: bars=208  root 106/208 (51.0%)  root+quality 106/208 (51.0%)  N.C. 0.4% of 319s
   f-blues-swing-170.mp3: bars=111  root 25/111 (22.5%)  root+quality 14/111 (12.6%)  N.C. 0.7% of 316s
   jazz-251-c-140.mp3: bars=87  root 12/87 (13.8%)  root+quality 12/87 (13.8%)  N.C. 0.0% of 304s
-  fm7-vamp-110.mp3: bars=137  root 127/137 (92.7%)  root+quality 80/137 (58.4%)  N.C. 0.3% of 328s
-  eb7-vamp-130.mp3: bars=167  root 156/167 (93.4%)  root+quality 99/167 (59.3%)  N.C. 0.3% of 309s
+  fm7-vamp-110.mp3: bars=144  root 133/144 (92.4%)  root+quality 92/144 (63.9%)  N.C. 0.5% of 328s
+  eb7-vamp-130.mp3: bars=171  root 157/171 (91.8%)  root+quality 99/171 (57.9%)  N.C. 0.5% of 309s
   bossa-cm.mp3: bars=124  root 18/124 (14.5%)  root+quality 5/124 (4.0%)  N.C. 0.0% of 315s
   pop-c-g-am-f-120.mp3: bars=57  root 57/57 (100.0%)  root+quality 56/57 (98.2%)  N.C. 0.0% of 114s
 keys, against the expected key for each file:
@@ -20,14 +20,14 @@ keys, against the expected key for each file:
   key slow-68-40.mp3: A major at 59%  want A major  OK
   key g-blues-shuffle-cc.mp3: G major at 40%  want G major  OK
   key fm7-vamp-110.mp3: F minor at 98%  want F minor  OK
-  key eb7-vamp-130.mp3: Eb major at 41%  want Eb major  OK
+  key eb7-vamp-130.mp3: Eb major at 40%  want Eb major  OK
   key bossa-cm.mp3: C minor at 10%  want C minor  OK
   key bm-blues-slow.mp3: B minor at 58%  want B minor  OK
-  key cm-blues-68-95.mp3: Eb major at 18%  want C minor  WRONG
+  key cm-blues-68-95.mp3: Eb major at 16%  want C minor  WRONG
   key waltz-am-e7-160.mp3: A minor at 62%  want A minor  OK
   key f-blues-swing-170.mp3: F major at 8%  want F major  OK
   key jazz-251-c-140.mp3: A minor at 18%  want C major  WRONG
   key ballad-wine-roses-65.mp3: D minor at 9%  want F major  WRONG
-  key footprints-200.mp3: Eb major at 15%  want C minor  WRONG
+  key footprints-200.mp3: C minor at 16%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
-  key pop-am-f-c-g-144.mp3: A minor at 10%  want A minor  OK
+  key pop-am-f-c-g-144.mp3: A minor at 9%  want A minor  OK

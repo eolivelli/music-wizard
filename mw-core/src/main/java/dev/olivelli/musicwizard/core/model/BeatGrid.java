@@ -267,11 +267,13 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * the plain mean gives 126.32.
      *
      * <p>What it does not fix is a grid tracked an octave out for <em>part</em> of
-     * a recording, which {@code BeatTracker.tempoOf}'s own javadoc says the
-     * autocorrelation peak is prone to. Half a recording at double rate makes the
-     * two rates two populations rather than a population and some outliers, and
-     * the median picks the larger one where this picks whichever the median
-     * lands in. Nothing here bounds that, and no benchmark exhibits it.
+     * a recording. Half a recording at double rate makes the two rates two
+     * populations rather than a population and some outliers, and the median
+     * picks the larger one where this picks whichever the median lands in.
+     * Nothing here bounds that. What used to produce such a grid was the beat
+     * tracker seeding each analysis window on its own, which it no longer does
+     * (#292) — so this is now a shape a grid reaching here is not expected to
+     * have, rather than one no benchmark happened to have.
      *
      * @throws IllegalStateException if the grid holds fewer than two pulses,
      *                               which carry no interval to measure

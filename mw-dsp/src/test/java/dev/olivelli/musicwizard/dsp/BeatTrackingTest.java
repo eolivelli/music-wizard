@@ -113,6 +113,29 @@ class BeatTrackingTest {
         return clicksWithGains(clicks, seconds);
     }
 
+    /**
+     * A recording that sounds only every second beat until {@code introSeconds}
+     * and every beat after it, at one unchanging tempo throughout.
+     *
+     * <p>The shape of a lead-in, and the fixture for #292: the music never
+     * changes pace, but an analysis window falling inside the intro sees its
+     * strongest periodicity at half the rate, and a window after it sees the
+     * rate itself.
+     */
+    private static float[] sparseIntro(double beatsPerMinute, double introSeconds,
+                                       double seconds) {
+        double period = 60.0 / beatsPerMinute;
+        List<double[]> clicks = new ArrayList<>();
+        int beat = 0;
+        for (double t = 0; t < seconds; t += period, beat++) {
+            if (t < introSeconds && beat % 2 == 1) {
+                continue;
+            }
+            clicks.add(new double[] {t, 0.8});
+        }
+        return clicksWithGains(clicks, seconds);
+    }
+
     private static float[] whiteNoise(double seconds, long seed) {
         Random random = new Random(seed);
         float[] out = new float[(int) Math.round(seconds * RATE)];
@@ -1240,6 +1263,84 @@ class BeatTrackingTest {
                         .as("tracked rate from a seed at %s of the true one", factor)
                         .isCloseTo(bpm * factor, within(bpm * factor * 0.03));
             }
+        }
+
+        @Test
+        @DisplayName("a sparse intro is tracked at the music's rate, not at half of it")
+        void aSparseIntroIsTrackedAtTheMusicsRate() {
+            // #292. The estimator seeds each window on its own, and a window of
+            // intro that sounds only every second beat has its strongest
+            // periodicity at half the music's rate. The dynamic program will
+            // not correct that seed -- see
+            // theDynamicProgramFollowsItsSeedRatherThanFixingIt, which pins the
+            // limitation this compensates for -- so the intro used to be
+            // tracked at half rate for its whole length.
+            //
+            // On g-blues-shuffle-cc.mp3 that cost eleven pulses and dragged the
+            // end-to-end rate about two percent under the loop's own, because
+            // the mean interval is the end-to-end rate and the intro's doubled
+            // gaps are in it.
+            double bpm = 105;
+            double period = 60.0 / bpm;
+            double introSeconds = 14;
+            BeatTracker.Result result =
+                    BeatTracker.track(envelopeOf(sparseIntro(bpm, introSeconds, 70)));
+
+            List<Double> beats = result.beatTimes();
+            int doubled = 0;
+            int onGrid = 0;
+            for (int i = 1; i < beats.size(); i++) {
+                if (beats.get(i) > introSeconds) {
+                    break;
+                }
+                double ratio = (beats.get(i) - beats.get(i - 1)) / period;
+                if (Math.abs(ratio - 1) < 0.15) {
+                    onGrid++;
+                } else if (Math.abs(ratio - 2) < 0.30) {
+                    doubled++;
+                }
+            }
+
+            assertThat(onGrid)
+                    .as("intro intervals of about one beat")
+                    .isGreaterThan(15);
+            assertThat(doubled)
+                    .as("intro intervals of about two beats, which is the defect")
+                    .isLessThan(3);
+        }
+
+        @Test
+        @DisplayName("a window's seed is corrected by a subdivision, never by an octave alone")
+        void aSeedIsCorrectedBySubdivisionRatherThanByOctave() {
+            // The three corrections the corpus actually needs, and the reason
+            // the ratios are a table rather than the powers of two. Folding by
+            // octaves fixes the first and lands the other two further from the
+            // truth than the seed it replaced -- a quarter of the rate on the
+            // 6/8 recording, four thirds of it on the vamp.
+
+            // g-blues-shuffle-cc.mp3 window 0, against its own median: a half.
+            assertThat(BeatTracker.divideOutSubdivision(52.5, 105.5))
+                    .isCloseTo(105.0, within(0.01));
+            // cm-blues-68-95.mp3, in 6/8: nine of its windows read three times
+            // the pulse the other nineteen do.
+            assertThat(BeatTracker.divideOutSubdivision(191.25, 63.5))
+                    .isCloseTo(63.75, within(0.01));
+            // fm7-vamp-110.mp3: two windows read two thirds of it.
+            assertThat(BeatTracker.divideOutSubdivision(73.25, 110.0))
+                    .isCloseTo(109.875, within(0.01));
+
+            // A tempo that is genuinely different is not a subdivision of
+            // anything and is left alone, which is what the per-window seed is
+            // for: following a recording that changes pace.
+            assertThat(BeatTracker.divideOutSubdivision(121.0, 105.5))
+                    .isCloseTo(121.0, within(1e-9));
+            assertThat(BeatTracker.divideOutSubdivision(88.0, 105.5))
+                    .isCloseTo(88.0, within(1e-9));
+
+            // A correction that would leave the estimator's own range is not
+            // made, since no window could have been seeded outside it.
+            assertThat(BeatTracker.divideOutSubdivision(50.0, 25.0))
+                    .isCloseTo(50.0, within(1e-9));
         }
 
         @Test
