@@ -24,10 +24,10 @@ Some consequences worth knowing before you reach for the obvious thing:
   models* (the code is BSD, the weights are not), the Open-Unmix `umxl`
   weights, and the MedleyDB, MAESTRO, MusicNet and Isophonics corpora are all
   CC BY-NC-SA and cannot be used or vendored. Clean alternatives exist for every
-  one: Spleeter (MIT for the code *and* the pretrained models, which Deezer's
-  own paper states — `10.21105/joss.02154` — and the repository's README does
-  not), CREPE ONNX (MIT),
-  basic-pitch (Apache-2.0), and the OpenScore Lieder corpus (CC0).
+  one: Spleeter (MIT for the code *and* the pretrained models, which Deezer's own
+  paper states — `10.21105/joss.02154` — and the repository's README does not),
+  CREPE ONNX (MIT), basic-pitch (Apache-2.0), and the OpenScore Lieder corpus
+  (CC0).
 - **Code and weights carry separate licences, and only the author's word settles
   the second.** Demucs is the example to remember: MIT code, and weights the
   author describes as "provided only for scientific purposes"

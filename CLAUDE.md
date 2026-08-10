@@ -161,7 +161,7 @@ onsets a third of a beat apart and three a half beat apart are both legal on the
 sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
 modules are purely symbolic, so this pulls no audio and no models into notation.
 
-## Licensing — enforced, not aspirational
+## Licensing
 
 Apache-2.0. The `maven-enforcer-plugin` denies a list of named artifacts, and CI
 has a job for it — a list, not a licence check, so it catches what someone has
@@ -181,7 +181,9 @@ already thought of and nothing else.
   rule.
 - LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
   never linked or redistributed, and the tool works without it.
-- No model weights ship in the repo. They download on first use.
+- No model weights ship in the repo, and nothing fetches one yet. A stage that
+  does will download on first use into a local cache; `NOTICE` lists what has
+  been chosen so far.
 
 ## Rendering
 
