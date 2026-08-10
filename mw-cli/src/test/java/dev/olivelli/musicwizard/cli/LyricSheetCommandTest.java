@@ -246,6 +246,62 @@ class LyricSheetCommandTest {
     }
 
     @Test
+    @DisplayName("--lyrics-language reaches the score and splits words on the page")
+    void languageSplitsWords() throws IOException {
+        Path source = directory.resolve("it.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 3.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("it.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                .isZero();
+        Path lyrics = directory.resolve("it.lrc");
+        Files.writeString(lyrics, "[00:00.50]<00:00.50>amore <00:01.50>canzone\n");
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics", lyrics.toString(), "--lyrics-language", "it");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(Workspace.open(root).readScore().orElseThrow().lyrics().language())
+                .isEqualTo("it");
+
+        CliRunner.Result render = CliRunner.run(
+                "render", root.toString(), "--parts", "lyrics", "--no-pdf");
+        assertThat(render.exitCode()).as(render.all()).isZero();
+        String engraved = Files.readString(root.resolve("out/chords-lyrics.ly"));
+        // The syllables and a hyphen joining them. Not adjacency: a chain can
+        // cross a bar line, and then the partner is on the next line after a
+        // skip.
+        assertThat(engraved).as("%s", engraved)
+                .contains("\"a\"").contains("\"mo\"").contains("--")
+                .doesNotContain("\"amore\"");
+        // The text sheet still prints whole words: syllables are for the page,
+        // where each one needs its own position.
+        assertThat(Files.readString(root.resolve("out/chords-lyrics.txt"))).contains("amore");
+    }
+
+    @Test
+    @DisplayName("a language with no patterns warns rather than silently not splitting")
+    void unsupportedLanguageWarns() throws IOException {
+        Path source = directory.resolve("de.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 3.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("de.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                .isZero();
+        Path lyrics = directory.resolve("de.lrc");
+        Files.writeString(lyrics, "[00:00.50]<00:00.50>Liebe\n");
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics", lyrics.toString(), "--lyrics-language", "de");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.all()).contains("no hyphenation patterns");
+        assertThat(Workspace.open(root).readScore().orElseThrow().lyrics().isEmpty()).isFalse();
+    }
+
+    @Test
     @DisplayName("lyrics are not baked into the transcription cache")
     void lyricsStayOutOfTheCache() throws IOException {
         Path root = analysed(LRC);

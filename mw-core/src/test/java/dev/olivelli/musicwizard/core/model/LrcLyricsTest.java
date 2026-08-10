@@ -555,6 +555,32 @@ class LrcLyricsTest {
     }
 
     @Test
+    @DisplayName("a known language counts syllables by its own rules, not English's")
+    void languageDecidesTheShare() {
+        // syllableEstimate drops a trailing "e", which is an English rule: in
+        // Italian a final e is always sounded, so particolare is five syllables
+        // and not four, and counted short it is given too little of the line.
+        Lyrics guessed = LrcLyrics.parse("[00:00.00]a particolare\n[00:06.00]end\n", RECORDING);
+        Lyrics known = LrcLyrics.parse(
+                "[00:00.00]a particolare\n[00:06.00]end\n", RECORDING, "it");
+
+        assertThat(known.language()).isEqualTo("it");
+        // One syllable against five rather than against four, so "a" takes a
+        // sixth of the line rather than a fifth.
+        assertThat(known.lines().get(0).words().get(0).endSeconds()).isEqualTo(1.0);
+        assertThat(guessed.lines().get(0).words().get(0).endSeconds()).isEqualTo(1.2);
+    }
+
+    @Test
+    @DisplayName("an unknown language falls back to the crude count")
+    void unknownLanguageStillSpreads() {
+        Lyrics lyrics = LrcLyrics.parse("[00:00.00]a banana\n[00:04.00]end\n", RECORDING, "de");
+
+        assertThat(lyrics.language()).isEqualTo("de");
+        assertThat(lyrics.lines().get(0).words().get(0).endSeconds()).isCloseTo(1.0, within(1e-9));
+    }
+
+    @Test
     @DisplayName("nothing arrives on the beat axis: that is the aligner's job")
     void parsingDoesNotQuantize() {
         Lyrics lyrics = LrcLyrics.parse("[00:10.00]one two\n[00:20.00]three\n", RECORDING);

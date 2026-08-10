@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
+import dev.olivelli.musicwizard.core.text.Hyphenator;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.StageCache;
@@ -154,6 +155,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "transcribes lyrics from audio yet (#9).")
     Path lyricsFile;
 
+    @Option(names = "--lyrics-language", paramLabel = "TAG",
+            description = "What language the lyrics are in, e.g. it or en. Used to "
+                    + "split words into syllables for the engraved sheet. An LRC "
+                    + "file does not say, and a wrong answer splits words on "
+                    + "another language's rules, so without this they stay whole.")
+    String lyricsLanguage;
+
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
     boolean force;
 
@@ -250,6 +258,28 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
+     * The language tag to read the lyrics under, or {@code und} for none.
+     *
+     * <p>An LRC file does not state one, so without the option the lyrics carry
+     * {@code und}: their words are not split into syllables and are shared out
+     * across a line by a count that assumes English. Warned about rather than
+     * guessed at when the tag names a language there are no patterns for — a
+     * user who asked for syllables and silently got none would have no way to
+     * tell that from a language whose words simply do not split.
+     */
+    private String languageTag() {
+        if (lyricsLanguage == null || lyricsLanguage.isBlank()) {
+            return "und";
+        }
+        if (!Hyphenator.supports(lyricsLanguage)) {
+            System.err.println("warning: no hyphenation patterns for language '"
+                    + lyricsLanguage + "', so lyric words will not be split into"
+                    + " syllables; the lyrics are still placed.");
+        }
+        return lyricsLanguage;
+    }
+
+    /**
      * The lyrics already in this workspace's score, or none.
      *
      * <p>Guarded, and the guard is the point. {@code readScore} raises on a
@@ -308,7 +338,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + " analysis has no lyrics: " + e.getMessage());
             return score;
         }
-        Lyrics lyrics = LrcLyrics.parse(text, score.durationSeconds());
+        Lyrics lyrics = LrcLyrics.parse(text, score.durationSeconds(), languageTag());
         if (lyrics.isEmpty()) {
             System.err.println(LrcLyrics.looksLikeLrc(text)
                     ? "warning: the lyrics file has timestamps but no words under them,"

@@ -176,9 +176,16 @@ supplying them: point `analyze` at an [LRC][lrc] file and they are placed under
 the chords.
 
 ```sh
-mw analyze song.mwz --lyrics song.lrc
+mw analyze song.mwz --lyrics song.lrc --lyrics-language it
 mw render song.mwz                   # writes the chords-lyrics files as well
 ```
+
+`--lyrics-language` splits words into the syllables they are sung on, so the
+engraved sheet reads *a-mo-re* where it used to carry the word whole. Italian and
+English have patterns; an LRC file does not say which
+language it is in, and splitting on the wrong one is worse than not splitting, so
+without the option words stay whole. It also decides how a plain (un-timed) line
+shares itself out among its words.
 
 Word timings are read from the file where it has them — the `<mm:ss.xx>` tags of
 "enhanced" LRC — and estimated within each line where it does not. A file that
