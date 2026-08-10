@@ -161,13 +161,34 @@ final class ChartLayout {
      *                     engraving states it again
      * @param cells        the chords sounding, in order
      */
-    record Bar(TimeSignature meter, boolean meterChanged, List<Cell> cells) {
+    record Bar(TimeSignature meter, boolean meterChanged, List<Cell> cells,
+               double startQuarters, double startSeconds) {
+
+        /** How long this bar is, in quarter beats. */
+        double lengthQuarters() {
+            return meter.quarterBeatsPerBar();
+        }
     }
 
     /** The meter of each chart bar, counted from the chart's own first bar. */
     @FunctionalInterface
     private interface BarRuler {
         TimeSignature meterOf(int chartBar);
+    }
+
+    /**
+     * Where a position on the chart's quarter-beat axis falls in the recording.
+     *
+     * <p>Supplied by whichever route built the chart, because only it knows the
+     * origin the axis is counted from and how the two units relate — a constant
+     * quarter length on the seconds route, the tempo map on the beat route.
+     * Anything downstream that has to place a moment against these bars asks
+     * here rather than reconstructing an origin of its own, which is the defect
+     * #103 and #150 are both about.
+     */
+    @FunctionalInterface
+    private interface QuartersToSeconds {
+        double secondsAt(double quarters);
     }
 
     /** A chord and the span it holds, in quarter beats from the first bar line. */
@@ -249,7 +270,8 @@ final class ChartLayout {
         // rejected -- but the addition is still clamped rather than left to wrap,
         // because a wrapped index reads a meter from the wrong end of the piece.
         return assemble(chords, starts, end, grid,
-                k -> map.timeSignatureAtBar((int) Math.min(Integer.MAX_VALUE, (long) firstBar + k)));
+                k -> map.timeSignatureAtBar((int) Math.min(Integer.MAX_VALUE, (long) firstBar + k)),
+                quarters -> map.beatsToSeconds(origin + quarters));
     }
 
     /**
@@ -298,7 +320,8 @@ final class ChartLayout {
             lastEnd = Math.max(lastEnd,
                     snap((chords.get(i).endSeconds() - origin) / quarterSeconds, grid));
         }
-        return assemble(chords, starts, lastEnd, grid, k -> meter);
+        return assemble(chords, starts, lastEnd, grid, k -> meter,
+                quarters -> origin + quarters * quarterSeconds);
     }
 
     /**
@@ -492,7 +515,7 @@ final class ChartLayout {
      * @param grid   the smallest span this route prints
      */
     private static List<Bar> assemble(List<Chord> chords, double[] starts, double end,
-                                      double grid, BarRuler ruler) {
+                                      double grid, BarRuler ruler, QuartersToSeconds clock) {
         // Strictly increasing, so that every chord gets a cell of its own. Two
         // chords can snap onto one grid point -- when they are closer than the
         // shortest value a duration can name, which is the one case chartGrid
@@ -577,7 +600,7 @@ final class ChartLayout {
         List<Bar> bars = new ArrayList<>(barStarts.size());
         for (int i = 0; i < barStarts.size(); i++) {
             bars.add(new Bar(meters.get(i), i == 0 || !meters.get(i).equals(meters.get(i - 1)),
-                    cells.get(i)));
+                    cells.get(i), barStarts.get(i), clock.secondsAt(barStarts.get(i))));
         }
         return named(bars);
     }
@@ -624,7 +647,8 @@ final class ChartLayout {
                         previous == null || !cell.symbol().equals(previous)));
                 previous = cell.symbol();
             }
-            out.add(new Bar(bar.meter(), bar.meterChanged(), List.copyOf(cells)));
+            out.add(new Bar(bar.meter(), bar.meterChanged(), List.copyOf(cells),
+                    bar.startQuarters(), bar.startSeconds()));
         }
         return List.copyOf(out);
     }
@@ -760,7 +784,8 @@ final class ChartLayout {
         List<Bar> reduced = new ArrayList<>(bars.size());
         for (Bar bar : bars) {
             reduced.add(new Bar(bar.meter(), bar.meterChanged(),
-                    holdsTheLeadIn(bar) ? bar.cells() : written(bar.cells(), bar.meter())));
+                    holdsTheLeadIn(bar) ? bar.cells() : written(bar.cells(), bar.meter()),
+                    bar.startQuarters(), bar.startSeconds()));
         }
         return named(reduced);
     }
@@ -949,7 +974,8 @@ final class ChartLayout {
             boolean namesIt = i == 0 || !chord.symbol().equals(named);
             named = namesIt ? chord.symbol() : named;
             bars.add(new Bar(meter, i == 0, List.of(
-                    new Cell(Optional.of(chord), meter.quarterBeatsPerBar(), namesIt))));
+                    new Cell(Optional.of(chord), meter.quarterBeatsPerBar(), namesIt)),
+                    i * meter.quarterBeatsPerBar(), chord.startSeconds()));
         }
         return List.copyOf(bars);
     }

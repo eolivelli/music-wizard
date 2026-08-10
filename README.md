@@ -177,7 +177,7 @@ the chords.
 
 ```sh
 mw analyze song.mwz --lyrics song.lrc
-mw render song.mwz                   # writes out/chords-lyrics.txt as well
+mw render song.mwz                   # writes the chords-lyrics files as well
 ```
 
 Word timings are read from the file where it has them — the `<mm:ss.xx>` tags of
@@ -191,11 +191,16 @@ re-reads it without re-analysing the recording — and a later `analyze` **witho
 `--lyrics` keeps the ones already there, so correcting the tempo does not throw
 them away. Pass `--lyrics` again to replace them.
 
-**Two files, not one.** `out/chords.txt` is unchanged — a bar grid, which is
-what to read when there is nothing to sing. `out/chords-lyrics.txt` puts each
-chord symbol over the word it arrives on, which is what to read when there is.
-Neither is the other with rows added; they answer different questions, and the
-grid is what the measurement harness parses.
+**Two outputs, not one.** `out/chords.txt` and `out/chords.pdf` are unchanged — a
+bar grid, which is what to read when there is nothing to sing. `chords-lyrics.txt`
+puts each chord symbol over the word it arrives on, and `chords-lyrics.pdf`
+engraves the same thing with the lyrics under the chord names. Neither is the
+other with rows added; they answer different questions, and the grid is what the
+measurement harness parses.
+
+The engraved sheet drops any word sung after the last chord, because the bars it
+hangs them on stop there; the text sheet prints every word and is the one to read
+when the two differ.
 
 [i9]: https://github.com/eolivelli/music-wizard/issues/9
 [lrc]: https://en.wikipedia.org/wiki/LRC_(file_format)

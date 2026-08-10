@@ -114,6 +114,23 @@ public final class LyricSheet {
     }
 
     /**
+     * The sheet as LilyPond: the chord chart with the lyrics engraved under it.
+     *
+     * <p>A separate engraving from {@link ChordChart#toLilyPond}, not a flag on
+     * it, for the reason the text files are separate — the chart is read for the
+     * changes and their lengths, the sheet for where the words fall, and putting
+     * lyrics on the chart would change what {@code chords.pdf} has always been.
+     *
+     * <p>Where the two sheets differ is worth knowing: the text one prints every
+     * word, and this one drops any sung after the last chord, because the bars
+     * it hangs them on stop there. {@link LyricEngraving} carries that rule.
+     */
+    public static String toLilyPond(Score score) {
+        Objects.requireNonNull(score, "score");
+        return ChordChart.lilyPondOf(score, ChartLayout.of(score), true);
+    }
+
+    /**
      * Prints the chords falling before a moment as rows with no words under
      * them, and returns the index of the first chord after them.
      *
