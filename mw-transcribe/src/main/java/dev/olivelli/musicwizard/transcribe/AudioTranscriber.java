@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
+import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.nio.file.Path;
@@ -186,8 +187,17 @@ public final class AudioTranscriber {
         progress.accept("detecting onsets");
         OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
 
+        // Chroma is extracted before the beats, not after, and the order is
+        // load-bearing since #231: the beat tracker weighs its tempo candidates
+        // by whether the harmony can be barred by them, and harmonic rhythm is
+        // read from frame-level chroma, which needs no beats. Beat-synchronous
+        // chroma still needs them and is derived further down.
+        progress.accept("estimating chroma");
+        NnlsChroma registers = NnlsChroma.extract(audio);
+        HarmonicRhythm harmonicRhythm = HarmonicRhythm.of(registers.combined());
+
         progress.accept("tracking beats");
-        BeatTracker.Result beats = BeatTracker.track(envelope);
+        BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             if (settings.firstDownbeatSeconds() != null) {
@@ -332,7 +342,6 @@ public final class AudioTranscriber {
         // register separately, which makes every beat half treble and half bass
         // whatever they actually contained; on this recording that ordering
         // scores 77.7% where this one scores 86.6%.
-        NnlsChroma registers = NnlsChroma.extract(audio);
         Chroma chroma = registers.combined().beatSynchronous(beatTimes);
         // The treble alone, for the quality half of chord recognition only --
         // ChordEstimator.estimate(Chroma, Chroma, List) has the measurement. Not

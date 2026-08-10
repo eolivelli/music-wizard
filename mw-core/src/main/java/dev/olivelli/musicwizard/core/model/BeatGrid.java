@@ -163,9 +163,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
      * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
-     * {@code bossa-cm.mp3}, inside 0.71% of two thirds of the rate
-     * {@code ScoreBeats} prints for it, which is the pulse its tracker is
-     * actually following (#231). <b>The plateau spans a
+     * {@code bossa-cm.mp3}, inside 0.71% of the pulse its tracker then
+     * followed — two thirds of the rate {@code ScoreBeats} prints, before #231
+     * moved the tracker onto a pulse that can bar the recording. <b>The plateau spans a
      * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
      * evidence that this is not fitted to a handful of files.
      *
@@ -188,10 +188,12 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *       degrades further -- 465 kept and +0.76% at 0.04. One step up from
      *       that run, at 0.0525, it keeps 545 and reads +0.07%.
      *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
-     *       {@code bossa-cm.mp3} carries a population of intervals about 4/3 of
-     *       its median -- 54 of its 501 sit between 1.30x and 1.36x, measured
+     *       {@code bossa-cm.mp3} carried a population of intervals about 4/3 of
+     *       its median -- 54 of its 501 sat between 1.30x and 1.36x, measured
      *       against the tracked intervals' own median and so independent of any
-     *       reference -- and a band reaching 1/3 lets them in. Against
+     *       reference -- and a band reaching 1/3 let them in. #231 has since
+     *       removed the mistracking that produced the population; the figures
+     *       stay as the measurement that placed this edge. Against
      *       two thirds of ScoreBeats' 149.889: 0.33% out at the value chosen
      *       here, 0.71% at 0.30, then 2.82% at 0.325 and 3.91% at 0.35.
      * </ul>

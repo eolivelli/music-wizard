@@ -185,7 +185,26 @@ public final class TempoEstimator {
 
     /** Estimates the global tempo of an onset envelope. */
     public static Estimate estimate(OnsetEnvelope envelope) {
+        return estimate(envelope, HarmonicRhythm.none());
+    }
+
+    /**
+     * Estimates the global tempo, weighing each candidate by whether the
+     * recording's harmony can be barred by it.
+     *
+     * <p>The envelope alone cannot always name the beat: a comping pattern
+     * whose accents sit three eighths apart gives the autocorrelation its
+     * strongest peak there, and three eighths of a bar is not an octave of the
+     * beat, so the perceptual prior cannot correct it (#231). What that pulse
+     * cannot do is bar the harmony, and {@link HarmonicRhythm} measures exactly
+     * that. Candidates the harmony cannot be barred by keep
+     * {@link HarmonicRhythm#FLOOR} of their score; everything else is
+     * unchanged, including the choice between a beat and its half, which stays
+     * with the envelope and the prior.
+     */
+    public static Estimate estimate(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(rhythm, "rhythm");
         if (envelope.length() < 8 || envelope.isFlat()) {
             // Nothing periodic to find. Report the prior with no confidence
             // rather than a confident reading of noise.
@@ -217,7 +236,7 @@ public final class TempoEstimator {
                 continue;
             }
             double value = interpolate(correlation, lag);
-            double score = value * perceptualWeight(tempo);
+            double score = value * perceptualWeight(tempo) * rhythm.supportFor(60.0 / tempo);
             if (score > bestScore) {
                 bestScore = score;
                 bestTempo = tempo;
@@ -390,14 +409,27 @@ public final class TempoEstimator {
      * over overlapping windows with the tempo re-estimated in each.
      */
     public static Estimate estimateWindow(OnsetEnvelope envelope, int fromFrame, int toFrame) {
+        return estimateWindow(envelope, fromFrame, toFrame, HarmonicRhythm.none());
+    }
+
+    /**
+     * The same, with the recording's harmonic rhythm weighed in.
+     *
+     * <p>The rhythm is measured over the whole recording and applied unchanged
+     * in every window, deliberately: which pulse can bar the music is a
+     * property of the recording, and letting windows answer it separately is
+     * how a majority of misled windows outvotes a correct one (#305).
+     */
+    public static Estimate estimateWindow(OnsetEnvelope envelope, int fromFrame, int toFrame,
+                                          HarmonicRhythm rhythm) {
         Objects.requireNonNull(envelope, "envelope");
         int from = Math.max(0, fromFrame);
         int to = Math.min(envelope.length(), toFrame);
         if (to - from < 8) {
-            return estimate(envelope);
+            return estimate(envelope, rhythm);
         }
         double[] slice = new double[to - from];
         System.arraycopy(envelope.strength(), from, slice, 0, slice.length);
-        return estimate(new OnsetEnvelope(slice, envelope.frameRate()));
+        return estimate(new OnsetEnvelope(slice, envelope.frameRate()), rhythm);
     }
 }

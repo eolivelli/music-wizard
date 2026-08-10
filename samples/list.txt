@@ -190,13 +190,17 @@ long could not hold on its halves (#302). The period itself is not restated
 here: that harness measures it, and a copy in this file would only go stale
 against it.
 
-The tracker's pulse is three eighths of a bar, so four of them span a bar and a
-half of the music — and not exactly, so the drawn bars drift through the music
-as well and no phase holds them (#231). What makes that pulse attractive is the
-comping figure: the clave runs three, three, four, three, three eighths across
-two bars, so four of its five accents sit three eighths apart and a steady
-three-eighth grid collects four in five. Every column this recording scores is
-bounded by that rather than by harmony.
+The envelope's strongest pulse is three eighths of a bar — the clave runs
+three, three, four, three, three eighths across two bars, so four of its five
+accents sit three eighths apart and a steady three-eighth grid collects four in
+five. No whole number of those pulses makes a bar, so no phase could hold the
+drawn bars to the music. Since #231 the tracker weighs tempo candidates by
+whether the harmony can be barred by them, which removes that pulse; what
+remains is tracking at half the quarter rate — the envelope states halves of
+the bar more strongly than quarters, and the octave is the perceptual prior's
+call. Bars are commensurate with the music again, two chords to a drawn bar,
+which is what analyze --tempo doubles away. The scored columns are bounded by
+that aliasing now rather than by harmony.
 
 Some of its bars carry a chord that pitch class alone cannot tell from a chord
 on another root — Fm6 and Dm7b5 are the same four notes, and so are Cm6 and
