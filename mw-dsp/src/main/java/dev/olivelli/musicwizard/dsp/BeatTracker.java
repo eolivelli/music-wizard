@@ -318,8 +318,11 @@ public final class BeatTracker {
      * above is one the tracker is no longer asked to work around. A window whose
      * seed disagrees with the recording by something that is <em>not</em> a
      * subdivision is left alone and still lands where the seed points, which is
-     * {@code bossa-cm.mp3}: its windows read four thirds of the music, which is
-     * #231 and is not an octave error at all.
+     * {@code bossa-cm.mp3}: its windows read three eighths of that recording's
+     * bar, which is #231 and is not an octave error at all. Stated in bars
+     * because the rate alone is ambiguous — the same pulse is four thirds of the
+     * reference {@code tools/ScoreBeats.java} prints and two thirds of the
+     * quarter note, and naming neither is how that has been misread.
      *
      * <p>Median rather than mean so that one dropped or doubled beat does not
      * drag the answer.
