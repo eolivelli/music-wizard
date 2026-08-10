@@ -311,6 +311,48 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("the recording's edges cannot out-rise its interior")
+        void theEdgesCannotOutRiseTheInterior() {
+            // #328. A window straddling the boundary between digital silence
+            // and the first sound rises from the band floor, and even with the
+            // floor relative (#306) that rise dwarfs every musical attack --
+            // most of the corpus has the largest frame of its whole envelope
+            // within one window of where the audio starts. The flux is
+            // therefore clamped to the largest rise found away from the edges.
+            //
+            // The fixture needs a sustained bed: on a bare click track the
+            // gaps between clicks are digital silence too, every attack rises
+            // from the floor, and the clamp is a no-op by design. With a bed
+            // holding the interior floors up, interior rises are modest and
+            // the boundary rise out of true silence towers over them -- until
+            // it is clamped.
+            float[] bed = SignalFactory.chord(
+                    new double[] {262, 330, 392}, 20, RATE);
+            float[] clicks = SignalFactory.clickTrack(120, 20, RATE);
+            float[] audio = new float[(int) (22 * RATE)];
+            int lead = 2 * RATE;
+            for (int i = 0; i < bed.length && lead + i < audio.length; i++) {
+                audio[lead + i] = (float) (0.5 * bed[i] + 0.5 * clicks[i]);
+            }
+
+            OnsetEnvelope envelope = envelopeOf(audio);
+            double boundaryMax = 0;
+            double interiorMax = 0;
+            for (int frame = 0; frame < envelope.length(); frame++) {
+                double at = envelope.timeOf(frame);
+                if (at >= 1.5 && at < 2.5) {
+                    boundaryMax = Math.max(boundaryMax, envelope.strength()[frame]);
+                } else if (at >= 3 && at < 21) {
+                    interiorMax = Math.max(interiorMax, envelope.strength()[frame]);
+                }
+            }
+
+            assertThat(boundaryMax)
+                    .as("the rise where the audio starts, against the interior's largest")
+                    .isLessThanOrEqualTo(interiorMax);
+        }
+
+        @Test
         @DisplayName("a whisper out of digital silence does not outscore the music above it")
         void silenceArtefactDoesNotOutscoreTheMusic() {
             // #306. A decibel scale is unbounded below, so before the band floor

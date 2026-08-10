@@ -7,7 +7,7 @@ charts emitted for samples with known ground truth:
   bm-blues-slow.mp3: bars=188  chords/bar 1.11  root 103/188 (54.8%)  root+quality 70/188 (37.2%)  short: tracked 0.0%, chart 20.7%
   cm-blues-68-95.mp3: bars=92  chords/bar 1.11  root 27/92 (29.3%)  root+quality 16/92 (17.4%)  short: tracked 0.0%, chart 32.0%
   waltz-am-e7-160.mp3: bars=209  chords/bar 1.00  root 106/209 (50.7%)  root+quality 106/209 (50.7%)  short: tracked 0.0%, chart 0.0%
-  f-blues-swing-170.mp3: bars=111  chords/bar 1.08  root 24/111 (21.6%)  root+quality 14/111 (12.6%)  short: tracked 0.0%, chart 28.7%
+  f-blues-swing-170.mp3: bars=111  chords/bar 1.07  root 24/111 (21.6%)  root+quality 14/111 (12.6%)  short: tracked 0.0%, chart 28.7%
   jazz-251-c-140.mp3: bars=89  chords/bar 1.13  root 13/89 (14.6%)  root+quality 13/89 (14.6%)  short: tracked 0.0%, chart 18.1%
   fm7-vamp-110.mp3: bars=150  chords/bar 1.13  root 121/150 (80.7%)  root+quality 85/150 (56.7%)  short: tracked 0.0%, chart 1.7%
   eb7-vamp-130.mp3: bars=166  chords/bar 1.23  root 160/166 (96.4%)  root+quality 103/166 (62.0%)  short: tracked 0.0%, chart 20.8%

@@ -188,8 +188,88 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         flux[0] = flux.length > 1 ? flux[1] : 0;
 
         subtractMovingAverage(flux, (int) Math.round(spectrogram.frameRate()));
+        clampBoundaryFlux(flux, spectrogram);
         normalise(flux);
         return new OnsetEnvelope(flux, spectrogram.frameRate());
+    }
+
+    /**
+     * How quiet a frame must be, against the recording's loudest, to count as
+     * outside the audible span. A thousandth, 60 dB — real material in this
+     * corpus sits about 11 dB below its own peak, digital silence hundreds.
+     */
+    private static final double AUDIBLE_GATE = 1e-3;
+
+    /**
+     * Caps the flux at the recording's edges to the largest rise found away
+     * from them.
+     *
+     * <p>An analysis window straddling the boundary between digital silence and
+     * the first or last sound produces a rise bounded only by
+     * {@link #SILENCE_FLOOR}, and even bounded it dwarfs every musical attack —
+     * on this corpus most recordings have the largest frame of their whole
+     * envelope within one window of where the audio clears the gate (#328).
+     * The envelope is then normalised to unit variance, so one such frame
+     * rescales everything, and two readers take the envelope absolutely.
+     *
+     * <p><b>Clamped, not zeroed, and the difference is a failed design.</b>
+     * Zeroing the frames outside the span removes the artefact and also moves
+     * the mean and variance the whole envelope is normalised by; measured, that
+     * shifted the tempo seed of {@code g-blues-shuffle-cc.mp3}'s first window
+     * enough to fail the tier-2 gate, at every gate level tried. Clamping to
+     * the interior's own maximum touches only the frames that exceed it — no
+     * interior frame can, tautologically — so the normalisation moves by the
+     * few frames reduced, not by hundreds zeroed. On a click track the boundary
+     * attack equals the interior ones and the clamp is a no-op, which is why
+     * tier-0 cannot move.
+     *
+     * <p>The interior margin is one analysis window: the straddle artefact
+     * cannot reach further than the window that straddles.
+     *
+     * <p>Applied after the moving-average subtraction, not before, because the
+     * bound has to hold in the signal consumers read. The subtraction hands a
+     * boundary frame a smaller local mean than any interior frame -- half its
+     * neighbourhood is silence -- so a bound imposed on the raw flux is undone
+     * by it; the first draft of the pinning test measured exactly that.
+     */
+    private static void clampBoundaryFlux(double[] flux, Spectrogram spectrogram) {
+        int frames = spectrogram.frameCount();
+        double loudest = 0;
+        double[] totals = new double[frames];
+        for (int frame = 0; frame < frames; frame++) {
+            double sum = 0;
+            for (float magnitude : spectrogram.magnitudes()[frame]) {
+                sum += magnitude;
+            }
+            totals[frame] = sum;
+            loudest = Math.max(loudest, sum);
+        }
+        double gate = loudest * AUDIBLE_GATE;
+        int first = 0;
+        while (first < frames && totals[first] < gate) {
+            first++;
+        }
+        int last = frames - 1;
+        while (last > first && totals[last] < gate) {
+            last--;
+        }
+        int margin = Math.max(1, ONSET_WINDOW / ONSET_HOP);
+        int from = first + margin;
+        int to = last - margin;
+        if (to - from < margin) {
+            // Too short to hold an interior worth trusting; leave it alone.
+            return;
+        }
+        double interiorMax = 0;
+        for (int frame = from; frame <= to && frame < flux.length; frame++) {
+            interiorMax = Math.max(interiorMax, flux[frame]);
+        }
+        if (interiorMax <= 0) {
+            return;
+        }
+        for (int frame = 0; frame < flux.length; frame++) {
+            flux[frame] = Math.min(flux[frame], interiorMax);
+        }
     }
 
     /**
