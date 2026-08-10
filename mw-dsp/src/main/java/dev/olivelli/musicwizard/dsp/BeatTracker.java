@@ -155,15 +155,15 @@ public final class BeatTracker {
             // admits sixteen frames, about a tenth of one -- and a rate measured
             // over that is not a reading of the recording. Such a window is
             // still tracked, since its beats are wanted, but it does not get a
-            // vote on what the rest of the recording's pulse is. On a recording
-            // barely longer than one window that would leave nothing to count,
-            // so the full set stands in below.
+            // vote on what the rest of the recording's pulse is. The first
+            // window always spans a full one, since a shorter envelope than that
+            // returned above, so there is always at least one voter.
             if (end - start >= step) {
                 voters.add(seed);
             }
         }
 
-        double reference = pulseReference(voters.isEmpty() ? seeds : voters);
+        double reference = pulseReference(voters);
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -359,9 +359,11 @@ public final class BeatTracker {
      * material it looks right. It is wrong on the two recordings here that need
      * anything else: {@code cm-blues-68-95.mp3} is in 6/8 and its bad windows
      * read three times the pulse, {@code fm7-vamp-110.mp3} has two that read two
-     * thirds of it. Folding those by powers of two lands on 1/4 and 4/3 of the
-     * true rate -- further from it than the seed they replaced, and no longer a
-     * whole subdivision of anything.
+     * thirds of it. Folding by powers of two moves both nearer the pulse and
+     * leaves neither on it -- three quarters of it in the first case, four
+     * thirds in the second. Nearer is not the point: a rate that is no whole
+     * subdivision of the pulse cannot bar the recording, and a window tracked at
+     * three quarters of the beat is not tracking anything the music has.
      *
      * <p>So the relations that matter are the ones a beat is actually divided
      * by: halves and quarters, thirds for compound time, and the two-against-
@@ -396,19 +398,25 @@ public final class BeatTracker {
      * on it would correct the whole recording <em>to</em> the rate this exists
      * to correct away from.
      *
-     * <p>The median is a vote, so it is only right where most windows are. That
-     * is the assumption this rests on and there is no stronger signal available
-     * here: a recording whose windows mostly read a subdivision would be
-     * normalised onto it, which is what {@link TempoEstimator}'s perceptual
-     * prior is for and not something a consensus can second-guess.
+     * <p><b>The median is a vote, so it is only right where most windows are,
+     * and where they are not this makes things worse rather than leaving them
+     * alone</b> — a recording whose windows mostly read a subdivision has its
+     * correctly tracked minority pulled onto that subdivision. #305 carries it,
+     * with the measurement that weighting the vote by
+     * {@link TempoEstimator.Estimate#strength()} does not separate the two
+     * populations, and
+     * {@code BeatTrackingTest.theReferenceFollowsTheMajorityEvenWhereTheMajorityIsWrong}
+     * pins it. Which of two subdivisions is the musical pulse is what
+     * {@link TempoEstimator}'s perceptual prior decides, and a consensus over
+     * windows cannot second-guess it.
      *
      * <p><b>Always an observed rate, never the average of two.</b> The usual
-     * even-length median would average the two middle seeds, and where those
-     * straddle a subdivision boundary -- nine of this corpus's 6/8 windows read
-     * three times what the other nineteen do -- the average is a rate no window
-     * proposed and no subdivision of. Every seed would then be measured against
-     * a fiction. Taking the upper of the two costs nothing on an even spread and
-     * keeps the reference something the recording actually said.
+     * even-length median averages the two middle seeds, and a recording whose
+     * windows split between two subdivisions can put one on each side of the
+     * middle -- whereupon the average is a rate no window proposed and no
+     * subdivision of either, and every seed is then measured against a fiction.
+     * No benchmark here does that today; this is the cheaper of two ways to
+     * write the same statistic, not a repair of an observed failure.
      */
     private static double pulseReference(List<TempoEstimator.Estimate> seeds) {
         double[] rates = new double[seeds.size()];

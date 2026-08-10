@@ -136,6 +136,25 @@ class BeatTrackingTest {
         return clicksWithGains(clicks, seconds);
     }
 
+    /**
+     * The mirror of {@link #sparseIntro}: every beat until {@code denseSeconds},
+     * every second beat after it. The tempo never changes here either — what
+     * changes is which reading the analysis windows are a majority of.
+     */
+    private static float[] denseIntroThenSparse(double beatsPerMinute, double denseSeconds,
+                                                double seconds) {
+        double period = 60.0 / beatsPerMinute;
+        List<double[]> clicks = new ArrayList<>();
+        int beat = 0;
+        for (double t = 0; t < seconds; t += period, beat++) {
+            if (t >= denseSeconds && beat % 2 == 1) {
+                continue;
+            }
+            clicks.add(new double[] {t, 0.8});
+        }
+        return clicksWithGains(clicks, seconds);
+    }
+
     private static float[] whiteNoise(double seconds, long seed) {
         Random random = new Random(seed);
         float[] out = new float[(int) Math.round(seconds * RATE)];
@@ -1310,19 +1329,59 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("the reference follows the majority even where the majority is wrong")
+        void theReferenceFollowsTheMajorityEvenWhereTheMajorityIsWrong() {
+            // A limitation, pinned deliberately, the way
+            // theDynamicProgramFollowsItsSeedRatherThanFixingIt pins the one it
+            // compensates for. The reference is a vote, so it is only right
+            // where most windows are. Invert the fixture above -- dense at the
+            // start and sparse for the rest -- and the windows reading half the
+            // rate are the majority, so the correction runs backwards and pulls
+            // the correctly tracked opening onto the subdivision.
+            //
+            // Before this correction existed only the sparse part was tracked at
+            // half rate; now the whole recording is. That is #305, and it is
+            // filed rather than fixed because which of two subdivisions is the
+            // musical pulse is what TempoEstimator's perceptual prior decides,
+            // not something a consensus over windows can second-guess.
+            // Weighting the vote by strength does not separate them and is
+            // measured not to -- the sparse windows here score higher than the
+            // dense one.
+            double bpm = 105;
+            double period = 60.0 / bpm;
+            BeatTracker.Result result =
+                    BeatTracker.track(envelopeOf(denseIntroThenSparse(bpm, 20, 60)));
+
+            List<Double> beats = result.beatTimes();
+            assertThat(beats).hasSizeGreaterThan(8);
+            double[] intervals = new double[beats.size() - 1];
+            for (int i = 0; i < intervals.length; i++) {
+                intervals[i] = beats.get(i + 1) - beats.get(i);
+            }
+            java.util.Arrays.sort(intervals);
+            double tracked = intervals[intervals.length / 2] / period;
+
+            assertThat(tracked)
+                    .as("median interval in beats: 2 is the whole recording at half rate")
+                    .isCloseTo(2.0, within(0.15));
+        }
+
+        @Test
         @DisplayName("a window's seed is corrected by a subdivision, never by an octave alone")
         void aSeedIsCorrectedBySubdivisionRatherThanByOctave() {
             // The three corrections the corpus actually needs, and the reason
             // the ratios are a table rather than the powers of two. Folding by
-            // octaves fixes the first and lands the other two further from the
-            // truth than the seed it replaced -- a quarter of the rate on the
-            // 6/8 recording, four thirds of it on the vamp.
+            // octaves fixes the first and leaves the other two on a rate that is
+            // no whole subdivision of the pulse -- three quarters of it on the
+            // 6/8 recording, four thirds of it on the vamp. Both are nearer the
+            // pulse than the seed they replace, which is why "nearer" is not the
+            // test: neither can bar the recording.
 
             // g-blues-shuffle-cc.mp3 window 0, against its own median: a half.
             assertThat(BeatTracker.divideOutSubdivision(52.5, 105.5))
                     .isCloseTo(105.0, within(0.01));
-            // cm-blues-68-95.mp3, in 6/8: nine of its windows read three times
-            // the pulse the other nineteen do.
+            // cm-blues-68-95.mp3, in 6/8: eleven of its windows read three times
+            // the pulse the other seventeen do.
             assertThat(BeatTracker.divideOutSubdivision(191.25, 63.5))
                     .isCloseTo(63.75, within(0.01));
             // fm7-vamp-110.mp3: two windows read two thirds of it.

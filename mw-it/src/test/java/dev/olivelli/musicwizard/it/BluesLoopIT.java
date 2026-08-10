@@ -327,11 +327,14 @@ class BluesLoopIT {
         // Bars between consecutive tracked downbeats: the axis the chart takes
         // its phase from, and the axis tools/score-samples.py scores every
         // benchmark on. Deliberately not four beats counted from the first one.
-        // That is a different question on this recording and gets a much worse
-        // answer, because the pulses dropped through the intro are not a
-        // multiple of four and every bar line after them falls inside a bar of
-        // the music (#292). The downbeat estimator does not inherit that error,
-        // and this is where that is asserted rather than assumed.
+        // That is a different question, and the reason to keep asking this one
+        // is that it does not depend on the tracker having dropped no pulses.
+        // It used to get a much worse answer here: the pulses dropped through
+        // the intro were not a multiple of four, so every bar line counted from
+        // the first beat fell inside a bar of the music. #292 removed those
+        // dropped pulses; this assertion is what said the downbeat estimator
+        // had not inherited the error while they were there, and it is the
+        // guard that would say so again.
         //
         // Agreement rather than a floor of its own, because that is the property
         // that says the beat grid is right. A floor could be met by both axes

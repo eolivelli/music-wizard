@@ -28,7 +28,7 @@ Blues shuffle in G, 5:16, at a measured 105 BPM. The committed tier-2 gate:
 BluesLoopIT scores it bar by bar against this cycle, on a bar axis measured
 from the recording rather than taken from the beat tracker. It replaced
 gmajorblues.mp3 when that file's provenance could not be established (#204).
-A sparse intro that the tracker reads at half rate is its own finding (#292).
+Its sparse intro was read at half rate until #292 corrected the tempo seed.
 
 G7 G7 G7 G7
 C7 C7 G7 G7
