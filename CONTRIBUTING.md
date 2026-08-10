@@ -23,8 +23,19 @@ Two consequences worth knowing before you reach for the obvious thing:
   models* (the code is BSD, the weights are not), the Open-Unmix `umxl`
   weights, and the MedleyDB, MAESTRO, MusicNet and Isophonics corpora are all
   CC BY-NC-SA and cannot be used or vendored. Clean alternatives exist for every
-  one: Demucs ONNX (MIT), CREPE ONNX (MIT), basic-pitch (Apache-2.0), and the
-  OpenScore Lieder corpus (CC0).
+  one: Spleeter (MIT for the code and the pretrained models alike), CREPE ONNX
+  (MIT), basic-pitch (Apache-2.0), and the OpenScore Lieder corpus (CC0).
+- **Code and weights carry separate licences, and only the author's word settles
+  the second.** Demucs is the example to remember: MIT code, and weights the
+  author describes as "provided only for scientific purposes"
+  (`facebookresearch/demucs#327`). Every MIT-tagged Demucs export on a model hub
+  is someone relabelling weights they did not license. A repository's sidebar
+  describes its code; read the weights from the originating author's model card
+  or Zenodo record, and record which checkpoint you read.
+- **The enforcer only sees Maven coordinates.** It reads POM metadata, so a
+  dependency that arrives another way is invisible to it — vendored in a
+  submodule, fetched by a build script, or pulled in by CMake. Anything on those
+  routes needs a check of its own that fails the build, not a note.
 - **Audio under `samples/` is a licensing decision too, and the same one.** A
   recording is committed only if it is our own or permissively licensed; what
   the corpus actually holds is CC BY, so `NOTICE` carries the attribution that

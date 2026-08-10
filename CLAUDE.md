@@ -171,8 +171,16 @@ has a job for it.
   stale unofficial forks. We implement the DSP on JTransforms (BSD-2).
 - **madmom's pretrained models, Open-Unmix `umxl`, and the MedleyDB / MAESTRO /
   MusicNet / Isophonics corpora are CC BY-NC-SA** and unusable here. madmom's
-  *code* is BSD; its weights are not. Clean alternatives: Demucs ONNX (MIT),
-  CREPE ONNX (MIT), basic-pitch (Apache-2.0), OpenScore Lieder (CC0).
+  *code* is BSD; its weights are not. Clean alternatives: Spleeter (MIT for the
+  code *and* the pretrained models, stated in Deezer's own paper), CREPE ONNX
+  (MIT), basic-pitch (Apache-2.0), OpenScore Lieder (CC0).
+- **A weights licence is read from the author, per checkpoint.** Demucs is why
+  this is a rule and not a habit: its code is MIT and its weights are not —
+  "provided only for scientific purposes", from the author on
+  `facebookresearch/demucs#327` — and every MIT-tagged Demucs export on a model
+  hub is a third party relabelling someone else's weights. A repository's
+  sidebar describes its code. Take the weights from the originating author's
+  model card or Zenodo record, and treat a re-upload as saying nothing.
 - LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
   never linked or redistributed, and the tool works without it.
 - No model weights ship in the repo. They download on first use.
