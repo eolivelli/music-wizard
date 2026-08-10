@@ -87,9 +87,9 @@ class HarmonicRhythmTest {
 
         assertThat(quarter).isGreaterThan(0.7);
         assertThat(half).isGreaterThan(0.7);
-        // Near-tied at an EVEN harmonic period, where the half reaches the
-        // cycle too. At an odd one it cannot, and the factor takes a side --
-        // see anOddHarmonicPeriodFavoursTheBeatOverItsHalf.
+        // Near-tied here, where the half reaches the cycle too. Where no
+        // multiple of it can, the factor takes a side -- see
+        // aNineBeatHarmonicPeriodFavoursTheBeatOverItsHalf.
         assertThat(Math.abs(quarter - half)).isLessThan(0.15);
         assertThat(falsePulse)
                 .as("three eighths of the bar, which no whole pulse count bars")
@@ -98,17 +98,18 @@ class HarmonicRhythmTest {
     }
 
     @Test
-    @DisplayName("an odd harmonic period favours the beat over its half, never the reverse")
-    void anOddHarmonicPeriodFavoursTheBeatOverItsHalf() {
+    @DisplayName("a nine-beat harmonic period favours the beat over its half")
+    void aNineBeatHarmonicPeriodFavoursTheBeatOverItsHalf() {
         // A half note's lags are a subset of its quarter's -- k times 2p is 2k
-        // times p -- so no support the half finds is closed to the quarter,
-        // while the quarter can reach lags the half cannot. Harmony turning
-        // every 4.5s is nine beats of 0.5s: the beat spans it in nine, and the
-        // half would need four and a half of itself, which is not a bar count.
-        // A waltz whose harmony turns every three quarters is the musical case.
-        // This is the one choice the factor does make inside a family, it only
-        // ever runs toward the faster member, and the class javadoc says so
-        // rather than claiming neutrality (#231 review, round 1).
+        // times p -- so no support the half finds is closed to the quarter.
+        // The reverse needs every multiple of the half to miss every harmonic
+        // lag inside the 5s cap, which takes two harmonic periods past it:
+        // harmony turning every 4.5s is nine beats of 0.5s, the beat spans it
+        // in nine, the half would need four and a half of itself, and its
+        // rescue at two periods sits at 9s, out of reach. This is the one
+        // choice the factor makes inside a family, it only ever runs toward
+        // the faster member, and the class javadoc says so rather than
+        // claiming neutrality (#231 review, rounds 1 and 2).
         HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(4.5, 63));
 
         double beat = rhythm.supportFor(0.5);

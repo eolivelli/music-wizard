@@ -198,9 +198,10 @@ drawn bars to the music. Since #231 the tracker weighs tempo candidates by
 whether the harmony can be barred by them, which removes that pulse; what
 remains is tracking at half the quarter rate: the envelope states halves of
 the bar more strongly than quarters, by more than the prior's mild preference
-for the quarter, so the envelope carries the octave. Bars are commensurate with the music again, two chords to a drawn bar,
-which is what analyze --tempo doubles away. The scored columns are bounded by
-that aliasing now rather than by harmony.
+the other way, so the envelope carries the octave. Bars are commensurate with
+the music again, two chords to a drawn bar, which is what analyze --tempo
+doubles away. The scored columns are bounded by that aliasing now rather than
+by harmony.
 
 Some of its bars carry a chord that pitch class alone cannot tell from a chord
 on another root — Fm6 and Dm7b5 are the same four notes, and so are Cm6 and

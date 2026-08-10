@@ -122,8 +122,8 @@ import java.util.Set;
  *       grid's geometry speaking rather than phase — see below. On
  *       {@code blues-e-90bpm.mp3} it is 0.013 s against a floor of 0.192,
  *       which is a tracked grid on the reference.
- *       <p>Being at the floor is not the only way to carry nothing, and the
- *       bossa is the case that shows it. Its tracked pulse is two reference
+ *       <p>The floor is also reached by geometry rather than by chaos, and
+ *       the bossa shows it. Its tracked pulse is two reference
  *       beats — the half-tempo reading that remains after #231 — so half the
  *       reference grid is never visited at all: {@code R} caps at a half and
  *       {@code F} at two thirds however well the visited beats align, and this

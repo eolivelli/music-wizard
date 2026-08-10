@@ -1450,9 +1450,9 @@ class BeatTrackingTest {
             // The inputs below are the corpus measurements that motivated the
             // table, taken before #231 gave the estimator the harmonic rhythm;
             // divideOutSubdivision is a pure function, so they pin its
-            // arithmetic whatever the estimator now feeds it. On current main
-            // the fm7 windows read 110 outright and cm-blues splits thirteen at
-            // 189.00 against fifteen at 63.25 -- the mechanism these pin is
+            // arithmetic whatever the estimator now feeds it. Since #231 the
+            // fm7 windows read 110 outright and cm-blues splits about evenly
+            // between 189.00 and 63.25 -- the mechanism these pin is
             // unchanged, the corpus sightings have moved.
             //
             // g-blues-shuffle-cc.mp3 window 0 as it then read: a half.

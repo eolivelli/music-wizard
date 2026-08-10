@@ -38,14 +38,13 @@ import java.util.Objects;
  *
  * <p><b>It can favour a beat over its subharmonics, and never the reverse.</b>
  * A half note's lags are a subset of its quarter's — {@code k·2p} is
- * {@code (2k)·p} — so no support the half can find is closed to the quarter,
- * while the quarter can reach lags the half cannot: where the harmonic period
- * is an odd multiple of the beat, the half genuinely cannot bar the music, and
- * is floored. A waltz whose harmony turns every three quarters is the honest
- * case of that. Where the harmonic period is even in beats the two are close
- * to tied, the choice falls to the envelope and the prior as before — and on
- * the bossa it is the <em>envelope</em> that prefers the half, by more than the
- * prior and this factor together prefer the quarter, because the comping
+ * {@code (2k)·p} — so no support the half can find is closed to the quarter.
+ * The reverse direction it does take, but only where every multiple of the
+ * half misses every harmonic lag inside {@link #MAX_LAG_SECONDS}, which needs
+ * two harmonic periods to lie past the cap; everywhere else the two are close
+ * to tied and the choice falls to the envelope and the prior as before. On
+ * the bossa it is the <em>envelope</em> that prefers the half, by more than
+ * the prior and this factor together prefer the quarter, because the comping
  * states halves of the bar more consistently than quarters. The recording
  * lands at half its true rate: the right family, barred commensurately with
  * the music, where the three-eighths pulse could never be. The remaining
