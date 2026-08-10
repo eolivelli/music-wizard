@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.text.Hyphenator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +101,11 @@ final class LyricEngraving {
         // centred on theirs, so without this a syllable sits half its width to
         // the left of the chord it belongs to.
         out.append("    \\override LyricText.self-alignment-X = #LEFT\n");
+        // LilyPond drops a hyphen it cannot fit, and syllables of a sung word
+        // sit close together -- so "go -- te" came out as "go te" on a real
+        // page, reading as two words rather than one split in two. This is the
+        // gap it will make room for rather than drop the hyphen.
+        out.append("    \\override LyricHyphen.minimum-distance = #0.8\n");
         out.append("  } \\lyricmode {\n");
 
         int at = 0;
@@ -187,26 +193,73 @@ final class LyricEngraving {
      */
     private static List<Syllable> placed(Score score, List<ChartLayout.Bar> bars,
                                          long[] barStart) {
+        // Absent for a language with no patterns, and for the "und" a lyric file
+        // carries until something establishes one -- then a word stays whole,
+        // which is what the page did before syllables were split at all.
+        Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
         List<Syllable> syllables = new ArrayList<>();
         long chartEnd = barStart[bars.size()];
         long previous = Long.MIN_VALUE;
         for (LyricLine line : score.lyrics().lines()) {
             for (LyricWord word : line.words()) {
-                long unit = unitOf(word.startSeconds(), bars, barStart);
-                // Strictly increasing, so every syllable gets a duration of at
-                // least one grid step. Two words can land on one unit -- the
-                // grid is finer than any singer, but a recognition segment can
-                // still hand out equal onsets -- and a zero-length syllable is
-                // one LilyPond cannot name.
-                unit = Math.max(unit, previous + 1);
-                if (unit >= chartEnd) {
-                    continue;
+                List<Hyphenator.Syllable> parts = hyphenator
+                        .map(h -> h.syllables(word.text()))
+                        .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)));
+                // All of a word or none of it -- see fitted. The unsplit word is
+                // tried when the syllables will not fit, and only then is the
+                // word dropped.
+                List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
+                if (placed.isEmpty() && parts.size() > 1) {
+                    placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
+                            word, bars, barStart, chartEnd, previous);
                 }
-                syllables.add(new Syllable(unit, word.text(), word.hyphenatedToNext()));
-                previous = unit;
+                if (!placed.isEmpty()) {
+                    syllables.addAll(placed);
+                    previous = placed.get(placed.size() - 1).unit();
+                }
             }
         }
         return syllables;
+    }
+
+    /**
+     * One word's syllables on the grid, or empty when they do not all fit.
+     *
+     * <p>All or nothing. Each syllable claims a grid unit, so a long word near
+     * the end of the chart can run off it partway through, and printing what
+     * fitted leaves a fragment on the page — which reads as a transcription
+     * rather than as the omission it is. The units are
+     * strictly increasing from {@code previous}, which is what gives every
+     * syllable a duration of at least one grid step: two can otherwise land
+     * together, the grid being finer than any singer and a short word's
+     * syllables closer together still, and a zero-length syllable is one
+     * LilyPond cannot name.
+     */
+    private static List<Syllable> fitted(List<Hyphenator.Syllable> parts, LyricWord word,
+                                         List<ChartLayout.Bar> bars, long[] barStart,
+                                         long chartEnd, long previous) {
+        List<Syllable> placed = new ArrayList<>(parts.size());
+        long cursor = previous;
+        for (int i = 0; i < parts.size(); i++) {
+            // Spread evenly across the word. Nothing knows where inside a word
+            // its second syllable begins -- that is the note it is sung on, and
+            // there is no melody yet (#8) -- so the even share is the honest
+            // guess, and it keeps the syllables in the bar the word was sung in.
+            double at = word.startSeconds()
+                    + (word.endSeconds() - word.startSeconds()) * i / parts.size();
+            long unit = Math.max(unitOf(at, bars, barStart), cursor + 1);
+            if (unit >= chartEnd) {
+                return List.of();
+            }
+            // Only a break the hyphenator chose is drawn: a compound already
+            // carries the hyphen it was written with, and a second one gives
+            // well--known. The last syllable takes whatever the word itself said.
+            boolean joins = i + 1 < parts.size()
+                    ? parts.get(i).hyphenToNext() : word.hyphenatedToNext();
+            placed.add(new Syllable(unit, parts.get(i).text(), joins));
+            cursor = unit;
+        }
+        return placed;
     }
 
     /** Where a moment falls on the grid, by the bar holding it. */

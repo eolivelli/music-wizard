@@ -134,7 +134,40 @@ class LyricEngravingIT {
                 Arguments.of("hyphenated", hyphenated()),
                 // Chords stated on the beat axis, which is the other route
                 // through ChartLayout and the one a MIDI import takes.
-                Arguments.of("quantized-chords", quantized()));
+                Arguments.of("quantized-chords", quantized()),
+                // Italian split into syllables, so most of the page is
+                // hyphen-joined and the elided articles are carried onto the
+                // syllable after them.
+                Arguments.of("italian-syllables", inLanguage("it", sung(6, 2.0,
+                        TimeSignature.FOUR_FOUR, 120, """
+                        [00:00.00]<00:00.00>Le <00:00.60>bionde <00:01.40>trecce
+                        [00:02.00]<00:02.10>e <00:02.70>l'innocenza <00:03.60>sulle
+                        [00:04.00]<00:04.20>gote <00:05.10>tue <00:05.70>due
+                        [00:08.00]<00:08.30>arance <00:09.40>ancor <00:10.60>piu
+                        """))),
+                // English, whose patterns break where a typesetter would.
+                Arguments.of("english-syllables", inLanguage("en", sung(4, 2.0,
+                        TimeSignature.FOUR_FOUR, 120, """
+                        [00:00.00]<00:00.00>Somebody <00:01.20>once <00:01.80>told
+                        [00:02.00]<00:02.40>trouble <00:03.30>wisdom
+                        """))),
+                // The tokens a real lyric is full of and the patterns say least
+                // about: possessives and contractions, whose apostrophe English
+                // never mentions, and hyphenated compounds, whose hyphen neither
+                // language does.
+                Arguments.of("possessives-and-compounds", inLanguage("en", sung(6, 2.0,
+                        TimeSignature.FOUR_FOUR, 120, """
+                        [00:00.00]<00:00.00>Anderson's <00:00.90>heart <00:01.50>don't
+                        [00:02.00]<00:02.30>well-known <00:03.10>sing-along
+                        [00:04.00]<00:04.20>trouble, <00:05.00>wisdom.
+                        [00:08.00]<00:08.40>(chorus) <00:09.60>abandons
+                        """))));
+    }
+
+    /** The same score with its lyrics tagged, so their words are split. */
+    private static Score inLanguage(String language, Score score) {
+        return score.withLyrics(new Lyrics(score.lyrics().lines(), language,
+                score.lyrics().confidence()));
     }
 
     /** Every syllable hyphenated, so the chain runs off the end of the lyric. */

@@ -16,6 +16,8 @@
 
 package dev.olivelli.musicwizard.core.model;
 
+import dev.olivelli.musicwizard.core.text.Hyphenator;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,9 +35,10 @@ import java.util.regex.Pattern;
  *
  * <p>Which one a file uses decides how much this can promise. Word tags are read
  * as given. A plain line has one timestamp and several words, so the words are
- * spread across it by {@link LyricWord#syllableEstimate()} — the same
- * apportioning that type exists for, and the reason it does not need a
- * pronunciation dictionary to be useful. A word placed that way is a guess
+ * spread across it by syllable count — from
+ * {@link dev.olivelli.musicwizard.core.text.Hyphenator} when the language is
+ * known, and otherwise from {@link LyricWord#syllableEstimate()}, which needs no
+ * language and no pronunciation dictionary. A word placed that way is a guess
  * inside a known line, which is why the two dialects are given different
  * confidences rather than the same one.
  *
@@ -91,7 +94,25 @@ public final class LrcLyrics {
      * @return the lyrics, empty when the file times nothing
      */
     public static Lyrics parse(String text, double recordingSeconds) {
+        return parse(text, recordingSeconds, "und");
+    }
+
+    /**
+     * The same, told what language the words are in.
+     *
+     * <p>Only the spreading uses it, and only where the file leaves it to be
+     * guessed: a plain line states one moment for several words, and how much of
+     * it each takes depends on how many syllables each holds.
+     * {@link LyricWord#syllableEstimate()} counts vowel groups and drops a
+     * trailing {@code e}, which is an English rule — in Italian a final {@code e}
+     * is always sounded, so every word ending in one is counted a syllable short
+     * and given too little of the line. With a language there are patterns, and
+     * the count is the one the page will split the word into.
+     */
+    public static Lyrics parse(String text, double recordingSeconds, String languageTag) {
         Objects.requireNonNull(text, "text");
+        Objects.requireNonNull(languageTag, "languageTag");
+        Hyphenator hyphenator = Hyphenator.forLanguage(languageTag).orElse(null);
 
         double offsetSeconds = 0;
         // A byte order mark is not whitespace, so strip() leaves it on the first
@@ -184,7 +205,7 @@ public final class LrcLyrics {
             if (Double.isFinite(recordingSeconds) && recordingSeconds > start) {
                 end = Math.min(end, recordingSeconds);
             }
-            List<LyricWord> words = wordsOf(entry.body(), start, end, shift);
+            List<LyricWord> words = wordsOf(entry.body(), start, end, shift, hyphenator);
             if (!words.isEmpty()) {
                 lines.add(new LyricLine(words, weakest(words)));
             }
@@ -199,7 +220,7 @@ public final class LrcLyrics {
                 .map(LyricLine::confidence)
                 .min(Confidence::compareTo)
                 .orElse(Confidence.UNKNOWN);
-        return new Lyrics(lines, "und", overall);
+        return new Lyrics(lines, languageTag, overall);
     }
 
     private static Confidence weakest(List<LyricWord> words) {
@@ -357,7 +378,7 @@ public final class LrcLyrics {
      * part that is untagged.
      */
     private static List<LyricWord> wordsOf(String body, double lineStart, double lineEnd,
-                                           double shift) {
+                                           double shift, Hyphenator hyphenator) {
         List<Run> runs = new ArrayList<>();
         Matcher tag = WORD_TAG.matcher(body);
         int from = 0;
@@ -387,14 +408,14 @@ public final class LrcLyrics {
             double runStart = Math.clamp(run.start(), lineStart, lineEnd);
             to = Math.clamp(to, runStart, lineEnd);
             words.addAll(spread(run.text(), runStart, to,
-                    run.tagged() ? TIMED_WORD : SPREAD_WORD));
+                    run.tagged() ? TIMED_WORD : SPREAD_WORD, hyphenator));
         }
         return words;
     }
 
     /** Splits a run of text into words and shares its span out by syllable count. */
     private static List<LyricWord> spread(String chunk, double start, double end,
-                                          Confidence confidence) {
+                                          Confidence confidence, Hyphenator hyphenator) {
         List<String> tokens = new ArrayList<>();
         for (String token : chunk.strip().split("\\s+")) {
             if (!token.isBlank()) {
@@ -412,7 +433,9 @@ public final class LrcLyrics {
         int[] weights = new int[tokens.size()];
         int total = 0;
         for (int i = 0; i < tokens.size(); i++) {
-            weights[i] = LyricWord.ofSeconds(tokens.get(i), 0, 0, confidence).syllableEstimate();
+            weights[i] = hyphenator != null
+                    ? hyphenator.syllableCount(tokens.get(i))
+                    : LyricWord.ofSeconds(tokens.get(i), 0, 0, confidence).syllableEstimate();
             total += weights[i];
         }
         double at = start;
