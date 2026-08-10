@@ -118,11 +118,11 @@ import java.util.Set;
  *       eighths, which is 1.508 reference beats, so every second tracked beat
  *       lands on a reference beat and the one between sits near {@code ±p/2}.
  *       That is a bimodal distribution reading a shade above the uniform floor,
- *       and it is why {@code P} on that row is near a half rather than near a
- *       quarter. <b>Read {@code P} for that, not this column</b>: a rate related
- *       to the reference by a ratio of small integers puts a fixed share of
- *       beats exactly on it, which is a fact about phase that an average over
- *       every beat cannot show.</dd>
+ *       and it is why {@code P} on that row is near a half. <b>Read {@code P}
+ *       for that, not this column</b>: a rate related to the reference by a
+ *       ratio of small integers puts a fixed share of beats exactly on it,
+ *       which is a fact about phase that an average over every beat cannot
+ *       show.</dd>
  *   <dt>on grid, 2/3</dt>
  *   <dd>Share of tracked intervals within a tenth of the tracked median, and
  *       within a tenth <em>of the median</em> of two thirds of it. The band is
