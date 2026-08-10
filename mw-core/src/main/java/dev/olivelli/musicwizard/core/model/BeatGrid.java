@@ -257,10 +257,7 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * recording holding a handful of intervals longer than 1.5x its median is
      * dragged under its true rate by exactly those, and using the plain mean
      * cost 28 points of the emitted chart when it was tried (#200, #207). The
-     * band drops them. How far under depends on how many such intervals the
-     * tracker leaves, which is a property of the tracker rather than of this
-     * method and moved when #292 removed most of them -- so the figure lives in
-     * {@code tools/baselines/} rather than here.
+     * band drops them.
      *
      * <p>So this concedes neither of the two cases #205 is open for, where the
      * median and the mean each concede one. On an even 20-pulse grid at 120 BPM:
@@ -274,9 +271,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * rates two populations rather than a population and some outliers, and the
      * median picks the larger one where this picks whichever the median lands
      * in. Nothing here bounds that, and it is not hypothetical: a benchmark in
-     * the scored corpus has its tail tracked at three halves of its median, a
-     * ratio just outside the band the tracker corrects on (#306). #292 removed
-     * the common cause and did not remove the shape.
+     * the scored corpus has its tail tracked at three halves of its median.
+     * Three halves is a relation the tracker does correct, but it reads the
+     * window's seed rather than the tracked interval, and that seed's ratio
+     * lands just outside the tolerance (#306). #292 removed the common cause
+     * and did not remove the shape.
      *
      * @throws IllegalStateException if the grid holds fewer than two pulses,
      *                               which carry no interval to measure

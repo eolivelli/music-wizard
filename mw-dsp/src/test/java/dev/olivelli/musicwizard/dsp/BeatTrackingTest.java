@@ -1333,37 +1333,47 @@ class BeatTrackingTest {
         void theReferenceFollowsTheMajorityEvenWhereTheMajorityIsWrong() {
             // A limitation, pinned deliberately, the way
             // theDynamicProgramFollowsItsSeedRatherThanFixingIt pins the one it
-            // compensates for. The reference is a vote, so it is only right
-            // where most windows are. Invert the fixture above -- dense at the
-            // start and sparse for the rest -- and the windows reading half the
-            // rate are the majority, so the correction runs backwards and pulls
-            // the correctly tracked opening onto the subdivision.
+            // compensates for. Invert the fixture above -- dense first, sparse
+            // for the rest -- so the windows reading half the rate are the
+            // majority, and the correction runs backwards: the opening, which
+            // has an onset on every beat and was tracked on every beat, is
+            // pulled onto the subdivision. #305.
             //
-            // Before this correction existed only the sparse part was tracked at
-            // half rate; now the whole recording is. That is #305, and it is
-            // filed rather than fixed because which of two subdivisions is the
-            // musical pulse is what TempoEstimator's perceptual prior decides,
-            // not something a consensus over windows can second-guess.
-            // Weighting the vote by strength does not separate them and is
-            // measured not to -- the sparse windows here score higher than the
-            // dense one.
+            // Measured over the dense opening rather than the whole recording,
+            // and that is the point of the test rather than a detail of it. Two
+            // thirds of this fixture is sparse, so the global median interval is
+            // two beats whichever algorithm ran -- an assertion on it passes
+            // against the code this branch replaced and pins nothing. Only the
+            // dense region tells the two apart: 22 one-beat intervals and 6
+            // two-beat before, none and 17 after.
             double bpm = 105;
             double period = 60.0 / bpm;
+            double denseSeconds = 20;
             BeatTracker.Result result =
-                    BeatTracker.track(envelopeOf(denseIntroThenSparse(bpm, 20, 60)));
+                    BeatTracker.track(envelopeOf(denseIntroThenSparse(bpm, denseSeconds, 60)));
 
             List<Double> beats = result.beatTimes();
             assertThat(beats).hasSizeGreaterThan(8);
-            double[] intervals = new double[beats.size() - 1];
-            for (int i = 0; i < intervals.length; i++) {
-                intervals[i] = beats.get(i + 1) - beats.get(i);
+            int onGrid = 0;
+            int doubled = 0;
+            for (int i = 1; i < beats.size(); i++) {
+                if (beats.get(i) > denseSeconds) {
+                    break;
+                }
+                double ratio = (beats.get(i) - beats.get(i - 1)) / period;
+                if (Math.abs(ratio - 1) < 0.15) {
+                    onGrid++;
+                } else if (Math.abs(ratio - 2) < 0.30) {
+                    doubled++;
+                }
             }
-            java.util.Arrays.sort(intervals);
-            double tracked = intervals[intervals.length / 2] / period;
 
-            assertThat(tracked)
-                    .as("median interval in beats: 2 is the whole recording at half rate")
-                    .isCloseTo(2.0, within(0.15));
+            assertThat(doubled)
+                    .as("intervals of two beats across the densely played opening")
+                    .isGreaterThan(10);
+            assertThat(onGrid)
+                    .as("intervals of one beat there, which is what is lost")
+                    .isLessThan(3);
         }
 
         @Test
