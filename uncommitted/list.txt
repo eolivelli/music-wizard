@@ -188,3 +188,138 @@ and the choruses, and the instrumental outro (bars ~100-116) correctly
 carries chords with no lyric line forced under it. No misalignment or
 garbled text found; the feature works as documented on a real Italian-
 language recording.
+
+bellissimissima.mp3
+
+"Bellissimissima" (Alfa), 2:37. Italian pop, official audio. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/bellissimissima.mp3 \
+    https://www.youtube.com/watch?v=330xZ5xFF68
+Reference chords (not remembered by ear; Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/italiani/alfa/bellissimissima/ --
+not authoritative ground truth). Translated from Italian solfege (LAb=Ab,
+DOm7=Cm7, SIbm7=Bbm7, REbm=Dbm): the whole song, verses and chorus alike, is
+one four-chord loop, Ab - Cm7 - Bbm7 - Dbm, key Ab (relative F minor).
+Run 2026-08-10. MW read 102 BPM in 4/4 and key Ab major (33% confidence) --
+matching tonic and signature. The chart's dominant chords are Ab, the Cm/Cm7
+family, the Bbm7 family and the Db/Dbm family -- the same four chords as the
+sheet, in the same rotation (Bbm7-Dbm-Ab-Cm7 per bar), correctly and
+consistently spelled in flats throughout (aes/bes/des/ees/ges in the
+LilyPond source, no stray sharps). Weaknesses: quite a lot of quality
+scatter around the loop's iv chord (Cm vs Cm7, Db major vs Dbm minor
+disagree span to span) and a long tail of one- or two-span passing chords
+(Eb7, Gb7, Bb7, Ab7, Eb, C7, Gm7, Abm7 among others) that are not in the
+sheet -- more estimation noise than on generale or islanda. 122 spans over
+157 s, median 1.15 s -- choppy, the choppiest of the entries in this file so
+far. The last ~10 s of this 2:37 official-audio edit (a fade) show the
+#196 pattern clearly: confidence collapses from the 0.3-0.7 range down to
+0.10 and 0.03 on chords chromatic to Ab (G#m7, B7) -- the same fade-out
+chromatic-noise degradation seen on hanno-ucciso-luomo-ragno and
+la-canzone-del-sole, on a track a third their length.
+
+sweet-home-alabama.mp3
+
+"Sweet Home Alabama" (Lynyrd Skynyrd), 4:44. Classic rock, official audio.
+Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/sweet-home-alabama.mp3 \
+    https://www.youtube.com/watch?v=-35W_FWCT9Q
+Reference chords (not remembered by ear; Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/internazionali/lynyrd-skynyrd/lynyrd-skynyrd-sweet-home-alabama-guitar-chords-tab-accordi/
+-- not authoritative ground truth). Translated from Italian solfege (RE=D,
+DO=C, SOL=G, FA=F): the whole song is the D - C - G loop (I-bVII-IV in G
+major), with a brief F - C - D detour under "Boo hoo hoo".
+Run 2026-08-10. MW read key G major (30% confidence) -- matching tonic and
+signature exactly. The chart is dominated by G (35.4%), C (24.8%) and D
+(19.8%) -- essentially all of it the reference's three-chord loop, with a
+diatonic Dm/Em7/Am7 as the only other chords of any size and an F that shows
+up right where the reference's bridge puts one. Zero N.C. spans anywhere in
+the song. This is a very clean read, one of the best chord-vocabulary
+matches in this file. Two real weaknesses: 301 spans over 284 s, median
+0.91 s, is the choppiest chart yet -- constant one-bar-or-shorter flicker
+between the same three chords where a guitarist plays one chord per bar or
+longer; and the tempo, 195.5 BPM, is roughly double the ~97 BPM widely cited
+for this recording (unconfirmed by ear, but the beat grid holds that doubled
+rate rock-steady the entire song -- windowed tempo stays within 181-201 BPM
+start to finish, so this reads as a consistent octave error rather than
+drift, unlike #187/#233). The last few seconds hold up fine at 0.3-0.7
+confidence, no fade-out collapse.
+
+johnny-b-goode.mp3
+
+"Johnny B. Goode" (Chuck Berry), 2:40, 2024 remaster, official audio. Fetch
+locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/johnny-b-goode.mp3 \
+    https://www.youtube.com/watch?v=kSCpu-Jp4OU
+Reference chords (not remembered by ear; Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/internazionali/berry-chuck/tablatura-per-chitarra-e-spartito-per-pianoforte-di-johnny-b-goode-chuck-berry/
+-- not authoritative ground truth). Translated from Italian solfege (SIb=Bb,
+MIb=Eb, FA=F, FA7=F7): 12-bar-blues-style I-IV-V loop in Bb, Bb - Eb - Bb -
+F(7), with a passing SIb6 in the intro.
+Run 2026-08-10. MW read key Bb major (65% confidence, the highest confidence
+seen on any recording in this file) -- exactly the sheet's key. The chart's
+vocabulary is Bb (50.9%), Eb (14.4%), F/F7 (15.7% combined) plus small
+Bb7/Fm7/C7 colour -- the same three chords as the sheet in the same I-IV-V
+roles, consistently spelled in flats (bes/ees/f in the LilyPond source, no
+stray sharps). No N.C. spans. 62 spans over 160 s, median 2.15 s -- the
+least choppy chart in this file, close to the sheet's own chord rate. One
+flag: tempo read as 84.6 BPM, roughly half the ~168 BPM widely cited for
+this recording (unconfirmed by ear) -- the mirror image of the doubling
+seen on sweet-home-alabama, and again a steady, consistent octave error
+(windowed tempo holds 79-87 BPM throughout) rather than drift. The last few
+seconds end cleanly on the dominant Bb7, the expected turnaround chord, at
+0.50 confidence -- no fade-out collapse.
+
+la-mia-banda-suona-il-rock.mp3
+
+"La mia banda suona il rock" (Ivano Fossati), 3:52, official audio (YouTube
+Music "Topic" channel). Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/la-mia-banda-suona-il-rock.mp3 \
+    https://www.youtube.com/watch?v=Pzezkfcej0A
+Reference chords (not remembered by ear; Accordi e Spartiti,
+https://www.accordiespartiti.it/accordi/italiani/fossati-ivano/la-mia-banda-suona-il-rock/
+-- not authoritative ground truth). Translated from Italian solfege (LAm=Am,
+SOL=G, MIm=Em, DO=C, LAb=Ab, FAm=Fm, SIbm=Bbm, REb=Db): starts in A minor,
+Am - G - Em loop with a C - G - Em - Am bridge ("Non svegliatevi..."), then
+modulates up a half step for the second half to Ab minor, the same shape
+transposed: Abm-family Ab - Fm - Bbm loop with a Db - Ab - Fm - Bbm bridge.
+A half-step key change partway through is the notable feature to check MW's
+chord chart and key detection against.
+Run 2026-08-10. MW read 109 BPM in 4/4, plausible and steady throughout
+(windowed tempo 101-124 BPM, no drift). Key read as A minor, only 24%
+confidence -- the lowest of any recording in this file, and honestly so: the
+first half of the song is in A minor and the second half modulates to Ab
+minor, so a single global key label cannot describe the whole track, and low
+confidence is the correct answer rather than a wrong one. The chart itself
+tracks the modulation correctly, which the key estimate does not: the first
+~140 s is dominated by Am/Am7, G and Em/Em7, matching the sheet's Am-G-Em
+loop and C-G-Em-Am bridge almost exactly (the sheet's C bridge chord shows up
+right where expected, tagged [A]/[B] for the repeated bridge lines); at
+143.2 s the chart pivots cleanly to the Bbm/Fm/G#-or-Ab/C#-or-Db family and
+stays there for the rest of the song, matching the sheet's half-step-up
+modulation almost exactly in both timing (roughly 62% through a 232 s track,
+where the sheet's third verse begins) and shape (loop plus a four-chord
+bridge, tagged [C]/[D]). One real defect: the modulated section's spelling
+is inconsistent -- Bbm and Fm are spelled correctly in flats (bes, f in the
+LilyPond source) but the other two chords of the same four-chord loop print
+as C# and G# (cis, gis) rather than Db and Ab, visible in the rendered PDF
+as "G# Bbm7 ... Bbm ... C#" side by side. A musician reading this chart in
+the second half sees a key area spelled in a mix of flats and sharps, which
+is exactly the kind of "arithmetically correct, visibly wrong" pitch-
+spelling failure the project's own notes warn about. 158 spans over 232 s,
+median 1.11 s -- choppy, similar to bellissimissima. No N.C. spans past the
+opening filler; the ending (in the modulated section) holds confidence
+0.5-0.8, no fade-out collapse.
+
+Overall across this batch of four: chord vocabulary and key tonic matched
+the published sheets closely on all four songs (best on johnny-b-goode and
+sweet-home-alabama), and la-mia-banda-suona-il-rock's chart correctly
+followed a mid-song modulation that its own single-value key estimate
+could not represent. Two tempo reads look like octave errors (double on
+sweet-home-alabama, half on johnny-b-goode) rather than genuine tempo,
+unconfirmed by ear. The enharmonic spelling is correct and consistent on
+three of the four charts and visibly inconsistent on one (la-mia-banda,
+second half). Only bellissimissima showed the #196 fade-out chromatic-noise
+pattern; the other three held up cleanly to their last bar.
