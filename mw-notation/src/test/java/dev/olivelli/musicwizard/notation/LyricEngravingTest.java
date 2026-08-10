@@ -423,6 +423,22 @@ class LyricEngravingTest {
     }
 
     @Test
+    @DisplayName("a compound's own hyphen is not drawn a second time")
+    void aCarriedHyphenIsNotDrawnAgain() {
+        // The token already carries the hyphen it was written with, so marking
+        // the boundary as well printed "well--known" on the page.
+        Score score = sungIn("en", 4, "[00:00.00]<00:00.00>well-known <00:02.00>trouble\n");
+
+        String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(score)));
+
+        assertThat(block).contains("\"well-\"").contains("\"known\"");
+        assertThat(block).doesNotContain("-- \"known\"");
+        // A break the hyphenator did choose is still drawn. Asserted on the
+        // syllable that carries it, since a bar line can fall between the two.
+        assertThat(block).contains("\"trou\"1 --");
+    }
+
+    @Test
     @DisplayName("the lyric context points down, like the two above it")
     void staffAffinityPointsDown() {
         // ChordNames is DOWN and the repeat lane is DOWN. A Lyrics context on

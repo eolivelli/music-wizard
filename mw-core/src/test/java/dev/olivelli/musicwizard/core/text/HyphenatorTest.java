@@ -29,8 +29,25 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class HyphenatorTest {
 
+    /** The syllables joined by "-", which is how a split reads in an assertion. */
     private static String split(String language, String word) {
-        return String.join("-", Hyphenator.forLanguage(language).orElseThrow().syllables(word));
+        return Hyphenator.forLanguage(language).orElseThrow().syllables(word).stream()
+                .map(Hyphenator.Syllable::text)
+                .collect(java.util.stream.Collectors.joining("-"));
+    }
+
+    /** The same, marking a drawn hyphen "=" and an undrawn boundary "/". */
+    private static String marked(String language, String word) {
+        List<Hyphenator.Syllable> parts =
+                Hyphenator.forLanguage(language).orElseThrow().syllables(word);
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) {
+            out.append(parts.get(i).text());
+            if (i + 1 < parts.size()) {
+                out.append(parts.get(i).hyphenToNext() ? "=" : "/");
+            }
+        }
+        return out.toString();
     }
 
     @Nested
@@ -181,6 +198,7 @@ class HyphenatorTest {
             assertThat(split("it", "amore.")).isEqualTo("a-mo-re.");
             assertThat(split("en", "goodbye.")).isEqualTo("good-bye.");
             assertThat(split("it", "dell'amore.")).isEqualTo("del-l'a-mo-re.");
+            // A stop between letters would cut an abbreviation into its initials.
             assertThat(split("en", "U.S.A.")).isEqualTo("U.S.A.");
         }
 
@@ -204,10 +222,46 @@ class HyphenatorTest {
             assertThat(split("en", "Adirondack's")).isEqualTo("Adiron-dack's");
             assertThat(split("en", "Anderson's")).isEqualTo("An-der-son's");
             assertThat(split("en", "don't")).isEqualTo("don't");
-            // Neither file mentions a hyphen, so a compound is two runs and the
-            // hyphen rides the syllable before it rather than taking a note.
-            assertThat(split("it", "bio-vita")).isEqualTo("bio--vi-ta");
+            // Neither file mentions a hyphen, so a compound is two runs.
             assertThat(split("en", "well-known")).isEqualTo("well--known");
+            assertThat(split("it", "bio-vita")).isEqualTo("bio--vi-ta");
+        }
+
+        @Test
+        @DisplayName("a separator the token already carries is not drawn a second time")
+        void aCarriedHyphenIsNotDrawn() {
+            // "=" is a hyphen this engine chose and draws; "/" is a boundary it
+            // does not, the token having carried its own. Drawing one at every
+            // boundary gave the page "well--known".
+            assertThat(marked("en", "well-known")).isEqualTo("well-/known");
+            assertThat(marked("en", "mother-in-law")).isEqualTo("moth=er-/in-/law");
+            assertThat(marked("en", "abandons")).isEqualTo("a=ban=dons");
+            assertThat(marked("it", "dell'amore")).isEqualTo("del=l'a=mo=re");
+        }
+
+        @Test
+        @DisplayName("a run with no vowel joins its neighbour; a short one with a vowel does not")
+        void aSyllableNeedsAVowel() {
+            // The inflection in a possessive is not a note of its own, and nor is
+            // the consonant in a contraction -- but "la" is, which is what
+            // sha-la-la is made of.
+            assertThat(split("en", "Adirondack's")).isEqualTo("Adiron-dack's");
+            assertThat(split("en", "don't")).isEqualTo("don't");
+            assertThat(split("en", "y'all")).isEqualTo("y'all");
+            assertThat(split("en", "sha-la-la")).isEqualTo("sha--la--la");
+            assertThat(split("en", "hi-fi")).isEqualTo("hi--fi");
+            assertThat(split("en", "co-op")).isEqualTo("co--op");
+        }
+
+        @Test
+        @DisplayName("an apostrophe does not fill a slot the minima reserve")
+        void apostropheDoesNotCountTowardsTheMinima() {
+            // It is word material in Italian, so counted as a character it takes
+            // the slot RIGHT_MINIMUM reserves and strands the consonant: elf'
+            // would break as el-f'.
+            assertThat(split("it", "elf'")).isEqualTo("elf'");
+            assertThat(split("it", "citta'")).isEqualTo("cit-ta'");
+            assertThat(split("it", "perche'")).isEqualTo("per-che'");
         }
 
         @Test
@@ -241,11 +295,10 @@ class HyphenatorTest {
             List<String> words = List.of("amore", "l'innocenza", "particolare", "trouble",
                     "1999", "po'", "e", "rock'n'roll", "perché", "città");
             for (String language : List.of("it", "en")) {
-                Hyphenator hyphenator = Hyphenator.forLanguage(language).orElseThrow();
                 for (String word : words) {
-                    assertThat(String.join("", hyphenator.syllables(word)))
+                    assertThat(split(language, word).replace("-", ""))
                             .as("%s / %s", language, word)
-                            .isEqualTo(word);
+                            .isEqualTo(word.replace("-", ""));
                 }
             }
         }

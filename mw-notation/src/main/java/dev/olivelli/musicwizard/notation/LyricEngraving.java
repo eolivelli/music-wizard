@@ -202,16 +202,16 @@ final class LyricEngraving {
         long previous = Long.MIN_VALUE;
         for (LyricLine line : score.lyrics().lines()) {
             for (LyricWord word : line.words()) {
-                List<String> parts = hyphenator
+                List<Hyphenator.Syllable> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
-                        .orElseGet(() -> List.of(word.text()));
+                        .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)));
                 // All of a word or none of it -- see fitted. The unsplit word is
                 // tried when the syllables will not fit, and only then is the
                 // word dropped.
                 List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
                 if (placed.isEmpty() && parts.size() > 1) {
-                    placed = fitted(List.of(word.text()), word, bars, barStart,
-                            chartEnd, previous);
+                    placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
+                            word, bars, barStart, chartEnd, previous);
                 }
                 if (!placed.isEmpty()) {
                     syllables.addAll(placed);
@@ -235,7 +235,7 @@ final class LyricEngraving {
      * syllables closer together still, and a zero-length syllable is one
      * LilyPond cannot name.
      */
-    private static List<Syllable> fitted(List<String> parts, LyricWord word,
+    private static List<Syllable> fitted(List<Hyphenator.Syllable> parts, LyricWord word,
                                          List<ChartLayout.Bar> bars, long[] barStart,
                                          long chartEnd, long previous) {
         List<Syllable> placed = new ArrayList<>(parts.size());
@@ -251,10 +251,12 @@ final class LyricEngraving {
             if (unit >= chartEnd) {
                 return List.of();
             }
-            // Every syllable but the last joins the next with a hyphen; the last
-            // carries whatever the word itself said.
-            boolean joins = i + 1 < parts.size() || word.hyphenatedToNext();
-            placed.add(new Syllable(unit, parts.get(i), joins));
+            // Only a break the hyphenator chose is drawn: a compound already
+            // carries the hyphen it was written with, and a second one gives
+            // well--known. The last syllable takes whatever the word itself said.
+            boolean joins = i + 1 < parts.size()
+                    ? parts.get(i).hyphenToNext() : word.hyphenatedToNext();
+            placed.add(new Syllable(unit, parts.get(i).text(), joins));
             cursor = unit;
         }
         return placed;

@@ -197,16 +197,20 @@ public final class Hyphenator {
      * and an English possessive puts {@code 's} on a note of its own. A run too
      * short to hold a break joins the piece before it for the same reason.
      *
-     * <p>A full stop is word material for neither language and is also what the
-     * patterns use to mean a word boundary, so {@code U.S.A.} becomes runs of one
-     * and two letters and is left as it stands.
+     * <p>A full stop is what the patterns mean by a word boundary, so one sitting
+     * between letters would cut an abbreviation into its initials; {@code U.S.A.}
+     * is left as it stands. One after the letters is ordinary punctuation, so
+     * {@code amore.} splits.
      *
      * <p>Nothing else needs a gate. No pattern matches a digit, so {@code 1999}
      * and {@code 24/7} come back whole without being tested for.
      */
-    public List<String> syllables(String word) {
+    public List<Syllable> syllables(String word) {
         Objects.requireNonNull(word, "word");
-        List<String> pieces = new ArrayList<>();
+        if (hasInternalStop(word)) {
+            return List.of(new Syllable(word, false));
+        }
+        List<Syllable> pieces = new ArrayList<>();
         StringBuilder pending = new StringBuilder();
         int at = 0;
         while (at < word.length()) {
@@ -223,7 +227,22 @@ public final class Hyphenator {
         if (pending.length() > 0) {
             append(pieces, pending, List.of());
         }
-        return pieces.isEmpty() ? List.of(word) : List.copyOf(pieces);
+        return pieces.isEmpty() ? List.of(new Syllable(word, false)) : List.copyOf(pieces);
+    }
+
+    /**
+     * Whether a full stop sits between two letters, as in an abbreviation.
+     *
+     * <p>The stop is what the patterns mean by a word boundary, so it separates
+     * runs like any other non-word character — which would cut {@code U.S.A.}
+     * into its initials and sing them as two. A stop after the letters is
+     * ordinary punctuation and rides the last syllable, so {@code amore.} splits
+     * as it should.
+     */
+    private static boolean hasInternalStop(String word) {
+        int stop = word.indexOf('.');
+        return stop > 0 && stop < word.length() - 1
+                && firstLetter(word) < stop && lastLetter(word) > stop;
     }
 
     /** Whether this character is part of a word rather than something between two. */
@@ -234,46 +253,95 @@ public final class Hyphenator {
     /**
      * Adds one run's syllables, carrying whatever separated it from the last.
      *
-     * <p>What is not word material rides the syllable before it, or the one after
-     * it at the start of a token, so the pieces still concatenate to what came
-     * in. A run too short to hold a break joins the piece before it rather than
-     * standing alone: {@code Adirondack's} is sung on the syllables of
-     * {@code Adirondack} with the inflection on the last, not with {@code 's} on
-     * a note of its own.
+     * <p>What is not word material rides the syllable beside it, so the pieces
+     * still concatenate to what came in, and <b>it is carried without a hyphen</b>
+     * — a compound already prints the one it was written with, and drawing
+     * another gives {@code well--known}.
+     *
+     * <p><b>A run with no vowel is not a syllable</b> and joins its neighbour: it
+     * is an inflection or a bare consonant, and {@code Adirondack's} is sung on
+     * the syllables of {@code Adirondack} rather than with {@code 's} on a note of
+     * its own. A short run that <em>has</em> one is a syllable and keeps its note,
+     * which is what {@code sha-la-la} is made of. Backwards where there is
+     * something to join, and otherwise held over for the run that follows, so
+     * {@code y'all} is one note and not two.
      */
-    private static void append(List<String> pieces, StringBuilder pending,
+    private static void append(List<Syllable> pieces, StringBuilder pending,
                                List<String> syllables) {
         String between = pending.toString();
         pending.setLength(0);
-        if (syllables.isEmpty()) {
-            if (pieces.isEmpty()) {
-                pieces.add(between);
-            } else {
-                pieces.set(pieces.size() - 1, pieces.get(pieces.size() - 1) + between);
-            }
+        boolean joinsBack = !pieces.isEmpty()
+                && (syllables.isEmpty() || (syllables.size() == 1 && !hasVowel(syllables.get(0))));
+        if (joinsBack) {
+            int last = pieces.size() - 1;
+            String tail = syllables.isEmpty() ? "" : syllables.get(0);
+            pieces.set(last, new Syllable(pieces.get(last).text() + between + tail,
+                    pieces.get(last).hyphenToNext()));
             return;
         }
-        List<String> run = new ArrayList<>(syllables);
-        boolean joinsBack = !pieces.isEmpty()
-                && (run.size() == 1 && run.get(0).length() < LEFT_MINIMUM + RIGHT_MINIMUM);
-        if (joinsBack) {
-            pieces.set(pieces.size() - 1,
-                    pieces.get(pieces.size() - 1) + between + run.get(0));
+        if (syllables.isEmpty() || (pieces.isEmpty() && syllables.size() == 1
+                && !hasVowel(syllables.get(0)))) {
+            // Nothing to join backwards to: hold it for the run after this one.
+            pending.append(between).append(syllables.isEmpty() ? "" : syllables.get(0));
             return;
         }
         if (!between.isEmpty()) {
+            // Backwards where there is something to carry it, so a compound reads
+            // "well- known" the way a lead sheet writes it rather than "well
+            // -known"; forwards only at the start of a token, where there is
+            // nothing behind.
             if (pieces.isEmpty()) {
-                run.set(0, between + run.get(0));
+                syllables = new ArrayList<>(syllables);
+                syllables.set(0, between + syllables.get(0));
             } else {
-                pieces.set(pieces.size() - 1, pieces.get(pieces.size() - 1) + between);
+                int last = pieces.size() - 1;
+                pieces.set(last, new Syllable(pieces.get(last).text() + between,
+                        pieces.get(last).hyphenToNext()));
             }
         }
-        pieces.addAll(run);
+        for (int i = 0; i < syllables.size(); i++) {
+            // Only a break this engine chose is drawn as a hyphen. The last
+            // syllable of a run ends at a separator the token already carries.
+            pieces.add(new Syllable(syllables.get(i), i + 1 < syllables.size()));
+        }
+    }
+
+    /** Whether a run holds a sound a syllable can be built on. */
+    private static boolean hasVowel(String run) {
+        for (int i = 0; i < run.length(); i++) {
+            char c = Character.toLowerCase(run.charAt(i));
+            if ("aeiou".indexOf(c) >= 0 || (Character.isLetter(c) && c > 127)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Where the run's letters begin, or -1 when it has none. */
+    private static int firstLetter(String run) {
+        for (int i = 0; i < run.length(); i++) {
+            if (Character.isLetter(run.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Where the run's letters end, or -1 when it has none. */
+    private static int lastLetter(String run) {
+        for (int i = run.length() - 1; i >= 0; i--) {
+            if (Character.isLetter(run.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** One run of word material, split where the patterns say. */
     private List<String> split(String run) {
-        if (run.length() < LEFT_MINIMUM + RIGHT_MINIMUM || firstLetter(run) < 0) {
+        int first = firstLetter(run);
+        int last = lastLetter(run);
+        if (first < 0 || last - first + 1 < LEFT_MINIMUM + RIGHT_MINIMUM) {
             return List.of(run);
         }
         String lower = run.toLowerCase(Locale.ROOT);
@@ -301,9 +369,11 @@ public final class Hyphenator {
 
         List<String> syllables = new ArrayList<>();
         int start = 0;
-        // scores[i + 1] scores the gap after the i-th character of the run, the
-        // offset coming from the boundary marker in front of it.
-        for (int i = LEFT_MINIMUM; i <= run.length() - RIGHT_MINIMUM; i++) {
+        // Bounded by the run's letters rather than its length: an apostrophe is
+        // word material in Italian, and counted against the minima it fills the
+        // slot RIGHT_MINIMUM reserves -- elf' would break as el-f'.
+        // scores[i + 1] scores the gap after the i-th character of the run.
+        for (int i = first + LEFT_MINIMUM; i <= last + 1 - RIGHT_MINIMUM; i++) {
             if (scores[i + 1] % 2 == 1) {
                 syllables.add(run.substring(start, i));
                 start = i;
@@ -313,29 +383,23 @@ public final class Hyphenator {
         return syllables;
     }
 
-    /** Where the token's letters begin, or -1 when it has none. */
-    private static int firstLetter(String word) {
-        for (int i = 0; i < word.length(); i++) {
-            if (Character.isLetter(word.charAt(i))) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /** Where the token's letters end, or -1 when it has none. */
-    private static int lastLetter(String word) {
-        for (int i = word.length() - 1; i >= 0; i--) {
-            if (Character.isLetter(word.charAt(i))) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     /** How many syllables this word is sung on. */
     public int syllableCount(String word) {
         return syllables(word).size();
+    }
+
+    /**
+     * One syllable, and whether a hyphen joins it to the next.
+     *
+     * <p>The flag is not "there is another syllable": a compound carries its own
+     * hyphen inside the text, and drawing a second one gives {@code well--known}.
+     * Only a break this engine chose is marked.
+     */
+    public record Syllable(String text, boolean hyphenToNext) {
+
+        public Syllable {
+            Objects.requireNonNull(text, "text");
+        }
     }
 
 }
