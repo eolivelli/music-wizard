@@ -72,13 +72,10 @@ import java.util.Set;
  * — and {@code bossa-cm.mp3} 149.889, and neither has anything to be checked
  * against except its own plausibility.
  *
- * <p>That last one is the cautionary case, and its own plausibility is exactly
- * what failed to catch it: it read 74.944 until #322, because the cycle held
- * twice the bars this file declared for it, and 74.944 is a perfectly plausible
- * bossa tempo. Nothing in this harness can find that — the autocorrelation
- * measures the repeat, and how many bars are in one is a fact only the grid in
- * {@code samples/list.txt} carries. A reference tempo here is a check on the
- * tracker, never on the bar count it was derived from.
+ * <p>The bossa is the cautionary one, and its own plausibility is what failed to
+ * catch it: it read half this until #322, and half of it is a perfectly
+ * plausible bossa tempo too. A reference here checks the tracker, never the bar
+ * count it came from — see {@code referencePeriod}.
  *
  * <h2>The columns</h2>
  *
@@ -113,10 +110,19 @@ import java.util.Set;
  *       <p>That sets the floor to read this against. A tracked grid at the wrong
  *       rate entirely wanders uniformly across the reference's period, and the
  *       RMS of a uniform distribution over {@code [-p/2, +p/2]} is
- *       {@code p / (2 * sqrt(3))} — 0.231 s at the bossa's period. It measures
- *       0.237. So on that recording this column carries no information about
- *       phase, and on {@code blues-e-90bpm.mp3}, at 0.013 s against a floor of
- *       0.192, it carries a great deal.</dd>
+ *       {@code p / (2 * sqrt(3))} — 0.1156 s at the bossa's period, where it
+ *       measures 0.129. On {@code blues-e-90bpm.mp3} it is 0.013 s against a
+ *       floor of 0.192, which is a tracked grid on the reference.
+ *       <p>Being at the floor is not the only way to carry nothing, and the
+ *       bossa is the case that shows it: its tracked pulse is a bar's three
+ *       eighths, which is 1.508 reference beats, so every second tracked beat
+ *       lands on a reference beat and the one between sits near {@code ±p/2}.
+ *       That is a bimodal distribution reading a shade above the uniform floor,
+ *       and it is why {@code P} on that row is near a half rather than near a
+ *       quarter. <b>Read {@code P} for that, not this column</b>: a rate related
+ *       to the reference by a ratio of small integers puts a fixed share of
+ *       beats exactly on it, which is a fact about phase that an average over
+ *       every beat cannot show.</dd>
  *   <dt>on grid, 2/3</dt>
  *   <dd>Share of tracked intervals within a tenth of the tracked median, and
  *       within a tenth <em>of the median</em> of two thirds of it. The band is
@@ -134,8 +140,16 @@ public final class ScoreBeats {
      * cycle in the autocorrelation.
      *
      * <p>The search range is wide enough to hold the cycle and narrow enough to
-     * exclude its double. Getting it wrong is not silent — the reference tempo
-     * comes out at some fraction of the true one and the printed value says so.
+     * exclude its double. Getting <em>that</em> wrong is not silent: the
+     * reference tempo comes out at some fraction of the true one and the printed
+     * value says so.
+     *
+     * <p><b>Getting {@code barsPerCycle} wrong is silent</b>, and #322 is the
+     * proof — the bossa carried half its count for as long as nobody compared
+     * the printed rate with the grid in {@code samples/list.txt}, because a
+     * half-bar rate is a plausible tempo and every column derived from it is
+     * self-consistent. This field is a claim about the music, and the only thing
+     * that can check it is that grid.
      */
     private record Job(String file, int barsPerCycle, double lowSeconds, double highSeconds) {}
 
@@ -144,10 +158,8 @@ public final class ScoreBeats {
             new Job("blues-a-90bpm.mp3", 12, 24, 44),
             new Job("blues-shuffle-a-106bpm.mp3", 12, 20, 40),
             new Job("blues-e-90bpm.mp3", 12, 24, 44),
-            // Thirty-two, not sixteen: the repeat this finds at 51.2 s holds two
-            // turns of the sixteen-chord progression in samples/list.txt, one
-            // chord to a bar. Counting it as sixteen bars made every beat figure
-            // for this row a half-bar figure -- see #322 for how that read.
+            // Thirty-two, not sixteen: the repeat at 51.2 s holds two turns of
+            // the sixteen-chord progression in samples/list.txt (#322).
             new Job("bossa-cm.mp3", 32, 24, 56));
 
     /** Half the standard beat-tracking tolerance, either side. */
@@ -247,17 +259,18 @@ public final class ScoreBeats {
      *
      * <p>The far search is bounded to a fraction of one beat so it cannot slide
      * onto the neighbouring cycle's peak, which is what an earlier version did
-     * on the bossa: its repeat sits at 51.2 s and a wide window found the one a
-     * bar short instead, reporting the period as if the cycle were shorter than
-     * it is.
+     * on the bossa: its repeat sits at 51.2406 s, the autocorrelation carries a
+     * peak every 3.2 s either side of it -- the clave's two-bar span -- and a
+     * wide window took the one at 48.0363 s, two bars short, reporting 79.94
+     * against the 74.94 the repeat gave under the bar count of the day.
      *
      * <p>The period this returns is the cycle divided by {@link Job#barsPerCycle}
-     * times four, so <b>it is only a beat period if that count is right</b>. It
-     * was not for the bossa, whose repeat holds twice the bars it was declared
-     * with, and the figure printed for that row was consequently a half-bar
-     * period wearing a beat's name (#322). Nothing here can catch that: the
-     * autocorrelation finds the repeat, and how many bars are in it is a fact
-     * about the music that only the grid in {@code samples/list.txt} carries.
+     * times four, so <b>it is only a beat period if that count is right</b>, and
+     * nothing here can check it: the autocorrelation finds the repeat, and how
+     * many bars are in one is a fact about the music that only the grid in
+     * {@code samples/list.txt} carries. The bossa was declared at half its bars
+     * and printed a half-bar period wearing a beat's name until the two were
+     * compared (#322).
      */
     private static double referencePeriod(OnsetEnvelope envelope, Job job) {
         double[] strength = envelope.strength();

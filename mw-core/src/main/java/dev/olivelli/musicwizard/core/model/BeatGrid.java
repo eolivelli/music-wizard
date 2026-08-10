@@ -156,11 +156,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * axis is re-runnable and the plateau below is not; those figures were taken
      * by hand and confirmed independently in review.
      *
-     * <p>The last of those was 74.944 until #322: that harness was counting the
-     * bossa's repeat as sixteen bars where it holds thirty-two, so the figure it
-     * printed was a half-bar rate. The pulse the sweep below is measured against
-     * is unmoved -- two thirds of 149.889 is four thirds of 74.944 -- so every
-     * percentage in it stands; only the unit it is named in has changed.
+     * <p>The bossa's figure is a quarter-note rate and its tracker runs at two
+     * thirds of it, which is the pulse every percentage below is measured
+     * against.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
@@ -190,10 +188,10 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *       degrades further -- 465 kept and +0.76% at 0.04. One step up from
      *       that run, at 0.0525, it keeps 545 and reads +0.07%.
      *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
-     *       {@code bossa-cm.mp3} is tracked at two thirds of the rate
-     *       {@code ScoreBeats} prints for it (#231), so it carries a population
-     *       of intervals about 4/3 of its median -- 54 of its 501 sit between
-     *       1.30x and 1.36x -- and a band reaching 1/3 lets them in. Against
+     *       {@code bossa-cm.mp3} carries a population of intervals about 4/3 of
+     *       its median -- 54 of its 501 sit between 1.30x and 1.36x, measured
+     *       against the tracked intervals' own median and so independent of any
+     *       reference -- and a band reaching 1/3 lets them in. Against
      *       two thirds of ScoreBeats' 149.889: 0.33% out at the value chosen
      *       here, 0.71% at 0.30, then 2.82% at 0.325 and 3.91% at 0.35.
      * </ul>
