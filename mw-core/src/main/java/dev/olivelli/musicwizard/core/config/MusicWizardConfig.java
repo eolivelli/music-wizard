@@ -95,7 +95,7 @@ public record MusicWizardConfig(
     /** Which providers run the neural stages. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MlConfig(
-            /* Provider id for stem separation, e.g. "onnx-demucs". */
+            /* Provider id for stem separation, e.g. "onnx-spleeter". */
             String separationProvider,
             /* Provider id for pitch tracking, e.g. "onnx-crepe". */
             String pitchProvider,
@@ -158,7 +158,7 @@ public record MusicWizardConfig(
             new AnalysisConfig(null, null, null, false),
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
-            new MlConfig("onnx-demucs", "onnx-crepe", "whisper-jni", null, false),
+            new MlConfig("onnx-spleeter", "onnx-crepe", "whisper-jni", null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
