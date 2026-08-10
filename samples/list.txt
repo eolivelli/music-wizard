@@ -181,14 +181,14 @@ D7 D7 A7 A7
 E7 D7 A7 E7
 
 bossa-cm.mp3
-Bossa nova in C minor, sixteen bars, one chord to a bar. A bar here is half the
-bar tools/ScoreBeats.java assumes: the sixteen chords turn in half the 51.2 s
-cycle it records, so that harness counts them two to a bar and the rate it
-reports for this file is a half-bar rate (#322). Fitting the stated progression
-to the chroma rejects the longer reading outright, and the bass settles it —
-root then fifth, one turn to a bar here, which a bar twice as long could not
-hold on its halves (#302). The period itself is not restated here: that harness
-measures it, and a copy in this file would only go stale against it.
+Bossa nova in C minor, sixteen bars, one chord to a bar. The sixteen chords turn
+twice through the repeat tools/ScoreBeats.java measures, which that harness
+counts as thirty-two bars and reports a quarter-note rate for (#322). Fitting
+the stated progression to the chroma rejects the halved reading outright, and
+the bass settles it — root then fifth, one turn to a bar, which a bar twice as
+long could not hold on its halves (#302). The period itself is not restated
+here: that harness measures it, and a copy in this file would only go stale
+against it.
 
 The tracker's pulse is three eighths of a bar, so four of them span a bar and a
 half of the music — and not exactly, so the drawn bars drift through the music
