@@ -11,7 +11,7 @@ samples with known ground truth:
   jazz-251-c-140.mp3: bars=87  root 12/87 (13.8%)  root+quality 12/87 (13.8%)  N.C. 0.0% of 304s
   fm7-vamp-110.mp3: bars=144  root 133/144 (92.4%)  root+quality 92/144 (63.9%)  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 157/165 (95.2%)  root+quality 102/165 (61.8%)  N.C. 0.5% of 309s
-  bossa-cm.mp3: bars=124  root 18/124 (14.5%)  root+quality 5/124 (4.0%)  N.C. 0.0% of 315s
+  bossa-cm.mp3: bars=125  root 18/125 (14.4%)  root+quality 7/125 (5.6%)  N.C. 0.0% of 315s
   pop-c-g-am-f-120.mp3: bars=57  root 57/57 (100.0%)  root+quality 56/57 (98.2%)  N.C. 0.0% of 114s
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 56%  want A major  OK

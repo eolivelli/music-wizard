@@ -185,12 +185,60 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
+     * How far below the recording's loudest band a band may sit before it is
+     * read as silence, in amplitude.
+     *
+     * <p>{@code 1e-8}, which is 160 dB. Relative rather than absolute so that it
+     * means the same thing for a quiet recording as for a loud one -- an
+     * absolute floor is a statement about the input's gain, which is not a
+     * musical fact.
+     *
+     * <p><b>It is an edge, not the middle of a plateau, and that is worth
+     * knowing before moving it.</b> A higher floor suppresses the artefact
+     * better and costs onset contrast: the rise out of near-silence is part of
+     * what makes a click track score as confidently as it does, so compressing
+     * it moves figures that tier-0 asserts. Measured on {@code mw-dsp}'s suite,
+     * 1e-8 leaves all 200 green, 1e-7 fails three and 1e-6 fails five, all of
+     * them tempo-confidence assertions on synthetic signals. So this is the
+     * strongest bound available for nothing, which is a weaker justification
+     * than a plateau and is the honest one.
+     *
+     * <p><b>It bounds the artefact rather than removing it.</b> On
+     * {@code eb7-vamp-130.mp3} the tail spike falls from 63.3 to 21.3 against a
+     * 99.9th percentile of 6.9 -- enough that the 21-second window either side
+     * of it reads the recording's own tempo again, not enough to stop the spike
+     * being the largest frame in the tail, and the 8-second window after it
+     * still reads a rate the music does not play. Removing it needs a gate on
+     * absolute level, since silence is a property of the input rather than of
+     * the spectrum's dynamic range, and that is a different change from this
+     * one.
+     */
+    private static final double SILENCE_FLOOR = 1e-8;
+
+    /**
      * Maps FFT bins onto mel bands and converts to decibels.
      *
      * <p>Mel spacing matches how pitch resolution actually works: closely spaced
      * at low frequencies, coarse at high ones. Summing raw FFT bins instead
      * would let one loud high partial swamp the low-frequency evidence that
      * carries most rhythmic information.
+     *
+     * <p><b>The floor is relative to the recording, and it has to be.</b> A
+     * decibel scale is unbounded below, so the difference this envelope is built
+     * from grows without limit as the input approaches silence: the step from
+     * digital silence to an inaudible sample is a larger rise than any attack in
+     * the music above it. Flooring at a fixed tiny value does not bound it,
+     * because the floor is then hundreds of decibels below the material.
+     *
+     * <p>What that cost, before {@link #SILENCE_FLOOR} existed: on
+     * {@code eb7-vamp-130.mp3} the decay into silence at the end produced the
+     * joint-largest frame in the whole envelope -- 63.3 where the 99.9th
+     * percentile is 5.7 -- out of audio peaking at -87 dBFS. It dragged the last
+     * tracked beat three seconds past the end of the music, and it moved that
+     * window's tempo estimate off the rate the rest of the recording plays at.
+     * Five of the corpus's recordings carry such a spike, always within 60 ms of
+     * their last non-zero sample, and they are exactly the five whose final
+     * analysis window reads a tempo the music does not.
      */
     private static double[][] toMelDecibels(Spectrogram spectrogram) {
         int frames = spectrogram.frameCount();
@@ -204,6 +252,29 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
             edges[i] = Math.min(bins - 1, spectrogram.binOf(melToHz(mel)));
         }
 
+        // One pass for the loudest band in the recording, so the floor below can
+        // be set relative to it. Costs a second walk of the spectrogram and
+        // nothing else: the sums are recomputed rather than kept, because
+        // keeping them is a frames-by-bands array the caller never wanted.
+        double loudest = 0;
+        for (int frame = 0; frame < frames; frame++) {
+            float[] magnitudes = spectrogram.magnitudes()[frame];
+            for (int band = 0; band < MEL_BANDS; band++) {
+                int from = edges[band];
+                int to = Math.max(edges[band + 2], from + 1);
+                double sum = 0;
+                for (int bin = from; bin < to && bin < bins; bin++) {
+                    sum += magnitudes[bin];
+                }
+                loudest = Math.max(loudest, sum);
+            }
+        }
+        // The absolute term keeps a silent recording finite; the relative one is
+        // what bounds the rise out of silence. Whichever is larger wins, so an
+        // all-zero spectrogram still maps to a constant rather than to negative
+        // infinity, and every band of it is equal, so the difference is zero.
+        double floor = Math.max(1e-10, loudest * SILENCE_FLOOR);
+
         double[][] out = new double[frames][MEL_BANDS];
         for (int frame = 0; frame < frames; frame++) {
             float[] magnitudes = spectrogram.magnitudes()[frame];
@@ -214,9 +285,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
                 for (int bin = from; bin < to && bin < bins; bin++) {
                     sum += magnitudes[bin];
                 }
-                // Floored before the logarithm so silence maps to a finite value
-                // rather than negative infinity.
-                out[frame][band] = 20 * Math.log10(Math.max(sum, 1e-10));
+                out[frame][band] = 20 * Math.log10(Math.max(sum, floor));
             }
         }
         return out;
