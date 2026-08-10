@@ -233,7 +233,9 @@ downloads a model or shells out to LilyPond belongs in `mw-it`.
 
 ## Review process
 
-Serialized: **one PR in flight at a time.** The rules live in
+**One PR in flight per Claude session**, not one across the repository. A
+session carries one change from triage to merge and does not start a second;
+running several sessions is how several PRs run at once. The rules live in
 `.claude/agents/pr-worker.md` and `pr-reviewer.md`; the incidents that shaped
 them are in `docs/history.md`. The short version:
 
