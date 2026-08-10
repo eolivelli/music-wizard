@@ -168,14 +168,22 @@ final class LyricEngraving {
      * one: the bars already carry both their position and their moment, and the
      * two routes that build them disagree about how seconds and beats relate.
      *
-     * <p><b>A word with no bar to sit in is dropped, and only that word.</b> The
-     * chart spans the harmony, so a lyric sung after the last chord has nowhere
-     * to go; piling such words onto the final unit would print them over one
-     * another and stop the bar summing. Skipped rather than treated as the end
-     * of the lyric, because words are not globally ordered — see
+     * <p>One {@code Lyrics} context is a single lane and runs forwards only, so
+     * a word that would land behind the lane's cursor is pushed up to the next
+     * free unit instead, and <b>dropped only when that push runs past the last
+     * bar</b>. A word is dropped one at a time rather than taken as the end of
+     * the lyric, because words are not globally ordered — see
      * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()} — so one
-     * stray onset says nothing about the next word. The text sheet shows every
-     * word and is the output to read when the two differ.
+     * stray onset says nothing about the next.
+     *
+     * <p>Two things follow, and neither is claimed away. A word sung after the
+     * chart's last bar has nowhere to go at all, because the chart spans the
+     * harmony rather than the song. And a line overlapping the tail of the line
+     * before it is not engraved where it was sung: its words come out crammed
+     * against the cursor, and any that run off the end are lost. Engraving such
+     * lines properly wants a second {@code Lyrics} context, which is #329. The
+     * text sheet shows every word at its own moment and is the output to read
+     * when the two differ.
      */
     private static List<Syllable> placed(Score score, List<ChartLayout.Bar> bars,
                                          long[] barStart) {
@@ -192,11 +200,6 @@ final class LyricEngraving {
                 // one LilyPond cannot name.
                 unit = Math.max(unit, previous + 1);
                 if (unit >= chartEnd) {
-                    // Skipped, not returned. Words are not globally ordered --
-                    // Lyrics.allWords()'s own javadoc says recognition spans on
-                    // sung speech overlap -- so one word past the end says
-                    // nothing about the next, and abandoning the rest would drop
-                    // a whole verse for one stray onset.
                     continue;
                 }
                 syllables.add(new Syllable(unit, word.text(), word.hyphenatedToNext()));

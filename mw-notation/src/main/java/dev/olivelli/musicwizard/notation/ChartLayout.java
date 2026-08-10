@@ -176,6 +176,10 @@ final class ChartLayout {
          * last bar has no next one and every consumer that tried to work around
          * that guessed: borrowing the previous bar's rate is wrong across a
          * tempo change, and a chart of one bar has nothing to borrow at all.
+         *
+         * <p>The exception is {@link #oneChordPerBar}, which takes both ends
+         * from its chord because no tempo is knowable on that route at all — so
+         * the figure there is the chord's rate rather than the bar's.
          */
         double secondsPerQuarter() {
             double length = lengthQuarters();

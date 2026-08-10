@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -204,11 +205,12 @@ class LyricEngravingTest {
     @Test
     @DisplayName("a word past the chart does not take the words after it with it")
     void oneDroppedWordDoesNotAbandonTheRest() {
-        // Built directly rather than from LRC, which clamps every word into its
-        // own line and so cannot produce one past the chart. Words are not
-        // globally ordered -- Lyrics.allWords()'s javadoc says recognition spans
-        // on sung speech overlap -- so a stray onset says nothing about the next
-        // word, and returning there dropped whole verses.
+        // Built directly rather than from LRC, whose lines and words are both
+        // sorted, so it cannot produce a word past the chart followed by an
+        // earlier one. Words in general are not ordered -- Lyrics.allWords()'s
+        // javadoc says recognition spans on sung speech overlap -- so a stray
+        // onset says nothing about the next word, and returning there dropped
+        // whole verses.
         Confidence sure = Confidence.of(0.9);
         Lyrics strays = new Lyrics(List.of(
                 new LyricLine(List.of(
@@ -227,6 +229,39 @@ class LyricEngravingTest {
     }
 
     @Test
+    @DisplayName("a line overlapping the one before it loses what the lane has passed (#329)")
+    void overlappingLinesCannotShareOneLane() {
+        // One Lyrics context runs forwards only. A word late in the chart
+        // advances the lane past everything an overlapping line would occupy,
+        // and that line goes with it -- so the sheet does not promise that only
+        // the offending word is lost. Pinned so a fix for #329 shows here.
+        Confidence sure = Confidence.of(0.9);
+        Lyrics overlapping = new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("open", 0.1, 0.4, sure),
+                        LyricWord.ofSeconds("late", 3.9, 3.95, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("verse", 1.0, 1.4, sure),
+                        LyricWord.ofSeconds("carries", 2.0, 2.4, sure),
+                        LyricWord.ofSeconds("on", 3.0, 3.4, sure)), sure)),
+                "und", sure);
+        Score score = chart(2).withLyrics(overlapping);
+
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
+
+        // The overlapping line is not engraved where it was sung: its words are
+        // pushed up behind the lane's cursor and come out crammed against the
+        // end, and the one that runs off is dropped outright.
+        assertThat(bars.get(0)).contains("\"open\"").doesNotContain("\"verse\"");
+        assertThat(bars.get(1)).contains("\"late\"")
+                .contains("\"verse\"").contains("\"carries\"");
+        assertThat(String.join(" ", bars)).doesNotContain("\"on\"");
+        // Whatever it does with them, the bars still sum.
+        assertThat(bars).allSatisfy(bar ->
+                assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9)));
+    }
+
+    @Test
     @DisplayName("a hyphen is written only where there is a syllable to join")
     void noDanglingHyphen() {
         // LilyPond reports an unterminated hyphen, into the output this tool
@@ -241,8 +276,12 @@ class LyricEngravingTest {
 
         String block = String.join(" ", lyricBars(LyricSheet.toLilyPond(plain.withLyrics(trailing))));
 
+        // The property, not a substring: a hyphen crossing a bar line is legal
+        // and this emitter writes one, so "-- |" is not the thing to forbid.
+        // What LilyPond rejects is a hyphen with no syllable after it anywhere.
         assertThat(block).contains("\"Hal\"2 -- \"le\"");
-        assertThat(block.strip()).doesNotContain("-- |").doesNotEndWith("--");
+        int lastSyllable = block.lastIndexOf('"');
+        assertThat(block.substring(lastSyllable)).doesNotContain("--");
     }
 
     @Test
@@ -261,32 +300,37 @@ class LyricEngravingTest {
     @Test
     @DisplayName("a bar is read at its own tempo, not at its neighbour's")
     void aTempoChangeIsReadPerBar() {
+        // Chords stated on the beat axis, because that is the only route whose
+        // clock follows a tempo change: the seconds route divides by one
+        // quarter length and would build four equal bars whatever the map says.
         // Three bars at 120 then one at 40, so the last bar is three times as
-        // long in seconds as the ones before it. Measured at a neighbour's rate,
-        // everything sung in it piles into its first beat or falls off the end.
-        TempoMap map = TempoMap.fromBeatTimes(
-                List.of(0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5,
-                        4.0, 4.5, 5.0, 5.5, 6.0, 7.5, 9.0, 10.5),
-                TimeSignature.FOUR_FOUR);
+        // long in seconds. Read at a neighbour's rate it looks a third as long,
+        // and everything sung late in it falls off the end of the chart.
+        List<Double> beats = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            beats.add(i * 0.5);
+        }
+        for (int i = 0; i < 5; i++) {
+            beats.add(6.0 + i * 1.5);
+        }
+        TempoMap map = TempoMap.fromBeatTimes(beats, TimeSignature.FOUR_FOUR);
         List<Chord> chords = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
-            double from = i < 3 ? i * 2.0 : 6.0;
-            double to = i < 3 ? (i + 1) * 2.0 : 12.0;
-            chords.add(Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR,
-                    from, to, Confidence.of(0.9)));
+            chords.add(new Chord(root(NoteLetter.C), ChordQuality.MAJOR, Optional.empty(),
+                    map.beatsToSeconds(i * 4.0), map.beatsToSeconds((i + 1) * 4.0),
+                    Optional.of(i * 4.0), Optional.of((i + 1) * 4.0), Confidence.of(0.9)));
         }
         Score score = Score.empty(map, 12.0)
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
         score = score.withLyrics(LrcLyrics.parse(
-                "[00:06.00]<00:06.00>slow <00:09.00>er <00:10.50>still\n", 12.0));
+                "[00:06.50]<00:06.50>slow <00:09.00>er <00:11.00>still\n", 12.0));
 
         List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
 
-        // Measured at a neighbour's rate the final bar looks a third as long,
-        // so the two words late in it fall off the end of the chart entirely.
+        // The final bar runs 6s to 12s. At the previous bar's rate it would
+        // appear to end at 8s, and the last two words would be dropped.
         String last = bars.get(bars.size() - 1);
-        assertThat(last).contains("\"er\"").contains("\"still\"");
-        assertThat(String.join(" ", bars)).contains("\"slow\"");
+        assertThat(last).contains("\"slow\"").contains("\"er\"").contains("\"still\"");
     }
 
     @Test

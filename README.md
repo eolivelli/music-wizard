@@ -198,9 +198,11 @@ engraves the same thing with the lyrics under the chord names. Neither is the
 other with rows added; they answer different questions, and the grid is what the
 measurement harness parses.
 
-The engraved sheet drops any word it has no bar for — the bars span the harmony
-rather than the song — and drops only that word; the text sheet prints every word
-and is the one to read when the two differ.
+The engraved sheet is one lane and runs forwards only. A word sung after the last
+bar is dropped, since the bars span the harmony rather than the song, and a line
+overlapping the one before it is crammed up behind the cursor rather than drawn
+where it was sung. The text sheet prints every word at its own moment and is the
+one to read when the two differ.
 
 [i9]: https://github.com/eolivelli/music-wizard/issues/9
 [lrc]: https://en.wikipedia.org/wiki/LRC_(file_format)
