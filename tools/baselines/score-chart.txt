@@ -10,6 +10,6 @@ charts emitted for samples with known ground truth:
   f-blues-swing-170.mp3: bars=111  chords/bar 1.08  root 24/111 (21.6%)  root+quality 14/111 (12.6%)  short: tracked 0.0%, chart 28.7%
   jazz-251-c-140.mp3: bars=89  chords/bar 1.13  root 13/89 (14.6%)  root+quality 13/89 (14.6%)  short: tracked 0.0%, chart 18.1%
   fm7-vamp-110.mp3: bars=150  chords/bar 1.13  root 121/150 (80.7%)  root+quality 85/150 (56.7%)  short: tracked 0.0%, chart 1.7%
-  eb7-vamp-130.mp3: bars=166  chords/bar 1.22  root 156/166 (94.0%)  root+quality 98/166 (59.0%)  short: tracked 0.0%, chart 24.2%
+  eb7-vamp-130.mp3: bars=166  chords/bar 1.23  root 160/166 (96.4%)  root+quality 103/166 (62.0%)  short: tracked 0.0%, chart 21.1%
   bossa-cm.mp3: bars=130  chords/bar 1.18  root 24/130 (18.5%)  root+quality 7/130 (5.4%)  short: tracked 0.0%, chart 13.8%
   pop-c-g-am-f-120.mp3: bars=57  chords/bar 1.00  root 57/57 (100.0%)  root+quality 56/57 (98.2%)  short: tracked 0.0%, chart 5.1%

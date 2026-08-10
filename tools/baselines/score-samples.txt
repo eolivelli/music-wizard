@@ -10,7 +10,7 @@ samples with known ground truth:
   f-blues-swing-170.mp3: bars=111  root 25/111 (22.5%)  root+quality 14/111 (12.6%)  N.C. 0.7% of 316s
   jazz-251-c-140.mp3: bars=87  root 12/87 (13.8%)  root+quality 12/87 (13.8%)  N.C. 0.0% of 304s
   fm7-vamp-110.mp3: bars=144  root 133/144 (92.4%)  root+quality 92/144 (63.9%)  N.C. 0.5% of 328s
-  eb7-vamp-130.mp3: bars=171  root 157/171 (91.8%)  root+quality 99/171 (57.9%)  N.C. 0.5% of 309s
+  eb7-vamp-130.mp3: bars=165  root 157/165 (95.2%)  root+quality 102/165 (61.8%)  N.C. 0.5% of 309s
   bossa-cm.mp3: bars=124  root 18/124 (14.5%)  root+quality 5/124 (4.0%)  N.C. 0.0% of 315s
   pop-c-g-am-f-120.mp3: bars=57  root 57/57 (100.0%)  root+quality 56/57 (98.2%)  N.C. 0.0% of 114s
 keys, against the expected key for each file:
@@ -20,7 +20,7 @@ keys, against the expected key for each file:
   key slow-68-40.mp3: A major at 59%  want A major  OK
   key g-blues-shuffle-cc.mp3: G major at 40%  want G major  OK
   key fm7-vamp-110.mp3: F minor at 98%  want F minor  OK
-  key eb7-vamp-130.mp3: Eb major at 40%  want Eb major  OK
+  key eb7-vamp-130.mp3: Eb major at 41%  want Eb major  OK
   key bossa-cm.mp3: C minor at 10%  want C minor  OK
   key bm-blues-slow.mp3: B minor at 58%  want B minor  OK
   key cm-blues-68-95.mp3: Eb major at 16%  want C minor  WRONG

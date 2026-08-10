@@ -164,6 +164,7 @@ public final class BeatTracker {
         }
 
         double reference = pulseReference(voters);
+        double typicalStrength = medianStrength(voters);
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -174,7 +175,8 @@ public final class BeatTracker {
             int start = bounds.get(w)[0];
             int end = bounds.get(w)[1];
             TempoEstimator.Estimate seed = seeds.get(w);
-            double beatsPerMinute = divideOutSubdivision(seed.beatsPerMinute(), reference);
+            double beatsPerMinute = seedFor(
+                    seed.beatsPerMinute(), seed.strength(), reference, typicalStrength);
             List<Double> windowBeats = trackFixedTempo(envelope, beatsPerMinute, start, end);
 
             // The gap test below scales with the period actually tracked, not
@@ -385,6 +387,61 @@ public final class BeatTracker {
      * nowhere near any of them and passes through untouched.
      */
     private static final double SUBDIVISION_TOLERANCE = 0.05;
+
+    /**
+     * The rate a window is tracked at: its own seed, a subdivision divided out
+     * of it, or the recording's pulse where the seed is worth nothing.
+     *
+     * <p>The two corrections answer different failures and are not
+     * interchangeable. {@link #divideOutSubdivision} is for a seed that found a
+     * real periodicity and named the wrong multiple of the beat; this one is for
+     * a seed that found no periodicity at all, whose rate is whatever the
+     * autocorrelation turned up in noise and is a subdivision of nothing.
+     * Taking the reference there is not a correction of that number -- it is
+     * declining to use it.
+     *
+     * <p>Package-private so the decision can be asserted directly. Reaching it
+     * through {@link #track} needs audio whose tail is weak enough to cross the
+     * line, and the synthetic ones tried sat within a few percent of it, which
+     * would pin the fixture rather than the rule.
+     */
+    static double seedFor(double beatsPerMinute, double strength, double reference,
+                          double typicalStrength) {
+        return strength < WEAK_SEED_SHARE * typicalStrength
+                ? reference
+                : divideOutSubdivision(beatsPerMinute, reference);
+    }
+
+    /**
+     * How much of the recording's typical periodicity a window must carry for
+     * its own seed to be used at all.
+     *
+     * <p>Half, measured against the median of the voting windows' strengths, so
+     * it scales with material rather than with a level. What it separates is not
+     * subtle: on {@code eb7-vamp-130.mp3} the body reads 0.58 and the two
+     * windows after the vamp stops read 0.15, and the seed that comes out of
+     * those is 1.5996 times the reference -- eight fifths, which is no
+     * subdivision of anything and 52 of the estimator's quantisation steps away
+     * from the nearest one that is.
+     *
+     * <p>The one window in the corpus that sits near the line is the sparse
+     * intro of {@code blues-shuffle-a-106bpm.mp3} at 0.497, and it lands in the
+     * same place either way: its ratio is exactly a half, so
+     * {@link #divideOutSubdivision} doubles it onto the reference and this rule
+     * takes the reference. The two mechanisms agree there rather than competing,
+     * which is why the threshold's exact value is not load-bearing.
+     */
+    private static final double WEAK_SEED_SHARE = 0.5;
+
+    /** Median strength of the voting windows, the scale WEAK_SEED_SHARE is of. */
+    private static double medianStrength(List<TempoEstimator.Estimate> voters) {
+        double[] strengths = new double[voters.size()];
+        for (int i = 0; i < strengths.length; i++) {
+            strengths[i] = voters.get(i).strength();
+        }
+        java.util.Arrays.sort(strengths);
+        return strengths[strengths.length / 2];
+    }
 
     /**
      * The pulse the recording is read against: the median of the window seeds.

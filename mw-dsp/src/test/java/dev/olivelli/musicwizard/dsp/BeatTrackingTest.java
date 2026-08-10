@@ -1376,6 +1376,51 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("a seed with no periodicity behind it is not used at all")
+        void aSeedWithNoPeriodicityBehindItIsNotUsed() {
+            // #306. A window that has found no periodicity still returns a rate,
+            // and that rate is a subdivision of nothing: on eb7-vamp-130.mp3 the
+            // two windows after the vamp stops carry a fifth of the strength the
+            // body does and seed at 1.5996 times the recording's pulse -- eight
+            // fifths, fifty-two of the estimator's quantisation steps from the
+            // nearest real subdivision. Dividing a subdivision out of that would
+            // be correcting a number that means nothing; the reference is used
+            // instead.
+            double reference = 129.25;
+            double typical = 0.585;
+
+            // The eb7 tail, at the strength it actually carries.
+            assertThat(BeatTracker.seedFor(206.75, 0.151, reference, typical))
+                    .as("a seed at a fifth of the recording's strength")
+                    .isEqualTo(reference);
+
+            // The same seed, had the window been as periodic as the body: left
+            // to divideOutSubdivision, which finds no subdivision in 1.5996 and
+            // returns it untouched. This is what makes the two rules distinct
+            // rather than one dressed as two.
+            assertThat(BeatTracker.seedFor(206.75, 0.585, reference, typical))
+                    .as("the same seed, with the body's strength behind it")
+                    .isCloseTo(206.75, within(1e-9));
+
+            // A strong window that is a genuine subdivision still gets divided,
+            // so the weak rule has not swallowed the subdivision one.
+            assertThat(BeatTracker.seedFor(191.25, 0.50, 63.5, 0.51))
+                    .as("a strong seed three times the pulse")
+                    .isCloseTo(63.75, within(0.01));
+
+            // The corpus's one borderline window -- the sparse intro of
+            // blues-shuffle-a-106bpm.mp3 at 0.497 of the median -- lands on the
+            // reference from either side of the line, which is why the exact
+            // threshold is not load-bearing.
+            assertThat(BeatTracker.seedFor(52.75, 0.2181, 105.5, 0.4390))
+                    .as("below the line: the reference")
+                    .isEqualTo(105.5);
+            assertThat(BeatTracker.seedFor(52.75, 0.2196, 105.5, 0.4390))
+                    .as("above the line: a half doubled onto the reference")
+                    .isCloseTo(105.5, within(1e-9));
+        }
+
+        @Test
         @DisplayName("a window's seed is corrected by a subdivision, never by an octave alone")
         void aSeedIsCorrectedBySubdivisionRatherThanByOctave() {
             // The three corrections the corpus actually needs, and the reason
