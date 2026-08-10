@@ -139,6 +139,32 @@ class LrcLyricsTest {
         }
 
         @Test
+        @DisplayName("several lines on one moment do not make every gap a break (#324)")
+        void duplicateTimestampsDoNotTruncateEveryLine() {
+            // What a repeated chorus writes. Counting the zero-length gaps as
+            // lines made the median zero, which fell back to the nominal length
+            // and put every real gap in the file over the break threshold -- so
+            // every line was cut to the nominal length in a file that states its
+            // spacing plainly.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]a1
+                    [00:00.00]a2
+                    [00:20.00]b1
+                    [00:20.00]b2
+                    [00:40.00]c1
+                    [00:40.00]c2
+                    [01:00.00]d1
+                    """, 300.0);
+
+            assertThat(lyrics.lines()).hasSize(7);
+            // a2 runs to b1, not to a nominal four seconds.
+            assertThat(lyrics.lines().get(1).endSeconds()).isEqualTo(20.0);
+            assertThat(lyrics.lines().get(3).endSeconds()).isEqualTo(40.0);
+            // And the closing line lasts as long as an ordinary one here.
+            assertThat(lyrics.lines().get(6).endSeconds()).isEqualTo(80.0);
+        }
+
+        @Test
         @DisplayName("ordinary jitter is not an instrumental break")
         void jitteringGapsAreLeftAlone() {
             // Hand-timed lines jitter around four seconds. Cutting every line at

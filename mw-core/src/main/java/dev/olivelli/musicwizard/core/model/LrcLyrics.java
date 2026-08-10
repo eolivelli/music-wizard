@@ -291,15 +291,40 @@ public final class LrcLyrics {
      * different set of gaps.
      */
     private static double typicalLine(double[] fileOrder) {
-        if (fileOrder.length == 0) {
+        // Sorted out of a copy, not in place: the caller's array is in file order
+        // and breaks depends on it staying that way.
+        double[] spaced = new double[fileOrder.length];
+        int count = 0;
+        for (double gap : fileOrder) {
+            if (measures(gap)) {
+                spaced[count++] = gap;
+            }
+        }
+        if (count == 0) {
             return NOMINAL_LINE_SECONDS;
         }
-        // Copied, not sorted in place: the caller's array is in file order and
-        // breaks depends on it staying that way.
-        double[] gaps = fileOrder.clone();
-        java.util.Arrays.sort(gaps);
-        double median = gaps[(gaps.length - 1) / 2];
-        return median > 0 ? median : NOMINAL_LINE_SECONDS;
+        java.util.Arrays.sort(spaced, 0, count);
+        return spaced[(count - 1) / 2];
+    }
+
+    /**
+     * Whether a gap says anything about how long a line lasts.
+     *
+     * <p>A zero-length one does not: two timestamps on the same moment are one
+     * moment written twice, which is how an LRC repeats a chorus without copying
+     * it out, and they measure no line at all.
+     *
+     * <p>Named once because both statistics over these gaps have to agree on it,
+     * and for a while they did not. {@link #lineLength} filtered zero gaps and
+     * {@link #typicalLine} did not, so on a file with several lines to a moment
+     * the median came out zero, fell back to the nominal length, and made every
+     * real gap in the file exceed three of those — every line an instrumental
+     * break, and every line then cut to the nominal length in a file that plainly
+     * stated its spacing. A guard in one of two readers of the same value is this
+     * project's most repeated defect.
+     */
+    private static boolean measures(double gap) {
+        return gap > 0;
     }
 
     /**
@@ -316,7 +341,7 @@ public final class LrcLyrics {
         double[] ordinary = new double[gaps.length];
         int count = 0;
         for (int i = 0; i < gaps.length; i++) {
-            if (!isBreak[i] && gaps[i] > 0) {
+            if (!isBreak[i] && measures(gaps[i])) {
                 ordinary[count++] = gaps[i];
             }
         }
