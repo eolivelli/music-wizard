@@ -393,8 +393,12 @@
                   <regexMessage>maven.compiler.release must be 21 or lower: Android's D8 rejects class files above major version 65, and the app (#236) links against mw-core, mw-audio, mw-dsp, mw-transcribe, mw-arrange and mw-notation.</regexMessage>
                 </requireProperty>
                 <!--
-                  Guard the licensing policy mechanically: GPL/AGPL artifacts
-                  must never enter the dependency graph.
+                  A denylist of the artifacts we know we must not take, not a
+                  licence check: this rule matches coordinates and reads no
+                  <licenses> element, so a GPL artifact it does not name enters
+                  the graph unremarked. Adding one is what a reviewer does when
+                  they find it; CONTRIBUTING.md carries the policy the list
+                  serves.
                 -->
                 <bannedDependencies>
                   <excludes>
