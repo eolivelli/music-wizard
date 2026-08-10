@@ -87,13 +87,53 @@ class HarmonicRhythmTest {
 
         assertThat(quarter).isGreaterThan(0.7);
         assertThat(half).isGreaterThan(0.7);
-        // Neutral within the family: the factor must not choose between a beat
-        // and its half. That choice stays with the envelope and the prior.
+        // Near-tied at an EVEN harmonic period, where the half reaches the
+        // cycle too. At an odd one it cannot, and the factor takes a side --
+        // see anOddHarmonicPeriodFavoursTheBeatOverItsHalf.
         assertThat(Math.abs(quarter - half)).isLessThan(0.15);
         assertThat(falsePulse)
                 .as("three eighths of the bar, which no whole pulse count bars")
                 .isLessThan(0.35)
                 .isLessThan(quarter - 0.4);
+    }
+
+    @Test
+    @DisplayName("an odd harmonic period favours the beat over its half, never the reverse")
+    void anOddHarmonicPeriodFavoursTheBeatOverItsHalf() {
+        // A half note's lags are a subset of its quarter's -- k times 2p is 2k
+        // times p -- so no support the half finds is closed to the quarter,
+        // while the quarter can reach lags the half cannot. Harmony turning
+        // every 4.5s is nine beats of 0.5s: the beat spans it in nine, and the
+        // half would need four and a half of itself, which is not a bar count.
+        // A waltz whose harmony turns every three quarters is the musical case.
+        // This is the one choice the factor does make inside a family, it only
+        // ever runs toward the faster member, and the class javadoc says so
+        // rather than claiming neutrality (#231 review, round 1).
+        HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(4.5, 63));
+
+        double beat = rhythm.supportFor(0.5);
+        double half = rhythm.supportFor(1.0);
+
+        assertThat(beat).isGreaterThan(0.7);
+        assertThat(half)
+                .as("four and a half halves are not a bar count")
+                .isLessThan(0.35)
+                .isLessThan(beat - 0.4);
+    }
+
+    @Test
+    @DisplayName("garbage periods get abstention, and get it in finite time")
+    void garbagePeriodsGetAbstention() {
+        HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(3.2, 64));
+
+        // NaN fails every comparison, a non-positive or sub-millisecond period
+        // is a rate no tempo produces, and before the guard existed a tiny
+        // positive period overflowed the multiple count and never terminated.
+        // Abstention is the only answer that cannot steer a caller.
+        assertThat(rhythm.supportFor(Double.NaN)).isEqualTo(1.0);
+        assertThat(rhythm.supportFor(0.0)).isEqualTo(1.0);
+        assertThat(rhythm.supportFor(-1.0)).isEqualTo(1.0);
+        assertThat(rhythm.supportFor(1e-10)).isEqualTo(1.0);
     }
 
     @Test
@@ -177,7 +217,7 @@ class HarmonicRhythmTest {
                 .as("without harmony the clave pulse wins, which is the defect")
                 .isBetween(95.0, 105.0);
         assertThat(with)
-                .as("with harmony the winner must bar the 1.6s cycle")
+                .as("with harmony the winner must come from the family barring the 3.2s cycle")
                 .satisfiesAnyOf(
                         bpm -> assertThat(bpm).isBetween(72.0, 78.0),
                         bpm -> assertThat(bpm).isBetween(145.0, 155.0));

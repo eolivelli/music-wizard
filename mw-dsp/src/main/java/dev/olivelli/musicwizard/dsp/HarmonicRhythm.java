@@ -36,15 +36,21 @@ import java.util.Objects;
  * whether some whole number of those beats spans a lag the harmony repeats at.
  * {@link TempoEstimator} multiplies the answer into a candidate's score.
  *
- * <p><b>What it deliberately cannot do is choose within a duple family.</b> If
- * a quarter note divides the harmonic period so does the half note, so the
- * factor is neutral between them by construction, and that choice stays where
- * it is today, with the envelope and the perceptual prior. On the bossa those
- * prefer the half — the comping states halves of the bar more consistently
- * than quarters — so the recording lands at half its true rate: the right
- * family, barred commensurately with the music, where the three-eighths pulse
- * could never be. The remaining halving is exactly what {@code analyze --tempo}
- * corrects, and what #139 parked a recorded pulse unit for.
+ * <p><b>It can favour a beat over its subharmonics, and never the reverse.</b>
+ * A half note's lags are a subset of its quarter's — {@code k·2p} is
+ * {@code (2k)·p} — so no support the half can find is closed to the quarter,
+ * while the quarter can reach lags the half cannot: where the harmonic period
+ * is an odd multiple of the beat, the half genuinely cannot bar the music, and
+ * is floored. A waltz whose harmony turns every three quarters is the honest
+ * case of that. Where the harmonic period is even in beats the two are close
+ * to tied, the choice falls to the envelope and the prior as before — and on
+ * the bossa it is the <em>envelope</em> that prefers the half, by more than the
+ * prior and this factor together prefer the quarter, because the comping
+ * states halves of the bar more consistently than quarters. The recording
+ * lands at half its true rate: the right family, barred commensurately with
+ * the music, where the three-eighths pulse could never be. The remaining
+ * halving is exactly what {@code analyze --tempo} corrects, and what #139
+ * parked a recorded pulse unit for.
  *
  * <p>Computed once for the whole recording and applied identically in every
  * analysis window, for #305's reason: which pulse can bar the music is a
@@ -54,7 +60,8 @@ import java.util.Objects;
 public final class HarmonicRhythm {
 
     /**
-     * The longest lag read, in seconds: two bars of the slowest plausible bar.
+     * The longest lag read, in seconds. It covers a two-bar harmonic cycle
+     * down to about 96 BPM in four, and a one-bar cycle far below that.
      *
      * <p>Harmonic rhythm slower than this exists, but a support read there
      * would be over so few repeats of the cycle that it measures the piece's
@@ -75,17 +82,16 @@ public final class HarmonicRhythm {
      * autocorrelation.
      *
      * <p>Below it every candidate gets the same answer, which is abstention.
-     * Measured over all eighteen corpus recordings, the weakest real harmonic
-     * rhythm reads 0.166 — {@code jazz-251-c-140.mp3}, whose changes are real
-     * but drift — and the one recording whose harmony moves too slowly to
-     * measure, {@code bm-blues-slow.mp3}, reads 0.095. Everything else sits at
-     * 0.17 to 0.64, including the one-chord vamp, whose comping riff is itself
-     * a one-bar harmonic oscillation. The gate sits midway between the two
-     * populations. The gap is one recording wide on each side, which is thinner
-     * evidence than a plateau; what bounds the risk is that abstention and
-     * participation give the same answer for every recording measured — the
-     * factor only separates candidates on recordings whose winner it does not
-     * move.
+     * Measured over the corpus: {@code bm-blues-slow.mp3}, whose harmony moves
+     * too slowly to measure, reads 0.095; {@code jazz-251-c-140.mp3}, whose
+     * changes are real but drift, reads 0.166; the rest sit at 0.17 to 0.64,
+     * including the one-chord vamp, whose comping riff is itself a one-bar
+     * harmonic oscillation. The gate sits midway between 0.095 and 0.166. That
+     * gap is one recording wide on each side, which is thinner evidence than a
+     * plateau; what bounds the risk is the two recordings bracketing it: the
+     * one below has no window whose seed changes under forced participation,
+     * and the one above has fourteen of twenty-five seeds change and still
+     * tracks a beat-for-beat identical grid.
      */
     private static final double GATE = 0.13;
 
@@ -187,7 +193,15 @@ public final class HarmonicRhythm {
      * recording's harmonic rhythm is too weak to measure.
      */
     public double supportFor(double periodSeconds) {
-        if (strongestPeak < GATE || periodSeconds <= 0) {
+        // Garbage in, abstention out: NaN and sub-millisecond periods are
+        // rates no tempo produces, and the identity is the only answer that
+        // cannot steer a caller. The bound also keeps the loop below finite --
+        // at a tiny period the multiple count would overflow before the lag
+        // ever reached the cap.
+        if (!(periodSeconds > 0.001)) {
+            return 1;
+        }
+        if (strongestPeak < GATE) {
             return 1;
         }
         double best = 0;

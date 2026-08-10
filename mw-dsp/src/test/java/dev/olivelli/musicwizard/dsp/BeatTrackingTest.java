@@ -1447,14 +1447,21 @@ class BeatTrackingTest {
             // pulse than the seed they replace, which is why "nearer" is not the
             // test: neither can bar the recording.
 
-            // g-blues-shuffle-cc.mp3 window 0, against its own median: a half.
+            // The inputs below are the corpus measurements that motivated the
+            // table, taken before #231 gave the estimator the harmonic rhythm;
+            // divideOutSubdivision is a pure function, so they pin its
+            // arithmetic whatever the estimator now feeds it. On current main
+            // the fm7 windows read 110 outright and cm-blues splits thirteen at
+            // 189.00 against fifteen at 63.25 -- the mechanism these pin is
+            // unchanged, the corpus sightings have moved.
+            //
+            // g-blues-shuffle-cc.mp3 window 0 as it then read: a half.
             assertThat(BeatTracker.divideOutSubdivision(52.5, 105.5))
                     .isCloseTo(105.0, within(0.01));
-            // cm-blues-68-95.mp3, in 6/8: eleven of its windows read three times
-            // the pulse the other seventeen do.
+            // cm-blues-68-95.mp3, in 6/8: windows at three times the pulse.
             assertThat(BeatTracker.divideOutSubdivision(191.25, 63.5))
                     .isCloseTo(63.75, within(0.01));
-            // fm7-vamp-110.mp3: two windows read two thirds of it.
+            // fm7-vamp-110.mp3: windows at two thirds of it.
             assertThat(BeatTracker.divideOutSubdivision(73.25, 110.0))
                     .isCloseTo(109.875, within(0.01));
 

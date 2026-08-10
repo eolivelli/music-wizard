@@ -236,7 +236,16 @@ public final class TempoEstimator {
                 continue;
             }
             double value = interpolate(correlation, lag);
-            double score = value * perceptualWeight(tempo) * rhythm.supportFor(60.0 / tempo);
+            double score = value * perceptualWeight(tempo);
+            // Only a score that is in the running is weighed. A negative
+            // correlation is already a non-candidate, and multiplying it by a
+            // support below one would raise it: the floor exists to demote,
+            // and on a negative score it promotes -- an envelope of one attack
+            // over a quiet floor could then land on the very candidate the
+            // harmony cannot bar, because it was floored.
+            if (score > 0) {
+                score *= rhythm.supportFor(60.0 / tempo);
+            }
             if (score > bestScore) {
                 bestScore = score;
                 bestTempo = tempo;

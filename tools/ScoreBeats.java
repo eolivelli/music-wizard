@@ -118,8 +118,10 @@ import java.util.Set;
  *       rate entirely wanders uniformly across the reference's period, and the
  *       RMS of a uniform distribution over {@code [-p/2, +p/2]} is
  *       {@code p / (2 * sqrt(3))} — 0.1156 s at the bossa's period, where it
- *       measures 0.129. On {@code blues-e-90bpm.mp3} it is 0.013 s against a
- *       floor of 0.192, which is a tracked grid on the reference.
+ *       measures 0.115: at the floor, which on that row is the half-rate
+ *       grid's geometry speaking rather than phase — see below. On
+ *       {@code blues-e-90bpm.mp3} it is 0.013 s against a floor of 0.192,
+ *       which is a tracked grid on the reference.
  *       <p>Being at the floor is not the only way to carry nothing, and the
  *       bossa is the case that shows it. Its tracked pulse is two reference
  *       beats — the half-tempo reading that remains after #231 — so half the

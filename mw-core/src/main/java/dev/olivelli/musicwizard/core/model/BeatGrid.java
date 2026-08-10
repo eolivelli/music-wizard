@@ -156,9 +156,10 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * axis is re-runnable and the plateau below is not; those figures were taken
      * by hand and confirmed independently in review.
      *
-     * <p>The bossa's figure is a quarter-note rate and its tracker runs at two
-     * thirds of it, which is the pulse every percentage below is measured
-     * against.
+     * <p>The bossa's figure is a quarter-note rate. When the sweep below was
+     * taken its tracker ran at two thirds of it, and that pulse is what every
+     * bossa percentage below is measured against; since #231 it runs at half
+     * of it, and the sweep has not been retaken.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is

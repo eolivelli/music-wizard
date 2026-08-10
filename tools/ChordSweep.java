@@ -168,9 +168,10 @@ public final class ChordSweep {
         // by the harmonic rhythm (#231), and folding precedes
         // beat-synchronising -- see NnlsChroma.combined.
         NnlsChroma registers = NnlsChroma.extract(audio);
+        Chroma combinedFrames = registers.combined();
         List<Double> beatTimes = BeatTracker
-                .track(envelope, HarmonicRhythm.of(registers.combined())).beatTimes();
-        Chroma combined = registers.combined().beatSynchronous(beatTimes);
+                .track(envelope, HarmonicRhythm.of(combinedFrames)).beatTimes();
+        Chroma combined = combinedFrames.beatSynchronous(beatTimes);
         DownbeatEstimator.Estimate down = DownbeatEstimator.estimate(
                 beatTimes, combined, envelope, TimeSignature.FOUR_FOUR.beatsPerBar());
         // Written aside and moved into place, so an interrupted run leaves no
