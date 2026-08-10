@@ -159,10 +159,14 @@ public final class LyricSheet {
      * them nothing at all.
      *
      * <p>Pushing right is unbounded on its own — the words below do not limit it,
-     * because a line can hold more changes than it has letters — so the row wraps
-     * at {@link #ROW_COLUMNS} like any other. A wrapped continuation is not
-     * aligned to anything: it holds the symbols that ran off the end of the
-     * words, and there is nothing under them to align to.
+     * because a line can hold more changes than it has letters — so a symbol
+     * pushed past the end of the words wraps rather than running off the page.
+     * <b>Only past the end of them.</b> A lyric line longer than
+     * {@link #ROW_COLUMNS} is ordinary and is not itself wrapped, so a symbol
+     * standing over a word at column eighty is correctly placed; moving it to a
+     * fresh row would put it above the line's <em>first</em> word instead, which
+     * is not an over-wide row but a wrong chord. An over-wide row is the lesser
+     * failure, and placement is what this file is for.
      *
      * @return the row, or several separated by newlines, or empty for no chords
      */
@@ -171,11 +175,10 @@ public final class LyricSheet {
         StringBuilder row = new StringBuilder();
         for (Placed chord : chords) {
             String symbol = chord.symbol();
-            int at = laid.columnAt(chord.seconds());
-            if (row.length() > 0) {
-                at = Math.max(at, row.length() + 1);
-            }
-            if (at + symbol.length() > ROW_COLUMNS && row.length() > 0) {
+            int column = laid.columnAt(chord.seconds());
+            int at = row.length() > 0 ? Math.max(column, row.length() + 1) : column;
+            boolean pastTheWords = at >= laid.text().length();
+            if (pastTheWords && at + symbol.length() > ROW_COLUMNS && row.length() > 0) {
                 out.append(row).append('\n');
                 row.setLength(0);
                 at = 0;

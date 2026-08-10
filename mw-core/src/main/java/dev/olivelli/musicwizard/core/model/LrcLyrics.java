@@ -140,6 +140,10 @@ public final class LrcLyrics {
         timed.sort((a, b) -> Double.compare(a.start(), b.start()));
 
         double shift = offsetSeconds;
+        // Whole-file constants, so read once rather than per line.
+        double[] gaps = gapsOf(timed);
+        double typicalLine = typicalLine(gaps);
+        double breakAfter = breakAfter(gaps, typicalLine);
         List<LyricLine> lines = new ArrayList<>();
         for (int i = 0; i < timed.size(); i++) {
             Timed entry = timed.get(i);
@@ -153,9 +157,14 @@ public final class LrcLyrics {
             double next = i + 1 < timed.size()
                     ? Math.max(start, timed.get(i + 1).start() - shift)
                     : Double.POSITIVE_INFINITY;
-            double end = Math.min(next,
-                    plausibleEnd(start, lastTagIn(entry.body(), shift),
-                            typicalLine(timed), recordingSeconds));
+            // An ordinary line runs to its successor, however far above the
+            // median it sits. Only an outlying gap -- and the open end after the
+            // last line, whose gap is infinite -- is cut back to a plausible
+            // length, leaving the remainder as the instrumental it is.
+            double end = next - start > breakAfter
+                    ? plausibleEnd(start, lastTagIn(entry.body(), shift),
+                            typicalLine, recordingSeconds)
+                    : next;
             List<LyricWord> words = wordsOf(entry.body(), start, end, shift);
             if (!words.isEmpty()) {
                 lines.add(new LyricLine(words, weakest(words)));
@@ -193,12 +202,11 @@ public final class LrcLyrics {
      * would carry the whole solo's harmony, and the closing line of a file
      * covering one verse would carry the rest of the song.
      *
-     * <p>So a line lasts at most as long as a line typically does in this file,
+     * <p>So a line whose successor is an outlying distance away — see {@link
+     * #breakAfter} — lasts as long as a line typically does in this file,
      * measured from the last moment the line itself times, and never runs past
-     * the recording. The caller takes the earlier of this and the next line's
-     * start, so an ordinary line is still bounded by its successor and only an
-     * implausibly long one is cut — leaving the remainder as the instrumental it
-     * is.
+     * the recording. An ordinary line is not touched: it still ends where the
+     * next one begins.
      */
     private static double plausibleEnd(double start, double lastTag, double typicalLine,
                                        double recordingSeconds) {
@@ -222,6 +230,16 @@ public final class LrcLyrics {
         return last;
     }
 
+    /** Every gap between consecutive timestamps, sorted. */
+    private static double[] gapsOf(List<Timed> timed) {
+        double[] gaps = new double[Math.max(0, timed.size() - 1)];
+        for (int i = 0; i < gaps.length; i++) {
+            gaps[i] = timed.get(i + 1).start() - timed.get(i).start();
+        }
+        java.util.Arrays.sort(gaps);
+        return gaps;
+    }
+
     /**
      * How long a line lasts in this file: the median gap between timestamps.
      *
@@ -229,17 +247,41 @@ public final class LrcLyrics {
      * instrumental ones — the pause between verse and chorus is a gap like any
      * other — and one long break should not stretch every line's estimate.
      */
-    private static double typicalLine(List<Timed> timed) {
-        if (timed.size() < 2) {
+    private static double typicalLine(double[] gaps) {
+        if (gaps.length == 0) {
             return NOMINAL_LINE_SECONDS;
         }
-        double[] gaps = new double[timed.size() - 1];
-        for (int i = 0; i < gaps.length; i++) {
-            gaps[i] = timed.get(i + 1).start() - timed.get(i).start();
-        }
-        java.util.Arrays.sort(gaps);
         double median = gaps[gaps.length / 2];
         return median > 0 ? median : NOMINAL_LINE_SECONDS;
+    }
+
+    /**
+     * The gap above which the silence after a line is an instrumental break
+     * rather than part of the line.
+     *
+     * <p>A line normally runs until the next one starts. Cutting every line at
+     * the typical length instead would be wrong for the longer half of an
+     * ordinary file, because the typical length is a median and half the lines
+     * exceed it: hand-timed lyrics jitter, and a file whose chorus lines are held
+     * longer than its verse lines would have every chorus line truncated. Both
+     * would grow a false instrumental break in the middle of a verse.
+     *
+     * <p>So a gap is cut only when it is an <em>outlier</em> among this file's
+     * gaps — Tukey's upper fence, the standard robust test, which adapts to a
+     * file holding two natural line lengths instead of assuming one. Floored at
+     * twice the typical line because the fence collapses onto the data when the
+     * gaps barely vary: a file of near-identical gaps has an interquartile range
+     * of nearly zero, and without the floor its ordinary jitter would read as
+     * outlying.
+     */
+    private static double breakAfter(double[] gaps, double typicalLine) {
+        double floor = 2 * typicalLine;
+        if (gaps.length < 4) {
+            return floor;
+        }
+        double lower = gaps[gaps.length / 4];
+        double upper = gaps[(3 * gaps.length) / 4];
+        return Math.max(floor, upper + 1.5 * (upper - lower));
     }
 
     /** A run of text with the time it starts at, and whether a tag said so. */

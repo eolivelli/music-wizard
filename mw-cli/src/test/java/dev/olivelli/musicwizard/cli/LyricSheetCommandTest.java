@@ -221,6 +221,23 @@ class LyricSheetCommandTest {
     }
 
     @Test
+    @DisplayName("a corrupt score does not cost the analysis that would replace it")
+    void corruptScoreDoesNotFailTheRun() throws IOException {
+        Path root = analysed(LRC);
+        Files.writeString(root.resolve("score/score.json"), "{ this is not json");
+
+        // Unguarded, reading the previous score aborts analyze after the DSP has
+        // run and before the new score is written -- leaving the bad file in
+        // place and the workspace unrecoverable, since render fails the same way
+        // and analyze is the only command that would overwrite it.
+        CliRunner.Result again = CliRunner.run("analyze", root.toString(), "--tempo", "100");
+
+        assertThat(again.exitCode()).as(again.all()).isZero();
+        assertThat(again.all()).contains("could not be read");
+        assertThat(Workspace.open(root).readScore()).isPresent();
+    }
+
+    @Test
     @DisplayName("the --parts help names lyrics as something that can be produced")
     void helpNamesTheLyricsPart() {
         CliRunner.Result help = CliRunner.run("render", "--help");

@@ -217,7 +217,28 @@ class LyricSheetTest {
     }
 
     @Test
-    @DisplayName("no row runs wider than the page, over words or without them")
+    @DisplayName("a chord over a long line keeps its column rather than wrapping")
+    void aWideLineKeepsItsAlignment() {
+        // A lyric line wider than the page is ordinary, and the line itself is
+        // not wrapped. Wrapping the chord row would move a symbol standing over
+        // a word near the end onto a fresh row, where it reads as the chord on
+        // the line's first word -- an over-wide row is the lesser failure.
+        String words = "Iiiiiiiiiiiiiiiiiiiiiiii haaaaaaaaaaaaaaaaaaaaaaave "
+                + "beeeeeeeeeeeeeeeeeeeeeeen reeeeeeeeeeeeeeeeeeeading";
+        Score score = song(30, NoteLetter.C, 0.0, NoteLetter.F, 3.0)
+                .withLyrics(lrc("[00:00.00]<00:00.00>" + words.split(" ")[0]
+                        + " <00:01.00>" + words.split(" ")[1]
+                        + " <00:02.00>" + words.split(" ")[2]
+                        + " <00:03.00>" + words.split(" ")[3] + "\n", 8.0));
+
+        List<String> body = body(LyricSheet.toText(score));
+
+        assertThat(body.get(1)).isEqualTo(words);
+        assertThat(body.get(0).indexOf("F")).isEqualTo(words.lastIndexOf(' ') + 1);
+    }
+
+    @Test
+    @DisplayName("symbols pushed past the end of the words wrap instead of running off")
     void everyRowIsBounded() {
         // Forty changes over four letters. The words below do not bound the row:
         // a line can hold more changes than it has letters, and pushing colliding
@@ -233,6 +254,8 @@ class LyricSheetTest {
 
         String sheet = LyricSheet.toText(score);
 
+        // Four letters below, forty changes above: the words cannot bound the
+        // row, so everything past them wraps.
         assertThat(sheet.lines()).allSatisfy(line ->
                 assertThat(line.length()).isLessThanOrEqualTo(75));
         assertThat(sheet).contains("word");

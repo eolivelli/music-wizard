@@ -275,13 +275,41 @@ final class AnalyzeCommand implements Callable<Integer> {
      * cache writer is guarded against. {@link LrcLyrics#parse} is total for that
      * reason too — a lyric file must not be able to raise past this method.
      */
-    private Score withSuppliedLyrics(Workspace workspace, Score score) {
-        if (lyricsFile == null) {
+    /**
+     * The lyrics already in this workspace's score, or none.
+     *
+     * <p>Guarded, and the guard is the point. {@code readScore} raises on a
+     * {@code score.json} that is truncated, half-written or not valid UTF-8 —
+     * and unguarded here that would abort {@code analyze} after the pipeline had
+     * run, before the new score could be written, leaving the corrupt file in
+     * place and the workspace unrecoverable through the tool: {@code render}
+     * fails the same way, and the one command that would overwrite the bad file
+     * is the one that will not run.
+     *
+     * <p>That is the failure this whole path is shaped to avoid, arriving by the
+     * other door: the previous score is a decoration on an analysis that has
+     * already succeeded, exactly as a lyric file is, so it gets the same
+     * treatment. Warn, carry nothing, and let the good score overwrite the bad
+     * one.
+     */
+    private static Score carriedForward(Workspace workspace, Score score) {
+        try {
             return workspace.readScore()
                     .map(Score::lyrics)
                     .filter(existing -> !existing.isEmpty())
                     .map(score::withLyrics)
                     .orElse(score);
+        } catch (RuntimeException e) {
+            System.err.println("warning: the score already in this workspace could not be"
+                    + " read, so any lyrics it held are not carried over; it is being"
+                    + " replaced: " + e.getMessage());
+            return score;
+        }
+    }
+
+    private Score withSuppliedLyrics(Workspace workspace, Score score) {
+        if (lyricsFile == null) {
+            return carriedForward(workspace, score);
         }
         String text;
         try {

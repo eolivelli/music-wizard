@@ -67,6 +67,47 @@ class LrcLyricsTest {
         }
 
         @Test
+        @DisplayName("ordinary jitter is not an instrumental break")
+        void jitteringGapsAreLeftAlone() {
+            // Hand-timed lines jitter around four seconds. Cutting every line at
+            // the median would cut the longer half of them and grow a false
+            // break in the middle of the verse.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]one
+                    [00:03.20]two
+                    [00:08.00]three
+                    [00:11.90]four
+                    [00:17.00]five
+                    [00:21.00]six
+                    """, 200.0);
+
+            for (int i = 0; i + 1 < lyrics.lines().size(); i++) {
+                assertThat(lyrics.lines().get(i).endSeconds())
+                        .as("line %d runs to its successor", i)
+                        .isEqualTo(lyrics.lines().get(i + 1).startSeconds());
+            }
+        }
+
+        @Test
+        @DisplayName("a file with two natural line lengths keeps the longer ones")
+        void twoLineLengthsBothSurvive() {
+            // Short verse lines and held chorus lines. The median is the verse's,
+            // so a median cap would truncate every chorus line.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:01.00]v2
+                    [00:02.00]v3
+                    [00:03.00]v4
+                    [00:04.00]c1
+                    [00:12.00]c2
+                    [00:20.00]c3
+                    """, 200.0);
+
+            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(12.0);
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
         @DisplayName("the last line lasts as long as the lines before it, not to the end")
         void lastLineTakesTheTypicalLength() {
             // Five-second lines and a recording running long past them. Giving
@@ -260,10 +301,12 @@ class LrcLyricsTest {
                     [00:00.00]one
                     [00:04.00]two
                     [00:08.00]three
-                    [01:08.00]after the solo
+                    [00:12.00]four
+                    [00:16.00]five
+                    [01:16.00]after the solo
                     """, 200.0);
 
-            assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(12.0);
+            assertThat(lyrics.lines().get(4).endSeconds()).isEqualTo(20.0);
             // An ordinary line is still bounded by its successor.
             assertThat(lyrics.lines().get(0).endSeconds()).isEqualTo(4.0);
         }
