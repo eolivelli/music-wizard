@@ -2,9 +2,10 @@
 
 ## Licensing policy
 
-The project is Apache-2.0. Dependencies are constrained accordingly, and the
-rule is enforced mechanically by the `maven-enforcer-plugin` rather than by
-convention:
+The project is Apache-2.0 and its dependencies are constrained accordingly. The
+table below is the policy; keeping to it is a matter of reading, because what the
+build enforces is narrower than what the table says (see the enforcer bullet
+below, and #336):
 
 | Licence | Allowed? |
 |---|---|
@@ -24,7 +25,8 @@ Some consequences worth knowing before you reach for the obvious thing:
   weights, and the MedleyDB, MAESTRO, MusicNet and Isophonics corpora are all
   CC BY-NC-SA and cannot be used or vendored. Clean alternatives exist for every
   one: Spleeter (MIT for the code *and* the pretrained models, which Deezer's
-  own paper states and the repository's README does not), CREPE ONNX (MIT),
+  own paper states — `10.21105/joss.02154` — and the repository's README does
+  not), CREPE ONNX (MIT),
   basic-pitch (Apache-2.0), and the OpenScore Lieder corpus (CC0).
 - **Code and weights carry separate licences, and only the author's word settles
   the second.** Demucs is the example to remember: MIT code, and weights the

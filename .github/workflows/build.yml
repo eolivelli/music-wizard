@@ -43,8 +43,10 @@ jobs:
       - name: Run integration tests
         run: mvn -B --no-transfer-progress verify -Pintegration
 
-  # Guards the licensing policy: the enforcer bans GPL/AGPL artifacts, and this
-  # makes a violation fail the build rather than being noticed at release time.
+  # Runs the enforcer, which denies the artifacts named in the root pom. It reads
+  # no licence metadata, so this catches a coordinate someone has already ruled
+  # out and not a GPL artifact nobody has listed; CONTRIBUTING.md says what the
+  # policy is and #336 asks whether to make it mechanical.
   licensing:
     runs-on: ubuntu-latest
     steps:
