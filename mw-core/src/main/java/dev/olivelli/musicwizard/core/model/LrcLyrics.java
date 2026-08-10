@@ -307,21 +307,43 @@ public final class LrcLyrics {
         return spaced[(count - 1) / 2];
     }
 
+    /** The nearest gap before this one that measures a line, or -1. */
+    private static int measuredBefore(double[] gaps, int index) {
+        for (int i = index - 1; i >= 0; i--) {
+            if (measures(gaps[i])) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** The nearest gap after this one that measures a line, or -1. */
+    private static int measuredAfter(double[] gaps, int index) {
+        for (int i = index + 1; i < gaps.length; i++) {
+            if (measures(gaps[i])) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     /**
      * Whether a gap says anything about how long a line lasts.
      *
      * <p>A zero-length one does not: two timestamps on the same moment are one
-     * moment written twice, which is how an LRC repeats a chorus without copying
-     * it out, and they measure no line at all.
+     * moment written twice — a second voice, a two-line display, a duplicated
+     * tag — and they measure no line. (Not a repeated chorus, which an LRC writes
+     * as several leading tags on one source line and which yields a gap the
+     * length of the chorus.)
      *
-     * <p>Named once because both statistics over these gaps have to agree on it,
-     * and for a while they did not. {@link #lineLength} filtered zero gaps and
-     * {@link #typicalLine} did not, so on a file with several lines to a moment
-     * the median came out zero, fell back to the nominal length, and made every
-     * real gap in the file exceed three of those — every line an instrumental
-     * break, and every line then cut to the nominal length in a file that plainly
-     * stated its spacing. A guard in one of two readers of the same value is this
-     * project's most repeated defect.
+     * <p>Named rather than written out, because every reading of these gaps has
+     * to agree on it: the scale the threshold is measured against, the length a
+     * cut line is given, and which gaps count as a neighbour when a run of long
+     * ones is told from a lone one.
+     *
+     * <p>Exact, and only exact. Two timestamps a hundredth of a second apart say
+     * as little about a line as two on the same moment, and this admits them;
+     * #339 is whether that wants a tolerance and what it would cost.
      */
     private static boolean measures(double gap) {
         return gap > 0;
@@ -382,8 +404,15 @@ public final class LrcLyrics {
         }
         boolean[] isBreak = new boolean[gaps.length];
         for (int i = 0; i < gaps.length; i++) {
-            boolean neighbourIsLong = (i > 0 && longGap[i - 1])
-                    || (i + 1 < gaps.length && longGap[i + 1]);
+            // The neighbours are the nearest gaps that measure a line, not the
+            // adjacent array entries. A zero-length gap is one moment written
+            // twice: it is never long, so counting it as a neighbour puts a
+            // short one between two long ones and breaks a run into isolated
+            // gaps -- which is the arrangement this test exists to tell apart.
+            int before = measuredBefore(gaps, i);
+            int after = measuredAfter(gaps, i);
+            boolean neighbourIsLong = (before >= 0 && longGap[before])
+                    || (after >= 0 && longGap[after]);
             isBreak[i] = longGap[i] && !neighbourIsLong;
         }
         return isBreak;

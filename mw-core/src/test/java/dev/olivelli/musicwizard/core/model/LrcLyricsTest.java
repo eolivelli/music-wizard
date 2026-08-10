@@ -141,11 +141,8 @@ class LrcLyricsTest {
         @Test
         @DisplayName("several lines on one moment do not make every gap a break (#324)")
         void duplicateTimestampsDoNotTruncateEveryLine() {
-            // What a repeated chorus writes. Counting the zero-length gaps as
-            // lines made the median zero, which fell back to the nominal length
-            // and put every real gap in the file over the break threshold -- so
-            // every line was cut to the nominal length in a file that states its
-            // spacing plainly.
+            // Two source lines on the same instant -- a second voice, a
+            // two-line display -- so most of this file's gaps are zero.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]a1
                     [00:00.00]a2
@@ -162,6 +159,32 @@ class LrcLyricsTest {
             assertThat(lyrics.lines().get(3).endSeconds()).isEqualTo(40.0);
             // And the closing line lasts as long as an ordinary one here.
             assertThat(lyrics.lines().get(6).endSeconds()).isEqualTo(80.0);
+        }
+
+        @Test
+        @DisplayName("a zero gap does not split a run of long ones into breaks (#324)")
+        void duplicateTimestampsDoNotBreakUpAHeldChorus() {
+            // The held-chorus fixture with each chorus line doubled at its own
+            // moment. A zero gap is never long, so counted as a neighbour it sits
+            // between the chorus's long gaps and makes each of them look isolated
+            // -- which is what the isolation test exists to tell apart, and it
+            // cut every held line back to an ordinary one.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:01.00]v2
+                    [00:02.00]v3
+                    [00:03.00]v4
+                    [00:04.00]c1
+                    [00:04.00]c1b
+                    [00:12.00]c2
+                    [00:12.00]c2b
+                    [00:20.00]c3
+                    [00:20.00]c3b
+                    """, 200.0);
+
+            // c1b is held to the next chorus line, not cut to an ordinary line.
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(12.0);
+            assertThat(lyrics.lines().get(7).endSeconds()).isEqualTo(20.0);
         }
 
         @Test
