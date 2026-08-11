@@ -248,6 +248,13 @@ class HyphenatorTest {
                 .as("vowel-less %d ns against sung %d ns", vowelless, sung)
                 .isLessThan(6.0);
 
+        // Both shapes are already measured for the ratio, so bounding them costs
+        // nothing to run and catches what neither of the two above can: a term
+        // that grows in both shapes alike and is milder than the cubic scan, so
+        // the guard above passes it and the ratio cancels it.
+        assertThat(Math.max(sung, vowelless) / 1_000_000)
+                .as("sung %d ns, vowel-less %d ns", sung, vowelless)
+                .isLessThan(2_000L);
     }
 
     /** Long enough that a superlinear term shows over the fixed cost per call. */
