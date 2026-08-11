@@ -220,29 +220,38 @@ class HyphenatorTest {
         }
     }
 
-    @Test
-    @DisplayName("a very long token costs time in its length, not its cube")
-    void aLongTokenIsLinear() {
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({
+        "a,     a run whose every piece is sung",
+        "bcdfg, a run with no vowel anywhere",
+    })
+    @DisplayName("a very long token costs time in its length, not its square")
+    void aLongTokenIsLinear(String unit, String shape) {
         // LrcLyrics splits a line on whitespace with no length bound, so a
-        // run-on or a pasted URL reaches this. Scoring every substring made a
-        // token of a few thousand characters take seconds and look like a hang;
-        // no pattern is longer than a handful of characters, so no longer
-        // substring can match one and the scan stops there.
+        // run-on reaches this. Two separate scans were superlinear: scoring
+        // every substring, and asking whether the accumulation is sung once per
+        // piece. The second shows only on a run with no vowel, which is why
+        // both shapes are measured here.
         Hyphenator hyphenator = Hyphenator.forLanguage("it").orElseThrow();
-        long shortRun = timeOf(hyphenator, 1_000);
-        long longRun = timeOf(hyphenator, 8_000);
+        long small = nanosFor(hyphenator, unit, 2_000);
+        long large = nanosFor(hyphenator, unit, 16_000);
 
-        // Eight times the input, well under eight times the work squared: the
-        // bound is what makes that true, and a cubic scan misses it by orders.
-        assertThat(longRun).isLessThan(Math.max(200, shortRun * 64));
+        // Eight times the input. Linear lands near eight, quadratic near
+        // sixty-four and cubic near five hundred, so a bound of twenty-four
+        // separates them with room for a loaded machine. Nanoseconds, because
+        // milliseconds truncate the small measurement to nothing and leave the
+        // ratio meaningless.
+        assertThat(large).as("%s: %d ns against %d ns", shape, large, small)
+                .isLessThan(Math.max(small * 24, 50_000_000L));
     }
 
-    private static long timeOf(Hyphenator hyphenator, int length) {
-        String token = "a".repeat(length);
+    /** Nanoseconds for one split of a token of this length, warmed up first. */
+    private static long nanosFor(Hyphenator hyphenator, String unit, int length) {
+        String token = unit.repeat(length / unit.length());
         hyphenator.syllables(token);
         long start = System.nanoTime();
         hyphenator.syllables(token);
-        return (System.nanoTime() - start) / 1_000_000;
+        return System.nanoTime() - start;
     }
 
     @Nested

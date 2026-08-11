@@ -107,11 +107,8 @@ public final class Hyphenator {
     private final Set<Character> wordCharacters;
 
     /**
-     * The longest pattern this language has, in characters.
-     *
-     * <p>Read off the loaded patterns rather than written down, for the reason
-     * {@link #wordCharacters} is: it is a property of the data, and a number
-     * here would be a second statement of it to keep in step.
+     * The longest pattern this language has, in characters, read off the loaded
+     * patterns for the reason {@link #wordCharacters} is.
      */
     private final int longestPattern;
 
@@ -406,11 +403,22 @@ public final class Hyphenator {
         }
         List<String> sung = new ArrayList<>(pieces.size());
         StringBuilder held = new StringBuilder();
+        // Asked of each piece as it arrives rather than of the accumulation, so
+        // a run whose pieces never carry a vowel is not rescanned from the top
+        // every time. The answer is the same one: a vowel anywhere in what is
+        // held makes it sung, and the only position-sensitive character is the
+        // word's first letter, which is in whichever piece first has a letter.
+        boolean heldIsSung = false;
+        boolean heldHasLetter = false;
         for (String piece : pieces) {
+            heldIsSung |= hasVowel(piece, sung.isEmpty() && !heldHasLetter);
+            heldHasLetter |= firstLetter(piece) >= 0;
             held.append(piece);
-            if (hasVowel(held.toString(), sung.isEmpty())) {
+            if (heldIsSung) {
                 sung.add(held.toString());
                 held.setLength(0);
+                heldIsSung = false;
+                heldHasLetter = false;
             }
         }
         if (held.length() == 0) {
@@ -465,10 +473,10 @@ public final class Hyphenator {
         byte[] scores = new byte[bounded.length() + 1];
         for (int from = 0; from < bounded.length(); from++) {
             // No substring longer than the longest pattern can match one, so
-            // stopping there is exact rather than an approximation -- and it is
-            // what makes this linear in the run's length instead of cubic. A
-            // lyric file with one very long token, a run-on or a pasted URL,
-            // otherwise makes the run appear to hang (#331).
+            // stopping there is exact rather than an approximation, and it is
+            // what takes this from cubic in the run's length to linear. One
+            // very long token in a lyric line -- a run-on -- otherwise makes the
+            // run appear to hang (#331).
             int reach = Math.min(bounded.length(), from + longestPattern);
             for (int to = from + 1; to <= reach; to++) {
                 byte[] pattern = patterns.get(bounded.substring(from, to));
