@@ -72,14 +72,16 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a syllable of one letter is allowed at the front but not at the end")
-        void theTwoMinimaDiffer() {
+        @DisplayName("a syllable of one letter is allowed at the front")
+        void theLeftMinimumIsOne() {
             // A vowel opens a syllable alone, so the typesetting minimum of two
             // on the left costs a note: it forbids a-more, and amore is sung on
-            // three. A consonant does not close one alone, so the right minimum
-            // stays at two and golf is one syllable rather than gol-f.
+            // three.
             assertThat(split("it", "amore")).isEqualTo("a-mo-re");
             assertThat(split("it", "ora")).isEqualTo("o-ra");
+            // The right minimum decides nothing here any more: golf is one
+            // syllable because gol-f has no vowel in its second piece, which is
+            // what joins it back whatever that constant says.
             assertThat(split("it", "golf")).isEqualTo("golf");
         }
 
@@ -115,6 +117,23 @@ class HyphenatorTest {
         }
 
         @Test
+        @DisplayName("a word-initial y is the consonant here too, because it arrives in loanwords")
+        void openingYIsTheConsonantInBothLanguages() {
+            // Italian lyrics borrow English words freely, and word-initial y
+            // reaches Italian only that way -- yogurt, yacht -- where it is the
+            // consonant. Exempting Italian strands a bare y on its own note
+            // across this whole family.
+            assertThat(split("it", "you")).isEqualTo("you");
+            assertThat(split("it", "young")).isEqualTo("young");
+            assertThat(split("it", "yield")).isEqualTo("yield");
+            // What it costs, from the same population rather than a word that
+            // population does not contain: these open on the vowel and lose a
+            // note. Named so the trade is visible, not hidden.
+            assertThat(split("it", "yttrium")).isEqualTo("yttrium");
+            assertThat(split("it", "Yggdrasil")).isEqualTo("Yggdra-sil");
+        }
+
+        @Test
         @DisplayName("a diphthong is one syllable")
         void diphthongs() {
             assertThat(split("it", "pianura")).isEqualTo("pia-nu-ra");
@@ -139,13 +158,65 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a lone final consonant is not a syllable")
+        @DisplayName("a lone final vowel is not a syllable either, and only the minimum says so")
         void theRightMinimumIsTwo() {
-            // The left minimum of one is what gives "a-ban-dons" its first
-            // syllable; a right minimum of one would go on to strand the plural
-            // as "abandon-s", which no one sings.
+            // What this constant still decides. A stranded final consonant is
+            // joined back by the vowel rule below whatever it is set to, so
+            // "abandon-s" is no longer its doing; a stranded final vowel has a
+            // vowel and survives that rule, so acaci-a is the constant's alone.
+            assertThat(split("en", "acacia")).isEqualTo("a-ca-cia");
+            assertThat(split("en", "academia")).isEqualTo("a-cad-e-mia");
             assertThat(split("en", "abandons")).isEqualTo("a-ban-dons");
             assertThat(split("en", "abbots")).doesNotEndWith("-s");
+        }
+
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource({
+            "sing, sing",
+            "never, nev-er",
+            "Bismarck, Bis-marck",
+            "Amsterdam, Am-ster-dam",
+            "Americas, Amer-i-cas",
+        })
+        @DisplayName("a piece with no vowel is joined to the one it is sung with")
+        void vowellessPiecesAreJoined(String word, String expected) {
+            // The patterns break where a line may end, and a line may end after a
+            // letter that is not a syllable. Left alone these are s-ing, n-ev-er,
+            // Bis-mar-ck, Am-s-ter-dam and Amer-i-c-as.
+            assertThat(split("en", word)).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("neither minimum moves to get them, because both would cost a note")
+        void theMinimaStayWhereTheyAre() {
+            // The left minimum of two that typesetting wants would take "s-ing"
+            // and these together; the right minimum of three that TeX's own
+            // English asks for would take "Amer-i-c-as" and these together.
+            assertThat(split("en", "along")).isEqualTo("a-long");
+            assertThat(split("en", "happy")).isEqualTo("hap-py");
+        }
+
+        @Test
+        @DisplayName("y is a vowel, except opening a word, where it is the consonant")
+        void yIsAVowelUnlessItOpensTheWord() {
+            // Sung on two notes, and their only vowel is the y -- so a flat rule
+            // that y is not a vowel joins each of them into one note.
+            assertThat(marked("en", "sky-high")).isEqualTo("sky-/high");
+            assertThat(split("en", "lonely")).isEqualTo("lone-ly");
+            // Sung on one, and the y opens it.
+            assertThat(split("en", "y'all")).isEqualTo("y'all");
+            assertThat(split("en", "York")).isEqualTo("York");
+        }
+
+        @Test
+        @DisplayName("the word is what the y rule is anchored to, not the piece")
+        void aSyllablesOwnYIsAVowelWhereverItFalls() {
+            // The patterns cut ynx and ysm as syllables in their own right, and
+            // their y is the vowel. Anchored on the piece rather than the word,
+            // each is called consonant-only and joined away: lar-ynx loses a note.
+            assertThat(split("en", "larynx")).isEqualTo("lar-ynx");
+            assertThat(split("en", "paroxysm")).isEqualTo("parox-ysm");
+            assertThat(split("en", "dialysis")).isEqualTo("dial-y-sis");
         }
     }
 

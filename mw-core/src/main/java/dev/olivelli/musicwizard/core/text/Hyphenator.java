@@ -79,11 +79,14 @@ public final class Hyphenator {
     /**
      * How many letters must lie after the last break.
      *
-     * <p>Two, not one, and it bounds what a break may carry onto the next line.
-     * A final consonant on its own is not a syllable in either language — one
-     * gives <i>abandon-s</i> and <i>abbot-s</i> in English, and in Italian a
-     * handful of foreign words like <i>gol-f</i>. The asymmetry is deliberate: a
-     * vowel can open a syllable alone and a consonant cannot close one alone.
+     * <p>Two, not one, and what it still decides is a stranded final <b>vowel</b>:
+     * <i>acaci-a</i>, <i>Abyssini-a</i>. A stranded final consonant was its
+     * original reason and is no longer its doing — {@link #joinUnsung} rejoins
+     * <i>abandon-s</i> and <i>gol-f</i> whatever this is set to, having a vowel
+     * to test that a letter count does not.
+     *
+     * <p>So the asymmetry with {@link #LEFT_MINIMUM} now rests on the narrower
+     * fact that a vowel opens a syllable alone more readily than it closes one.
      */
     private static final int RIGHT_MINIMUM = 2;
 
@@ -271,16 +274,15 @@ public final class Hyphenator {
      * something to join, and otherwise held over for the run that follows, so
      * {@code y'all} is one note and not two.
      *
-     * <p>{@code y} is not counted as a vowel, which is what makes {@code y'all}
-     * come out right and what leaves {@code by-pass} on one note. English needs a
-     * rule finer than a character set to have both; that is #332.
+     * <p>The same rule runs over the pieces of a single run — see
+     * {@link #joinUnsung}, which is where {@code s-ing} is put back together.
      */
     private static void append(List<Syllable> pieces, StringBuilder pending,
                                List<String> syllables) {
         String between = pending.toString();
         pending.setLength(0);
         boolean joinsBack = !pieces.isEmpty()
-                && (syllables.isEmpty() || (syllables.size() == 1 && !hasVowel(syllables.get(0))));
+                && (syllables.isEmpty() || (syllables.size() == 1 && !hasVowel(syllables.get(0), true)));
         if (joinsBack) {
             int last = pieces.size() - 1;
             String tail = syllables.isEmpty() ? "" : syllables.get(0);
@@ -289,7 +291,7 @@ public final class Hyphenator {
             return;
         }
         if (syllables.isEmpty() || (pieces.isEmpty() && syllables.size() == 1
-                && !hasVowel(syllables.get(0)))) {
+                && !hasVowel(syllables.get(0), true))) {
             // Nothing to join backwards to: hold it for the run after this one.
             pending.append(between).append(syllables.isEmpty() ? "" : syllables.get(0));
             return;
@@ -315,15 +317,98 @@ public final class Hyphenator {
         }
     }
 
-    /** Whether a run holds a sound a syllable can be built on. */
-    private static boolean hasVowel(String run) {
-        for (int i = 0; i < run.length(); i++) {
-            char c = Character.toLowerCase(run.charAt(i));
+    /**
+     * Whether this text holds a sound a syllable can be built on.
+     *
+     * <p><b>{@code y} counts, except as a word's first letter.</b> The letter
+     * spells two sounds and where it stands is what tells them apart: opening a
+     * word it is the consonant, so {@code y'all} and {@code York} are sung on one
+     * note, and anywhere else it is the vowel, so {@code lone-ly}, {@code by-pass}
+     * and {@code sky-high} are sung on two. A rule that ignores the position
+     * loses one group or the other.
+     *
+     * <p>Both languages, because word-initial {@code y} reaches Italian only in
+     * loanwords — <i>yogurt</i>, <i>yoga</i>, <i>yacht</i> — where it is the
+     * consonant, and Italian lyrics borrow English words freely. Exempting
+     * Italian strands a bare {@code y} on a note of its own across the whole
+     * <i>you</i>, <i>your</i>, <i>young</i>, <i>yield</i>, <i>Yiddish</i> family,
+     * and buys back the handful of words below that open on the vowel.
+     *
+     * <p><b>The word, not the piece.</b> A piece the patterns cut is a syllable,
+     * and a syllable's own {@code y} is the vowel wherever the syllable falls:
+     * anchoring on the piece calls the {@code y} in {@code lar-ynx} a consonant
+     * and joins the note away.
+     *
+     * <p>Position is not the whole answer and does not claim to be: a few words
+     * do open on the vowel — <i>yttrium</i>, <i>Yggdrasil</i>, <i>Ypsilanti</i> —
+     * and the rule costs each of them one note against what the patterns alone
+     * would give. Telling those from {@code York} wants a pronunciation
+     * dictionary, which is #332's own conclusion.
+     *
+     * <p>Any letter above U+007F counts as a vowel. Both languages are written in
+     * the Latin alphabet, so what that reaches is an accented letter, and Italian
+     * accents vowels.
+     */
+    private static boolean hasVowel(String text, boolean atWordStart) {
+        int consonantY = atWordStart ? firstLetter(text) : -1;
+        for (int i = 0; i < text.length(); i++) {
+            char c = Character.toLowerCase(text.charAt(i));
             if ("aeiou".indexOf(c) >= 0 || (Character.isLetter(c) && c > 127)) {
+                return true;
+            }
+            if (c == 'y' && i != consonantY) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Joins any piece with no vowel to the one it is sung with.
+     *
+     * <p>The patterns score a break by where a typesetter may end a line, and a
+     * line may end after a letter that is not a syllable: English gives
+     * {@code s-ing}, {@code n-ev-er}, {@code Bis-mar-ck} and {@code Am-s-ter-dam}.
+     * The rule that fixes them is the one {@link #append} already applies between
+     * runs — a piece with no vowel is not a syllable — and applying it here is why
+     * neither minimum has to move. Raising {@link #LEFT_MINIMUM} to the two
+     * typesetting wants would take {@code s-ing} and {@code a-long} together, and
+     * the right minimum of three that TeX's English asks for would take
+     * {@code Amer-i-c-as} and {@code hap-py} together.
+     *
+     * <p>Forwards, because a consonant with no vowel of its own is the head of the
+     * syllable after it: {@code Am-ster-dam}, not {@code Ams-ter-dam}. A last
+     * piece has nothing to head and joins the one before.
+     *
+     * <p>The test is on <b>what has been held so far</b> rather than on the piece
+     * alone, which is not the same answer and is the better one. The patterns cut
+     * {@code gynecology} into {@code g} and {@code y} before {@code ne}: asked
+     * separately neither is a vowel, and the word loses a note; asked together
+     * {@code gy} is one, because the {@code y} is no longer the word's first
+     * letter.
+     */
+    private static List<String> joinUnsung(List<String> pieces) {
+        if (pieces.size() < 2) {
+            return pieces;
+        }
+        List<String> sung = new ArrayList<>(pieces.size());
+        StringBuilder held = new StringBuilder();
+        for (String piece : pieces) {
+            held.append(piece);
+            if (hasVowel(held.toString(), sung.isEmpty())) {
+                sung.add(held.toString());
+                held.setLength(0);
+            }
+        }
+        if (held.length() == 0) {
+            return sung;
+        }
+        if (sung.isEmpty()) {
+            return List.of(held.toString());
+        }
+        int last = sung.size() - 1;
+        sung.set(last, sung.get(last) + held);
+        return sung;
     }
 
     /** Where the run's letters begin, or -1 when it has none. */
@@ -391,7 +476,7 @@ public final class Hyphenator {
             }
         }
         syllables.add(run.substring(start));
-        return syllables;
+        return joinUnsung(syllables);
     }
 
     /** How many syllables this word is sung on. */
