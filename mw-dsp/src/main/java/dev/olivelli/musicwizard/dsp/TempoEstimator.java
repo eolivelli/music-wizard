@@ -229,9 +229,9 @@ public final class TempoEstimator {
         double[] searchCorrelation =
                 autocorrelate(compressAccents(envelope.strength()), maxLag + 1);
 
-        // Search over tempo, not over integer lag. A beat period is almost never
-        // a whole number of frames -- 120 BPM at this frame rate is 21.53 -- so
-        // sampling only integer lags misaligns the fundamental while landing
+        // Search over tempo, not over integer lag. A beat period is almost
+        // never a whole number of frames, so sampling only integer lags
+        // misaligns the fundamental while landing
         // squarely on its double, which manufactures exactly the half-tempo
         // error the perceptual prior is meant to resolve.
         double bestScore = Double.NEGATIVE_INFINITY;
@@ -475,13 +475,6 @@ public final class TempoEstimator {
         return Math.exp(-0.5 * normalised * normalised);
     }
 
-    /**
-     * Unnormalised autocorrelation up to a maximum lag.
-     *
-     * <p>Direct rather than by FFT: at 43 frames per second a lag of 1.5 seconds
-     * is only about 65 samples, so the quadratic cost is tiny and the code stays
-     * obvious.
-     */
     /** Linear interpolation of the correlation at a fractional lag. */
     private static double interpolate(double[] correlation, double lag) {
         int low = (int) Math.floor(lag);
@@ -493,6 +486,13 @@ public final class TempoEstimator {
         return correlation[low] + (correlation[high] - correlation[low]) * fraction;
     }
 
+    /**
+     * Unnormalised autocorrelation up to a maximum lag.
+     *
+     * <p>Direct rather than by FFT: the longest lag searched is one beat at
+     * {@link #MIN_TEMPO}, a second and a half of envelope, so the quadratic
+     * cost is small and the code stays obvious.
+     */
     private static double[] autocorrelate(double[] signal, int maxLag) {
         double[] out = new double[maxLag + 1];
         for (int lag = 0; lag <= maxLag; lag++) {
