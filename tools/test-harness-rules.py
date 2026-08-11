@@ -410,6 +410,30 @@ class Keying(unittest.TestCase):
         the former."""
         self.assertNotIn(".mp3:", lyrics.PREAMBLE)
 
+    MARKER = ": not present (local-only"
+
+    def test_every_harness_marks_an_absent_file_the_same_way(self):
+        """premerge.sh turns a row carrying this marker into a SKIP. All three
+        harnesses must produce it through their missing_line, or a fresh
+        worktree fails the gate for every branch again (#365). The reader is
+        held to the same literal as the writers: if premerge.sh's copy of the
+        marker drifts, this fails before the gate does."""
+        self.assertIn(self.MARKER,
+                      (Path(__file__).resolve().parent / "premerge.sh").read_text())
+        for line in (samples.missing_line("x.mp3"),
+                     samples.missing_line("key x.mp3"),
+                     chart.missing_line("x.mp3"),
+                     lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
+            self.assertIn(self.MARKER, line)
+            self.assertIn(".mp3:", line)
+
+    def test_a_measured_row_never_carries_the_skip_marker(self):
+        """The converse: a row premerge compares must not be skippable. The
+        scored row's fields are numeric or fixed-vocabulary, so the marker
+        cannot arise, and this holds it that way."""
+        self.assertNotIn(self.MARKER,
+                         lyrics.score_line("sere-doltremare.mp3", *self.ARGS))
+
 
 if __name__ == "__main__":
     unittest.main()

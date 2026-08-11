@@ -151,6 +151,13 @@ SUFFIX_QUALITY = {
 }
 
 
+def missing_line(label: str) -> str:
+    """A baselined name this machine cannot measure; premerge.sh skips rows
+    carrying this line's marker, and test-harness-rules.py holds every writer
+    of it, and premerge.sh itself, to one literal."""
+    return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
+
+
 def parse_chord(symbol: str) -> tuple[int, str]:
     """Lead-sheet symbol -> (pitch class, ChordQuality name)."""
     pc = LETTER_SEMITONE[symbol[0]]
@@ -330,7 +337,7 @@ def main() -> None:
         else:
             score(REPO / "samples" / name, doc, truth)
     for name in missing:
-        print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
+        print(missing_line(name))
 
     print("keys, against the expected key for each file:")
     missing = []
@@ -341,7 +348,7 @@ def main() -> None:
         else:
             score_key(REPO / "samples" / name, doc, want)
     for name in missing:
-        print(f"  key {name}: not present (local-only; see samples/list.txt to fetch)")
+        print(missing_line(f"key {name}"))
 
 
 if __name__ == "__main__":
