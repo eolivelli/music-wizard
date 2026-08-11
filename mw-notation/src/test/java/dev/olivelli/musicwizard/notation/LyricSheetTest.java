@@ -90,6 +90,56 @@ class LyricSheetTest {
     }
 
     @Test
+    @DisplayName("a chord stands over its word when the line is CJK")
+    void chordSitsOverAWideWord() {
+        // Each of these is one Java char and two terminal cells. Counted by
+        // String.length() the second word begins at column 2, and the chord
+        // lands halfway through the first word instead of over the second.
+        Score score = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
+                .withLyrics(lrc("[00:00.00]<00:00.00>\u6708\u5149 <00:04.00>\u5915\u967d\n", 8.0));
+
+        List<String> body = body(LyricSheet.toText(score));
+
+        assertThat(body.get(1)).isEqualTo("\u6708\u5149 \u5915\u967d");
+        assertThat(body.get(0)).isEqualTo("C    G");
+        assertThat(DisplayWidth.of(body.get(1).substring(0, body.get(1).indexOf('\u5915'))))
+                .isEqualTo(body.get(0).indexOf('G'));
+    }
+
+    @Test
+    @DisplayName("a chord stands over its word when an earlier word is astral")
+    void chordSitsOverAWordAfterAnAstralOne() {
+        // The G clef is two Java chars and one cell, so length() over-counts
+        // here where it under-counts on CJK -- the same defect with the sign
+        // reversed, which is why one measure has to serve both.
+        //
+        // Not an emoji, though #320 says emoji: a rocket is two chars and two
+        // cells and comes out right by coincidence, so it cannot pin this.
+        Score score = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
+                .withLyrics(lrc("[00:00.00]<00:00.00>\uD834\uDD1E <00:04.00>up\n", 8.0));
+
+        List<String> body = body(LyricSheet.toText(score));
+
+        assertThat(body.get(1)).isEqualTo("\uD834\uDD1E up");
+        assertThat(body.get(0)).isEqualTo("C G");
+    }
+
+    @Test
+    @DisplayName("a combining mark rides its letter and takes no column")
+    void combiningMarksTakeNoColumn() {
+        // e + combining acute is two code points and one cell, and must line up
+        // exactly as the composed e-acute does. Otherwise the same word moves
+        // the chords depending on which normal form the LRC was saved in.
+        Score decomposed = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
+                .withLyrics(lrc("[00:00.00]<00:00.00>caffe\u0301 <00:04.00>nero\n", 8.0));
+        Score composed = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
+                .withLyrics(lrc("[00:00.00]<00:00.00>caff\u00e8 <00:04.00>nero\n", 8.0));
+
+        assertThat(body(LyricSheet.toText(decomposed)).get(0))
+                .isEqualTo(body(LyricSheet.toText(composed)).get(0));
+    }
+
+    @Test
     @DisplayName("a chord arriving before the first word sits at the left margin")
     void chordBeforeTheFirstWord() {
         Score score = song(20, NoteLetter.C, 5.0)
