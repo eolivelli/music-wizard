@@ -2,9 +2,10 @@
 
 ## Licensing policy
 
-The project is Apache-2.0. Dependencies are constrained accordingly, and the
-rule is enforced mechanically by the `maven-enforcer-plugin` rather than by
-convention:
+The project is Apache-2.0 and its dependencies are constrained accordingly. The
+table below is the policy; keeping to it is a matter of reading, because what the
+build enforces is narrower than what the table says (see the enforcer bullet
+below, and #336):
 
 | Licence | Allowed? |
 |---|---|
@@ -13,7 +14,7 @@ convention:
 | GPL, AGPL | **No** |
 | CC BY-NC-SA (models and datasets) | **No** |
 
-Two consequences worth knowing before you reach for the obvious thing:
+Some consequences worth knowing before you reach for the obvious thing:
 
 - **TarsosDSP is not usable here.** It is the natural Java DSP library for this
   domain, but it is GPL-3.0, and it is not on Maven Central either — the
@@ -23,8 +24,24 @@ Two consequences worth knowing before you reach for the obvious thing:
   models* (the code is BSD, the weights are not), the Open-Unmix `umxl`
   weights, and the MedleyDB, MAESTRO, MusicNet and Isophonics corpora are all
   CC BY-NC-SA and cannot be used or vendored. Clean alternatives exist for every
-  one: Demucs ONNX (MIT), CREPE ONNX (MIT), basic-pitch (Apache-2.0), and the
-  OpenScore Lieder corpus (CC0).
+  one: Spleeter (MIT for the code *and* the pretrained models, which Deezer's own
+  paper states — `10.21105/joss.02154` — and the repository's README does not),
+  CREPE ONNX (MIT), basic-pitch (Apache-2.0), and the OpenScore Lieder corpus
+  (CC0).
+- **Code and weights carry separate licences, and only the author's word settles
+  the second.** Demucs is the example to remember: MIT code, and weights the
+  author describes as "provided only for scientific purposes"
+  (`facebookresearch/demucs#327`). Every MIT-tagged Demucs export on a model hub
+  is someone relabelling weights they did not license. A repository's sidebar
+  describes its code; read the weights from the originating author's model card
+  or Zenodo record, and record which checkpoint you read.
+- **The enforcer is a denylist, not a licence check.** It matches the
+  coordinates named in the root pom and reads no `<licenses>` element, so a GPL
+  artifact nobody has listed enters the graph unremarked — and one that arrives
+  outside Maven altogether, vendored in a submodule or pulled in by CMake, is
+  not on a route it looks at. Neither gap is covered by adding a note: the first
+  wants the coordinate added when it is found, the second a check of its own
+  that fails the build.
 - **Audio under `samples/` is a licensing decision too, and the same one.** A
   recording is committed only if it is our own or permissively licensed; what
   the corpus actually holds is CC BY, so `NOTICE` carries the attribution that

@@ -337,6 +337,6 @@ domain model was settled first.
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-No model weights are shipped; they are downloaded on first use and each keeps
-its own licence. Models and datasets under non-commercial terms are
-deliberately avoided — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
+No model weights are shipped. See NOTICE for the models chosen so far and their
+licences. Models and datasets under non-commercial terms are deliberately
+avoided — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.

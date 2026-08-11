@@ -30,16 +30,21 @@ are deliberately excluded (see CONTRIBUTING.md).
 Machine learning models
 --------------------------------------------------------------------------------
 
-No model weights are distributed with this software. Models are downloaded on
-first use into a local cache directory, and each remains under its own license:
+No model weights are distributed with this software. Nothing downloads one yet
+either; when a stage that does lands, the models will be fetched on first use
+into a local cache directory and each will remain under its own license. The list
+records what has been chosen so far:
 
-  htdemucs (source separation)     MIT     huggingface.co/StemSplitio/htdemucs-onnx
   onnxcrepe (pitch tracking)       MIT     github.com/yqzhishen/onnxcrepe
   basic-pitch (note transcription) Apache-2.0  github.com/spotify/basic-pitch
   whisper.cpp GGML models          MIT     huggingface.co/ggerganov/whisper.cpp
 
 Models under non-commercial terms (CC BY-NC-SA), including the madmom
 pretrained models and the Open-Unmix "umxl" weights, are deliberately NOT used.
+Nor are models whose weights carry terms narrower than their code. Demucs is the
+example: its code is MIT and its author states that the weights are provided for
+scientific purposes only, whatever licence a third-party re-upload is tagged
+with.
 
 --------------------------------------------------------------------------------
 Sample recordings

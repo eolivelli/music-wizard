@@ -161,21 +161,29 @@ onsets a third of a beat apart and three a half beat apart are both legal on the
 sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
 modules are purely symbolic, so this pulls no audio and no models into notation.
 
-## Licensing — enforced, not aspirational
+## Licensing
 
-Apache-2.0. The `maven-enforcer-plugin` bans GPL/AGPL artifacts outright, and CI
-has a job for it.
+Apache-2.0. The `maven-enforcer-plugin` denies a list of named artifacts, and CI
+has a job for it — a list, not a licence check, so it catches what someone has
+already thought of and nothing else.
 
 - **TarsosDSP cannot be used**, though it is the obvious Java DSP library for
   this domain. GPL-3.0, *and* not actually on Maven Central — what is there are
   stale unofficial forks. We implement the DSP on JTransforms (BSD-2).
 - **madmom's pretrained models, Open-Unmix `umxl`, and the MedleyDB / MAESTRO /
   MusicNet / Isophonics corpora are CC BY-NC-SA** and unusable here. madmom's
-  *code* is BSD; its weights are not. Clean alternatives: Demucs ONNX (MIT),
-  CREPE ONNX (MIT), basic-pitch (Apache-2.0), OpenScore Lieder (CC0).
+  *code* is BSD; its weights are not. Clean alternatives: Spleeter (MIT for the
+  code *and* the pretrained models, stated in Deezer's own paper), CREPE ONNX
+  (MIT), basic-pitch (Apache-2.0), OpenScore Lieder (CC0).
+- **Code and weights carry separate licences.** Demucs is the case to remember:
+  MIT code, weights its author says are for scientific purposes only. Read a
+  weights licence from the author, per checkpoint; `CONTRIBUTING.md` has the
+  rule.
 - LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
   never linked or redistributed, and the tool works without it.
-- No model weights ship in the repo. They download on first use.
+- No model weights ship in the repo, and nothing fetches one yet. A stage that
+  does will download on first use into a local cache; `NOTICE` lists what has
+  been chosen so far.
 
 ## Rendering
 
