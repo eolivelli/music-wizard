@@ -147,6 +147,43 @@ class HyphenatorTest {
             assertThat(split("en", "abandons")).isEqualTo("a-ban-dons");
             assertThat(split("en", "abbots")).doesNotEndWith("-s");
         }
+
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource({
+            "sing, sing",
+            "never, nev-er",
+            "Bismarck, Bis-marck",
+            "Amsterdam, Am-ster-dam",
+            "Americas, Amer-i-cas",
+        })
+        @DisplayName("a piece with no vowel is joined to the one it is sung with")
+        void vowellessPiecesAreJoined(String word, String expected) {
+            // The patterns break where a line may end, and a line may end after a
+            // letter that is not a syllable. Left alone these are s-ing, n-ev-er,
+            // Bis-mar-ck, Am-s-ter-dam and Amer-i-c-as.
+            assertThat(split("en", word)).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("neither minimum moves to get them, because both would cost a note")
+        void theMinimaStayWhereTheyAre() {
+            // The left minimum of two that typesetting wants would take "s-ing"
+            // and these together; the right minimum of three that TeX's own
+            // English asks for would take "Amer-i-c-as" and these together.
+            assertThat(split("en", "along")).isEqualTo("a-long");
+            assertThat(split("en", "happy")).isEqualTo("hap-py");
+        }
+
+        @Test
+        @DisplayName("y is a vowel, except opening a piece, where it is the consonant")
+        void yIsAVowelUnlessItOpensThePiece() {
+            // Sung on two notes, and their only vowel is the y -- so a flat rule
+            // that y is not a vowel joins each of them into one note.
+            assertThat(marked("en", "sky-high")).isEqualTo("sky-/high");
+            assertThat(split("en", "lonely")).isEqualTo("lone-ly");
+            // Sung on one, and the y opens it.
+            assertThat(split("en", "y'all")).isEqualTo("y'all");
+        }
     }
 
     @Nested

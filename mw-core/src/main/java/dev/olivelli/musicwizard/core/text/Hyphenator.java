@@ -271,9 +271,8 @@ public final class Hyphenator {
      * something to join, and otherwise held over for the run that follows, so
      * {@code y'all} is one note and not two.
      *
-     * <p>{@code y} is not counted as a vowel, which is what makes {@code y'all}
-     * come out right and what leaves {@code by-pass} on one note. English needs a
-     * rule finer than a character set to have both; that is #332.
+     * <p>The same rule runs over the pieces of a single run — see
+     * {@link #joinUnsung}, which is where {@code s-ing} is put back together.
      */
     private static void append(List<Syllable> pieces, StringBuilder pending,
                                List<String> syllables) {
@@ -315,15 +314,72 @@ public final class Hyphenator {
         }
     }
 
-    /** Whether a run holds a sound a syllable can be built on. */
+    /**
+     * Whether a piece holds a sound a syllable can be built on.
+     *
+     * <p><b>{@code y} counts, except as the piece's first letter.</b> That is the
+     * difference between the two sounds the letter spells: opening a piece it is
+     * the consonant, and {@code y'all} is sung on one note; anywhere else it is
+     * the vowel, and {@code by-pass}, {@code sky-high} and {@code lone-ly} are
+     * each sung on two. A flat rule loses one pair or the other.
+     *
+     * <p>Any letter above U+007F counts. The languages here are written in the
+     * Latin alphabet, so what is left is an accented letter — and Italian accents
+     * vowels.
+     */
     private static boolean hasVowel(String run) {
+        int opening = firstLetter(run);
         for (int i = 0; i < run.length(); i++) {
             char c = Character.toLowerCase(run.charAt(i));
             if ("aeiou".indexOf(c) >= 0 || (Character.isLetter(c) && c > 127)) {
                 return true;
             }
+            if (c == 'y' && i != opening) {
+                return true;
+            }
         }
         return false;
+    }
+
+    /**
+     * Joins any piece with no vowel to the one it is sung with.
+     *
+     * <p>The patterns score a break by where a typesetter may end a line, and a
+     * line may end after a letter that is not a syllable: English gives
+     * {@code s-ing}, {@code n-ev-er}, {@code Bis-mar-ck} and {@code Am-s-ter-dam}.
+     * The rule that fixes them is the one {@link #append} already applies between
+     * runs — a piece with no vowel is not a syllable — and applying it here is why
+     * neither minimum has to move. Raising {@link #LEFT_MINIMUM} to the two
+     * typesetting wants would take {@code s-ing} and {@code a-long} together, and
+     * the right minimum of three that TeX's English asks for would take
+     * {@code Amer-i-c-as} and {@code hap-py} together.
+     *
+     * <p>Forwards, because a consonant with no vowel of its own is the head of the
+     * syllable after it: {@code Am-ster-dam}, not {@code Ams-ter-dam}. A last
+     * piece has nothing to head and joins the one before.
+     */
+    private static List<String> joinUnsung(List<String> pieces) {
+        if (pieces.size() < 2) {
+            return pieces;
+        }
+        List<String> sung = new ArrayList<>(pieces.size());
+        StringBuilder held = new StringBuilder();
+        for (String piece : pieces) {
+            held.append(piece);
+            if (hasVowel(held.toString())) {
+                sung.add(held.toString());
+                held.setLength(0);
+            }
+        }
+        if (held.length() == 0) {
+            return sung;
+        }
+        if (sung.isEmpty()) {
+            return List.of(held.toString());
+        }
+        int last = sung.size() - 1;
+        sung.set(last, sung.get(last) + held);
+        return sung;
     }
 
     /** Where the run's letters begin, or -1 when it has none. */
@@ -391,7 +447,7 @@ public final class Hyphenator {
             }
         }
         syllables.add(run.substring(start));
-        return syllables;
+        return joinUnsung(syllables);
     }
 
     /** How many syllables this word is sung on. */
