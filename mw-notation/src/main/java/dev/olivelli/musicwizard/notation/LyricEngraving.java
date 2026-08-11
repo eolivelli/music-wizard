@@ -26,7 +26,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The engraved lyric line: a {@code Lyrics} context under the chord chart.
+ * The engraved lyric line: one or more {@code Lyrics} contexts under the chord
+ * chart.
  *
  * <p>Written in {@code \lyricmode} with an explicit duration on every syllable,
  * rather than as an {@code \addlyrics} or {@code \lyricsto} attached to a
@@ -62,6 +63,18 @@ final class LyricEngraving {
     /** The grid syllables are placed on: the shortest value a duration can name. */
     private static final double UNIT = LilyPondDuration.SHORTEST_QUARTERS;
 
+    /**
+     * How many {@code Lyrics} contexts the page carries.
+     *
+     * <p>Two, which is what the overlaps the model states need: a recognition
+     * span running into the line after it, and two lines written on one moment
+     * (#340). Bounded at all because otherwise the count is whatever recognition
+     * happened to overlap, and a lane costs vertical space on every system where
+     * it holds a word. A line sung over more than one other falls back to the
+     * forward push — see {@link #placed}.
+     */
+    private static final int LANES = 2;
+
     private LyricEngraving() {
     }
 
@@ -70,8 +83,41 @@ final class LyricEngraving {
     }
 
     /**
-     * The {@code \new Lyrics} block for this score, or empty when there is
-     * nothing to place under the bars.
+     * One {@code Lyrics} context being filled, and the two extents of what it
+     * holds: where its drawing has reached on the grid, and how far through the
+     * song it has reached in sung time.
+     *
+     * <p>The two are different questions — see {@link #laneFor} — and both are
+     * advanced by {@link #add}, at the one point a lane gains anything, because
+     * a lane whose extents disagree engraves a line over one already there.
+     */
+    private static final class Lane {
+
+        private final List<Syllable> syllables = new ArrayList<>();
+
+        /** The unit the last syllable took, which the next one must clear. */
+        private long lastUnit = Long.MIN_VALUE;
+
+        /** The latest of the moments its syllables are sung at. */
+        private double sungThrough = Double.NEGATIVE_INFINITY;
+
+        /**
+         * Adds one word's syllables, the last of them sung at {@code seconds}.
+         *
+         * <p>The greatest such moment, not the last one given: within a line a
+         * held word can still be sounding when the word written after it is
+         * sung, so the moments do not arrive in order.
+         */
+        void add(List<Syllable> word, double seconds) {
+            syllables.addAll(word);
+            lastUnit = word.get(word.size() - 1).unit();
+            sungThrough = Math.max(sungThrough, seconds);
+        }
+    }
+
+    /**
+     * The {@code \new Lyrics} blocks for this score, one per lane, or empty when
+     * there is nothing to place under the bars.
      *
      * @param bars the chart's bars, whose positions this reads rather than
      *             deriving a second time from the tempo map
@@ -81,19 +127,35 @@ final class LyricEngraving {
             return Optional.empty();
         }
         long[] barStart = barStarts(bars);
-        List<Syllable> syllables = placed(score, bars, barStart);
-        if (syllables.isEmpty()) {
+        List<List<Syllable>> lanes = placed(score, bars, barStart);
+        if (lanes.isEmpty()) {
             return Optional.empty();
         }
 
         StringBuilder out = new StringBuilder();
+        for (List<Syllable> syllables : lanes) {
+            lane(out, syllables, bars, barStart);
+        }
+        return Optional.of(out.toString());
+    }
+
+    /**
+     * One lane's {@code \new Lyrics} block, bar by bar.
+     *
+     * <p>Every lane spans the whole chart — a lane holding nothing in a bar
+     * skips it — so the lanes stay aligned with the chords and with each other
+     * whatever falls in them.
+     */
+    private static void lane(StringBuilder out, List<Syllable> syllables,
+                             List<ChartLayout.Bar> bars, long[] barStart) {
         out.append("  \\new Lyrics \\with {\n");
         // DOWN, not the context's own default of UP. Read top to bottom the
         // affinities must not increase, and ChordNames is already DOWN, so a
         // Lyrics below it pointing up is the one arrangement LilyPond complains
         // about -- on every run, into output this tool parses to decide whether
         // engraving went well. The repeat-bracket lane above is DOWN for the
-        // same reason, which is what makes the three of them legal together.
+        // same reason, and equal affinities do not increase, which is what makes
+        // any number of these lanes legal under the chords.
         out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
         out.append("    \\override VerticalAxisGroup"
                 + ".nonstaff-nonstaff-spacing.basic-distance = #3\n");
@@ -145,7 +207,6 @@ final class LyricEngraving {
             out.append("    ").append(line).append("|\n");
         }
         out.append("  }\n");
-        return Optional.of(out.toString());
     }
 
     /**
@@ -166,41 +227,50 @@ final class LyricEngraving {
     }
 
     /**
-     * Every lyric word as a syllable on the grid, in order and strictly
-     * increasing.
+     * Every lyric word as a syllable on the grid, split into lanes, each lane in
+     * order and strictly increasing.
      *
      * <p>A word is placed by the bar it falls in and how far through that bar it
      * is, which is what makes this read the chart's own axis rather than rebuild
      * one: the bars already carry both their position and their moment, and the
      * two routes that build them disagree about how seconds and beats relate.
      *
-     * <p>One {@code Lyrics} context is a single lane and runs forwards only, so
-     * a word that would land behind the lane's cursor is pushed up to the next
-     * free unit instead, and <b>dropped only when that push runs past the last
-     * bar</b>. A word is dropped one at a time rather than taken as the end of
-     * the lyric, because words are not globally ordered — see
-     * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()} — so one
-     * stray onset says nothing about the next.
+     * <p>A {@code Lyrics} context is a single lane and runs forwards only, and
+     * lines may overlap in time — recognition spans on sung speech do, see
+     * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()}. So lines
+     * take lanes first-fit in the order {@code Lyrics} keeps them, which is by
+     * their first word: a line goes in the first lane whose syllables have all
+     * been sung before the line begins, and past {@link #LANES} into whichever
+     * lane was free longest ago. A line goes into one lane whole, because {@code
+     * hyphenatedToNext} joins a word to the next word <em>in its own line</em>,
+     * so a line split across lanes would split a hyphen chain.
+     *
+     * <p>Within a lane a word that would still land behind the cursor is pushed
+     * up to the next free unit, and <b>dropped only when that push runs past the
+     * last bar</b>. A word is dropped one at a time rather than taken as the end
+     * of the lyric, because words are not globally ordered either, so one stray
+     * onset says nothing about the next.
      *
      * <p>Two things follow, and neither is claimed away. A word sung after the
      * chart's last bar has nowhere to go at all, because the chart spans the
-     * harmony rather than the song. And a line overlapping the tail of the line
-     * before it is not engraved where it was sung: its words come out crammed
-     * against the cursor, and any that run off the end are lost. Engraving such
-     * lines properly wants a second {@code Lyrics} context, which is #329. The
-     * text sheet shows every word at its own moment and is the output to read
-     * when the two differ.
+     * harmony rather than the song. And a line pushed for want of a lane is not
+     * engraved where it was sung: its words come out crammed against the cursor,
+     * and any that run off the end are lost. The text sheet shows every word at
+     * its own moment and is the output to read when the two differ.
      */
-    private static List<Syllable> placed(Score score, List<ChartLayout.Bar> bars,
-                                         long[] barStart) {
+    private static List<List<Syllable>> placed(Score score, List<ChartLayout.Bar> bars,
+                                               long[] barStart) {
         // Absent for a language with no patterns, and for the "und" a lyric file
         // carries until something establishes one -- then a word stays whole,
         // which is what the page did before syllables were split at all.
         Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
-        List<Syllable> syllables = new ArrayList<>();
+        List<Lane> lanes = new ArrayList<>();
+        for (int i = 0; i < LANES; i++) {
+            lanes.add(new Lane());
+        }
         long chartEnd = barStart[bars.size()];
-        long previous = Long.MIN_VALUE;
         for (LyricLine line : score.lyrics().lines()) {
+            Lane lane = lanes.get(laneFor(line.startSeconds(), lanes));
             for (LyricWord word : line.words()) {
                 List<Hyphenator.Syllable> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
@@ -208,18 +278,54 @@ final class LyricEngraving {
                 // All of a word or none of it -- see fitted. The unsplit word is
                 // tried when the syllables will not fit, and only then is the
                 // word dropped.
-                List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
+                List<Syllable> placed =
+                        fitted(parts, word, bars, barStart, chartEnd, lane.lastUnit);
                 if (placed.isEmpty() && parts.size() > 1) {
                     placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
-                            word, bars, barStart, chartEnd, previous);
+                            word, bars, barStart, chartEnd, lane.lastUnit);
                 }
                 if (!placed.isEmpty()) {
-                    syllables.addAll(placed);
-                    previous = placed.get(placed.size() - 1).unit();
+                    lane.add(placed, syllableSeconds(word, placed.size() - 1, placed.size()));
                 }
             }
         }
-        return syllables;
+        // A lane nothing reached is not engraved: lyrics whose lines follow one
+        // another come out the one block they always did.
+        return lanes.stream().filter(lane -> !lane.syllables.isEmpty())
+                .map(lane -> lane.syllables).toList();
+    }
+
+    /**
+     * The lane a line beginning at {@code startSeconds} goes in.
+     *
+     * <p>The first lane sung through before then, so a line takes a fresh lane
+     * only where it would be engraved beside something still being sung — which
+     * is what a second row of words on the page says. Syllables rather than
+     * words, because a word's syllables are spread across its own length, and
+     * reading the word's own start would free the lane after the first of them.
+     *
+     * <p>Sung time rather than the grid the placement runs on. A unit is
+     * rounded, clamped into the chart and pushed clear of its neighbour, so two
+     * lines sung one after the other can land on one unit and would read as
+     * simultaneous. And a lane is held by the syllables it engraved rather than
+     * by the lines it was given, so a word dropped for want of room does not
+     * send the lines after it into a lane of their own.
+     *
+     * <p>When every lane is held the line still has to go somewhere, and it goes
+     * where the push costs least: the lane free longest. That is the behaviour a
+     * single lane always had.
+     */
+    private static int laneFor(double startSeconds, List<Lane> lanes) {
+        int least = 0;
+        for (int lane = 0; lane < lanes.size(); lane++) {
+            if (lanes.get(lane).sungThrough < startSeconds) {
+                return lane;
+            }
+            if (lanes.get(lane).sungThrough < lanes.get(least).sungThrough) {
+                least = lane;
+            }
+        }
+        return least;
     }
 
     /**
@@ -241,13 +347,8 @@ final class LyricEngraving {
         List<Syllable> placed = new ArrayList<>(parts.size());
         long cursor = previous;
         for (int i = 0; i < parts.size(); i++) {
-            // Spread evenly across the word. Nothing knows where inside a word
-            // its second syllable begins -- that is the note it is sung on, and
-            // there is no melody yet (#8) -- so the even share is the honest
-            // guess, and it keeps the syllables in the bar the word was sung in.
-            double at = word.startSeconds()
-                    + (word.endSeconds() - word.startSeconds()) * i / parts.size();
-            long unit = Math.max(unitOf(at, bars, barStart), cursor + 1);
+            long unit = Math.max(unitOf(syllableSeconds(word, i, parts.size()), bars, barStart),
+                    cursor + 1);
             if (unit >= chartEnd) {
                 return List.of();
             }
@@ -260,6 +361,19 @@ final class LyricEngraving {
             cursor = unit;
         }
         return placed;
+    }
+
+    /**
+     * When the {@code index}th of a word's {@code parts} syllables is sung.
+     *
+     * <p>Spread evenly across the word. Nothing knows where inside a word its
+     * second syllable begins — that is the note it is sung on, and there is no
+     * melody yet (#8) — so the even share is the honest guess, and it keeps the
+     * syllables in the bar the word was sung in.
+     */
+    private static double syllableSeconds(LyricWord word, int index, int parts) {
+        return word.startSeconds()
+                + (word.endSeconds() - word.startSeconds()) * index / parts;
     }
 
     /** Where a moment falls on the grid, by the bar holding it. */
