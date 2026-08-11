@@ -42,56 +42,78 @@ into chromatic noise (fade-out, or the beat drift of #196).
 
 la-canzone-del-sole.mp3
 
-"La canzone del sole" (Lucio Battisti), 5:55. Classic Italian pop, acoustic
+"La canzone del sole" (Lucio Battisti), 5:25. Classic Italian pop, acoustic
 guitar driven. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/la-canzone-del-sole.mp3 \
+    https://www.youtube.com/watch?v=Vu005eUjTMI
+This is the original recording, and the one to work against. A second upload of
+it is kept beside this file -- see la-canzone-del-sole-ab.mp3 below -- because
+MW currently reads that one better, which makes the pair a bisection rather
+than a curiosity.
+Lyrics: LRCLIB, matched on title and artist. Local only, never committed --
+CLAUDE.md carries that rule. The file is timed against a 326 s edit and this
+recording is 325 s, so the line times land; the words themselves are unchecked.
+
+Confirmed by ear 2026-08-11: **A major**, checked against a real piano. That is
+ground truth for the key and nothing else here is.
+
+Run 2026-08-11, on the merge of #375. Two errors, both filed:
+- **key: E major at 9% confidence, where it is A** (#376). E is the dominant,
+  so the chart is written a fifth from home. MW's own spans give E 31.9% of the
+  time against A's 26.1%, and only 0.7% of the song is outside E's scale
+  against 3.3% outside A's -- so weight and scale fit both point the wrong way,
+  and the tell is D at 17.9%: I-IV-V in A borrows nothing, I-bVII-IV in E
+  borrows its second commonest chord.
+- **tempo: 186.1 BPM, about double** (#378). All three of the independent
+  estimators in the verify-tempo skill say ~92.9.
+- **the intro is guesswork printed as fact** (#379). Confidence holds at
+  0.53-0.71 for eleven seconds, then collapses to 0.03-0.28 where the texture
+  thins to voice and light guitar, and the chart prints both alike. 19 of the
+  321 spans are at confidence exactly 0, 76 below 0.3.
+- **the lyrics are badly misplaced** (#380), with the doubled grid the leading
+  candidate: force the rate with --tempo 93 and re-render to test it.
+321 spans, 4/4. The vocabulary is right whatever the tonic is called: A, D and
+E carry three quarters of the song, which is the progression the ear hears.
+
+
+la-canzone-del-sole-ab.mp3
+
+The same Battisti recording from a different upload, 5:56, **pitched down about
+a semitone and correspondingly slower** -- Ab where the original is A, 87 BPM
+where it is ~93. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/la-canzone-del-sole-ab.mp3 \
     https://www.youtube.com/watch?v=XXOIqni93AY
-Confirmed by ear 2026-08-11: **this upload sounds in Ab**, checked against a
-real piano. So the key is ground truth and MW's reading of it is right. The
-song is played in A on a guitar and that is what memory returns — "essentially
-A E D E throughout" — but the memory is of the song, not of this recording,
-and the two are a semitone apart. Anything comparing a chart of this file
-against A is comparing against the wrong recording.
-Run 2026-08-01. MW read 89.1 BPM in 4/4 and a chart whose whole vocabulary is
-G#, D#, C# with occasional D#7 and A#7 — the same pitches as the Ab, Db, Eb
-below, spelled in sharps where flats read better. No N.C. spans at all.
-Two weaknesses were recorded: the chart is choppy — 281 spans, median 1.35 s,
-constant G#/D# flip-flopping "where the ear expects one chord per bar", which
-the reference read below shows is not what this song does — and the beat
-grid wobbles badly (windowed tempo drifts from ~93 to ~109 BPM across the
-song, inter-beat gaps from 0.28 s to 1.4 s, the #196 pattern), so the printed
-89 BPM is a median over an unsteady grid. The final ~10 s (fade-out) degrades
-into low-confidence chromatic noise: A#m F7 C7 G.
-Run 2026-08-11, on the merge of #331. 87.0 BPM in 4/4, Ab major at 21%
-confidence, 271 spans, and a vocabulary of Ab, Db, Eb with occasional Eb7 —
-the I, IV and V of the confirmed key. The beat side has improved since the
-run above: 87.0 is confirmed by all three of the independent estimators in
-the verify-tempo skill, where the earlier 89.1 was a median over a grid
-drifting 93 to 109.
+Kept deliberately, because MW reads this rendering better than the original and
+the pair is the most useful thing here. On this file the tempo is 87.0 and all
+three independent estimators agree; on the original MW doubles it (#378). On
+this file the key comes back Ab, which is its tonic; on the original it comes
+back E, which is the dominant (#376). Same performance, same algorithm, one
+rendering right and one wrong twice over -- so neither failure is a property of
+the material, and both are bisectable against a control.
+Confirmed by ear: this upload is in Ab, checked against a real piano. That is a
+fact about the upload, not about the song.
+Do not treat a reading of this file as a reading of the recording: it is a
+transposed, slowed rendering, and any figure from it belongs to it alone.
 
-Read against a fan transcription on accordiespartiti (chords only; neither
-side is ground truth, and the reference is in A where the recording is in
-Ab). Two estimates, and they agree more than the entries above suggested:
+bellissimissima.mp3
 
-- the vocabulary is the same three chords. MW finds the IV 58 times against
-  the reference's 57 and the V 117 against 113, and misses nothing the
-  reference has. 97% of MW's spans are I, IV or V.
-- **"choppy" was the wrong reading and is withdrawn.** The reference changes
-  chord about 1.76 times a bar; MW 2.10. This song really does move every
-  couple of beats, so a chart of roughly 230 spans would be right and 271 is
-  about a fifth over, not an order of magnitude. MW's commonest span is two
-  beats, which is exactly the reference's implied chord length.
-- what the surplus actually is: 90 one-beat spans, and the excess sits almost
-  entirely on the tonic (+30 I, against +4 V and +1 IV). The reference never
-  moves between I and IV directly — every change passes through V — where MW
-  makes that move 25 times. So the defect to judge a change against here is
-  a chord read as two at half length, on the tonic, not a chart fragmented
-  everywhere.
-- non-diatonic material is confined to the two edges: a lead-in before the
-  music, and the fade-out already noted above. The interior is clean.
-- one stretch around 165-181 s loses the IV altogether, where the reference
-  has one in every cycle.
+"Bellissimissima" (Alfa), 2:37. Italian pop, 2022 single. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/bellissimissima.mp3 \
+    https://www.youtube.com/watch?v=Ky0Ej8_lUnA
+Lyrics: LRCLIB, 51 lines, timed against a 157 s edit which is this recording's
+own length, first line at 0.1 s and last at 154.3 s. Local only, never
+committed. Nothing about the words has been checked by ear.
+Remembered by ear: not captured ahead of the run. A recollection would be worth
+having before the chart is judged, since reading a chart first is how a
+recollection gets talked into agreeing with it.
+Run 2026-08-11, on the merge of #375. 102.0 BPM in 4/4, Ab major at 33%
+confidence, 123 spans. Nothing here is confirmed: the key wants the same piano
+check that settled la-canzone-del-sole, and it is worth doing precisely because
+that file also came back Ab from a rendering that was genuinely pitched -- two
+flat readings in a row is either a coincidence or a lead.
 
 gli-anni.mp3
 
