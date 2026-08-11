@@ -402,7 +402,30 @@ class TempoOverrideTest {
         // these pulses, and phasing every four marks one downbeat per two bars.
         assertThat(grid.beats()).allSatisfy(
                 beat -> assertThat(beat.positionInBar()).isBetween(0, 1));
-        assertThat(grid.downbeatTimes()).hasSize(grid.size() / 2);
+        // Within one, because which pulse the phase lands on decides whether an
+        // odd tracked count rounds up or down.
+        assertThat(grid.downbeatTimes().size()).isCloseTo(grid.size() / 2, within(1));
+
+        // The map's lead-in is measured in these pulses too, so the first tracked
+        // pulse still sits a whole number of them from the origin -- the property
+        // constantPulseFrom exists for, which a lead-in of whole counted beats
+        // would have left on a half-numbered position.
+        double firstPulse = grid.beatTimes().get(0);
+        double inPulses = doubled.tempoMap().secondsToBeats(firstPulse) / 2.0;
+        assertThat(inPulses).isCloseTo(Math.rint(inPulses), within(1e-9))
+                .isGreaterThanOrEqualTo(1.0);
+
+        // The same correction in 6/8 makes one pulse a whole bar, which is the
+        // meter DownbeatEstimator answers without looking at any evidence. Said
+        // out loud, and counted in the singular where there is one of it: the
+        // user is being told their correction moved the bar lines.
+        List<String> said = new java.util.ArrayList<>();
+        BeatGrid compound = new AudioTranscriber(said::add).transcribe(audio,
+                        new AudioTranscriber.Options(240.0, TimeSignature.SIX_EIGHT, null))
+                .beatGrid().orElseThrow();
+        assertThat(compound.pulseQuarters()).hasValue(3.0);
+        assertThat(compound.downbeatTimes()).hasSize(compound.size());
+        assertThat(said).contains("the supplied tempo puts 1 tracked beat in a bar, not 2");
 
         // The tracked path is untouched: nothing measured the pulse, so nothing
         // is recorded and the bars are the meter's.
@@ -421,10 +444,12 @@ class TempoOverrideTest {
         // slow. Reading that as a pulse would rewrite the bar lines of every
         // recording whose tempo was only slightly out.
         AudioBuffer audio = clickTrack(12.0, 0.5, 1.3);
-        Score nudged = new AudioTranscriber().transcribe(audio,
+        List<String> said = new java.util.ArrayList<>();
+        Score nudged = new AudioTranscriber(said::add).transcribe(audio,
                 new AudioTranscriber.Options(124.0, TimeSignature.FOUR_FOUR, null));
 
         assertThat(nudged.beatGrid().orElseThrow().pulseQuarters()).isEmpty();
+        assertThat(said).noneMatch(line -> line.contains("tracked beat"));
         assertThat(nudged.beatGrid().orElseThrow().beats()).allSatisfy(
                 beat -> assertThat(beat.positionInBar()).isBetween(0, 3));
         assertThat(nudged.estimatedTempo()).isCloseTo(124.0, within(1e-9));
@@ -434,40 +459,49 @@ class TempoOverrideTest {
     @DisplayName("takes only a relation that is musical and fills the bar")
     void whichRatiosAreReadAsAPulse() {
         // Driven directly for the ratios a fixture cannot easily be made to
-        // produce. The tracked rate is 120 throughout, so the typed tempo is the
-        // ratio times 120.
+        // produce, and answered in bars rather than in quarter notes: the pulse
+        // is this divided into the bar. The tracked rate is 120 throughout, so
+        // the typed tempo is the ratio times 120.
         List<Double> tracked = pulses(0.0, 0.5, 24);
         assertThat(BeatGrid.steadyPulseRate(tracked)).isCloseTo(120.0, within(1e-9));
 
         // Half tempo: one pulse is two quarter notes, two to a 4/4 bar.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
-                240.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(2.0);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                240.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(2);
         // A subdivision, which is the same fact the other way up.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
-                60.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(0.5);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                60.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(8);
         // In 6/8 the counted beat is a dotted quarter, so half tempo is three
         // quarter notes -- a whole bar to the pulse.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
-                240.0, tracked, TimeSignature.SIX_EIGHT)).hasValue(3.0);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                240.0, tracked, TimeSignature.SIX_EIGHT)).hasValue(1);
+        // And two thirds of a dotted quarter is a quarter note, three to the bar.
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                80.0, tracked, TimeSignature.SIX_EIGHT)).hasValue(3);
 
         // A third of the beat is a relation the music has; a fifth is not.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
-                40.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(1.0 / 3);
-        assertThat(AudioTranscriber.trackedPulseQuarters(
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                40.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(12);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
                 24.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
 
         // Three counted beats to the pulse is musical and still cannot bar 4/4:
         // three quarter notes leave four thirds of a pulse in the bar, and a bar
         // position could not be counted in it. It bars 3/4 exactly.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
                 360.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
-        assertThat(AudioTranscriber.trackedPulseQuarters(
-                360.0, tracked, TimeSignature.THREE_FOUR)).hasValue(3.0);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                360.0, tracked, TimeSignature.THREE_FOUR)).hasValue(1);
+
+        // The counted beat itself is recorded as nothing: it is what every
+        // reader assumes, so recording it would state an assumption.
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                122.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
 
         // Nothing typed, and nothing to measure a ratio against.
-        assertThat(AudioTranscriber.trackedPulseQuarters(
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
                 null, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
-        assertThat(AudioTranscriber.trackedPulseQuarters(
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
                 240.0, List.of(0.4), TimeSignature.FOUR_FOUR)).isEmpty();
     }
 

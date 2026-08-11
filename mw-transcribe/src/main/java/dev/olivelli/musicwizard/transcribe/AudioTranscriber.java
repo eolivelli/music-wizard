@@ -40,6 +40,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.function.Consumer;
 
 /**
@@ -264,6 +265,29 @@ public final class AudioTranscriber {
                         ? BeatGrid.steadyPulseRate(beatTimes)
                         : beats.beatsPerMinute()));
 
+        // How the tracked pulses bar the music, where the correction says they are
+        // not the counted beat. Nothing measures this from the audio -- the
+        // tracker lands on a sub-multiple without knowing it (#353) -- so a typed
+        // tempo is the only producer there is, and it produces one only because
+        // the beats it is typed against are kept: the rate is corrected and the
+        // pulses are not, so their ratio is the pulse.
+        //
+        // A 4/4 grid tracked at half tempo bars every two pulses; phasing it
+        // every four marks one downbeat per two bars and gives every tracked
+        // pulse a bar position the music does not have. It is read here, before
+        // the map, because the map's lead-in is measured in tracked pulses too.
+        OptionalInt correctedPulsesPerBar =
+                trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
+        int pulsesPerBar = correctedPulsesPerBar.orElse(meter.beatsPerBar());
+        OptionalDouble pulseQuarters = correctedPulsesPerBar.isPresent()
+                ? OptionalDouble.of(meter.quarterBeatsPerBar() / pulsesPerBar)
+                : OptionalDouble.empty();
+        if (correctedPulsesPerBar.isPresent()) {
+            progress.accept(String.format(Locale.ROOT,
+                    "the supplied tempo puts %d tracked beat%s in a bar, not %d",
+                    pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
+        }
+
         // A tempo override replaces the tracked tempo but not the tracked beats:
         // the beats are measured evidence, whereas the tempo is a summary of
         // them, and a user correcting the tempo is usually correcting a
@@ -307,28 +331,8 @@ public final class AudioTranscriber {
                         + (int) fallback.pulsesPerMinute() + " beats/min");
             }
             tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
-                    beatTimes.get(0), fallback.provenance());
-        }
-
-        // What one tracked pulse spans, where the correction says it is not the
-        // counted beat. Nothing measures this from the audio -- the tracker lands
-        // on a sub-multiple without knowing it (#353) -- so a typed tempo is the
-        // only producer there is, and it produces one only because the beats it
-        // is typed against are kept: the rate is corrected and the pulses are
-        // not, so their ratio is the pulse.
-        OptionalDouble pulseQuarters = trackedPulseQuarters(
-                settings.tempoOverride(), beatTimes, meter);
-        // Pulses per bar, and the pulse is a counted beat only where nothing
-        // measured otherwise. A 4/4 grid tracked at half tempo bars every two
-        // pulses; phasing it every four marks one downbeat per two bars and
-        // gives every tracked pulse a bar position the music does not have.
-        int pulsesPerBar = pulseQuarters.isPresent()
-                ? (int) Math.round(meter.quarterBeatsPerBar() / pulseQuarters.getAsDouble())
-                : meter.beatsPerBar();
-        if (pulsesPerBar != meter.beatsPerBar()) {
-            progress.accept(String.format(Locale.ROOT,
-                    "the supplied tempo puts %d tracked beats in a bar, not %d",
-                    pulsesPerBar, meter.beatsPerBar()));
+                    beatTimes.get(0), fallback.provenance(),
+                    pulseQuarters.orElse(meter.beatUnitQuarters()));
         }
 
         // Beat-synchronised chroma before the beat grid, because the downbeat
@@ -375,21 +379,19 @@ public final class AudioTranscriber {
         // holds, and normalising the sum would put the bass back into it.
         Chroma treble = registers.treble().beatSynchronous(beatTimes);
 
-        // Pulses per bar, not the numerator: the tracker emits one pulse per
-        // counted beat, and 6/8 counts two of them to a bar rather than six.
-        // DownbeatEstimator asks for "the assumed bar length in beats", and the
-        // beats it means are the tracked ones it is phasing -- so where the pulse
-        // is known not to be the counted beat, the count is not the meter's.
+        // Pulses per bar, not the numerator: DownbeatEstimator asks for "the
+        // assumed bar length in beats", and the beats it means are the tracked
+        // ones it is phasing. 6/8 counts two of them to a bar rather than six,
+        // and a corrected pulse counts its own.
         BeatGrid tracked = BeatTracker.toBeatGrid(beats,
                 settings.firstDownbeatSeconds() != null
                         ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar)
                         : DownbeatEstimator.estimate(
                                 beatTimes, chroma, envelope, pulsesPerBar));
         // Recorded on the grid rather than left to each reader, because the grid
-        // is what a reader has: BeatGrid.steadyTempo, TempoMap.fromBeatTimes and
-        // the bar axis of both scoring harnesses each convert pulses to quarter
-        // notes, and before this the only figure any of them could convert
-        // through was the meter's.
+        // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
+        // pulse rate to quarter notes, and before this the only figure they could
+        // convert through was the meter's.
         BeatGrid grid = pulseQuarters.isPresent()
                 ? tracked.withPulseQuarters(pulseQuarters.getAsDouble())
                 : tracked;
@@ -446,11 +448,11 @@ public final class AudioTranscriber {
     /**
      * The relations a tracked pulse and a counted beat may stand in.
      *
-     * <p>The relations a beat is actually divided or multiplied by, which is the
-     * same table {@link BeatTracker} measures a window's seed against and for the
-     * same reason: a rate that is no whole subdivision of the beat is not a rate
-     * the music has. Both entries and tolerance are its, so a ratio this accepts
-     * is one the tracker would have accepted.
+     * <p>The relations a beat is actually divided or multiplied by, for the
+     * reason {@link BeatTracker}'s own table gives: a rate that is no whole
+     * subdivision of the beat is not a rate the music has. Those entries plus
+     * {@code 1}, which is the answer that records nothing, and its tolerance and
+     * relative-distance rule unchanged. A second copy of a musical fact; #371.
      */
     private static final double[] PULSE_RELATIONS =
             {1.0 / 4, 1.0 / 3, 1.0 / 2, 2.0 / 3, 1.0, 3.0 / 2, 2.0, 3.0, 4.0};
@@ -459,8 +461,8 @@ public final class AudioTranscriber {
     private static final double RELATION_TOLERANCE = 0.05;
 
     /**
-     * What one tracked pulse spans in quarter notes, where a supplied tempo says
-     * it is not the counted beat.
+     * How many tracked pulses fill a bar, where a supplied tempo says the pulse
+     * is not the meter's counted beat.
      *
      * <p>The tracker reports its pulse as the beat and has no way to know when it
      * is a sub-multiple of one (#353), so the only thing that measures the
@@ -476,13 +478,18 @@ public final class AudioTranscriber {
      * cannot bar the recording, which is a pulse no bar position could be
      * counted in.
      *
+     * <p>A bar length rather than a pulse, though the caller wants both: the
+     * pulse is this divided into the bar, so deriving the count from the pulse
+     * instead would put a rounding step between two figures that have to agree
+     * exactly.
+     *
      * <p>Package-private for the ratios a recording cannot easily be made to
      * produce.
      */
-    static OptionalDouble trackedPulseQuarters(
+    static OptionalInt trackedPulsesPerBar(
             Double tempoOverride, List<Double> beatTimes, TimeSignature meter) {
         if (tempoOverride == null || beatTimes.size() < 2) {
-            return OptionalDouble.empty();
+            return OptionalInt.empty();
         }
         double observed = tempoOverride / BeatGrid.steadyPulseRate(beatTimes);
         for (double relation : PULSE_RELATIONS) {
@@ -493,15 +500,14 @@ public final class AudioTranscriber {
             if (relation == 1.0) {
                 // The counted beat, which is what every reader already assumes.
                 // Recording it would state an assumption as a measurement.
-                return OptionalDouble.empty();
+                return OptionalInt.empty();
             }
-            double quarters = relation * meter.beatUnitQuarters();
-            double perBar = meter.quarterBeatsPerBar() / quarters;
+            double perBar = meter.quarterBeatsPerBar() / (relation * meter.beatUnitQuarters());
             return perBar >= 1 && Math.abs(perBar - Math.rint(perBar)) < 1e-9
-                    ? OptionalDouble.of(quarters)
-                    : OptionalDouble.empty();
+                    ? OptionalInt.of((int) Math.rint(perBar))
+                    : OptionalInt.empty();
         }
-        return OptionalDouble.empty();
+        return OptionalInt.empty();
     }
 
     /**
@@ -522,6 +528,13 @@ public final class AudioTranscriber {
      * number of dotted quarters -- stretched to land exactly on that pulse. Every
      * tracked pulse then sits a whole number of pulses from the origin, at the
      * user's tempo.
+     *
+     * <p>Which is why the pulse is a parameter. It is the meter's counted beat
+     * only while the tracker landed on that beat; where the correction says
+     * otherwise (#139) a lead-in of whole counted beats leaves the tracked pulses
+     * on half-numbered positions, and the invariant above is exactly what is
+     * lost. It does not make a grid downbeat a bar line -- nothing here knows the
+     * bar phase, which is #84 -- but it stops one from being unable to be.
      *
      * <p>An anchor at the origin is not degenerate and is ordinary: hop
      * quantisation is what produces it, since any recording whose first beat
@@ -545,6 +558,18 @@ public final class AudioTranscriber {
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance) {
+        return constantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+                meter.beatUnitQuarters());
+    }
+
+    /**
+     * The same map, anchored on a tracked pulse of a stated length.
+     *
+     * @param pulseQuarters quarter notes spanned by one tracked pulse
+     */
+    static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
+                                      double firstBeatSeconds, Provenance provenance,
+                                      double pulseQuarters) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
         TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);
@@ -553,7 +578,6 @@ public final class AudioTranscriber {
             // nothing to anchor: the constant map carries the phase as it is.
             return constant;
         }
-        double pulseQuarters = meter.beatUnitQuarters();
         double quarterBpm = constant.initialTempo();
         double pulseSeconds = 60.0 * pulseQuarters / quarterBpm;
 

@@ -83,10 +83,10 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         Objects.requireNonNull(beats, "beats");
         Objects.requireNonNull(beatConfidence, "beatConfidence");
         Objects.requireNonNull(downbeatConfidence, "downbeatConfidence");
-        // Missing rather than null, so a score file written before the pulse was
-        // carried reads back as a grid that says nothing about its pulse -- which
-        // is what it is -- rather than throwing. Same normalisation Provenance
-        // takes on a tempo segment.
+        // For a Java caller with nothing to say. A score file that predates the
+        // field arrives here as an empty OptionalDouble rather than as null,
+        // since Jdk8Module maps a missing property to one -- so this is not what
+        // makes an old file load, and removing it would not stop one.
         if (pulseQuarters == null) {
             pulseQuarters = OptionalDouble.empty();
         }
@@ -131,8 +131,7 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * The same grid, recording what one of its pulses spans.
      *
      * @param quarters quarter notes in one tracked pulse: 2.0 for a 4/4 grid
-     *                 tracked at half tempo, 1.5 for the dotted-quarter pulse of
-     *                 compound time
+     *                 tracked at half tempo, 1.5 for a 3/4 grid tracked in two
      */
     public BeatGrid withPulseQuarters(double quarters) {
         return new BeatGrid(beats, beatConfidence, downbeatConfidence, OptionalDouble.of(quarters));

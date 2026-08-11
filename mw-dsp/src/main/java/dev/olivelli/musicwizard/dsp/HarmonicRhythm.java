@@ -48,8 +48,8 @@ import java.util.Objects;
  * states halves of the bar more consistently than quarters. The recording
  * lands at half its true rate: the right family, barred commensurately with
  * the music, where the three-eighths pulse could never be. The remaining
- * halving is exactly what {@code analyze --tempo} corrects, and what #139
- * parked a recorded pulse unit for.
+ * halving is exactly what {@code analyze --tempo} corrects, and since #139 the
+ * correction records what one tracked pulse spans, so the bars move with it.
  *
  * <p>Computed once for the whole recording and applied identically in every
  * analysis window, for #305's reason: which pulse can bar the music is a
