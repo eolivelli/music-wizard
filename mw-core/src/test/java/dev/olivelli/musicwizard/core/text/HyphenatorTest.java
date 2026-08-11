@@ -220,6 +220,58 @@ class HyphenatorTest {
         }
     }
 
+    @Test
+    @DisplayName("a very long token costs time in its length, not its square or its cube")
+    void aLongTokenIsLinear() {
+        // LrcLyrics splits a line on whitespace with no length bound, so a
+        // run-on reaches this. Two scans here were superlinear and they are
+        // pinned by different measurements.
+        Hyphenator hyphenator = Hyphenator.forLanguage("it").orElseThrow();
+
+        // split scored every substring, which is cubic and so slows every shape
+        // alike -- it cannot show as a ratio, only as time. Asked first and of a
+        // shorter token on purpose: the ratio below needs a long one, and four
+        // long calls against a cubic scan take the best part of an hour to
+        // report what this reports in seconds.
+        assertThat(nanosFor(hyphenator, "ba", SHORT_TOKEN) / 1_000_000)
+                .as("a token of %d characters", SHORT_TOKEN)
+                .isLessThan(2_000L);
+
+        long sung = nanosFor(hyphenator, "ba", LONG_TOKEN);
+        long vowelless = nanosFor(hyphenator, "bcdfg", LONG_TOKEN);
+
+        // joinUnsung held the whole run when no piece carried a vowel and asked
+        // the accumulation once per piece. Two shapes of the same length, so
+        // whatever is fixed per call cancels: the quadratic scan puts this above
+        // twenty, and asking each piece as it arrives puts it near one.
+        assertThat((double) vowelless / sung)
+                .as("vowel-less %d ns against sung %d ns", vowelless, sung)
+                .isLessThan(6.0);
+
+        // Both shapes are already measured for the ratio, so bounding them costs
+        // nothing to run and catches what neither of the two above can: a term
+        // that grows in both shapes alike and is milder than the cubic scan, so
+        // the guard above passes it and the ratio cancels it.
+        assertThat(Math.max(sung, vowelless) / 1_000_000)
+                .as("sung %d ns, vowel-less %d ns", sung, vowelless)
+                .isLessThan(2_000L);
+    }
+
+    /** Long enough that a superlinear term shows over the fixed cost per call. */
+    private static final int LONG_TOKEN = 32_000;
+
+    /** Short enough that a cubic scan reports in seconds rather than in an hour. */
+    private static final int SHORT_TOKEN = 8_000;
+
+    /** Nanoseconds for one split of a token of this length, warmed up first. */
+    private static long nanosFor(Hyphenator hyphenator, String unit, int length) {
+        String token = unit.repeat(length / unit.length());
+        hyphenator.syllables(token);
+        long start = System.nanoTime();
+        hyphenator.syllables(token);
+        return System.nanoTime() - start;
+    }
+
     @Nested
     @DisplayName("what it declines to split")
     class LeavesAlone {

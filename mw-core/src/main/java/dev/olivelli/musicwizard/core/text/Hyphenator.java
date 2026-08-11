@@ -106,9 +106,17 @@ public final class Hyphenator {
      */
     private final Set<Character> wordCharacters;
 
-    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters) {
+    /**
+     * The longest pattern this language has, in characters, read off the loaded
+     * patterns for the reason {@link #wordCharacters} is.
+     */
+    private final int longestPattern;
+
+    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters,
+                       int longestPattern) {
         this.patterns = patterns;
         this.wordCharacters = wordCharacters;
+        this.longestPattern = longestPattern;
     }
 
     /**
@@ -155,7 +163,9 @@ public final class Hyphenator {
             throw new UncheckedIOException("could not read " + resource, e);
         }
         Set<Character> wordCharacters = new HashSet<>();
+        int longestPattern = 0;
         for (String letters : patterns.keySet()) {
+            longestPattern = Math.max(longestPattern, letters.length());
             for (int i = 0; i < letters.length(); i++) {
                 char c = letters.charAt(i);
                 if (!Character.isLetter(c) && c != '.') {
@@ -163,7 +173,7 @@ public final class Hyphenator {
                 }
             }
         }
-        return new Hyphenator(patterns, Set.copyOf(wordCharacters));
+        return new Hyphenator(patterns, Set.copyOf(wordCharacters), longestPattern);
     }
 
     /** Splits one TeX pattern into its letters and the scores between them. */
@@ -380,8 +390,9 @@ public final class Hyphenator {
      * syllable after it: {@code Am-ster-dam}, not {@code Ams-ter-dam}. A last
      * piece has nothing to head and joins the one before.
      *
-     * <p>The test is on <b>what has been held so far</b> rather than on the piece
-     * alone, which is not the same answer and is the better one. The patterns cut
+     * <p>What is asked is whether <b>anything held so far</b> carries a vowel,
+     * which is not the same as asking the piece alone and is the better one of
+     * the two. The patterns cut
      * {@code gynecology} into {@code g} and {@code y} before {@code ne}: asked
      * separately neither is a vowel, and the word loses a note; asked together
      * {@code gy} is one, because the {@code y} is no longer the word's first
@@ -393,11 +404,21 @@ public final class Hyphenator {
         }
         List<String> sung = new ArrayList<>(pieces.size());
         StringBuilder held = new StringBuilder();
+        // Carried rather than recomputed, so a run whose pieces never carry a
+        // vowel is not rescanned from the top every time. The only
+        // position-sensitive character is the word's first letter, which lies in
+        // whichever piece first has one, so that is the flag beside it.
+        boolean heldIsSung = false;
+        boolean heldHasLetter = false;
         for (String piece : pieces) {
+            heldIsSung |= hasVowel(piece, sung.isEmpty() && !heldHasLetter);
+            heldHasLetter |= firstLetter(piece) >= 0;
             held.append(piece);
-            if (hasVowel(held.toString(), sung.isEmpty())) {
+            if (heldIsSung) {
                 sung.add(held.toString());
                 held.setLength(0);
+                heldIsSung = false;
+                heldHasLetter = false;
             }
         }
         if (held.length() == 0) {
@@ -451,7 +472,13 @@ public final class Hyphenator {
         String bounded = "." + lower + ".";
         byte[] scores = new byte[bounded.length() + 1];
         for (int from = 0; from < bounded.length(); from++) {
-            for (int to = from + 1; to <= bounded.length(); to++) {
+            // No substring longer than the longest pattern can match one, so
+            // stopping there is exact rather than an approximation, and it is
+            // what takes this from cubic in the run's length to linear. One
+            // very long token in a lyric line -- a run-on -- otherwise makes the
+            // run appear to hang (#331).
+            int reach = Math.min(bounded.length(), from + longestPattern);
+            for (int to = from + 1; to <= reach; to++) {
                 byte[] pattern = patterns.get(bounded.substring(from, to));
                 if (pattern != null) {
                     for (int i = 0; i < pattern.length; i++) {
