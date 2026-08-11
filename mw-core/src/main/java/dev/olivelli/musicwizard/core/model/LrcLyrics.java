@@ -179,24 +179,26 @@ public final class LrcLyrics {
                 continue;
             }
             double start = Math.max(0, entry.start() - shift);
-            double next = i + 1 < timed.size()
-                    ? Math.max(start, timed.get(i + 1).start() - shift)
-                    : Double.POSITIVE_INFINITY;
+            double next = nextMeasuring(timed, i, shift, start);
             double lastTag = lastTagIn(entry.body(), shift);
             // An ordinary line runs to its successor, however far above the
             // typical length it sits. Only the silence of a break -- and the
             // open end after the last line, which has no successor at all -- is
             // cut back to a plausible length, leaving the remainder as the
             // instrumental it is.
-            // Lines never overlap, and the min below is what holds that: a word
-            // tag is only evidence about the line it is in, so a mistyped minute
-            // in one would otherwise put that line's end past several later
-            // ones, and the sheet's cursor would hand it every chord they should
-            // have had.
+            // A line ends no later than the next one that measures a line, and
+            // the min below is what holds that: a word tag is only evidence
+            // about the line it is in, so a mistyped minute in one would
+            // otherwise put that line's end past several later ones, and the
+            // sheet's cursor would hand it every chord they should have had.
+            //
+            // Lines on one moment do share a span, which is the only overlap
+            // there is -- see nextMeasuring. They are sung together, so the
+            // sheet prints the chords once above the pair.
             //
             // The last entry has no gap and so no entry in isBreak; it is cut
             // for the stronger reason that nothing follows it to end it.
-            boolean cut = i + 1 >= timed.size() || isBreak[i];
+            boolean cut = !Double.isFinite(next) || isBreak[i];
             double end = cut
                     ? Math.min(next, plausibleEnd(start, lastTag, lineLength))
                     : next;
@@ -323,6 +325,34 @@ public final class LrcLyrics {
      * as little about a line as two on the same moment, and this admits them;
      * #339 is whether that wants a tolerance and what it would cost.
      */
+    /**
+     * Where the line starting at {@code start} ends: the next timestamp that
+     * {@link #measures measures a line} from it, or infinity when none does.
+     *
+     * <p>Not simply the next entry. Entries on one moment are sung together --
+     * a second voice, a two-line display -- and taking the next one ends the
+     * first of them where it starts, so it holds no words for any span at all
+     * and {@code LyricSheet}, which decides a line's chords by its end, gives it
+     * none. They share the span instead, which is what being sung together
+     * means.
+     *
+     * <p>This is the fourth reader of the difference between two timestamps and
+     * the only one that is not statistical: the other three ask how long a
+     * typical line is, how far a cut line runs, and which gaps have a long
+     * neighbour. This one decides a line's own extent, and it asks the same
+     * predicate so there is one answer to what a gap is worth.
+     */
+    private static double nextMeasuring(List<Timed> timed, int from, double shift,
+                                        double start) {
+        for (int i = from + 1; i < timed.size(); i++) {
+            double candidate = Math.max(start, timed.get(i).start() - shift);
+            if (measures(candidate - start)) {
+                return candidate;
+            }
+        }
+        return Double.POSITIVE_INFINITY;
+    }
+
     private static boolean measures(double gap) {
         return gap > 0;
     }

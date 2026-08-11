@@ -535,6 +535,49 @@ class LrcLyricsTest {
         }
 
         @Test
+        @DisplayName("lines on one moment share a span rather than the first taking none")
+        void linesOnOneMomentShareASpan() {
+            // A second voice, or a two-line display. Ended at the next entry
+            // rather than the next one that measures a line, the first of each
+            // pair runs from its start to its start -- and LyricSheet, which
+            // decides a line's chords by its end, then hands every chord to the
+            // twin and leaves the first bare.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]high voice one
+                    [00:00.00]low voice one
+                    [00:04.00]high voice two
+                    [00:04.00]low voice two
+                    """, 12.0);
+
+            assertThat(lyrics.lines()).hasSize(4);
+            assertThat(lyrics.lines().get(0).startSeconds()).isZero();
+            assertThat(lyrics.lines().get(0).endSeconds()).isEqualTo(4.0);
+            assertThat(lyrics.lines().get(1).startSeconds()).isZero();
+            assertThat(lyrics.lines().get(1).endSeconds()).isEqualTo(4.0);
+            // Both of the second pair too, and neither is zero-length.
+            assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(8.0);
+            assertThat(lyrics.lines().get(3).endSeconds()).isEqualTo(8.0);
+        }
+
+        @Test
+        @DisplayName("a run of lines on one moment is cut when nothing measuring follows")
+        void aTrailingRunOnOneMomentIsCutToAPlausibleLength() {
+            // Nothing after these measures a line, so they end as the last line
+            // does -- at a plausible length -- rather than running to the end of
+            // the recording because a successor exists in the list.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]one
+                    [00:04.00]two
+                    [00:08.00]high voice last
+                    [00:08.00]low voice last
+                    """, 300.0);
+
+            assertThat(lyrics.lines().get(2).endSeconds())
+                    .isEqualTo(lyrics.lines().get(3).endSeconds());
+            assertThat(lyrics.lines().get(2).endSeconds()).isLessThan(300.0);
+        }
+
+        @Test
         @DisplayName("a positive offset makes the lyrics arrive sooner")
         void offsetShiftsEverything() {
             Lyrics lyrics = LrcLyrics.parse("""
