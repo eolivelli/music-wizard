@@ -139,6 +139,55 @@ class LrcLyricsTest {
         }
 
         @Test
+        @DisplayName("several lines on one moment do not make every gap a break (#324)")
+        void duplicateTimestampsDoNotTruncateEveryLine() {
+            // Two source lines on the same instant -- a second voice, a
+            // two-line display.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]a1
+                    [00:00.00]a2
+                    [00:20.00]b1
+                    [00:20.00]b2
+                    [00:40.00]c1
+                    [00:40.00]c2
+                    [01:00.00]d1
+                    """, 300.0);
+
+            assertThat(lyrics.lines()).hasSize(7);
+            // a2 runs to b1, not to a nominal four seconds.
+            assertThat(lyrics.lines().get(1).endSeconds()).isEqualTo(20.0);
+            assertThat(lyrics.lines().get(3).endSeconds()).isEqualTo(40.0);
+            // And the closing line lasts as long as an ordinary one here.
+            assertThat(lyrics.lines().get(6).endSeconds()).isEqualTo(80.0);
+        }
+
+        @Test
+        @DisplayName("a zero gap does not split a run of long ones into breaks (#324)")
+        void duplicateTimestampsDoNotBreakUpAHeldChorus() {
+            // The held-chorus fixture with each chorus line doubled at its own
+            // moment. A zero gap is never long, so counted as a neighbour it sits
+            // between the chorus's long gaps and makes each of them look isolated
+            // -- which is what the isolation test exists to tell apart, and it
+            // cut every held line back to an ordinary one.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]v1
+                    [00:01.00]v2
+                    [00:02.00]v3
+                    [00:03.00]v4
+                    [00:04.00]c1
+                    [00:04.00]c1b
+                    [00:12.00]c2
+                    [00:12.00]c2b
+                    [00:20.00]c3
+                    [00:20.00]c3b
+                    """, 200.0);
+
+            // c1b is held to the next chorus line, not cut to an ordinary line.
+            assertThat(lyrics.lines().get(5).endSeconds()).isEqualTo(12.0);
+            assertThat(lyrics.lines().get(7).endSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
         @DisplayName("ordinary jitter is not an instrumental break")
         void jitteringGapsAreLeftAlone() {
             // Hand-timed lines jitter around four seconds. Cutting every line at
@@ -228,9 +277,9 @@ class LrcLyricsTest {
         @Test
         @DisplayName("timestamps sharing a moment do not shrink the line length to nothing")
         void duplicateTimestampsAreLeftOutOfTheLineLength() {
-            // Several lines on one moment is what a repeated chorus writes. They
-            // are zero-length gaps, and counting them as lines makes the measure
-            // zero -- which gives every cut line no duration at all.
+            // Several lines on one moment are zero-length gaps, and counting
+            // them as lines makes the measure zero -- which gives every cut line
+            // no duration at all.
             Lyrics lyrics = LrcLyrics.parse("""
                     [00:00.00]a
                     [00:00.00]b

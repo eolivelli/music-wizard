@@ -291,15 +291,40 @@ public final class LrcLyrics {
      * different set of gaps.
      */
     private static double typicalLine(double[] fileOrder) {
-        if (fileOrder.length == 0) {
+        // Sorted out of a copy, not in place: the caller's array is in file order
+        // and breaks depends on it staying that way.
+        double[] spaced = new double[fileOrder.length];
+        int count = 0;
+        for (double gap : fileOrder) {
+            if (measures(gap)) {
+                spaced[count++] = gap;
+            }
+        }
+        if (count == 0) {
             return NOMINAL_LINE_SECONDS;
         }
-        // Copied, not sorted in place: the caller's array is in file order and
-        // breaks depends on it staying that way.
-        double[] gaps = fileOrder.clone();
-        java.util.Arrays.sort(gaps);
-        double median = gaps[(gaps.length - 1) / 2];
-        return median > 0 ? median : NOMINAL_LINE_SECONDS;
+        java.util.Arrays.sort(spaced, 0, count);
+        return spaced[(count - 1) / 2];
+    }
+
+    /**
+     * Whether a gap says anything about how long a line lasts.
+     *
+     * <p>A zero-length one does not: two timestamps on the same moment are one
+     * moment written twice — a second voice, a two-line display, a duplicated
+     * tag — and they measure no line.
+     *
+     * <p>Named rather than written out, because every statistic over these gaps
+     * has to agree on it: the scale the threshold is measured against, the length
+     * a cut line is given, and which gaps count as a neighbour. The end a line
+     * takes from the next timestamp does not ask — that is #340.
+     *
+     * <p>Exact, and only exact. Two timestamps a hundredth of a second apart say
+     * as little about a line as two on the same moment, and this admits them;
+     * #339 is whether that wants a tolerance and what it would cost.
+     */
+    private static boolean measures(double gap) {
+        return gap > 0;
     }
 
     /**
@@ -316,7 +341,7 @@ public final class LrcLyrics {
         double[] ordinary = new double[gaps.length];
         int count = 0;
         for (int i = 0; i < gaps.length; i++) {
-            if (!isBreak[i] && gaps[i] > 0) {
+            if (!isBreak[i] && measures(gaps[i])) {
                 ordinary[count++] = gaps[i];
             }
         }
@@ -332,7 +357,11 @@ public final class LrcLyrics {
      *
      * <p>Two things have to be true. The gap is <b>long</b> — more than
      * {@link #BREAK_MULTIPLE} typical lines — and it is <b>alone</b>: neither
-     * neighbour in file order is long too.
+     * neighbour is long too. The neighbours are the nearest gaps that
+     * {@link #measures measure a line}, not the adjacent entries, because a
+     * zero-length gap is never long and one sitting between two long ones would
+     * otherwise make each of them look alone — which is the arrangement this
+     * test exists to tell apart.
      *
      * <p>Length on its own cannot decide it. A chorus whose lines are held far
      * longer than the verse's produces gaps as long as a solo does, and sorting
@@ -355,11 +384,29 @@ public final class LrcLyrics {
         for (int i = 0; i < gaps.length; i++) {
             longGap[i] = gaps[i] > breakAfter;
         }
+        // Each gap's neighbours, stated once in two passes rather than searched
+        // for at every index: a file written mostly on one moment makes each
+        // search walk the run, and the answer is the same one every time.
+        boolean[] longBefore = new boolean[gaps.length];
+        boolean[] longAfter = new boolean[gaps.length];
+        boolean carried = false;
+        for (int i = 0; i < gaps.length; i++) {
+            longBefore[i] = carried;
+            if (measures(gaps[i])) {
+                carried = longGap[i];
+            }
+        }
+        carried = false;
+        for (int i = gaps.length - 1; i >= 0; i--) {
+            longAfter[i] = carried;
+            if (measures(gaps[i])) {
+                carried = longGap[i];
+            }
+        }
+
         boolean[] isBreak = new boolean[gaps.length];
         for (int i = 0; i < gaps.length; i++) {
-            boolean neighbourIsLong = (i > 0 && longGap[i - 1])
-                    || (i + 1 < gaps.length && longGap[i + 1]);
-            isBreak[i] = longGap[i] && !neighbourIsLong;
+            isBreak[i] = longGap[i] && !longBefore[i] && !longAfter[i];
         }
         return isBreak;
     }
