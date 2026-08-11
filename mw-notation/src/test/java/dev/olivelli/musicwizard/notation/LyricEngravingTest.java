@@ -302,10 +302,10 @@ class LyricEngravingTest {
     }
 
     @Test
-    @DisplayName("a lane is held by a split word for as long as the word is sung")
+    @DisplayName("a lane is held by a split word until its last syllable is sung")
     void aSplitWordHoldsItsLaneToItsLastSyllable() {
         // The syllables of a word are spread across it, so a lane holding one
-        // long word is occupied until its last syllable -- not freed after the
+        // long word is occupied until the last of them -- not freed after the
         // first. Freed there, the second line joins the first, and the page
         // reads "Al le lu ia A men" as one row sung by one voice.
         Confidence sure = Confidence.of(0.9);
@@ -322,6 +322,32 @@ class LyricEngravingTest {
         assertThat(String.join(" ", lanes.get(0))).contains("\"Al\"").contains("\"le\"")
                 .contains("\"luia\"").doesNotContain("\"men\"");
         assertThat(String.join(" ", lanes.get(1))).contains("\"A\"").contains("\"men\"");
+    }
+
+    @Test
+    @DisplayName("a short word after a held one does not free the lane the held one keeps")
+    void aShortWordDoesNotFreeTheLaneItsNeighbourHolds() {
+        // A word's syllables are spread across it, so the moments a line's
+        // words are drawn at do not arrive in order: Alleluia is still being
+        // sung when Amen, written after it, is. Read as the lane's extent, the
+        // short word frees a lane the long one is still occupying, and the
+        // overlapping line lands on top of it a bar late.
+        Confidence sure = Confidence.of(0.9);
+        Score score = chart(4).withLyrics(new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("Alleluia", 1.0, 7.0, sure),
+                        LyricWord.ofSeconds("Amen", 1.2, 1.4, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("Gloria", 3.0, 3.5, sure)), sure)),
+                "it", sure));
+
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(2);
+        assertThat(String.join(" ", lanes.get(0))).doesNotContain("\"Glo\"");
+        // The second bar runs from two to four seconds, which is where Gloria
+        // was sung.
+        assertThat(lanes.get(1).get(1)).contains("\"Glo\"");
     }
 
     @Test

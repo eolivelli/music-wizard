@@ -83,6 +83,39 @@ final class LyricEngraving {
     }
 
     /**
+     * One {@code Lyrics} context being filled, and the two extents of what it
+     * holds: where its drawing has reached on the grid, and how far through the
+     * song it has reached in sung time.
+     *
+     * <p>The two are different questions — see {@link #laneFor} — and both are
+     * advanced by {@link #add}, at the one point a lane gains anything, because
+     * a lane whose extents disagree engraves a line over one already there.
+     */
+    private static final class Lane {
+
+        private final List<Syllable> syllables = new ArrayList<>();
+
+        /** The unit the last syllable took, which the next one must clear. */
+        private long lastUnit = Long.MIN_VALUE;
+
+        /** The latest moment anything in the lane is sung. */
+        private double sungThrough = Double.NEGATIVE_INFINITY;
+
+        /**
+         * Adds one word's syllables, the last of them sung at {@code seconds}.
+         *
+         * <p>The greatest such moment, not the last one given: within a line a
+         * held word can still be sounding when the word written after it is
+         * sung, so the moments do not arrive in order.
+         */
+        void add(List<Syllable> word, double seconds) {
+            syllables.addAll(word);
+            lastUnit = word.get(word.size() - 1).unit();
+            sungThrough = Math.max(sungThrough, seconds);
+        }
+    }
+
+    /**
      * The {@code \new Lyrics} blocks for this score, one per lane, or empty when
      * there is nothing to place under the bars.
      *
@@ -231,19 +264,13 @@ final class LyricEngraving {
         // carries until something establishes one -- then a word stays whole,
         // which is what the page did before syllables were split at all.
         Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
-        List<List<Syllable>> lanes = new ArrayList<>();
-        // When the last syllable each lane engraved was sung. See laneFor.
-        double[] sungAt = new double[LANES];
+        List<Lane> lanes = new ArrayList<>();
         for (int i = 0; i < LANES; i++) {
-            lanes.add(new ArrayList<>());
-            sungAt[i] = Double.NEGATIVE_INFINITY;
+            lanes.add(new Lane());
         }
         long chartEnd = barStart[bars.size()];
         for (LyricLine line : score.lyrics().lines()) {
-            int lane = laneFor(line.startSeconds(), sungAt);
-            List<Syllable> syllables = lanes.get(lane);
-            long previous = syllables.isEmpty() ? Long.MIN_VALUE
-                    : syllables.get(syllables.size() - 1).unit();
+            Lane lane = lanes.get(laneFor(line.startSeconds(), lanes));
             for (LyricWord word : line.words()) {
                 List<Hyphenator.Syllable> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
@@ -251,52 +278,50 @@ final class LyricEngraving {
                 // All of a word or none of it -- see fitted. The unsplit word is
                 // tried when the syllables will not fit, and only then is the
                 // word dropped.
-                List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, previous);
+                List<Syllable> placed =
+                        fitted(parts, word, bars, barStart, chartEnd, lane.lastUnit);
                 if (placed.isEmpty() && parts.size() > 1) {
                     placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
-                            word, bars, barStart, chartEnd, previous);
+                            word, bars, barStart, chartEnd, lane.lastUnit);
                 }
                 if (!placed.isEmpty()) {
-                    syllables.addAll(placed);
-                    previous = placed.get(placed.size() - 1).unit();
-                    sungAt[lane] = syllableSeconds(word, placed.size() - 1, placed.size());
+                    lane.add(placed, syllableSeconds(word, placed.size() - 1, placed.size()));
                 }
             }
         }
         // A lane nothing reached is not engraved: lyrics whose lines follow one
         // another come out the one block they always did.
-        return lanes.stream().filter(lane -> !lane.isEmpty()).toList();
+        return lanes.stream().filter(lane -> !lane.syllables.isEmpty())
+                .map(lane -> lane.syllables).toList();
     }
 
     /**
      * The lane a line beginning at {@code startSeconds} goes in.
      *
-     * <p>The first lane whose last syllable was sung before then, so a line
-     * takes a fresh lane only where it would be engraved beside something still
-     * being sung — which is what a second row of words on the page says. The
-     * syllable rather than the word, because a word is spread across its own
-     * length: a lane holding one word of three syllables sung over six seconds
-     * is occupied for all six, and reading the word's own start would free it
-     * after the first.
+     * <p>The first lane sung through before then, so a line takes a fresh lane
+     * only where it would be engraved beside something still being sung — which
+     * is what a second row of words on the page says. Syllables rather than
+     * words, because a word's syllables are spread across its own length, and
+     * reading the word's own start would free the lane after the first of them.
      *
-     * <p>Held in sung time rather than in grid units, which the placement runs
-     * on. A unit is rounded, clamped into the chart and pushed clear of its
-     * neighbour, so two lines sung one after the other can land on one unit and
-     * would read as simultaneous. And a lane is held by the syllables it
-     * engraved rather than by the lines it was given, so a word dropped for want
-     * of room does not send the lines after it into a lane of their own.
+     * <p>Sung time rather than the grid the placement runs on. A unit is
+     * rounded, clamped into the chart and pushed clear of its neighbour, so two
+     * lines sung one after the other can land on one unit and would read as
+     * simultaneous. And a lane is held by the syllables it engraved rather than
+     * by the lines it was given, so a word dropped for want of room does not
+     * send the lines after it into a lane of their own.
      *
      * <p>When every lane is held the line still has to go somewhere, and it goes
      * where the push costs least: the lane free longest. That is the behaviour a
      * single lane always had.
      */
-    private static int laneFor(double startSeconds, double[] sungAt) {
+    private static int laneFor(double startSeconds, List<Lane> lanes) {
         int least = 0;
-        for (int lane = 0; lane < sungAt.length; lane++) {
-            if (sungAt[lane] < startSeconds) {
+        for (int lane = 0; lane < lanes.size(); lane++) {
+            if (lanes.get(lane).sungThrough < startSeconds) {
                 return lane;
             }
-            if (sungAt[lane] < sungAt[least]) {
+            if (lanes.get(lane).sungThrough < lanes.get(least).sungThrough) {
                 least = lane;
             }
         }
@@ -345,10 +370,6 @@ final class LyricEngraving {
      * second syllable begins — that is the note it is sung on, and there is no
      * melody yet (#8) — so the even share is the honest guess, and it keeps the
      * syllables in the bar the word was sung in.
-     *
-     * <p>Named because {@link #placed} reads it too, for the moment the last
-     * syllable of a word is sung. Deriving that a second time is how a lane
-     * comes to be held to a different moment from the one it was drawn at.
      */
     private static double syllableSeconds(LyricWord word, int index, int parts) {
         return word.startSeconds()
