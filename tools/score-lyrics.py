@@ -42,9 +42,10 @@ Ad-hoc use, against any recording and LRC without touching the baseline:
     tools/score-lyrics.py --file uncommitted/generale.mp3 \\
         --lrc uncommitted/generale.lrc --language it
 
-That line is keyed so `premerge.sh` cannot see it, because a file with no
-licence reaching its words is not ground truth and must not become a baseline
-row (#347).
+That line is keyed so `premerge.sh` cannot see it, because an ad-hoc run is a
+one-off reading and a baseline row is a standing claim that everyone's premerge
+has to reproduce. Add a row below when a recording is meant to be scored on
+every run.
 
 Like its siblings, this exits early when the jar is missing rather than running
 without one -- a harness that cannot measure anything must not report that
@@ -68,8 +69,11 @@ REPO = Path(__file__).resolve().parent.parent
 # also scores a cleared candidate staged in uncommitted/ while it waits for the
 # ear that promotes it (docs/phone-to-corpus.md).
 #
-# The lyric right and the recording right are separate and both must be clear
-# before a row is added here; uncommitted/list.txt says which is which per file.
+# A row needs the recording and its lyrics present on the machine, and the
+# lyrics need not carry a licence -- they are read to measure MW, never
+# redistributed, and CLAUDE.md carries that rule. What a row does need is a
+# language the hyphenator has patterns for; uncommitted/list.txt says which is
+# which per file.
 LYRICS = {
     "sere-doltremare.mp3": (
         "uncommitted/sere-doltremare.mp3",
