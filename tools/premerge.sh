@@ -71,8 +71,14 @@ baseline = {l.split(":")[0].strip(): l.rstrip() for l in open(sys.argv[1])
 current  = {l.split(":")[0].strip(): l.rstrip() for l in sys.argv[2].splitlines()
             if ".mp3:" in l}
 for name, base in sorted(baseline.items()):
-    if name not in current:
-        print(f"SKIP {name}: not present locally (see samples/list.txt)")
+    # A row the harness itself reports as absent is a skip, not a movement:
+    # the diff can only compare what this machine can measure, and the skip
+    # is printed so a run over a subset cannot read as a run over the corpus.
+    # Only the CURRENT side may say so -- a committed baseline that certifies
+    # absence is a defect, and falls through to DIFF where it will fail.
+    if name not in current or ": not present (local-only" in current[name]:
+        print(f"SKIP {name}: not measurable here"
+              f" (fetch commands: samples/list.txt or uncommitted/list.txt)")
     elif current[name] != base:
         print(f"DIFF {name}\n  baseline: {base}\n  current:  {current[name]}")
 PY
