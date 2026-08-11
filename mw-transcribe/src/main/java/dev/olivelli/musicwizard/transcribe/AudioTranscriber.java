@@ -531,10 +531,11 @@ public final class AudioTranscriber {
      *
      * <p>Which is why the pulse is a parameter. It is the meter's counted beat
      * only while the tracker landed on that beat; where the correction says
-     * otherwise (#139) a lead-in of whole counted beats leaves the tracked pulses
-     * on half-numbered positions, and the invariant above is exactly what is
-     * lost. It does not make a grid downbeat a bar line -- nothing here knows the
-     * bar phase, which is #84 -- but it stops one from being unable to be.
+     * otherwise (#139) a lead-in of whole counted beats can leave the first
+     * tracked pulse part-way through a pulse, and the invariant above is exactly
+     * what is lost. It does not make a grid downbeat a bar line -- nothing here
+     * knows the bar phase, which is #84 -- but it stops one from being unable to
+     * be.
      *
      * <p>An anchor at the origin is not degenerate and is ordinary: hop
      * quantisation is what produces it, since any recording whose first beat
