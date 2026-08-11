@@ -113,12 +113,14 @@ class MlProvidersTest {
     @Test
     @DisplayName("a broken provider hides nothing: not one that throws, not one that is absent")
     void brokenProvidersAreSkippedAlone() {
-        // The services file lists three: the working fake, a class that does
-        // not exist anywhere -- which fails in the traversal, before any
-        // provider object is constructed, the way a service entry does when
-        // the ML stack is an optional download (#25) -- and one whose
-        // constructor throws, the way an ONNX provider does on a machine
-        // without the natives. The working one must survive both.
+        // The services file lists three, and the working fake is LAST: a
+        // class that does not exist anywhere -- which fails in the traversal,
+        // before any provider object is constructed, the way a service entry
+        // does when the ML stack is an optional download (#25) -- then one
+        // whose constructor throws, the way an ONNX provider does on a machine
+        // without the natives, and only then the fake. Listed first, the fake
+        // would survive a guard that abandons discovery at the first failure,
+        // and continuation is the property this test exists to hold.
         assertThat(MlProviders.separationIds())
                 .contains("fake-separation")
                 .doesNotContain("throwing");

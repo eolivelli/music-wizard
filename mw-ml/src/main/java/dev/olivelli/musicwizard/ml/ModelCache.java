@@ -364,8 +364,8 @@ public final class ModelCache {
      * <p>{@code NOTICE} lists what ships in the repository, and models
      * deliberately do not. This note is that answer for the cache directory,
      * where the file actually lives. {@link #contains} also reads the digest
-     * back from it, so the note is load-bearing, written before the model is
-     * moved into place, and its write failing fails the fetch.
+     * back from it, so the note is load-bearing and its write failing fails
+     * the fetch; the ordering against the move is stated where the move is.
      */
     private void writeSourceNote(ModelRef model) throws IOException {
         Path note = noteFor(model);

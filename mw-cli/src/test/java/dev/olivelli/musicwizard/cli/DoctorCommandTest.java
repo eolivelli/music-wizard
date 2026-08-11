@@ -36,10 +36,10 @@ import org.junit.jupiter.api.Test;
  * source at all, and #11 is the issue to build it -- which is #82's defect, in
  * the one command whose entire job is answering that question.
  *
- * <p>Only the advisor line is asserted. Everything else {@code doctor} prints
- * depends on the machine it runs on: whether LilyPond is installed is exactly
- * what it is there to report, and pinning it would make this suite pass or fail
- * on a property of the host rather than of the code.
+ * <p>Nothing here asserts on the machine-dependent lines: whether LilyPond is
+ * installed is exactly what {@code doctor} is there to report, and pinning it
+ * would make this suite pass or fail on a property of the host rather than of
+ * the code.
  */
 class DoctorCommandTest {
 
