@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.dsp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.api.Assertions.withinPercentage;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -87,6 +88,36 @@ class BeatTrackingTest {
                 out[start + i] +=
                         (float) (click[1] * decay * Math.sin(2 * Math.PI * 1000 * i / RATE));
             }
+        }
+        return out;
+    }
+
+    /**
+     * A click track that states its metre, over a noise bed: every beat sounds,
+     * but the offbeats sound more quietly.
+     *
+     * <p>The bed is what makes the accent reach the envelope. Onset strength is
+     * a rise in decibels, so against digital silence a click at a fifth of the
+     * gain rises very nearly as far as a loud one and the two are all but
+     * indistinguishable — measured, an eight-to-one gain ratio moves the
+     * envelope by under a quarter. Over a bed, a quiet click clears it by much
+     * less than a loud one, which is the situation a real mix is always in.
+     *
+     * @param weakGain gain of the offbeat clicks; the downbeats are at 0.8
+     * @param bedGain  amplitude of the uniform noise the clicks sit over
+     */
+    private static float[] accentedClicks(double beatsPerMinute, double seconds,
+                                          double weakGain, double bedGain, long seed) {
+        double period = 60.0 / beatsPerMinute;
+        List<double[]> clicks = new ArrayList<>();
+        int beat = 0;
+        for (double t = 0; t < seconds; t += period, beat++) {
+            clicks.add(new double[] {t, beat % 2 == 0 ? 0.8 : weakGain});
+        }
+        float[] out = clicksWithGains(clicks, seconds);
+        Random random = new Random(seed);
+        for (int i = 0; i < out.length; i++) {
+            out[i] += (float) (bedGain * (2 * random.nextDouble() - 1));
         }
         return out;
     }
@@ -696,6 +727,21 @@ class BeatTrackingTest {
             double estimate = TempoEstimator.estimate(envelope).beatsPerMinute();
 
             assertThat(estimate).isCloseTo(120, within(6.0));
+        }
+
+        @ParameterizedTest(name = "an accented {0} BPM click track is not read at half of it")
+        @ValueSource(doubles = {120, 140})
+        void accentAloneDoesNotHalveTheTempo(double bpm) {
+            // Metre is accent, and autocorrelation reads accent as evidence for
+            // the half: the beat's own lag pairs every loud click with a quiet
+            // one, the half's lag pairs like with like. Uncorrected this fixture
+            // reads exactly 60 and 70 BPM (#349).
+            OnsetEnvelope envelope =
+                    envelopeOf(accentedClicks(bpm, 20, 0.2, 0.02, 20_260_727L));
+
+            double estimate = TempoEstimator.estimate(envelope).beatsPerMinute();
+
+            assertThat(estimate).isCloseTo(bpm, withinPercentage(3));
         }
 
         @Test

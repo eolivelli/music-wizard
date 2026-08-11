@@ -33,6 +33,12 @@ import java.util.Objects;
  * width of about 1.4 octaves, wide enough not to force everything toward 120 and
  * narrow enough to reject the 60 and 240 aliases.
  *
+ * <p>The prior cannot do it alone, because two adjacent octaves differ by well
+ * under a factor of two under it while an accented beat's autocorrelation can
+ * prefer the half by more than that. So candidates are ranked on the envelope
+ * with its accents' range compressed — {@link #compressAccents} — and the
+ * confidence reported alongside is still read from the envelope itself.
+ *
  * <p>Confidence is reported as two numbers rather than one, because two
  * independent things have to hold before a tempo reading is worth trusting and
  * they fail separately. See {@link Estimate}.
@@ -200,7 +206,8 @@ public final class TempoEstimator {
      * that. Candidates the harmony cannot be barred by keep
      * {@link HarmonicRhythm#FLOOR} of their score; everything else is
      * unchanged, including the choice between a beat and its half, which stays
-     * with the envelope and the prior.
+     * with the envelope and the prior — see {@link #compressAccents} for what
+     * the envelope contributes to that choice.
      */
     public static Estimate estimate(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         Objects.requireNonNull(envelope, "envelope");
@@ -219,6 +226,8 @@ public final class TempoEstimator {
         }
 
         double[] correlation = autocorrelate(envelope.strength(), maxLag + 1);
+        double[] searchCorrelation =
+                autocorrelate(compressAccents(envelope.strength()), maxLag + 1);
 
         // Search over tempo, not over integer lag. A beat period is almost never
         // a whole number of frames -- 120 BPM at this frame rate is 21.53 -- so
@@ -235,7 +244,7 @@ public final class TempoEstimator {
             if (lag < minLag || lag > maxLag) {
                 continue;
             }
-            double value = interpolate(correlation, lag);
+            double value = interpolate(searchCorrelation, lag);
             double score = value * perceptualWeight(tempo);
             // Only a score that is in the running is weighed. A negative
             // correlation is already a non-candidate, and multiplying it by a
@@ -249,7 +258,11 @@ public final class TempoEstimator {
             if (score > bestScore) {
                 bestScore = score;
                 bestTempo = tempo;
-                bestRawCorrelation = value;
+                // Read from the envelope itself, not from the compressed copy
+                // the candidates were ranked on: periodicity is reported as a
+                // share of the envelope's own energy, and every figure quoted
+                // for it is a measurement of that envelope.
+                bestRawCorrelation = interpolate(correlation, lag);
             }
         }
 
@@ -271,6 +284,54 @@ public final class TempoEstimator {
         }
         return new Estimate(bestTempo, Math.clamp(periodicity, 0, 1),
                 peakiness(envelope.strength()));
+    }
+
+    /**
+     * The envelope with its accents' dynamic range square-rooted, mean removed,
+     * as the candidates are ranked on.
+     *
+     * <p><b>Why the ranking does not read the envelope directly.</b> Metre is
+     * accent alternation: a bar states its beats at unequal strengths, and that
+     * is what a listener hears the bar by. Autocorrelation reads it as evidence
+     * for the half. Write {@code A} and {@code a} for the strengths a strong and
+     * a weak beat contribute and {@code r} for {@code A/a}: the beat's own lag
+     * pairs each strong beat with a weak one and collects {@code A·a}, while the
+     * half's lag pairs like with like and collects {@code (A²+a²)/2}. Their ratio
+     * is {@code (r + 1/r)/2}, which is 1 only when the beats are equally loud and
+     * grows without bound as the accent deepens. <b>So the more clearly a
+     * recording states its metre, the harder its own autocorrelation argues for
+     * half the beat</b> — and the perceptual prior separates two adjacent octaves
+     * by well under a factor of two, so it cannot answer an accent ratio of 2 or
+     * more (#349).
+     *
+     * <p>Taking the root before correlating turns that {@code r} into
+     * {@code √r}, which is what shrinks the bias; nothing else about the reading
+     * changes, since a monotone map of the envelope leaves which frames are
+     * accents alone. It is not a threshold or a tuned constant: measured over the
+     * corpus, every compression tried moves the same benchmarks the same way —
+     * powers from 0.3 to 0.7, hard clipping from one to four standard deviations,
+     * and log compression over a tenfold range of slope. The root is the one with
+     * no parameter to choose.
+     *
+     * <p>The mean is removed again afterwards because {@link OnsetEnvelope}
+     * delivers a mean-zero signal and compression does not preserve that. An
+     * autocorrelation of a signal with a mean adds the same positive constant at
+     * every lag, and a constant added to every candidate is not neutral once the
+     * perceptual prior multiplies it: it drags the winner toward 120 BPM.
+     */
+    private static double[] compressAccents(double[] signal) {
+        double[] out = new double[signal.length];
+        double mean = 0;
+        for (int i = 0; i < signal.length; i++) {
+            double value = signal[i];
+            out[i] = Math.signum(value) * Math.sqrt(Math.abs(value));
+            mean += out[i];
+        }
+        mean /= Math.max(1, signal.length);
+        for (int i = 0; i < out.length; i++) {
+            out[i] -= mean;
+        }
+        return out;
     }
 
     /**
