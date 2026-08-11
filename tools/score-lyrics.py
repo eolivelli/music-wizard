@@ -9,12 +9,14 @@ catches is the day they stop: a dropped, duplicated or reordered line, a word
 lost to a tokenizer disagreement, a stated onset moved by the offset sign or the
 sort.
 
-**It sees line starts and nothing else.** Both columns are functions of the
-onsets the file states, and a leading run's start is its line's start, so every
-rule that decides where a line *ends* -- the break heuristic, the plausible
-length, the recording bound -- is invisible to it. A regression that stretched a
-line over the instrumental after it (#323) would not move either column by a
-millisecond. #361 is the end-and-coverage column that would see it.
+**It sees where runs start, which on a line-level file is where lines start.**
+So the two rules that decide only where a line *ends* -- the break heuristic and
+the plausible length -- are invisible to it, and a regression stretching a line
+over the instrumental after it (#323) would not move either column by a
+millisecond. #361 is the end-and-coverage column that would see it. The third
+end rule, the recording bound, is not invisible: it clamps a line's end, and a
+word tag is clamped into that, so on a word-tagged file it reaches a run start
+and shows up as onset error.
 
 **Word error and onset error are reported separately** (#307). They fail for
 different reasons -- one says the words are wrong, the other says they are in
@@ -123,6 +125,15 @@ def jblank(text: str) -> bool:
 
 # Java's \R.
 LINE_BREAK = re.compile("\\r\\n|[\\n\\x0b\\f\\r\\x85\\u2028\\u2029]")
+
+# The grammar Double.valueOf's javadoc gives, with [0-9] rather than \\d --
+# Python's \\d matches Unicode digits and Java's parser does not. NaN and the
+# infinities take no type suffix; the hexadecimal form's p-exponent is required.
+JAVA_DOUBLE = re.compile(
+    r"[+-]?(?:NaN|Infinity"
+    r"|(?:(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+    r"|0[xX](?:[0-9a-fA-F]+\.?[0-9a-fA-F]*|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+)"
+    r"[fFdD]?)")
 
 # Stripped from a token's ends only. The apostrophe is deliberately absent and
 # the token is never split on one: Italian elides constantly -- c'è, l'amore,
@@ -245,20 +256,31 @@ def offset_of(line: str) -> float | None:
 def java_double(text: str) -> float | None:
     """Double.parseDouble, in milliseconds, or None where Java would throw.
 
-    Not float(): Java takes a trailing type suffix (`100d`) and rejects the digit
-    separators Python accepts (`1_0` reads as ten here and throws there). Either
-    would move every anchor in the file by a tenth of a second or more. NaN and
-    the infinities parse in both and are refused afterwards, as LrcLyrics refuses
-    them -- a non-finite shift reaches LyricWord's constructor otherwise.
+    float() cannot be handed the string and asked afterwards. It runs
+    PyUnicode_TransformDecimalAndSpaceToASCII first, which folds every Unicode
+    space *and every Unicode decimal digit* to ASCII -- so `[offset:\u00a0500]`
+    and `[offset:\u0665\u0660\u0660]` parse here and throw in Java. Guarding
+    the call was tried twice and let both back in, because the guard and the
+    parser disagreed about what a space is. So the grammar is matched first and
+    float() only ever sees a string it cannot be creative about.
+
+    The two trims are also different, and both are Java's rather than either
+    being ours: String.strip() takes Character.isWhitespace, and parseDouble
+    takes everything at or below U+0020 -- which is why a leading U+0001 parses
+    in Java and a leading U+00A0 does not.
+
+    The hexadecimal form is real: parseDouble reads `0x1p10` as 1024. Rejecting
+    it would hide a shift Java applied.
     """
-    if "_" in text:
+    text = text.strip("".join(chr(c) for c in range(0x21)))
+    if not JAVA_DOUBLE.fullmatch(text):
         return None
-    if len(text) > 1 and text[-1] in "dDfF":
+    if text[-1] in "dDfF" and not text.lower().startswith(("nan", "infinity",
+                                                          "-nan", "-infinity")):
         text = text[:-1]
-    try:
-        value = float(text) / 1000.0
-    except ValueError:
-        return None
+    value = (float.fromhex(text) if "x" in text.lower() else float(text)) / 1000.0
+    # As LrcLyrics refuses it: a non-finite shift otherwise reaches LyricWord's
+    # constructor, out of a public parser and past the caller's read guard.
     return value if -float("inf") < value < float("inf") else None
 
 

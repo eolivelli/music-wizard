@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 samples = import_module("score-samples")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
+vtt = import_module("vtt-to-lrc")
 
 C = (0, "MAJOR")
 G = (7, "MAJOR")
@@ -162,7 +163,7 @@ class Normalisation(unittest.TestCase):
     def test_a_non_breaking_space_is_not_stripped_either(self):
         """String.strip() and isBlank() use Character.isWhitespace, which says
         false for the three non-breaking spaces Python's str.strip() removes.
-        Each of these was a divergence from LrcLyrics."""
+        Each of these is a divergence from str.strip()."""
         for space in ("\u00a0", "\u2007", "\u202f"):
             tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno due")
             self.assertEqual([f"{space}uno", "due"], tokens, space)
@@ -227,9 +228,20 @@ class TruthTokens(unittest.TestCase):
             _, anchors, _ = lyrics.truth_tokens(f"{bad}\n[00:10.00]ciao")
             self.assertEqual({0: 10.0}, anchors, bad)
 
-    def test_a_java_type_suffix_on_the_offset_parses(self):
-        """Double.parseDouble takes it and float() does not, and the difference
-        is a tenth of a second on every anchor in the file."""
+    def test_the_offset_grammar_is_double_parse_doubles(self):
+        """Each value here is one Double.parseDouble accepts and float() does
+        not, or the reverse. float() cannot be handed the string and asked
+        afterwards: it folds Unicode spaces and Unicode digits to ASCII before
+        parsing, so a guard in front of it does not hold."""
+        for value, want in (("100d", 0.1), ("0x1p10", 1.024), ("0x1.8p9", 0.768),
+                            ("\x01500", 0.5), ("500\x1b", 0.5)):
+            self.assertEqual(want, lyrics.java_double(value), value)
+        for refused in ("\u00a0500", "500\u00a0", "\u2007500", "\u202f500",
+                        "\u0665\u0660\u0660", "1_0", "0x1", "NaN", "Infinity",
+                        "", "d", "1e"):
+            self.assertIsNone(lyrics.java_double(refused), refused)
+
+    def test_a_type_suffix_moves_every_anchor_in_the_file(self):
         _, anchors, _ = lyrics.truth_tokens("[offset:100d]\n[00:10.00]ciao")
         self.assertEqual({0: 9.9}, anchors)
 
@@ -307,6 +319,61 @@ class WordAndOnsetColumns(unittest.TestCase):
         self.assertNotIn("0.000s", line)
 
 
+class VttConversion(unittest.TestCase):
+    """The tool that writes committed lyric ground truth, so a silent bug here
+    is not caught by anything downstream."""
+
+    HEAD = "WEBVTT\n\n"
+
+    def cue(self, start: str, end: str, text: str) -> str:
+        return f"00:00:{start} --> 00:00:{end}\n{text}\n"
+
+    def test_a_missing_blank_line_does_not_swallow_the_next_cue(self):
+        """A body ends at the next timing line as well as at a blank one.
+        Without that, one cue is lost, the timing line becomes lyric text, and
+        the count printed at the end comes from the same parse, so it cannot
+        contradict it."""
+        text = self.HEAD + "".join(self.cue(*c) for c in
+                                   (("01.000", "02.000", "uno"),
+                                    ("03.000", "04.000", "due"),
+                                    ("05.000", "06.000", "tre")))
+        self.assertEqual(3, len(vtt.cues(text)))
+        self.assertEqual(["uno", "due", "tre"], [body for _, _, body in vtt.cues(text)])
+
+    def test_a_multi_line_cue_is_one_lyric_line(self):
+        text = self.HEAD + self.cue("01.000", "02.000", "uno\ndue")
+        self.assertEqual([(1.0, 2.0, "uno due")], vtt.cues(text))
+
+    def test_an_overlapping_cue_writes_no_stated_end(self):
+        """A bare tag past the next cue's start would sort into the middle of
+        that line and truncate it."""
+        text = self.HEAD + self.cue("01.000", "09.000", "uno") + self.cue(
+            "05.000", "06.000", "due")
+        self.assertEqual("[00:01.00]uno\n[00:05.00]due\n[00:06.00]\n",
+                         vtt.convert(text, set()))
+
+    def test_abutting_cues_write_no_stated_end_either(self):
+        """The next tag already says it."""
+        text = self.HEAD + self.cue("01.000", "02.000", "uno") + self.cue(
+            "02.000", "03.000", "due")
+        self.assertEqual("[00:01.00]uno\n[00:02.00]due\n[00:03.00]\n",
+                         vtt.convert(text, set()))
+
+    def test_a_gap_writes_the_stated_end(self):
+        """The whole point: LrcLyrics reads the bare tag as the line's end, so
+        the line stops where the subtitler said rather than where the parser's
+        break heuristic would cut it."""
+        text = self.HEAD + self.cue("01.000", "02.000", "uno") + self.cue(
+            "30.000", "31.000", "due")
+        self.assertEqual("[00:01.00]uno\n[00:02.00]\n[00:30.00]due\n[00:31.00]\n",
+                         vtt.convert(text, set()))
+
+    def test_minutes_past_ninety_nine_compare_as_numbers(self):
+        """Formatted tags sort [100:00.00] before [99:00.00], so the overlap
+        test cannot be a string comparison."""
+        self.assertLess(vtt.centiseconds(99 * 60), vtt.centiseconds(100 * 60))
+
+
 class Keying(unittest.TestCase):
     """premerge.sh keys each line on the text before its first colon and reads
     only lines holding '.mp3:'. Both halves of that are executed here rather
@@ -330,8 +397,8 @@ class Keying(unittest.TestCase):
         self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
 
     def test_the_preamble_is_not_gated(self):
-        """The line main() prints, not the module docstring: premerge.sh reads
-        the former, and an earlier version of this test asserted the latter."""
+        """The line main() prints, not the module docstring -- premerge.sh reads
+        the former."""
         self.assertNotIn(".mp3:", lyrics.PREAMBLE)
 
 
