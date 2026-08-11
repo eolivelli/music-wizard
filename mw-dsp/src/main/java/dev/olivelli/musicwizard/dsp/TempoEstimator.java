@@ -305,19 +305,39 @@ public final class TempoEstimator {
      * more (#349).
      *
      * <p>Taking the root before correlating turns that {@code r} into
-     * {@code √r}, which is what shrinks the bias; nothing else about the reading
-     * changes, since a monotone map of the envelope leaves which frames are
-     * accents alone. It is not a threshold or a tuned constant: measured over the
-     * corpus, every compression tried moves the same benchmarks the same way —
-     * powers from 0.3 to 0.7, hard clipping from one to four standard deviations,
-     * and log compression over a tenfold range of slope. The root is the one with
-     * no parameter to choose.
+     * {@code √r}, which is what shrinks the bias. <b>It is not otherwise
+     * neutral.</b> Correlation is quadratic, so a monotone map of the envelope
+     * still reweights it — the root moves weight off the attacks and onto the
+     * floor between them, and on material with no accent to shrink that shift
+     * is the whole of the effect. That is where its cost sits: near the top of
+     * the tempo range, where a click track's beat and its half are all but
+     * tied, it moves a few of them onto the half (#44).
      *
-     * <p>The mean is removed again afterwards because {@link OnsetEnvelope}
-     * delivers a mean-zero signal and compression does not preserve that. An
-     * autocorrelation of a signal with a mean adds the same positive constant at
-     * every lag, and a constant added to every candidate is not neutral once the
-     * perceptual prior multiplies it: it drags the winner toward 120 BPM.
+     * <p>It is a family rather than a tuned constant, which is the argument for
+     * reading anything into it at all. Measured over the corpus, powers from
+     * 0.3 to 0.7 and log compression over a tenfold range of slope move the
+     * same benchmarks the same way; hard clipping, from one standard deviation
+     * to four, agrees with them everywhere but {@code cm-blues-68-95.mp3},
+     * which it leaves where the uncompressed reading has it. The root is the
+     * member with no parameter to choose.
+     *
+     * <p>The mean is removed again afterwards. Compression does not preserve a
+     * zero mean and the input does not always have one to preserve: every
+     * window's estimate is taken over a slice of an envelope normalised across
+     * the whole recording, and a slice of a mean-zero signal is not mean-zero —
+     * the same fact {@link #peakiness} is computed about its own mean for. An
+     * autocorrelation of a signal with a mean adds the same positive constant
+     * at every lag, and a constant added to every candidate is not neutral once
+     * the perceptual prior multiplies it: it drags the winner toward 120 BPM.
+     *
+     * <p><b>That drag is not a small effect and removing this line is not a
+     * tidy-up.</b> The constant is about a fifth of the compressed envelope's
+     * variance here, and leaving it in moves {@code bossa-cm.mp3} onto its
+     * stated rate — which is why it is worth saying that it is still wrong to
+     * leave in. The pull is toward 120 whatever the recording, so it helps
+     * exactly the recordings whose true tempo happens to lie nearer 120 than
+     * their half does and cannot help the ones where it does not. That is an
+     * uncontrolled second prior, not evidence about a beat (#353).
      */
     private static double[] compressAccents(double[] signal) {
         double[] out = new double[signal.length];
