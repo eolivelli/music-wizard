@@ -19,6 +19,7 @@ chart = import_module("score-chart")
 
 C = (0, "MAJOR")
 G = (7, "MAJOR")
+F = (5, "MAJOR")
 
 
 def span(symbol: str, start: float, end: float) -> dict:
@@ -46,6 +47,25 @@ class BarCredit(unittest.TestCase):
     def test_a_tie_does_not_depend_on_which_chord_came_first(self):
         self.assertEqual(samples.bar_credit({C: 2.0, G: 2.0}),
                          samples.bar_credit({G: 2.0, C: 2.0}))
+
+    def test_three_and_four_way_ties_divide_the_same_way(self):
+        """Both occur in the corpus, and a committed baseline line rests on a
+        third of a bar."""
+        self.assertEqual({C: 1 / 3, G: 1 / 3, F: 1 / 3},
+                         samples.bar_credit({C: 1.0, G: 1.0, F: 1.0}))
+        self.assertEqual({C: 0.25, G: 0.25, F: 0.25, None: 0.25},
+                         samples.bar_credit({C: 1.0, G: 1.0, F: 1.0, None: 1.0}))
+
+    def test_a_silence_can_tie_and_earns_its_share_of_nothing(self):
+        credit = samples.bar_credit({C: 2.0, None: 2.0})
+        self.assertEqual({C: 0.5, None: 0.5}, credit)
+        self.assertEqual((0.5, 0.5), samples.accuracy([credit],
+                                                      samples.parse_truth("C")))
+
+    def test_a_near_miss_is_not_a_tie(self):
+        """The rule is exact equality. A tolerance would be one more arbitrary
+        constant deciding the same bars."""
+        self.assertEqual({C: 1.0}, samples.bar_credit({C: 2.0000001, G: 2.0}))
 
     def test_a_bar_with_nothing_in_it_earns_nothing(self):
         self.assertEqual({}, samples.bar_credit({}))

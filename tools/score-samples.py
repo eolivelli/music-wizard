@@ -213,7 +213,7 @@ def bar_credit(covered: dict) -> dict:
 
 
 def bar_shares(spans, start: float, end: float) -> dict:
-    """The credit for [start, end), by {@link bar_credit} over the spans in it.
+    """The credit for [start, end), by bar_credit over the spans in it.
 
     Measured on the single longest span per chord rather than on the chord's
     total across the bar, which is the rule this harness has always used and is
