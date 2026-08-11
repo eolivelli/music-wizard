@@ -58,24 +58,21 @@ class DoctorCommandTest {
     }
 
     @Test
-    @DisplayName("a configured provider the classpath lacks names the issue that supplies it")
-    void absentProviderNamesItsIssue() {
-        // The defaults name providers #312 and #314 have not built yet. That is
-        // an expected state with an issue number, not a broken install, and it
-        // must not fail the run. The fake on this classpath keeps a deliberately
-        // different id, so the default separation id stays genuinely absent --
-        // a fake under onnx-spleeter would collide with #312's real provider
-        // and byId would return whichever the loader yields first.
+    @DisplayName("a present provider and an absent one each read as what they are")
+    void eachProviderLineReadsAsWhatItIs() {
+        // Separation became the present branch's ordinary case when #312
+        // landed its real provider under the default id; ASR is still the
+        // absent branch until #314, an expected state with an issue number
+        // rather than a broken install, and neither may fail the run.
         CliRunner.Result doctor = CliRunner.run("doctor");
 
         assertThat(doctor.exitCode()).as(doctor.all()).isZero();
         assertThat(doctor.out())
-                .contains("Separation")
-                .contains("#312")
+                .contains("onnx-spleeter (present)")
                 .contains("Lyrics ASR")
                 .contains("sherpa-qwen3")
                 .contains("#314")
-                .contains("available: fake-cli-separation")
+                .contains("fake-cli-separation")
                 .contains("Models");
     }
 

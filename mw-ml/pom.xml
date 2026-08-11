@@ -19,6 +19,23 @@
       <groupId>${project.groupId}</groupId>
       <artifactId>mw-core</artifactId>
     </dependency>
+    <!--
+      For the resampler: a provider owns resampling to its model's rate (the
+      SPI says so), and duplicating mw-audio's resampler here would be a second
+      statement of it. A new edge between non-core modules, named as the rule
+      asks. mw-audio is already in every closure that has mw-ml (the CLI has
+      both, the phone excludes mw-ml wholesale), so this pulls nothing
+      anywhere new.
+    -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mw-audio</artifactId>
+    </dependency>
+    <!-- The model-side STFT; BSD-2, the same trade mw-dsp makes. -->
+    <dependency>
+      <groupId>com.github.wendykierp</groupId>
+      <artifactId>JTransforms</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.microsoft.onnxruntime</groupId>
       <artifactId>onnxruntime</artifactId>

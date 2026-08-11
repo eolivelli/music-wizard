@@ -38,6 +38,7 @@ import picocli.CommandLine.Option;
                 InitCommand.class,
                 AnalyzeCommand.class,
                 RenderCommand.class,
+                SeparateCommand.class,
                 InfoCommand.class,
                 DoctorCommand.class
         })

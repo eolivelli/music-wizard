@@ -95,7 +95,14 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <environmentVariables>
-            <XDG_CONFIG_HOME>${project.build.directory}/no-global-config</XDG_CONFIG_HOME>
+            <!--
+              A committed layer rather than a nonexistent directory, because
+              this module's runtime classpath carries the REAL providers: its
+              ml.offline stops a test that accidentally reaches one from
+              downloading a model inside the fast suite. The file says how
+              that nearly happened.
+            -->
+            <XDG_CONFIG_HOME>${project.basedir}/src/test/resources/offline-global-config</XDG_CONFIG_HOME>
           </environmentVariables>
         </configuration>
       </plugin>
