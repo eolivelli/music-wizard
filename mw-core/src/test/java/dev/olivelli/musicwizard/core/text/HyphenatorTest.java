@@ -121,14 +121,16 @@ class HyphenatorTest {
         void openingYIsTheConsonantInBothLanguages() {
             // Italian lyrics borrow English words freely, and word-initial y
             // reaches Italian only that way -- yogurt, yacht -- where it is the
-            // consonant. Exempting Italian puts a bare y on a note of its own in
-            // these, which is 43 dictionary words against the one it buys back.
+            // consonant. Exempting Italian strands a bare y on its own note
+            // across this whole family.
             assertThat(split("it", "you")).isEqualTo("you");
             assertThat(split("it", "young")).isEqualTo("young");
-            assertThat(split("it", "yogurt")).isEqualTo("yo-gurt");
-            // The one it costs, named rather than hidden: ipsilon is the ordinary
-            // spelling, and this variant is sung on three notes, not two.
-            assertThat(split("it", "ypsilon")).isEqualTo("ypsi-lon");
+            assertThat(split("it", "yield")).isEqualTo("yield");
+            // What it costs, from the same population rather than a word that
+            // population does not contain: these open on the vowel and lose a
+            // note. Named so the trade is visible, not hidden.
+            assertThat(split("it", "yttrium")).isEqualTo("yttrium");
+            assertThat(split("it", "Yggdrasil")).isEqualTo("Yggdra-sil");
         }
 
         @Test

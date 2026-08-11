@@ -330,8 +330,9 @@ public final class Hyphenator {
      * <p>Both languages, because word-initial {@code y} reaches Italian only in
      * loanwords — <i>yogurt</i>, <i>yoga</i>, <i>yacht</i> — where it is the
      * consonant, and Italian lyrics borrow English words freely. Exempting
-     * Italian puts a bare {@code y} on a note of its own in <i>you</i>,
-     * <i>your</i> and <i>young</i>, 43 words against the one it buys back.
+     * Italian strands a bare {@code y} on a note of its own across the whole
+     * <i>you</i>, <i>your</i>, <i>young</i>, <i>yield</i>, <i>Yiddish</i> family,
+     * and buys back the handful of words below that open on the vowel.
      *
      * <p><b>The word, not the piece.</b> A piece the patterns cut is a syllable,
      * and a syllable's own {@code y} is the vowel wherever the syllable falls:
@@ -339,9 +340,10 @@ public final class Hyphenator {
      * and joins the note away.
      *
      * <p>Position is not the whole answer and does not claim to be: a few words
-     * open on the vowel — {@code yt-tri-um}, Italian {@code yp-si-lon} — and this
-     * joins each into one note fewer. Telling those from {@code York} wants a
-     * pronunciation dictionary, which is #332's own conclusion.
+     * do open on the vowel — {@code yt-tri-um}, {@code Ygg-dra-sil},
+     * {@code Yp-si-lan-ti} — and this joins each into one note fewer. Telling
+     * those from {@code York} wants a pronunciation dictionary, which is #332's
+     * own conclusion.
      *
      * <p>Any letter above U+007F counts as a vowel. Both languages are written in
      * the Latin alphabet, so what that reaches is an accented letter, and Italian
