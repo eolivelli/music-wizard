@@ -44,7 +44,7 @@ def seconds(hours: str | None, minutes: str, secs: str, millis: str) -> float:
 def cues(text: str) -> list[tuple[float, float, str]]:
     """Every timed cue, in file order, as (start, end, one-line text)."""
     out = []
-    lines = text.replace("﻿", "").splitlines()
+    lines = text.replace("\ufeff", "").splitlines()
     i = 0
     while i < len(lines):
         m = TIMING.match(lines[i].strip())
@@ -55,7 +55,12 @@ def cues(text: str) -> list[tuple[float, float, str]]:
         end = seconds(*m.group(5, 6, 7, 8))
         i += 1
         body = []
-        while i < len(lines) and lines[i].strip():
+        # A cue body ends at a blank line -- or at the next timing line, because
+        # a VTT whose cues are not blank-separated is malformed and this file
+        # produces ground truth. Without the second test one cue swallows the
+        # next, its timing line becomes lyric text, and the count printed at the
+        # end comes from the same faulty parse, so it cannot contradict it.
+        while i < len(lines) and lines[i].strip() and not TIMING.match(lines[i].strip()):
             body.append(lines[i].strip())
             i += 1
         if body:
@@ -63,10 +68,16 @@ def cues(text: str) -> list[tuple[float, float, str]]:
     return out
 
 
+def centiseconds(t: float) -> int:
+    """The printed resolution. Compared as a number rather than as the formatted
+    tag, which sorts `[100:00.00]` before `[99:00.00]`."""
+    return round(t * 100)
+
+
 def tag(t: float) -> str:
     """LRC's [mm:ss.xx]. Minutes are not wrapped at 60: a 78-minute file is one
     line saying 78, not one saying 18."""
-    minutes, rest = divmod(round(t * 100), 6000)
+    minutes, rest = divmod(centiseconds(t), 6000)
     return f"[{minutes:02d}:{rest // 100:02d}.{rest % 100:02d}]"
 
 
@@ -75,11 +86,13 @@ def convert(text: str, drop: set[int]) -> str:
     out = []
     for i, (start, end, body) in enumerate(kept):
         out.append(f"{tag(start)}{body}")
-        # Only where the stated end is not already implied by the next cue.
-        # Rounded to the printed resolution first, so two timestamps that print
-        # the same do not produce a zero-length clear tag.
+        # The stated end is written only where the cue really closes before the
+        # next one opens: where they abut, the next tag already says it, and on
+        # cues that overlap a bare tag would sort into the middle of the next
+        # line and truncate it. Compared at the printed resolution, so two
+        # timestamps that print the same do not make a zero-length clear tag.
         nxt = kept[i + 1][0] if i + 1 < len(kept) else None
-        if nxt is None or tag(end) != tag(nxt):
+        if nxt is None or centiseconds(end) < centiseconds(nxt):
             out.append(tag(end))
     return "\n".join(out) + "\n"
 
@@ -93,7 +106,10 @@ def main() -> None:
         help="comma-separated 1-based cue numbers to leave out (title cards, credits)",
     )
     args = parser.parse_args()
-    drop = {int(n) for n in args.drop_cues.split(",") if n.strip()}
+    try:
+        drop = {int(n) for n in args.drop_cues.split(",") if n.strip()}
+    except ValueError:
+        sys.exit(f"--drop-cues takes cue numbers, not {args.drop_cues!r}")
 
     text = open(args.vtt, encoding="utf-8").read()
     total = len(cues(text))

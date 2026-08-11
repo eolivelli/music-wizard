@@ -70,7 +70,7 @@ jobs:
         run: mvn -B --no-transfer-progress dependency:tree -Dscope=compile
 
   # Analyzes every committed sample and publishes the corpus status to the
-  # run's summary page: tempo, meter and span count per file, plus both scored
+  # run's summary page: tempo, meter and span count per file, plus the scored
   # harnesses for the files with registered ground truth. Local-only samples
   # (licensing-bound; see samples/list.txt) are absent here by design and the
   # harnesses report them as skipped rather than failing.

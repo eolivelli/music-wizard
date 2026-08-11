@@ -359,7 +359,7 @@ short of a licence (#204).
 `tools/score-samples.py` scores every grid written down there and
 `BluesLoopIT` gates one recording in CI. Lyric ground truth is gated twice over
 (#347): the words carry a licence of their own, separate from the recording's,
-and a sung entry names its language because the hyphenation patterns and the
-ASR reach Italian and English only. `docs/phone-to-corpus.md` is the route
+and a sung entry names its language, because the hyphenation patterns cover
+Italian and English and nothing else. `docs/phone-to-corpus.md` is the route
 a recording made with the phone app takes into `uncommitted/` or `samples/`,
 and what to write down beside it.

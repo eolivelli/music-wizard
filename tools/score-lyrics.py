@@ -5,9 +5,16 @@ Nothing transcribes lyrics from audio yet (#314), so the only lyric input is a
 supplied LRC and this is a **loop-closure gate**: an LRC in, `analyze`,
 `render`, MW's words back out of `score/score.json`, scored against that same
 LRC. Both columns are expected to read zero. That is the point of it -- what it
-catches is the day they stop: a dropped or duplicated line, a word lost to a
-tokenizer disagreement, a line forced under an instrumental stretch (#323), a
-timestamp moved by the offset sign, the sort, or one of the clamps.
+catches is the day they stop: a dropped, duplicated or reordered line, a word
+lost to a tokenizer disagreement, a stated onset moved by the offset sign or the
+sort.
+
+**It sees line starts and nothing else.** Both columns are functions of the
+onsets the file states, and a leading run's start is its line's start, so every
+rule that decides where a line *ends* -- the break heuristic, the plausible
+length, the recording bound -- is invisible to it. A regression that stretched a
+line over the instrumental after it (#323) would not move either column by a
+millisecond. #361 is the end-and-coverage column that would see it.
 
 **Word error and onset error are reported separately** (#307). They fail for
 different reasons -- one says the words are wrong, the other says they are in
@@ -69,6 +76,11 @@ LYRICS = {
     ),
 }
 
+# The line main() prints above the rows. It holds no ".mp3:", which is what
+# keeps premerge.sh from reading it as a row; the Keying tests execute that.
+PREAMBLE = ("lyric words MW carries, against the file they were read from"
+            " (nothing transcribes them from audio yet, #314):")
+
 # Flipped by #314, when MW starts producing lyrics from the audio instead of
 # being handed them. Printed in every line, so the baseline says which loop it
 # measured.
@@ -79,11 +91,36 @@ LINE_TAG = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
 WORD_TAG = re.compile(r"<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>")
 ID_TAG = re.compile(r"\[([a-zA-Z#][a-zA-Z0-9_#]*):(.*)]")
 
-# Java's \s and String.strip() are ASCII-only where Python's are not, and
-# LrcLyrics splits words on \\s+. A non-breaking space is one token to it and
-# would be two to us -- which on a subtitle track, where NBSP is common, would
-# invent an insertion per occurrence and hold the WER permanently above zero.
+# Java's \s is ASCII-only where Python's is not, and LrcLyrics splits words on
+# \\s+. A non-breaking space is one token to it and would be two to us -- which
+# on a subtitle track, where NBSP is common, would invent an insertion per
+# occurrence and hold the WER permanently above zero.
 ASCII_SPACE = re.compile(r"[ \t\n\x0b\f\r]+")
+
+# Character.isWhitespace, which is what String.strip() and isBlank() use. It is
+# Unicode-aware -- so not the set above -- but it excludes the three
+# *non-breaking* spaces that Python's str.strip() removes. Getting this wrong is
+# not academic: a stray U+00A0 before a line tag makes Java drop the whole line
+# in silence, and a truth side using str.strip() would keep it and report the
+# line as deletions on a loop that closed correctly.
+JAVA_SPACE = frozenset(
+    "\t\n\x0b\f\r\x1c\x1d\x1e\x1f "
+    "\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+    "\u2008\u2009\u200a\u2028\u2029\u205f\u3000")
+# U+00A0, U+2007 and U+202F are deliberately absent: they are the
+# non-breaking ones, and Character.isWhitespace says false for all three.
+
+
+def jstrip(text: str) -> str:
+    """Java's String.strip()."""
+    return text.strip("".join(JAVA_SPACE))
+
+
+def jblank(text: str) -> bool:
+    """Java's String.isBlank()."""
+    return all(character in JAVA_SPACE for character in text)
+
+
 # Java's \R.
 LINE_BREAK = re.compile("\\r\\n|[\\n\\x0b\\f\\r\\x85\\u2028\\u2029]")
 
@@ -120,15 +157,14 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
     Returns (normalised tokens, {token index: onset seconds}, word_level). The
     decomposition mirrors LrcLyrics.parse and LrcLyrics.wordsOf: the same BOM
     strip, the same [offset:] sign, the same repeated-tag expansion, the same
-    sort, and one anchor per timed run. Tokens normalising to empty are dropped
-    from both sides; if one opened a run its anchor moves to the next survivor.
+    sort, and one anchor per timed run.
     """
     text = text.removeprefix("\ufeff")
     offset = 0.0
     timed: list[tuple[float, str]] = []
 
     for raw in LINE_BREAK.split(text):
-        line = raw.strip()
+        line = jstrip(raw)
         if not line:
             continue
         stated = offset_of(line)
@@ -139,13 +175,13 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
         consumed = 0
         while True:
             tag = LINE_TAG.search(line, consumed)
-            if tag is None or line[consumed:tag.start()].strip():
+            if tag is None or not jblank(line[consumed:tag.start()]):
                 break
             starts.append(lrc_seconds(*tag.group(1, 2, 3)))
             consumed = tag.end()
         if not starts:
             continue
-        body = line[consumed:].strip()
+        body = jstrip(line[consumed:])
         for start in starts:
             timed.append((start, body))
 
@@ -155,7 +191,7 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
     tokens: list[str] = []
     anchors: dict[int, float] = {}
     for start, body in timed:
-        if not body.strip():
+        if jblank(body):
             # A timestamp with no text clears the display. It is not a line; it
             # ends the one before it, which is why it carries no token.
             continue
@@ -168,24 +204,32 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
         cursor = 0
         for tag in WORD_TAG.finditer(body):
             chunk = body[cursor:tag.start()]
-            if chunk.strip():
+            if not jblank(chunk):
                 open_run(chunk, at, tokens, anchors)
             at = max(0.0, lrc_seconds(*tag.group(1, 2, 3)) - offset)
             word_level = True
             cursor = tag.end()
         tail = body[cursor:]
-        if tail.strip():
+        if not jblank(tail):
             open_run(tail, at, tokens, anchors)
 
     return tokens, anchors, word_level
 
 
 def open_run(chunk: str, at: float, tokens: list[str], anchors: dict[int, float]) -> None:
-    """Appends a run's surviving tokens, anchoring the first of them."""
-    kept = [t for t in (normalize(w) for w in ASCII_SPACE.split(chunk.strip())) if t]
-    if kept:
+    """Appends a run's words, anchoring the first of them.
+
+    A token that normalises to nothing -- a lone dash opening a line of dialogue,
+    a leading ellipsis, both routine in a subtitle track -- is kept rather than
+    dropped. LrcLyrics keeps it and gives it a share of the line, so dropping it
+    here would leave the run's stated onset sitting on the *next* word and report
+    an onset error on a loop that closed correctly. Kept, it normalises to the
+    empty string on both sides and pairs with itself.
+    """
+    words = [w for w in ASCII_SPACE.split(jstrip(chunk)) if not jblank(w)]
+    if words:
         anchors[len(tokens)] = at
-        tokens.extend(kept)
+        tokens.extend(normalize(w) for w in words)
 
 
 def offset_of(line: str) -> float | None:
@@ -195,11 +239,27 @@ def offset_of(line: str) -> float | None:
     tag = ID_TAG.fullmatch(line)
     if tag is None or tag.group(1).lower() != "offset":
         return None
+    return java_double(jstrip(tag.group(2)).replace("+", ""))
+
+
+def java_double(text: str) -> float | None:
+    """Double.parseDouble, in milliseconds, or None where Java would throw.
+
+    Not float(): Java takes a trailing type suffix (`100d`) and rejects the digit
+    separators Python accepts (`1_0` reads as ten here and throws there). Either
+    would move every anchor in the file by a tenth of a second or more. NaN and
+    the infinities parse in both and are refused afterwards, as LrcLyrics refuses
+    them -- a non-finite shift reaches LyricWord's constructor otherwise.
+    """
+    if "_" in text:
+        return None
+    if len(text) > 1 and text[-1] in "dDfF":
+        text = text[:-1]
     try:
-        value = float(tag.group(2).strip().replace("+", "")) / 1000.0
+        value = float(text) / 1000.0
     except ValueError:
         return None
-    return value if value == value and abs(value) != float("inf") else None
+    return value if -float("inf") < value < float("inf") else None
 
 
 def align(truth: list[str], hypothesis: list[str]) -> list[tuple[int | None, int | None]]:
@@ -339,11 +399,8 @@ def words_of(document: dict, name: str) -> tuple[list[str], list[float]]:
         # Only reachable while the lyrics are an input. After #314 an empty
         # transcription is a result -- a full deletion -- and is scored.
         sys.exit(f"{name}: analysis carried no lyric words; the LRC was not read")
-    # A word that normalises to nothing is dropped here as it is on the truth
-    # side, and its onset with it -- the two lists are read by one index.
-    kept = [(normalize(word["text"]), word["startSeconds"]) for word in words]
-    kept = [pair for pair in kept if pair[0]]
-    return [text for text, _ in kept], [start for _, start in kept]
+    return ([normalize(word["text"]) for word in words],
+            [word["startSeconds"] for word in words])
 
 
 def truth_of(lrc: Path, name: str) -> tuple[list[str], dict[int, float], bool]:
@@ -366,8 +423,7 @@ def main() -> None:
     if not jar.exists():
         sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
 
-    print("lyric words MW carries, against the file they were read from"
-          " (nothing transcribes them from audio yet, #314):")
+    print(PREAMBLE)
 
     if args.file:
         if not args.lrc:

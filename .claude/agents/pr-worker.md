@@ -35,9 +35,8 @@ only this machine holds the local-only benchmark files, so CI cannot check
 those lines. Any harness movement fails it, including an improvement; an
 improvement is evidence — regenerate the baseline that moved (`python3
 tools/score-samples.py > tools/baselines/score-samples.txt`, and the same for
-each other `tools/score-*.py`) and commit it with your change so the movement is
-reviewed,
-never silently absorbed. Paste the gate's output in the PR.
+each other `tools/score-*.py`) and commit it with your change so the movement
+is reviewed, never silently absorbed. Paste the gate's output in the PR.
 
 **The final quality gate is CI on the pull request.** CI runs the full test
 matrix (fast suite, integration with real LilyPond, licensing, the corpus

@@ -23,7 +23,9 @@ Being scored is a further step, and a later one: `tools/score-samples.py` looks
 for every benchmark under `samples/` and reads its changes from the `BENCHMARKS`
 table in that same script (`score-chart.py` imports it). A file's `list.txt`
 entry does not put it there: `samples/list.txt` says changes are confirmed by
-ear before a file is promoted.
+ear before a file is promoted. A sung recording is registered the same way and
+in one more place — its recording and its `.lrc` go in the `LYRICS` table of
+`tools/score-lyrics.py`.
 
 ## 3. Write the `list.txt` entry
 
@@ -71,5 +73,5 @@ own javadoc says splitting on the wrong language's rules is worse than not
 splitting at all; the ASR chosen under #314 covers the same two languages. A
 Neapolitan entry would be scored against wrong syllable counts, so the number
 would move for a reason that has nothing to do with transcription. This is what
-keeps *Funiculì Funiculà* out: public domain on both sides, the best-shaped
-audio the #307 survey found, and not Italian.
+keeps *Funiculì Funiculà* out: public domain on both sides, acoustically well
+suited to what MW does, and not Italian.

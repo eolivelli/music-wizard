@@ -156,12 +156,35 @@ class Normalisation(unittest.TestCase):
 
     def test_a_non_breaking_space_does_not_split_a_word(self):
         """Java's \\s is ASCII-only, so LrcLyrics keeps this as one token."""
-        tokens, _, _ = lyrics.truth_tokens("[00:01.00]a b")
+        tokens, _, _ = lyrics.truth_tokens("[00:01.00]a\u00a0b")
         self.assertEqual(1, len(tokens))
 
-    def test_a_punctuation_only_token_leaves_and_takes_no_anchor_with_it(self):
-        tokens, anchors, _ = lyrics.truth_tokens("[00:01.00]— ciao")
-        self.assertEqual(["ciao"], tokens)
+    def test_a_non_breaking_space_is_not_stripped_either(self):
+        """String.strip() and isBlank() use Character.isWhitespace, which says
+        false for the three non-breaking spaces Python's str.strip() removes.
+        Each of these was a divergence from LrcLyrics."""
+        for space in ("\u00a0", "\u2007", "\u202f"):
+            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno due")
+            self.assertEqual([f"{space}uno", "due"], tokens, space)
+            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]uno due{space}")
+            self.assertEqual(["uno", f"due{space}"], tokens, space)
+        # Before the tag it is not blank either, so Java drops the whole line.
+        self.assertEqual(([], {}, False), lyrics.truth_tokens("\u00a0[00:01.00]uno"))
+
+    def test_a_breaking_unicode_space_is_stripped(self):
+        """The other half of that rule: Character.isWhitespace is Unicode-aware,
+        so U+1680 and U+2003 go where U+00A0 stays."""
+        for space in ("\u1680", "\u2003"):
+            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno")
+            self.assertEqual(["uno"], tokens, space)
+
+    def test_a_punctuation_only_token_keeps_its_place_and_its_anchor(self):
+        """A dialogue dash or a leading ellipsis is routine in a subtitle track.
+        LrcLyrics gives it a share of the line, so dropping it here would leave
+        the run's stated onset on the *next* word and report an onset error on a
+        loop that closed correctly."""
+        tokens, anchors, _ = lyrics.truth_tokens("[00:01.00]\u2014 ciao amore")
+        self.assertEqual(["", "ciao", "amore"], tokens)
         self.assertEqual({0: 1.0}, anchors)
 
 
@@ -199,9 +222,16 @@ class TruthTokens(unittest.TestCase):
         self.assertEqual({0: 10.5}, anchors)
 
     def test_an_unusable_offset_is_ignored_rather_than_carried(self):
-        for bad in ("[offset:NaN]", "[offset:-Infinity]", "[offset:x]"):
+        for bad in ("[offset:NaN]", "[offset:-Infinity]", "[offset:x]",
+                    "[offset:1_0]"):
             _, anchors, _ = lyrics.truth_tokens(f"{bad}\n[00:10.00]ciao")
             self.assertEqual({0: 10.0}, anchors, bad)
+
+    def test_a_java_type_suffix_on_the_offset_parses(self):
+        """Double.parseDouble takes it and float() does not, and the difference
+        is a tenth of a second on every anchor in the file."""
+        _, anchors, _ = lyrics.truth_tokens("[offset:100d]\n[00:10.00]ciao")
+        self.assertEqual({0: 9.9}, anchors)
 
     def test_an_id_tag_and_an_empty_body_carry_no_word(self):
         tokens, anchors, _ = lyrics.truth_tokens(
@@ -210,7 +240,7 @@ class TruthTokens(unittest.TestCase):
         self.assertEqual({0: 10.0}, anchors)
 
     def test_a_byte_order_mark_does_not_cost_the_first_line(self):
-        tokens, _, _ = lyrics.truth_tokens("﻿[00:10.00]ciao")
+        tokens, _, _ = lyrics.truth_tokens("\ufeff[00:10.00]ciao")
         self.assertEqual(["ciao"], tokens)
 
     def test_a_fraction_is_scaled_by_its_own_width(self):
@@ -300,7 +330,9 @@ class Keying(unittest.TestCase):
         self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
 
     def test_the_preamble_is_not_gated(self):
-        self.assertNotIn(".mp3:", lyrics.__doc__.splitlines()[0])
+        """The line main() prints, not the module docstring: premerge.sh reads
+        the former, and an earlier version of this test asserted the latter."""
+        self.assertNotIn(".mp3:", lyrics.PREAMBLE)
 
 
 if __name__ == "__main__":
