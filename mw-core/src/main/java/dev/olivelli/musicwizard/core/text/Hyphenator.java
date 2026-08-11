@@ -64,6 +64,16 @@ public final class Hyphenator {
             "it", "/hyphenation/hyph-it.pat.txt",
             "en", "/hyphenation/hyph-en-us.pat.txt");
 
+    /**
+     * Languages where a word-initial {@code y} spells the consonant.
+     *
+     * <p>English {@code y'all} and {@code York} open on it and are sung on one
+     * note. Italian has no such sound at the front of a word: {@code y} arrives
+     * only in loanwords and in the letter's own name, and {@code ypsilon} is sung
+     * on three notes beginning with the vowel.
+     */
+    private static final Set<String> OPENING_Y_IS_CONSONANT = Set.of("en");
+
     private static final Map<String, Hyphenator> LOADED = new HashMap<>();
 
     /**
@@ -79,11 +89,14 @@ public final class Hyphenator {
     /**
      * How many letters must lie after the last break.
      *
-     * <p>Two, not one, and it bounds what a break may carry onto the next line.
-     * A final consonant on its own is not a syllable in either language — one
-     * gives <i>abandon-s</i> and <i>abbot-s</i> in English, and in Italian a
-     * handful of foreign words like <i>gol-f</i>. The asymmetry is deliberate: a
-     * vowel can open a syllable alone and a consonant cannot close one alone.
+     * <p>Two, not one, and what it still decides is a stranded final <b>vowel</b>:
+     * <i>acaci-a</i>, <i>Abyssini-a</i>. A stranded final consonant was its
+     * original reason and is no longer its doing — {@link #joinUnsung} rejoins
+     * <i>abandon-s</i> and <i>gol-f</i> whatever this is set to, having a vowel
+     * to test that a letter count does not.
+     *
+     * <p>So the asymmetry with {@link #LEFT_MINIMUM} now rests on the narrower
+     * fact that a vowel opens a syllable alone more readily than it closes one.
      */
     private static final int RIGHT_MINIMUM = 2;
 
@@ -103,9 +116,14 @@ public final class Hyphenator {
      */
     private final Set<Character> wordCharacters;
 
-    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters) {
+    /** Whether this language spells the consonant with a word-initial {@code y}. */
+    private final boolean openingYIsConsonant;
+
+    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters,
+                       boolean openingYIsConsonant) {
         this.patterns = patterns;
         this.wordCharacters = wordCharacters;
+        this.openingYIsConsonant = openingYIsConsonant;
     }
 
     /**
@@ -160,7 +178,8 @@ public final class Hyphenator {
                 }
             }
         }
-        return new Hyphenator(patterns, Set.copyOf(wordCharacters));
+        return new Hyphenator(patterns, Set.copyOf(wordCharacters),
+                OPENING_Y_IS_CONSONANT.contains(language));
     }
 
     /** Splits one TeX pattern into its letters and the scores between them. */
@@ -274,12 +293,12 @@ public final class Hyphenator {
      * <p>The same rule runs over the pieces of a single run — see
      * {@link #joinUnsung}, which is where {@code s-ing} is put back together.
      */
-    private static void append(List<Syllable> pieces, StringBuilder pending,
-                               List<String> syllables) {
+    private void append(List<Syllable> pieces, StringBuilder pending,
+                        List<String> syllables) {
         String between = pending.toString();
         pending.setLength(0);
         boolean joinsBack = !pieces.isEmpty()
-                && (syllables.isEmpty() || (syllables.size() == 1 && !hasVowel(syllables.get(0))));
+                && (syllables.isEmpty() || (syllables.size() == 1 && !hasVowel(syllables.get(0), true)));
         if (joinsBack) {
             int last = pieces.size() - 1;
             String tail = syllables.isEmpty() ? "" : syllables.get(0);
@@ -288,7 +307,7 @@ public final class Hyphenator {
             return;
         }
         if (syllables.isEmpty() || (pieces.isEmpty() && syllables.size() == 1
-                && !hasVowel(syllables.get(0)))) {
+                && !hasVowel(syllables.get(0), true))) {
             // Nothing to join backwards to: hold it for the run after this one.
             pending.append(between).append(syllables.isEmpty() ? "" : syllables.get(0));
             return;
@@ -315,26 +334,34 @@ public final class Hyphenator {
     }
 
     /**
-     * Whether a piece holds a sound a syllable can be built on.
+     * Whether this text holds a sound a syllable can be built on.
      *
-     * <p><b>{@code y} counts, except as the piece's first letter.</b> That is the
-     * difference between the two sounds the letter spells: opening a piece it is
-     * the consonant, and {@code y'all} is sung on one note; anywhere else it is
-     * the vowel, and {@code by-pass}, {@code sky-high} and {@code lone-ly} are
-     * each sung on two. A flat rule loses one pair or the other.
+     * <p><b>{@code y} counts, except as the first letter of a word in a language
+     * that spells the consonant there.</b> The letter spells two sounds, and where
+     * it stands is what tells them apart: English {@code y'all} opens on the
+     * consonant and is sung on one note, while {@code lone-ly}, {@code by-pass}
+     * and {@code sky-high} carry the vowel and are sung on two. A rule that
+     * ignores the position loses one group or the other.
      *
-     * <p>Any letter above U+007F counts. The languages here are written in the
-     * Latin alphabet, so what is left is an accented letter — and Italian accents
-     * vowels.
+     * <p><b>The word, not the piece.</b> A piece the patterns cut is a syllable,
+     * and a syllable's own {@code y} is the vowel wherever the syllable falls:
+     * anchoring on the piece calls the {@code y} in {@code lar-ynx} a consonant
+     * and joins the note away. {@code atWordStart} is false for every piece but
+     * the first.
+     *
+     * <p>Position is not the whole answer and does not claim to be: English opens
+     * a handful of words on the vowel — {@code yt-tri-um}, {@code yt-ter-bi-um} —
+     * and this joins each into one note fewer. Telling those from {@code York}
+     * wants a pronunciation dictionary, which is #332's own conclusion.
      */
-    private static boolean hasVowel(String run) {
-        int opening = firstLetter(run);
-        for (int i = 0; i < run.length(); i++) {
-            char c = Character.toLowerCase(run.charAt(i));
+    private boolean hasVowel(String text, boolean atWordStart) {
+        int consonantY = atWordStart && openingYIsConsonant ? firstLetter(text) : -1;
+        for (int i = 0; i < text.length(); i++) {
+            char c = Character.toLowerCase(text.charAt(i));
             if ("aeiou".indexOf(c) >= 0 || (Character.isLetter(c) && c > 127)) {
                 return true;
             }
-            if (c == 'y' && i != opening) {
+            if (c == 'y' && i != consonantY) {
                 return true;
             }
         }
@@ -357,8 +384,13 @@ public final class Hyphenator {
      * <p>Forwards, because a consonant with no vowel of its own is the head of the
      * syllable after it: {@code Am-ster-dam}, not {@code Ams-ter-dam}. A last
      * piece has nothing to head and joins the one before.
+     *
+     * <p>The test is on <b>what has been held so far</b> rather than on the piece
+     * alone, which is not the same answer and is the better one: asked piece by
+     * piece, {@code gy} in {@code gy-ne-col-o-gy} has no vowel and the word loses
+     * a note.
      */
-    private static List<String> joinUnsung(List<String> pieces) {
+    private List<String> joinUnsung(List<String> pieces) {
         if (pieces.size() < 2) {
             return pieces;
         }
@@ -366,7 +398,7 @@ public final class Hyphenator {
         StringBuilder held = new StringBuilder();
         for (String piece : pieces) {
             held.append(piece);
-            if (hasVowel(held.toString())) {
+            if (hasVowel(held.toString(), sung.isEmpty())) {
                 sung.add(held.toString());
                 held.setLength(0);
             }

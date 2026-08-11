@@ -72,14 +72,16 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a syllable of one letter is allowed at the front but not at the end")
-        void theTwoMinimaDiffer() {
+        @DisplayName("a syllable of one letter is allowed at the front")
+        void theLeftMinimumIsOne() {
             // A vowel opens a syllable alone, so the typesetting minimum of two
             // on the left costs a note: it forbids a-more, and amore is sung on
-            // three. A consonant does not close one alone, so the right minimum
-            // stays at two and golf is one syllable rather than gol-f.
+            // three.
             assertThat(split("it", "amore")).isEqualTo("a-mo-re");
             assertThat(split("it", "ora")).isEqualTo("o-ra");
+            // The right minimum decides nothing here any more: golf is one
+            // syllable because gol-f has no vowel in its second piece, which is
+            // what joins it back whatever that constant says.
             assertThat(split("it", "golf")).isEqualTo("golf");
         }
 
@@ -115,6 +117,15 @@ class HyphenatorTest {
         }
 
         @Test
+        @DisplayName("a word-initial y is the vowel here, where in English it is the consonant")
+        void openingYIsAVowel() {
+            // Italian has no consonant y at the front of a word: the letter
+            // arrives in loanwords and in its own name, and ypsilon is sung on
+            // three notes. English y'all, on the same rule, is sung on one.
+            assertThat(split("it", "ypsilon")).isEqualTo("yp-si-lon");
+        }
+
+        @Test
         @DisplayName("a diphthong is one syllable")
         void diphthongs() {
             assertThat(split("it", "pianura")).isEqualTo("pia-nu-ra");
@@ -139,11 +150,14 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a lone final consonant is not a syllable")
+        @DisplayName("a lone final vowel is not a syllable either, and only the minimum says so")
         void theRightMinimumIsTwo() {
-            // The left minimum of one is what gives "a-ban-dons" its first
-            // syllable; a right minimum of one would go on to strand the plural
-            // as "abandon-s", which no one sings.
+            // What this constant still decides. A stranded final consonant is
+            // joined back by the vowel rule below whatever it is set to, so
+            // "abandon-s" is no longer its doing; a stranded final vowel has a
+            // vowel and survives that rule, so acaci-a is the constant's alone.
+            assertThat(split("en", "acacia")).isEqualTo("a-ca-cia");
+            assertThat(split("en", "academia")).isEqualTo("a-cad-e-mia");
             assertThat(split("en", "abandons")).isEqualTo("a-ban-dons");
             assertThat(split("en", "abbots")).doesNotEndWith("-s");
         }
@@ -175,14 +189,26 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("y is a vowel, except opening a piece, where it is the consonant")
-        void yIsAVowelUnlessItOpensThePiece() {
+        @DisplayName("y is a vowel, except opening an English word, where it is the consonant")
+        void yIsAVowelUnlessItOpensTheWord() {
             // Sung on two notes, and their only vowel is the y -- so a flat rule
             // that y is not a vowel joins each of them into one note.
             assertThat(marked("en", "sky-high")).isEqualTo("sky-/high");
             assertThat(split("en", "lonely")).isEqualTo("lone-ly");
             // Sung on one, and the y opens it.
             assertThat(split("en", "y'all")).isEqualTo("y'all");
+            assertThat(split("en", "York")).isEqualTo("York");
+        }
+
+        @Test
+        @DisplayName("the word is what the y rule is anchored to, not the piece")
+        void aSyllablesOwnYIsAVowelWhereverItFalls() {
+            // The patterns cut ynx and ysm as syllables in their own right, and
+            // their y is the vowel. Anchored on the piece rather than the word,
+            // each is called consonant-only and joined away: lar-ynx loses a note.
+            assertThat(split("en", "larynx")).isEqualTo("lar-ynx");
+            assertThat(split("en", "paroxysm")).isEqualTo("parox-ysm");
+            assertThat(split("en", "dialysis")).isEqualTo("dial-y-sis");
         }
     }
 
