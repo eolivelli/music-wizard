@@ -60,8 +60,6 @@ fifteen points and one other by twelve. Not on `root+quality`, which fell a poin
 or two on two of them — at the time that column was dominated by #208, whose
 small movements did not mean much either way, which is exactly why the two are
 quoted separately.
-Of the two benchmarks added since, one scores lower, and #242 measures why that
-cell is a tie-break artefact rather than a reading.
 
 What is now top is what all three exposed, in order. The chart still hangs its
 whole bar axis on one downbeat, which on a lead-in is the least reliable beat
