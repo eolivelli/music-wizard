@@ -22,6 +22,7 @@ import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -70,7 +71,7 @@ class SeparateCommandTest {
 
     @Test
     @DisplayName("a configured provider writes both stems beside the other outputs")
-    void writesStems() throws IOException {
+    void writesStems() throws IOException, UnsupportedAudioFileException {
         Path root = workspace();
         // The workspace's own config layer names the test provider, which is
         // how a user selects one -- and the path #383 records as not reaching
@@ -91,5 +92,12 @@ class SeparateCommandTest {
         // recording's length of audio rather than being headers over nothing.
         assertThat(Files.size(vocals)).isGreaterThan(2 * 20_000L);
         assertThat(result.out()).contains("fake-cli-separation");
+        // The fake declares a rate nothing records at, so the header carrying
+        // it proves the command decoded at the provider's preferred rate
+        // rather than the analysis rate -- the branch that keeps the model's
+        // band out of the anti-alias filter.
+        assertThat(javax.sound.sampled.AudioSystem
+                .getAudioFileFormat(vocals.toFile()).getFormat().getSampleRate())
+                .isEqualTo((float) FakeSeparationProvider.PREFERRED_RATE);
     }
 }

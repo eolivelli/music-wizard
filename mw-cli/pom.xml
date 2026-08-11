@@ -84,22 +84,15 @@
         config layer at $XDG_CONFIG_HOME/music-wizard/config.yaml. Left alone,
         that makes the suite depend on the machine it runs on: a contributor who
         is also a user, with the paperSize the README tells them to set, gets a
-        failure in RenderPartsTest with no visible cause. Pointed at a directory
-        under target/ that is never created, so the global layer is reliably
-        empty. The same hazard exists reactor-wide (mw-core fails first under the same
-        config) and belongs in the parent pom; that is #133, which this module
-        does not own the file to fix.
-      -->
-      <!--
-        The CLI is the one module a user actually runs, so it ships as a single
-        executable jar. Without this, running the tool means reconstructing a
-        classpath by hand, and the documented `mw` commands do not exist.
-      -->
-      <!--
-        The committed offline global layer, for surefire AND failsafe: this
-        module's runtime classpath carries the REAL providers, and its
+        failure in RenderPartsTest with no visible cause.
+
+        This module points BOTH test plugins at the committed layer under
+        test-config/ rather than at the parent's empty per-module location,
+        because its runtime classpath carries the REAL providers: the layer's
         ml.offline stops a test that accidentally reaches one from downloading
-        a model inside the fast suite. The file records how that happened once.
+        a model inside the fast suite, and the file records how that happened
+        once. The path resolves through the .mvn marker at the repo root;
+        OfflinePinTest fails loudly if it stops resolving.
       -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -119,6 +112,11 @@
           </environmentVariables>
         </configuration>
       </plugin>
+      <!--
+        The CLI is the one module a user actually runs, so it ships as a single
+        executable jar. Without this, running the tool means reconstructing a
+        classpath by hand, and the documented `mw` commands do not exist.
+      -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>

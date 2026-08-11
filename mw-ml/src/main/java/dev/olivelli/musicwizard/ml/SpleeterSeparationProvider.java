@@ -107,6 +107,15 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
             throw new IllegalArgumentException(
                     "at most two channels, got " + channels.length);
         }
+        for (int c = 1; c < channels.length; c++) {
+            if (channels[c].length != channels[0].length) {
+                // Ragged input died as an ArrayIndexOutOfBounds inside a
+                // private helper; a contract error should name itself.
+                throw new IllegalArgumentException(
+                        "channels must be the same length, got "
+                        + channels[0].length + " and " + channels[c].length);
+            }
+        }
         if (channels.length == 0 || channels[0].length == 0) {
             // Fresh empties, not aliases of the caller's array: the contract is
             // two stems and an untouched input, not three names for one buffer.
@@ -115,11 +124,9 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
         Path vocalsPath = cache.fetch(vocalsModel, System.out::println);
         Path accompanimentPath = cache.fetch(accompanimentModel, System.out::println);
 
-        // A mono recording is sent as two equal channels. Every right-hand
-        // structure below aliases the left rather than recomputing it -- the
-        // first version recomputed and masked a duplicate channel that the
-        // mono path never read, and that dead quarter-gigabyte was the
-        // difference between finishing an ordinary song and OutOfMemoryError.
+        // A mono recording is sent as two equal channels, and every
+        // right-hand structure below aliases the left rather than recomputing
+        // a duplicate nothing reads.
         boolean mono = channels.length == 1;
         float[] left = Resampler.resample(channels[0], sampleRate, MODEL_RATE);
         float[] right = mono ? left
@@ -151,8 +158,9 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
         return new Separation(vocals, accompaniment);
     }
 
+    /** The caller's channel count, every channel empty — the shape, kept. */
     private static float[][] emptyLike(float[][] channels) {
-        float[][] out = new float[Math.max(1, channels.length)][];
+        float[][] out = new float[channels.length][];
         for (int c = 0; c < out.length; c++) {
             out[c] = new float[0];
         }

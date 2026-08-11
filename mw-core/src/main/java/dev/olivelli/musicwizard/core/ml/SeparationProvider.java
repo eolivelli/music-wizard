@@ -38,10 +38,10 @@ public interface SeparationProvider {
      * The rate this provider's model wants, or zero for "any".
      *
      * <p>The provider resamples whatever arrives — that contract stands — but a
-     * caller that can <em>decode</em> at this rate should: decoding a 44.1 kHz
-     * recording at the analysis rate and having the provider stretch it back
-     * costs the top octaves twice through the resampler, and the consonant band
-     * of a vocal stem is exactly what that loses. Advisory, never required.
+     * caller that can <em>decode</em> at this rate should: a decode below it
+     * band-limits the audio under the anti-alias filter's cutoff, below what
+     * the model reads, and no later resample recovers that. The consonant band
+     * of a vocal stem is exactly what it loses. Advisory, never required.
      */
     default int preferredSampleRate() {
         return 0;

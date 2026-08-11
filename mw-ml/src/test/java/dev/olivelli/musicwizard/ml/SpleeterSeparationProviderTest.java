@@ -129,9 +129,9 @@ class SpleeterSeparationProviderTest {
     @DisplayName("the vocals model's estimate drives the vocals stem, not the other way round")
     void masksLandOnTheRightStems() throws IOException {
         // Identity for vocals, a zero output for accompaniment: the vocals
-        // mask is exactly one and the accompaniment mask exactly zero, so a
-        // swap of the four masked() arguments -- which the sum-to-mix test
-        // cannot see, both stems being mix/2 there -- flips which stem is
+        // mask is exactly one and the accompaniment mask exactly zero, so
+        // swapping stems()'s two estimate arguments -- which the sum-to-mix
+        // test cannot see, both stems being mix/2 there -- flips which stem is
         // silent. The zero-stem fixture multiplies its input by zero.
         byte[] zeros;
         try (InputStream in = SpleeterSeparationProviderTest.class

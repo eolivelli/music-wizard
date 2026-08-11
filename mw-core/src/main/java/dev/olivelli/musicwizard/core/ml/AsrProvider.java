@@ -57,8 +57,8 @@ public interface AsrProvider {
      * language tag names what is sung; it must be one of {@link #languages()}.
      *
      * @throws ModelUnavailableException when the model cannot be had — absent
-     *         and offline, or failing its checksum. Callers degrade as with an
-     *         absent LilyPond: say so, continue without.
+     *         and offline, or failing its checksum. The type's javadoc says
+     *         what callers do with it.
      */
     List<LyricWord> transcribe(float[] samples, int sampleRate, String languageTag);
 }

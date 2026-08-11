@@ -98,13 +98,9 @@ final class SpleeterStft {
     }
 
     /**
-     * The same, with each frame supplied on demand.
-     *
-     * <p>This is what lets a caller apply a mask frame by frame instead of
-     * materialising a whole masked spectrogram first — at four masked
-     * spectrograms of a quarter gigabyte each on an ordinary song, the
-     * difference between this and the array form was the difference between
-     * finishing and {@code OutOfMemoryError}.
+     * The same, with each frame supplied on demand, which is what lets a
+     * caller apply a mask per frame instead of materialising a whole masked
+     * spectrogram first.
      */
     float[] inverse(java.util.function.IntFunction<float[]> frameAt, int frames,
                     int length) {

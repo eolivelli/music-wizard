@@ -24,8 +24,9 @@ import java.net.URI;
  * <p>The weights are Deezer's, MIT by their own statement — made in the JOSS
  * paper (doi:10.21105/joss.02154, p. 3: "source code and pre-trained models
  * are ... distributed under a MIT license"), not in the repository README,
- * which speaks only of the code and has an open issue asking for exactly this
- * clarification. Cite the paper; the README does not carry the claim.
+ * which speaks only of the code and has an open issue (deezer/spleeter#898)
+ * asking for exactly this clarification. Cite the paper; the README does not
+ * carry the claim.
  *
  * <p>The ONNX conversion is the sherpa-onnx project's (Apache-2.0), whose
  * repository carries the conversion scripts, so
