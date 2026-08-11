@@ -229,16 +229,18 @@ class TruthTokens(unittest.TestCase):
             self.assertEqual({0: 10.0}, anchors, bad)
 
     def test_the_offset_grammar_is_double_parse_doubles(self):
-        """Each value here is one Double.parseDouble accepts and float() does
-        not, or the reverse. float() cannot be handed the string and asked
+        """Values where float() and Double.parseDouble disagree, plus the
+        grammar's own edges and the two that parse in both and are refused for
+        being non-finite. float() cannot be handed the string and asked
         afterwards: it folds Unicode spaces and Unicode digits to ASCII before
-        parsing, so a guard in front of it does not hold."""
+        parsing, so a guard in front of it is reading a different string from
+        the one that gets parsed."""
         for value, want in (("100d", 0.1), ("0x1p10", 1.024), ("0x1.8p9", 0.768),
                             ("\x01500", 0.5), ("500\x1b", 0.5)):
             self.assertEqual(want, lyrics.java_double(value), value)
         for refused in ("\u00a0500", "500\u00a0", "\u2007500", "\u202f500",
                         "\u0665\u0660\u0660", "1_0", "0x1", "NaN", "Infinity",
-                        "", "d", "1e"):
+                        "", "d", "1e", "0xfp1023"):
             self.assertIsNone(lyrics.java_double(refused), refused)
 
     def test_a_type_suffix_moves_every_anchor_in_the_file(self):
@@ -368,10 +370,17 @@ class VttConversion(unittest.TestCase):
         self.assertEqual("[00:01.00]uno\n[00:02.00]\n[00:30.00]due\n[00:31.00]\n",
                          vtt.convert(text, set()))
 
-    def test_minutes_past_ninety_nine_compare_as_numbers(self):
-        """Formatted tags sort [100:00.00] before [99:00.00], so the overlap
-        test cannot be a string comparison."""
-        self.assertLess(vtt.centiseconds(99 * 60), vtt.centiseconds(100 * 60))
+    def test_a_stated_end_survives_the_hundredth_minute(self):
+        """Formatted tags sort [100:00.00] before [99:00.00], so convert's
+        overlap test cannot be a string comparison. Asserted through convert,
+        because the comparison lives there: the arithmetic on its own is
+        monotone under either."""
+        text = (self.HEAD
+                + "01:38:00.000 --> 01:39:00.000\nuno\n\n"
+                + "01:41:00.000 --> 01:42:00.000\ndue\n")
+        self.assertEqual(
+            "[98:00.00]uno\n[99:00.00]\n[101:00.00]due\n[102:00.00]\n",
+            vtt.convert(text, set()))
 
 
 class Keying(unittest.TestCase):

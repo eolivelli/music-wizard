@@ -10,13 +10,13 @@ lost to a tokenizer disagreement, a stated onset moved by the offset sign or the
 sort.
 
 **It sees where runs start, which on a line-level file is where lines start.**
-So the two rules that decide only where a line *ends* -- the break heuristic and
-the plausible length -- are invisible to it, and a regression stretching a line
+So the break heuristic and the plausible length are invisible to it -- neither
+can be below a line's own last word tag -- and a regression stretching a line
 over the instrumental after it (#323) would not move either column by a
-millisecond. #361 is the end-and-coverage column that would see it. The third
-end rule, the recording bound, is not invisible: it clamps a line's end, and a
-word tag is clamped into that, so on a word-tagged file it reaches a run start
-and shows up as onset error.
+millisecond. #361 is the end-and-coverage column that would see it. A word tag
+outside its line's span is a different matter: it is clamped into that span, so
+on a word-tagged file whatever set the end reaches a run start and shows up as
+onset error.
 
 **Word error and onset error are reported separately** (#307). They fail for
 different reasons -- one says the words are wrong, the other says they are in
@@ -275,10 +275,16 @@ def java_double(text: str) -> float | None:
     text = text.strip("".join(chr(c) for c in range(0x21)))
     if not JAVA_DOUBLE.fullmatch(text):
         return None
-    if text[-1] in "dDfF" and not text.lower().startswith(("nan", "infinity",
-                                                          "-nan", "-infinity")):
+    if text[-1] in "dDfF":
         text = text[:-1]
-    value = (float.fromhex(text) if "x" in text.lower() else float(text)) / 1000.0
+    try:
+        value = (float.fromhex(text) if "x" in text.lower() else float(text)) / 1000.0
+    except OverflowError:
+        # float.fromhex raises on a hex exponent past the double range where
+        # parseDouble returns Infinity. Same answer by the line below, reached
+        # differently -- and an exception here would abort the run rather than
+        # ignore the tag. float() does not need this: it overflows to inf.
+        return None
     # As LrcLyrics refuses it: a non-finite shift otherwise reaches LyricWord's
     # constructor, out of a public parser and past the caller's read guard.
     return value if -float("inf") < value < float("inf") else None
