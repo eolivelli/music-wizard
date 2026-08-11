@@ -154,7 +154,7 @@ public final class LyricSheet {
         for (int i = from; i < next; i++) {
             String symbol = chords.get(i).symbol();
             if (row.length() > 0) {
-                if (row.length() + 1 + symbol.length() > ROW_COLUMNS) {
+                if (DisplayWidth.of(row.toString()) + 1 + DisplayWidth.of(symbol) > ROW_COLUMNS) {
                     out.append(row).append('\n');
                     row.setLength(0);
                 } else {
@@ -195,10 +195,9 @@ public final class LyricSheet {
         StringBuilder row = new StringBuilder();
         for (Placed chord : chords) {
             int column = laid.columnAt(chord.seconds());
-            int at = row.length() > 0 ? Math.max(column, row.length() + 1) : column;
-            while (row.length() < at) {
-                row.append(' ');
-            }
+            int width = DisplayWidth.of(row.toString());
+            int at = row.isEmpty() ? column : Math.max(column, width + 1);
+            DisplayWidth.padTo(row, at);
             row.append(chord.symbol());
         }
         return row.toString();
@@ -235,7 +234,7 @@ public final class LyricSheet {
         for (int i = 0; i < words.size(); i++) {
             LyricWord word = words.get(i);
             starts[i] = word.startSeconds();
-            columns[i] = text.length();
+            columns[i] = DisplayWidth.of(text.toString());
             text.append(word.text());
             // The same rule LyricLine.text() applies: a hyphenated syllable joins
             // the next one without a space, so a word split for engraving still
