@@ -33,6 +33,12 @@ import java.util.Objects;
  * width of about 1.4 octaves, wide enough not to force everything toward 120 and
  * narrow enough to reject the 60 and 240 aliases.
  *
+ * <p>The prior cannot do it alone, because two adjacent octaves differ by well
+ * under a factor of two under it while an accented beat's autocorrelation can
+ * prefer the half by more than that. So candidates are ranked on the envelope
+ * with its accents' range compressed — {@link #compressAccents} — and the
+ * confidence reported alongside is still read from the envelope itself.
+ *
  * <p>Confidence is reported as two numbers rather than one, because two
  * independent things have to hold before a tempo reading is worth trusting and
  * they fail separately. See {@link Estimate}.
@@ -200,7 +206,8 @@ public final class TempoEstimator {
      * that. Candidates the harmony cannot be barred by keep
      * {@link HarmonicRhythm#FLOOR} of their score; everything else is
      * unchanged, including the choice between a beat and its half, which stays
-     * with the envelope and the prior.
+     * with the envelope and the prior — see {@link #compressAccents} for what
+     * the envelope contributes to that choice.
      */
     public static Estimate estimate(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         Objects.requireNonNull(envelope, "envelope");
@@ -219,6 +226,8 @@ public final class TempoEstimator {
         }
 
         double[] correlation = autocorrelate(envelope.strength(), maxLag + 1);
+        double[] searchCorrelation =
+                autocorrelate(compressAccents(envelope.strength()), maxLag + 1);
 
         // Search over tempo, not over integer lag. A beat period is almost never
         // a whole number of frames -- 120 BPM at this frame rate is 21.53 -- so
@@ -235,7 +244,7 @@ public final class TempoEstimator {
             if (lag < minLag || lag > maxLag) {
                 continue;
             }
-            double value = interpolate(correlation, lag);
+            double value = interpolate(searchCorrelation, lag);
             double score = value * perceptualWeight(tempo);
             // Only a score that is in the running is weighed. A negative
             // correlation is already a non-candidate, and multiplying it by a
@@ -249,7 +258,11 @@ public final class TempoEstimator {
             if (score > bestScore) {
                 bestScore = score;
                 bestTempo = tempo;
-                bestRawCorrelation = value;
+                // Read from the envelope itself, not from the compressed copy
+                // the candidates were ranked on: periodicity is reported as a
+                // share of the envelope's own energy, and every figure quoted
+                // for it is a measurement of that envelope.
+                bestRawCorrelation = interpolate(correlation, lag);
             }
         }
 
@@ -271,6 +284,93 @@ public final class TempoEstimator {
         }
         return new Estimate(bestTempo, Math.clamp(periodicity, 0, 1),
                 peakiness(envelope.strength()));
+    }
+
+    /**
+     * How many standard deviations of the envelope an accent may contribute to
+     * the candidate search before it is held level with the others.
+     *
+     * <p>It has to be low enough to level the accents themselves rather than to
+     * trim outliers above them. About two and a half percent of an envelope's
+     * frames sit above three deviations across this corpus, so this is roughly a
+     * 97.5th percentile: the loud beats are exactly what it levels.
+     *
+     * <p>The two ends fail differently. Low enough, the ceiling starts
+     * levelling the quiet frames between beats too, and other recordings
+     * begin to move; high enough, the loudest accents come back through and
+     * the correction lapses, window by window before it goes altogether.
+     * {@code tools/TempoOctave.java} takes the ceiling as an argument and
+     * prints, per window, where its reproduction and the estimator disagree
+     * — individual windows move on both sides well before any whole-recording
+     * reading does, so that printout, not an interval quoted here, is the
+     * measurement to nudge this constant against.
+     *
+     * <p>Expressed in deviations because {@link OnsetEnvelope} normalises to
+     * unit variance over the recording, so this is a share of the envelope's own
+     * scale rather than a level in any absolute unit. It is not a bound on how
+     * large a frame can be: the largest frame of most recordings here is tens of
+     * deviations and sits in the lead-in, which is the silence artefact
+     * {@code OnsetEnvelope.SILENCE_FLOOR} documents rather than an attack.
+     */
+    private static final double ACCENT_CEILING = 3.0;
+
+    /**
+     * The envelope with its loudest accents held level, as the candidates are
+     * ranked on.
+     *
+     * <p><b>Why the ranking does not read the envelope directly.</b> Metre is
+     * accent alternation: a bar states its beats at unequal strengths, and that
+     * is what a listener hears the bar by. Autocorrelation reads it as evidence
+     * for the half. Write {@code A} and {@code a} for the strengths a strong and
+     * a weak beat contribute and {@code r} for {@code A/a}: the beat's own lag
+     * pairs each strong beat with a weak one and collects {@code A·a}, while the
+     * half's lag pairs like with like and collects {@code (A²+a²)/2}. Their ratio
+     * is {@code (r + 1/r)/2}, which is 1 only when the beats are equally loud and
+     * grows without bound as the accent deepens. <b>So the more clearly a
+     * recording states its metre, the harder its own autocorrelation argues for
+     * half the beat</b> — and the perceptual prior separates two adjacent octaves
+     * by well under a factor of two, so it cannot answer an accent ratio of 2 or
+     * more (#349).
+     *
+     * <p><b>A ceiling rather than a compression curve, and the difference is
+     * measured rather than aesthetic.</b> Any monotone map that shrinks {@code r}
+     * shrinks the bias — a root, a log, a power — and every one of them corrects
+     * the same recording here. They differ in what else they do: a curve that
+     * shrinks the top also <em>raises the floor</em>, and the quiet frames
+     * between the beats are where a subdivision lives. On
+     * {@code cm-blues-68-95.mp3}, whose 6/8 groove states every eighth quietly,
+     * a square root promotes the eighth to the tracked pulse; a ceiling leaves
+     * that recording's reading alone, because it never touches the floor. The
+     * bias this exists to remove is at the loud end, so the correction belongs
+     * at the loud end.
+     *
+     * <p>What a ceiling shares with the curves is a cost near the top of the
+     * tempo range: a click track has no accent to level, but flattening its
+     * peaks still changes their shape, and where a click's beat and its half are
+     * all but tied that moves a few of them onto the half (#44). Measured, it is
+     * the same tempi either way, so it is the cost of correlating a modified
+     * envelope at all rather than of this choice within it.
+     *
+     * <p><b>The mean is deliberately not removed afterwards.</b> Levelling does
+     * not preserve a zero mean, and an autocorrelation of a signal with a mean
+     * adds the same positive constant at every lag, which under the perceptual
+     * prior drags the winner toward 120 BPM — so removing it looks like the
+     * tidy thing to do. Two measurements say otherwise. The constant a ceiling
+     * leaves is a fraction of a percent of the compressed variance, where a
+     * curve leaves tens of times more; and the estimate is taken over a
+     * <em>window</em>, whose slice of a mean-zero envelope has a mean of its
+     * own that this method has no business removing — done here it moved two
+     * recordings' grids by a bar each, which is a change to windowing rather
+     * than to the accent bias this is about. A curve needs the removal and
+     * cannot have it cheaply; that is one more reason the correction is a
+     * ceiling (#353).
+     */
+    private static double[] compressAccents(double[] signal) {
+        double[] out = new double[signal.length];
+        for (int i = 0; i < signal.length; i++) {
+            out[i] = Math.clamp(signal[i], -ACCENT_CEILING, ACCENT_CEILING);
+        }
+        return out;
     }
 
     /**
