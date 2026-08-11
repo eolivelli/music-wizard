@@ -1,0 +1,319 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.dsp.NnlsChroma;
+import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
+import dev.olivelli.musicwizard.dsp.TempoEstimator;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Decomposes the tempo score at a candidate and at its octaves, for #349.
+ *
+ * <p>{@link TempoEstimator} picks the candidate maximising
+ * {@code autocorrelation x perceptualWeight x harmonicSupport}. When a
+ * recording comes out at half its counted beat, that product is where it
+ * happened, and the factors fail for different reasons: an envelope that
+ * genuinely repeats more strongly at the half is not the same defect as a
+ * prior tipping a close call. This prints them at the stated tempo and at its
+ * octaves, so a candidate rule has a target and a control set rather than four
+ * file names.
+ *
+ * <pre>
+ *   java -cp mw-cli/target/mw.jar tools/TempoOctave.java [ceiling]
+ * </pre>
+ *
+ * <p>The optional argument overrides {@code TempoEstimator.ACCENT_CEILING} in
+ * this file's reproduction of the search. At any other value the {@code argmax} and
+ * {@code est} columns are reading two different estimators and may differ;
+ * a difference there is the sweep working, not a defect.
+ *
+ * <p>Two autocorrelation columns are printed: {@code plain} reads the envelope
+ * and {@code ranked} reads it with the loudest accents held level, which is what
+ * the estimator ranks candidates on. The difference between the two columns is
+ * the whole of what {@code TempoEstimator.compressAccents} does.
+ *
+ * <p>The factors are recomputed here rather than read out of the estimator,
+ * which exposes none of them. The check that the reimplementation is the
+ * estimator's is printed on every line: {@code argmax} is this file's winner
+ * and {@code est} is {@link TempoEstimator#estimate}'s, and they must agree.
+ */
+public final class TempoOctave {
+
+    /** Analysis windows are this long in {@link dev.olivelli.musicwizard.dsp.BeatTracker}. */
+    private static final double WINDOW_SECONDS = 25.0;
+
+    private static final double MIN_TEMPO = 40;
+    private static final double MAX_TEMPO = 240;
+    private static final double STEP = 0.25;
+    private static final double PREFERRED_TEMPO = 120.0;
+    private static final double PRIOR_WIDTH_OCTAVES = 1.4;
+
+    /** A benchmark and the tempo samples/list.txt states for it. */
+    private record Job(String file, double statedTempo, String note) {
+    }
+
+    private static final List<Job> JOBS = List.of(
+            // The four #349 names.
+            new Job("jazz-251-c-140.mp3", 140, "target"),
+            new Job("f-blues-swing-170.mp3", 170, "target, swung"),
+            new Job("footprints-200.mp3", 200, "target, in three"),
+            new Job("bossa-cm.mp3", 149.889, "target, measured by ScoreBeats"),
+            // Controls: currently read at the stated rate.
+            new Job("g-blues-shuffle-cc.mp3", 105, "control, CI gate"),
+            new Job("pop-c-g-am-f-120.mp3", 120, "control"),
+            new Job("eb7-vamp-130.mp3", 130, "control"),
+            new Job("fm7-vamp-110.mp3", 110, "control"),
+            new Job("waltz-am-e7-160.mp3", 160, "control, in three"),
+            new Job("ballad-wine-roses-65.mp3", 65, "control"),
+            new Job("blues-a-90bpm.mp3", 90, "control"),
+            new Job("blues-e-90bpm.mp3", 90, "control"),
+            new Job("blues-shuffle-a-106bpm.mp3", 105, "control, loop measures 105.000"),
+            new Job("pop-am-f-c-g-144.mp3", 144, "control"),
+            // Entangled with #4: a compound meter's beat is not defined
+            // downstream, so these are neither target nor clean control.
+            new Job("cm-blues-68-95.mp3", 95, "6/8, #4"),
+            new Job("slow-68-40.mp3", 40, "6/8, #4"),
+            // States no tempo; printed for its factors only.
+            new Job("bm-blues-slow.mp3", 0, "no stated tempo"));
+
+    /** The ceiling this file's reproduction uses; {@code TempoEstimator}'s by default. */
+    private static double ceiling = 3.0;
+
+    public static void main(String[] args) {
+        if (args.length > 0) {
+            ceiling = Double.parseDouble(args[0]);
+        }
+        System.out.printf("accent ceiling %.2f%n", ceiling);
+        Path samples = Path.of("samples");
+        for (Job job : JOBS) {
+            Path file = samples.resolve(job.file());
+            if (!Files.isRegularFile(file)) {
+                System.out.printf("%-28s SKIPPED (not present)%n", job.file());
+                continue;
+            }
+            report(job, file);
+        }
+    }
+
+    private static void report(Job job, Path file) {
+        AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
+        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
+
+        System.out.printf("%n=== %s  (%s)%n", job.file(), job.note());
+        whole(job, envelope, rhythm);
+        windows(job, envelope, rhythm);
+    }
+
+    private static void whole(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+        Scored scored = score(envelope, rhythm);
+        TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelope, rhythm);
+        System.out.printf("whole clip: argmax %.2f  est %.2f%n",
+                scored.bestTempo, estimate.beatsPerMinute());
+        printCandidates(job, scored, envelope, rhythm);
+    }
+
+    private static void printCandidates(Job job, Scored scored, OnsetEnvelope envelope,
+                                        HarmonicRhythm rhythm) {
+        System.out.printf("  %-10s %-9s %8s %8s %8s %8s %10s%n",
+                "candidate", "bpm", "plain", "ranked", "prior", "support", "product");
+        List<double[]> rows = new ArrayList<>();
+        if (job.statedTempo() > 0) {
+            rows.add(new double[] {job.statedTempo() * 2, 4});
+            rows.add(new double[] {job.statedTempo(), 1});
+            rows.add(new double[] {job.statedTempo() / 2, 2});
+            rows.add(new double[] {job.statedTempo() / 3, 3});
+        }
+        rows.add(new double[] {scored.bestTempo, 0});
+        for (double[] row : rows) {
+            double tempo = snap(row[0]);
+            if (tempo < MIN_TEMPO || tempo > MAX_TEMPO) {
+                continue;
+            }
+            String label = switch ((int) row[1]) {
+                case 4 -> "double";
+                case 1 -> "stated";
+                case 2 -> "half";
+                case 3 -> "third";
+                default -> "WINNER";
+            };
+            double plain = scored.plainAt(tempo);
+            double value = scored.rankedAt(tempo);
+            double prior = perceptualWeight(tempo);
+            double support = rhythm.supportFor(60.0 / tempo);
+            System.out.printf("  %-10s %9.2f %8.4f %8.4f %8.4f %8.4f %10.5f%n",
+                    label, tempo, plain, value, prior, support,
+                    value > 0 ? value * prior * support : value * prior);
+        }
+    }
+
+    private static void windows(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+        int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
+        if (envelope.length() <= windowFrames) {
+            return;
+        }
+        int step = windowFrames / 2;
+        int at = 0;
+        int atHalf = 0;
+        int atStated = 0;
+        int voters = 0;
+        int disagreements = 0;
+        List<Double> voterSeeds = new ArrayList<>();
+        StringBuilder seeds = new StringBuilder();
+        for (int start = 0; start < envelope.length(); start += step) {
+            int end = Math.min(envelope.length(), start + windowFrames);
+            if (end - start < 16) {
+                break;
+            }
+            // Both, so the sweep means something and the reproduction is
+            // checked per window rather than only over the whole clip: `mine`
+            // is this file's search at the ceiling in force, `theirs` the
+            // estimator's own. They must agree at the shipped ceiling.
+            double[] slice = new double[end - start];
+            System.arraycopy(envelope.strength(), start, slice, 0, slice.length);
+            OnsetEnvelope sliceEnvelope = new OnsetEnvelope(slice, envelope.frameRate());
+            // Mirrors estimate()'s flat guard: a silent window reports the
+            // prior rather than a search over nothing. Without it the one
+            // flat window in a fade "disagrees" at the shipped ceiling and
+            // the self-check cries wolf. estimate()'s short-window branch is
+            // unreachable here -- the loop breaks below 16 frames.
+            double mine = sliceEnvelope.isFlat()
+                    ? PREFERRED_TEMPO
+                    : score(sliceEnvelope, rhythm).bestTempo();
+            double theirs =
+                    TempoEstimator.estimateWindow(envelope, start, end, rhythm).beatsPerMinute();
+            if (mine != theirs) {
+                disagreements++;
+            }
+            if (end - start >= step) {
+                voters++;
+                voterSeeds.add(mine);
+                if (job.statedTempo() > 0) {
+                    if (near(mine, job.statedTempo())) {
+                        atStated++;
+                    } else if (near(mine, job.statedTempo() / 2)) {
+                        atHalf++;
+                    }
+                }
+            }
+            seeds.append(String.format("%.2f ", mine));
+            at++;
+        }
+        // BeatTracker.pulseReference's statistic, reproduced: rates[n/2] on
+        // the sorted voters -- always an observed rate, never the average of
+        // two, exactly as that method's javadoc insists.
+        double[] sorted = voterSeeds.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        double reference = sorted.length == 0 ? 0 : sorted[sorted.length / 2];
+        System.out.printf("  windows %d (%d voters): %d at stated, %d at half,"
+                + " voter reference %.2f%s%n", at, voters, atStated, atHalf, reference,
+                disagreements == 0 ? "" : "  [" + disagreements + " windows differ from the"
+                        + " estimator, expected only when a ceiling is passed]");
+        System.out.printf("  seeds: %s%n", seeds.toString().trim());
+    }
+
+    /** Within 3% -- wide enough for the 0.25 grid and a drifting recording. */
+    private static boolean near(double a, double b) {
+        return Math.abs(a - b) / b < 0.03;
+    }
+
+    private static double snap(double tempo) {
+        return Math.round(tempo / STEP) * STEP;
+    }
+
+    /** The estimator's scoring loop, reproduced so its factors can be read apart. */
+    private record Scored(double[] plain, double[] ranked, double frameRate, double bestTempo) {
+        double plainAt(double tempo) {
+            return interpolate(plain, frameRate * 60.0 / tempo);
+        }
+
+        double rankedAt(double tempo) {
+            return interpolate(ranked, frameRate * 60.0 / tempo);
+        }
+    }
+
+    private static Scored score(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+        double frameRate = envelope.frameRate();
+        int minLag = (int) Math.max(1, Math.floor(frameRate * 60.0 / MAX_TEMPO));
+        int maxLag = (int) Math.min(envelope.length() - 1,
+                Math.ceil(frameRate * 60.0 / MIN_TEMPO));
+        double[] plain = autocorrelate(envelope.strength(), maxLag + 1);
+        double[] ranked = autocorrelate(compressAccents(envelope.strength()), maxLag + 1);
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double bestTempo = PREFERRED_TEMPO;
+        for (double tempo = MIN_TEMPO; tempo <= MAX_TEMPO; tempo += STEP) {
+            double lag = frameRate * 60.0 / tempo;
+            if (lag < minLag || lag > maxLag) {
+                continue;
+            }
+            double value = interpolate(ranked, lag);
+            double s = value * perceptualWeight(tempo);
+            if (s > 0) {
+                s *= rhythm.supportFor(60.0 / tempo);
+            }
+            if (s > bestScore) {
+                bestScore = s;
+                bestTempo = tempo;
+            }
+        }
+        return new Scored(plain, ranked, frameRate, bestTempo);
+    }
+
+    /** {@code TempoEstimator.compressAccents}, reproduced, at the ceiling in force. */
+    private static double[] compressAccents(double[] signal) {
+        double[] out = new double[signal.length];
+        for (int i = 0; i < signal.length; i++) {
+            out[i] = Math.clamp(signal[i], -ceiling, ceiling);
+        }
+        return out;
+    }
+
+    private static double perceptualWeight(double beatsPerMinute) {
+        double octaves = Math.log(beatsPerMinute / PREFERRED_TEMPO) / Math.log(2);
+        double normalised = octaves / PRIOR_WIDTH_OCTAVES;
+        return Math.exp(-0.5 * normalised * normalised);
+    }
+
+    private static double interpolate(double[] correlation, double lag) {
+        int low = (int) Math.floor(lag);
+        int high = low + 1;
+        if (low < 0 || high >= correlation.length) {
+            return 0;
+        }
+        double fraction = lag - low;
+        return correlation[low] + (correlation[high] - correlation[low]) * fraction;
+    }
+
+    private static double[] autocorrelate(double[] signal, int maxLag) {
+        double[] out = new double[maxLag + 1];
+        for (int lag = 0; lag <= maxLag; lag++) {
+            double sum = 0;
+            for (int i = 0; i + lag < signal.length; i++) {
+                sum += signal[i] * signal[i + lag];
+            }
+            out[lag] = sum / signal.length;
+        }
+        return out;
+    }
+
+    private TempoOctave() {
+    }
+}

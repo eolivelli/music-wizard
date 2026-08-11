@@ -8,7 +8,7 @@ samples with known ground truth:
   cm-blues-68-95.mp3: bars=91  root 22.0/91 (24.2%)  root+quality 11.0/91 (12.1%)  split 0  N.C. 0.5% of 347s
   waltz-am-e7-160.mp3: bars=208  root 106.0/208 (51.0%)  root+quality 106.0/208 (51.0%)  split 0  N.C. 0.4% of 319s
   f-blues-swing-170.mp3: bars=111  root 24.5/111 (22.1%)  root+quality 14.0/111 (12.6%)  split 10  N.C. 0.7% of 316s
-  jazz-251-c-140.mp3: bars=87  root 11.3/87 (13.0%)  root+quality 11.3/87 (13.0%)  split 3  N.C. 0.0% of 304s
+  jazz-251-c-140.mp3: bars=175  root 35.0/175 (20.0%)  root+quality 30.0/175 (17.1%)  split 8  N.C. 0.3% of 304s
   fm7-vamp-110.mp3: bars=143  root 134.5/143 (94.1%)  root+quality 93.5/143 (65.4%)  split 3  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 154.0/165 (93.3%)  root+quality 102.0/165 (61.8%)  split 6  N.C. 0.5% of 309s
   bossa-cm.mp3: bars=98  root 24.0/98 (24.5%)  root+quality 6.0/98 (6.1%)  split 0  N.C. 0.0% of 315s
@@ -26,7 +26,7 @@ keys, against the expected key for each file:
   key cm-blues-68-95.mp3: Eb major at 16%  want C minor  WRONG
   key waltz-am-e7-160.mp3: A minor at 62%  want A minor  OK
   key f-blues-swing-170.mp3: F major at 8%  want F major  OK
-  key jazz-251-c-140.mp3: A minor at 18%  want C major  WRONG
+  key jazz-251-c-140.mp3: A minor at 22%  want C major  WRONG
   key ballad-wine-roses-65.mp3: D minor at 10%  want F major  WRONG
   key footprints-200.mp3: C minor at 16%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK

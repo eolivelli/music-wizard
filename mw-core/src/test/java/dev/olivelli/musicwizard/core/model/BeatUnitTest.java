@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.core.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
@@ -560,6 +561,56 @@ class BeatUnitTest {
         }
 
         @Test
+        @DisplayName("converts through the pulse a grid records, not the meter's counted beat")
+        void aRecordedPulseIsWhatTheGridConvertsThrough() {
+            // #139's own fixture: three pulses a second apart, in 4/4, tracked at
+            // half tempo. The first pulse is not at the origin, where every
+            // reading of a beat position agrees whatever it assumes.
+            List<Double> times = List.of(0.05, 1.05, 2.05);
+            TempoMap map = TempoMap.fromBeatTimes(times, TimeSignature.FOUR_FOUR, 2.0);
+            BeatGrid assumed = BeatGrid.ofTimes(times, 2, Confidence.of(0.9));
+            BeatGrid recorded = assumed.withPulseQuarters(2.0);
+
+            // What the grid answers when nothing recorded the pulse: the map was
+            // built to describe music at 120 and the grid says 60, which is the
+            // disagreement this is filed for.
+            assertThat(assumed.steadyTempo(TimeSignature.FOUR_FOUR))
+                    .isCloseTo(60.0, within(1e-9));
+            assertThat(assumed.medianTempo(TimeSignature.FOUR_FOUR))
+                    .isCloseTo(60.0, within(1e-9));
+
+            assertThat(recorded.pulseQuarters()).hasValue(2.0);
+            assertThat(recorded.steadyTempo(TimeSignature.FOUR_FOUR))
+                    .isCloseTo(map.tempoAtBeat(map.secondsToBeats(0.05)), within(1e-9));
+            assertThat(recorded.steadyTempo(TimeSignature.FOUR_FOUR))
+                    .isCloseTo(120.0, within(1e-9));
+            assertThat(recorded.medianTempo(TimeSignature.FOUR_FOUR))
+                    .isCloseTo(120.0, within(1e-9));
+            // And that is the figure the score reports, since estimatedTempo
+            // reads the grid rather than the map.
+            assertThat(Score.empty(map, 3.0).withBeatGrid(recorded).estimatedTempo())
+                    .isCloseTo(120.0, within(1e-9));
+
+            // The recorded pulse is the whole conversion, so the meter no longer
+            // enters it: 6/8's dotted quarter would otherwise multiply again.
+            assertThat(recorded.steadyTempo(TimeSignature.SIX_EIGHT))
+                    .isEqualTo(recorded.steadyTempo(TimeSignature.FOUR_FOUR));
+        }
+
+        @Test
+        @DisplayName("rejects a recorded pulse that is not a plausible number of quarters")
+        void rejectsAnImplausiblePulse() {
+            List<Double> times = List.of(0.05, 1.05, 2.05);
+            BeatGrid grid = BeatGrid.ofTimes(times, 2, Confidence.of(0.9));
+            for (double bad : new double[] {0.0, -1.0, 1e-6, 2048.0, Double.NaN,
+                    Double.POSITIVE_INFINITY}) {
+                assertThatIllegalArgumentException()
+                        .isThrownBy(() -> grid.withPulseQuarters(bad))
+                        .withMessageContaining("pulseQuarters");
+            }
+        }
+
+        @Test
         @DisplayName("answers the tempo question once, from the best evidence there is")
         void oneTempoAnswerNotTwo() {
             List<Double> pulses = new ArrayList<>();
@@ -701,10 +752,11 @@ class BeatUnitTest {
         @Test
         @DisplayName("still opens a score written before the beat unit existed")
         void readsAPreChangeScoreFile() throws Exception {
-            // Nothing gained a serialized field, so this must load unchanged --
-            // and keep the beat positions it was written with rather than being
-            // reinterpreted under the new pulse. #22 records what happens when a
-            // core change does silently invalidate old files.
+            // The beat unit added no serialized field, and the grid pulse #139
+            // added is optional, so this must load unchanged -- and keep the beat
+            // positions it was written with rather than being reinterpreted under
+            // either. #22 records what happens when a core change does silently
+            // invalidate old files.
             String json = scoreBeforeTheBeatUnit();
             assertThatCode(() -> ScoreJson.fromJson(json)).doesNotThrowAnyException();
             Score score = ScoreJson.fromJson(json);
@@ -718,6 +770,11 @@ class BeatUnitTest {
                     .isEqualTo(new MusicalTime(1, 0.0, TimeSignature.SIX_EIGHT));
             assertThat(score.beatGrid()).isPresent();
             assertThat(score.beatGrid().get().downbeatTimes()).containsExactly(0.5, 3.5);
+            // A file that says nothing about its pulse is a file whose pulse
+            // nothing measured, so the meter answers for it as it always did.
+            assertThat(score.beatGrid().get().pulseQuarters()).isEmpty();
+            assertThat(score.beatGrid().get().steadyTempo(TimeSignature.SIX_EIGHT))
+                    .isEqualTo(score.beatGrid().get().steadyPulseRate() * 1.5);
             assertThat(score.chords().size()).isEqualTo(2);
             // And it survives a write-read cycle on the new build.
             assertThat(ScoreJson.fromJson(ScoreJson.toJson(score))).isEqualTo(score);
@@ -736,6 +793,28 @@ class BeatUnitTest {
 
             assertThat(back).isEqualTo(score);
             assertThat(back.tempoMap().initialTimeSignature().beatUnitQuarters()).isEqualTo(1.5);
+        }
+
+        @Test
+        @DisplayName("round-trips a recorded pulse, and an absent one as absent")
+        void roundTripsTheGridPulse() {
+            List<Double> pulses = List.of(0.5, 1.0, 1.5, 2.0);
+            Score score = Score.empty(
+                            TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 2.0), 3.0)
+                    .withBeatGrid(BeatGrid.ofTimes(pulses, 2, Confidence.of(0.8))
+                            .withPulseQuarters(2.0));
+
+            Score back = ScoreJson.fromJson(ScoreJson.toJson(score));
+
+            assertThat(back).isEqualTo(score);
+            assertThat(back.beatGrid().orElseThrow().pulseQuarters()).hasValue(2.0);
+            assertThat(back.estimatedTempo()).isEqualTo(score.estimatedTempo());
+
+            Score silent = score.withBeatGrid(
+                    BeatGrid.ofTimes(pulses, 2, Confidence.of(0.8)));
+            assertThat(ScoreJson.fromJson(ScoreJson.toJson(silent))).isEqualTo(silent);
+            assertThat(ScoreJson.fromJson(ScoreJson.toJson(silent))
+                    .beatGrid().orElseThrow().pulseQuarters()).isEmpty();
         }
     }
 }

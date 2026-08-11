@@ -208,9 +208,11 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     The chart's counted beat is the *steady* rate of the tracked beats, and that
     is exact rather than approximate. `ChartLayout` spaces its bars at
     `60 / Score.estimatedTempo()` quarter notes; with no `--tempo` supplied that
-    accessor returns `BeatGrid.steadyTempo`, which is
-    `steadyPulseRate * beatUnitQuarters` -- so one counted beat comes to exactly
-    the mean of the intervals within a fifth of the median, whatever the meter.
+    accessor returns `BeatGrid.steadyTempo`, which is `steadyPulseRate` times
+    the pulse the grid records or, where it records none, `beatUnitQuarters` --
+    so one counted beat comes to exactly the mean of the intervals within a
+    fifth of the median, whatever the meter. A grid that records its own pulse
+    is checked for below rather than converted.
 
     **`STEADY_BAND` below is a copy of `BeatGrid`'s and nothing checks it.** It
     is reproduced because the only precise statement of the chart's axis lives in
@@ -284,6 +286,13 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     if "SUPPLIED" in provenances:
         sys.exit(f"{workspace.name}: a supplied --tempo makes the chart's beat something "
                  f"other than the tracked rate; this measure does not model that.")
+    # A grid that measured its own pulse converts through that instead of
+    # through the meter, so `counted` above would be the wrong beat. Only a
+    # supplied tempo produces one today, which the previous check already
+    # refuses -- this one does not depend on that staying true.
+    if doc.get("beatGrid", {}).get("pulseQuarters") is not None:
+        sys.exit(f"{workspace.name}: the beat grid records its own pulse, so a tracked "
+                 f"pulse is not a counted beat; this measure does not model that.")
     if provenances <= {"UNKNOWN"}:
         sys.exit(f"{workspace.name}: the tempo map records no provenance, so "
                  f"estimatedTempo() may prefer a stated constant over the beat grid; "
