@@ -159,9 +159,9 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * figures below do not describe -- they score a since-retired recording,
      * predate the bossa's change of pulse, and were taken on an earlier
      * tracker -- so the sweep's cells are not expected to reproduce them;
-     * they stay as the measurement that chose the value. What the retake does settle is the upper edge: the cliff above
-     * 0.30 is gone with the detour population behind it, as its bullet
-     * records.
+     * they stay as the measurement that chose the value. What the retake does
+     * settle is the upper edge: the cliff above 0.30 is gone with the detour
+     * population behind it, as its bullet records.
      *
      * <p>The bossa's figure is a quarter-note rate. When the sweep below was
      * taken its tracker ran at two thirds of it, and that pulse is what every
