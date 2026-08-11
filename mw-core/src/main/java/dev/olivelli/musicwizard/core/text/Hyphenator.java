@@ -390,8 +390,9 @@ public final class Hyphenator {
      * syllable after it: {@code Am-ster-dam}, not {@code Ams-ter-dam}. A last
      * piece has nothing to head and joins the one before.
      *
-     * <p>The test is on <b>what has been held so far</b> rather than on the piece
-     * alone, which is not the same answer and is the better one. The patterns cut
+     * <p>What is asked is whether <b>anything held so far</b> carries a vowel,
+     * which is not the same as asking the piece alone and is the better one of
+     * the two. The patterns cut
      * {@code gynecology} into {@code g} and {@code y} before {@code ne}: asked
      * separately neither is a vowel, and the word loses a note; asked together
      * {@code gy} is one, because the {@code y} is no longer the word's first
@@ -403,11 +404,10 @@ public final class Hyphenator {
         }
         List<String> sung = new ArrayList<>(pieces.size());
         StringBuilder held = new StringBuilder();
-        // Asked of each piece as it arrives rather than of the accumulation, so
-        // a run whose pieces never carry a vowel is not rescanned from the top
-        // every time. The answer is the same one: a vowel anywhere in what is
-        // held makes it sung, and the only position-sensitive character is the
-        // word's first letter, which is in whichever piece first has a letter.
+        // Carried rather than recomputed, so a run whose pieces never carry a
+        // vowel is not rescanned from the top every time. The only
+        // position-sensitive character is the word's first letter, which lies in
+        // whichever piece first has one, so that is the flag beside it.
         boolean heldIsSung = false;
         boolean heldHasLetter = false;
         for (String piece : pieces) {

@@ -220,30 +220,35 @@ class HyphenatorTest {
         }
     }
 
-    @ParameterizedTest(name = "{0}")
-    @CsvSource({
-        "a,     a run whose every piece is sung",
-        "bcdfg, a run with no vowel anywhere",
-    })
-    @DisplayName("a very long token costs time in its length, not its square")
-    void aLongTokenIsLinear(String unit, String shape) {
+    @Test
+    @DisplayName("a very long token costs time in its length, not its square or its cube")
+    void aLongTokenIsLinear() {
         // LrcLyrics splits a line on whitespace with no length bound, so a
-        // run-on reaches this. Two separate scans were superlinear: scoring
-        // every substring, and asking whether the accumulation is sung once per
-        // piece. The second shows only on a run with no vowel, which is why
-        // both shapes are measured here.
+        // run-on reaches this. Two scans here were superlinear and they are
+        // pinned by different measurements.
         Hyphenator hyphenator = Hyphenator.forLanguage("it").orElseThrow();
-        long small = nanosFor(hyphenator, unit, 2_000);
-        long large = nanosFor(hyphenator, unit, 16_000);
+        long sung = nanosFor(hyphenator, "ba", LONG_TOKEN);
+        long vowelless = nanosFor(hyphenator, "bcdfg", LONG_TOKEN);
 
-        // Eight times the input. Linear lands near eight, quadratic near
-        // sixty-four and cubic near five hundred, so a bound of twenty-four
-        // separates them with room for a loaded machine. Nanoseconds, because
-        // milliseconds truncate the small measurement to nothing and leave the
-        // ratio meaningless.
-        assertThat(large).as("%s: %d ns against %d ns", shape, large, small)
-                .isLessThan(Math.max(small * 24, 50_000_000L));
+        // joinUnsung held the whole run when no piece carried a vowel and asked
+        // the accumulation once per piece. Two shapes of the same length, so
+        // whatever is fixed per call cancels: the quadratic scan puts this above
+        // twenty, and asking each piece as it arrives puts it near one.
+        assertThat((double) vowelless / sung)
+                .as("vowel-less %d ns against sung %d ns", vowelless, sung)
+                .isLessThan(6.0);
+
+        // And split scored every substring, which is cubic and so shows as time
+        // rather than as a ratio -- it slows both shapes alike. A wall clock
+        // rather than a ratio, and the gap it separates is milliseconds from
+        // minutes, so the bound is loose on purpose.
+        assertThat(Math.max(sung, vowelless) / 1_000_000)
+                .as("sung %d ns, vowel-less %d ns", sung, vowelless)
+                .isLessThan(2_000L);
     }
+
+    /** Long enough that a superlinear term shows over the fixed cost per call. */
+    private static final int LONG_TOKEN = 32_000;
 
     /** Nanoseconds for one split of a token of this length, warmed up first. */
     private static long nanosFor(Hyphenator hyphenator, String unit, int length) {
