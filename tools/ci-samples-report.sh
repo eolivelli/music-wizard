@@ -11,7 +11,7 @@
 #
 # Two sections: a per-file analysis summary for EVERY committed mp3 (tempo,
 # meter, chord spans — works even for files whose ground truth is not yet
-# confirmed), then the two scored harnesses for the files with registered
+# confirmed), then the scored harnesses for the files with registered
 # ground truth. Local-only samples are absent in CI by design; the harnesses
 # say so per line rather than failing.
 set -u
@@ -69,6 +69,8 @@ say "running the scored harnesses"
   python3 tools/score-samples.py 2>&1
   echo
   python3 tools/score-chart.py 2>&1
+  echo
+  python3 tools/score-lyrics.py 2>&1
   echo '```'
 } >> "$REPORT"
 

@@ -192,7 +192,7 @@ def bar_credit(covered: dict) -> dict:
     """How one bar's credit divides between the chords in it.
 
     The chord covering most of the bar takes all of it: that is the chord a
-    reader takes from the bar, and it is the rule both harnesses have always
+    reader takes from the bar, and it is the rule both chord harnesses have always
     applied. Where several cover exactly as much, the bar is split equally
     between them instead of the first one taking it, which is #242 -- which
     chord comes first is a fact about print order, not about the recording, and

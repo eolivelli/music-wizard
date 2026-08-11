@@ -1,10 +1,17 @@
-# Commercial recordings for local evaluation only.
+# Recordings held locally: commercial ones for evaluation, and cleared ones
+# waiting for an ear.
 #
-# Nothing in this directory may be committed or redistributed: these are
-# commercial songs under ordinary copyright, unlike samples/, whose local-only
-# files are at least backing tracks fetched for measurement. Everything here
-# except this file is gitignored. No ground truth either — use these to *look*
-# at MW's output, never to score it.
+# Most of what is here is a commercial song under ordinary copyright, unlike
+# samples/, whose local-only files are at least backing tracks fetched for
+# measurement. Those may not be committed or redistributed, and carry no ground
+# truth — use them to *look* at MW's output, never to score it.
+#
+# The second kind is a recording whose rights are already clear on both sides
+# and which is only waiting to be confirmed by ear before it is promoted into
+# samples/ (docs/phone-to-corpus.md). Its entry says so, and says what the ear
+# has still to settle. Everything here except this file is gitignored either
+# way, so a candidate is staged without its words being redistributed while
+# they are still unconfirmed.
 
 hanno-ucciso-luomo-ragno-karaoke.mp3
 
@@ -140,3 +147,48 @@ also never recognises the sheet's Aadd9/C# slash-bass inversion --
 ChordEstimator does not appear to emit a bass note at all on this track,
 worth checking whether that is systematic. This is the best chart-to-
 external-reference agreement seen across every recording tried so far.
+
+sere-doltremare.mp3
+
+"Sere d'oltremare" (iiridio), Italian, 4:59. A cleared candidate for samples/,
+staged here until it is confirmed by ear — not a commercial recording like the
+rest of this file. Both rights are clear from one source and both were read
+first-hand rather than taken from an aggregator: `yt-dlp -J` reports
+`Creative Commons Attribution license (reuse allowed)`, and the description
+credits `Voce: Carlotta · Musica: Luca, Marco · Testo: Marco, Carlotta, Luca,
+Margherita` — the uploader is the band that wrote the words, performed them and
+timed them. Found by the #307 survey, which ranked it first for exactly that:
+the only candidate whose rights chain is complete with no further step. Fetch
+locally, audio and the manual Italian subtitle track together:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    --write-sub --sub-langs it --sub-format vtt \
+    -o 'uncommitted/sere-doltremare.%(ext)s' https://youtu.be/h1B8Uh07Dik
+  tools/vtt-to-lrc.py uncommitted/sere-doltremare.it.vtt --drop-cues 1 \
+    > uncommitted/sere-doltremare.lrc
+Cue 1 is the title card `~ Sere d'Oltremare ~`, which is displayed and not
+sung; dropping it is what keeps the four words out of a transcription score.
+The rest is 59 lines and 289 words, and the subtitler's cue *ends* survive the
+conversion as bare timestamps, which is what holds each line off the
+instrumental stretches around it.
+
+Run 2026-08-11. MW read 97.0 BPM in 4/4 over 481 beats, 143 chord spans, and
+Eb major at 14% — a chart circling Eb-Gm-Cm7-Ab throughout. The lyric sheet is
+the shape #309 was checked against on generale, and here it holds: the 30 s
+intro, the two mid-song instrumental stretches and the 1 min outro all print as
+bare chord rows with no lyric line pulled under them. Scored by
+tools/score-lyrics.py, which is loop closure and reads zero on both columns by
+construction; the row exists so that it stops reading zero.
+
+To confirm by ear, before this is promoted into samples/ with its NOTICE
+attribution — none of it can be inferred from the metadata, and the survey
+listened to nothing:
+  - are the .lrc's words the words that are sung, and do its line times land.
+    The description's own lyric text and the subtitle track disagree in at
+    least three places ("E poi tu sei" / "E poi sei tu", "in altomare" /
+    "in alto mare", "ciò che n'ho vissuto" / "ciò che non ho vissuto"); the
+    subtitle track is the timed one and is what was converted;
+  - the changes, bar by bar, in this corpus's shorthand — MW's Eb reading is
+    an estimate and nothing here is ground truth yet;
+  - that the intro, the two middle stretches and the outro really are
+    instrumental;
+  - that it is Italian throughout, which is the gate a dialect entry fails.

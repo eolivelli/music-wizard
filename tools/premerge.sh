@@ -4,7 +4,7 @@
 # CURRENT origin/main. By default it runs only what CI cannot:
 #
 #   1. build the shaded jar   mvn -B -T 1C -DskipTests package
-#   2. both sample harnesses, diffed against the committed baselines
+#   2. the sample harnesses, diffed against the committed baselines
 #
 # CI runs the fast suite, the integration suite, the licensing check and the
 # corpus report against the PR's merge preview, and a green PR is the gate
@@ -30,7 +30,7 @@ usage() {
   cat <<'EOF'
 usage: tools/premerge.sh [--full]
 
-  (default)  build the shaded jar, then diff both sample harnesses against
+  (default)  build the shaded jar, then diff the sample harnesses against
              tools/baselines/ — the part CI cannot run.
   --full     run the unit and integration suites here too, instead of
              waiting for CI to run them on the pull request.
@@ -51,11 +51,11 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # executions, so it runs everything plain `verify` runs and the ITs as well;
 # running both would run the unit suite twice for nothing.
 if [ "$full" -eq 1 ]; then
-  step "1/3 full suite (unit + integration)"
+  step "1/4 full suite (unit + integration)"
   mvn -B -q -T 1C $REPO_ARGS -Pintegration verify \
     || { echo "FAIL: mvn -Pintegration verify"; fail=1; }
 else
-  step "1/3 build (suites left to CI; --full runs them here)"
+  step "1/4 build (suites left to CI; --full runs them here)"
   mvn -B -q -T 1C $REPO_ARGS -DskipTests package \
     || { echo "FAIL: mvn package"; fail=1; }
 fi
@@ -81,11 +81,14 @@ PY
   grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
 }
 
-step "2/3 model harness vs baseline"
+step "2/4 model harness vs baseline"
 compare score-samples.py tools/baselines/score-samples.txt || { echo "FAIL: score-samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "3/3 chart harness vs baseline"
+step "3/4 chart harness vs baseline"
 compare score-chart.py tools/baselines/score-chart.txt || { echo "FAIL: score-chart moved — if intended, regenerate the baseline and commit it"; fail=1; }
+
+step "4/4 lyric harness vs baseline"
+compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-lyrics moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering
