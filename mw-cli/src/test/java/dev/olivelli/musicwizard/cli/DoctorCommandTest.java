@@ -50,4 +50,27 @@ class DoctorCommandTest {
                 .doesNotContain("advisor layer available")
                 .doesNotContain("advisor layer will stay off");
     }
+
+    @Test
+    @DisplayName("names each configured provider and the issue that will supply it")
+    void reportsProvidersHonestly() {
+        // The defaults name providers #312 and #314 have not built yet, so
+        // doctor must say that -- as an expected state with the issue number,
+        // not as a broken install, and without failing the run. The same line
+        // will read "(present)" the day the provider lands, which is the test
+        // an install actually needs answered.
+        CliRunner.Result doctor = CliRunner.run("doctor");
+
+        assertThat(doctor.exitCode()).as(doctor.all()).isZero();
+        assertThat(doctor.out())
+                .contains("Separation")
+                .contains("onnx-spleeter")
+                .contains("#312")
+                .contains("Lyrics ASR")
+                .contains("sherpa-qwen3")
+                .contains("#314")
+                .contains("Models");
+        // No provider ships yet, so nothing may claim one is present.
+        assertThat(doctor.out()).doesNotContain("(present)");
+    }
 }

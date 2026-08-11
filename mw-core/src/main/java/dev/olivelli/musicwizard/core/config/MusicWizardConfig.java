@@ -99,7 +99,7 @@ public record MusicWizardConfig(
             String separationProvider,
             /* Provider id for pitch tracking, e.g. "onnx-crepe". */
             String pitchProvider,
-            /* Provider id for lyric transcription, e.g. "whisper-jni". */
+            /* Provider id for lyric transcription, e.g. "sherpa-qwen3". */
             String asrProvider,
             /* Directory holding downloaded models; defaults under the user cache. */
             String modelCacheDirectory,
@@ -158,7 +158,7 @@ public record MusicWizardConfig(
             new AnalysisConfig(null, null, null, false),
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
-            new MlConfig("onnx-spleeter", "onnx-crepe", "whisper-jni", null, false),
+            new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3", null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
