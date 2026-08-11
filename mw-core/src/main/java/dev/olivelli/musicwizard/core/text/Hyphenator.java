@@ -340,10 +340,10 @@ public final class Hyphenator {
      * and joins the note away.
      *
      * <p>Position is not the whole answer and does not claim to be: a few words
-     * do open on the vowel — {@code yt-tri-um}, {@code Ygg-dra-sil},
-     * {@code Yp-si-lan-ti} — and this joins each into one note fewer. Telling
-     * those from {@code York} wants a pronunciation dictionary, which is #332's
-     * own conclusion.
+     * do open on the vowel — <i>yttrium</i>, <i>Yggdrasil</i>, <i>Ypsilanti</i> —
+     * and the rule costs each of them one note against what the patterns alone
+     * would give. Telling those from {@code York} wants a pronunciation
+     * dictionary, which is #332's own conclusion.
      *
      * <p>Any letter above U+007F counts as a vowel. Both languages are written in
      * the Latin alphabet, so what that reaches is an accented letter, and Italian
