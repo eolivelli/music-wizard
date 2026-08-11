@@ -131,7 +131,7 @@ class LyricSheetTest {
         // exactly as the composed e-acute does. Otherwise the same word moves
         // the chords depending on which normal form the LRC was saved in.
         Score decomposed = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
-                .withLyrics(lrc("[00:00.00]<00:00.00>caffe\u0301 <00:04.00>nero\n", 8.0));
+                .withLyrics(lrc("[00:00.00]<00:00.00>caffe\u0300 <00:04.00>nero\n", 8.0));
         Score composed = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)
                 .withLyrics(lrc("[00:00.00]<00:00.00>caff\u00e8 <00:04.00>nero\n", 8.0));
 

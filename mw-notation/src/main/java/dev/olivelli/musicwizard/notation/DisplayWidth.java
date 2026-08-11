@@ -21,8 +21,9 @@ package dev.olivelli.musicwizard.notation;
  *
  * <p>For laying out a plain-text sheet, where a chord symbol has to sit above
  * the word it is sung on. {@code String.length()} counts UTF-16 code units and
- * gets that wrong twice over: a CJK character is one unit and two cells, and an
- * emoji is two units and two cells.
+ * gets that wrong in both directions: a CJK character is one unit and two
+ * cells, and a musical clef is two units and one cell. An emoji happens to be
+ * two of each, so it cannot show either error.
  *
  * <p><b>Not the same measure as {@link LilyPondComplaints} takes</b>, which
  * counts code points because that is what LilyPond's own column counter counts.
@@ -33,9 +34,12 @@ package dev.olivelli.musicwizard.notation;
  * <p>The rules, from Unicode Annex #11 and the general category:
  *
  * <ul>
- *   <li>a combining mark or a format character takes no cell of its own — it is
- *       drawn on the character before it, so {@code e} plus a combining acute is
- *       one cell, the same as the composed {@code é};
+ *   <li>a nonspacing or enclosing mark takes no cell of its own — it is drawn on
+ *       the character before it, so {@code e} plus a combining grave is one
+ *       cell, the same as the composed {@code è}. Nor does a format character,
+ *       with the printed exceptions at {@link #DRAWN_FORMAT}, nor a
+ *       {@link #COMPOSING_JAMO} that stacks into the syllable before it;
+ *       a <em>spacing</em> mark does take one, which is what its name says;
  *   <li>East Asian Wide and Fullwidth take two, which is the CJK case and the
  *       emoji case;
  *   <li>everything else takes one.
@@ -44,8 +48,13 @@ package dev.olivelli.musicwizard.notation;
  * <p><b>No dependency and no vendored file.</b> The whole of Annex #11's wide
  * property is 122 ranges once coalesced, so it is carried as {@link #WIDE}
  * rather than by pulling in a Unicode library for one column count — the trade
- * this project makes for its DSP and again for {@code Hyphenator}. The general
- * category comes from the JDK, which already has it.
+ * this project makes for its DSP and again for {@code Hyphenator}.
+ *
+ * <p>The general category comes from the JDK, which already has it, so the two
+ * halves are pinned differently: {@link #WIDE} is frozen at the release it was
+ * generated from and the category follows whatever runtime this is on. They
+ * drift only over characters a newer Unicode has added, which are narrow until
+ * the table is regenerated — the same answer {@code length()} gave.
  */
 final class DisplayWidth {
 
@@ -53,18 +62,18 @@ final class DisplayWidth {
      * East Asian Wide and Fullwidth, as inclusive code point ranges.
      *
      * <p>Pairs, ascending, searched by bisection. <b>Generated from Unicode
-     * 16.0.0's {@code EastAsianWidth} property, not written by hand</b> — the
-     * first draft of this file listed the blocks a reader would think of and was
-     * wrong on 953 code points when swept against the property itself, in both
-     * directions. Wideness follows script blocks closely enough to look
-     * guessable and not closely enough to be guessed.
+     * 16.0.0's {@code EastAsianWidth} property, not written by hand.</b>
+     * Wideness follows script blocks closely enough to look guessable and not
+     * closely enough to be guessed.
      *
      * <p>122 ranges is the whole property, so this is exact rather than an
      * approximation. To move to a later Unicode, regenerate every code point
      * whose east-asian-width is {@code W} or {@code F}, coalesced into runs.
      * {@code DisplayWidthTest} cannot re-derive that without the property file
-     * it exists to avoid carrying, so it checks the table's shape — ascending,
-     * non-overlapping — and pins the characters a lyric actually contains.
+     * it exists to avoid carrying. What it does hold is that bisection still
+     * reaches every entry, by counting the wide code points and the runs they
+     * form — a table left out of order after a regeneration answers "narrow"
+     * for whatever it can no longer reach, and does it silently.
      */
     private static final int[] WIDE = {
         0x1100, 0x115F,
@@ -205,30 +214,98 @@ final class DisplayWidth {
         return cells;
     }
 
+    /**
+     * Format characters that are drawn, so they keep a cell.
+     *
+     * <p>Ascending; the rest of {@code Cf} takes no cell. A soft hyphen prints
+     * as a hyphen where a line breaks, and the others are the prepended
+     * concatenation marks — an Arabic number sign is a mark above the digits
+     * that follow it, not an invisible control. Every implementation measured
+     * gives these one cell, and glibc's own zero-width test opens by excluding
+     * the soft hyphen.
+     */
+    private static final int[] DRAWN_FORMAT = {
+        0x00AD,
+        0x0600, 0x0601, 0x0602, 0x0603, 0x0604, 0x0605,
+        0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2,
+        0x110BD, 0x110CD,
+    };
+
+    /**
+     * Conjoining Hangul jamo, which compose onto the syllable before them.
+     *
+     * <p>Pairs, ascending. Unicode calls these letters, because they are — a
+     * vowel or a final consonant. They still take no cell of their own: a
+     * Hangul syllable is written by stacking a leading consonant, a vowel and
+     * optionally a final into one square, so the vowel occupies the square the
+     * consonant opened. The general category cannot say that and the width
+     * property does not either, so the ranges are named here.
+     *
+     * <p>Only the trailing halves. {@code U+1100}..{@code U+115F} are the
+     * leading consonants that open the square, and those are wide — they are in
+     * {@link #WIDE}, where the property puts them.
+     *
+     * <p>Modern Korean is normally written with the precomposed syllables at
+     * {@code U+AC00}..{@code U+D7A3}, one code point per square, which need none
+     * of this. These matter for older text and for anything decomposed.
+     */
+    private static final int[] COMPOSING_JAMO = {
+        0x1160, 0x11FF,
+        0xD7B0, 0xD7C6,
+        0xD7CB, 0xD7FB,
+    };
+
     /** How many cells one code point occupies: none, one, or two. */
     static int of(int codePoint) {
-        int type = Character.getType(codePoint);
-        if (type == Character.NON_SPACING_MARK
-                || type == Character.ENCLOSING_MARK
-                || type == Character.COMBINING_SPACING_MARK
-                || type == Character.FORMAT) {
-            // Drawn on the character before it, or not drawn at all. A variation
-            // selector and a zero-width joiner are both in here, which is what
-            // keeps a multi-code-point emoji from counting several times over.
+        if (isZeroWidth(codePoint)) {
             return 0;
         }
         return isWide(codePoint) ? 2 : 1;
     }
 
+    /**
+     * Whether this code point is drawn on its neighbour, or not drawn.
+     *
+     * <p><b>Nonspacing and enclosing marks only, not spacing marks.</b> Unicode
+     * calls {@code Mc} {@code Spacing_Mark} and means it: a Devanagari or Tamil
+     * vowel sign is drawn beside its consonant and takes a cell of its own, and
+     * zeroing it walks the chords left one cell per mark down the line — the
+     * same defect this class exists to remove, one category over.
+     *
+     * <p>Format characters take no cell, which is what stops a zero-width joiner
+     * and a variation selector counting inside an emoji sequence, except for the
+     * {@link #DRAWN_FORMAT} that are printed.
+     */
+    private static boolean isZeroWidth(int codePoint) {
+        int type = Character.getType(codePoint);
+        if (type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) {
+            return true;
+        }
+        if (type != Character.FORMAT) {
+            return inRanges(codePoint, COMPOSING_JAMO);
+        }
+        for (int drawn : DRAWN_FORMAT) {
+            if (drawn == codePoint) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Whether this code point is East Asian Wide or Fullwidth. */
     private static boolean isWide(int codePoint) {
+        return inRanges(codePoint, WIDE);
+    }
+
+    /** Whether a code point falls in a table of ascending inclusive pairs. */
+    private static boolean inRanges(int codePoint, int[] ranges) {
         int low = 0;
-        int high = WIDE.length / 2 - 1;
+        int high = ranges.length / 2 - 1;
         while (low <= high) {
             int middle = (low + high) >>> 1;
-            if (codePoint < WIDE[middle * 2]) {
+            if (codePoint < ranges[middle * 2]) {
                 high = middle - 1;
-            } else if (codePoint > WIDE[middle * 2 + 1]) {
+            } else if (codePoint > ranges[middle * 2 + 1]) {
                 low = middle + 1;
             } else {
                 return true;

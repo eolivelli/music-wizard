@@ -50,6 +50,17 @@ class DisplayWidthTest {
             "1F680, 2",  // rocket
             "1D11E, 1",  // musical symbol G clef -- astral and narrow
             "20000, 2",  // CJK extension B
+            // Spacing marks are spacing: Unicode's own name for the category.
+            "093E, 1",   // Devanagari vowel sign AA
+            "0BBE, 1",   // Tamil vowel sign AA
+            // Format characters that are printed, against the rest of Cf above.
+            "00AD, 1",   // soft hyphen
+            "0600, 1",   // Arabic number sign
+            // Conjoining jamo stack into the syllable the consonant opened.
+            "1100, 2",   // Hangul choseong kiyeok -- opens the square
+            "1161, 0",   // Hangul jungseong A -- stacks into it
+            "11A8, 0",   // Hangul jongseong kiyeok
+            "AC01, 2",   // the precomposed syllable those three make
         })
         @DisplayName("takes the cells Annex 11 and its category give it")
         void widths(String hex, int expected) {
@@ -73,7 +84,7 @@ class DisplayWidthTest {
         @DisplayName("gives one answer for both normal forms of the same word")
         void normalisationDoesNotChangeIt() {
             // The chords must not move because an LRC was saved decomposed.
-            assertThat(DisplayWidth.of("caffe\u0301")).isEqualTo(DisplayWidth.of("caff\u00E8"));
+            assertThat(DisplayWidth.of("caffe\u0300")).isEqualTo(DisplayWidth.of("caff\u00E8"));
         }
 
         @Test
@@ -131,10 +142,43 @@ class DisplayWidthTest {
         void boundariesHold(String from, String to) {
             int first = Integer.parseInt(from, 16);
             int last = Integer.parseInt(to, 16);
-            assertThat(DisplayWidth.of(first - 1)).as("before U+%s", from).isEqualTo(1);
             assertThat(DisplayWidth.of(first)).as("first of U+%s", from).isEqualTo(2);
             assertThat(DisplayWidth.of(last)).as("last of U+%s", to).isEqualTo(2);
-            assertThat(DisplayWidth.of(last + 1)).as("after U+%s", to).isEqualTo(1);
+            // Outside the range is "not wide" rather than "one cell": the
+            // character after the leading Hangul consonants is the first
+            // conjoining vowel, which stacks into the syllable and takes none.
+            assertThat(DisplayWidth.of(first - 1)).as("before U+%s", from).isNotEqualTo(2);
+            assertThat(DisplayWidth.of(last + 1)).as("after U+%s", to).isNotEqualTo(2);
+        }
+
+        /**
+         * The one failure a regenerated table makes and nothing else catches.
+         * Bisection over an array left out of order answers "narrow" for
+         * whatever it can no longer reach, silently and only for the entries
+         * that moved -- so the four boundary rows above still pass. Counting
+         * what the table reaches is what notices.
+         */
+        @Test
+        @DisplayName("is still wholly reachable by bisection")
+        void everyRangeIsReachable() {
+            int wide = 0;
+            int runs = 0;
+            boolean previousWide = false;
+            for (int codePoint = 0; codePoint <= 0x10FFFF; codePoint++) {
+                boolean isWide = DisplayWidth.of(codePoint) == 2;
+                if (isWide) {
+                    wide++;
+                    if (!previousWide) {
+                        runs++;
+                    }
+                }
+                previousWide = isWide;
+            }
+            // Unicode 16.0.0 has 182719 wide code points; seven of them are
+            // also nonspacing marks and take no cell, which is what splits the
+            // table's 122 ranges into 123 runs here.
+            assertThat(wide).isEqualTo(182_712);
+            assertThat(runs).isEqualTo(123);
         }
 
         @Test
