@@ -135,6 +135,11 @@ class LyricEngravingIT {
                 // Chords stated on the beat axis, which is the other route
                 // through ChartLayout and the one a MIDI import takes.
                 Arguments.of("quantized-chords", quantized()),
+                // Lines overlapping in time, which is two Lyrics contexts
+                // stacked under the chords. Every word hyphenated, so a chain
+                // ends each lane: a hyphen closed by a syllable in the other
+                // lane is an unterminated hyphen here.
+                Arguments.of("overlapping-lines", overlapping()),
                 // Italian split into syllables, so most of the page is
                 // hyphen-joined and the elided articles are carried onto the
                 // syllable after them.
@@ -180,6 +185,34 @@ class LyricEngravingIT {
         }
         return score.withLyrics(new Lyrics(
                 List.of(new LyricLine(words, Confidence.of(0.9))), "und", Confidence.of(0.9)));
+    }
+
+    /**
+     * Two lines sung over each other, each a hyphen chain to its own end.
+     *
+     * <p>Built by hand rather than from LRC, which clamps every word into its
+     * own line and so cannot state an overlap.
+     */
+    private static Score overlapping() {
+        Confidence sure = Confidence.of(0.9);
+        Lyrics lines = new Lyrics(List.of(
+                new LyricLine(List.of(
+                        word("Hal", 0.10, sure), word("le", 0.90, sure),
+                        word("lu", 1.70, sure), word("jah", 13.40, sure)), sure),
+                new LyricLine(List.of(
+                        word("o", 2.30, sure), word("ver", 4.10, sure),
+                        word("head", 7.70, sure), word("now", 11.20, sure)), sure)),
+                "und", sure);
+        // The LRC only gets sung() as far as a chart; the lyrics it parses are
+        // replaced by the two lines above.
+        return sung(8, 2.0, TimeSignature.FOUR_FOUR, 120,
+                "[00:00.00]<00:00.00>replaced\n").withLyrics(lines);
+    }
+
+    /** A word of a fifth of a second, hyphenated to whatever follows it. */
+    private static LyricWord word(String text, double startSeconds, Confidence confidence) {
+        return LyricWord.ofSeconds(text, startSeconds, startSeconds + 0.2, confidence)
+                .withHyphenToNext(true);
     }
 
     /** A progression on the beat axis, which sends ChartLayout down fromBeats. */
