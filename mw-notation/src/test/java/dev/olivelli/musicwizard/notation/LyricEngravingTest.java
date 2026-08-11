@@ -226,9 +226,8 @@ class LyricEngravingTest {
         // globally ordered. Words in general are not -- Lyrics.allWords()'s
         // javadoc says recognition spans on sung speech overlap -- so a stray
         // onset says nothing about the next word, and returning there dropped
-        // whole verses. The dropped word does not move the lane's cursor
-        // either, so these two lines still share one lane -- which is what
-        // lyricBars asserts.
+        // whole verses. A dropped word does not hold a lane either, so these
+        // two lines still share one -- which is what lyricBars asserts.
         Confidence sure = Confidence.of(0.9);
         Lyrics strays = new Lyrics(List.of(
                 new LyricLine(List.of(
@@ -303,6 +302,29 @@ class LyricEngravingTest {
     }
 
     @Test
+    @DisplayName("a lane is held by a split word for as long as the word is sung")
+    void aSplitWordHoldsItsLaneToItsLastSyllable() {
+        // The syllables of a word are spread across it, so a lane holding one
+        // long word is occupied until its last syllable -- not freed after the
+        // first. Freed there, the second line joins the first, and the page
+        // reads "Al le lu ia A men" as one row sung by one voice.
+        Confidence sure = Confidence.of(0.9);
+        Score score = chart(4).withLyrics(new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("Alleluia", 1.0, 7.0, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("Amen", 4.5, 5.0, sure)), sure)),
+                "it", sure));
+
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(2);
+        assertThat(String.join(" ", lanes.get(0))).contains("\"Al\"").contains("\"le\"")
+                .contains("\"luia\"").doesNotContain("\"men\"");
+        assertThat(String.join(" ", lanes.get(1))).contains("\"A\"").contains("\"men\"");
+    }
+
+    @Test
     @DisplayName("lines that do not overlap share one lane")
     void separateLinesShareOneLane() {
         // The ordinary lyric. A lane is spent only where two lines are sung at
@@ -320,9 +342,9 @@ class LyricEngravingTest {
     void linesBeforeTheChartShareOneLane() {
         // A moment before the first bar has no unit of its own -- the grid
         // starts where the chart does -- so every one of them is placed at the
-        // chart's start and pushed clear of the last. Read as a lane cursor
-        // that would say these two sequential lines were sung together, and
-        // the page would carry a second row of words claiming as much.
+        // chart's start and pushed clear of the last. Read as what holds a
+        // lane, that says these two sequential lines were sung together, and
+        // the page carries a second row of words claiming as much.
         Confidence sure = Confidence.of(0.9);
         List<Chord> chords = List.of(
                 Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 2.0, 4.0, sure),
@@ -351,8 +373,8 @@ class LyricEngravingTest {
         // The page carries a fixed number of lanes, so a third line sung over
         // the first two is engraved the way a single lane always engraved it:
         // crammed against the cursor it could not clear. Which lane that is
-        // decides how far it is pushed -- here the second, whose words end four
-        // seconds before the first's do.
+        // decides how far it is pushed -- here the second, whose last word is
+        // sung well before the first's.
         Confidence sure = Confidence.of(0.9);
         Score score = chart(4).withLyrics(new Lyrics(List.of(
                 new LyricLine(List.of(

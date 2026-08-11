@@ -206,11 +206,11 @@ final class LyricEngraving {
      * lines may overlap in time — recognition spans on sung speech do, see
      * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()}. So lines
      * take lanes first-fit in the order {@code Lyrics} keeps them, which is by
-     * their first word: a line goes in the first lane free at the moment it
-     * begins, and past {@link #LANES} into whichever lane was free longest ago.
-     * A line goes into one lane whole, because {@code hyphenatedToNext} joins a
-     * word to the next word <em>in its own line</em>, so a line split across
-     * lanes would split a hyphen chain.
+     * their first word: a line goes in the first lane whose last syllable was
+     * sung before the line begins, and past {@link #LANES} into whichever lane
+     * was free longest ago. A line goes into one lane whole, because {@code
+     * hyphenatedToNext} joins a word to the next word <em>in its own line</em>,
+     * so a line split across lanes would split a hyphen chain.
      *
      * <p>Within a lane a word that would still land behind the cursor is pushed
      * up to the next free unit, and <b>dropped only when that push runs past the
@@ -232,11 +232,7 @@ final class LyricEngraving {
         // which is what the page did before syllables were split at all.
         Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
         List<List<Syllable>> lanes = new ArrayList<>();
-        // The moment of the last word each lane engraved, which is what says
-        // whether the lane is free -- not where that word landed on the grid.
-        // The two differ: a word is placed by a unit that is rounded, clamped
-        // into the chart and pushed clear of its neighbour, so two lines sung
-        // one after the other can land on one unit and read as simultaneous.
+        // When the last syllable each lane engraved was sung. See laneFor.
         double[] sungAt = new double[LANES];
         for (int i = 0; i < LANES; i++) {
             lanes.add(new ArrayList<>());
@@ -263,7 +259,7 @@ final class LyricEngraving {
                 if (!placed.isEmpty()) {
                     syllables.addAll(placed);
                     previous = placed.get(placed.size() - 1).unit();
-                    sungAt[lane] = word.startSeconds();
+                    sungAt[lane] = syllableSeconds(word, placed.size() - 1, placed.size());
                 }
             }
         }
@@ -275,12 +271,20 @@ final class LyricEngraving {
     /**
      * The lane a line beginning at {@code startSeconds} goes in.
      *
-     * <p>The first lane whose last word was sung before then, so a line takes a
-     * fresh lane only where it would be engraved beside something still being
-     * sung — which is what a second row of words on the page says. A lane is
-     * held by the words it engraved rather than by the lines it was given, so a
-     * word dropped for want of room does not send the lines after it into a
-     * lane of their own.
+     * <p>The first lane whose last syllable was sung before then, so a line
+     * takes a fresh lane only where it would be engraved beside something still
+     * being sung — which is what a second row of words on the page says. The
+     * syllable rather than the word, because a word is spread across its own
+     * length: a lane holding one word of three syllables sung over six seconds
+     * is occupied for all six, and reading the word's own start would free it
+     * after the first.
+     *
+     * <p>Held in sung time rather than in grid units, which the placement runs
+     * on. A unit is rounded, clamped into the chart and pushed clear of its
+     * neighbour, so two lines sung one after the other can land on one unit and
+     * would read as simultaneous. And a lane is held by the syllables it
+     * engraved rather than by the lines it was given, so a word dropped for want
+     * of room does not send the lines after it into a lane of their own.
      *
      * <p>When every lane is held the line still has to go somewhere, and it goes
      * where the push costs least: the lane free longest. That is the behaviour a
@@ -318,13 +322,8 @@ final class LyricEngraving {
         List<Syllable> placed = new ArrayList<>(parts.size());
         long cursor = previous;
         for (int i = 0; i < parts.size(); i++) {
-            // Spread evenly across the word. Nothing knows where inside a word
-            // its second syllable begins -- that is the note it is sung on, and
-            // there is no melody yet (#8) -- so the even share is the honest
-            // guess, and it keeps the syllables in the bar the word was sung in.
-            double at = word.startSeconds()
-                    + (word.endSeconds() - word.startSeconds()) * i / parts.size();
-            long unit = Math.max(unitOf(at, bars, barStart), cursor + 1);
+            long unit = Math.max(unitOf(syllableSeconds(word, i, parts.size()), bars, barStart),
+                    cursor + 1);
             if (unit >= chartEnd) {
                 return List.of();
             }
@@ -337,6 +336,23 @@ final class LyricEngraving {
             cursor = unit;
         }
         return placed;
+    }
+
+    /**
+     * When the {@code index}th of a word's {@code parts} syllables is sung.
+     *
+     * <p>Spread evenly across the word. Nothing knows where inside a word its
+     * second syllable begins — that is the note it is sung on, and there is no
+     * melody yet (#8) — so the even share is the honest guess, and it keeps the
+     * syllables in the bar the word was sung in.
+     *
+     * <p>Named because {@link #placed} reads it too, for the moment the last
+     * syllable of a word is sung. Deriving that a second time is how a lane
+     * comes to be held to a different moment from the one it was drawn at.
+     */
+    private static double syllableSeconds(LyricWord word, int index, int parts) {
+        return word.startSeconds()
+                + (word.endSeconds() - word.startSeconds()) * index / parts;
     }
 
     /** Where a moment falls on the grid, by the bar holding it. */
