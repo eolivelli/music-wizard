@@ -3,8 +3,14 @@
 #
 # Most of what is here is a commercial song under ordinary copyright, unlike
 # samples/, whose local-only files are at least backing tracks fetched for
-# measurement. Those may not be committed or redistributed, and carry no ground
-# truth — use them to *look* at MW's output, never to score it.
+# measurement. Those may not be committed or redistributed, so nothing here is
+# scored — use them to *look* at MW's output, never as a benchmark.
+#
+# An entry may still record a fact confirmed by ear, and one does: what key
+# la-canzone-del-sole is in. A confirmed fact is worth writing down wherever it
+# is confirmed, because the next reader would otherwise re-derive it or, as
+# happened here, read MW's correct answer as a bug. It does not make the file
+# scoreable — that needs a grid bar by bar and a licence.
 #
 # The second kind is a recording whose rights are already clear on both sides
 # and which is only waiting to be confirmed by ear before it is promoted into
@@ -33,19 +39,29 @@ guitar driven. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/la-canzone-del-sole.mp3 \
     https://www.youtube.com/watch?v=XXOIqni93AY
-Remembered by ear (explicitly uncertain): essentially A E D E throughout,
-with maybe some small variation. A recollection, not ground truth.
+Confirmed by ear 2026-08-11: **this upload sounds in Ab**, checked against a
+real piano. So the key is ground truth and MW's reading of it is right. The
+song is played in A on a guitar and that is what memory returns — "essentially
+A E D E throughout" — but the memory is of the song, not of this recording,
+and the two are a semitone apart. Anything comparing a chart of this file
+against A is comparing against the wrong recording.
 Run 2026-08-01. MW read 89.1 BPM in 4/4 and a chart whose whole vocabulary is
-G#, D#, C# with occasional D#7 and A#7 — exactly the remembered A, E, D (plus
-an occasional B7-shaped dominant) transposed down one semitone, so the harmony
-matches the recollection up to a global half-step (pitched upload or tuning
-call; spelled in sharps where flats would read better). No N.C. spans at all.
+G#, D#, C# with occasional D#7 and A#7 — the same pitches as the Ab, Db, Eb
+below, spelled in sharps where flats read better. No N.C. spans at all.
 Two weaknesses: the chart is choppy — 281 spans, median 1.35 s, constant
 G#/D# flip-flopping where the ear expects one chord per bar — and the beat
 grid wobbles badly (windowed tempo drifts from ~93 to ~109 BPM across the
 song, inter-beat gaps from 0.28 s to 1.4 s, the #196 pattern), so the printed
 89 BPM is a median over an unsteady grid. The final ~10 s (fade-out) degrades
 into low-confidence chromatic noise: A#m F7 C7 G.
+Run 2026-08-11, on the merge of #331. 87.0 BPM in 4/4, Ab major at 21%
+confidence, 271 spans, and a vocabulary of Ab, Db, Eb with occasional Eb7 —
+the I, IV and V of the confirmed key. The beat side has improved since the
+run above: 87.0 is confirmed by all three of the independent estimators in
+the verify-tempo skill, where the earlier 89.1 was a median over a grid
+drifting 93 to 109. The chart is still choppy, 271 spans against a song that
+holds one chord for most of a bar, which is what to judge a change against
+here rather than the roots.
 
 gli-anni.mp3
 
