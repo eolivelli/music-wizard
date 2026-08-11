@@ -24,9 +24,9 @@ jobs:
           cache: maven
       - name: Build and run unit tests
         run: mvn -B --no-transfer-progress verify
-      # The sample harnesses cannot run here -- four benchmarks are local-only
-      # for licensing -- but the arithmetic they score a bar by can, on
-      # fixtures. Seconds, and no jar needed.
+      # The sample harnesses cannot run here -- the benchmarks they need are
+      # local-only for licensing -- but the arithmetic they score a bar and a
+      # word by can, on fixtures. Seconds, and no jar needed.
       - name: Test the sample-harness scoring rules
         run: python3 tools/test-harness-rules.py
 
@@ -80,7 +80,7 @@ jobs:
     # again by each harness, so this is the long job of the matrix; the bound
     # is there to stop a hung analysis holding a runner for six hours. It grows
     # with the corpus, not with the code: every grid confirmed in
-    # samples/list.txt adds a file to both harnesses.
+    # samples/list.txt adds a file to each chord harness.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

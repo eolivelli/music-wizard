@@ -69,6 +69,8 @@ say "running the scored harnesses"
   python3 tools/score-samples.py 2>&1
   echo
   python3 tools/score-chart.py 2>&1
+  echo
+  python3 tools/score-lyrics.py 2>&1
   echo '```'
 } >> "$REPORT"
 

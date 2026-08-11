@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for the rules the two sample harnesses score bars by.
+"""Tests for the rules the sample harnesses score by.
 
-The harnesses themselves cannot run in CI -- four of the benchmarks are
-local-only for licensing -- so what CI can check is the arithmetic they apply
-to a bar, on fixtures written here. Run it directly:
+The harnesses themselves cannot run in CI -- the benchmarks they need are
+local-only for licensing -- so what CI can check is the arithmetic they apply,
+on fixtures written here: a bar for the two chord harnesses, a word and its
+onset for the lyric one. Run it directly:
 
     python3 tools/test-harness-rules.py
 """
@@ -16,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 samples = import_module("score-samples")
 chart = import_module("score-chart")
+lyrics = import_module("score-lyrics")
 
 C = (0, "MAJOR")
 G = (7, "MAJOR")
@@ -115,6 +117,190 @@ class ModelBars(unittest.TestCase):
 
     def test_a_bar_no_span_reaches_earns_nothing(self):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
+
+
+def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] | None = None):
+    """The lyric harness's two columns over an LRC and the words and onsets MW
+    came back with. Both defaulted to the truth's own is the loop-closure case."""
+    tokens, anchors, word_level = lyrics.truth_tokens(truth)
+    words = tokens if hypothesis is None else [lyrics.normalize(w) for w in hypothesis]
+    if starts is None:
+        starts = [0.0] * len(words)
+    return (lyrics.word_error(pairs := lyrics.align(tokens, words), tokens, words),
+            lyrics.onset_error(pairs, anchors, starts),
+            word_level)
+
+
+class Normalisation(unittest.TestCase):
+
+    def test_case_and_edge_punctuation_go(self):
+        self.assertEqual("generale", lyrics.normalize("Generale,"))
+        self.assertEqual("sì", lyrics.normalize("«Sì»"))
+        self.assertEqual("rivedi", lyrics.normalize("rivedi?"))
+
+    def test_a_typographic_apostrophe_is_the_plain_one(self):
+        self.assertEqual(lyrics.normalize("c'è"), lyrics.normalize("c’è"))
+
+    def test_an_elision_stays_one_word(self):
+        """Italian elides constantly and LrcLyrics splits on whitespace, so
+        splitting here would mint one insertion per c'e and hold the word column
+        permanently above zero on every Italian entry."""
+        tokens, _, _ = lyrics.truth_tokens("[00:01.00]c'è l'amore")
+        self.assertEqual(["c'è", "l'amore"], tokens)
+
+    def test_accents_are_not_folded(self):
+        """e/e-grave and perche/perche-acute are different words; folding them
+        would score a wrong word as a right one."""
+        self.assertNotEqual(lyrics.normalize("perché"), lyrics.normalize("perche"))
+        self.assertNotEqual(lyrics.normalize("e"), lyrics.normalize("è"))
+
+    def test_a_non_breaking_space_does_not_split_a_word(self):
+        """Java's \\s is ASCII-only, so LrcLyrics keeps this as one token."""
+        tokens, _, _ = lyrics.truth_tokens("[00:01.00]a b")
+        self.assertEqual(1, len(tokens))
+
+    def test_a_punctuation_only_token_leaves_and_takes_no_anchor_with_it(self):
+        tokens, anchors, _ = lyrics.truth_tokens("[00:01.00]— ciao")
+        self.assertEqual(["ciao"], tokens)
+        self.assertEqual({0: 1.0}, anchors)
+
+
+class TruthTokens(unittest.TestCase):
+
+    def test_a_plain_line_anchors_its_first_word_only(self):
+        tokens, anchors, word_level = lyrics.truth_tokens("[00:10.00]uno due tre")
+        self.assertEqual(["uno", "due", "tre"], tokens)
+        self.assertEqual({0: 10.0}, anchors)
+        self.assertFalse(word_level)
+
+    def test_a_partly_tagged_line_anchors_each_run(self):
+        tokens, anchors, word_level = lyrics.truth_tokens("[00:10.00]a <00:11.00>b c")
+        self.assertEqual(["a", "b", "c"], tokens)
+        self.assertEqual({0: 10.0, 1: 11.0}, anchors)
+        self.assertTrue(word_level)
+
+    def test_two_leading_tags_write_the_line_out_twice(self):
+        """How an LRC writes a repeated chorus without copying it."""
+        tokens, anchors, _ = lyrics.truth_tokens("[00:10.00] [00:20.00]ciao a tutti")
+        self.assertEqual(["ciao", "a", "tutti"] * 2, tokens)
+        self.assertEqual({0: 10.0, 3: 20.0}, anchors)
+
+    def test_tokens_come_back_in_time_order(self):
+        tokens, anchors, _ = lyrics.truth_tokens("[00:20.00]dopo\n[00:10.00]prima")
+        self.assertEqual(["prima", "dopo"], tokens)
+        self.assertEqual({0: 10.0, 1: 20.0}, anchors)
+
+    def test_a_positive_offset_moves_the_words_earlier(self):
+        """The tag's sign is a genuinely ambiguous corner of the format, so it
+        is tested rather than reasoned about: LrcLyrics subtracts it."""
+        _, anchors, _ = lyrics.truth_tokens("[offset:500]\n[00:10.00]ciao")
+        self.assertEqual({0: 9.5}, anchors)
+        _, anchors, _ = lyrics.truth_tokens("[offset:-500]\n[00:10.00]ciao")
+        self.assertEqual({0: 10.5}, anchors)
+
+    def test_an_unusable_offset_is_ignored_rather_than_carried(self):
+        for bad in ("[offset:NaN]", "[offset:-Infinity]", "[offset:x]"):
+            _, anchors, _ = lyrics.truth_tokens(f"{bad}\n[00:10.00]ciao")
+            self.assertEqual({0: 10.0}, anchors, bad)
+
+    def test_an_id_tag_and_an_empty_body_carry_no_word(self):
+        tokens, anchors, _ = lyrics.truth_tokens(
+            "[ti:Sere]\n[ar:iiridio]\n[00:10.00]ciao\n[00:12.00]")
+        self.assertEqual(["ciao"], tokens)
+        self.assertEqual({0: 10.0}, anchors)
+
+    def test_a_byte_order_mark_does_not_cost_the_first_line(self):
+        tokens, _, _ = lyrics.truth_tokens("﻿[00:10.00]ciao")
+        self.assertEqual(["ciao"], tokens)
+
+    def test_a_fraction_is_scaled_by_its_own_width(self):
+        for tag in ("[00:01.5]", "[00:01.50]", "[00:01.500]", "[00:01:50]"):
+            _, anchors, _ = lyrics.truth_tokens(f"{tag}ciao")
+            self.assertEqual({0: 1.5}, anchors, tag)
+
+
+class WordAndOnsetColumns(unittest.TestCase):
+
+    LINES = "[00:10.00]uno due\n[00:20.00]tre quattro\n[00:30.00]cinque sei"
+    PLACED = [10.0, 10.0, 20.0, 20.0, 30.0, 30.0]
+
+    def test_the_loop_closes_at_zero(self):
+        (sub, dels, ins, wer), (median, worst, matched, total), _ = scored(
+            self.LINES, starts=self.PLACED)
+        self.assertEqual((0, 0, 0, 0.0), (sub, dels, ins, wer))
+        self.assertEqual((0.0, 0.0, 3, 3), (median, worst, matched, total))
+
+    def test_one_wrong_word_is_a_substitution_and_keeps_its_onset(self):
+        words = ["uno", "due", "tre", "QUATTRO-X", "cinque", "sei"]
+        (sub, dels, ins, _), (_, worst, matched, total), _ = scored(
+            self.LINES, words, self.PLACED)
+        self.assertEqual((1, 0, 0), (sub, dels, ins))
+        self.assertEqual((0.0, 3, 3), (worst, matched, total),
+                         "a misheard word is still a word with a time")
+
+    def test_a_dropped_line_does_not_shift_the_onsets_after_it(self):
+        """Anchors are paired through the alignment, never by index. Pairing by
+        index would turn one lost line into a whole-song onset failure."""
+        (sub, dels, ins, _), (median, worst, matched, total), _ = scored(
+            self.LINES, ["uno", "due", "cinque", "sei"], [10.0, 10.0, 30.0, 30.0])
+        self.assertEqual((0, 2, 0), (sub, dels, ins))
+        self.assertEqual((0.0, 0.0), (median, worst),
+                         "the surviving lines are still where the file put them")
+        self.assertEqual((2, 3), (matched, total), "the lost line's anchor stays counted")
+
+    def test_a_doubled_chorus_is_insertions_and_is_not_clamped_at_a_hundred(self):
+        words = ["uno", "due", "tre", "quattro", "cinque", "sei"] * 3
+        (sub, dels, ins, wer), _, _ = scored(self.LINES, words)
+        self.assertEqual((0, 0, 12), (sub, dels, ins))
+        self.assertGreater(wer, 100.0)
+
+    def test_the_backtrace_is_deterministic_on_a_tie(self):
+        """A committed baseline rests on this: a flapping alignment would move
+        the printed line between runs of an unchanged tree. Two substitutions
+        and a delete-plus-insert both cost two here, and the fixed preference
+        picks the pair every time rather than either at random."""
+        self.assertEqual([(0, 0), (1, 1)], lyrics.align(["a", "b"], ["b", "a"]))
+
+    def test_max_catches_the_one_line_the_median_cannot(self):
+        starts = [10.0, 10.0, 20.4, 20.4, 30.0, 30.0]
+        tokens, anchors, _ = lyrics.truth_tokens(self.LINES)
+        pairs = lyrics.align(tokens, tokens)
+        median, worst, matched, _ = lyrics.onset_error(pairs, anchors, starts)
+        self.assertEqual(0.0, median)
+        self.assertAlmostEqual(0.4, worst)
+        self.assertEqual(3, matched)
+
+    def test_no_matched_anchor_prints_no_number(self):
+        """A median over nothing must not print as a measured zero."""
+        line = lyrics.score_line("x.mp3", ["a"], ["b"], {}, [0.0], False)
+        self.assertIn("onset no anchors matched", line)
+        self.assertNotIn("0.000s", line)
+
+
+class Keying(unittest.TestCase):
+    """premerge.sh keys each line on the text before its first colon and reads
+    only lines holding '.mp3:'. Both halves of that are executed here rather
+    than asserted in a comment."""
+
+    ARGS = (["uno"], ["uno"], {0: 1.0}, [1.0], False)
+
+    def test_a_scored_row_is_gated(self):
+        line = lyrics.score_line("sere-doltremare.mp3", *self.ARGS)
+        self.assertIn(".mp3:", line)
+        self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
+
+    def test_a_missing_row_is_gated_under_the_same_key(self):
+        line = lyrics.missing_line("sere-doltremare.mp3", "uncommitted/list.txt")
+        self.assertIn(".mp3:", line)
+        self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
+
+    def test_an_ad_hoc_row_is_not_gated(self):
+        """A file with no licence reaching its words must not become a baseline
+        row, so its line is deliberately keyed out of the comparison."""
+        self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
+
+    def test_the_preamble_is_not_gated(self):
+        self.assertNotIn(".mp3:", lyrics.__doc__.splitlines()[0])
 
 
 if __name__ == "__main__":
