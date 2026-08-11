@@ -146,6 +146,12 @@ QUALITY = {
 }
 
 
+
+def missing_line(label: str) -> str:
+    """A baselined name this machine cannot measure. The '(local-only' marker
+    is what premerge.sh skips on; test-harness-rules.py holds both to it."""
+    return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
+
 def quarters(duration: str) -> float:
     """A LilyPond duration token as a length in quarter-note beats."""
     if duration.startswith("1*"):
@@ -370,7 +376,7 @@ def main() -> None:
                 for line in [ln for ln in text if ln.startswith("|")][:args.cycles]:
                     print("      " + line)
     for name in missing:
-        print(f"  {name}: not present (local-only; see samples/list.txt to fetch)")
+        print(missing_line(name))
 
 
 if __name__ == "__main__":

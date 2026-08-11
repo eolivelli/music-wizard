@@ -17,14 +17,15 @@
 # (tools/score-*.py > tools/baselines/...) and commit it with the change, so
 # the diff is reviewed rather than silently absorbed.
 #
-# Benchmarks missing locally (the licensing-bound ones; see samples/list.txt)
-# are reported and skipped, never failed: CI can only gate the samples that are
-# committed, and this script is honest about which lines it checked.
+# Benchmarks missing locally are reported and skipped, never failed, and the
+# verdict says how many rows were skipped: the gate can only vouch for what
+# this machine could measure. The SKIP lines say where each file comes from.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"
 fail=0
 full=0
+skipped=0
 
 usage() {
   cat <<'EOF'
@@ -61,8 +62,15 @@ else
 fi
 
 compare() { # $1 harness  $2 baseline
-  local out; out=$(python3 "tools/$1" 2>&1)
+  local out rc
+  out=$(python3 "tools/$1" 2>&1); rc=$?
   printf '%s\n' "$out"
+  if [ "$rc" -ne 0 ]; then
+    # A dead harness must not read as a clean one: every row it never got
+    # to print would otherwise become a silent skip.
+    echo "FAIL: $1 exited $rc"
+    return 1
+  fi
   local diffs
   diffs=$(python3 - "$2" <<'PY' "$out"
 import sys
@@ -71,12 +79,18 @@ baseline = {l.split(":")[0].strip(): l.rstrip() for l in open(sys.argv[1])
 current  = {l.split(":")[0].strip(): l.rstrip() for l in sys.argv[2].splitlines()
             if ".mp3:" in l}
 for name, base in sorted(baseline.items()):
-    # A row the harness itself reports as absent is a skip, not a movement:
-    # the diff can only compare what this machine can measure, and the skip
-    # is printed so a run over a subset cannot read as a run over the corpus.
-    # Only the CURRENT side may say so -- a committed baseline that certifies
-    # absence is a defect, and falls through to DIFF where it will fail.
-    if name not in current or ": not present (local-only" in current[name]:
+    if name not in current:
+        # The harness ran to completion and still printed nothing for this
+        # baselined name: harness and baseline disagree about the corpus --
+        # a benchmark retired without regenerating the baseline. Fetching a
+        # file cannot fix that, so it fails rather than skips.
+        print(f"DIFF {name}\n  baseline: {base}\n  current:  (no row printed)")
+    elif ": not present (local-only" in current[name]:
+        # The diff can only compare what this machine can measure, and each
+        # skip is printed -- and counted in the verdict -- so a subset run
+        # cannot read as a corpus run. Only the CURRENT side may say so: a
+        # committed baseline that certifies absence is a defect, and where
+        # this machine can measure the file it falls through to DIFF below.
         print(f"SKIP {name}: not measurable here"
               f" (fetch commands: samples/list.txt or uncommitted/list.txt)")
     elif current[name] != base:
@@ -84,6 +98,7 @@ for name, base in sorted(baseline.items()):
 PY
 )
   printf '%s\n' "$diffs"
+  skipped=$((skipped + $(grep -c '^SKIP' <<<"$diffs")))
   grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
 }
 
@@ -100,5 +115,6 @@ step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering
 # suites that were never run here.
 [ "$full" -eq 1 ] && scope="build + suites + harnesses" || scope="build + harnesses"
+[ "$skipped" -gt 0 ] && scope="$scope; $skipped harness rows skipped"
 [ "$fail" -eq 0 ] && echo "PREMERGE: PASS ($scope)" || echo "PREMERGE: FAIL ($scope)"
 exit "$fail"
