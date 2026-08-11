@@ -48,15 +48,18 @@ that pushes and pulls it would report an average and its peak would be blunt.
 band, and it is a statement about the band's interior only.
 
 **No column can vouch for the band itself, and none is printed.** This comb
-scores a candidate by the mean envelope over its lattice, and every slower
-sub-lattice of the true pulse inherits that mean tooth for tooth, so an
-unconstrained comb is pulled to the slowest strong submultiple above whatever
-floor it is given -- a band an octave out, in either direction, still lands in
-clean ratios with any check derived from the same fit. A wide-band column
-built on this comb therefore cannot fail, and this file deliberately does not
-print one. The octave comes from outside the tool instead: each `SEARCH` band
-brackets the tempo samples/list.txt documents for the recording, and a new
-recording gets a band the same way or gets no measurement.
+scores a candidate by the mean envelope over its lattice at the best phase,
+and the phases of a slower sub-lattice partition the true pulse's teeth, so
+the best of them can never score below the pulse's own mean: halving the
+tempo can only hold or raise the score, and an unconstrained comb is pulled
+to the slowest strong submultiple above whatever floor it is given. A band an
+octave out, in either direction, still lands in clean ratios with any check
+derived from the same fit, so a wide-band column built on this comb cannot
+fail, and this file deliberately does not print one. The octave comes from
+outside the tool instead: each `SEARCH` band rests on documented ground truth
+-- the tempo samples/list.txt states where it states one, otherwise a source
+the band's own comment names -- and a new recording gets a band the same way
+or gets no measurement.
 """
 
 import argparse
@@ -81,10 +84,11 @@ HOP = 128
 
 # Where to look for each recording's pulse. The band is deliberately narrow --
 # a comb fit will happily lock an octave out, and these bands are what stops it
-# being asked to. Each one brackets the tempo samples/list.txt documents for
-# the recording; that provenance, not any statistic here, is what says the
-# band is honest (see the docstring). A benchmark without an entry is reported,
-# never guessed.
+# being asked to. Each one rests on documented ground truth -- the tempo
+# samples/list.txt states, or a source named in a comment beside the band;
+# that provenance, not any statistic here, is what says the band is honest
+# (see the docstring). A benchmark without an entry is reported, never
+# guessed.
 SEARCH = {
     "blues-a-90bpm.mp3": (85.0, 95.0),
     "blues-e-90bpm.mp3": (85.0, 95.0),

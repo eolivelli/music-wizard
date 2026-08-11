@@ -155,11 +155,11 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * it. {@code tools/measure-tempo.py --sweep} re-derives both the axis and
      * the plateau (#245), measuring the vamps' 110 and 130 directly and, since
      * #333, the bossa's half-note pulse as a measured reference rather than a
-     * modelled one. Its printout is the current reading, over a corpus the
-     * figures below do not describe -- they score a since-retired recording
-     * and predate the bossa's change of pulse -- so the sweep's cells are not
-     * expected to reproduce them; they stay as the measurement that chose the
-     * value. What the retake does settle is the upper edge: the cliff above
+     * modelled one. Its printout is the current reading, over grids the
+     * figures below do not describe -- they score a since-retired recording,
+     * predate the bossa's change of pulse, and were taken on an earlier
+     * tracker -- so the sweep's cells are not expected to reproduce them;
+     * they stay as the measurement that chose the value. What the retake does settle is the upper edge: the cliff above
      * 0.30 is gone with the detour population behind it, as its bullet
      * records.
      *
