@@ -229,9 +229,9 @@ public final class TempoEstimator {
         double[] searchCorrelation =
                 autocorrelate(compressAccents(envelope.strength()), maxLag + 1);
 
-        // Search over tempo, not over integer lag. A beat period is almost never
-        // a whole number of frames -- 120 BPM at this frame rate is 21.53 -- so
-        // sampling only integer lags misaligns the fundamental while landing
+        // Search over tempo, not over integer lag. A beat period is almost
+        // never a whole number of frames, so sampling only integer lags
+        // misaligns the fundamental while landing
         // squarely on its double, which manufactures exactly the half-tempo
         // error the perceptual prior is meant to resolve.
         double bestScore = Double.NEGATIVE_INFINITY;
