@@ -51,21 +51,30 @@ Append what came out to the `list.txt` entry, as the existing entries do. That
 record is what lets a re-run after the next change say whether MW got better on
 this recording.
 
-## 5. Lyrics carry a second licence
+## 5. Lyrics are not gated; committing them is
 
 A recording and its words are two copyrights, and a licence on the audio does
-not reach the composition. They come apart constantly: a CC BY recording of a
-cover carries words the uploader could not license, and a public-domain
-recording usually wraps words still in term. A committed `.lrc` is a derivative
-of the lyrics, so this gates the ground truth as hard as it gates the audio.
+not reach the composition. That still decides where a lyric file may *live*, but
+it no longer decides whether it may be used.
 
-Lyric ground truth in `samples/` must be one of three things: the artist's own
-under a licence that reaches the words, public domain on both sides, or
-transcribed by ear from a recording we may redistribute. A lyric source that
-states no licence is local-test-only and is never promoted (#347). LRCLIB is the
-one to know about — it asserts no licence over its lyric database, and the CC0
-and MIT that search results attach to it cover the file-format spec and the
-server. Absence of a grant is not a grant.
+**Any lyric file may be fetched and used**, whatever licence it states or does
+not state, as analysis input and as ground truth, and scored by
+`tools/score-lyrics.py`. Enrico's decision and his responsibility: MW measures
+how well a program reads a recording, and does not perform the music, publish
+the words, or make anything from them. LRCLIB asserts no licence over its lyric
+database — the CC0 and MIT that search results attach to it cover the file
+format and the server — and that is no longer a bar to using it.
+
+**The full text stays in `uncommitted/`**, which is gitignored. Using a work to
+measure a program is not publishing it; putting it in a public repository is.
+So a `.lrc` is never committed and never listed in `NOTICE`, and a committed
+test or baseline quotes a line or two only where it needs one to fail for the
+right reason.
+
+Which means a sung recording can be promoted into `samples/` on its **audio**
+licence alone, with its words held locally beside it. What used to block a
+promotion — words whose rights were unclear — now only blocks committing those
+words. CLAUDE.md carries the rule.
 
 Write the **language** down beside every sung entry, and do not promote dialect
 material. `Hyphenator` has patterns for `it` and `en` and nothing else, and its

@@ -3,21 +3,29 @@
 #
 # Most of what is here is a commercial song under ordinary copyright, unlike
 # samples/, whose local-only files are at least backing tracks fetched for
-# measurement. Those may not be committed or redistributed, so nothing here is
-# scored — use them to *look* at MW's output, never as a benchmark.
+# measurement. The audio may not be committed or redistributed, so nothing here
+# goes into the committed corpus — but an entry may still carry a fact
+# confirmed by ear, and may be scored locally.
 #
-# An entry may still record a fact confirmed by ear, and one does: what key
-# la-canzone-del-sole is in. A confirmed fact is worth writing down wherever it
-# is confirmed, because the next reader would otherwise re-derive it or, as
-# happened here, read MW's correct answer as a bug. It does not make the file
-# scoreable — that needs a grid bar by bar and a licence.
+# Lyrics are not gated. Any lyric file may be fetched and used here as analysis
+# input and as ground truth, whatever licence it states or does not state, by
+# Enrico's decision and under his responsibility: MW measures how well a program
+# reads a recording, it does not perform the music or publish the words. What
+# stays fixed is that the text does not leave this directory — everything here
+# except this file is gitignored, so nothing is redistributed. A committed test
+# or baseline may quote a line or two where it genuinely needs one; the full
+# text never is. CLAUDE.md carries the rule.
 #
-# The second kind is a recording whose rights are already clear on both sides
-# and which is only waiting to be confirmed by ear before it is promoted into
+# So an entry here can say what the ear has settled. One does: what key
+# la-canzone-del-sole is in. That is worth writing down wherever it is
+# confirmed, because the next reader would otherwise re-derive it or, as
+# happened, read MW's correct answer as a bug.
+#
+# The second kind of file is a recording whose rights are clear on both sides
+# and which is waiting to be confirmed by ear before it is promoted into
 # samples/ (docs/phone-to-corpus.md). Its entry says so, and says what the ear
-# has still to settle. Everything here except this file is gitignored either
-# way, so a candidate is staged without its words being redistributed while
-# they are still unconfirmed.
+# has still to settle. That gate is about the audio, which promotion would
+# commit, and is unaffected by the paragraph above.
 
 hanno-ucciso-luomo-ragno-karaoke.mp3
 

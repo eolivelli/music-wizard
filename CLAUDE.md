@@ -183,6 +183,29 @@ already thought of and nothing else.
   does will download on first use into a local cache; `NOTICE` lists what has
   been chosen so far.
 
+**Lyrics and reference charts are input, not output, and are governed
+separately.** Everything above is about what MW *ships* — code it links, weights
+it would download, audio it commits. A lyric sheet or a chord chart used to
+judge whether MW read a recording correctly is none of those. MW analyses
+recordings; it does not perform music, does not publish anyone's words, and does
+not generate content from them.
+
+So, by Enrico's decision and under his responsibility:
+
+- **Any lyric text may be fetched and used locally** — as analysis input, as
+  ground truth, and as harness input. No licence gate, and a source that states
+  no licence is not thereby excluded.
+- **The full text stays local.** Lyric files live under `uncommitted/`, which is
+  gitignored, and are never committed and never listed in `NOTICE`. Using a work
+  to measure a program is not publishing it; putting it in a public repository
+  is, and that is the line, not the intent behind it.
+- **Short excerpts may be committed** where a test fixture or a baseline
+  genuinely needs one — a line or two, no more than the test needs to fail for
+  the right reason.
+- Unchanged: **audio still gates on licence**, because `samples/` is committed
+  and therefore redistributed. A commercial recording stays in `uncommitted/`
+  with its fetch command, as it always has.
+
 ## Rendering
 
 LilyPond source is emitted **directly from the domain model**, not via
@@ -357,9 +380,10 @@ fetch command beside it, so a fresh clone is short of benchmarks rather than
 short of a licence (#204).
 
 `tools/score-samples.py` scores every grid written down there and
-`BluesLoopIT` gates one recording in CI. Lyric ground truth is gated twice over
-(#347): the words carry a licence of their own, separate from the recording's,
-and a sung entry names its language, because the hyphenation patterns cover
-Italian and English and nothing else. `docs/phone-to-corpus.md` is the route
+`BluesLoopIT` gates one recording in CI. Lyric ground truth is gated on one
+thing only, and it is not the words' licence (see Licensing above): a sung entry
+names its **language**, because the hyphenation patterns cover Italian and
+English and nothing else, so dialect material would be scored against wrong
+syllable counts. `docs/phone-to-corpus.md` is the route
 a recording made with the phone app takes into `uncommitted/` or `samples/`,
 and what to write down beside it.
