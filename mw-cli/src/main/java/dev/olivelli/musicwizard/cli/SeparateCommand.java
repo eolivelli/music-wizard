@@ -81,10 +81,10 @@ final class SeparateCommand implements Callable<Integer> {
             return 0;
         }
 
-        // Decode at the model's own rate where it states one. Decoding at the
-        // analysis rate and letting the provider stretch it back up costs the
-        // top octaves twice through the resampler -- the consonant band of the
-        // one stem this command exists to produce.
+        // Decode at the model's own rate where it states one: a decode below
+        // it band-limits the audio under the anti-alias cutoff, below what the
+        // model reads, and no later resample recovers that -- the consonant
+        // band of the one stem this command exists to produce.
         int preferred = provider.get().preferredSampleRate();
         AudioBuffer audio = preferred > 0
                 ? AudioDecoder.decode(workspace.sourceFile(), preferred)

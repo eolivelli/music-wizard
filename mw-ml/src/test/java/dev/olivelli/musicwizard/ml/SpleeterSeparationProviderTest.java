@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.ml;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -216,10 +217,38 @@ class SpleeterSeparationProviderTest {
     }
 
     @Test
-    @DisplayName("an empty input comes back empty rather than failing")
-    void emptyInput() {
-        var result = provider().separate(new float[][] {new float[0]}, 44100);
-        assertThat(result.vocals()[0]).isEmpty();
+    @DisplayName("shape edges: kept, or named, never silently reshaped")
+    void shapeEdges() {
+        // The guards run before any model is touched, so a provider with no
+        // cache behind it exercises them all. Order matters and is asserted by
+        // the [empty, nonempty] rows: ragged is checked before empty, which is
+        // the only order in which that input is a named contract error rather
+        // than a silent pair of empty stems for eight real samples.
+        SpleeterSeparationProvider bare =
+                new SpleeterSeparationProvider(null, null, null);
+        float[] eight = new float[8];
+
+        assertThat(bare.separate(new float[0][], 44100).vocals()).isEmpty();
+        assertThat(bare.separate(new float[][] {new float[0]}, 44100).vocals())
+                .hasNumberOfRows(1);
+        assertThat(bare.separate(new float[][] {new float[0], new float[0]}, 44100)
+                .accompaniment()).hasNumberOfRows(2);
+        assertThatThrownBy(() -> bare.separate(
+                new float[][] {new float[0], eight}, 44100))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("same length");
+        assertThatThrownBy(() -> bare.separate(
+                new float[][] {eight, new float[0]}, 44100))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("8 and 0");
+        assertThatThrownBy(() -> bare.separate(
+                new float[][] {eight, new float[9]}, 44100))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("8 and 9");
+        assertThatThrownBy(() -> bare.separate(
+                new float[][] {eight, eight, eight}, 44100))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at most two");
     }
 
     @Test

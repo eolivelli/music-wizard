@@ -58,10 +58,7 @@ public interface SeparationProvider {
      *
      * @throws ModelUnavailableException when the model this provider needs
      *         cannot be had — absent and offline, or failing its checksum. The
-     *         message names the file and the cure; what a caller does with it
-     *         depends on what it was producing. A pipeline continues without
-     *         the stage; a command whose only product is the stems reports the
-     *         failure and exits nonzero.
+     *         type's javadoc says what callers do with it.
      */
     Separation separate(float[][] channels, int sampleRate);
 
