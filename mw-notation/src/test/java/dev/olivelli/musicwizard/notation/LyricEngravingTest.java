@@ -87,20 +87,28 @@ class LyricEngravingTest {
         return score.withLyrics(tagged);
     }
 
-    /** The lines between {@code \lyricmode {} and its closing brace. */
-    private static List<String> lyricBars(String lilyPond) {
-        List<String> bars = new ArrayList<>();
-        boolean inside = false;
+    /** Each lane's bars: the lines between a {@code \lyricmode {} and its brace. */
+    private static List<List<String>> lyricLanes(String lilyPond) {
+        List<List<String>> lanes = new ArrayList<>();
+        List<String> bars = null;
         for (String line : lilyPond.split("\n")) {
             if (line.contains("\\lyricmode {")) {
-                inside = true;
-            } else if (inside && line.strip().equals("}")) {
-                return bars;
-            } else if (inside) {
+                bars = new ArrayList<>();
+            } else if (bars != null && line.strip().equals("}")) {
+                lanes.add(bars);
+                bars = null;
+            } else if (bars != null) {
                 bars.add(line.strip());
             }
         }
-        return bars;
+        return lanes;
+    }
+
+    /** The bars of the one lane a score with no overlapping lines produces. */
+    private static List<String> lyricBars(String lilyPond) {
+        List<List<String>> lanes = lyricLanes(lilyPond);
+        assertThat(lanes).hasSize(1);
+        return lanes.get(0);
     }
 
     /** Every duration on one lyric bar line, summed in quarter beats. */
@@ -218,7 +226,9 @@ class LyricEngravingTest {
         // globally ordered. Words in general are not -- Lyrics.allWords()'s
         // javadoc says recognition spans on sung speech overlap -- so a stray
         // onset says nothing about the next word, and returning there dropped
-        // whole verses.
+        // whole verses. The dropped word does not move the lane's cursor
+        // either, so these two lines still share one lane -- which is what
+        // lyricBars asserts.
         Confidence sure = Confidence.of(0.9);
         Lyrics strays = new Lyrics(List.of(
                 new LyricLine(List.of(
@@ -236,15 +246,10 @@ class LyricEngravingTest {
         assertThat(block).doesNotContain("\"strayed\"");
     }
 
-    @Test
-    @DisplayName("a line overlapping the one before it loses what the lane has passed (#329)")
-    void overlappingLinesCannotShareOneLane() {
-        // One Lyrics context runs forwards only. A word late in the chart
-        // advances the lane past everything an overlapping line would occupy,
-        // and that line goes with it -- so the sheet does not promise that only
-        // the offending word is lost. Pinned so a fix for #329 shows here.
+    /** Two lines that overlap: the first ends after the second has begun. */
+    private static Score overlapping() {
         Confidence sure = Confidence.of(0.9);
-        Lyrics overlapping = new Lyrics(List.of(
+        return chart(2).withLyrics(new Lyrics(List.of(
                 new LyricLine(List.of(
                         LyricWord.ofSeconds("open", 0.1, 0.4, sure),
                         LyricWord.ofSeconds("late", 3.9, 3.95, sure)), sure),
@@ -252,21 +257,107 @@ class LyricEngravingTest {
                         LyricWord.ofSeconds("verse", 1.0, 1.4, sure),
                         LyricWord.ofSeconds("carries", 2.0, 2.4, sure),
                         LyricWord.ofSeconds("on", 3.0, 3.4, sure)), sure)),
-                "und", sure);
-        Score score = chart(2).withLyrics(overlapping);
+                "und", sure));
+    }
 
-        List<String> bars = lyricBars(LyricSheet.toLilyPond(score));
+    @Test
+    @DisplayName("a line overlapping the one before it takes a lane of its own")
+    void overlappingLinesTakeSeparateLanes() {
+        // In one lane the second line was pushed past the first line's late
+        // word: crammed against the cursor, and its last word off the end of
+        // the chart entirely.
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(overlapping()));
 
-        // The overlapping line is not engraved where it was sung: its words are
-        // pushed forward to the units after the lane's cursor and come out
-        // crammed against it, and the one that runs off the end is dropped.
-        assertThat(bars.get(0)).contains("\"open\"").doesNotContain("\"verse\"");
-        assertThat(bars.get(1)).contains("\"late\"")
-                .contains("\"verse\"").contains("\"carries\"");
-        assertThat(String.join(" ", bars)).doesNotContain("\"on\"");
-        // Whatever it does with them, the bars still sum.
-        assertThat(bars).allSatisfy(bar ->
-                assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9)));
+        assertThat(lanes).hasSize(2);
+        assertThat(lanes.get(0).get(0)).contains("\"open\"");
+        assertThat(lanes.get(0).get(1)).contains("\"late\"");
+        // Each word of the overlapping line in the bar it was sung in: verse at
+        // one second is in the first bar, and nothing is dropped.
+        assertThat(lanes.get(1).get(0)).contains("\"verse\"");
+        assertThat(lanes.get(1).get(1)).contains("\"carries\"").contains("\"on\"");
+        assertThat(lanes).allSatisfy(lane -> assertThat(lane).allSatisfy(bar ->
+                assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9))));
+    }
+
+    @Test
+    @DisplayName("every lane spans the chart, so the lanes stay aligned with the chords")
+    void everyLaneSpansTheWholeChart() {
+        // A lane that stopped where its words did would leave the next system's
+        // syllables sitting under the wrong bars.
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(overlapping()));
+
+        assertThat(lanes).allSatisfy(lane -> assertThat(lane).hasSize(2));
+    }
+
+    @Test
+    @DisplayName("lines that do not overlap share one lane")
+    void separateLinesShareOneLane() {
+        // The ordinary lyric, and the reason a lane is opened by the cursor
+        // rather than by the line count: a second lane costs vertical space on
+        // every system of the chart.
+        Score score = sung(4, """
+                [00:00.00]<00:00.00>first <00:01.00>line
+                [00:04.00]<00:04.00>second <00:05.00>line
+                """);
+
+        assertThat(lyricLanes(LyricSheet.toLilyPond(score))).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("more overlapping lines than lanes fall back to the forward push")
+    void overlapsPastTheLastLaneArePushed() {
+        // The page carries a fixed number of lanes, so a third line sung over
+        // the first two is engraved the way a single lane always engraved it:
+        // crammed against the cursor it could not clear. Its words are still on
+        // the page and the bars still sum.
+        Confidence sure = Confidence.of(0.9);
+        Score score = chart(4).withLyrics(new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("high", 0.1, 0.4, sure),
+                        LyricWord.ofSeconds("voice", 5.0, 5.4, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("mid", 0.2, 0.5, sure),
+                        LyricWord.ofSeconds("range", 5.1, 5.5, sure)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("low", 0.3, 0.6, sure),
+                        LyricWord.ofSeconds("part", 5.2, 5.6, sure)), sure)),
+                "und", sure));
+
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(2);
+        String all = lanes.stream().map(lane -> String.join(" ", lane))
+                .reduce("", (a, b) -> a + " " + b);
+        assertThat(all).contains("\"low\"").contains("\"part\"");
+        assertThat(lanes).allSatisfy(lane -> assertThat(lane).allSatisfy(bar ->
+                assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9))));
+    }
+
+    @Test
+    @DisplayName("a hyphen chain ending a lane is not left dangling in it")
+    void noDanglingHyphenInEitherLane() {
+        // The hyphen is written only where a syllable follows it, and after
+        // the lanes that is a question about the lane rather than about the
+        // lyric: a chain closed by a word in the other lane leaves LilyPond an
+        // unterminated hyphen, into the output this tool reads.
+        Confidence sure = Confidence.of(0.9);
+        Score score = chart(2).withLyrics(new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("Hal", 0.1, 0.4, sure).withHyphenToNext(true),
+                        LyricWord.ofSeconds("le", 3.9, 3.95, sure).withHyphenToNext(true)), sure),
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("lu", 1.0, 1.4, sure).withHyphenToNext(true),
+                        LyricWord.ofSeconds("jah", 2.0, 2.4, sure).withHyphenToNext(true)), sure)),
+                "und", sure));
+
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(2);
+        assertThat(lanes).allSatisfy(lane -> {
+            String block = String.join(" ", lane);
+            int last = block.lastIndexOf('"');
+            assertThat(block.substring(last)).as("%s", block).doesNotContain("--");
+        });
     }
 
     @Test
