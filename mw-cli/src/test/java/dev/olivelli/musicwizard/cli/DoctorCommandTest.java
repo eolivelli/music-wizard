@@ -18,6 +18,12 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.config.ConfigLoader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.io.TempDir;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +36,10 @@ import org.junit.jupiter.api.Test;
  * source at all, and #11 is the issue to build it -- which is #82's defect, in
  * the one command whose entire job is answering that question.
  *
- * <p>Only the advisor line is asserted. Everything else {@code doctor} prints
- * depends on the machine it runs on: whether LilyPond is installed is exactly
- * what it is there to report, and pinning it would make this suite pass or fail
- * on a property of the host rather than of the code.
+ * <p>Nothing here asserts on the machine-dependent lines: whether LilyPond is
+ * installed is exactly what {@code doctor} is there to report, and pinning it
+ * would make this suite pass or fail on a property of the host rather than of
+ * the code.
  */
 class DoctorCommandTest {
 
@@ -49,5 +55,54 @@ class DoctorCommandTest {
                 // just as strongly that a key would switch something on.
                 .doesNotContain("advisor layer available")
                 .doesNotContain("advisor layer will stay off");
+    }
+
+    @Test
+    @DisplayName("a configured provider the classpath lacks names the issue that supplies it")
+    void absentProviderNamesItsIssue() {
+        // The defaults name providers #312 and #314 have not built yet. That is
+        // an expected state with an issue number, not a broken install, and it
+        // must not fail the run. The fake on this classpath keeps a deliberately
+        // different id, so the default separation id stays genuinely absent --
+        // a fake under onnx-spleeter would collide with #312's real provider
+        // and byId would return whichever the loader yields first.
+        CliRunner.Result doctor = CliRunner.run("doctor");
+
+        assertThat(doctor.exitCode()).as(doctor.all()).isZero();
+        assertThat(doctor.out())
+                .contains("Separation")
+                .contains("#312")
+                .contains("Lyrics ASR")
+                .contains("sherpa-qwen3")
+                .contains("#314")
+                .contains("available: fake-cli-separation")
+                .contains("Models");
+    }
+
+    @Test
+    @DisplayName("a configured provider the classpath has reads as present")
+    void presentProviderReadsAsPresent(@TempDir Path tmp) throws IOException {
+        // The branch that becomes the ordinary case when #312 lands, driven the
+        // way a user would drive it: configuration naming a provider that is on
+        // the classpath.
+        Path global = tmp.resolve("config.yaml");
+        Files.writeString(global, """
+                ml:
+                  separationProvider: fake-cli-separation
+                """);
+        var out = new java.io.ByteArrayOutputStream();
+        var previous = System.out;
+        System.setOut(new java.io.PrintStream(out, true));
+        try {
+            int exit = new picocli.CommandLine(
+                    new DoctorCommand(ConfigLoader.withGlobalConfigFile(global)))
+                    .execute();
+            assertThat(exit).isZero();
+        } finally {
+            System.setOut(previous);
+        }
+        assertThat(out.toString())
+                .contains("fake-cli-separation (present)")
+                .contains("available: fake-cli-separation");
     }
 }

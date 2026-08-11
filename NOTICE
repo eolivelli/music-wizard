@@ -17,7 +17,6 @@ are deliberately excluded (see CONTRIBUTING.md).
   com.github.wendykierp:JTransforms          BSD 2-Clause
   com.microsoft.onnxruntime:onnxruntime      MIT
   com.anthropic:anthropic-java               MIT
-  io.github.givimad:whisper-jni              Apache-2.0
   info.picocli:picocli                       Apache-2.0
   com.fasterxml.jackson.*                    Apache-2.0
   org.slf4j:slf4j-api                        MIT
@@ -37,7 +36,6 @@ records what has been chosen so far:
 
   onnxcrepe (pitch tracking)       MIT     github.com/yqzhishen/onnxcrepe
   basic-pitch (note transcription) Apache-2.0  github.com/spotify/basic-pitch
-  whisper.cpp GGML models          MIT     huggingface.co/ggerganov/whisper.cpp
 
 Models under non-commercial terms (CC BY-NC-SA), including the madmom
 pretrained models and the Open-Unmix "umxl" weights, are deliberately NOT used.

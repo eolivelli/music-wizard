@@ -18,8 +18,11 @@ package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.ml.MlProviders;
+import dev.olivelli.musicwizard.core.ml.ModelCacheLocation;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
@@ -39,9 +42,20 @@ import picocli.CommandLine.Command;
 @Command(name = "doctor", description = "Check that the environment is set up correctly.")
 final class DoctorCommand implements Callable<Integer> {
 
+    private final ConfigLoader loader;
+
+    DoctorCommand() {
+        this(new ConfigLoader());
+    }
+
+    /** For tests, which need a global layer they control rather than the machine's. */
+    DoctorCommand(ConfigLoader loader) {
+        this.loader = loader;
+    }
+
     @Override
     public Integer call() {
-        MusicWizardConfig config = new ConfigLoader().effectiveConfig(null, null);
+        MusicWizardConfig config = loader.effectiveConfig(null, null);
         boolean allWell = true;
 
         System.out.println("Java        " + System.getProperty("java.version")
@@ -62,6 +76,23 @@ final class DoctorCommand implements Callable<Integer> {
             allWell = false;
         }
 
+        // Providers are discovered, not linked: mw-ml's implementations reach
+        // this module through ServiceLoader at runtime scope, so what this
+        // reports is what a user's classpath actually has. An id configured but
+        // absent is the LilyPond case one layer up -- name what is missing and
+        // what is present, never fail.
+        MusicWizardConfig.MlConfig ml = config.ml();
+        report("Separation", ml == null ? null : ml.separationProvider(),
+                MlProviders.separationIds(), "#312");
+        report("Lyrics ASR", ml == null ? null : ml.asrProvider(),
+                MlProviders.asrIds(), "#314");
+        Path modelDir = ModelCacheLocation.directoryFor(
+                ml == null ? null : ml.modelCacheDirectory());
+        boolean offline = ml != null && Boolean.TRUE.equals(ml.offline());
+        System.out.println("Models      " + modelDir
+                + (Files.isDirectory(modelDir) ? "" : " (nothing downloaded yet)")
+                + (offline ? " -- offline: nothing will be downloaded" : ""));
+
         // Neither branch may claim the layer is available or would become
         // available, because there is no layer: mw-llm holds no source at all
         // and #11 is the issue to build it. Saying "present (advisor layer
@@ -79,5 +110,30 @@ final class DoctorCommand implements Callable<Integer> {
                 ? "Everything needed for full output is present."
                 : "Music Wizard will run, but some outputs will be unavailable.");
         return 0;
+    }
+
+    /**
+     * One provider line: the configured id, and whether the classpath has it.
+     *
+     * <p>A configured id with no provider behind it is ordinary today -- the
+     * defaults name the providers #312 and #314 will build -- so the line says
+     * which issue supplies it rather than reading as a broken install.
+     */
+    private static void report(String label, String configured, List<String> present,
+                               String issue) {
+        String id = configured == null || configured.isBlank() ? null : configured;
+        StringBuilder line = new StringBuilder(String.format("%-11s ", label));
+        if (id == null) {
+            line.append("not configured");
+        } else if (present.contains(id)) {
+            line.append(id).append(" (present)");
+        } else {
+            line.append(id).append(" -- no such provider on this classpath yet (")
+                .append(issue).append(')');
+        }
+        if (!present.isEmpty()) {
+            line.append("; available: ").append(String.join(", ", present));
+        }
+        System.out.println(line);
     }
 }
