@@ -31,8 +31,8 @@ without closing it entirely, since what remains of it is the chart's phase
 (#233) and the recording's own unevenness (#187). Both readings had the same
 cause under them, seen from opposite sides, which is the reason to state the
 mechanism here rather than a rule of thumb about which column wins. A maintainer
-who runs both harnesses and finds them disagreeing is looking at the bar axes,
-not at a bug in either.
+who runs both chord harnesses and finds them disagreeing is looking at the bar
+axes, not at a bug in either.
 
 Both columns are reported per benchmark:
 
@@ -108,7 +108,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 
 # The ground truth and its parsing are score-samples.py's, imported rather than
-# copied: two spellings of one truth is how the two harnesses come to disagree
+# copied: two spellings of one truth is how two harnesses come to disagree
 # about what the right answer is.
 from importlib import import_module  # noqa: E402
 
