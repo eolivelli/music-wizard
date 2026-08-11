@@ -280,9 +280,9 @@ def java_double(text: str) -> float | None:
     try:
         value = (float.fromhex(text) if "x" in text.lower() else float(text)) / 1000.0
     except OverflowError:
-        # float.fromhex raises on a hex exponent past the double range where
-        # parseDouble returns Infinity. Same answer by the line below, reached
-        # differently -- and an exception here would abort the run rather than
+        # float.fromhex raises on a hex value past the double range -- a large
+        # p-exponent or a long enough mantissa on its own -- where parseDouble
+        # returns Infinity. An exception here would abort the run rather than
         # ignore the tag. float() does not need this: it overflows to inf.
         return None
     # As LrcLyrics refuses it: a non-finite shift otherwise reaches LyricWord's
