@@ -44,8 +44,8 @@ import java.util.List;
  * <p>The optional argument overrides {@code TempoEstimator.ACCENT_CEILING} in
  * this file's reproduction of the search, which is what the interval quoted on
  * that constant was swept with. At any other value the {@code argmax} and
- * {@code est} columns are reading two different estimators and will differ;
- * that is the point of the sweep and not a defect.
+ * {@code est} columns are reading two different estimators and may differ;
+ * a difference there is the sweep working, not a defect.
  *
  * <p>Two autocorrelation columns are printed: {@code plain} reads the envelope
  * and {@code ranked} reads it with the loudest accents held level, which is what
@@ -192,11 +192,12 @@ public final class TempoOctave {
             double[] slice = new double[end - start];
             System.arraycopy(envelope.strength(), start, slice, 0, slice.length);
             OnsetEnvelope sliceEnvelope = new OnsetEnvelope(slice, envelope.frameRate());
-            // The flat/short guard mirrors estimate()'s: a silent window
-            // reports the prior rather than a search over nothing. Without it
-            // the one flat window in a fade "disagrees" at the shipped ceiling
-            // and the self-check cries wolf.
-            double mine = slice.length < 8 || sliceEnvelope.isFlat()
+            // Mirrors estimate()'s flat guard: a silent window reports the
+            // prior rather than a search over nothing. Without it the one
+            // flat window in a fade "disagrees" at the shipped ceiling and
+            // the self-check cries wolf. estimate()'s short-window branch is
+            // unreachable here -- the loop breaks below 16 frames.
+            double mine = sliceEnvelope.isFlat()
                     ? PREFERRED_TEMPO
                     : score(sliceEnvelope, rhythm).bestTempo();
             double theirs =
@@ -218,12 +219,13 @@ public final class TempoOctave {
             seeds.append(String.format("%.2f ", mine));
             at++;
         }
+        // BeatTracker.pulseReference's statistic, reproduced: rates[n/2] on
+        // the sorted voters -- always an observed rate, never the average of
+        // two, exactly as that method's javadoc insists.
         double[] sorted = voterSeeds.stream().mapToDouble(Double::doubleValue).sorted().toArray();
-        double median = sorted.length == 0 ? 0
-                : sorted.length % 2 == 1 ? sorted[sorted.length / 2]
-                : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+        double reference = sorted.length == 0 ? 0 : sorted[sorted.length / 2];
         System.out.printf("  windows %d (%d voters): %d at stated, %d at half,"
-                + " voter median %.2f%s%n", at, voters, atStated, atHalf, median,
+                + " voter reference %.2f%s%n", at, voters, atStated, atHalf, reference,
                 disagreements == 0 ? "" : "  [" + disagreements + " windows differ from the"
                         + " estimator, expected only when a ceiling is passed]");
         System.out.printf("  seeds: %s%n", seeds.toString().trim());
