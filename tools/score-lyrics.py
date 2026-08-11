@@ -77,7 +77,7 @@ SOURCE = "lrc"
 # LrcLyrics' own two, transcribed: three-digit minutes, either separator.
 LINE_TAG = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
 WORD_TAG = re.compile(r"<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>")
-ID_TAG = re.compile(r"\[([a-zA-Z#]+):([^]]*)\]")
+ID_TAG = re.compile(r"\[([a-zA-Z#][a-zA-Z0-9_#]*):(.*)]")
 
 # Java's \s and String.strip() are ASCII-only where Python's are not, and
 # LrcLyrics splits words on \\s+. A non-breaking space is one token to it and
