@@ -42,9 +42,9 @@ import java.util.List;
  * </pre>
  *
  * <p>Two autocorrelation columns are printed: {@code plain} reads the envelope
- * and {@code ranked} reads it with the accents compressed, which is what the
- * estimator ranks candidates on. The difference between the two columns is the
- * whole of what {@code TempoEstimator.compressAccents} does.
+ * and {@code ranked} reads it with the loudest accents held level, which is what
+ * the estimator ranks candidates on. The difference between the two columns is
+ * the whole of what {@code TempoEstimator.compressAccents} does.
  *
  * <p>The factors are recomputed here rather than read out of the estimator,
  * which exposes none of them. The check that the reimplementation is the
@@ -237,12 +237,12 @@ public final class TempoOctave {
         return new Scored(plain, ranked, frameRate, bestTempo);
     }
 
-    /** {@code TempoEstimator.compressAccents}, reproduced. */
+    /** {@code TempoEstimator.compressAccents}, reproduced, ceiling included. */
     private static double[] compressAccents(double[] signal) {
         double[] out = new double[signal.length];
         double mean = 0;
         for (int i = 0; i < signal.length; i++) {
-            out[i] = Math.signum(signal[i]) * Math.sqrt(Math.abs(signal[i]));
+            out[i] = Math.clamp(signal[i], -3.0, 3.0);
             mean += out[i];
         }
         mean /= Math.max(1, signal.length);
