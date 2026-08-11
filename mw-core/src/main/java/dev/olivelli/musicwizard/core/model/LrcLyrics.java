@@ -165,8 +165,15 @@ public final class LrcLyrics {
         timed.sort((a, b) -> Double.compare(a.start(), b.start()));
 
         double shift = offsetSeconds;
+        // Where every line starts, shifted and clamped. Both the statistics and
+        // the spans read it, so an offset that pushes several starts to zero
+        // makes them one moment for each.
+        double[] starts = new double[timed.size()];
+        for (int i = 0; i < timed.size(); i++) {
+            starts[i] = Math.max(0, timed.get(i).start() - shift);
+        }
         // Whole-file constants, so read once rather than per line.
-        double[] gaps = gapsOf(timed);
+        double[] gaps = gapsOf(starts);
         boolean[] isBreak = breaks(gaps, BREAK_MULTIPLE * typicalLine(gaps));
         double lineLength = lineLength(gaps, isBreak);
         List<LyricLine> lines = new ArrayList<>();
@@ -175,28 +182,39 @@ public final class LrcLyrics {
             if (entry.body().isBlank()) {
                 // A timestamp with no text tells a player to clear the display.
                 // It is not a line; it ends the one before it, which the lookup
-                // below picks up because that end is simply the next timestamp.
+                // below picks up because a blank entry measures a line like any
+                // other. One written on the line's own moment does not end it,
+                // for the same reason a second voice does not.
                 continue;
             }
-            double start = Math.max(0, entry.start() - shift);
-            double next = i + 1 < timed.size()
-                    ? Math.max(start, timed.get(i + 1).start() - shift)
-                    : Double.POSITIVE_INFINITY;
+            double start = starts[i];
+            // The entry this line ends at, which is not always the next one.
+            int ends = nextMeasuring(starts, i);
+            double next = ends < 0 ? Double.POSITIVE_INFINITY : starts[ends];
             double lastTag = lastTagIn(entry.body(), shift);
             // An ordinary line runs to its successor, however far above the
             // typical length it sits. Only the silence of a break -- and the
             // open end after the last line, which has no successor at all -- is
             // cut back to a plausible length, leaving the remainder as the
             // instrumental it is.
-            // Lines never overlap, and the min below is what holds that: a word
-            // tag is only evidence about the line it is in, so a mistyped minute
-            // in one would otherwise put that line's end past several later
-            // ones, and the sheet's cursor would hand it every chord they should
-            // have had.
+            // A line ends no later than the next one that measures a line, and
+            // the min below is what holds that: a word tag is only evidence
+            // about the line it is in, so a mistyped minute in one would
+            // otherwise put that line's end past several later ones, and the
+            // sheet's cursor would hand it every chord they should have had.
+            //
+            // Entries on one moment share a span -- see nextMeasuring -- so the
+            // sheet prints the chords once above the pair. A word tag can still
+            // carry one of them past the other, bounded the same way.
             //
             // The last entry has no gap and so no entry in isBreak; it is cut
             // for the stronger reason that nothing follows it to end it.
-            boolean cut = i + 1 >= timed.size() || isBreak[i];
+            // isBreak is indexed on the gaps, so the flag for the gap that ends
+            // this line sits at ends - 1 -- which is i only when nothing was
+            // skipped. Reading isBreak[i] for the first of a pair reads a zero
+            // gap's flag, which is never a break, and the line then runs through
+            // whatever instrumental follows.
+            boolean cut = ends < 0 || isBreak[ends - 1];
             double end = cut
                     ? Math.min(next, plausibleEnd(start, lastTag, lineLength))
                     : next;
@@ -267,11 +285,11 @@ public final class LrcLyrics {
         return last;
     }
 
-    /** Every gap between consecutive timestamps, in file order. */
-    private static double[] gapsOf(List<Timed> timed) {
-        double[] gaps = new double[Math.max(0, timed.size() - 1)];
+    /** Every gap between consecutive starts, in file order. */
+    private static double[] gapsOf(double[] starts) {
+        double[] gaps = new double[Math.max(0, starts.length - 1)];
         for (int i = 0; i < gaps.length; i++) {
-            gaps[i] = timed.get(i + 1).start() - timed.get(i).start();
+            gaps[i] = starts[i + 1] - starts[i];
         }
         return gaps;
     }
@@ -316,8 +334,8 @@ public final class LrcLyrics {
      *
      * <p>Named rather than written out, because every statistic over these gaps
      * has to agree on it: the scale the threshold is measured against, the length
-     * a cut line is given, and which gaps count as a neighbour. The end a line
-     * takes from the next timestamp does not ask — that is #340.
+     * a cut line is given, which gaps count as a neighbour, and which entry a
+     * line ends at.
      *
      * <p>Exact, and only exact. Two timestamps a hundredth of a second apart say
      * as little about a line as two on the same moment, and this admits them;
@@ -325,6 +343,24 @@ public final class LrcLyrics {
      */
     private static boolean measures(double gap) {
         return gap > 0;
+    }
+
+    /**
+     * The entry the line at {@code from} ends at, or -1 when nothing ends it.
+     *
+     * <p>The next entry that {@link #measures measures a line} from this one,
+     * not simply the next: ending the first of two entries on one moment at the
+     * second gives it a span from its start to its start, and {@code LyricSheet}
+     * decides a line's chords by its end, so it takes none. Entries on one
+     * moment are sung together and share the span.
+     */
+    private static int nextMeasuring(double[] starts, int from) {
+        for (int i = from + 1; i < starts.length; i++) {
+            if (measures(starts[i] - starts[from])) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
