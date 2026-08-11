@@ -165,11 +165,9 @@ public final class LrcLyrics {
         timed.sort((a, b) -> Double.compare(a.start(), b.start()));
 
         double shift = offsetSeconds;
-        // Every timestamp as the line actually starts, shifted and clamped, and
-        // the one place that arithmetic happens. Read raw by the statistics and
-        // clamped here, an offset that pushes several starts below zero makes
-        // them one moment in the output and several distinct gaps in the
-        // statistics, and the two disagree about which lines share a span.
+        // Where every line starts, shifted and clamped. Both the statistics and
+        // the spans read it, so an offset that pushes several starts to zero
+        // makes them one moment for each.
         double[] starts = new double[timed.size()];
         for (int i = 0; i < timed.size(); i++) {
             starts[i] = Math.max(0, timed.get(i).start() - shift);
@@ -184,7 +182,9 @@ public final class LrcLyrics {
             if (entry.body().isBlank()) {
                 // A timestamp with no text tells a player to clear the display.
                 // It is not a line; it ends the one before it, which the lookup
-                // below picks up because that end is simply the next timestamp.
+                // below picks up because a blank entry measures a line like any
+                // other. One written on the line's own moment does not end it,
+                // for the same reason a second voice does not.
                 continue;
             }
             double start = starts[i];
@@ -205,7 +205,7 @@ public final class LrcLyrics {
             //
             // Entries on one moment share a span -- see nextMeasuring -- so the
             // sheet prints the chords once above the pair. A word tag can still
-            // carry one of them past the other, which the min above bounds.
+            // carry one of them past the other, bounded the same way.
             //
             // The last entry has no gap and so no entry in isBreak; it is cut
             // for the stronger reason that nothing follows it to end it.
