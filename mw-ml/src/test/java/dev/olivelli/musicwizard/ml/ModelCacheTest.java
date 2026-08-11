@@ -181,6 +181,38 @@ class ModelCacheTest {
     }
 
     @Test
+    @DisplayName("a stalled transfer is abandoned with a message, not waited on forever")
+    void stalledTransferAbandoned() {
+        // A server that answers, sends a few bytes and stops: the connect
+        // timeout does not cover the body, so without a watchdog the CLI sits
+        // on the socket forever with no message -- during the one operation
+        // most likely to be watched, the first-use download.
+        server.createContext("/stall.onnx", exchange -> {
+            exchange.sendResponseHeaders(200, WEIGHTS.length * 100L);
+            exchange.getResponseBody().write(WEIGHTS);
+            exchange.getResponseBody().flush();
+            // Never write the rest: hold the socket open past the 200 ms
+            // stall limit below, then let the handler end so the suite's
+            // teardown is not stuck behind a sleeping executor thread.
+            try {
+                Thread.sleep(2_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        ModelCache cache = ModelCache.at(cacheDir, java.time.Duration.ofMillis(200));
+        ModelRef stalling = new ModelRef("test-model", "stall.onnx",
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()
+                        + "/stall.onnx"),
+                sha256(WEIGHTS), WEIGHTS.length, "test licence");
+
+        assertThatThrownBy(() -> cache.fetch(stalling, message -> { }))
+                .isInstanceOf(ModelUnavailableException.class)
+                .hasMessageContaining("stalled");
+        assertThat(cacheDir.resolve("test-model").resolve("stall.onnx")).doesNotExist();
+    }
+
+    @Test
     @DisplayName("an HTTP error names the status rather than keeping anything")
     void httpErrorNamed() {
         ModelCache cache = ModelCache.at(cacheDir, false);
@@ -195,14 +227,53 @@ class ModelCacheTest {
     }
 
     @Test
-    @DisplayName("the licence note is written beside the model")
-    void licenceNoteWritten() {
+    @DisplayName("each file gets its own source note, so a multi-file model keeps every provenance")
+    void sourceNotePerFile() throws IOException {
+        // A 2-stems separation model is two files under one name. One shared
+        // note silently kept only the last provenance written, which is the
+        // single thing the note exists to prevent losing.
+        server.createContext("/second.onnx", exchange -> {
+            exchange.sendResponseHeaders(200, WEIGHTS.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(WEIGHTS);
+            }
+        });
+        ModelCache cache = ModelCache.at(cacheDir, false);
+        cache.fetch(model(), message -> { });
+        cache.fetch(new ModelRef("test-model", "second.onnx",
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()
+                        + "/second.onnx"),
+                sha256(WEIGHTS), WEIGHTS.length, "second licence"), message -> { });
+
+        Path first = cacheDir.resolve("test-model").resolve("model.onnx.source.txt");
+        Path second = cacheDir.resolve("test-model").resolve("second.onnx.source.txt");
+        assertThat(first).content().contains("test licence").contains("sha256");
+        assertThat(second).content().contains("second licence");
+    }
+
+    @Test
+    @DisplayName("a model whose bytes changed at the same size is replaced, not served stale")
+    void staleModelAtSameSizeReplaced() {
+        // A model table bumped to a new version whose file happens to be the
+        // same length: presence plus size cannot tell, the recorded digest can.
         ModelCache cache = ModelCache.at(cacheDir, false);
         cache.fetch(model(), message -> { });
 
-        Path note = cacheDir.resolve("test-model").resolve("SOURCE.txt");
-        assertThat(note).exists();
-        assertThat(note).content().contains("test licence").contains("sha256");
+        byte[] v2 = "NOT A REAL MODEL".getBytes(StandardCharsets.UTF_8);
+        assertThat(v2).hasSameSizeAs(WEIGHTS);
+        server.removeContext("/model.onnx");
+        server.createContext("/model.onnx", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(200, v2.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(v2);
+            }
+        });
+
+        Path fetched = cache.fetch(ref(sha256(v2), v2.length), message -> { });
+
+        assertThat(fetched).hasBinaryContent(v2);
+        assertThat(hits).hasValue(2);
     }
 
     @Test

@@ -87,7 +87,6 @@ public final class StageCache {
         this.directory = Objects.requireNonNull(directory, "directory");
     }
 
-
     /**
      * A cache key. Built from a stage name plus arbitrary named components,
      * which are sorted before hashing so that key construction is order-independent.

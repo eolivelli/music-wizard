@@ -24,6 +24,7 @@ import java.io.OutputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -31,8 +32,10 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -44,12 +47,12 @@ import java.util.function.Consumer;
  * from disk without the network.
  *
  * <p><b>Verification happens on the staged file, before the move into
- * place.</b> A file that reaches its final path has therefore already matched
- * its digest, which is what lets {@link #fetch} trust presence plus size on
- * later runs instead of re-hashing hundreds of megabytes per invocation. The
- * write itself follows {@code StageCache}'s discipline — temp file, verify,
- * atomic move — for the same reason that class exists: an interrupted download
- * must not leave a file a later run would trust.
+ * place.</b> The write follows {@code StageCache}'s discipline — temp file,
+ * verify, atomic move — for the same reason that class exists: an interrupted
+ * download must not leave a file a later run would trust. Later runs then
+ * check presence, size, and the digest recorded in the file's source note,
+ * without re-hashing hundreds of megabytes per invocation; see
+ * {@link #contains}.
  *
  * <p><b>Offline is honest.</b> With {@code ml.offline} set, a model already on
  * disk resolves exactly as it would online, and an absent one fails with a
@@ -58,27 +61,52 @@ import java.util.function.Consumer;
  */
 public final class ModelCache {
 
-    /** Matches StageCache's prefix so its abandoned-file sweep logic applies. */
+    /**
+     * The staging prefix. {@code StageCache}'s workspace sweep never reaches
+     * this directory — no {@code StageCache} is ever constructed over it — so
+     * this class runs its own sweep in {@link #fetch}, against the same age.
+     */
     private static final String STAGING_PREFIX = ".partial-";
+
+    /** How long a staging file must sit untouched before a sweep may take it. */
+    private static final Duration ABANDONED_STAGING_AGE = Duration.ofHours(24);
+
+    /**
+     * How long the body transfer may go without a single byte arriving.
+     *
+     * <p>Time since progress, not since the start: a legitimate fetch of
+     * hundreds of megabytes takes as long as it takes, and a total deadline
+     * either kills it or is too large to notice a hang. What must never happen
+     * is the CLI sitting on a stalled socket forever with no message — the
+     * connect timeout does not cover the body, and a server that answers and
+     * then stops sending is otherwise indistinguishable from a slow one.
+     */
+    private static final Duration STALL_LIMIT = Duration.ofSeconds(60);
+
+    private static final String NOTE_SUFFIX = ".source.txt";
 
     private final Path directory;
     private final boolean offline;
-    private final HttpClient client;
+    private final Duration stallLimit;
 
-    private ModelCache(Path directory, boolean offline, HttpClient client) {
+    /** Built on first download, because an offline cache must not open sockets. */
+    private HttpClient client;
+
+    private ModelCache(Path directory, boolean offline, Duration stallLimit) {
         this.directory = directory;
         this.offline = offline;
-        this.client = client;
+        this.stallLimit = stallLimit;
     }
 
     /** A cache at this directory. */
     public static ModelCache at(Path directory, boolean offline) {
         Objects.requireNonNull(directory, "directory");
-        return new ModelCache(directory, offline,
-                HttpClient.newBuilder()
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .connectTimeout(Duration.ofSeconds(30))
-                        .build());
+        return new ModelCache(directory, offline, STALL_LIMIT);
+    }
+
+    /** For the stall test only: sixty stalled seconds cannot be in the fast suite. */
+    static ModelCache at(Path directory, Duration stallLimit) {
+        return new ModelCache(directory, false, stallLimit);
     }
 
     /** The default per-user location; one statement, in {@link ModelCacheLocation}. */
@@ -96,11 +124,22 @@ public final class ModelCache {
         return offline;
     }
 
-    /** True when the model is already on disk at its expected size. */
+    /**
+     * True when this model — these bytes, not merely this file name — is on disk.
+     *
+     * <p>Presence and size alone are not enough: a model table bumped to a new
+     * version whose file happens to be the same length would be served stale
+     * forever. The digest each download verified is recorded in the file's
+     * source note, so this compares one short string instead of re-hashing the
+     * model, and a file with no note — or a note naming another digest — is
+     * treated as absent and replaced.
+     */
     public boolean contains(ModelRef model) {
         Path path = pathOf(model);
         try {
-            return Files.isRegularFile(path) && Files.size(path) == model.sizeBytes();
+            return Files.isRegularFile(path)
+                    && Files.size(path) == model.sizeBytes()
+                    && model.sha256().equals(recordedDigest(model));
         } catch (IOException e) {
             return false;
         }
@@ -114,18 +153,11 @@ public final class ModelCache {
     /**
      * The model's local path, downloading it first if it is absent.
      *
-     * <p>A file already present at its expected size is returned as is — it
-     * matched its digest before it was moved into place, and re-hashing it per
-     * run would cost more than the inference. A file present at the <em>wrong</em>
-     * size is treated as absent and replaced: it can only be a truncated copy
-     * from before this class enforced staging, or outside interference, and
-     * both mean it must not be trusted.
-     *
-     * @param progress told once before a download starts, with the name, size
-     *        and source — a multi-hundred-megabyte fetch must never look like
-     *        a hang
+     * @param progress told before a download starts, with the name, size and
+     *        source, and periodically as bytes arrive — a multi-hundred-megabyte
+     *        fetch must never look like a hang
      * @throws ModelUnavailableException absent and offline; or the download
-     *         failed; or what arrived did not match the checksum
+     *         failed, stalled, or did not match the checksum
      */
     public Path fetch(ModelRef model, Consumer<String> progress) {
         Objects.requireNonNull(model, "model");
@@ -144,10 +176,11 @@ public final class ModelCache {
                 + megabytes(model.sizeBytes()) + " MB) from " + model.uri());
         try {
             Files.createDirectories(target.getParent());
+            sweepAbandonedStaging(target.getParent());
             Path staged = Files.createTempFile(target.getParent(), STAGING_PREFIX,
                     "-" + model.fileName());
             try {
-                String digest = downloadTo(model, staged);
+                String digest = downloadTo(model, staged, progress);
                 if (!digest.equals(model.sha256())) {
                     throw new ModelUnavailableException(
                             "model " + model.name() + " downloaded from " + model.uri()
@@ -157,7 +190,7 @@ public final class ModelCache {
                 long size = Files.size(staged);
                 if (size != model.sizeBytes()) {
                     // The digest matched, so the table's size is what is wrong.
-                    // Refuse rather than adjust: contains() trusts that size on
+                    // Refuse rather than adjust: contains() reads that size on
                     // every later run, and a wrong entry would re-download the
                     // model forever without ever saying why.
                     throw new ModelUnavailableException(
@@ -165,13 +198,19 @@ public final class ModelCache {
                             + " recorded size (expected " + model.sizeBytes() + " bytes, got "
                             + size + "); the model table is wrong and wants fixing");
                 }
+                // The note first: contains() answers true only when the note
+                // names this digest, so a crash between the two writes leaves a
+                // note without its file, which is re-downloaded -- never a file
+                // without its note, which would be re-downloaded too. Both
+                // orders are safe; this one keeps the invariant "a file at its
+                // final path has a note naming how it got there".
+                writeSourceNote(model);
                 Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException | RuntimeException e) {
                 Files.deleteIfExists(staged);
                 throw e;
             }
-            writeLicenceNote(model);
             return target;
         } catch (IOException e) {
             throw new ModelUnavailableException(
@@ -180,8 +219,9 @@ public final class ModelCache {
         }
     }
 
-    /** Streams the body to the staged path, hashing as it goes. */
-    private String downloadTo(ModelRef model, Path staged) throws IOException {
+    /** Streams the body to the staged path, hashing as it goes, watching for stalls. */
+    private String downloadTo(ModelRef model, Path staged, Consumer<String> progress)
+            throws IOException {
         MessageDigest sha;
         try {
             sha = MessageDigest.getInstance("SHA-256");
@@ -191,7 +231,7 @@ public final class ModelCache {
         HttpRequest request = HttpRequest.newBuilder(model.uri()).GET().build();
         HttpResponse<InputStream> response;
         try {
-            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            response = client().send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ModelUnavailableException(
@@ -202,31 +242,144 @@ public final class ModelCache {
                     "model " + model.name() + ": " + model.uri() + " answered HTTP "
                     + response.statusCode());
         }
+        // A watchdog closes the stream when nothing has arrived for the stall
+        // limit, which is the only way to unblock a read() sitting on a dead
+        // socket. The read then fails with an IOException the caller reports;
+        // stalled distinguishes that from an ordinary network error.
+        AtomicLong received = new AtomicLong();
+        AtomicLong lastReported = new AtomicLong();
+        var stalled = new AtomicLong(-1);
+        Thread watchdog = watchdog(response.body(), received, stalled, stallLimit);
         try (InputStream in = new DigestInputStream(response.body(), sha);
              OutputStream out = Files.newOutputStream(staged)) {
-            in.transferTo(out);
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                out.write(buffer, 0, read);
+                long total = received.addAndGet(read);
+                // One line per ~50 MB, not per buffer: progress that scrolls
+                // thousands of lines is noise, none at all is a hang.
+                if (total - lastReported.get() >= 50L * 1024 * 1024) {
+                    lastReported.set(total);
+                    progress.accept("  " + megabytes(total) + " / "
+                            + megabytes(model.sizeBytes()) + " MB");
+                }
+            }
+        } catch (IOException e) {
+            if (stalled.get() >= 0) {
+                throw new ModelUnavailableException(
+                        "download of model " + model.name() + " stalled: no data for "
+                        + stallLimit.toSeconds() + " s after " + stalled.get()
+                        + " bytes; giving up rather than hanging", e);
+            }
+            throw e;
+        } finally {
+            watchdog.interrupt();
         }
         return HexFormat.of().formatHex(sha.digest());
     }
 
+    private static Thread watchdog(InputStream body, AtomicLong received, AtomicLong stalled,
+                                   Duration stallLimit) {
+        Thread thread = new Thread(() -> {
+            long last = 0;
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(stallLimit.toMillis());
+                } catch (InterruptedException e) {
+                    return;
+                }
+                long now = received.get();
+                if (now == last) {
+                    stalled.set(now);
+                    try {
+                        body.close();
+                    } catch (IOException e) {
+                        // Closing is the interruption; a failure to close is moot.
+                    }
+                    return;
+                }
+                last = now;
+            }
+        }, "mw-model-download-watchdog");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private synchronized HttpClient client() {
+        if (client == null) {
+            client = HttpClient.newBuilder()
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .connectTimeout(Duration.ofSeconds(30))
+                    .build();
+        }
+        return client;
+    }
+
     /**
-     * Writes what this file is and its licence beside it, once.
+     * Deletes staging files old enough to be abandoned, in this model's
+     * directory only.
      *
-     * <p>The repository's NOTICE lists what ships in the repository, and models
-     * deliberately do not. This note is that answer for the cache directory,
-     * where the file actually lives.
+     * <p>The same age {@code StageCache} uses, for the same asymmetry: keeping
+     * a dead file another day wastes disk, deleting a live one destroys a
+     * download that may be twenty minutes in. Run at fetch time because there
+     * is no workspace-open moment here — the next download is the first time
+     * anyone looks.
      */
-    private void writeLicenceNote(ModelRef model) {
-        Path note = directory.resolve(model.name()).resolve("SOURCE.txt");
+    private static void sweepAbandonedStaging(Path modelDirectory) {
+        Instant cutoff = Instant.now().minus(ABANDONED_STAGING_AGE);
+        try (DirectoryStream<Path> entries =
+                     Files.newDirectoryStream(modelDirectory, STAGING_PREFIX + "*")) {
+            for (Path entry : entries) {
+                try {
+                    if (Files.getLastModifiedTime(entry).toInstant().isBefore(cutoff)) {
+                        Files.deleteIfExists(entry);
+                    }
+                } catch (IOException e) {
+                    // Another process may have taken it; the next sweep retries.
+                }
+            }
+        } catch (IOException e) {
+            // A failed sweep must not fail the download that triggered it.
+        }
+    }
+
+    /**
+     * What this file is, where it came from, and its licence — one note per
+     * file, because a model may be several files under one name and each has
+     * its own provenance.
+     *
+     * <p>{@code NOTICE} lists what ships in the repository, and models
+     * deliberately do not. This note is that answer for the cache directory,
+     * where the file actually lives. {@link #contains} also reads the digest
+     * back from it, so the note is load-bearing, written before the model is
+     * moved into place, and its write failing fails the fetch.
+     */
+    private void writeSourceNote(ModelRef model) throws IOException {
+        Path note = noteFor(model);
         String text = model.fileName() + "\nfrom: " + model.uri()
                 + "\nsha256: " + model.sha256()
                 + "\nlicence: " + model.licence() + "\n";
-        try {
-            Files.writeString(note, text);
-        } catch (IOException e) {
-            // The model itself is verified and in place; a failed note must not
-            // fail the run that needed the model.
+        Files.writeString(note, text);
+    }
+
+    /** The digest the source note records, or null when there is no note. */
+    private String recordedDigest(ModelRef model) throws IOException {
+        Path note = noteFor(model);
+        if (!Files.isRegularFile(note)) {
+            return null;
         }
+        for (String line : Files.readAllLines(note)) {
+            if (line.startsWith("sha256: ")) {
+                return line.substring("sha256: ".length()).strip();
+            }
+        }
+        return null;
+    }
+
+    private Path noteFor(ModelRef model) {
+        return directory.resolve(model.name()).resolve(model.fileName() + NOTE_SUFFIX);
     }
 
     private static long megabytes(long bytes) {

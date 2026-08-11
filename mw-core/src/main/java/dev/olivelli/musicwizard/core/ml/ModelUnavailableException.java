@@ -27,10 +27,8 @@ package dev.olivelli.musicwizard.core.ml;
  * project's LilyPond discovery was written to avoid.
  *
  * <p>Callers treat it the way they treat an absent LilyPond binary: report and
- * continue without the stage, never fail the run. A checked exception would say
- * that at the signature, but every caller sits behind an orchestration layer
- * that already catches {@link RuntimeException} per stage, and a checked type
- * on an SPI forces every future provider method to redeclare it.
+ * continue without the stage, never fail the run. Unchecked because a checked
+ * type on an SPI forces every future provider method to redeclare it.
  */
 public class ModelUnavailableException extends RuntimeException {
 

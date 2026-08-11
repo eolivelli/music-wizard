@@ -75,9 +75,8 @@ final class DoctorCommand implements Callable<Integer> {
                 MlProviders.separationIds(), "#312");
         report("Lyrics ASR", ml == null ? null : ml.asrProvider(),
                 MlProviders.asrIds(), "#314");
-        Path modelDir = ml != null && ml.modelCacheDirectory() != null
-                ? Path.of(ml.modelCacheDirectory())
-                : ModelCacheLocation.defaultDirectory();
+        Path modelDir = ModelCacheLocation.directoryFor(
+                ml == null ? null : ml.modelCacheDirectory());
         boolean offline = ml != null && Boolean.TRUE.equals(ml.offline());
         System.out.println("Models      " + modelDir
                 + (Files.isDirectory(modelDir) ? "" : " (nothing downloaded yet)")

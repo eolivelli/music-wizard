@@ -39,17 +39,22 @@ public interface AsrProvider {
 
     /**
      * BCP 47 language subtags this provider can transcribe, e.g. {@code it},
-     * {@code en}. A caller asked for a language outside this set reports the
-     * gap rather than guessing: a transcriber run on the wrong language
-     * produces plausible wrong words, which is the expensive kind of wrong.
+     * {@code en} — lowercase language subtags only, matched exactly, no region
+     * (a caller with {@code it-IT} passes {@code it}). A caller asked for a
+     * language outside this set reports the gap rather than guessing: a
+     * transcriber run on the wrong language produces plausible wrong words,
+     * which is the expensive kind of wrong.
      */
     List<String> languages();
 
     /**
      * Transcribes one mono recording.
      *
-     * <p>Samples in {@code [-1, 1]} at the given rate. The language tag names
-     * what is sung; it must be one of {@link #languages()}.
+     * <p>Samples in {@code [-1, 1]} at the given rate, which the caller states
+     * truthfully and the <b>provider</b> resamples from — the model's wanted
+     * rate is the provider's implementation detail, and a caller that guessed
+     * it would produce fluent wrong words the day the model changes. The
+     * language tag names what is sung; it must be one of {@link #languages()}.
      *
      * @throws ModelUnavailableException when the model cannot be had — absent
      *         and offline, or failing its checksum. Callers degrade as with an

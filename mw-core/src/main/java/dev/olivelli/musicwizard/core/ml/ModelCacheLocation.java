@@ -33,6 +33,20 @@ public final class ModelCacheLocation {
     }
 
     /**
+     * The directory a configuration names, or the default when it names none.
+     *
+     * <p>Null and blank are both "unset": {@code Path.of("")} is the working
+     * directory, which no one has ever meant by an empty config value. One
+     * statement, because {@code doctor} reports this directory and the cache
+     * resolves models in it, and the two must never disagree.
+     */
+    public static Path directoryFor(String configured) {
+        return configured == null || configured.isBlank()
+                ? defaultDirectory()
+                : Path.of(configured.strip());
+    }
+
+    /**
      * {@code $XDG_CACHE_HOME/music-wizard/models} where that is set, else
      * {@code ~/.cache/music-wizard/models}.
      *

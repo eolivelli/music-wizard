@@ -105,7 +105,6 @@
     <ffsampledsp.version>0.9.56</ffsampledsp.version>         <!-- LGPL-2.1 -->
     <onnxruntime.version>1.27.0</onnxruntime.version>         <!-- MIT -->
     <proxymusic.version>4.0.3</proxymusic.version>            <!-- LGPL-3.0 -->
-    <whisperjni.version>1.7.1</whisperjni.version>            <!-- Apache-2.0 -->
     <anthropic.version>2.52.0</anthropic.version>             <!-- MIT -->
 
     <junit.version>6.1.2</junit.version>
@@ -230,11 +229,6 @@
       </dependency>
 
       <!-- Speech recognition -->
-      <dependency>
-        <groupId>io.github.givimad</groupId>
-        <artifactId>whisper-jni</artifactId>
-        <version>${whisperjni.version}</version>
-      </dependency>
 
       <!-- Claude advisor -->
       <dependency>

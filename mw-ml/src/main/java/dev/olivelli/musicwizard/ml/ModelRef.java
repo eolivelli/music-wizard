@@ -61,5 +61,16 @@ public record ModelRef(String name, String fileName, URI uri, String sha256,
         if (name.isBlank() || fileName.isBlank()) {
             throw new IllegalArgumentException("name and fileName must not be blank");
         }
+        // Both become path segments under the cache directory. Refs are
+        // compile-time constants today, but the constructor is where validation
+        // lives, and a model table read from a file later is exactly the change
+        // that would not think to add this.
+        for (String segment : new String[] {name, fileName}) {
+            if (segment.contains("/") || segment.contains("\\")
+                    || segment.contains("..") || segment.startsWith(".")) {
+                throw new IllegalArgumentException(
+                        "name and fileName must be plain file names, got: " + segment);
+            }
+        }
     }
 }

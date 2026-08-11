@@ -52,25 +52,24 @@ class DoctorCommandTest {
     }
 
     @Test
-    @DisplayName("names each configured provider and the issue that will supply it")
+    @DisplayName("a present provider and an absent one each read as what they are")
     void reportsProvidersHonestly() {
-        // The defaults name providers #312 and #314 have not built yet, so
-        // doctor must say that -- as an expected state with the issue number,
-        // not as a broken install, and without failing the run. The same line
-        // will read "(present)" the day the provider lands, which is the test
-        // an install actually needs answered.
+        // FakeSeparationProvider sits on the test classpath under the id the
+        // defaults configure, so the separation line takes the present branch
+        // here -- the branch that becomes the ordinary case when #312 lands.
+        // No ASR provider exists anywhere yet, so that line must say which
+        // issue supplies it, as an expected state rather than a broken install,
+        // without failing the run.
         CliRunner.Result doctor = CliRunner.run("doctor");
 
         assertThat(doctor.exitCode()).as(doctor.all()).isZero();
         assertThat(doctor.out())
                 .contains("Separation")
-                .contains("onnx-spleeter")
-                .contains("#312")
+                .contains("onnx-spleeter (present)")
+                .contains("available: onnx-spleeter")
                 .contains("Lyrics ASR")
                 .contains("sherpa-qwen3")
                 .contains("#314")
                 .contains("Models");
-        // No provider ships yet, so nothing may claim one is present.
-        assertThat(doctor.out()).doesNotContain("(present)");
     }
 }

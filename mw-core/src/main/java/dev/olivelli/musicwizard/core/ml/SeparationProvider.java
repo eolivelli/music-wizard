@@ -39,7 +39,9 @@ public interface SeparationProvider {
      *
      * <p>Samples are interleaved per channel: {@code channels[c][i]} is channel
      * {@code c}'s {@code i}-th sample, in {@code [-1, 1]}. A mono recording is
-     * one channel. The result carries the same shape and rate.
+     * one channel. The result carries the same shape and rate as the input:
+     * whatever the model wants internally, the <b>provider</b> resamples both
+     * ways, because the model's rate is its implementation detail.
      *
      * @throws ModelUnavailableException when the model this provider needs
      *         cannot be had — absent and offline, or failing its checksum. The

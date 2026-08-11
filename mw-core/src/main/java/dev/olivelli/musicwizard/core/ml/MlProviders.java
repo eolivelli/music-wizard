@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.ml;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
 /**
@@ -68,7 +69,7 @@ public final class MlProviders {
         if (wanted == null || wanted.isBlank()) {
             return Optional.empty();
         }
-        for (P provider : ServiceLoader.load(type)) {
+        for (P provider : instantiable(type)) {
             if (wanted.equals(id.apply(provider))) {
                 return Optional.of(provider);
             }
@@ -79,9 +80,33 @@ public final class MlProviders {
     private static <P> List<String> idsOf(Class<P> type,
                                           java.util.function.Function<P, String> id) {
         List<String> ids = new ArrayList<>();
-        for (P provider : ServiceLoader.load(type)) {
+        for (P provider : instantiable(type)) {
             ids.add(id.apply(provider));
         }
         return List.copyOf(ids);
+    }
+
+    /**
+     * Every provider that can be constructed, skipping any that cannot.
+     *
+     * <p>{@link ServiceLoader}'s iterator throws {@link ServiceConfigurationError}
+     * out of {@code next()} when a provider's class fails to initialise — which
+     * is exactly what an ONNX-backed provider does on a machine without the
+     * natives, the machine the degrade-like-absent-LilyPond design exists for.
+     * Iterated plainly, one broken provider hides every working one and takes
+     * down {@code doctor}, the command whose job is reporting what is broken.
+     * The stream API exposes each provider individually, so a failure skips
+     * that provider and only that provider.
+     */
+    private static <P> List<P> instantiable(Class<P> type) {
+        List<P> providers = new ArrayList<>();
+        ServiceLoader.load(type).stream().forEach(candidate -> {
+            try {
+                providers.add(candidate.get());
+            } catch (ServiceConfigurationError e) {
+                // This provider cannot run here; the others still can.
+            }
+        });
+        return providers;
     }
 }
