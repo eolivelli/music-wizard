@@ -98,7 +98,7 @@ final class LyricEngraving {
         /** The unit the last syllable took, which the next one must clear. */
         private long lastUnit = Long.MIN_VALUE;
 
-        /** The latest moment anything in the lane is sung. */
+        /** The latest of the moments its syllables are sung at. */
         private double sungThrough = Double.NEGATIVE_INFINITY;
 
         /**
@@ -239,9 +239,9 @@ final class LyricEngraving {
      * lines may overlap in time — recognition spans on sung speech do, see
      * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()}. So lines
      * take lanes first-fit in the order {@code Lyrics} keeps them, which is by
-     * their first word: a line goes in the first lane whose last syllable was
-     * sung before the line begins, and past {@link #LANES} into whichever lane
-     * was free longest ago. A line goes into one lane whole, because {@code
+     * their first word: a line goes in the first lane whose syllables have all
+     * been sung before the line begins, and past {@link #LANES} into whichever
+     * lane was free longest ago. A line goes into one lane whole, because {@code
      * hyphenatedToNext} joins a word to the next word <em>in its own line</em>,
      * so a line split across lanes would split a hyphen chain.
      *
