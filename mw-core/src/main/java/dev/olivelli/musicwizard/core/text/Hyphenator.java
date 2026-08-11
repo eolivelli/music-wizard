@@ -106,9 +106,20 @@ public final class Hyphenator {
      */
     private final Set<Character> wordCharacters;
 
-    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters) {
+    /**
+     * The longest pattern this language has, in characters.
+     *
+     * <p>Read off the loaded patterns rather than written down, for the reason
+     * {@link #wordCharacters} is: it is a property of the data, and a number
+     * here would be a second statement of it to keep in step.
+     */
+    private final int longestPattern;
+
+    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters,
+                       int longestPattern) {
         this.patterns = patterns;
         this.wordCharacters = wordCharacters;
+        this.longestPattern = longestPattern;
     }
 
     /**
@@ -155,7 +166,9 @@ public final class Hyphenator {
             throw new UncheckedIOException("could not read " + resource, e);
         }
         Set<Character> wordCharacters = new HashSet<>();
+        int longestPattern = 0;
         for (String letters : patterns.keySet()) {
+            longestPattern = Math.max(longestPattern, letters.length());
             for (int i = 0; i < letters.length(); i++) {
                 char c = letters.charAt(i);
                 if (!Character.isLetter(c) && c != '.') {
@@ -163,7 +176,7 @@ public final class Hyphenator {
                 }
             }
         }
-        return new Hyphenator(patterns, Set.copyOf(wordCharacters));
+        return new Hyphenator(patterns, Set.copyOf(wordCharacters), longestPattern);
     }
 
     /** Splits one TeX pattern into its letters and the scores between them. */
@@ -451,7 +464,13 @@ public final class Hyphenator {
         String bounded = "." + lower + ".";
         byte[] scores = new byte[bounded.length() + 1];
         for (int from = 0; from < bounded.length(); from++) {
-            for (int to = from + 1; to <= bounded.length(); to++) {
+            // No substring longer than the longest pattern can match one, so
+            // stopping there is exact rather than an approximation -- and it is
+            // what makes this linear in the run's length instead of cubic. A
+            // lyric file with one very long token, a run-on or a pasted URL,
+            // otherwise makes the run appear to hang (#331).
+            int reach = Math.min(bounded.length(), from + longestPattern);
+            for (int to = from + 1; to <= reach; to++) {
                 byte[] pattern = patterns.get(bounded.substring(from, to));
                 if (pattern != null) {
                     for (int i = 0; i < pattern.length; i++) {

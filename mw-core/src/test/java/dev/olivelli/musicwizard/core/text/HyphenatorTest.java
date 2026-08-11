@@ -220,6 +220,31 @@ class HyphenatorTest {
         }
     }
 
+    @Test
+    @DisplayName("a very long token costs time in its length, not its cube")
+    void aLongTokenIsLinear() {
+        // LrcLyrics splits a line on whitespace with no length bound, so a
+        // run-on or a pasted URL reaches this. Scoring every substring made a
+        // token of a few thousand characters take seconds and look like a hang;
+        // no pattern is longer than a handful of characters, so no longer
+        // substring can match one and the scan stops there.
+        Hyphenator hyphenator = Hyphenator.forLanguage("it").orElseThrow();
+        long shortRun = timeOf(hyphenator, 1_000);
+        long longRun = timeOf(hyphenator, 8_000);
+
+        // Eight times the input, well under eight times the work squared: the
+        // bound is what makes that true, and a cubic scan misses it by orders.
+        assertThat(longRun).isLessThan(Math.max(200, shortRun * 64));
+    }
+
+    private static long timeOf(Hyphenator hyphenator, int length) {
+        String token = "a".repeat(length);
+        hyphenator.syllables(token);
+        long start = System.nanoTime();
+        hyphenator.syllables(token);
+        return (System.nanoTime() - start) / 1_000_000;
+    }
+
     @Nested
     @DisplayName("what it declines to split")
     class LeavesAlone {
