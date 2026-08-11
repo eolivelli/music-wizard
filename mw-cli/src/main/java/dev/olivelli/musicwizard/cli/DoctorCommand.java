@@ -42,9 +42,20 @@ import picocli.CommandLine.Command;
 @Command(name = "doctor", description = "Check that the environment is set up correctly.")
 final class DoctorCommand implements Callable<Integer> {
 
+    private final ConfigLoader loader;
+
+    DoctorCommand() {
+        this(new ConfigLoader());
+    }
+
+    /** For tests, which need a global layer they control rather than the machine's. */
+    DoctorCommand(ConfigLoader loader) {
+        this.loader = loader;
+    }
+
     @Override
     public Integer call() {
-        MusicWizardConfig config = new ConfigLoader().effectiveConfig(null, null);
+        MusicWizardConfig config = loader.effectiveConfig(null, null);
         boolean allWell = true;
 
         System.out.println("Java        " + System.getProperty("java.version")

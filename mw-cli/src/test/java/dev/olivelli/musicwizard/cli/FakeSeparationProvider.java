@@ -19,16 +19,17 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.core.ml.SeparationProvider;
 
 /**
- * On the test classpath under the id the default configuration names, so
- * {@code doctor}'s "(present)" branch runs in a test — the branch that will be
- * the ordinary case the day #312 lands, and that no assertion would otherwise
- * execute until then.
+ * On the test classpath under an id no real provider will ever take: #312
+ * registers {@code onnx-spleeter}, and a fake under that id would collide the
+ * day it lands — two providers, one id, and {@code byId} returning whichever
+ * the loader yields first, with every assertion still green. The doctor test
+ * reaches the "(present)" branch by configuring this id instead.
  */
 public final class FakeSeparationProvider implements SeparationProvider {
 
     @Override
     public String id() {
-        return "onnx-spleeter";
+        return "fake-cli-separation";
     }
 
     @Override

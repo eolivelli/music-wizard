@@ -198,19 +198,21 @@ public final class ModelCache {
                             + " recorded size (expected " + model.sizeBytes() + " bytes, got "
                             + size + "); the model table is wrong and wants fixing");
                 }
-                // The note first: contains() answers true only when the note
-                // names this digest, so a crash between the two writes leaves a
-                // note without its file, which is re-downloaded -- never a file
-                // without its note, which would be re-downloaded too. Both
-                // orders are safe; this one keeps the invariant "a file at its
-                // final path has a note naming how it got there".
-                writeSourceNote(model);
+                // The note is deleted before the move and rewritten after,
+                // so no crash window can leave a file beside a note that
+                // describes other bytes -- in either direction. A new note
+                // beside an old file serves stale bytes as the new version; an
+                // old note beside a new file serves new bytes as the old. Every
+                // window here leaves a file with no note instead, and a file
+                // with no note is re-downloaded: wasteful, never wrong.
+                Files.deleteIfExists(noteFor(model));
                 Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException | RuntimeException e) {
                 Files.deleteIfExists(staged);
                 throw e;
             }
+            writeSourceNote(model);
             return target;
         } catch (IOException e) {
             throw new ModelUnavailableException(
@@ -245,7 +247,10 @@ public final class ModelCache {
         // A watchdog closes the stream when nothing has arrived for the stall
         // limit, which is the only way to unblock a read() sitting on a dead
         // socket. The read then fails with an IOException the caller reports;
-        // stalled distinguishes that from an ordinary network error.
+        // stalled distinguishes that from an ordinary network error. It polls
+        // at a quarter of the limit and fires on elapsed time since the last
+        // byte, so the limit the message names is the limit that was applied,
+        // not up to double it.
         AtomicLong received = new AtomicLong();
         AtomicLong lastReported = new AtomicLong();
         var stalled = new AtomicLong(-1);
@@ -281,16 +286,23 @@ public final class ModelCache {
 
     private static Thread watchdog(InputStream body, AtomicLong received, AtomicLong stalled,
                                    Duration stallLimit) {
+        long pollMillis = Math.max(25, stallLimit.toMillis() / 4);
         Thread thread = new Thread(() -> {
-            long last = 0;
+            long lastCount = 0;
+            long lastChangeNanos = System.nanoTime();
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    Thread.sleep(stallLimit.toMillis());
+                    Thread.sleep(pollMillis);
                 } catch (InterruptedException e) {
                     return;
                 }
                 long now = received.get();
-                if (now == last) {
+                if (now != lastCount) {
+                    lastCount = now;
+                    lastChangeNanos = System.nanoTime();
+                    continue;
+                }
+                if (System.nanoTime() - lastChangeNanos >= stallLimit.toNanos()) {
                     stalled.set(now);
                     try {
                         body.close();
@@ -299,7 +311,6 @@ public final class ModelCache {
                     }
                     return;
                 }
-                last = now;
             }
         }, "mw-model-download-watchdog");
         thread.setDaemon(true);

@@ -89,24 +89,38 @@ public final class MlProviders {
     /**
      * Every provider that can be constructed, skipping any that cannot.
      *
-     * <p>{@link ServiceLoader}'s iterator throws {@link ServiceConfigurationError}
-     * out of {@code next()} when a provider's class fails to initialise — which
-     * is exactly what an ONNX-backed provider does on a machine without the
-     * natives, the machine the degrade-like-absent-LilyPond design exists for.
-     * Iterated plainly, one broken provider hides every working one and takes
-     * down {@code doctor}, the command whose job is reporting what is broken.
-     * The stream API exposes each provider individually, so a failure skips
-     * that provider and only that provider.
+     * <p>{@link ServiceLoader} reports a broken provider by throwing — a
+     * {@link ServiceConfigurationError} from construction or lookup, a
+     * {@link LinkageError} when a supertype is missing — and it does so from
+     * the traversal as well as from {@code get()}: a service entry naming an
+     * absent class fails in {@code hasNext}, before any provider object
+     * exists. Iterated plainly, one broken entry hides every working provider
+     * and takes down {@code doctor}, the command whose job is reporting what
+     * is broken. An ONNX-backed provider on a machine without the natives is
+     * the expected case, and #25 — the ML stack as an optional download — is
+     * exactly the change that leaves service entries whose classes are absent.
+     *
+     * <p>The retry bound exists because nothing guarantees the iterator
+     * advances past an entry whose lookup failed; without it, an entry that
+     * fails in {@code hasNext} forever would spin this loop forever. Hitting
+     * the bound abandons discovery with whatever was found, which still beats
+     * the alternative of finding nothing.
      */
     private static <P> List<P> instantiable(Class<P> type) {
         List<P> providers = new ArrayList<>();
-        ServiceLoader.load(type).stream().forEach(candidate -> {
+        var iterator = ServiceLoader.load(type).stream().iterator();
+        int failures = 0;
+        while (failures < 100) {
             try {
-                providers.add(candidate.get());
-            } catch (ServiceConfigurationError e) {
+                if (!iterator.hasNext()) {
+                    break;
+                }
+                providers.add(iterator.next().get());
+            } catch (ServiceConfigurationError | LinkageError e) {
                 // This provider cannot run here; the others still can.
+                failures++;
             }
-        });
+        }
         return providers;
     }
 }

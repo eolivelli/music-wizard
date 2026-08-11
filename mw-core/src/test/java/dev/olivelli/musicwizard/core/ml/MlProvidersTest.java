@@ -44,6 +44,23 @@ class MlProvidersTest {
         }
     }
 
+    /** Listed in the services file to prove one broken provider hides nothing. */
+    public static final class ThrowingSeparation implements SeparationProvider {
+        public ThrowingSeparation() {
+            throw new IllegalStateException("no natives here");
+        }
+
+        @Override
+        public String id() {
+            return "throwing";
+        }
+
+        @Override
+        public Separation separate(float[][] channels, int sampleRate) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
     public static final class FakeAsr implements AsrProvider {
         @Override
         public String id() {
@@ -91,5 +108,20 @@ class MlProvidersTest {
     void listsWhatIsPresent() {
         assertThat(MlProviders.separationIds()).contains("fake-separation");
         assertThat(MlProviders.asrIds()).contains("fake-asr");
+    }
+
+    @Test
+    @DisplayName("a broken provider hides nothing: not one that throws, not one that is absent")
+    void brokenProvidersAreSkippedAlone() {
+        // The services file lists three: the working fake, a class that does
+        // not exist anywhere -- which fails in the traversal, before any
+        // provider object is constructed, the way a service entry does when
+        // the ML stack is an optional download (#25) -- and one whose
+        // constructor throws, the way an ONNX provider does on a machine
+        // without the natives. The working one must survive both.
+        assertThat(MlProviders.separationIds())
+                .contains("fake-separation")
+                .doesNotContain("throwing");
+        assertThat(MlProviders.separation("fake-separation")).isPresent();
     }
 }
