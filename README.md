@@ -45,12 +45,12 @@ mw analyze mysong.mwz --tempo 128 --time-signature 4/4
 ```
 
 `--tempo` is in the beat you count, so in 6/8 it is dotted quarters rather than
-quarters. It replaces the tracked *rate* only. The tracked beats survive, and
-the map is anchored so that the first of them still falls a whole number of
-tracked beats from the start rather than part-way through one — but they keep
-the spacing they were tracked at, so halving the tempo leaves a grid whose beats
-are now eighth notes. The grid records that, so its own bar marks follow the
-tempo you typed rather than the one that was tracked ([#139][i139]).
+quarters. It replaces the tracked *rate* only. The tracked beats survive — the
+map is anchored on the first of them rather than on the start of the recording,
+so the map and the grid agree about where beat one falls — but they keep the
+spacing they were tracked at, so halving the tempo leaves a grid whose beats are
+now eighth notes. The grid records that, so its own bar marks follow the tempo
+you typed rather than the one that was tracked ([#139][i139]).
 Correcting a half-or-double reading fixes the chart; it does not re-track the
 beats, and it does not line the map's bar lines up with them ([#84][i84]).
 
