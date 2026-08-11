@@ -42,8 +42,7 @@ import java.util.List;
  * </pre>
  *
  * <p>The optional argument overrides {@code TempoEstimator.ACCENT_CEILING} in
- * this file's reproduction of the search, which is what the interval quoted on
- * that constant was swept with. At any other value the {@code argmax} and
+ * this file's reproduction of the search. At any other value the {@code argmax} and
  * {@code est} columns are reading two different estimators and may differ;
  * a difference there is the sweep working, not a defect.
  *
