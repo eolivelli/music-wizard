@@ -282,19 +282,31 @@ class LyricEngravingTest {
     @Test
     @DisplayName("every lane spans the chart, so the lanes stay aligned with the chords")
     void everyLaneSpansTheWholeChart() {
-        // A lane that stopped where its words did would leave the next system's
-        // syllables sitting under the wrong bars.
-        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(overlapping()));
+        // A lane that stopped where its words did would leave every bar after
+        // them under the wrong syllables. The second line here is sung in the
+        // first bar of four, so its lane is three quarters skips.
+        Confidence sure = Confidence.of(0.9);
+        Score score = chart(4).withLyrics(new Lyrics(List.of(
+                new LyricLine(List.of(
+                        LyricWord.ofSeconds("held", 0.1, 0.4, sure),
+                        LyricWord.ofSeconds("long", 6.0, 6.4, sure)), sure),
+                new LyricLine(List.of(LyricWord.ofSeconds("brief", 0.5, 0.9, sure)), sure)),
+                "und", sure));
 
-        assertThat(lanes).allSatisfy(lane -> assertThat(lane).hasSize(2));
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(2);
+        assertThat(lanes).allSatisfy(lane -> assertThat(lane).hasSize(4));
+        assertThat(lanes.get(1).get(0)).contains("\"brief\"");
+        assertThat(lanes.get(1).subList(1, 4)).allSatisfy(bar ->
+                assertThat(bar).isEqualTo("\\skip 1 |"));
     }
 
     @Test
     @DisplayName("lines that do not overlap share one lane")
     void separateLinesShareOneLane() {
-        // The ordinary lyric, and the reason a lane is opened by the cursor
-        // rather than by the line count: a second lane costs vertical space on
-        // every system of the chart.
+        // The ordinary lyric. A lane is spent only where two lines are sung at
+        // once, since two rows of words on the page is what says they were.
         Score score = sung(4, """
                 [00:00.00]<00:00.00>first <00:01.00>line
                 [00:04.00]<00:04.00>second <00:05.00>line
@@ -304,31 +316,60 @@ class LyricEngravingTest {
     }
 
     @Test
-    @DisplayName("more overlapping lines than lanes fall back to the forward push")
-    void overlapsPastTheLastLaneArePushed() {
+    @DisplayName("lines sung before the chart begins share one lane")
+    void linesBeforeTheChartShareOneLane() {
+        // A moment before the first bar has no unit of its own -- the grid
+        // starts where the chart does -- so every one of them is placed at the
+        // chart's start and pushed clear of the last. Read as a lane cursor
+        // that would say these two sequential lines were sung together, and
+        // the page would carry a second row of words claiming as much.
+        Confidence sure = Confidence.of(0.9);
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 2.0, 4.0, sure),
+                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR, 4.0, 6.0, sure));
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 6.0)
+                .withChords(new ChordProgression(chords, sure))
+                .withLyrics(new Lyrics(List.of(
+                        new LyricLine(List.of(
+                                LyricWord.ofSeconds("Ave", 0.20, 0.60, sure),
+                                LyricWord.ofSeconds("Maria", 0.70, 1.10, sure)), sure),
+                        new LyricLine(List.of(
+                                LyricWord.ofSeconds("gratia", 1.30, 1.70, sure),
+                                LyricWord.ofSeconds("plena", 1.80, 1.95, sure)), sure)),
+                        "und", sure));
+
+        List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
+
+        assertThat(lanes).hasSize(1);
+        assertThat(lanes.get(0).get(0)).contains("\"Ave\"").contains("\"Maria\"")
+                .contains("\"gratia\"").contains("\"plena\"");
+    }
+
+    @Test
+    @DisplayName("past the last lane a line goes in the one free longest")
+    void overlapsPastTheLastLaneTakeTheLaneFreeLongest() {
         // The page carries a fixed number of lanes, so a third line sung over
         // the first two is engraved the way a single lane always engraved it:
-        // crammed against the cursor it could not clear. Its words are still on
-        // the page and the bars still sum.
+        // crammed against the cursor it could not clear. Which lane that is
+        // decides how far it is pushed -- here the second, whose words end four
+        // seconds before the first's do.
         Confidence sure = Confidence.of(0.9);
         Score score = chart(4).withLyrics(new Lyrics(List.of(
                 new LyricLine(List.of(
                         LyricWord.ofSeconds("high", 0.1, 0.4, sure),
-                        LyricWord.ofSeconds("voice", 5.0, 5.4, sure)), sure),
+                        LyricWord.ofSeconds("far", 7.0, 7.4, sure)), sure),
                 new LyricLine(List.of(
                         LyricWord.ofSeconds("mid", 0.2, 0.5, sure),
-                        LyricWord.ofSeconds("range", 5.1, 5.5, sure)), sure),
+                        LyricWord.ofSeconds("near", 1.0, 1.4, sure)), sure),
                 new LyricLine(List.of(
-                        LyricWord.ofSeconds("low", 0.3, 0.6, sure),
-                        LyricWord.ofSeconds("part", 5.2, 5.6, sure)), sure)),
+                        LyricWord.ofSeconds("low", 0.3, 0.6, sure)), sure)),
                 "und", sure));
 
         List<List<String>> lanes = lyricLanes(LyricSheet.toLilyPond(score));
 
         assertThat(lanes).hasSize(2);
-        String all = lanes.stream().map(lane -> String.join(" ", lane))
-                .reduce("", (a, b) -> a + " " + b);
-        assertThat(all).contains("\"low\"").contains("\"part\"");
+        assertThat(String.join(" ", lanes.get(1))).contains("\"low\"");
+        assertThat(String.join(" ", lanes.get(0))).doesNotContain("\"low\"");
         assertThat(lanes).allSatisfy(lane -> assertThat(lane).allSatisfy(bar ->
                 assertThat(quartersIn(bar)).as("%s", bar).isCloseTo(4.0, within(1e-9))));
     }

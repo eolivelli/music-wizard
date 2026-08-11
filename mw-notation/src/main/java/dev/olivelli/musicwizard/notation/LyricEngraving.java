@@ -66,11 +66,12 @@ final class LyricEngraving {
     /**
      * How many {@code Lyrics} contexts the page carries.
      *
-     * <p>Each one costs vertical space on every system of the chart, so there
-     * cannot be a lane per line. Two is what the overlaps the model states need:
-     * a recognition span running into the line after it, and two lines written
-     * on one moment (#340). A line sung over more than one other falls back to
-     * the forward push — see {@link #placed}.
+     * <p>Two, which is what the overlaps the model states need: a recognition
+     * span running into the line after it, and two lines written on one moment
+     * (#340). Bounded at all because otherwise the count is whatever recognition
+     * happened to overlap, and a lane costs vertical space on every system where
+     * it holds a word. A line sung over more than one other falls back to the
+     * forward push — see {@link #placed}.
      */
     private static final int LANES = 2;
 
@@ -205,11 +206,11 @@ final class LyricEngraving {
      * lines may overlap in time — recognition spans on sung speech do, see
      * {@link dev.olivelli.musicwizard.core.model.Lyrics#allWords()}. So lines
      * take lanes first-fit in the order {@code Lyrics} keeps them, which is by
-     * their first word: a line goes in the first lane whose cursor it clears,
-     * and past {@link #LANES} into whichever lane has to be pushed least. A line
-     * goes into one lane whole, because {@code hyphenatedToNext} joins a word to
-     * the next word <em>in its own line</em>, so a line split across lanes would
-     * split a hyphen chain.
+     * their first word: a line goes in the first lane free at the moment it
+     * begins, and past {@link #LANES} into whichever lane was free longest ago.
+     * A line goes into one lane whole, because {@code hyphenatedToNext} joins a
+     * word to the next word <em>in its own line</em>, so a line split across
+     * lanes would split a hyphen chain.
      *
      * <p>Within a lane a word that would still land behind the cursor is pushed
      * up to the next free unit, and <b>dropped only when that push runs past the
@@ -231,16 +232,22 @@ final class LyricEngraving {
         // which is what the page did before syllables were split at all.
         Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
         List<List<Syllable>> lanes = new ArrayList<>();
-        long[] cursor = new long[LANES];
+        // The moment of the last word each lane engraved, which is what says
+        // whether the lane is free -- not where that word landed on the grid.
+        // The two differ: a word is placed by a unit that is rounded, clamped
+        // into the chart and pushed clear of its neighbour, so two lines sung
+        // one after the other can land on one unit and read as simultaneous.
+        double[] sungAt = new double[LANES];
         for (int i = 0; i < LANES; i++) {
             lanes.add(new ArrayList<>());
-            cursor[i] = Long.MIN_VALUE;
+            sungAt[i] = Double.NEGATIVE_INFINITY;
         }
         long chartEnd = barStart[bars.size()];
         for (LyricLine line : score.lyrics().lines()) {
-            int lane = laneFor(unitOf(line.startSeconds(), bars, barStart), cursor);
+            int lane = laneFor(line.startSeconds(), sungAt);
             List<Syllable> syllables = lanes.get(lane);
-            long previous = cursor[lane];
+            long previous = syllables.isEmpty() ? Long.MIN_VALUE
+                    : syllables.get(syllables.size() - 1).unit();
             for (LyricWord word : line.words()) {
                 List<Hyphenator.Syllable> parts = hyphenator
                         .map(h -> h.syllables(word.text()))
@@ -256,34 +263,36 @@ final class LyricEngraving {
                 if (!placed.isEmpty()) {
                     syllables.addAll(placed);
                     previous = placed.get(placed.size() - 1).unit();
+                    sungAt[lane] = word.startSeconds();
                 }
             }
-            cursor[lane] = previous;
         }
-        // A lane nothing reached is not engraved: a score whose lines never
-        // overlap comes out the one block it always did.
+        // A lane nothing reached is not engraved: lyrics whose lines follow one
+        // another come out the one block they always did.
         return lanes.stream().filter(lane -> !lane.isEmpty()).toList();
     }
 
     /**
-     * The lane a line opening on {@code unit} goes in.
+     * The lane a line beginning at {@code startSeconds} goes in.
      *
-     * <p>The first lane the unit clears, so a line takes a fresh lane only when
-     * it has to. A lane's cursor is where its last syllable landed rather than
-     * where its last line ended, so a word dropped for want of room does not
-     * send the lines after it into a lane of their own.
+     * <p>The first lane whose last word was sung before then, so a line takes a
+     * fresh lane only where it would be engraved beside something still being
+     * sung — which is what a second row of words on the page says. A lane is
+     * held by the words it engraved rather than by the lines it was given, so a
+     * word dropped for want of room does not send the lines after it into a
+     * lane of their own.
      *
-     * <p>When every lane is occupied the line still has to go somewhere, and it
-     * goes where the push costs least: the lane whose cursor is earliest. That
-     * is the behaviour a single lane always had.
+     * <p>When every lane is held the line still has to go somewhere, and it goes
+     * where the push costs least: the lane free longest. That is the behaviour a
+     * single lane always had.
      */
-    private static int laneFor(long unit, long[] cursor) {
+    private static int laneFor(double startSeconds, double[] sungAt) {
         int least = 0;
-        for (int lane = 0; lane < cursor.length; lane++) {
-            if (cursor[lane] < unit) {
+        for (int lane = 0; lane < sungAt.length; lane++) {
+            if (sungAt[lane] < startSeconds) {
                 return lane;
             }
-            if (cursor[lane] < cursor[least]) {
+            if (sungAt[lane] < sungAt[least]) {
                 least = lane;
             }
         }
