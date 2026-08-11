@@ -188,14 +188,70 @@ def analyze(jar: Path, mp3: Path) -> dict:
         return json.loads((ws / "score" / "score.json").read_text())
 
 
-def bar_label(spans, start: float, end: float):
-    """The chord covering most of [start, end), or None."""
-    best, best_overlap = None, 0.0
+def bar_credit(covered: dict) -> dict:
+    """How one bar's credit divides between the chords in it.
+
+    The chord covering most of the bar takes all of it: that is the chord a
+    reader takes from the bar, and it is the rule both harnesses have always
+    applied. Where several cover exactly as much, the bar is split equally
+    between them instead of the first one taking it, which is #242 -- which
+    chord comes first is a fact about print order, not about the recording, and
+    the chart harness meets an exact tie on nearly every bar it prints as two
+    chords, because `ChartLayout.atHarmonicRhythm` writes an evenly split 4/4
+    bar as exactly 2+2.
+
+    A tie is exact equality rather than a near miss. On the chart's cells that
+    is the whole of it, since the lengths are written by the layout; on the
+    estimated spans it is rarer, and a tolerance would be one more arbitrary
+    constant deciding the same bars.
+    """
+    if not covered:
+        return {}
+    top = max(covered.values())
+    tied = [chord for chord, amount in covered.items() if amount == top]
+    return {chord: 1.0 / len(tied) for chord in tied}
+
+
+def bar_shares(spans, start: float, end: float) -> dict:
+    """The credit for [start, end), by {@link bar_credit} over the spans in it.
+
+    Measured on the single longest span per chord rather than on the chord's
+    total across the bar, which is the rule this harness has always used and is
+    not the chart harness's; see that script's header for why the difference is
+    harmless.
+    """
+    longest: dict = {}
     for s in spans:
         overlap = min(end, s["endSeconds"]) - max(start, s["startSeconds"])
-        if overlap > best_overlap:
-            best, best_overlap = s, overlap
-    return chord_of(best) if best else None
+        if overlap > 0:
+            chord = chord_of(s)
+            longest[chord] = max(longest.get(chord, 0.0), overlap)
+    return bar_credit(longest)
+
+
+def accuracy(shares: list, want: list) -> tuple[float, float]:
+    """Bars correct on root and on root+quality, at the cycle's best rotation.
+
+    Shared with the chart harness, which asks the same question over different
+    bars: one rule, so the two cannot come to disagree about what counts as a
+    correct bar. A bar whose credit is split contributes each share separately,
+    so a bar the estimate splits between a right chord and a wrong one counts
+    as the half it got right.
+    """
+    cycle = len(want)
+
+    def rotated(rotation: int) -> tuple[float, float]:
+        root_ok = full_ok = 0.0
+        for index, share in enumerate(shares):
+            acceptable = want[(index + rotation) % cycle]
+            for got, credit in share.items():
+                if got is not None and any(got[0] == w[0] for w in acceptable):
+                    root_ok += credit
+                    if any(got == w for w in acceptable):
+                        full_ok += credit
+        return root_ok, full_ok
+
+    return max((rotated(r) for r in range(cycle)), key=lambda t: t[0])
 
 
 def score(mp3: Path, doc: dict, truth: list[str]) -> None:
@@ -207,30 +263,20 @@ def score(mp3: Path, doc: dict, truth: list[str]) -> None:
         return
 
     bars = list(zip(downbeats, downbeats[1:]))
-    labels = [bar_label(spans, a, b) for a, b in bars]
+    shares = [bar_shares(spans, a, b) for a, b in bars]
 
-    want = parse_truth(truth)
-    cycle = len(want)
-
-    def rotated_score(rot: int) -> tuple[int, int]:
-        root_ok = full_ok = 0
-        for i, got in enumerate(labels):
-            acceptable = want[(i + rot) % cycle]
-            if got is not None and any(got[0] == w[0] for w in acceptable):
-                root_ok += 1
-                if any(got == w for w in acceptable):
-                    full_ok += 1
-        return root_ok, full_ok
-
-    root_ok, full_ok = max((rotated_score(r) for r in range(cycle)),
-                           key=lambda t: t[0])
+    root_ok, full_ok = accuracy(shares, parse_truth(truth))
     nc_time = sum(s["endSeconds"] - s["startSeconds"]
                   for s in spans if chord_of(s) is None)
     duration = doc.get("durationSeconds", 1.0)
 
-    n = len(labels)
-    print(f"  {mp3.name}: bars={n}  root {root_ok}/{n} ({100 * root_ok / n:.1f}%)"
-          f"  root+quality {full_ok}/{n} ({100 * full_ok / n:.1f}%)"
+    n = len(shares)
+    # How many bars no chord dominates is reported beside the columns, so a
+    # split bar's half is never read as a bar the estimate got right.
+    split = sum(1 for share in shares if len(share) > 1)
+    print(f"  {mp3.name}: bars={n}  root {root_ok:.1f}/{n} ({100 * root_ok / n:.1f}%)"
+          f"  root+quality {full_ok:.1f}/{n} ({100 * full_ok / n:.1f}%)"
+          f"  split {split}"
           f"  N.C. {100 * nc_time / duration:.1f}% of {duration:.0f}s")
 
 

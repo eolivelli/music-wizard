@@ -116,9 +116,9 @@ chart against the known changes — `tools/score-chart.py`, which reads the
 engraved source rather than the model behind it — the share of bars carrying the
 right chord on that recording went from 67% to 82% at [#200][i200]. All five
 benchmarks that existed at the time improved or held; the next largest was 80% to
-93%. Two more have since been added to the corpus and one of them scores lower
-under this change — see [#242][i242], which measures why that particular cell is
-not a measurement.
+93%. Two more have since been added to the corpus and one of them scored lower
+under this change, mostly through the rule the harness then decided an evenly
+split bar by — [#242][i242] measures that and has since replaced it.
 
 [i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i84]: https://github.com/eolivelli/music-wizard/issues/84
