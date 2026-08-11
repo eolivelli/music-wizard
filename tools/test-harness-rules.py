@@ -415,7 +415,11 @@ class Keying(unittest.TestCase):
     def test_every_harness_marks_an_absent_file_the_same_way(self):
         """premerge.sh turns a row carrying this marker into a SKIP. All three
         harnesses must produce it through their missing_line, or a fresh
-        worktree fails the gate for every branch again (#365)."""
+        worktree fails the gate for every branch again (#365). The reader is
+        held to the same literal as the writers: if premerge.sh's copy of the
+        marker drifts, this fails before the gate does."""
+        self.assertIn(self.MARKER,
+                      (Path(__file__).resolve().parent / "premerge.sh").read_text())
         for line in (samples.missing_line("x.mp3"),
                      samples.missing_line("key x.mp3"),
                      chart.missing_line("x.mp3"),

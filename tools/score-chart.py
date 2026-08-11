@@ -146,11 +146,12 @@ QUALITY = {
 }
 
 
-
 def missing_line(label: str) -> str:
-    """A baselined name this machine cannot measure. The '(local-only' marker
-    is what premerge.sh skips on; test-harness-rules.py holds both to it."""
+    """A baselined name this machine cannot measure; premerge.sh skips rows
+    carrying this line's marker, and test-harness-rules.py holds every writer
+    of it, and premerge.sh itself, to one literal."""
     return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
+
 
 def quarters(duration: str) -> float:
     """A LilyPond duration token as a length in quarter-note beats."""

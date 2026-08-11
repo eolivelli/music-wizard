@@ -19,7 +19,7 @@
 #
 # Benchmarks missing locally are reported and skipped, never failed, and the
 # verdict says how many rows were skipped: the gate can only vouch for what
-# this machine could measure. The SKIP lines say where each file comes from.
+# this machine could measure.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"
