@@ -237,17 +237,11 @@ public final class TempoOctave {
         return new Scored(plain, ranked, frameRate, bestTempo);
     }
 
-    /** {@code TempoEstimator.compressAccents}, reproduced, ceiling included. */
+    /** {@code TempoEstimator.compressAccents}, reproduced. */
     private static double[] compressAccents(double[] signal) {
         double[] out = new double[signal.length];
-        double mean = 0;
         for (int i = 0; i < signal.length; i++) {
             out[i] = Math.clamp(signal[i], -3.0, 3.0);
-            mean += out[i];
-        }
-        mean /= Math.max(1, signal.length);
-        for (int i = 0; i < out.length; i++) {
-            out[i] -= mean;
         }
         return out;
     }

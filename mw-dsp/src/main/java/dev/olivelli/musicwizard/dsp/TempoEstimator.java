@@ -290,22 +290,29 @@ public final class TempoEstimator {
      * How many standard deviations of the envelope an accent may contribute to
      * the candidate search before it is held level with the others.
      *
-     * <p>Three, and the number is not doing the work: 2.5 and 4 read every
-     * benchmark in the corpus identically, and 2 differs on one recording by
-     * less than either sample harness can resolve. Attacks reach forty
-     * deviations and above, so any ceiling in that range holds the loud beats
-     * level with each other; what a lower one starts doing is holding the
-     * quiet ones level too, which is a different operation and not this one.
+     * <p>It has to be low enough to level the accents themselves rather than to
+     * trim outliers above them. About two and a half percent of an envelope's
+     * frames sit above three deviations across this corpus, so this is roughly a
+     * 97.5th percentile: the loud beats are exactly what it levels. Sweeping it
+     * over the corpus, the interval that both corrects the recording this fixes
+     * and leaves every other benchmark's tracked rate where it is runs from
+     * about 2.5 to 4.5 — below it the quiet frames start being levelled too and
+     * three more recordings move, and at 4.75 and above the correction stops
+     * happening at all. Three sits in the middle of that interval, and the
+     * interval is what the choice rests on rather than the value.
      *
      * <p>Expressed in deviations because {@link OnsetEnvelope} normalises to
-     * unit variance over the recording, so this is a share of the envelope's
-     * own scale rather than a level in any absolute unit.
+     * unit variance over the recording, so this is a share of the envelope's own
+     * scale rather than a level in any absolute unit. It is not a bound on how
+     * large a frame can be: the largest frame of most recordings here is tens of
+     * deviations and sits in the lead-in, which is the silence artefact
+     * {@code OnsetEnvelope.SILENCE_FLOOR} documents rather than an attack.
      */
     private static final double ACCENT_CEILING = 3.0;
 
     /**
-     * The envelope with its loudest accents held level, mean removed, as the
-     * candidates are ranked on.
+     * The envelope with its loudest accents held level, as the candidates are
+     * ranked on.
      *
      * <p><b>Why the ranking does not read the envelope directly.</b> Metre is
      * accent alternation: a bar states its beats at unequal strengths, and that
@@ -323,54 +330,41 @@ public final class TempoEstimator {
      *
      * <p><b>A ceiling rather than a compression curve, and the difference is
      * measured rather than aesthetic.</b> Any monotone map that shrinks {@code r}
-     * shrinks the bias — a root, a log, a power — and every one of them moves
-     * this corpus's target benchmark the same way. They differ in what else they
-     * do: a curve that shrinks the top also <em>raises the floor</em>, and the
-     * quiet frames between the beats are where a subdivision lives. On
+     * shrinks the bias — a root, a log, a power — and every one of them corrects
+     * the same recording here. They differ in what else they do: a curve that
+     * shrinks the top also <em>raises the floor</em>, and the quiet frames
+     * between the beats are where a subdivision lives. On
      * {@code cm-blues-68-95.mp3}, whose 6/8 groove states every eighth quietly,
-     * the root promotes the eighth to the tracked pulse; a ceiling leaves that
-     * recording's reading alone, because it never touches the floor. The bias
-     * this exists to remove is at the loud end, so the correction belongs at
-     * the loud end.
+     * a square root promotes the eighth to the tracked pulse; a ceiling leaves
+     * that recording's reading alone, because it never touches the floor. The
+     * bias this exists to remove is at the loud end, so the correction belongs
+     * at the loud end.
      *
      * <p>What a ceiling shares with the curves is a cost near the top of the
      * tempo range: a click track has no accent to level, but flattening its
      * peaks still changes their shape, and where a click's beat and its half are
      * all but tied that moves a few of them onto the half (#44). Measured, it is
-     * the same three tempi either way, so it is the cost of correlating a
-     * modified envelope at all rather than of this choice within it.
+     * the same tempi either way, so it is the cost of correlating a modified
+     * envelope at all rather than of this choice within it.
      *
-     * <p>The mean is removed again afterwards. Levelling does not preserve a
-     * zero mean and the input does not always have one to preserve: every
-     * window's estimate is taken over a slice of an envelope normalised across
-     * the whole recording, and a slice of a mean-zero signal is not mean-zero —
-     * the same fact {@link #peakiness} is computed about its own mean for. An
-     * autocorrelation of a signal with a mean adds the same positive constant
-     * at every lag, and a constant added to every candidate is not neutral once
-     * the perceptual prior multiplies it: it drags the winner toward 120 BPM.
-     *
-     * <p><b>Under a ceiling that constant is tiny and this line changes no
-     * reading in the corpus; under a curve it is not, and it does.</b> A root
-     * leaves a mean fifty times larger relative to the variance, enough to move
-     * a benchmark's tracked grid, which is what makes the line worth keeping
-     * rather than worth deleting as a no-op: it is the difference between a
-     * correction whose size is set by the material and one that is not. Adding
-     * a constant can only ever move a winner toward 120 in log-tempo, whatever
-     * the recording, so it helps exactly those whose true tempo lies nearer 120
-     * than their half does and can do nothing for the rest — an uncontrolled
-     * second prior rather than evidence about a beat (#353).
+     * <p><b>The mean is deliberately not removed afterwards.</b> Levelling does
+     * not preserve a zero mean, and an autocorrelation of a signal with a mean
+     * adds the same positive constant at every lag, which under the perceptual
+     * prior drags the winner toward 120 BPM — so removing it looks like the
+     * tidy thing to do. Two measurements say otherwise. The constant a ceiling
+     * leaves is a fraction of a percent of the compressed variance, where a
+     * curve leaves tens of times more; and the estimate is taken over a
+     * <em>window</em>, whose slice of a mean-zero envelope has a mean of its
+     * own that this method has no business removing — done here it moved two
+     * recordings' grids by a bar each, which is a change to windowing rather
+     * than to the accent bias this is about. A curve needs the removal and
+     * cannot have it cheaply; that is one more reason the correction is a
+     * ceiling (#353).
      */
     private static double[] compressAccents(double[] signal) {
         double[] out = new double[signal.length];
-        double mean = 0;
         for (int i = 0; i < signal.length; i++) {
-            double value = signal[i];
-            out[i] = Math.clamp(value, -ACCENT_CEILING, ACCENT_CEILING);
-            mean += out[i];
-        }
-        mean /= Math.max(1, signal.length);
-        for (int i = 0; i < out.length; i++) {
-            out[i] -= mean;
+            out[i] = Math.clamp(signal[i], -ACCENT_CEILING, ACCENT_CEILING);
         }
         return out;
     }
