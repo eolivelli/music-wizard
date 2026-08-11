@@ -24,6 +24,11 @@ jobs:
           cache: maven
       - name: Build and run unit tests
         run: mvn -B --no-transfer-progress verify
+      # The sample harnesses cannot run here -- four benchmarks are local-only
+      # for licensing -- but the arithmetic they score a bar by can, on
+      # fixtures. Seconds, and no jar needed.
+      - name: Test the sample-harness scoring rules
+        run: python3 tools/test-harness-rules.py
 
   # Slow tier: exercises the real engraver and the ground-truth loop.
   integration:

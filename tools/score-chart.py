@@ -54,21 +54,21 @@ Both columns are reported per benchmark:
                accident -- "the bars are what make the columns differ".
 
                `ChartLayout.atHarmonicRhythm` writes an evenly split 4/4 bar as
-               exactly 2+2 quarters, so "the chord filling most of the bar" is a
-               **tie**, and `score` below breaks ties positionally. That is not
-               an edge case: 88 of the 91 multi-cell bars over those same seven
-               are exact 2+2 splits, so the positional tie-break is the whole
-               rule for multi-chord bars.
+               exactly 2+2 quarters, so on such a bar "the chord filling most of
+               it" names no chord, and the bar is divided equally between the
+               two (`bar_credit`). That case is not an edge: nearly every bar
+               these charts print as two chords is an exact 2+2, so before #242
+               the whole of the rule for them was that the earlier cell won.
 
-               On `eb7-vamp-130.mp3` it decides 34 bars and loses all 34, which
-               is most of the 18.5-point gap between that file's model column
-               (93.4%) and its chart column (74.9%). The bars themselves push
-               the other way -- 8 bars wrong outright against the model's 11.
-               In points on 167 bars: the tie-break costs about twenty and the
-               bar lines gain about two. The two partly cancel, which is the
-               only reason 18.5 looks like a single effect. #242 carries the
-               measurement and is about that tie-break rather than about these
-               two columns.
+               Which cell is earlier is not evidence, and it does not average
+               out. At a bar rate the recording holds, the bar lines keep a
+               fixed phase, so a recurring mid-bar change lands in the same
+               place in every bar and the tie-break decides all of them the same
+               way -- which is how a column meant to measure bar placement came
+               to move with the bar rate in whichever direction that phase
+               happened to point.
+  split        bars no chord dominates, whose credit was divided. Reported so
+               that a half is never read as a bar the chart got right.
   short
                the share of consecutive chord changes that are closer together
                than one counted beat, on each of the two axes there are. This is
@@ -299,43 +299,37 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     return 100.0 * on_tracked / len(gaps), 100.0 * on_chart / len(gaps)
 
 
+def shares_of(bars: list) -> list[dict]:
+    """Each bar's credit, divided between the chords printed in it.
+
+    The chord filling most of the bar takes it, which is what a reader takes
+    from the bar; a bar the layout splits evenly is halved between the two,
+    which is `bar_credit`'s rule and #242.
+    """
+    shares = []
+    for bar in bars:
+        held: dict[tuple[int, str] | None, float] = {}
+        for chord, length in bar:
+            held[chord] = held.get(chord, 0.0) + length
+        shares.append(_samples.bar_credit(held))
+    return shares
+
+
 def score(name: str, lilypond: str, truth: str,
           short: tuple[float, float] | None) -> None:
     bars = bars_of(lilypond)
     printed = sum(len(bar) for bar in bars)
+    shares = shares_of(bars)
 
-    labels = []
-    for bar in bars:
-        # The chord filling most of the bar, which is what a reader takes from
-        # it. Ties go to the earlier cell, so a bar split evenly reads as the
-        # chord it opens on.
-        held: dict[tuple[int, str] | None, float] = {}
-        order: list[tuple[int, str] | None] = []
-        for chord, length in bar:
-            if chord not in held:
-                held[chord] = 0.0
-                order.append(chord)
-            held[chord] += length
-        labels.append(max(order, key=lambda c: held[c]) if order else None)
-
-    want = parse_truth(truth)
-    cycle = len(want)
-
-    def rotated(rotation: int) -> tuple[int, int]:
-        root_ok = full_ok = 0
-        for index, got in enumerate(labels):
-            acceptable = want[(index + rotation) % cycle]
-            if got is not None and any(got[0] == w[0] for w in acceptable):
-                root_ok += 1
-                if any(got == w for w in acceptable):
-                    full_ok += 1
-        return root_ok, full_ok
-
-    root_ok, full_ok = max((rotated(r) for r in range(cycle)), key=lambda t: t[0])
+    root_ok, full_ok = _samples.accuracy(shares, parse_truth(truth))
     n = max(len(bars), 1)
+    # How many bars no chord dominates is reported beside the columns, so a
+    # split bar's half is never read as a bar the chart got right.
+    split = sum(1 for share in shares if len(share) > 1)
     print(f"  {name}: bars={len(bars)}  chords/bar {printed / n:.2f}"
-          f"  root {root_ok}/{n} ({100 * root_ok / n:.1f}%)"
-          f"  root+quality {full_ok}/{n} ({100 * full_ok / n:.1f}%)"
+          f"  root {root_ok:.1f}/{n} ({100 * root_ok / n:.1f}%)"
+          f"  root+quality {full_ok:.1f}/{n} ({100 * full_ok / n:.1f}%)"
+          f"  split {split}"
           f"  short: " + ("not measurable"
                             if short is None
                             else f"tracked {short[0]:.1f}%, chart {short[1]:.1f}%"))

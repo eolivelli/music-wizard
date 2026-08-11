@@ -152,14 +152,21 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
      * for five of the seven, from the onset envelope's autocorrelation: 106.000,
      * 105.000, 89.998, 89.999 and 149.889. The two vamps' 110 and 130 are not in
-     * it, and nothing committed sweeps this constant -- both are #245. So the
-     * axis is re-runnable and the plateau below is not; those figures were taken
-     * by hand and confirmed independently in review.
+     * it. {@code tools/measure-tempo.py --sweep} re-derives both the axis and
+     * the plateau (#245), measuring the vamps' 110 and 130 directly and, since
+     * #333, the bossa's half-note pulse as a measured reference rather than a
+     * modelled one. Its printout is the current reading, over grids the
+     * figures below do not describe -- they score a since-retired recording,
+     * predate the bossa's change of pulse, and were taken on an earlier
+     * tracker -- so the sweep's cells are not expected to reproduce them;
+     * they stay as the measurement that chose the value. What the retake does
+     * settle is the upper edge: the cliff above 0.30 is gone with the detour
+     * population behind it, as its bullet records.
      *
      * <p>The bossa's figure is a quarter-note rate. When the sweep below was
      * taken its tracker ran at two thirds of it, and that pulse is what every
      * bossa percentage below is measured against; since #231 it runs at half
-     * of it, and the sweep has not been retaken.
+     * of it, which is the pulse the retaken sweep measures directly.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
