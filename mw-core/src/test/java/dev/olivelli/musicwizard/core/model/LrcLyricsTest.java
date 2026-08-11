@@ -95,8 +95,8 @@ class LrcLyricsTest {
         }
 
         @Test
-        @DisplayName("no line outlives its successor, whatever a word tag says")
-        void linesNeverOverlap() {
+        @DisplayName("no line outlives the successor it ends at, whatever a word tag says")
+        void aLineDoesNotOutliveTheSuccessorItEndsAt() {
             // A mistyped minute in an A2 tag put one line's end past several
             // later ones, and the sheet's cursor then handed it every chord they
             // should have had.
@@ -113,10 +113,19 @@ class LrcLyricsTest {
                     [01:44.00]later
                     """, 300.0);
 
+            // Against the next line that starts later, not simply the next:
+            // lines on one moment share a span and so bound nothing (#340).
             for (int i = 0; i + 1 < lyrics.lines().size(); i++) {
-                assertThat(lyrics.lines().get(i).endSeconds())
-                        .as("line %d must not outlive line %d", i, i + 1)
-                        .isLessThanOrEqualTo(lyrics.lines().get(i + 1).startSeconds());
+                double start = lyrics.lines().get(i).startSeconds();
+                for (int j = i + 1; j < lyrics.lines().size(); j++) {
+                    double later = lyrics.lines().get(j).startSeconds();
+                    if (later > start) {
+                        assertThat(lyrics.lines().get(i).endSeconds())
+                                .as("line %d must not outlive line %d", i, j)
+                                .isLessThanOrEqualTo(later);
+                        break;
+                    }
+                }
             }
         }
 
@@ -557,6 +566,49 @@ class LrcLyricsTest {
             // Both of the second pair too, and neither is zero-length.
             assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(8.0);
             assertThat(lyrics.lines().get(3).endSeconds()).isEqualTo(8.0);
+        }
+
+        @Test
+        @DisplayName("a pair on one moment before a break is cut, like any line before a break")
+        void aPairBeforeABreakIsCut() {
+            // The gap that ends a line is the one before the entry it ends at,
+            // and for the first of a pair that entry is two along. Reading the
+            // flag of the gap beside it instead reads a zero gap's, which is
+            // never a break, so the line runs through the whole instrumental
+            // and takes every chord sounding in it.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [00:00.00]one
+                    [00:04.00]two
+                    [00:08.00]high three
+                    [00:08.00]low three
+                    [02:00.00]after the solo
+                    """, 200.0);
+
+            assertThat(lyrics.lines().get(2).endSeconds())
+                    .isEqualTo(lyrics.lines().get(3).endSeconds());
+            assertThat(lyrics.lines().get(2).endSeconds()).isEqualTo(12.0);
+        }
+
+        @Test
+        @DisplayName("an offset that clamps several starts to zero makes them one moment")
+        void clampedStartsAreOneMoment() {
+            // The statistics read the starts a line actually gets, not the ones
+            // written down. Measured before the clamp these are three distinct
+            // gaps, so the first two lines would not share a span with the third
+            // and the run would not be cut at the break.
+            Lyrics lyrics = LrcLyrics.parse("""
+                    [offset:+9000]
+                    [00:01.00]a
+                    [00:03.00]b
+                    [00:05.00]c
+                    [00:20.00]after the solo
+                    """, 300.0);
+
+            assertThat(lyrics.lines().get(0).startSeconds()).isZero();
+            assertThat(lyrics.lines().get(1).startSeconds()).isZero();
+            assertThat(lyrics.lines().get(2).startSeconds()).isZero();
+            assertThat(lyrics.lines().get(0).endSeconds())
+                    .isEqualTo(lyrics.lines().get(2).endSeconds());
         }
 
         @Test
