@@ -62,12 +62,15 @@ import java.util.TreeMap;
  * — same bars, same rotation, same counts — and that agreement was the only
  * reason to trust anything else here. #242 has since divided a bar no chord
  * covers most of between the chords tied for it, and {@link #labelOf} below
- * still gives such a bar to the earlier span, so the columns here now read a
- * fraction of a point above the committed baseline on the benchmarks that hold
- * such bars. The rule is not brought over because every figure quoted from this
- * bench elsewhere was measured under it; #345 carries the choice. Until then the
- * agreement is close rather than exact, and what this is for is comparing its
- * own runs against each other.
+ * still gives such a bar to the earlier span. Which way that differs is a fact
+ * about the recording rather than about the two rules — the earlier span holds
+ * the right chord on some benchmarks and the wrong one on others — and how far
+ * it goes on these spans is the difference between the two revisions of
+ * {@code tools/baselines/score-samples.txt} that #242 regenerated. The rule is
+ * not brought over because every figure quoted from this bench elsewhere was
+ * measured under it; #345 carries the choice. Until then the agreement is no
+ * longer exact, and what this is for is comparing its own runs against each
+ * other.
  *
  * <p>What it adds is the number of chord spans and the quality reported on the
  * bars whose root is right, which is where #208 was visible and the two accuracy

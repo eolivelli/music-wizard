@@ -49,8 +49,7 @@ class BarCredit(unittest.TestCase):
                          samples.bar_credit({G: 2.0, C: 2.0}))
 
     def test_three_and_four_way_ties_divide_the_same_way(self):
-        """Both occur in the corpus, and a committed baseline line rests on a
-        third of a bar."""
+        """A committed baseline line rests on a third of a bar."""
         self.assertEqual({C: 1 / 3, G: 1 / 3, F: 1 / 3},
                          samples.bar_credit({C: 1.0, G: 1.0, F: 1.0}))
         self.assertEqual({C: 0.25, G: 0.25, F: 0.25, None: 0.25},
