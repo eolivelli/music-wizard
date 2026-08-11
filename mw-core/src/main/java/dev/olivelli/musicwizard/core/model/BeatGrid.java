@@ -155,15 +155,18 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * it. {@code tools/measure-tempo.py --sweep} re-derives both the axis and
      * the plateau (#245), measuring the vamps' 110 and 130 directly and, since
      * #333, the bossa's half-note pulse as a measured reference rather than a
-     * modelled one. Retaken there after #333, the plateau is tighter than the
-     * figures below, which are kept as the measurement that chose the value:
-     * the worst cell inside [0.075, 0.30] is now under a quarter of a percent,
-     * and the upper edge's exhibit is historical, as its bullet records.
+     * modelled one. Its printout is the current reading, over a corpus the
+     * figures below do not describe -- they score a since-retired recording
+     * and predate the bossa's change of pulse -- so the sweep's cells are not
+     * expected to reproduce them; they stay as the measurement that chose the
+     * value. What the retake does settle is the upper edge: the cliff above
+     * 0.30 is gone with the detour population behind it, as its bullet
+     * records.
      *
      * <p>The bossa's figure is a quarter-note rate. When the sweep below was
      * taken its tracker ran at two thirds of it, and that pulse is what every
      * bossa percentage below is measured against; since #231 it runs at half
-     * of it, and the sweep has not been retaken.
+     * of it, which is the pulse the retaken sweep measures directly.
      *
      * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
      * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is

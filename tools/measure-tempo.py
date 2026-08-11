@@ -17,18 +17,19 @@ no `mw` code at all -- only `ffmpeg` to decode.
 A second, unrelated axis agrees with it wherever it applies: the lag at which
 the *estimated chord labels* repeat, which measures harmony rather than onsets.
 That one cannot measure a vamp with no chord changes, which is why this exists.
-Where both apply they agree within 0.01 BPM -- 106.007/106.000, 105.002/105.000,
-90.000/90.000, 89.994/90.000, 74.941/74.950 -- and the coarse pass here
-quantises to its 0.05 step, so closer agreement than that is not on offer.
+The agreement is tabulated once, on #245; nothing committed re-runs that axis,
+so the figures live there rather than here.
 
   usage:  python3 tools/measure-tempo.py [--sweep] [BENCHMARK ...]
 
-`--sweep` additionally re-derives `BeatGrid.STEADY_BAND`'s plateau, which needs
-an analysed workspace per file and so needs the shaded jar. **Four of the seven
-measurable benchmarks are local-only** (samples/list.txt has the fetch
-commands); the sweep names every file it could not measure and says how many
-its plateau actually covers, because a plateau over a silent subset is how a
-constant gets certified by accident.
+The measurement itself needs only `ffmpeg`. The grid columns beside it, and
+`--sweep` -- which re-derives `BeatGrid.STEADY_BAND`'s plateau -- analyse a
+workspace per file and so need the shaded jar; without one the tool prints the
+measured tempo alone and says what it skipped. **Four of the six measurable
+benchmarks are local-only** (samples/list.txt has the fetch commands); the
+sweep names every file it could not measure and says how many its plateau
+actually covers, because a plateau over a silent subset is how a constant gets
+certified by accident.
 
 This is deliberately a second implementation of the steady-rate arithmetic --
 a copy of `BeatGrid.steadyRateOf` and its band, after `score-chart.py`'s (#238)
@@ -43,14 +44,19 @@ this lives in `tools/` rather than in a test.
 **The peak is only meaningful because these are programmed backing tracks.** A
 comb fit assumes one constant tempo for the whole recording; on a performance
 that pushes and pulls it would report an average and its peak would be blunt.
-Two checks are printed beside every figure and both must be read. `peak` is
-how far the winner stands above its rivals inside the search band -- observed
-2.6x to 9.2x on this corpus. `wide` is where an unconstrained comb over
-[50, 220] lands, and it is the check that matters on a new recording: the
-in-band ratio cannot say the band itself is on the wrong octave, and over the
-wide range the unconstrained winner is a subdivision on some of these very
-files. A `wide` figure that is not the measured one or a clean multiple of it
-means the search band, not the recording, chose the answer.
+`peak` is how far the winner stands above its strongest rival elsewhere in the
+band, and it is a statement about the band's interior only.
+
+**No column can vouch for the band itself, and none is printed.** This comb
+scores a candidate by the mean envelope over its lattice, and every slower
+sub-lattice of the true pulse inherits that mean tooth for tooth, so an
+unconstrained comb is pulled to the slowest strong submultiple above whatever
+floor it is given -- a band an octave out, in either direction, still lands in
+clean ratios with any check derived from the same fit. A wide-band column
+built on this comb therefore cannot fail, and this file deliberately does not
+print one. The octave comes from outside the tool instead: each `SEARCH` band
+brackets the tempo samples/list.txt documents for the recording, and a new
+recording gets a band the same way or gets no measurement.
 """
 
 import argparse
@@ -75,9 +81,11 @@ HOP = 128
 
 # Where to look for each recording's pulse. The band is deliberately narrow --
 # a comb fit will happily lock an octave out, and these bands are what stops it
-# being asked to; the `wide` column is what says the band itself is honest.
+# being asked to. Each one brackets the tempo samples/list.txt documents for
+# the recording; that provenance, not any statistic here, is what says the
+# band is honest (see the docstring). A benchmark without an entry is reported,
+# never guessed.
 SEARCH = {
-    "gmajorblues.mp3": (100.0, 112.0),
     "blues-a-90bpm.mp3": (85.0, 95.0),
     "blues-e-90bpm.mp3": (85.0, 95.0),
     "blues-shuffle-a-106bpm.mp3": (100.0, 112.0),
@@ -157,19 +165,14 @@ def comb(envelope: list[float], low: float, high: float, step: float
     return scored
 
 
-def measured_tempo(mp3: Path) -> tuple[float, float, float]:
-    """(bpm, peak over nearest in-band rival, unconstrained wide-band bpm)."""
+def measured_tempo(mp3: Path) -> tuple[float, float]:
+    """(bpm, peak over the strongest in-band rival)."""
     low, high = SEARCH[mp3.name]
     envelope = onset_envelope(mp3)
     coarse = comb(envelope, low, high, 0.05)
     best_score, best_bpm = coarse[0]
     rival = max((s for s, b in coarse if abs(b - best_bpm) > 0.15), default=0.0)
-    # The octave check: a coarser comb over everything a tempo could be. Its
-    # winner need not equal the in-band one -- a subdivision can outscore the
-    # beat, which is exactly why SEARCH exists -- but it must be a clean
-    # multiple of it, or the band chose the answer rather than the recording.
-    wide = comb(envelope, 50.0, 220.0, 0.25)[0][1]
-    return best_bpm, (best_score / rival if rival else float("inf")), wide
+    return best_bpm, (best_score / rival if rival else float("inf"))
 
 
 def grid_intervals(jar: Path, mp3: Path) -> list[float]:
@@ -207,29 +210,41 @@ def main() -> None:
 
     wanted = args.benchmarks or list(BENCHMARKS)
     jar = Path(args.jar)
-    if not jar.exists():
-        sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
+    have_jar = jar.exists()
+    if not have_jar:
+        print(f"{jar} is missing: printing the measurement alone, no grid"
+              " columns and no sweep. Build with: mvn -B -DskipTests package")
+    # SEARCH keys are checked against the scored corpus so a retired benchmark
+    # cannot sit here looking fetchable; that has happened.
+    for stale in sorted(set(SEARCH) - set(BENCHMARKS)):
+        print(f"SEARCH names {stale}, which is not a scored benchmark;"
+              " retire the entry or score the file")
+    measurable = [n for n in BENCHMARKS if n in SEARCH]
 
-    print("tempo measured from the audio, and the grid statistics against it:")
-    print(f"  {'benchmark':28s} {'measured':>9s} {'peak':>6s} {'wide':>7s} "
-          f"{'median':>9s} {'steady':>9s} {'mean':>9s}")
+    print("tempo measured from the audio"
+          + (", and the grid statistics against it:" if have_jar else ":"))
+    print(f"  {'benchmark':28s} {'measured':>9s} {'peak':>6s}"
+          + (f" {'median':>9s} {'steady':>9s} {'mean':>9s}" if have_jar else ""))
     grids = {}
     truths = {}
     modelled = []
     absent = []
     for name in wanted:
         mp3 = REPO / "samples" / name
+        if name not in SEARCH:
+            print(f"  {name}: no search band recorded; add one to SEARCH")
+            continue
         if not mp3.exists():
             absent.append(name)
             print(f"  {name}: not present (local-only; see samples/list.txt)")
             continue
-        if name not in SEARCH:
-            print(f"  {name}: no search band recorded; add one to SEARCH")
+        tempo, sharpness = measured_tempo(mp3)
+        if not have_jar:
+            print(f"  {name:28s} {tempo:9.3f} {sharpness:5.1f}x")
             continue
-        tempo, sharpness, wide = measured_tempo(mp3)
         intervals = grid_intervals(jar, mp3)
         multiple = TRACKED_MULTIPLE.get(name)
-        truth = tempo * (multiple or 1.0)
+        truth = tempo * (1.0 if multiple is None else multiple)
         median, steady, mean, kept = statistics_of(intervals)
 
         def err(value: float) -> str:
@@ -245,18 +260,22 @@ def main() -> None:
         else:
             grids[name] = intervals
             truths[name] = truth
-        print(f"  {name:28s} {tempo:9.3f} {sharpness:5.1f}x {wide:7.2f} "
+        print(f"  {name:28s} {tempo:9.3f} {sharpness:5.1f}x "
               f"{err(median)} {err(steady)} {err(mean)}{note}")
 
-    if not args.sweep or not grids:
+    if not args.sweep:
         return
-    print(f"\nSTEADY_BAND plateau over {len(grids)} of {len(SEARCH)}"
+    if not grids:
+        print("\nsweep skipped: no benchmark was both measured and analysed"
+              + ("" if have_jar else " (the jar is missing)"))
+        return
+    print(f"\nSTEADY_BAND plateau over {len(grids)} of {len(measurable)}"
           f" measurable benchmarks"
           + (f" (absent: {', '.join(absent)})" if absent else "")
           + (f" (modelled, excluded: {', '.join(modelled)})" if modelled else "")
           + ", swept at 0.0025:")
     band, worst = 0.04, []
-    while band <= 0.35001:
+    while band <= 0.35 + 1e-9:
         cells = []
         for name, intervals in grids.items():
             _, steady, _, kept = statistics_of(intervals, band)
