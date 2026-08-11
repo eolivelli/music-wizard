@@ -48,8 +48,9 @@ against A is comparing against the wrong recording.
 Run 2026-08-01. MW read 89.1 BPM in 4/4 and a chart whose whole vocabulary is
 G#, D#, C# with occasional D#7 and A#7 — the same pitches as the Ab, Db, Eb
 below, spelled in sharps where flats read better. No N.C. spans at all.
-Two weaknesses: the chart is choppy — 281 spans, median 1.35 s, constant
-G#/D# flip-flopping where the ear expects one chord per bar — and the beat
+Two weaknesses were recorded: the chart is choppy — 281 spans, median 1.35 s,
+constant G#/D# flip-flopping "where the ear expects one chord per bar", which
+the reference read below shows is not what this song does — and the beat
 grid wobbles badly (windowed tempo drifts from ~93 to ~109 BPM across the
 song, inter-beat gaps from 0.28 s to 1.4 s, the #196 pattern), so the printed
 89 BPM is a median over an unsteady grid. The final ~10 s (fade-out) degrades
@@ -59,9 +60,30 @@ confidence, 271 spans, and a vocabulary of Ab, Db, Eb with occasional Eb7 —
 the I, IV and V of the confirmed key. The beat side has improved since the
 run above: 87.0 is confirmed by all three of the independent estimators in
 the verify-tempo skill, where the earlier 89.1 was a median over a grid
-drifting 93 to 109. The chart is still choppy, 271 spans against a song that
-holds one chord for most of a bar, which is what to judge a change against
-here rather than the roots.
+drifting 93 to 109.
+
+Read against a fan transcription on accordiespartiti (chords only; neither
+side is ground truth, and the reference is in A where the recording is in
+Ab). Two estimates, and they agree more than the entries above suggested:
+
+- the vocabulary is the same three chords. MW finds the IV 58 times against
+  the reference's 57 and the V 117 against 113, and misses nothing the
+  reference has. 97% of MW's spans are I, IV or V.
+- **"choppy" was the wrong reading and is withdrawn.** The reference changes
+  chord about 1.76 times a bar; MW 2.10. This song really does move every
+  couple of beats, so a chart of roughly 230 spans would be right and 271 is
+  about a fifth over, not an order of magnitude. MW's commonest span is two
+  beats, which is exactly the reference's implied chord length.
+- what the surplus actually is: 90 one-beat spans, and the excess sits almost
+  entirely on the tonic (+30 I, against +4 V and +1 IV). The reference never
+  moves between I and IV directly — every change passes through V — where MW
+  makes that move 25 times. So the defect to judge a change against here is
+  a chord read as two at half length, on the tonic, not a chart fragmented
+  everywhere.
+- non-diatonic material is confined to the two edges: a lead-in before the
+  music, and the fade-out already noted above. The interior is clean.
+- one stretch around 165-181 s loses the IV altogether, where the reference
+  has one in every cycle.
 
 gli-anni.mp3
 
