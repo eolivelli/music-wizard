@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.model;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalDouble;
 
 /**
  * Tracked beat positions, with downbeats marked.
@@ -28,11 +29,21 @@ import java.util.Objects;
  * detection, so the two carry separate confidences and callers are expected to
  * check them independently.
  *
+ * <p>A pulse is a counted beat unless the grid says otherwise, and it says
+ * otherwise only where a producer measured the difference. The beat tracker
+ * lands on a sub-multiple of the counted beat without knowing that it has
+ * (#353), so an absent {@link #pulseQuarters()} means "nothing measured it"
+ * rather than "it is the counted beat".
+ *
  * @param beats  the tracked beats, ordered in time and non-empty
  * @param beatConfidence     trust in the beat positions themselves
  * @param downbeatConfidence trust in which of those beats are downbeats
+ * @param pulseQuarters      quarter notes spanned by one tracked pulse, where
+ *                           that is known to differ from the meter's counted
+ *                           beat; empty otherwise, and never null
  */
-public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence downbeatConfidence) {
+public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence downbeatConfidence,
+                       OptionalDouble pulseQuarters) {
 
     /**
      * One tracked beat.
@@ -72,6 +83,24 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
         Objects.requireNonNull(beats, "beats");
         Objects.requireNonNull(beatConfidence, "beatConfidence");
         Objects.requireNonNull(downbeatConfidence, "downbeatConfidence");
+        // Missing rather than null, so a score file written before the pulse was
+        // carried reads back as a grid that says nothing about its pulse -- which
+        // is what it is -- rather than throwing. Same normalisation Provenance
+        // takes on a tempo segment.
+        if (pulseQuarters == null) {
+            pulseQuarters = OptionalDouble.empty();
+        }
+        // The bounds TempoMap.fromBeatTimes puts on the same figure: wide enough
+        // for any pulse the model can name, narrow enough that a nonsense one is
+        // rejected here rather than several stages later as an infinite tempo.
+        if (pulseQuarters.isPresent()
+                && (!Double.isFinite(pulseQuarters.getAsDouble())
+                        || pulseQuarters.getAsDouble() < 1.0 / 1024
+                        || pulseQuarters.getAsDouble() > 1024)) {
+            throw new IllegalArgumentException(
+                    "pulseQuarters must be finite and between 1/1024 and 1024 quarter notes,"
+                            + " got: " + pulseQuarters.getAsDouble());
+        }
         if (beats.isEmpty()) {
             throw new IllegalArgumentException("a beat grid needs at least one beat");
         }
@@ -84,6 +113,29 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
                                 + " at " + beats.get(i - 1).seconds() + "s");
             }
         }
+    }
+
+    /**
+     * A grid that says nothing about its pulse, so every reader assumes the
+     * meter's counted beat.
+     *
+     * <p>The right form for every producer that tracks at the counted beat, which
+     * is all of them but one: {@link #pulseQuarters()} is a fact to be recorded
+     * where it was measured, not an assumption to be restated.
+     */
+    public BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence downbeatConfidence) {
+        this(beats, beatConfidence, downbeatConfidence, OptionalDouble.empty());
+    }
+
+    /**
+     * The same grid, recording what one of its pulses spans.
+     *
+     * @param quarters quarter notes in one tracked pulse: 2.0 for a 4/4 grid
+     *                 tracked at half tempo, 1.5 for the dotted-quarter pulse of
+     *                 compound time
+     */
+    public BeatGrid withPulseQuarters(double quarters) {
+        return new BeatGrid(beats, beatConfidence, downbeatConfidence, OptionalDouble.of(quarters));
     }
 
     /**
@@ -239,10 +291,13 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      *
      * <p>A typical interval, not a rate: see {@link #medianPulseRate()} and
      * {@link #steadyTempo(TimeSignature)}.
+     *
+     * <p>Converted through {@link #pulseQuarters()} where the grid records one,
+     * and through the meter's counted beat otherwise.
      */
     public double medianTempo(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
-        return medianPulseRate() * timeSignature.beatUnitQuarters();
+        return medianPulseRate() * quartersPerPulse(timeSignature);
     }
 
     /**
@@ -370,10 +425,25 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * <p>What {@link Score#estimatedTempo()} answers with when nothing has
      * corrected the tracked beats. See {@link #steadyPulseRate()} for why it is
      * this rather than the median or the plain mean.
+     *
+     * <p>Converted through {@link #pulseQuarters()} where the grid records one,
+     * and through the meter's counted beat otherwise. A grid tracked at half
+     * tempo that records nothing answers half the tempo of the music, which is
+     * the reading #139 was filed for.
      */
     public double steadyTempo(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
-        return steadyPulseRate() * timeSignature.beatUnitQuarters();
+        return steadyPulseRate() * quartersPerPulse(timeSignature);
+    }
+
+    /**
+     * What one pulse spans: the recorded fact, or the meter's counted beat.
+     *
+     * <p>The one place the assumption is made, so the two tempo forms cannot come
+     * to disagree about it.
+     */
+    private double quartersPerPulse(TimeSignature timeSignature) {
+        return pulseQuarters.orElse(timeSignature.beatUnitQuarters());
     }
 
     /** The intervals between consecutive pulses. Never empty: the caller checks. */

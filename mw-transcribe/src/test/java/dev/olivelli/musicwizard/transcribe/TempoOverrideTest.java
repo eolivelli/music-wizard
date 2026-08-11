@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -378,6 +379,105 @@ class TempoOverrideTest {
             // 90 counted beats in 6/8 is 135 quarter notes, as everywhere else.
             assertThat(forced.estimatedTempo()).isCloseTo(135.0, within(1e-9));
         }
+    }
+
+    @Test
+    @DisplayName("reads a doubling correction as a fact about the pulse, and bars accordingly")
+    void aDoublingCorrectionIsAFactAboutThePulse() {
+        // The click track runs at 120 and the user says 240, which is the shape
+        // #353 leaves on three benchmarks: the beats are where the music puts
+        // them and each one is two counted beats, not one. Nothing measures that
+        // from the audio, so the correction is the only thing that can say it.
+        AudioBuffer audio = clickTrack(12.0, 0.5, 1.3);
+        Score doubled = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(240.0, TimeSignature.FOUR_FOUR, null));
+        BeatGrid grid = doubled.beatGrid().orElseThrow();
+
+        assertThat(grid.pulseQuarters()).hasValue(2.0);
+        // The grid and the map now describe the same music. Before this the grid
+        // answered 120 for a score reported and barred at 240 (#139).
+        assertThat(grid.steadyTempo(TimeSignature.FOUR_FOUR)).isCloseTo(240.0, within(5.0));
+        assertThat(doubled.estimatedTempo()).isCloseTo(240.0, within(1e-9));
+        // Two tracked pulses to a bar, not four: at 240 in four a bar is two of
+        // these pulses, and phasing every four marks one downbeat per two bars.
+        assertThat(grid.beats()).allSatisfy(
+                beat -> assertThat(beat.positionInBar()).isBetween(0, 1));
+        assertThat(grid.downbeatTimes()).hasSize(grid.size() / 2);
+
+        // The tracked path is untouched: nothing measured the pulse, so nothing
+        // is recorded and the bars are the meter's.
+        BeatGrid tracked = new AudioTranscriber().transcribe(audio,
+                        new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null))
+                .beatGrid().orElseThrow();
+        assertThat(tracked.pulseQuarters()).isEmpty();
+        assertThat(tracked.beats()).allSatisfy(
+                beat -> assertThat(beat.positionInBar()).isBetween(0, 3));
+    }
+
+    @Test
+    @DisplayName("reads a small correction as a correction of the rate, not of the pulse")
+    void aSmallCorrectionSaysNothingAboutThePulse() {
+        // A user nudging a tracked 120 to 124 is saying the beats are a little
+        // slow. Reading that as a pulse would rewrite the bar lines of every
+        // recording whose tempo was only slightly out.
+        AudioBuffer audio = clickTrack(12.0, 0.5, 1.3);
+        Score nudged = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(124.0, TimeSignature.FOUR_FOUR, null));
+
+        assertThat(nudged.beatGrid().orElseThrow().pulseQuarters()).isEmpty();
+        assertThat(nudged.beatGrid().orElseThrow().beats()).allSatisfy(
+                beat -> assertThat(beat.positionInBar()).isBetween(0, 3));
+        assertThat(nudged.estimatedTempo()).isCloseTo(124.0, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("takes only a relation that is musical and fills the bar")
+    void whichRatiosAreReadAsAPulse() {
+        // Driven directly for the ratios a fixture cannot easily be made to
+        // produce. The tracked rate is 120 throughout, so the typed tempo is the
+        // ratio times 120.
+        List<Double> tracked = pulses(0.0, 0.5, 24);
+        assertThat(BeatGrid.steadyPulseRate(tracked)).isCloseTo(120.0, within(1e-9));
+
+        // Half tempo: one pulse is two quarter notes, two to a 4/4 bar.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                240.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(2.0);
+        // A subdivision, which is the same fact the other way up.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                60.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(0.5);
+        // In 6/8 the counted beat is a dotted quarter, so half tempo is three
+        // quarter notes -- a whole bar to the pulse.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                240.0, tracked, TimeSignature.SIX_EIGHT)).hasValue(3.0);
+
+        // A third of the beat is a relation the music has; a fifth is not.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                40.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(1.0 / 3);
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                24.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
+
+        // Three counted beats to the pulse is musical and still cannot bar 4/4:
+        // three quarter notes leave four thirds of a pulse in the bar, and a bar
+        // position could not be counted in it. It bars 3/4 exactly.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                360.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                360.0, tracked, TimeSignature.THREE_FOUR)).hasValue(3.0);
+
+        // Nothing typed, and nothing to measure a ratio against.
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                null, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
+        assertThat(AudioTranscriber.trackedPulseQuarters(
+                240.0, List.of(0.4), TimeSignature.FOUR_FOUR)).isEmpty();
+    }
+
+    /** {@code count} pulses starting at {@code first}, {@code period} apart. */
+    private static List<Double> pulses(double first, double period, int count) {
+        List<Double> times = new java.util.ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            times.add(first + i * period);
+        }
+        return times;
     }
 
     @Test
