@@ -64,16 +64,6 @@ public final class Hyphenator {
             "it", "/hyphenation/hyph-it.pat.txt",
             "en", "/hyphenation/hyph-en-us.pat.txt");
 
-    /**
-     * Languages where a word-initial {@code y} spells the consonant.
-     *
-     * <p>English {@code y'all} and {@code York} open on it and are sung on one
-     * note. Italian has no such sound at the front of a word: {@code y} arrives
-     * only in loanwords and in the letter's own name, and {@code ypsilon} is sung
-     * on three notes beginning with the vowel.
-     */
-    private static final Set<String> OPENING_Y_IS_CONSONANT = Set.of("en");
-
     private static final Map<String, Hyphenator> LOADED = new HashMap<>();
 
     /**
@@ -116,14 +106,9 @@ public final class Hyphenator {
      */
     private final Set<Character> wordCharacters;
 
-    /** Whether this language spells the consonant with a word-initial {@code y}. */
-    private final boolean openingYIsConsonant;
-
-    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters,
-                       boolean openingYIsConsonant) {
+    private Hyphenator(Map<String, byte[]> patterns, Set<Character> wordCharacters) {
         this.patterns = patterns;
         this.wordCharacters = wordCharacters;
-        this.openingYIsConsonant = openingYIsConsonant;
     }
 
     /**
@@ -178,8 +163,7 @@ public final class Hyphenator {
                 }
             }
         }
-        return new Hyphenator(patterns, Set.copyOf(wordCharacters),
-                OPENING_Y_IS_CONSONANT.contains(language));
+        return new Hyphenator(patterns, Set.copyOf(wordCharacters));
     }
 
     /** Splits one TeX pattern into its letters and the scores between them. */
@@ -293,8 +277,8 @@ public final class Hyphenator {
      * <p>The same rule runs over the pieces of a single run — see
      * {@link #joinUnsung}, which is where {@code s-ing} is put back together.
      */
-    private void append(List<Syllable> pieces, StringBuilder pending,
-                        List<String> syllables) {
+    private static void append(List<Syllable> pieces, StringBuilder pending,
+                               List<String> syllables) {
         String between = pending.toString();
         pending.setLength(0);
         boolean joinsBack = !pieces.isEmpty()
@@ -336,26 +320,35 @@ public final class Hyphenator {
     /**
      * Whether this text holds a sound a syllable can be built on.
      *
-     * <p><b>{@code y} counts, except as the first letter of a word in a language
-     * that spells the consonant there.</b> The letter spells two sounds, and where
-     * it stands is what tells them apart: English {@code y'all} opens on the
-     * consonant and is sung on one note, while {@code lone-ly}, {@code by-pass}
-     * and {@code sky-high} carry the vowel and are sung on two. A rule that
-     * ignores the position loses one group or the other.
+     * <p><b>{@code y} counts, except as a word's first letter.</b> The letter
+     * spells two sounds and where it stands is what tells them apart: opening a
+     * word it is the consonant, so {@code y'all} and {@code York} are sung on one
+     * note, and anywhere else it is the vowel, so {@code lone-ly}, {@code by-pass}
+     * and {@code sky-high} are sung on two. A rule that ignores the position
+     * loses one group or the other.
+     *
+     * <p>Both languages, because word-initial {@code y} reaches Italian only in
+     * loanwords — <i>yogurt</i>, <i>yoga</i>, <i>yacht</i> — where it is the
+     * consonant, and Italian lyrics borrow English words freely. Exempting
+     * Italian puts a bare {@code y} on a note of its own in <i>you</i>,
+     * <i>your</i> and <i>young</i>, 43 words against the one it buys back.
      *
      * <p><b>The word, not the piece.</b> A piece the patterns cut is a syllable,
      * and a syllable's own {@code y} is the vowel wherever the syllable falls:
      * anchoring on the piece calls the {@code y} in {@code lar-ynx} a consonant
-     * and joins the note away. {@code atWordStart} is false for every piece but
-     * the first.
+     * and joins the note away.
      *
-     * <p>Position is not the whole answer and does not claim to be: English opens
-     * a handful of words on the vowel — {@code yt-tri-um}, {@code yt-ter-bi-um} —
-     * and this joins each into one note fewer. Telling those from {@code York}
-     * wants a pronunciation dictionary, which is #332's own conclusion.
+     * <p>Position is not the whole answer and does not claim to be: a few words
+     * open on the vowel — {@code yt-tri-um}, Italian {@code yp-si-lon} — and this
+     * joins each into one note fewer. Telling those from {@code York} wants a
+     * pronunciation dictionary, which is #332's own conclusion.
+     *
+     * <p>Any letter above U+007F counts as a vowel. Both languages are written in
+     * the Latin alphabet, so what that reaches is an accented letter, and Italian
+     * accents vowels.
      */
-    private boolean hasVowel(String text, boolean atWordStart) {
-        int consonantY = atWordStart && openingYIsConsonant ? firstLetter(text) : -1;
+    private static boolean hasVowel(String text, boolean atWordStart) {
+        int consonantY = atWordStart ? firstLetter(text) : -1;
         for (int i = 0; i < text.length(); i++) {
             char c = Character.toLowerCase(text.charAt(i));
             if ("aeiou".indexOf(c) >= 0 || (Character.isLetter(c) && c > 127)) {
@@ -386,11 +379,13 @@ public final class Hyphenator {
      * piece has nothing to head and joins the one before.
      *
      * <p>The test is on <b>what has been held so far</b> rather than on the piece
-     * alone, which is not the same answer and is the better one: asked piece by
-     * piece, {@code gy} in {@code gy-ne-col-o-gy} has no vowel and the word loses
-     * a note.
+     * alone, which is not the same answer and is the better one. The patterns cut
+     * {@code gynecology} into {@code g} and {@code y} before {@code ne}: asked
+     * separately neither is a vowel, and the word loses a note; asked together
+     * {@code gy} is one, because the {@code y} is no longer the word's first
+     * letter.
      */
-    private List<String> joinUnsung(List<String> pieces) {
+    private static List<String> joinUnsung(List<String> pieces) {
         if (pieces.size() < 2) {
             return pieces;
         }

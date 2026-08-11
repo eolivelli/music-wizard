@@ -117,12 +117,18 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("a word-initial y is the vowel here, where in English it is the consonant")
-        void openingYIsAVowel() {
-            // Italian has no consonant y at the front of a word: the letter
-            // arrives in loanwords and in its own name, and ypsilon is sung on
-            // three notes. English y'all, on the same rule, is sung on one.
-            assertThat(split("it", "ypsilon")).isEqualTo("yp-si-lon");
+        @DisplayName("a word-initial y is the consonant here too, because it arrives in loanwords")
+        void openingYIsTheConsonantInBothLanguages() {
+            // Italian lyrics borrow English words freely, and word-initial y
+            // reaches Italian only that way -- yogurt, yacht -- where it is the
+            // consonant. Exempting Italian puts a bare y on a note of its own in
+            // these, which is 43 dictionary words against the one it buys back.
+            assertThat(split("it", "you")).isEqualTo("you");
+            assertThat(split("it", "young")).isEqualTo("young");
+            assertThat(split("it", "yogurt")).isEqualTo("yo-gurt");
+            // The one it costs, named rather than hidden: ipsilon is the ordinary
+            // spelling, and this variant is sung on three notes, not two.
+            assertThat(split("it", "ypsilon")).isEqualTo("ypsi-lon");
         }
 
         @Test
@@ -189,7 +195,7 @@ class HyphenatorTest {
         }
 
         @Test
-        @DisplayName("y is a vowel, except opening an English word, where it is the consonant")
+        @DisplayName("y is a vowel, except opening a word, where it is the consonant")
         void yIsAVowelUnlessItOpensTheWord() {
             // Sung on two notes, and their only vowel is the y -- so a flat rule
             // that y is not a vowel joins each of them into one note.
