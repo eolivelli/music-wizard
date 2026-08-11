@@ -81,7 +81,14 @@ final class SeparateCommand implements Callable<Integer> {
             return 0;
         }
 
-        AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
+        // Decode at the model's own rate where it states one. Decoding at the
+        // analysis rate and letting the provider stretch it back up costs the
+        // top octaves twice through the resampler -- the consonant band of the
+        // one stem this command exists to produce.
+        int preferred = provider.get().preferredSampleRate();
+        AudioBuffer audio = preferred > 0
+                ? AudioDecoder.decode(workspace.sourceFile(), preferred)
+                : AudioDecoder.decode(workspace.sourceFile());
         System.out.printf("Separating  %.1f s of audio with %s%n",
                 audio.durationSeconds(), provider.get().id());
         SeparationProvider.Separation stems;

@@ -81,12 +81,11 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
     }
 
     private static ModelCache environmentCache() {
-        MusicWizardConfig.MlConfig ml =
-                new ConfigLoader().effectiveConfig(null, null).ml();
+        MusicWizardConfig config = new ConfigLoader().effectiveConfig(null, null);
+        MusicWizardConfig.MlConfig ml = config.ml();
         Path directory = ModelCacheLocation.directoryFor(
                 ml == null ? null : ml.modelCacheDirectory());
-        boolean offline = ml != null && Boolean.TRUE.equals(ml.offline());
-        return ModelCache.at(directory, offline);
+        return ModelCache.at(directory, config.isOffline());
     }
 
     @Override
@@ -95,15 +94,32 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
     }
 
     @Override
+    public int preferredSampleRate() {
+        return MODEL_RATE;
+    }
+
+    @Override
     public Separation separate(float[][] channels, int sampleRate) {
+        if (channels.length > 2) {
+            // The model is stereo. Truncating silently would return a "same
+            // shape" result that dropped audio; nothing upstream produces more
+            // than two channels, so this is a contract error, not a case.
+            throw new IllegalArgumentException(
+                    "at most two channels, got " + channels.length);
+        }
         if (channels.length == 0 || channels[0].length == 0) {
-            return new Separation(channels, channels);
+            // Fresh empties, not aliases of the caller's array: the contract is
+            // two stems and an untouched input, not three names for one buffer.
+            return new Separation(emptyLike(channels), emptyLike(channels));
         }
         Path vocalsPath = cache.fetch(vocalsModel, System.out::println);
         Path accompanimentPath = cache.fetch(accompanimentModel, System.out::println);
 
-        // The model is stereo. A mono recording is sent as two equal channels
-        // and averaged back, so the caller's shape survives the round trip.
+        // A mono recording is sent as two equal channels. Every right-hand
+        // structure below aliases the left rather than recomputing it -- the
+        // first version recomputed and masked a duplicate channel that the
+        // mono path never read, and that dead quarter-gigabyte was the
+        // difference between finishing an ordinary song and OutOfMemoryError.
         boolean mono = channels.length == 1;
         float[] left = Resampler.resample(channels[0], sampleRate, MODEL_RATE);
         float[] right = mono ? left
@@ -111,9 +127,9 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
 
         SpleeterStft stft = new SpleeterStft();
         float[][] leftSpec = stft.forward(left);
-        float[][] rightSpec = stft.forward(right);
+        float[][] rightSpec = mono ? leftSpec : stft.forward(right);
 
-        float[][][] magnitudes = magnitudes(leftSpec, rightSpec);
+        float[][][] magnitudes = magnitudes(leftSpec, rightSpec, mono);
         float[][][] vocalsOut;
         float[][][] accompanimentOut;
         try (OrtEnvironment environment = OrtEnvironment.getEnvironment()) {
@@ -124,28 +140,72 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
                     "ONNX Runtime could not run the separation models: " + e.getMessage(), e);
         }
 
-        float[][] vocalsLeft = masked(leftSpec, vocalsOut[0], accompanimentOut[0]);
-        float[][] vocalsRight = masked(rightSpec, vocalsOut[1], accompanimentOut[1]);
-        float[][] accLeft = masked(leftSpec, accompanimentOut[0], vocalsOut[0]);
-        float[][] accRight = masked(rightSpec, accompanimentOut[1], vocalsOut[1]);
-
+        // Masks are applied frame by frame inside the inverse, so no masked
+        // spectrogram is ever materialised whole.
         int modelLength = left.length;
-        float[][] vocals = back(stft, vocalsLeft, vocalsRight, mono, modelLength,
-                sampleRate, channels[0].length);
-        float[][] accompaniment = back(stft, accLeft, accRight, mono, modelLength,
-                sampleRate, channels[0].length);
+        int originalLength = channels[0].length;
+        float[][] vocals = stems(stft, leftSpec, rightSpec, vocalsOut,
+                accompanimentOut, mono, modelLength, sampleRate, originalLength);
+        float[][] accompaniment = stems(stft, leftSpec, rightSpec, accompanimentOut,
+                vocalsOut, mono, modelLength, sampleRate, originalLength);
         return new Separation(vocals, accompaniment);
     }
 
+    private static float[][] emptyLike(float[][] channels) {
+        float[][] out = new float[Math.max(1, channels.length)][];
+        for (int c = 0; c < out.length; c++) {
+            out[c] = new float[0];
+        }
+        return out;
+    }
+
+    /** One stem, both channels, mask fused into the inverse. */
+    private static float[][] stems(SpleeterStft stft, float[][] leftSpec,
+                                   float[][] rightSpec, float[][][] stem,
+                                   float[][][] other, boolean mono, int modelLength,
+                                   int sampleRate, int originalLength) {
+        float[] leftOut = stft.inverse(
+                t -> maskedFrame(leftSpec[t], stem[0][t], other[0][t]),
+                leftSpec.length, modelLength);
+        if (mono) {
+            return new float[][] {fitLength(
+                    Resampler.resample(leftOut, MODEL_RATE, sampleRate), originalLength)};
+        }
+        float[] rightOut = stft.inverse(
+                t -> maskedFrame(rightSpec[t], stem[1][t], other[1][t]),
+                rightSpec.length, modelLength);
+        return new float[][] {
+                fitLength(Resampler.resample(leftOut, MODEL_RATE, sampleRate), originalLength),
+                fitLength(Resampler.resample(rightOut, MODEL_RATE, sampleRate), originalLength)
+        };
+    }
+
     /** The model's input: {@code [2][segments * SEGMENT_FRAMES][MODEL_BINS]} magnitudes. */
-    private static float[][][] magnitudes(float[][] leftSpec, float[][] rightSpec) {
+    private static float[][][] magnitudes(float[][] leftSpec, float[][] rightSpec,
+                                          boolean mono) {
         int frames = leftSpec.length;
         int padded = ((frames + SEGMENT_FRAMES - 1) / SEGMENT_FRAMES) * SEGMENT_FRAMES;
-        float[][][] out = new float[2][padded][SpleeterStft.MODEL_BINS];
-        for (int t = 0; t < frames; t++) {
+        float[][][] out = new float[2][padded][];
+        float[] zero = new float[SpleeterStft.MODEL_BINS];
+        for (int t = 0; t < padded; t++) {
+            if (t >= frames) {
+                out[0][t] = zero;
+                out[1][t] = zero;
+                continue;
+            }
+            float[] leftRow = new float[SpleeterStft.MODEL_BINS];
             for (int f = 0; f < SpleeterStft.MODEL_BINS; f++) {
-                out[0][t][f] = magnitude(leftSpec[t], f);
-                out[1][t][f] = magnitude(rightSpec[t], f);
+                leftRow[f] = magnitude(leftSpec[t], f);
+            }
+            out[0][t] = leftRow;
+            if (mono) {
+                out[1][t] = leftRow;
+            } else {
+                float[] rightRow = new float[SpleeterStft.MODEL_BINS];
+                for (int f = 0; f < SpleeterStft.MODEL_BINS; f++) {
+                    rightRow[f] = magnitude(rightSpec[t], f);
+                }
+                out[1][t] = rightRow;
             }
         }
         return out;
@@ -189,46 +249,25 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
     }
 
     /**
-     * The complex spectrogram of one stem: the mix under this stem's soft mask.
+     * One frame of the mix under one stem's soft mask.
      *
      * <p>Ratio of squared estimates, Spleeter's own separation exponent, with a
      * small floor so silence divides to silence rather than to noise. Above the
      * model's bins the mask is zero for both stems — Spleeter's default
-     * extension — so the stems' sum is the mix only below ~11 kHz, and that is
-     * the checkpoint's behaviour, not a defect here.
+     * extension ({@code mask_extension: "zeros"} in its 2stems config) — so the
+     * stems' sum is the mix only below ~11 kHz, and that is the checkpoint's
+     * behaviour, not a defect here.
      */
-    private static float[][] masked(float[][] mixSpec, float[][] stem, float[][] other) {
-        int frames = mixSpec.length;
-        float[][] out = new float[frames][];
-        for (int t = 0; t < frames; t++) {
-            float[] spectrum = new float[mixSpec[t].length];
-            for (int f = 0; f < SpleeterStft.MODEL_BINS; f++) {
-                float s = stem[t][f];
-                float o = other[t][f];
-                float mask = (s * s) / (s * s + o * o + 1e-10f);
-                spectrum[2 * f] = mixSpec[t][2 * f] * mask;
-                spectrum[2 * f + 1] = mixSpec[t][2 * f + 1] * mask;
-            }
-            out[t] = spectrum;
+    private static float[] maskedFrame(float[] mixFrame, float[] stem, float[] other) {
+        float[] spectrum = new float[mixFrame.length];
+        for (int f = 0; f < SpleeterStft.MODEL_BINS; f++) {
+            float s = stem[f];
+            float o = other[f];
+            float mask = (s * s) / (s * s + o * o + 1e-10f);
+            spectrum[2 * f] = mixFrame[2 * f] * mask;
+            spectrum[2 * f + 1] = mixFrame[2 * f + 1] * mask;
         }
-        return out;
-    }
-
-    /** Inverse-transforms, resamples to the caller's rate, restores the shape. */
-    private static float[][] back(SpleeterStft stft, float[][] leftSpec,
-                                  float[][] rightSpec, boolean mono, int modelLength,
-                                  int sampleRate, int originalLength) {
-        float[] left = stft.inverse(leftSpec, modelLength);
-        if (mono) {
-            float[] out = fitLength(
-                    Resampler.resample(left, MODEL_RATE, sampleRate), originalLength);
-            return new float[][] {out};
-        }
-        float[] right = stft.inverse(rightSpec, modelLength);
-        return new float[][] {
-                fitLength(Resampler.resample(left, MODEL_RATE, sampleRate), originalLength),
-                fitLength(Resampler.resample(right, MODEL_RATE, sampleRate), originalLength)
-        };
+        return spectrum;
     }
 
     /** Rounding in two resamples can drift a sample or two; the contract is exact. */

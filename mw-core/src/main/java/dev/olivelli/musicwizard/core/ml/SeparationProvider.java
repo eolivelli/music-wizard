@@ -35,6 +35,19 @@ public interface SeparationProvider {
     String id();
 
     /**
+     * The rate this provider's model wants, or zero for "any".
+     *
+     * <p>The provider resamples whatever arrives — that contract stands — but a
+     * caller that can <em>decode</em> at this rate should: decoding a 44.1 kHz
+     * recording at the analysis rate and having the provider stretch it back
+     * costs the top octaves twice through the resampler, and the consonant band
+     * of a vocal stem is exactly what that loses. Advisory, never required.
+     */
+    default int preferredSampleRate() {
+        return 0;
+    }
+
+    /**
      * Separates a recording.
      *
      * <p>Samples are interleaved per channel: {@code channels[c][i]} is channel
@@ -45,8 +58,10 @@ public interface SeparationProvider {
      *
      * @throws ModelUnavailableException when the model this provider needs
      *         cannot be had — absent and offline, or failing its checksum. The
-     *         caller degrades the way an absent LilyPond does: says so and
-     *         continues without, rather than failing the run.
+     *         message names the file and the cure; what a caller does with it
+     *         depends on what it was producing. A pipeline continues without
+     *         the stage; a command whose only product is the stems reports the
+     *         failure and exits nonzero.
      */
     Separation separate(float[][] channels, int sampleRate);
 

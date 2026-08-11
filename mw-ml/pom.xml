@@ -40,4 +40,29 @@
       <groupId>com.microsoft.onnxruntime</groupId>
       <artifactId>onnxruntime</artifactId>
     </dependency>  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Same offline layer as mw-cli, same reason: this module IS the real
+           providers, and no test of it may reach the network. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${maven.multiModuleProjectDirectory}/test-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${maven.multiModuleProjectDirectory}/test-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

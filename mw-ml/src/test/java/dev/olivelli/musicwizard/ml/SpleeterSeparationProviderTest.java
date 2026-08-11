@@ -126,6 +126,75 @@ class SpleeterSeparationProviderTest {
     }
 
     @Test
+    @DisplayName("the vocals model's estimate drives the vocals stem, not the other way round")
+    void masksLandOnTheRightStems() throws IOException {
+        // Identity for vocals, a zero output for accompaniment: the vocals
+        // mask is exactly one and the accompaniment mask exactly zero, so a
+        // swap of the four masked() arguments -- which the sum-to-mix test
+        // cannot see, both stems being mix/2 there -- flips which stem is
+        // silent. The zero-stem fixture multiplies its input by zero.
+        byte[] zeros;
+        try (InputStream in = SpleeterSeparationProviderTest.class
+                .getResourceAsStream("/zero-stem.onnx")) {
+            zeros = in.readAllBytes();
+        }
+        server.createContext("/zero.onnx", exchange -> {
+            exchange.sendResponseHeaders(200, zeros.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(zeros);
+            }
+        });
+        String zeroSha;
+        try {
+            zeroSha = HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(zeros));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        URI zeroUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort()
+                + "/zero.onnx");
+        String idSha;
+        try {
+            idSha = HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(IDENTITY));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        URI idUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort()
+                + "/model.onnx");
+        SpleeterSeparationProvider provider = new SpleeterSeparationProvider(
+                ModelCache.at(cacheDir, false),
+                new ModelRef("mixed", "vocals.onnx", idUri, idSha, IDENTITY.length, "test"),
+                new ModelRef("mixed", "accompaniment.onnx", zeroUri, zeroSha,
+                        zeros.length, "test"));
+
+        float[] mix = new float[SpleeterSeparationProvider.MODEL_RATE];
+        for (int i = 0; i < mix.length; i++) {
+            mix[i] = (float) (0.4 * Math.sin(2 * Math.PI * 220 * i
+                    / (double) SpleeterSeparationProvider.MODEL_RATE));
+        }
+
+        var result = provider.separate(new float[][] {mix},
+                SpleeterSeparationProvider.MODEL_RATE);
+
+        double vocalsEnergy = 0;
+        double accompanimentEnergy = 0;
+        double mixEnergy = 0;
+        for (int i = 0; i < mix.length; i++) {
+            vocalsEnergy += result.vocals()[0][i] * result.vocals()[0][i];
+            accompanimentEnergy += result.accompaniment()[0][i]
+                    * result.accompaniment()[0][i];
+            mixEnergy += mix[i] * mix[i];
+        }
+        assertThat(vocalsEnergy / mixEnergy)
+                .as("vocals under a mask of one carry the mix")
+                .isGreaterThan(0.99);
+        assertThat(accompanimentEnergy / mixEnergy)
+                .as("accompaniment under a mask of zero is silent")
+                .isLessThan(1e-6);
+    }
+
+    @Test
     @DisplayName("a rate the model does not use is resampled in and back")
     void resamplesForTheModel() {
         int rate = 22050;

@@ -1,8 +1,0 @@
-# The global layer every mw-cli test sees. ml.offline is the point: a test
-# that accidentally reaches a real provider must fail loudly and locally,
-# never download a model inside the fast suite. It happened once -- a test
-# relying on the default id being absent met the real spleeter provider on
-# this module's runtime classpath and pulled 76 MB from the network before
-# anyone noticed. The suite runs with the network it deserves: none.
-ml:
-  offline: true

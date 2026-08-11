@@ -1,0 +1,15 @@
+# The global config layer for the modules whose tests could reach a real
+# provider: mw-cli (real providers on its runtime classpath) and mw-ml (it IS
+# the providers) point both test plugins' XDG_CONFIG_HOME here. The other
+# modules keep the parent's empty layer -- mw-core's GlobalConfigLayerTest
+# plants files at this location and guards that nothing else lives there, so
+# it cannot share a committed one.
+#
+# ml.offline is the point. mw-cli's runtime classpath carries the REAL
+# providers, and a test that accidentally reaches one must fail loudly and
+# locally, never download a model inside the fast suite. It happened once: a
+# test relying on the default provider id being absent met the real spleeter
+# provider and pulled 76 MB from the network before its assertion failed.
+# The suite runs with the network it deserves: none.
+ml:
+  offline: true

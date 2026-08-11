@@ -88,19 +88,31 @@ final class SpleeterStft {
             spectrum[2 * (BINS - 1)] = buffer[1];
             spectrum[2 * (BINS - 1) + 1] = 0f;
             out[t] = spectrum;
-            buffer = new float[FRAME];
         }
         return out;
     }
 
     /** The time-domain signal, cut back to {@code length} samples. */
     float[] inverse(float[][] spectrogram, int length) {
-        int frames = spectrogram.length;
+        return inverse(t -> spectrogram[t], spectrogram.length, length);
+    }
+
+    /**
+     * The same, with each frame supplied on demand.
+     *
+     * <p>This is what lets a caller apply a mask frame by frame instead of
+     * materialising a whole masked spectrogram first — at four masked
+     * spectrograms of a quarter gigabyte each on an ordinary song, the
+     * difference between this and the array form was the difference between
+     * finishing and {@code OutOfMemoryError}.
+     */
+    float[] inverse(java.util.function.IntFunction<float[]> frameAt, int frames,
+                    int length) {
         float[] out = new float[(frames - 1) * HOP + FRAME];
         float[] overlap = new float[out.length];
         float[] buffer = new float[FRAME];
         for (int t = 0; t < frames; t++) {
-            float[] spectrum = spectrogram[t];
+            float[] spectrum = frameAt.apply(t);
             // Repack into JTransforms' layout for the inverse.
             buffer[0] = spectrum[0];
             buffer[1] = spectrum[2 * (BINS - 1)];

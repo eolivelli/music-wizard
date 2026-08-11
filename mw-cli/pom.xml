@@ -90,27 +90,35 @@
         config) and belongs in the parent pom; that is #133, which this module
         does not own the file to fix.
       -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <environmentVariables>
-            <!--
-              A committed layer rather than a nonexistent directory, because
-              this module's runtime classpath carries the REAL providers: its
-              ml.offline stops a test that accidentally reaches one from
-              downloading a model inside the fast suite. The file says how
-              that nearly happened.
-            -->
-            <XDG_CONFIG_HOME>${project.basedir}/src/test/resources/offline-global-config</XDG_CONFIG_HOME>
-          </environmentVariables>
-        </configuration>
-      </plugin>
       <!--
         The CLI is the one module a user actually runs, so it ships as a single
         executable jar. Without this, running the tool means reconstructing a
         classpath by hand, and the documented `mw` commands do not exist.
       -->
+      <!--
+        The committed offline global layer, for surefire AND failsafe: this
+        module's runtime classpath carries the REAL providers, and its
+        ml.offline stops a test that accidentally reaches one from downloading
+        a model inside the fast suite. The file records how that happened once.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${maven.multiModuleProjectDirectory}/test-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <XDG_CONFIG_HOME>${maven.multiModuleProjectDirectory}/test-config</XDG_CONFIG_HOME>
+          </environmentVariables>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
