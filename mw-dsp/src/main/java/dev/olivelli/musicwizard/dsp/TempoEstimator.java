@@ -293,13 +293,18 @@ public final class TempoEstimator {
      * <p>It has to be low enough to level the accents themselves rather than to
      * trim outliers above them. About two and a half percent of an envelope's
      * frames sit above three deviations across this corpus, so this is roughly a
-     * 97.5th percentile: the loud beats are exactly what it levels. Sweeping it
-     * over the corpus, the interval that both corrects the recording this fixes
-     * and leaves every other benchmark's tracked rate where it is runs from
-     * about 2.5 to 4.5 — below it the quiet frames start being levelled too and
-     * three more recordings move, and at 4.75 and above the correction stops
-     * happening at all. Three sits in the middle of that interval, and the
-     * interval is what the choice rests on rather than the value.
+     * 97.5th percentile: the loud beats are exactly what it levels.
+     *
+     * <p>Swept over the corpus — {@code tools/TempoOctave.java} takes the
+     * ceiling as an argument, on the reference statistic the tracker reads —
+     * the two ends are set by different things. Above, the correction simply
+     * stops: it holds at 4.5 and is gone by 4.75. Below, it is everything else
+     * that starts moving, because a low enough ceiling levels the quiet frames
+     * too — at 2.5 one recording's median moves by half a step of the search
+     * grid, and by 1.5 four of them move, one onto a different pulse
+     * altogether. <b>So three is the bottom of the interval in which nothing
+     * but the target moves, not its middle</b>, and there is more room above
+     * it than below.
      *
      * <p>Expressed in deviations because {@link OnsetEnvelope} normalises to
      * unit variance over the recording, so this is a share of the envelope's own

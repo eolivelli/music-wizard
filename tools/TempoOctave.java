@@ -38,8 +38,14 @@ import java.util.List;
  * file names.
  *
  * <pre>
- *   java -cp mw-cli/target/mw.jar tools/TempoOctave.java
+ *   java -cp mw-cli/target/mw.jar tools/TempoOctave.java [ceiling]
  * </pre>
+ *
+ * <p>The optional argument overrides {@code TempoEstimator.ACCENT_CEILING} in
+ * this file's reproduction of the search, which is what the interval quoted on
+ * that constant was swept with. At any other value the {@code argmax} and
+ * {@code est} columns are reading two different estimators and will differ;
+ * that is the point of the sweep and not a defect.
  *
  * <p>Two autocorrelation columns are printed: {@code plain} reads the envelope
  * and {@code ranked} reads it with the loudest accents held level, which is what
@@ -90,7 +96,14 @@ public final class TempoOctave {
             // States no tempo; printed for its factors only.
             new Job("bm-blues-slow.mp3", 0, "no stated tempo"));
 
+    /** The ceiling this file's reproduction uses; {@code TempoEstimator}'s by default. */
+    private static double ceiling = 3.0;
+
     public static void main(String[] args) {
+        if (args.length > 0) {
+            ceiling = Double.parseDouble(args[0]);
+        }
+        System.out.printf("accent ceiling %.2f%n", ceiling);
         Path samples = Path.of("samples");
         for (Job job : JOBS) {
             Path file = samples.resolve(job.file());
@@ -164,29 +177,55 @@ public final class TempoOctave {
         int atHalf = 0;
         int atStated = 0;
         int voters = 0;
+        int disagreements = 0;
+        List<Double> voterSeeds = new ArrayList<>();
         StringBuilder seeds = new StringBuilder();
         for (int start = 0; start < envelope.length(); start += step) {
             int end = Math.min(envelope.length(), start + windowFrames);
             if (end - start < 16) {
                 break;
             }
-            TempoEstimator.Estimate seed =
-                    TempoEstimator.estimateWindow(envelope, start, end, rhythm);
+            // Both, so the sweep means something and the reproduction is
+            // checked per window rather than only over the whole clip: `mine`
+            // is this file's search at the ceiling in force, `theirs` the
+            // estimator's own. They must agree at the shipped ceiling.
+            double[] slice = new double[end - start];
+            System.arraycopy(envelope.strength(), start, slice, 0, slice.length);
+            OnsetEnvelope sliceEnvelope = new OnsetEnvelope(slice, envelope.frameRate());
+            // The flat/short guard mirrors estimate()'s: a silent window
+            // reports the prior rather than a search over nothing. Without it
+            // the one flat window in a fade "disagrees" at the shipped ceiling
+            // and the self-check cries wolf.
+            double mine = slice.length < 8 || sliceEnvelope.isFlat()
+                    ? PREFERRED_TEMPO
+                    : score(sliceEnvelope, rhythm).bestTempo();
+            double theirs =
+                    TempoEstimator.estimateWindow(envelope, start, end, rhythm).beatsPerMinute();
+            if (mine != theirs) {
+                disagreements++;
+            }
             if (end - start >= step) {
                 voters++;
+                voterSeeds.add(mine);
                 if (job.statedTempo() > 0) {
-                    if (near(seed.beatsPerMinute(), job.statedTempo())) {
+                    if (near(mine, job.statedTempo())) {
                         atStated++;
-                    } else if (near(seed.beatsPerMinute(), job.statedTempo() / 2)) {
+                    } else if (near(mine, job.statedTempo() / 2)) {
                         atHalf++;
                     }
                 }
             }
-            seeds.append(String.format("%.2f ", seed.beatsPerMinute()));
+            seeds.append(String.format("%.2f ", mine));
             at++;
         }
-        System.out.printf("  windows %d (%d voters): %d at stated, %d at half%n",
-                at, voters, atStated, atHalf);
+        double[] sorted = voterSeeds.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        double median = sorted.length == 0 ? 0
+                : sorted.length % 2 == 1 ? sorted[sorted.length / 2]
+                : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+        System.out.printf("  windows %d (%d voters): %d at stated, %d at half,"
+                + " voter median %.2f%s%n", at, voters, atStated, atHalf, median,
+                disagreements == 0 ? "" : "  [" + disagreements + " windows differ from the"
+                        + " estimator, expected only when a ceiling is passed]");
         System.out.printf("  seeds: %s%n", seeds.toString().trim());
     }
 
@@ -237,11 +276,11 @@ public final class TempoOctave {
         return new Scored(plain, ranked, frameRate, bestTempo);
     }
 
-    /** {@code TempoEstimator.compressAccents}, reproduced. */
+    /** {@code TempoEstimator.compressAccents}, reproduced, at the ceiling in force. */
     private static double[] compressAccents(double[] signal) {
         double[] out = new double[signal.length];
         for (int i = 0; i < signal.length; i++) {
-            out[i] = Math.clamp(signal[i], -3.0, 3.0);
+            out[i] = Math.clamp(signal[i], -ceiling, ceiling);
         }
         return out;
     }
