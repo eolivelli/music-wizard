@@ -192,16 +192,21 @@ public final class RecordingStore {
             throw new IOException("there is already a recording called " + stem);
         }
         Recording renamed = new Recording(target);
-        // The target stem can carry side files orphaned by an interrupted move;
-        // cleared now, so the take moving in cannot inherit another take's
-        // analysis or words as its own.
-        //noinspection ResultOfMethodCallIgnored
-        renamed.scoreFile().delete();
-        //noinspection ResultOfMethodCallIgnored
-        renamed.notesFile().delete();
-
         File oldScore = recording.scoreFile();
         File oldNotes = recording.notesFile();
+        // The target stem can carry side files orphaned by an interrupted move;
+        // cleared, so the take moving in cannot inherit another take's analysis
+        // or words as its own. Only where the moving take supplies no
+        // replacement: the move overwrites the rest — and when the old and new
+        // stems alias, an unconditional clear would delete the take's own files.
+        if (!oldScore.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.scoreFile().delete();
+        }
+        if (!oldNotes.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.notesFile().delete();
+        }
         if (!recording.wav().renameTo(target)) {
             throw new IOException("could not rename " + recording.displayName());
         }

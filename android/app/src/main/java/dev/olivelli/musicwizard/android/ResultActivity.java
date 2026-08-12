@@ -141,7 +141,8 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     }
 
     /**
-     * Writes the note when it changed; true when the file now matches the field.
+     * Writes the note when it changed; false only when a write was attempted
+     * and failed.
      *
      * <p>Leaving the screen is what commits the words — there is no save
      * button. Only on a change, so that an untouched field is a no-op: a note

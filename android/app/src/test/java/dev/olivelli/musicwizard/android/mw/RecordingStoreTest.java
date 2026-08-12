@@ -134,7 +134,9 @@ public class RecordingStoreTest {
 
     /**
      * A stem can carry side files orphaned by an interrupted move; a take
-     * renamed onto it must not inherit them as its own analysis or words.
+     * renamed onto it must not inherit them as its own analysis or words —
+     * and its own note must land over the orphan, which also pins the order
+     * of the clearing and the moving.
      */
     @Test
     public void renamingOntoAStemClearsOrphanedSideFiles() throws IOException {
@@ -142,9 +144,11 @@ public class RecordingStoreTest {
         touch(wav);
         write(new File(store.directory(), "kitchen.notes.txt"), "another take's words");
         write(new File(store.directory(), "kitchen.score.json"), "{}");
+        Recording before = new Recording(wav);
+        RecordingStore.writeNotes(before, "the moving take's words");
 
-        Recording after = store.rename(new Recording(wav), "kitchen");
-        assertEquals("", RecordingStore.readNotes(after));
+        Recording after = store.rename(before, "kitchen");
+        assertEquals("the moving take's words", RecordingStore.readNotes(after));
         assertFalse(after.isAnalyzed());
     }
 
