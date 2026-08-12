@@ -557,6 +557,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         // overruns, and gently when the overrun is small.
         double lineStart = from + placed.get(0).startSeconds();
         double lineEnd = from + placed.get(placed.size() - 1).endSeconds();
+        if (lineStart >= tailBound) {
+            // The whole result sits past the bound -- the window hears half a
+            // second beyond it, and a singer can start there. A negative
+            // compression would reverse the words; the parsed guess is better
+            // than a distortion.
+            return line;
+        }
         double scale = lineEnd > tailBound && lineEnd > lineStart
                 ? (tailBound - lineStart) / (lineEnd - lineStart)
                 : 1.0;

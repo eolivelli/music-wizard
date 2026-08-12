@@ -161,6 +161,39 @@ class AlignedLyricsTest {
     }
 
     @Test
+    @DisplayName("a result wholly past the tail bound keeps the parsed times, never reverses")
+    void resultPastTheBoundKeepsParsedTimes() throws IOException {
+        // The window hears half a second past the bound, and an aligner can
+        // place the whole line there. Compressing into [firstWord, bound]
+        // would then scale negatively and reverse the words; the parsed guess
+        // must win instead.
+        Path source = directory.resolve("song.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 6.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("song.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
+                .exitCode()).isZero();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                + "\nconfig:\n  ml:\n    alignmentProvider: fake-cli-tail-alignment\n");
+        Path lrc = directory.resolve("words.lrc");
+        Files.writeString(lrc, LRC);
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        var words = score.lyrics().lines().get(0).words();
+        // Parsed spread times, in order -- not a reversed compression.
+        assertThat(words.get(0).startSeconds()).isEqualTo(1.0);
+        for (int i = 1; i < words.size(); i++) {
+            assertThat(words.get(i).startSeconds())
+                    .isGreaterThanOrEqualTo(words.get(i - 1).startSeconds());
+        }
+    }
+
+    @Test
     @DisplayName("an absent aligner leaves the parsed times untouched")
     void absentAlignerKeepsParsedTimes() throws IOException {
         Path root = analysed("no-such-aligner");
