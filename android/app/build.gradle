@@ -252,13 +252,10 @@ tasks.matching { it.name == 'assembleDebug' }.configureEach { finalizedBy 'check
 /**
  * The one certificate every build must sign with, as apksigner prints it.
  *
- * <p>The defect behind #377 was that the keystore's source was silently
- * variable — four releases, four certificates, one of them from a source never
- * identified. The signingConfig above names the committed keystore; this
- * constant is what proves the APK was actually signed by it, from the
- * committed tree, on every build. If the keystore is ever deliberately
- * replaced, update this fingerprint in the same commit — and say in it that
- * every installed build stops updating.
+ * <p>The signingConfig above names the committed keystore; this constant is
+ * what proves the APK was actually signed by it, on every build. If the
+ * keystore is ever deliberately replaced, update this fingerprint in the same
+ * commit — and say in it that every installed build stops updating.
  */
 ext.debugCertSha256 = '66d1dabcdbd822893edf76308ea24c06a0b324212b627f54beec520b328ffe71'
 
