@@ -19,10 +19,14 @@ package dev.olivelli.musicwizard.android;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
+import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
+import java.io.IOException;
 
 /**
  * The result screen: tempo, meter, and the chart as text.
@@ -43,6 +47,7 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     private File wav;
     private TextView status;
     private TextView chart;
+    private EditText notes;
     private Button analyzeButton;
     private Button shareButton;
 
@@ -64,16 +69,22 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
 
         status = findViewById(R.id.status);
         chart = findViewById(R.id.chart);
+        notes = findViewById(R.id.notes);
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
 
+        notes.setText(RecordingStore.readNotes(new RecordingStore.Recording(wav)));
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
-        findViewById(R.id.bundleButton).setOnClickListener(
-                view -> BundleShare.share(this, wav));
+        findViewById(R.id.bundleButton).setOnClickListener(view -> {
+            // Flushed first, so what is typed and what is bundled cannot
+            // disagree; the file is where BundleShare reads it from.
+            saveNotes();
+            BundleShare.share(this, wav);
+        });
     }
 
     @Override
@@ -119,6 +130,27 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     protected void onPause() {
         super.onPause();
         AnalysisJobs.get().stopObserving(this);
+        if (wav != null) {
+            saveNotes();
+        }
+    }
+
+    /**
+     * Writes the note beside the take.
+     *
+     * <p>On every pause rather than on a save button: the note is the one
+     * thing about a take that cannot be recovered by pressing anything again,
+     * so leaving the screen is what commits it. A failure is worth a toast for
+     * the same reason.
+     */
+    private void saveNotes() {
+        try {
+            RecordingStore.writeNotes(new RecordingStore.Recording(wav),
+                    notes.getText().toString());
+        } catch (IOException e) {
+            Toast.makeText(this, getString(R.string.notes_unsaved, e.getMessage()),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void analyze() {

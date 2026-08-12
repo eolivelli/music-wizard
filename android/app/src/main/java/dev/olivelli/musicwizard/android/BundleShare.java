@@ -45,8 +45,9 @@ import java.util.concurrent.Executors;
  * <p>This is how a take and what the phone made of it travel together — to a
  * cloud drive, a cable, a chat with oneself — without the app talking to any
  * server itself. Whoever picks the zip up gets the recording, the chart, the
- * cached {@code score.json} where one could be written, and a few lines about
- * the take; {@code docs/phone-to-corpus.md} is what they do next.
+ * cached {@code score.json} where one could be written, the player's note when
+ * one was typed, and a few lines about the take; {@code docs/phone-to-corpus.md}
+ * is what they do next.
  *
  * <p>The score is read on the main thread, where {@link AnalysisJobs} keeps all
  * of its state; only the zip writing — the audio copy — happens on the worker,
@@ -123,6 +124,10 @@ final class BundleShare {
             }
         }
         String chart = score == null ? null : MwAnalysis.chartText(score);
+        // The result screen flushes its field to this file before calling here,
+        // so what is typed and what is bundled cannot disagree.
+        String typed = RecordingStore.readNotes(recording);
+        String notes = typed.trim().isEmpty() ? null : typed;
         String info = infoText(application, take, recording.durationSeconds(),
                 wav.lastModified(), score);
 
@@ -137,7 +142,7 @@ final class BundleShare {
                     throw new IOException("could not create " + directory);
                 }
                 prune(directory);
-                TakeBundle.write(zip, take, wav, scoreFile, chart, info);
+                TakeBundle.write(zip, take, wav, scoreFile, chart, notes, info);
             } catch (Throwable t) {
                 // Throwable for the same reason as AnalysisJobs.run: an
                 // Exception-only catch lets an Error vanish into the executor's

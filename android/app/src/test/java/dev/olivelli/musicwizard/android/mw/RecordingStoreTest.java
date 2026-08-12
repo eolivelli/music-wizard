@@ -79,11 +79,12 @@ public class RecordingStoreTest {
         assertEquals("older", listed.get(1).displayName());
     }
 
-    /** Only WAVs are takes; the cached analyses beside them are not listed. */
+    /** Only WAVs are takes; the analyses and notes beside them are not listed. */
     @Test
     public void cachedAnalysesAreNotListedAsRecordings() throws IOException {
         touch(new File(store.directory(), "take.wav"));
         touch(new File(store.directory(), "take.score.json"));
+        touch(new File(store.directory(), "take.notes.txt"));
         List<Recording> listed = store.list();
         assertEquals(1, listed.size());
         assertEquals("take", listed.get(0).displayName());
@@ -113,6 +114,38 @@ public class RecordingStoreTest {
         assertEquals("{\"marker\":1}", read(after.scoreFile()));
     }
 
+    /** The note reads back exactly, and a blanked note removes its file. */
+    @Test
+    public void aNoteRoundTripsAndABlankOneDeletesTheFile() throws IOException {
+        File wav = new File(store.directory(), "take.wav");
+        touch(wav);
+        Recording recording = new Recording(wav);
+        assertEquals("", RecordingStore.readNotes(recording));
+
+        RecordingStore.writeNotes(recording, "G C D, twice round");
+        assertEquals("G C D, twice round", RecordingStore.readNotes(recording));
+
+        RecordingStore.writeNotes(recording, "  \n");
+        assertFalse("an emptied note must not leave a ghost file",
+                recording.notesFile().isFile());
+    }
+
+    /**
+     * Renaming carries the note too — it is the player's own words, and the
+     * one file beside a take that cannot be recomputed if left behind.
+     */
+    @Test
+    public void renamingCarriesTheNoteAlong() throws IOException {
+        File wav = new File(store.directory(), "2026-08-01_21-34-05.wav");
+        touch(wav);
+        Recording before = new Recording(wav);
+        RecordingStore.writeNotes(before, "slow blues in G");
+
+        Recording after = store.rename(before, "kitchen blues");
+        assertFalse(before.notesFile().isFile());
+        assertEquals("slow blues in G", RecordingStore.readNotes(after));
+    }
+
     /** A rename onto an existing take is refused rather than silently merging two. */
     @Test
     public void renamingOntoAnExistingTakeIsRefused() throws IOException {
@@ -129,17 +162,19 @@ public class RecordingStoreTest {
         assertTrue(first.isFile());
     }
 
-    /** Deleting takes the cached analysis with it. */
+    /** Deleting takes the cached analysis and the note with it. */
     @Test
     public void deletingRemovesTheAudioAndItsAnalysis() throws IOException {
         File wav = new File(store.directory(), "take.wav");
         touch(wav);
         Recording recording = new Recording(wav);
         write(recording.scoreFile(), "{}");
+        RecordingStore.writeNotes(recording, "a note");
 
         store.delete(recording);
         assertFalse(wav.isFile());
         assertFalse(recording.scoreFile().isFile());
+        assertFalse(recording.notesFile().isFile());
     }
 
     /**
