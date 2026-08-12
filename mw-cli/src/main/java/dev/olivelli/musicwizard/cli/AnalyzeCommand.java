@@ -508,8 +508,8 @@ final class AnalyzeCommand implements Callable<Integer> {
      * alignment ended.
      *
      * <p>The window hears half a second past the parsed end, so the trellis
-     * can place a last word the singer holds — the reported times still end at
-     * the tail bound, by compression. The head is sequential: an aligned line
+     * can place a last word the singer holds — the reported times never end
+     * past the tail bound. The head is sequential: an aligned line
      * cannot start before its predecessor ended. The paths that keep parsed
      * times instead can, which is why the invariant every sheet cursor depends
      * on is enforced where the list is assembled, not here. The window also
@@ -526,9 +526,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         int end = Math.max(start, audio.indexOf(to));
         if (end - start < audio.sampleRate() / 10 || tailBound <= from + 0.1) {
             // No room to align: a degenerate window, or a tail bound at the
-            // window head -- which a word-tagged twin can produce -- would
-            // compress the whole line to a point. The parsed guess is better
-            // than a point.
+            // window head -- which a word-tagged twin can produce (#390).
             return line;
         }
         float[] window = new float[end - start];
@@ -548,25 +546,26 @@ final class AnalyzeCommand implements Callable<Integer> {
             return line;
         }
         // The tail bound is honoured by compression, not clamping: clamping
-        // both ends flattened every overrunning word into a zero-length pile
-        // on the bound -- neither measured nor the parser's guess, worse than
-        // both, on a third of a real file's lines, since a half second of
-        // slack routinely lets the last word cross the next line's tag. A
-        // linear squeeze into [first word, bound] keeps the order and the
-        // proportions the aligner measured; it binds only when the result
-        // overruns, and gently when the overrun is small.
+        // flattened overrunning words into zero-length piles on the bound; a
+        // proportional squeeze keeps the order and spacing the aligner
+        // measured. The max, not the last word's end: nothing here may assume
+        // recognition spans cannot overlap.
         double lineStart = from + placed.get(0).startSeconds();
-        double lineEnd = from + placed.get(placed.size() - 1).endSeconds();
-        if (lineStart >= tailBound) {
-            // The whole result sits past the bound -- the window hears half a
-            // second beyond it, and a singer can start there. A negative
-            // compression would reverse the words; the parsed guess is better
-            // than a distortion.
-            return line;
+        double lineEnd = lineStart;
+        for (LyricWord word : placed) {
+            lineEnd = Math.max(lineEnd, from + word.endSeconds());
         }
         double scale = lineEnd > tailBound && lineEnd > lineStart
                 ? (tailBound - lineStart) / (lineEnd - lineStart)
                 : 1.0;
+        if (scale < 0.5) {
+            // One predicate for every degenerate shape: a result wholly past
+            // the bound scales negative and would reverse the words; one
+            // barely inside it scales toward zero and becomes a sliver; and
+            // anything below half is no longer the aligner's measurement but
+            // structure overriding it. The parsed guess wins all three.
+            return line;
+        }
         List<LyricWord> out = new ArrayList<>(line.words().size());
         for (int i = 0; i < placed.size(); i++) {
             LyricWord original = line.words().get(i);

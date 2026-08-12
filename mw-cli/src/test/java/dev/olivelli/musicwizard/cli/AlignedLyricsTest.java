@@ -185,12 +185,12 @@ class AlignedLyricsTest {
 
         Score score = Workspace.open(root).readScore().orElseThrow();
         var words = score.lyrics().lines().get(0).words();
-        // Parsed spread times, in order -- not a reversed compression.
+        // Parsed spread times -- not a reversed compression. The times are the
+        // parser's, and the word order is the LRC's: LyricLine sorts words by
+        // start, so a reversal shows up as reversed text, which is the harm.
         assertThat(words.get(0).startSeconds()).isEqualTo(1.0);
-        for (int i = 1; i < words.size(); i++) {
-            assertThat(words.get(i).startSeconds())
-                    .isGreaterThanOrEqualTo(words.get(i - 1).startSeconds());
-        }
+        assertThat(words.stream().map(w -> w.text()).toList())
+                .containsExactly("la", "sol", "mi");
     }
 
     @Test
