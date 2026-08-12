@@ -113,8 +113,9 @@ final class DoctorCommand implements Callable<Integer> {
             // The user-supplied model directory (#396) outranks the fetched
             // archive, so a wrong path fails transcription; the check mirrors
             // the provider's own.
+            // Blank means unset, exactly as the provider reads it.
             String modelDirectory = ml == null ? null : ml.asrModelDirectory();
-            if (modelDirectory != null
+            if (modelDirectory != null && !modelDirectory.isBlank()
                     && !Files.isRegularFile(Path.of(modelDirectory, "conv_frontend.onnx"))) {
                 System.out.println("            ml.asrModelDirectory holds no Qwen3-ASR"
                         + " export (no conv_frontend.onnx): " + modelDirectory);

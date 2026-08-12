@@ -51,13 +51,14 @@ final class Qwen3Tokens {
     }
 
     /**
-     * Whether a decode is a repetition loop rather than lyrics: it ran to the
-     * decoder's token cap with almost no distinct tokens. The larger locally
-     * exported model does this on some sung stretches (#396), and 128 copies
-     * of one syllable engraved under a verse is strictly worse than a line
-     * missing. The threshold is deliberately far from anything singing
-     * produces -- real choruses repeat words, not nine-tenths of a window's
-     * tokens.
+     * Whether a decode is a repetition loop rather than lyrics: at least 64
+     * tokens with at most a tenth of them distinct. The larger locally
+     * exported model produces such decodes on some sung stretches (#396) --
+     * running to its token cap on two or three distinct tokens -- and 128
+     * copies of one syllable engraved under a verse is strictly worse than a
+     * line missing. The threshold is deliberately far from singing: a chorus
+     * repeats words, and even a sustained vocalise varies more of its window
+     * than this.
      */
     static boolean looksLikeALoop(String[] tokens) {
         if (tokens.length < 64) {

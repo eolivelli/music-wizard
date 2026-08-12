@@ -89,6 +89,24 @@ class Qwen3TokensTest {
         String[] shortOutput = new String[20];
         java.util.Arrays.fill(shortOutput, " la");
         assertThat(Qwen3Tokens.looksLikeALoop(shortOutput)).isFalse();
+
+        // Both boundaries exactly: 64 tokens is long enough, and a tenth
+        // distinct is still a loop while a token more of variety is not.
+        String[] atLength = new String[64];
+        for (int i = 0; i < atLength.length; i++) {
+            atLength[i] = " t" + (i % 6);
+        }
+        assertThat(Qwen3Tokens.looksLikeALoop(atLength)).isTrue();
+        String[] tenthDistinct = new String[70];
+        for (int i = 0; i < tenthDistinct.length; i++) {
+            tenthDistinct[i] = " t" + (i % 7);
+        }
+        assertThat(Qwen3Tokens.looksLikeALoop(tenthDistinct)).isTrue();
+        String[] justVaried = new String[70];
+        for (int i = 0; i < justVaried.length; i++) {
+            justVaried[i] = " t" + (i % 8);
+        }
+        assertThat(Qwen3Tokens.looksLikeALoop(justVaried)).isFalse();
     }
 
     @Test

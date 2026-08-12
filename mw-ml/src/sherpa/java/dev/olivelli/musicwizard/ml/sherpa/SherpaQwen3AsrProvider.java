@@ -34,6 +34,7 @@ import dev.olivelli.musicwizard.ml.ModelRef;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -50,11 +51,10 @@ import java.util.List;
  * the submodule builds and runs everything else, and {@code doctor} reports
  * this provider as the absent capability it then is.
  *
- * <p>The model arrives as the official sherpa-onnx release archive, fetched
- * and checksummed by {@link ModelCache} like any other model, then unpacked
- * beside its note. It is the 0.6B checkpoint: the 1.7B named by #314 has no
- * official export yet, and an unprovenanced mirror is not a model this project
- * runs. When one appears the table grows a row.
+ * <p>The model arrives as the official sherpa-onnx release archive — the 0.6B
+ * checkpoint — fetched and checksummed by {@link ModelCache} like any other
+ * model, then unpacked beside its note. A different model, such as a locally
+ * produced 1.7B export (#396), runs via {@code ml.asrModelDirectory} instead.
  */
 public final class SherpaQwen3AsrProvider implements AsrProvider {
 
@@ -162,9 +162,12 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
      *
      * <p>{@code ml.asrModelDirectory} outranks the archive: only the 0.6B
      * export is published, so running another size means producing the
-     * directory locally (#396) and pointing here. It must already hold the
-     * model — a checked claim, because a typo in the path must not silently
-     * fall back to the smaller published model.
+     * directory locally (#396) and pointing here — <b>from the global config
+     * layer</b>, the only one a ServiceLoader-built provider reads (#383).
+     * It must already hold everything {@code build()} loads, checked file by
+     * file, because a typo in the path or a half-copied export must not
+     * silently fall back to the smaller published model or surface as a
+     * per-stretch decode failure.
      *
      * <p>The archive is the unit the checksum covers; the unpacked tree is
      * derived from it locally, marked done only after tar succeeds, so a
@@ -173,10 +176,24 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private Path modelDirectory() {
         if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
             Path configured = Path.of(configuredModelDirectory);
-            if (!Files.isRegularFile(configured.resolve("conv_frontend.onnx"))) {
+            List<String> missing = new ArrayList<>();
+            for (String wanted : new String[] {"conv_frontend.onnx",
+                    "encoder.int8.onnx|encoder.onnx",
+                    "decoder.int8.onnx|decoder.onnx",
+                    "tokenizer/vocab.json"}) {
+                boolean found = false;
+                for (String option : wanted.split("\\|")) {
+                    found |= Files.isRegularFile(configured.resolve(option));
+                }
+                if (!found) {
+                    missing.add(wanted.replace('|', ' ').replace(" ", " or "));
+                }
+            }
+            if (!missing.isEmpty()) {
                 throw new ModelUnavailableException(
-                        "ml.asrModelDirectory does not hold a Qwen3-ASR export"
-                        + " (no conv_frontend.onnx): " + configured);
+                        "ml.asrModelDirectory does not hold a Qwen3-ASR export;"
+                        + " missing " + String.join(", ", missing)
+                        + " under " + configured);
             }
             return configured;
         }
@@ -232,6 +249,15 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                         "sherpa-onnx native library not found ("
                         + e.getMessage() + "); run tools/build-sherpa-native.sh"
                         + " and set ml.sherpaNativePath to its lib directory", e);
+            } catch (RuntimeException e) {
+                // A recognizer that cannot be built is a model that cannot be
+                // had -- a corrupt unpack, a half-made export -- and not a
+                // per-stretch decode failure: left unwrapped it was retried
+                // and miscounted once per stretch and summarised as the model
+                // having heard nothing.
+                throw new ModelUnavailableException(
+                        "the ASR model in " + modelDirectory
+                        + " could not be loaded: " + e.getMessage(), e);
             }
         }
         return recognizer;
@@ -259,11 +285,12 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     /**
      * The int8 file when the directory holds one, the plain export otherwise.
-     * A supplied directory (#396) may carry either: per-tensor int8 is
-     * reported to hurt the larger decoder, so an export that deliberately
-     * keeps fp32 must be runnable as it is.
+     * A supplied directory (#396) may carry either, and an export that
+     * deliberately keeps fp32 must be runnable as it is. The choice is
+     * per-file and implicit: a directory holding both runs the int8 file, so
+     * choosing fp32 means curating a directory without the int8 one.
      */
-    private static String preferInt8(Path directory, String stem) {
+    static String preferInt8(Path directory, String stem) {
         Path int8 = directory.resolve(stem + ".int8.onnx");
         return (Files.isRegularFile(int8) ? int8 : directory.resolve(stem + ".onnx"))
                 .toString();

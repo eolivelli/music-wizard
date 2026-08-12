@@ -111,9 +111,12 @@ public record MusicWizardConfig(
             String sherpaNativePath,
             /* Directory holding an ASR model the user produced or chose
              * themselves, in the provider's own layout; unset means the
-             * provider fetches its published archive. What made it exist:
-             * only the 0.6B Qwen3-ASR export is published, and running the
-             * 1.7B means exporting it locally (#396). */
+             * provider fetches its published archive. Read from the GLOBAL
+             * config only: providers configure themselves from the
+             * environment (#383), so a workspace-layer value never reaches
+             * them -- analyze says so rather than ignoring it. What made it
+             * exist: only the 0.6B Qwen3-ASR export is published, and
+             * running the 1.7B means exporting it locally (#396). */
             String asrModelDirectory,
             /* Refuse to download anything, failing instead. */
             Boolean offline) {

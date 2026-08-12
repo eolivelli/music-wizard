@@ -279,9 +279,12 @@ The keys that do nothing divide in two. `analyze` and `render` **warn** about
 `analysis.skipSeparation`, `notation.paperSize` ([#180][i180]) and
 `notation.capo` and `notation.accidentalPreference` ([#181][i181]) — from a flag
 or from this file — rather than producing the default output in silence. All of
-`arrangement` and `ml` is equally inert, and nothing warns about those: they have
-no flags, and no command to warn from yet ([#144][i144]). The advisor is the
-section below.
+`arrangement` is equally inert, and nothing warns about it: it has no flags,
+and no command to warn from yet ([#144][i144]). The `ml` section is live — it
+selects providers and their models for separation, transcription and alignment,
+and its directory-valued keys are read from the global config file only, which
+`analyze` says out loud when a workspace tries to override one. The advisor is
+the section below.
 
 [i144]: https://github.com/eolivelli/music-wizard/issues/144
 

@@ -64,6 +64,31 @@ class SherpaQwen3AsrProviderTest {
     }
 
     @Test
+    @DisplayName("int8 wins when the directory holds both; fp32 stands alone")
+    void preferInt8PicksWhatExists() throws java.io.IOException {
+        java.nio.file.Files.createFile(directory.resolve("decoder.onnx"));
+        assertThat(SherpaQwen3AsrProvider.preferInt8(directory, "decoder"))
+                .endsWith("decoder.onnx");
+
+        java.nio.file.Files.createFile(directory.resolve("decoder.int8.onnx"));
+        assertThat(SherpaQwen3AsrProvider.preferInt8(directory, "decoder"))
+                .endsWith("decoder.int8.onnx");
+    }
+
+    @Test
+    @DisplayName("a half-copied export names every missing file, not the first")
+    void halfCopiedExportNamesEverything() throws java.io.IOException {
+        java.nio.file.Files.createFile(directory.resolve("conv_frontend.onnx"));
+
+        assertThatThrownBy(() -> provider(directory.toString())
+                .transcribe(new float[16_000], 16_000, "it"))
+                .isInstanceOf(ModelUnavailableException.class)
+                .hasMessageContaining("encoder")
+                .hasMessageContaining("decoder")
+                .hasMessageContaining("tokenizer/vocab.json");
+    }
+
+    @Test
     @DisplayName("no samples means no words, and nothing is fetched to say so")
     void emptySamplesShortCircuit() {
         assertThat(provider(null).transcribe(new float[0], 16_000, "en"))

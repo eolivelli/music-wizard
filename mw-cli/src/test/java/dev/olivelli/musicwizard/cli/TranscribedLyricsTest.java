@@ -141,6 +141,27 @@ class TranscribedLyricsTest {
     }
 
     @Test
+    @DisplayName("a workspace-layer model directory is named as unreachable, not ignored")
+    void workspaceModelDirectoryIsCalledOut() throws IOException {
+        // Providers configure themselves from the global layer (#383); the
+        // silent alternative to this warning is transcribing with the
+        // published model while the user believes their own is running.
+        Path root = workspaceWithQuietIntro();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                .replace("asrProvider: fake-cli-asr",
+                        "asrProvider: fake-cli-asr\n    asrModelDirectory: "
+                                + directory.resolve("my-own-model")));
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.err())
+                .contains("ml.asrModelDirectory is read from the global config only");
+    }
+
+    @Test
     @DisplayName("no provider on the classpath degrades with what is available")
     void missingProviderDegrades() throws IOException {
         Path root = workspaceWithQuietIntro();
