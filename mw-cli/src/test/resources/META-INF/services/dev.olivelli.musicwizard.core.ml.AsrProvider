@@ -1,1 +1,2 @@
 dev.olivelli.musicwizard.cli.FakeAsrProvider
+dev.olivelli.musicwizard.cli.FakeUnreadyAsrProvider

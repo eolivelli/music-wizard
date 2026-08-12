@@ -108,4 +108,32 @@ class DoctorCommandTest {
                 .contains("fake-cli-separation (present)")
                 .contains("available: fake-cli-separation");
     }
+
+    @Test
+    @DisplayName("a provider that says it is not ready is printed and fails the bill of health")
+    void unreadyProviderIsReported(@TempDir Path tmp) throws IOException {
+        // The readiness question is the provider's own (#396): doctor holds no
+        // copy of any provider's file list to fall stale, it prints whatever
+        // the configured provider answers.
+        Path global = tmp.resolve("config.yaml");
+        Files.writeString(global, """
+                ml:
+                  asrProvider: fake-cli-unready-asr
+                """);
+        var out = new java.io.ByteArrayOutputStream();
+        var previous = System.out;
+        System.setOut(new java.io.PrintStream(out, true));
+        try {
+            int exit = new picocli.CommandLine(
+                    new DoctorCommand(ConfigLoader.withGlobalConfigFile(global)))
+                    .execute();
+            assertThat(exit).isZero();
+        } finally {
+            System.setOut(previous);
+        }
+        assertThat(out.toString())
+                .contains(FakeUnreadyAsrProvider.PROBLEM)
+                .contains("some outputs will be unavailable")
+                .doesNotContain("Everything needed for full output is present");
+    }
 }

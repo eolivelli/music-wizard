@@ -92,7 +92,12 @@ public record MusicWizardConfig(
             Integer maxHandSpanSemitones) {
     }
 
-    /** Which providers run the neural stages. */
+    /**
+     * Which providers run the neural stages. Providers configure themselves
+     * from the global config layer (#383), so the directory- and
+     * offline-valued keys here reach them from that file only; the provider
+     * *ids* are read by the commands, which see every layer.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MlConfig(
             /* Provider id for stem separation, e.g. "onnx-spleeter". */
@@ -111,12 +116,11 @@ public record MusicWizardConfig(
             String sherpaNativePath,
             /* Directory holding an ASR model the user produced or chose
              * themselves, in the provider's own layout; unset means the
-             * provider fetches its published archive. Read from the GLOBAL
-             * config only: providers configure themselves from the
-             * environment (#383), so a workspace-layer value never reaches
-             * them -- analyze says so rather than ignoring it. What made it
-             * exist: only the 0.6B Qwen3-ASR export is published, and
-             * running the 1.7B means exporting it locally (#396). */
+             * provider fetches its published archive. What made it exist:
+             * only the 0.6B Qwen3-ASR export is published, and running the
+             * 1.7B means exporting it locally (#396). analyze warns when a
+             * workspace layer sets this, since only the global layer
+             * reaches the provider. */
             String asrModelDirectory,
             /* Refuse to download anything, failing instead. */
             Boolean offline) {

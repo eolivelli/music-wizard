@@ -86,41 +86,16 @@ final class DoctorCommand implements Callable<Integer> {
                 MlProviders.separationIds(), "#312");
         report("Lyrics ASR", ml == null ? null : ml.asrProvider(),
                 MlProviders.asrIds(), "#314");
-        // The one provider whose Java class alone is not enough: without its
-        // native directory the first transcription fails, and this command's
-        // whole job is saying so before that. Only when the provider is
-        // present -- a build without it has nothing for the key to point at.
-        if (MlProviders.asrIds().contains("sherpa-qwen3")) {
-            // Property first, then the config key: that is loading's own
-            // precedence -- sherpa's LibraryUtils reads the property before
-            // anything else, and the provider fills it from config only when
-            // unset -- so this checks the value that will be consulted and
-            // names the setting it came from.
-            String source = "sherpa_onnx.native.path";
-            String nativePath = System.getProperty(source);
-            if (nativePath == null) {
-                source = "ml.sherpaNativePath";
-                nativePath = ml == null ? null : ml.sherpaNativePath();
-            }
-            if (nativePath == null) {
-                System.out.println("            ml.sherpaNativePath not set; the JVM"
-                        + " library path will be tried at first use");
-            } else if (!Files.isDirectory(Path.of(nativePath))) {
-                System.out.println("            " + source + " is not a directory: "
-                        + nativePath + " -- run tools/build-sherpa-native.sh");
-                allWell = false;
-            }
-            // The user-supplied model directory (#396) outranks the fetched
-            // archive, so a wrong path fails transcription; the check mirrors
-            // the provider's own.
-            // Blank means unset, exactly as the provider reads it.
-            String modelDirectory = ml == null ? null : ml.asrModelDirectory();
-            if (modelDirectory != null && !modelDirectory.isBlank()
-                    && !Files.isRegularFile(Path.of(modelDirectory, "conv_frontend.onnx"))) {
-                System.out.println("            ml.asrModelDirectory holds no Qwen3-ASR"
-                        + " export (no conv_frontend.onnx): " + modelDirectory);
-                allWell = false;
-            }
+        // Whether the configured provider will actually run is the provider's
+        // own question: it knows which files loading demands, and it answers
+        // for the environment it configured itself from (#383), which is
+        // exactly what the first transcription will use. Doctor holds no
+        // second copy of any provider's file list to fall stale.
+        var asr = MlProviders.asr(ml == null ? null : ml.asrProvider());
+        var problem = asr.flatMap(dev.olivelli.musicwizard.core.ml.AsrProvider::readinessProblem);
+        if (problem.isPresent()) {
+            System.out.println("            " + problem.get());
+            allWell = false;
         }
         report("Alignment", ml == null ? null : ml.alignmentProvider(),
                 MlProviders.alignmentIds(), "#313");

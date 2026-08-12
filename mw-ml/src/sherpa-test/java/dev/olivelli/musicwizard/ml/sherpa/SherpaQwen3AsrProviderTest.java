@@ -94,4 +94,45 @@ class SherpaQwen3AsrProviderTest {
         assertThat(provider(null).transcribe(new float[0], 16_000, "en"))
                 .isEmpty();
     }
+
+    @Test
+    @DisplayName("readiness answers for the files loading will demand")
+    void readinessMirrorsLoading() throws java.io.IOException {
+        // Nothing configured: nothing a file check can catch.
+        assertThat(provider(null).readinessProblem()).isEmpty();
+        // Blank is unset, everywhere the key is read.
+        assertThat(provider("  ").readinessProblem()).isEmpty();
+        // A half-copied export names its gaps before any transcription runs.
+        java.nio.file.Files.createFile(directory.resolve("conv_frontend.onnx"));
+        assertThat(provider(directory.toString()).readinessProblem())
+                .hasValueSatisfying(problem -> {
+                    assertThat(problem).contains("ml.asrModelDirectory")
+                            .contains("encoder").contains("decoder")
+                            .contains("tokenizer/vocab.json")
+                            .contains("tokenizer/merges.txt")
+                            .contains("tokenizer/tokenizer_config.json");
+                });
+    }
+
+    @Test
+    @DisplayName("a configured native directory without the library is a named problem")
+    void nativeDirectoryWithoutLibrary() throws java.io.IOException {
+        // The property outranks the config key at load time; the test JVM
+        // must not carry one into this assertion or out of it.
+        String saved = System.getProperty("sherpa_onnx.native.path");
+        try {
+            System.clearProperty("sherpa_onnx.native.path");
+            var provider = new SherpaQwen3AsrProvider(
+                    ModelCache.at(directory.resolve("cache"), true),
+                    Qwen3Models.ARCHIVE, directory.toString(), null);
+            assertThat(provider.readinessProblem())
+                    .hasValueSatisfying(problem -> assertThat(problem)
+                            .contains("ml.sherpaNativePath")
+                            .contains("sherpa-onnx-jni"));
+        } finally {
+            if (saved != null) {
+                System.setProperty("sherpa_onnx.native.path", saved);
+            }
+        }
+    }
 }

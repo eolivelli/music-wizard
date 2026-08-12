@@ -61,6 +61,36 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     static final int MODEL_RATE = 16_000;
 
     /**
+     * What sherpa's own config validation requires of a model directory, as
+     * alternatives separated by {@code |}. One list, because a half-copied
+     * export must refuse up front with the file names, and {@code doctor}
+     * reports the same set through {@link #missingModelFiles}: two
+     * hand-maintained copies is how the two would drift.
+     */
+    static final List<String> REQUIRED_FILES = List.of(
+            "conv_frontend.onnx",
+            "encoder.int8.onnx|encoder.onnx",
+            "decoder.int8.onnx|decoder.onnx",
+            "tokenizer/vocab.json",
+            "tokenizer/merges.txt",
+            "tokenizer/tokenizer_config.json");
+
+    /** The entries of {@link #REQUIRED_FILES} absent from this directory. */
+    public static List<String> missingModelFiles(Path directory) {
+        List<String> missing = new ArrayList<>();
+        for (String wanted : REQUIRED_FILES) {
+            boolean found = false;
+            for (String option : wanted.split("\\|")) {
+                found |= Files.isRegularFile(directory.resolve(option));
+            }
+            if (!found) {
+                missing.add(wanted.replace('|', ' ').replace(" ", " or "));
+            }
+        }
+        return List.copyOf(missing);
+    }
+
+    /**
      * SPI subtag to the model's forcing vocabulary. {@link #languages()} is
      * derived from these keys, so a language cannot be declared spoken
      * without naming what to tell the model — a divergence would reach
@@ -115,6 +145,36 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     @Override
     public List<String> languages() {
         return List.copyOf(LANGUAGE_NAMES.keySet());
+    }
+
+    /**
+     * The checks mirror loading's own order: the native path property first
+     * (sherpa's loader reads it before anything else), the config key behind
+     * it, and the supplied model directory file by file.
+     */
+    @Override
+    public java.util.Optional<String> readinessProblem() {
+        String libraryDirectory = System.getProperty("sherpa_onnx.native.path");
+        String source = "sherpa_onnx.native.path";
+        if (libraryDirectory == null) {
+            libraryDirectory = nativePath;
+            source = "ml.sherpaNativePath";
+        }
+        if (libraryDirectory != null && !Files.isRegularFile(Path.of(
+                libraryDirectory, System.mapLibraryName("sherpa-onnx-jni")))) {
+            return java.util.Optional.of(source + " holds no "
+                    + System.mapLibraryName("sherpa-onnx-jni") + ": "
+                    + libraryDirectory + " -- run tools/build-sherpa-native.sh");
+        }
+        if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
+            List<String> missing = missingModelFiles(Path.of(configuredModelDirectory));
+            if (!missing.isEmpty()) {
+                return java.util.Optional.of("ml.asrModelDirectory holds no Qwen3-ASR"
+                        + " export; missing " + String.join(", ", missing)
+                        + " under " + configuredModelDirectory);
+            }
+        }
+        return java.util.Optional.empty();
     }
 
     @Override
@@ -176,19 +236,7 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private Path modelDirectory() {
         if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
             Path configured = Path.of(configuredModelDirectory);
-            List<String> missing = new ArrayList<>();
-            for (String wanted : new String[] {"conv_frontend.onnx",
-                    "encoder.int8.onnx|encoder.onnx",
-                    "decoder.int8.onnx|decoder.onnx",
-                    "tokenizer/vocab.json"}) {
-                boolean found = false;
-                for (String option : wanted.split("\\|")) {
-                    found |= Files.isRegularFile(configured.resolve(option));
-                }
-                if (!found) {
-                    missing.add(wanted.replace('|', ' ').replace(" ", " or "));
-                }
-            }
+            List<String> missing = missingModelFiles(configured);
             if (!missing.isEmpty()) {
                 throw new ModelUnavailableException(
                         "ml.asrModelDirectory does not hold a Qwen3-ASR export;"
