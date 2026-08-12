@@ -29,17 +29,21 @@ are deliberately excluded (see CONTRIBUTING.md).
 Machine learning models
 --------------------------------------------------------------------------------
 
-No model weights are distributed with this software. Nothing downloads one yet
-either; when a stage that does lands, the models will be fetched on first use
-into a local cache directory and each will remain under its own license. The list
+No model weights are distributed with this software. Stages that need one
+fetch it on first use into a local cache directory, checksummed, with its
+provenance written beside it, and each remains under its own license. The list
 records what has been chosen so far:
 
   onnxcrepe (pitch tracking)       MIT     github.com/yqzhishen/onnxcrepe
   basic-pitch (note transcription) Apache-2.0  github.com/spotify/basic-pitch
   Spleeter 2stems (separation)     MIT     doi:10.21105/joss.02154
     weights MIT per the Spleeter JOSS paper (the repository README licenses
-    only the code); as ONNX, converted by sherpa-onnx (Apache-2.0); fetched
-    on first use, never shipped; provenance beside each file in the cache
+    only the code); as ONNX, converted by sherpa-onnx (Apache-2.0)
+  wav2vec2-base-960h (lyric alignment)  Apache-2.0  (Meta AI)
+    as ONNX from the Xenova export of facebook/wav2vec2-base-960h
+  Qwen3-ASR 0.6B (lyric transcription)  Apache-2.0  (Alibaba)
+    code and weights alike; as the int8 ONNX export published by
+    sherpa-onnx (Apache-2.0) in its own release archive
 
 Models under non-commercial terms (CC BY-NC-SA), including the madmom
 pretrained models and the Open-Unmix "umxl" weights, are deliberately NOT used.

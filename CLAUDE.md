@@ -179,9 +179,13 @@ already thought of and nothing else.
   rule.
 - LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
   never linked or redistributed, and the tool works without it.
-- No model weights ship in the repo, and nothing fetches one yet. A stage that
-  does will download on first use into a local cache; `NOTICE` lists what has
-  been chosen so far.
+- No model weights ship in the repo. Stages that need one download it on first
+  use into a local cache, checksummed, provenance beside it; `NOTICE` lists
+  what has been chosen so far.
+- The sherpa-onnx native (ASR) is built from a source submodule with TTS off,
+  because the default build statically links a GPL-3.0 espeak fork.
+  `tools/check-sherpa-native.sh` asserts the built library against that, in CI
+  too; the flags live in `tools/build-sherpa-native.sh`, nowhere else.
 
 **Lyrics and reference charts are input, not output, and are governed
 separately.** Everything above is about what MW *ships* — code it links, weights
