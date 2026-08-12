@@ -30,8 +30,7 @@ so the enforcer's banned-artifact list never sees it -- its licence position is
 executed against the built artifact by tools/check-sherpa-native.sh instead:
 
   sherpa-onnx (eolivelli/sherpa-onnx, a fork of k2-fsa/sherpa-onnx
-  carrying two patches pending upstream review, k2-fsa/sherpa-onnx#3535;
-  this line reverts to upstream when the pin does)   Apache-2.0
+  carrying two patches under review as k2-fsa/sherpa-onnx#3873)  Apache-2.0
     a git submodule under third_party/; its Java API is compiled into builds
     that carry the sherpa profile and ships inside mw.jar, unmodified; its
     native library is built locally with TTS off, keeping the GPL-3.0 espeak
