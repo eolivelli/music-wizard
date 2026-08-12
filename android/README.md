@@ -25,8 +25,9 @@ Two shares, both through `FileProvider`:
   the recording, the chart as text, the cached `score.json` where one could be
   written, the player's note when one was typed, and an info file with the
   take's duration, recorded date, tempo/meter and the app version.
-  `BundleShare` builds it; entries are named by the take, so files pulled out
-  of the zip stay identifiable.
+  `BundleShare` builds it as `<take>.mwz.zip` — searchable by "mwz" in a cloud
+  drive — and entries are named by the take, so files pulled out of the zip
+  stay identifiable.
 
 **Share chart** on the result screen still sends the chart as plain text, no
 file involved — useful when the audio is already on the desktop.

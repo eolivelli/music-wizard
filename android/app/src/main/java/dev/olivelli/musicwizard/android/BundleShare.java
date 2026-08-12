@@ -132,7 +132,7 @@ final class BundleShare {
                 wav.lastModified(), score);
 
         File directory = new File(application.getCacheDir(), "bundles");
-        File zip = new File(directory, take + ".zip");
+        File zip = new File(directory, TakeBundle.fileNameFor(take));
         File scoreFile = scoreJson;
         building = true;
         Toast.makeText(application, R.string.bundle_building, Toast.LENGTH_SHORT).show();
@@ -197,7 +197,7 @@ final class BundleShare {
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType("application/zip");
         send.putExtra(Intent.EXTRA_STREAM, uri);
-        send.putExtra(Intent.EXTRA_SUBJECT, take + ".zip");
+        send.putExtra(Intent.EXTRA_SUBJECT, TakeBundle.fileNameFor(take));
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         Intent chooser = Intent.createChooser(send,
                 application.getString(R.string.share_bundle));
