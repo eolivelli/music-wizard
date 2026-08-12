@@ -86,6 +86,8 @@ final class DoctorCommand implements Callable<Integer> {
                 MlProviders.separationIds(), "#312");
         report("Lyrics ASR", ml == null ? null : ml.asrProvider(),
                 MlProviders.asrIds(), "#314");
+        report("Alignment", ml == null ? null : ml.alignmentProvider(),
+                MlProviders.alignmentIds(), "#313");
         Path modelDir = ModelCacheLocation.directoryFor(
                 ml == null ? null : ml.modelCacheDirectory());
         boolean offline = ml != null && Boolean.TRUE.equals(ml.offline());

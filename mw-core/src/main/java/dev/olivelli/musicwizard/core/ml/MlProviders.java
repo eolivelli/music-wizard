@@ -53,6 +53,11 @@ public final class MlProviders {
         return byId(AsrProvider.class, AsrProvider::id, id);
     }
 
+    /** The alignment provider with this id, if the classpath has it. */
+    public static Optional<AlignmentProvider> alignment(String id) {
+        return byId(AlignmentProvider.class, AlignmentProvider::id, id);
+    }
+
     /** Ids of every separation provider present, for saying what is available. */
     public static List<String> separationIds() {
         return idsOf(SeparationProvider.class, SeparationProvider::id);
@@ -61,6 +66,11 @@ public final class MlProviders {
     /** Ids of every ASR provider present, for saying what is available. */
     public static List<String> asrIds() {
         return idsOf(AsrProvider.class, AsrProvider::id);
+    }
+
+    /** Ids of every alignment provider present, for saying what is available. */
+    public static List<String> alignmentIds() {
+        return idsOf(AlignmentProvider.class, AlignmentProvider::id);
     }
 
     private static <P> Optional<P> byId(Class<P> type,

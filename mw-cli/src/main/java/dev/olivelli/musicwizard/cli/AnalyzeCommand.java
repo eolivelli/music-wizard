@@ -19,6 +19,14 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LrcLyrics;
+import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.core.ml.AlignmentProvider;
+import dev.olivelli.musicwizard.core.ml.MlProviders;
+import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
@@ -197,6 +205,13 @@ final class AnalyzeCommand implements Callable<Integer> {
 
         Transcription result = transcribe(workspace, kind, source, config);
         Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
+        if (lyricsFile != null) {
+            // Only what this run supplied: carried-forward lyrics were aligned
+            // when they were supplied, and re-aligning aligned times moves the
+            // windows they are computed from, one step per analyze, without
+            // bound.
+            score = withAlignedLyrics(workspace, score);
+        }
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
@@ -350,6 +365,235 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println("  read " + lyrics.lines().size() + " lyric lines from "
                 + lyricsFile.getFileName());
         return score.withLyrics(lyrics);
+    }
+
+    /**
+     * The score with its lyric words placed by the aligner, when one is
+     * configured, present, and speaks the lyrics' language.
+     *
+     * <p>This is what turns {@code SPREAD_WORD} guesses into measured onsets:
+     * each line's words are aligned inside a window around the line's own LRC
+     * timestamps, which keeps the search small and anchored. Every failure
+     * degrades to parsed times — per line, counted in the summary alongside
+     * the lines alignment deliberately leaves alone; whole-run with the reason
+     * on stderr when the model cannot be had or the aligner fails outright —
+     * because the analysis has already succeeded and an aligner must not be
+     * able to take it down. Alignment
+     * runs outside the transcription cache for the same reason the lyrics do:
+     * correcting a lyric file must not recompute the DSP.
+     */
+    private Score withAlignedLyrics(Workspace workspace, Score score) {
+        if (score.lyrics().isEmpty()) {
+            return score;
+        }
+        MusicWizardConfig.MlConfig ml = workspace.effectiveConfig().ml();
+        String wanted = ml == null ? null : ml.alignmentProvider();
+        var provider = MlProviders.alignment(wanted);
+        if (provider.isEmpty()) {
+            return score;
+        }
+        Lyrics lyrics = score.lyrics();
+        // The gate normalises the way the SPI contract asks: lowercase language
+        // subtag, no region -- the user's en-US and EN both mean en.
+        String language = java.util.Locale.forLanguageTag(lyrics.language())
+                .getLanguage();
+        if (!provider.get().languages().contains(language)) {
+            System.out.println("  lyrics not aligned: " + provider.get().id()
+                    + " speaks " + provider.get().languages() + ", the lyrics are '"
+                    + lyrics.language() + "'");
+            return score;
+        }
+        try {
+            AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
+            List<LyricLine> parsed = lyrics.lines();
+            List<LyricLine> aligned = new ArrayList<>(parsed.size());
+            double previousEnd = 0;
+            int kept = 0;
+            for (int i = 0; i < parsed.size(); i++) {
+                LyricLine line = parsed.get(i);
+                // Lines on one moment share a span by the model's own design
+                // (#340) -- a second voice, a two-line display. Aligning them
+                // would sequence what is sung together, and any spacing rule
+                // keyed on the predecessor's end would displace the twin by a
+                // whole line and cascade the drift to the end of the file.
+                // They keep their shared parsed span, untouched.
+                if (sharesAMoment(parsed, i)) {
+                    kept++;
+                    aligned.add(line);
+                    previousEnd = Math.max(previousEnd, line.endSeconds());
+                    continue;
+                }
+                LyricLine result;
+                try {
+                    // The tail bound is the parser's own rule: a line ends no
+                    // later than the next distinct start. An aligned line
+                    // honouring it cannot take the next line's chords, which
+                    // was round 1's harm.
+                    double bound = i + 1 < parsed.size()
+                            ? parsed.get(i + 1).startSeconds()
+                            : audio.durationSeconds();
+                    result = alignedLine(provider.get(), audio, language, line,
+                            previousEnd, bound);
+                } catch (ModelUnavailableException e) {
+                    // The model itself cannot be had: no later line will fare
+                    // better, and retrying the fetch once per line would
+                    // re-download a checksum-failing model per line. Whole-run
+                    // degradation, with the reason.
+                    throw e;
+                } catch (RuntimeException e) {
+                    // One line's failure keeps that line's parsed times without
+                    // discarding the lines that aligned.
+                    result = line;
+                }
+                if (result == line) {
+                    kept++;
+                }
+                // Belt and braces at the one assembly point: the sequential
+                // window head and the tail bound above make this a no-op on
+                // every expected path, and a path nobody expected is exactly
+                // when the sheet's cursor must still find monotone lines.
+                result = shiftedAfter(result, previousEnd);
+                aligned.add(result);
+                previousEnd = Math.max(previousEnd, result.endSeconds());
+            }
+            Confidence overall = aligned.stream()
+                    .map(LyricLine::confidence)
+                    .min(java.util.Comparator.comparingDouble(Confidence::value))
+                    .orElse(lyrics.confidence());
+            System.out.println("  aligned " + (aligned.size() - kept)
+                    + " lyric lines with " + provider.get().id()
+                    + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
+            return score.withLyrics(new Lyrics(aligned, lyrics.language(), overall));
+        } catch (ModelUnavailableException e) {
+            System.err.println("warning: lyrics stay at their parsed times: "
+                    + e.getMessage());
+            return score;
+        } catch (RuntimeException e) {
+            // An aligner defect must not take down an analysis that already
+            // succeeded; the parsed times are what we had before it existed.
+            System.err.println("warning: lyric alignment failed, keeping parsed"
+                    + " times: " + e.getMessage());
+            return score;
+        }
+    }
+
+    /** Whether this line shares its parsed start with either neighbour. */
+    private static boolean sharesAMoment(List<LyricLine> lines, int i) {
+        double start = lines.get(i).startSeconds();
+        return (i > 0 && lines.get(i - 1).startSeconds() == start)
+                || (i + 1 < lines.size() && lines.get(i + 1).startSeconds() == start);
+    }
+
+    /**
+     * The line, shifted forward just enough to start at or after the previous
+     * line's end, keeping its duration and every within-line interval.
+     */
+    static LyricLine shiftedAfter(LyricLine line, double previousEnd) {
+        double shift = previousEnd - line.startSeconds();
+        if (shift <= 0) {
+            return line;
+        }
+        List<LyricWord> shifted = new ArrayList<>(line.words().size());
+        for (LyricWord word : line.words()) {
+            shifted.add(new LyricWord(word.text(),
+                    word.startSeconds() + shift, word.endSeconds() + shift,
+                    java.util.Optional.empty(), java.util.Optional.empty(),
+                    word.hyphenatedToNext(), word.melisma(), word.confidence()));
+        }
+        return new LyricLine(shifted, line.confidence());
+    }
+
+    /**
+     * One line, aligned inside a window that starts where the previous line's
+     * alignment ended.
+     *
+     * <p>The window hears half a second past the parsed end, so the trellis
+     * can place a last word the singer holds — the reported times never end
+     * past the tail bound. The head is sequential: an aligned line
+     * cannot start before its predecessor ended. The paths that keep parsed
+     * times instead can, which is why the invariant every sheet cursor depends
+     * on is enforced where the list is assembled, not here. The window also
+     * caps the trellis, so a whole song is many small alignments rather than
+     * one enormous one.
+     */
+    private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
+                                  String language, LyricLine line,
+                                  double previousAlignedEnd, double tailBound) {
+        double from = Math.max(Math.max(0, line.startSeconds() - 0.5),
+                previousAlignedEnd);
+        double to = Math.min(audio.durationSeconds(), line.endSeconds() + 0.5);
+        int start = audio.indexOf(from);
+        int end = Math.max(start, audio.indexOf(to));
+        if (end - start < audio.sampleRate() / 10 || tailBound <= from + 0.1) {
+            // No room to align: a degenerate window, or a tail bound at the
+            // window head -- which a word-tagged twin can produce (#390).
+            return line;
+        }
+        float[] window = new float[end - start];
+        System.arraycopy(audio.samples(), start, window, 0, window.length);
+        List<String> texts = line.words().stream().map(LyricWord::text).toList();
+        List<LyricWord> placed = aligner.align(window, audio.sampleRate(),
+                language, texts);
+        if (placed.size() != line.words().size()) {
+            return line;
+        }
+        boolean anyExpressed = placed.stream()
+                .anyMatch(word -> word.endSeconds() > word.startSeconds());
+        if (!anyExpressed) {
+            // A line of digits or punctuation has nothing the vocabulary can
+            // carry; the aligner stacks it at the window start, which is worse
+            // than the parsed guess. Keep the guess.
+            return line;
+        }
+        // The tail bound is honoured by compression, not clamping: clamping
+        // flattened overrunning words into zero-length piles on the bound; a
+        // proportional squeeze keeps the order and spacing the aligner
+        // measured. The max, not the last word's end: nothing here may assume
+        // recognition spans cannot overlap.
+        // Min and max over the words, symmetrically: the SPI promises one
+        // word per input word, in order, and promises nothing about the times
+        // being monotone -- so neither end may be read off one word.
+        double lineStart = Double.POSITIVE_INFINITY;
+        double lineEnd = Double.NEGATIVE_INFINITY;
+        for (LyricWord word : placed) {
+            lineStart = Math.min(lineStart, from + word.startSeconds());
+            lineEnd = Math.max(lineEnd, from + word.endSeconds());
+        }
+        double scale = lineEnd > tailBound && lineEnd > lineStart
+                ? (tailBound - lineStart) / (lineEnd - lineStart)
+                : 1.0;
+        if (scale < 0.5) {
+            // One predicate for every degenerate shape: a result wholly past
+            // the bound scales negative and would reverse the words; one
+            // barely inside it scales toward zero and becomes a sliver; and
+            // anything below half is no longer the aligner's measurement but
+            // structure overriding it. The parsed guess wins all three.
+            return line;
+        }
+        List<LyricWord> out = new ArrayList<>(line.words().size());
+        for (int i = 0; i < placed.size(); i++) {
+            LyricWord original = line.words().get(i);
+            LyricWord timed = placed.get(i);
+            // The aligner's clock starts at the window; the line's starts at
+            // the recording. Keep the original text and engraving flags -- the
+            // aligner only ever decides when.
+            double wordStart = lineStart
+                    + (from + timed.startSeconds() - lineStart) * scale;
+            double wordEnd = lineStart
+                    + (from + timed.endSeconds() - lineStart) * scale;
+            out.add(new LyricWord(original.text(), wordStart,
+                    Math.max(wordStart, wordEnd),
+                    java.util.Optional.empty(), java.util.Optional.empty(),
+                    original.hyphenatedToNext(), original.melisma(),
+                    timed.confidence()));
+        }
+        return new LyricLine(out, weakestOf(out));
+    }
+
+    private static Confidence weakestOf(List<LyricWord> words) {
+        return words.stream().map(LyricWord::confidence)
+                .min(java.util.Comparator.comparingDouble(Confidence::value))
+                .orElse(Confidence.of(0));
     }
 
     // ------------------------------------------------------------------- cache

@@ -72,6 +72,8 @@ class DoctorCommandTest {
                 .contains("Lyrics ASR")
                 .contains("sherpa-qwen3")
                 .contains("#314")
+                .contains("Alignment")
+                .contains("onnx-wav2vec2 (present)")
                 .contains("fake-cli-separation")
                 .contains("Models");
     }
