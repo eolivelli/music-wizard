@@ -28,10 +28,12 @@ import java.util.List;
  * Transcribed words into the lines a lyric sheet is made of.
  *
  * <p>An LRC file states its line breaks; a transcription has only the singing,
- * so the breaks are read from it the way a listener hears them — a pause. A
- * gap of {@link #LINE_GAP_SECONDS} or more starts a new line; segment
- * boundaries arrive as gaps too, since segments are separated by at least
- * that much silence.
+ * so the breaks are read from it the way a listener hears them — a pause.
+ * Every sung stretch starts a new line, because the stretches are cut at the
+ * silences between phrases; on the first real recording through this path a
+ * gap rule alone merged whole verses into one line, the stretch padding
+ * having shrunk each pause below any workable threshold. Within a stretch, a
+ * gap of {@link #LINE_GAP_SECONDS} or more breaks again.
  *
  * <p>Line and sheet confidence are the minimum over what they contain, the
  * same floor-not-average the aligner reports: one guessed word in a line
@@ -44,27 +46,47 @@ final class TranscribedLines {
     private TranscribedLines() {
     }
 
-    /** Words (in time order) as lyrics, or empty lyrics when there are none. */
-    static Lyrics grouped(List<LyricWord> words, String language) {
+    /** One list of words per sung stretch, as lyrics; empty when none sang. */
+    static Lyrics grouped(List<List<LyricWord>> stretches, String language) {
         List<LyricLine> lines = new ArrayList<>();
-        List<LyricWord> current = new ArrayList<>();
-        for (LyricWord word : words) {
-            if (!current.isEmpty()
-                    && word.startSeconds() - current.getLast().endSeconds()
-                            >= LINE_GAP_SECONDS) {
-                lines.add(line(current));
-                current = new ArrayList<>();
+        for (List<LyricWord> words : stretches) {
+            List<LyricWord> current = new ArrayList<>();
+            for (LyricWord word : words) {
+                if (!current.isEmpty()
+                        && word.startSeconds() - current.getLast().endSeconds()
+                                >= LINE_GAP_SECONDS) {
+                    addMonotone(lines, current);
+                    current = new ArrayList<>();
+                }
+                current.add(word);
             }
-            current.add(word);
-        }
-        if (!current.isEmpty()) {
-            lines.add(line(current));
+            if (!current.isEmpty()) {
+                addMonotone(lines, current);
+            }
         }
         Confidence overall = lines.stream()
                 .map(LyricLine::confidence)
                 .min(Comparator.comparingDouble(Confidence::value))
                 .orElse(Confidence.of(0));
         return new Lyrics(List.copyOf(lines), language, overall);
+    }
+
+    /**
+     * Adds the line, its first word clamped to start no earlier than the
+     * previous line ended. Stretches cut from one long run share a boundary
+     * that two float routes place apart by an ulp, and the sheet's chord
+     * cursor depends on lines that never overlap; the times are inferred
+     * spreads, so an ulp of clamping costs nothing true.
+     */
+    private static void addMonotone(List<LyricLine> lines, List<LyricWord> words) {
+        double previousEnd = lines.isEmpty() ? 0
+                : lines.getLast().words().getLast().endSeconds();
+        LyricWord first = words.get(0);
+        if (first.startSeconds() < previousEnd) {
+            words.set(0, LyricWord.ofSeconds(first.text(), previousEnd,
+                    Math.max(previousEnd, first.endSeconds()), first.confidence()));
+        }
+        lines.add(line(words));
     }
 
     private static LyricLine line(List<LyricWord> words) {

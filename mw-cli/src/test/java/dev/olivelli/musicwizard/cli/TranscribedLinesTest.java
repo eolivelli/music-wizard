@@ -33,27 +33,41 @@ class TranscribedLinesTest {
     }
 
     @Test
-    @DisplayName("a pause starts a new line; a beat between words does not")
-    void pausesBreakLines() {
+    @DisplayName("every sung stretch is its own line, however small the gap")
+    void stretchesBreakLines() {
+        // 0.15 s apart across the boundary -- far below the gap rule; the
+        // break is the stretch boundary itself. On a real recording the
+        // stretch padding shrinks pauses this way, and a gap rule alone
+        // merged whole verses into one line.
         Lyrics lyrics = TranscribedLines.grouped(List.of(
+                List.of(word("la", 0.0, 0.4, 0.8), word("sol", 0.8, 1.2, 0.8)),
+                List.of(word("mi", 1.35, 1.7, 0.8))), "it");
+
+        assertThat(lyrics.lines()).hasSize(2);
+        assertThat(lyrics.lines().get(0).words()).hasSize(2);
+        assertThat(lyrics.language()).isEqualTo("it");
+    }
+
+    @Test
+    @DisplayName("a pause inside a stretch breaks again; a beat between words does not")
+    void pausesInsideAStretchBreakLines() {
+        Lyrics lyrics = TranscribedLines.grouped(List.of(List.of(
                 word("la", 0.0, 0.4, 0.8),
                 word("sol", 0.8, 1.2, 0.8),      // 0.4 s after: same line
                 word("mi", 2.5, 2.9, 0.8),       // 1.3 s after: new line
-                word("do", 2.95, 3.3, 0.8)), "it");
+                word("do", 2.95, 3.3, 0.8))), "it");
 
         assertThat(lyrics.lines()).hasSize(2);
         assertThat(lyrics.lines().get(0).words()).hasSize(2);
         assertThat(lyrics.lines().get(1).words()).hasSize(2);
-        assertThat(lyrics.language()).isEqualTo("it");
     }
 
     @Test
     @DisplayName("confidence is the floor, not the average")
     void confidenceIsTheMinimum() {
         Lyrics lyrics = TranscribedLines.grouped(List.of(
-                word("la", 0.0, 0.4, 0.9),
-                word("sol", 0.5, 0.9, 0.3),
-                word("mi", 3.0, 3.4, 0.7)), "en");
+                List.of(word("la", 0.0, 0.4, 0.9), word("sol", 0.5, 0.9, 0.3)),
+                List.of(word("mi", 3.0, 3.4, 0.7))), "en");
 
         assertThat(lyrics.lines().get(0).confidence().value()).isEqualTo(0.3);
         assertThat(lyrics.lines().get(1).confidence().value()).isEqualTo(0.7);
@@ -61,9 +75,26 @@ class TranscribedLinesTest {
     }
 
     @Test
+    @DisplayName("stretches cut from one run cannot overlap by an ulp")
+    void tiledStretchesStayMonotone() {
+        // The two float routes to a shared cut differ in the last bit; the
+        // sheet's chord cursor walks line ends and depends on monotone lines.
+        double boundary = 2.0;
+        double hair = Math.nextUp(boundary);
+        Lyrics lyrics = TranscribedLines.grouped(List.of(
+                List.of(word("la", 0.0, hair, 0.8)),
+                List.of(word("sol", boundary, 3.0, 0.8))), "en");
+
+        assertThat(lyrics.lines().get(1).words().get(0).startSeconds())
+                .isGreaterThanOrEqualTo(lyrics.lines().get(0).words().get(0).endSeconds());
+    }
+
+    @Test
     @DisplayName("no words means empty lyrics, which the caller reports")
     void noWords() {
         assertThat(TranscribedLines.grouped(List.of(), "en").isEmpty()).isTrue();
+        assertThat(TranscribedLines.grouped(List.of(List.of()), "en").isEmpty())
+                .isTrue();
     }
 
     @Test
@@ -71,9 +102,9 @@ class TranscribedLinesTest {
     void gapMeasuredFromEnd() {
         // A held word ending 0.2 s before the next: one line, although the
         // starts are far apart.
-        Lyrics lyrics = TranscribedLines.grouped(List.of(
+        Lyrics lyrics = TranscribedLines.grouped(List.of(List.of(
                 word("laaa", 0.0, 2.0, 0.8),
-                word("sol", 2.2, 2.5, 0.8)), "en");
+                word("sol", 2.2, 2.5, 0.8))), "en");
 
         assertThat(lyrics.lines()).hasSize(1);
     }

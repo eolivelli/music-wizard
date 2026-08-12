@@ -510,9 +510,12 @@ final class AnalyzeCommand implements Callable<Integer> {
      */
     private Score withTranscribedLyrics(Workspace workspace, Score score,
                                         MusicWizardConfig config) {
-        if (!score.lyrics().isEmpty()) {
+        if (!score.lyrics().isEmpty() && !force) {
+            // Carried lyrics may be a corrected file someone supplied; quietly
+            // re-transcribing over them would undo the correction. --force
+            // already means "recompute what you kept", so it reaches here too.
             System.out.println("  lyrics kept from the previous analysis;"
-                    + " pass --lyrics to replace them");
+                    + " pass --lyrics to replace them or --force to re-transcribe");
             return score;
         }
         MusicWizardConfig.MlConfig ml = config.ml();
@@ -549,16 +552,18 @@ final class AnalyzeCommand implements Callable<Integer> {
                 System.out.println("  lyrics not transcribed: no sung stretches found");
                 return score;
             }
-            List<LyricWord> words = new ArrayList<>();
+            List<List<LyricWord>> stretches = new ArrayList<>();
             int failed = 0;
             for (VocalSegments.Segment segment : segments) {
                 float[] window = java.util.Arrays.copyOfRange(
                         voice.samples(), segment.start(), segment.end());
                 try {
+                    List<LyricWord> words = new ArrayList<>();
                     for (LyricWord word : provider.get().transcribe(
                             window, voice.sampleRate(), language)) {
                         words.add(offsetBy(word, segment.startSeconds(voice.sampleRate())));
                     }
+                    stretches.add(words);
                 } catch (ModelUnavailableException e) {
                     // No later segment will fare better; whole-run degradation.
                     throw e;
@@ -566,7 +571,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     failed++;
                 }
             }
-            Lyrics lyrics = TranscribedLines.grouped(words, language);
+            Lyrics lyrics = TranscribedLines.grouped(stretches, language);
             if (lyrics.isEmpty()) {
                 System.out.println("  lyrics not transcribed: " + provider.get().id()
                         + " heard no words in " + segments.size() + " sung stretches");

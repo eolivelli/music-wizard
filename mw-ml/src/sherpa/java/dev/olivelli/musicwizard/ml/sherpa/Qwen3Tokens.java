@@ -56,20 +56,23 @@ final class Qwen3Tokens {
         if (texts.isEmpty() || windowSeconds <= 0) {
             return List.of();
         }
-        List<LyricWord> out = new ArrayList<>(texts.size());
-        int totalSyllables = 0;
         List<LyricWord> unplaced = new ArrayList<>(texts.size());
+        int totalSyllables = 0;
         for (String text : texts) {
             LyricWord word = LyricWord.ofSeconds(text, 0, 0, TRANSCRIBED);
             unplaced.add(word);
             totalSyllables += word.syllableEstimate();
         }
-        double at = 0;
+        // Boundaries as cumulative fractions, not a running sum of durations:
+        // accumulated rounding once pushed a stretch's last word a hair past
+        // the next stretch's exact start. This way the last end IS the window.
+        List<LyricWord> out = new ArrayList<>(unplaced.size());
+        int syllablesBefore = 0;
         for (LyricWord word : unplaced) {
-            double duration =
-                    windowSeconds * word.syllableEstimate() / totalSyllables;
-            out.add(LyricWord.ofSeconds(word.text(), at, at + duration, TRANSCRIBED));
-            at += duration;
+            double from = windowSeconds * syllablesBefore / totalSyllables;
+            syllablesBefore += word.syllableEstimate();
+            double to = windowSeconds * syllablesBefore / totalSyllables;
+            out.add(LyricWord.ofSeconds(word.text(), from, to, TRANSCRIBED));
         }
         return List.copyOf(out);
     }
