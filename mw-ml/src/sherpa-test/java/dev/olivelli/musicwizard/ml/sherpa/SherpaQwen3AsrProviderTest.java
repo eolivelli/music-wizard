@@ -36,6 +36,27 @@ class SherpaQwen3AsrProviderTest {
     @TempDir
     Path directory;
 
+    /**
+     * The property outranks the config key everywhere this class asserts, and
+     * surefire forwards a developer's -D straight into the fork -- exporting
+     * it to run the real model must not fail unrelated assertions. Held and
+     * restored around every test so no future case can forget it.
+     */
+    private String savedNativePathProperty;
+
+    @org.junit.jupiter.api.BeforeEach
+    void clearNativePathProperty() {
+        savedNativePathProperty = System.getProperty("sherpa_onnx.native.path");
+        System.clearProperty("sherpa_onnx.native.path");
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void restoreNativePathProperty() {
+        if (savedNativePathProperty != null) {
+            System.setProperty("sherpa_onnx.native.path", savedNativePathProperty);
+        }
+    }
+
     private SherpaQwen3AsrProvider provider(String modelDirectory) {
         return new SherpaQwen3AsrProvider(
                 ModelCache.at(directory.resolve("cache"), true),
@@ -137,20 +158,10 @@ class SherpaQwen3AsrProviderTest {
     @Test
     @DisplayName("a configured native directory without the library is a named problem")
     void nativeDirectoryWithoutLibrary() {
-        // The property outranks the config key at load time; the test JVM
-        // must not carry one into this assertion or out of it.
-        String saved = System.getProperty("sherpa_onnx.native.path");
-        try {
-            System.clearProperty("sherpa_onnx.native.path");
-            assertThat(provider(directory.toString(), null).readinessProblem())
-                    .hasValueSatisfying(problem -> assertThat(problem)
-                            .contains("ml.sherpaNativePath")
-                            .contains("sherpa-onnx-jni"));
-        } finally {
-            if (saved != null) {
-                System.setProperty("sherpa_onnx.native.path", saved);
-            }
-        }
+        assertThat(provider(directory.toString(), null).readinessProblem())
+                .hasValueSatisfying(problem -> assertThat(problem)
+                        .contains("ml.sherpaNativePath")
+                        .contains("sherpa-onnx-jni"));
     }
 
     @Test
@@ -161,16 +172,19 @@ class SherpaQwen3AsrProviderTest {
         // no setting at all. Whether the machine can load the JNI another way
         // is the machine's business; blank itself must never be the problem
         // named, least of all with nothing after the colon.
-        String saved = System.getProperty("sherpa_onnx.native.path");
-        try {
-            System.clearProperty("sherpa_onnx.native.path");
-            var problem = provider("", null).readinessProblem();
-            problem.ifPresent(text ->
-                    assertThat(text).doesNotContain("ml.sherpaNativePath holds no"));
-        } finally {
-            if (saved != null) {
-                System.setProperty("sherpa_onnx.native.path", saved);
-            }
-        }
+        var problem = provider("", null).readinessProblem();
+        problem.ifPresent(text ->
+                assertThat(text).doesNotContain("ml.sherpaNativePath holds no"));
+    }
+
+    @Test
+    @DisplayName("a blank property does not block a good config value from loading")
+    void blankPropertyDoesNotOutrankTheConfigKey() throws java.io.IOException {
+        // Readiness and loading must read the pair the same way: a blank
+        // property with a good config key is ready, and stays ready when
+        // loading installs the config value over the blank.
+        System.setProperty("sherpa_onnx.native.path", "");
+        assertThat(provider(goodNativeDirectory().toString(), null)
+                .readinessProblem()).isEmpty();
     }
 }

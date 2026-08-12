@@ -534,9 +534,10 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         // The workspace's ml.sherpaNativePath reaches the provider through
         // sherpa's own property, which the provider leaves alone when set.
-        if (ml != null && ml.sherpaNativePath() != null
-                && System.getProperty("sherpa_onnx.native.path") == null) {
-            System.setProperty("sherpa_onnx.native.path", ml.sherpaNativePath());
+        String forwardedNativePath = normalized(ml == null ? null : ml.sherpaNativePath());
+        if (forwardedNativePath != null
+                && normalized(System.getProperty("sherpa_onnx.native.path")) == null) {
+            System.setProperty("sherpa_onnx.native.path", forwardedNativePath);
         }
         String wanted = ml == null ? null : ml.asrProvider();
         var provider = MlProviders.asr(wanted);

@@ -158,13 +158,9 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     @Override
     public java.util.Optional<String> readinessProblem() {
         String mapped = System.mapLibraryName("sherpa-onnx-jni");
-        String libraryDirectory = normalized(
-                System.getProperty("sherpa_onnx.native.path"));
-        String source = "sherpa_onnx.native.path";
-        if (libraryDirectory == null) {
-            libraryDirectory = normalized(nativePath);
-            source = "ml.sherpaNativePath";
-        }
+        String libraryDirectory = nativeDirectory();
+        String source = normalized(System.getProperty("sherpa_onnx.native.path")) != null
+                ? "sherpa_onnx.native.path" : "ml.sherpaNativePath";
         if (libraryDirectory != null) {
             if (!Files.isRegularFile(Path.of(libraryDirectory, mapped))) {
                 return java.util.Optional.of(source + " holds no " + mapped + ": "
@@ -192,7 +188,22 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         return value == null || value.isBlank() ? null : value;
     }
 
-    /** Whether sherpa's resource route would find the library, its naming. */
+    /**
+     * The directory loading will consult: the property, then the config key,
+     * blank meaning unset in both. One accessor, because readiness answering
+     * from one reading of the pair while loading acts on another is how the
+     * two once said "ready" and "not found" about the same environment.
+     */
+    private String nativeDirectory() {
+        String property = normalized(System.getProperty("sherpa_onnx.native.path"));
+        return property != null ? property : normalized(nativePath);
+    }
+
+    /**
+     * Whether sherpa's resource route would find what it needs: both the JNI
+     * library and the onnxruntime beside it, under LibraryUtils' own os-arch
+     * naming — loading rejects a jar carrying only one of the two.
+     */
     private static boolean jarCarriesTheNative(String mapped) {
         String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
         String arch = System.getProperty("os.arch", "").toLowerCase(java.util.Locale.ROOT);
@@ -200,9 +211,12 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                 : os.contains("win") ? "win" : "linux";
         String archPart = arch.startsWith("aarch64") || arch.startsWith("arm64")
                 ? (osPart.equals("win") ? "arm64" : "aarch64")
-                : arch.startsWith("x86") && !arch.startsWith("x86_64") ? "x86" : "x64";
-        return SherpaQwen3AsrProvider.class.getClassLoader().getResource(
-                "sherpa-onnx/native/" + osPart + "-" + archPart + "/" + mapped) != null;
+                : arch.startsWith("x86") && !arch.startsWith("x86_64") ? "x86"
+                : arch.startsWith("arm") ? "arm" : "x64";
+        String prefix = "sherpa-onnx/native/" + osPart + "-" + archPart + "/";
+        ClassLoader loader = SherpaQwen3AsrProvider.class.getClassLoader();
+        return loader.getResource(prefix + mapped) != null
+                && loader.getResource(prefix + System.mapLibraryName("onnxruntime")) != null;
     }
 
     private static boolean libraryPathCarriesTheNative(String mapped) {
@@ -321,10 +335,13 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         if (recognizer == null) {
             // sherpa's LibraryUtils reads this property first; setting it from
             // config gives one discovery story (config key, then the JVM's own
-            // library path) instead of asking the user to pass -D flags.
-            if (nativePath != null
-                    && System.getProperty("sherpa_onnx.native.path") == null) {
-                System.setProperty("sherpa_onnx.native.path", nativePath);
+            // library path) instead of asking the user to pass -D flags. Blank
+            // is unset on both sides, so an empty property does not block a
+            // good config value from being installed.
+            String configured = normalized(nativePath);
+            if (configured != null
+                    && normalized(System.getProperty("sherpa_onnx.native.path")) == null) {
+                System.setProperty("sherpa_onnx.native.path", configured);
             }
             try {
                 recognizer = build(modelDirectory);

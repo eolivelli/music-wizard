@@ -94,8 +94,7 @@ public record MusicWizardConfig(
 
     /**
      * Which providers run the neural stages. Providers configure themselves
-     * from the global config layer (#383); which layers reach a given key is
-     * that key's own note.
+     * from the global config layer (#383).
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MlConfig(
