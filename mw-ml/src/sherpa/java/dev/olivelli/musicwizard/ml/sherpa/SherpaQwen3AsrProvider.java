@@ -148,23 +148,34 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     }
 
     /**
-     * The checks mirror loading's own order: the native path property first
-     * (sherpa's loader reads it before anything else), the config key behind
-     * it, and the supplied model directory file by file.
+     * The checks mirror loading's own routes, in its order: the native path
+     * property, the config key behind it, the jar resource sherpa extracts,
+     * the JVM library path — a Java class that compiled says nothing about
+     * whether any of them can produce the library — and then the supplied
+     * model directory, file by file. Blank values are unset here as
+     * everywhere the keys are read.
      */
     @Override
     public java.util.Optional<String> readinessProblem() {
-        String libraryDirectory = System.getProperty("sherpa_onnx.native.path");
+        String mapped = System.mapLibraryName("sherpa-onnx-jni");
+        String libraryDirectory = normalized(
+                System.getProperty("sherpa_onnx.native.path"));
         String source = "sherpa_onnx.native.path";
         if (libraryDirectory == null) {
-            libraryDirectory = nativePath;
+            libraryDirectory = normalized(nativePath);
             source = "ml.sherpaNativePath";
         }
-        if (libraryDirectory != null && !Files.isRegularFile(Path.of(
-                libraryDirectory, System.mapLibraryName("sherpa-onnx-jni")))) {
-            return java.util.Optional.of(source + " holds no "
-                    + System.mapLibraryName("sherpa-onnx-jni") + ": "
-                    + libraryDirectory + " -- run tools/build-sherpa-native.sh");
+        if (libraryDirectory != null) {
+            if (!Files.isRegularFile(Path.of(libraryDirectory, mapped))) {
+                return java.util.Optional.of(source + " holds no " + mapped + ": "
+                        + libraryDirectory + " -- run tools/build-sherpa-native.sh");
+            }
+        } else if (!jarCarriesTheNative(mapped)
+                && !libraryPathCarriesTheNative(mapped)) {
+            return java.util.Optional.of("the sherpa-onnx native library ("
+                    + mapped + ") is nowhere loading will look; run"
+                    + " tools/build-sherpa-native.sh and set ml.sherpaNativePath"
+                    + " to its lib directory");
         }
         if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
             List<String> missing = missingModelFiles(Path.of(configuredModelDirectory));
@@ -175,6 +186,33 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
             }
         }
         return java.util.Optional.empty();
+    }
+
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    /** Whether sherpa's resource route would find the library, its naming. */
+    private static boolean jarCarriesTheNative(String mapped) {
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        String arch = System.getProperty("os.arch", "").toLowerCase(java.util.Locale.ROOT);
+        String osPart = os.contains("mac") || os.contains("darwin") ? "osx"
+                : os.contains("win") ? "win" : "linux";
+        String archPart = arch.startsWith("aarch64") || arch.startsWith("arm64")
+                ? (osPart.equals("win") ? "arm64" : "aarch64")
+                : arch.startsWith("x86") && !arch.startsWith("x86_64") ? "x86" : "x64";
+        return SherpaQwen3AsrProvider.class.getClassLoader().getResource(
+                "sherpa-onnx/native/" + osPart + "-" + archPart + "/" + mapped) != null;
+    }
+
+    private static boolean libraryPathCarriesTheNative(String mapped) {
+        String libraryPath = System.getProperty("java.library.path", "");
+        for (String entry : libraryPath.split(java.io.File.pathSeparator)) {
+            if (!entry.isBlank() && Files.isRegularFile(Path.of(entry, mapped))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

@@ -95,16 +95,36 @@ class SherpaQwen3AsrProviderTest {
                 .isEmpty();
     }
 
+    /**
+     * A directory the native check accepts, so the assertions after it are
+     * about what THIS test varies rather than about whichever JVM library
+     * path the machine happens to have.
+     */
+    private Path goodNativeDirectory() throws java.io.IOException {
+        Path lib = directory.resolve("native");
+        java.nio.file.Files.createDirectories(lib);
+        java.nio.file.Files.createFile(
+                lib.resolve(System.mapLibraryName("sherpa-onnx-jni")));
+        return lib;
+    }
+
+    private SherpaQwen3AsrProvider provider(String nativePath, String modelDirectory) {
+        return new SherpaQwen3AsrProvider(
+                ModelCache.at(directory.resolve("cache"), true),
+                Qwen3Models.ARCHIVE, nativePath, modelDirectory);
+    }
+
     @Test
     @DisplayName("readiness answers for the files loading will demand")
     void readinessMirrorsLoading() throws java.io.IOException {
-        // Nothing configured: nothing a file check can catch.
-        assertThat(provider(null).readinessProblem()).isEmpty();
-        // Blank is unset, everywhere the key is read.
-        assertThat(provider("  ").readinessProblem()).isEmpty();
+        String good = goodNativeDirectory().toString();
+        // Library resolvable, nothing else configured: ready as far as a
+        // file check can tell. Blank is unset, everywhere the keys are read.
+        assertThat(provider(good, null).readinessProblem()).isEmpty();
+        assertThat(provider(good, "  ").readinessProblem()).isEmpty();
         // A half-copied export names its gaps before any transcription runs.
         java.nio.file.Files.createFile(directory.resolve("conv_frontend.onnx"));
-        assertThat(provider(directory.toString()).readinessProblem())
+        assertThat(provider(good, directory.toString()).readinessProblem())
                 .hasValueSatisfying(problem -> {
                     assertThat(problem).contains("ml.asrModelDirectory")
                             .contains("encoder").contains("decoder")
@@ -116,19 +136,37 @@ class SherpaQwen3AsrProviderTest {
 
     @Test
     @DisplayName("a configured native directory without the library is a named problem")
-    void nativeDirectoryWithoutLibrary() throws java.io.IOException {
+    void nativeDirectoryWithoutLibrary() {
         // The property outranks the config key at load time; the test JVM
         // must not carry one into this assertion or out of it.
         String saved = System.getProperty("sherpa_onnx.native.path");
         try {
             System.clearProperty("sherpa_onnx.native.path");
-            var provider = new SherpaQwen3AsrProvider(
-                    ModelCache.at(directory.resolve("cache"), true),
-                    Qwen3Models.ARCHIVE, directory.toString(), null);
-            assertThat(provider.readinessProblem())
+            assertThat(provider(directory.toString(), null).readinessProblem())
                     .hasValueSatisfying(problem -> assertThat(problem)
                             .contains("ml.sherpaNativePath")
                             .contains("sherpa-onnx-jni"));
+        } finally {
+            if (saved != null) {
+                System.setProperty("sherpa_onnx.native.path", saved);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a blank native path is unset, not an empty-string problem")
+    void blankNativePathIsUnset() {
+        // A script expanding an unset variable writes "" into the config, and
+        // an empty string is not a directory that holds no library -- it is
+        // no setting at all. Whether the machine can load the JNI another way
+        // is the machine's business; blank itself must never be the problem
+        // named, least of all with nothing after the colon.
+        String saved = System.getProperty("sherpa_onnx.native.path");
+        try {
+            System.clearProperty("sherpa_onnx.native.path");
+            var problem = provider("", null).readinessProblem();
+            problem.ifPresent(text ->
+                    assertThat(text).doesNotContain("ml.sherpaNativePath holds no"));
         } finally {
             if (saved != null) {
                 System.setProperty("sherpa_onnx.native.path", saved);

@@ -94,9 +94,8 @@ public record MusicWizardConfig(
 
     /**
      * Which providers run the neural stages. Providers configure themselves
-     * from the global config layer (#383), so the directory- and
-     * offline-valued keys here reach them from that file only; the provider
-     * *ids* are read by the commands, which see every layer.
+     * from the global config layer (#383); which layers reach a given key is
+     * that key's own note.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MlConfig(
