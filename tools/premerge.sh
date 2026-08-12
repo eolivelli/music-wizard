@@ -64,7 +64,7 @@ fi
 compare() { # $1 harness  $2 baseline  $3... harness args
   local harness="$1" baseline="$2"; shift 2
   local out rc
-  out=$(python3 "tools/$harness" "$@" 2>&1); rc=$?
+  out=$(python3 "tools/$harness" ${1+"$@"} 2>&1); rc=$?
   printf '%s\n' "$out"
   if [ "$rc" -ne 0 ]; then
     # A dead harness must not read as a clean one: every row it never got
@@ -92,8 +92,7 @@ for name, base in sorted(baseline.items()):
         # cannot read as a corpus run. Only the CURRENT side may say so: a
         # committed baseline that certifies absence is a defect, and where
         # this machine can measure the file it falls through to DIFF below.
-        print(f"SKIP {name}: not measurable here"
-              f" (fetch commands: samples/list.txt or uncommitted/list.txt)")
+        print(f"SKIP {name}: not measurable here (the row above says how)")
     elif current[name] != base:
         print(f"DIFF {name}\n  baseline: {base}\n  current:  {current[name]}")
 PY

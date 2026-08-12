@@ -421,6 +421,18 @@ class Keying(unittest.TestCase):
         self.assertIn(".mp3:", line)
         self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
 
+    def test_an_environment_skip_carries_the_reason_in_the_skip_key(self):
+        """An ASR the machine could not run is a skip naming analyze's own
+        reason -- never a scored row, whose 289 deletions would read as a
+        catastrophic regression on a machine problem."""
+        line = lyrics.unavailable_line("sere-doltremare.mp3", "model x is not in cache")
+        self.assertIn(self.MARKER, line)
+        self.assertIn(".mp3:", line)
+        self.assertIn("model x is not in cache", line)
+        # Bounded, so a stack trace pasted as the reason cannot wrap the row.
+        long = lyrics.unavailable_line("x.mp3", "y" * 500)
+        self.assertLess(len(long), 220)
+
     MARKER = ": not present (local-only"
 
     def test_every_harness_marks_an_absent_file_the_same_way(self):
