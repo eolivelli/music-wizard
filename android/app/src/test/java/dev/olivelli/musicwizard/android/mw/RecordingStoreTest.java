@@ -152,6 +152,17 @@ public class RecordingStoreTest {
         assertFalse(after.isAnalyzed());
     }
 
+    /** The clear branch for the note: a take with none of its own inherits nothing. */
+    @Test
+    public void aTakeWithNoNoteDoesNotInheritTheOrphansOnRename() throws IOException {
+        File wav = new File(store.directory(), "two.wav");
+        touch(wav);
+        write(new File(store.directory(), "pantry.notes.txt"), "another take's words");
+
+        assertEquals("", RecordingStore.readNotes(
+                store.rename(new Recording(wav), "pantry")));
+    }
+
     /**
      * Renaming carries the note too — it is the player's own words, and the
      * one file beside a take that cannot be recomputed if left behind.
