@@ -13,9 +13,9 @@ recordings, `analyze --lyrics-language` with no lyrics file, the words MW
 heard scored against the same LRC as truth. Its columns are honest quality
 numbers, not zeros. The subprocess runs with its own empty config home and
 the repo's own native build, so a machine's config cannot sway a committed
-baseline -- and a row is only scored when analyze reports it transcribed:
-an environment that could not run the ASR at all is a skip that names the
-reason, never a wall of deletions dressed as a regression.
+baseline. How each of analyze's reported outcomes is treated -- scored,
+skipped with the reason, or a red gate -- is the classification block's own
+story, told beside the code that implements it.
 
 **It sees where runs start, which on a line-level file is where lines start.**
 So the break heuristic and the plausible length are invisible to it -- neither
@@ -406,7 +406,7 @@ def native_missing_line(name: str) -> str:
     """The dependency worth checking before spending a run per row: without
     the native nothing can decode, and the check is one stat. The loop's
     other needs -- the model archives a first run fetches -- are judged from
-    analyze's own report instead (see NOT_RUN), so their absence skips with
+    analyze's own report instead (see SKIPPED), so their absence skips with
     the real reason rather than being guessed at up front."""
     return (f"  {name}: not present (local-only;"
             " run tools/build-sherpa-native.sh for this loop)")
@@ -486,7 +486,8 @@ def run_asr(jar: Path, mp3: Path, language: str, workspace: Path,
 
     Returns (score document, None) when the ASR ran -- an empty transcription
     is a result, a full deletion, and is scored -- or (None, reason) when the
-    environment could not run it. No `render` gate on this loop. The config
+    environment could not run it; a reported defect does not return, it ends
+    the harness red. No `render` gate on this loop. The config
     home is an empty directory this harness owns, so a machine's
     ml.asrModelDirectory or provider choice cannot move a committed baseline;
     the native path is the repo's own build, passed as sherpa's property,
