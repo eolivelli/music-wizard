@@ -52,8 +52,10 @@ import java.util.concurrent.Executors;
  * of its state; only the zip writing — the audio copy — happens on the worker,
  * which holds the application context rather than the screen that asked. The
  * chooser is therefore launched in its own task, and appears even when that
- * screen has since gone away: the build takes seconds on a long take, and a
- * share someone asked for must not vanish because they rotated or backed out.
+ * screen has gone away, so long as the app is still on screen — a rotation, or
+ * backing out to the library mid-build; leaving the app altogether may see the
+ * start dropped as a background one. The build takes seconds on a long take,
+ * and a share someone asked for must not vanish because they rotated.
  */
 final class BundleShare {
 
@@ -161,8 +163,9 @@ final class BundleShare {
      *
      * <p>This is the only pruning there is: each zip holds a copy of the whole
      * take, and leaving one per name would grow the cache by megabytes per
-     * share until the OS reclaimed it. Deleting under a receiver still copying
-     * an old grant is safe — the open file lives on without its name.
+     * share until the OS reclaimed it. Deleting under a receiver that already
+     * has the file open is safe — it lives on without its name; one that kept
+     * the URI to read later loses it, as it would to any clearing of the cache.
      */
     private static void prune(File directory) {
         File[] old = directory.listFiles();
