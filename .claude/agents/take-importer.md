@@ -180,6 +180,6 @@ Per take, in this order:
    `docs/phone-to-corpus.md` steps 2–3, done by a person.
 
 End with the sweep's accounting: what was imported now, what a marker
-skipped, and the `.imported` names an unfiltered listing shows upstream —
-those are the earlier imports' renames, and naming them is what shows the
-sweep was complete rather than lucky.
+skipped, and the `.imported` names upstream (a listing filtered on
+`*.imported`) — those are the earlier imports' renames, and naming them is
+what shows the sweep was complete rather than lucky.
