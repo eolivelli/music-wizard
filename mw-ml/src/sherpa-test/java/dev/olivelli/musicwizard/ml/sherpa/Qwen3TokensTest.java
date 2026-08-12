@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.ml.sherpa;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import java.util.List;
@@ -27,62 +28,51 @@ import org.junit.jupiter.api.Test;
 class Qwen3TokensTest {
 
     @Test
-    @DisplayName("a leading space starts a word; the pieces inside it join")
+    @DisplayName("leading whitespace starts a word; the pieces inside it join")
     void spaceMarksTheBoundary() {
         List<LyricWord> words = Qwen3Tokens.words(
-                new String[] {" la", "aa", " sol", " mi"},
-                new float[] {0.5f, 0.9f, 1.5f, 2.0f},
-                new float[] {0.3f, 0.2f, 0.4f, 0.3f});
+                new String[] {" la", "aa", " sol", " mi"}, 4.0);
 
         assertThat(words).extracting(LyricWord::text)
                 .containsExactly("laaa", "sol", "mi");
-        assertThat(words.get(0).startSeconds()).isEqualTo(0.5);
-        assertThat(words.get(0).endSeconds()).isCloseTo(1.1, org.assertj.core.data.Offset.offset(1e-6));
-        assertThat(words.get(1).startSeconds()).isEqualTo(1.5);
     }
 
     @Test
     @DisplayName("metaspace markers mean the same as a space")
     void metaspaceVariants() {
-        List<LyricWord> words = Qwen3Tokens.words(
-                new String[] {"▁la", "Ġsol"},
-                new float[] {0.1f, 0.6f},
-                new float[] {0.2f, 0.2f});
+        List<LyricWord> words = Qwen3Tokens.words(new String[] {"▁la", "Ġsol"}, 2.0);
 
         assertThat(words).extracting(LyricWord::text).containsExactly("la", "sol");
     }
 
     @Test
-    @DisplayName("a token with no duration still ends its word at its own start")
-    void missingDurationsDoNotShortenWords() {
+    @DisplayName("words tile the window, longer words getting more of it")
+    void spreadFollowsSyllables() {
+        // "lalala" estimates three syllables, "sol" one: 3/4 and 1/4 of 4 s.
         List<LyricWord> words = Qwen3Tokens.words(
-                new String[] {" la", "aa"},
-                new float[] {0.5f, 1.2f},
-                new float[] {0.3f});
+                new String[] {" lalala", " sol"}, 4.0);
 
-        assertThat(words).hasSize(1);
-        assertThat(words.get(0).endSeconds())
-                .isCloseTo(1.2, org.assertj.core.data.Offset.offset(1e-6));
+        assertThat(words.get(0).startSeconds()).isEqualTo(0.0);
+        assertThat(words.get(0).endSeconds()).isCloseTo(3.0, within(1e-9));
+        assertThat(words.get(1).startSeconds()).isCloseTo(3.0, within(1e-9));
+        assertThat(words.get(1).endSeconds()).isCloseTo(4.0, within(1e-9));
     }
 
     @Test
-    @DisplayName("punctuation-only and empty tokens vanish without breaking a word")
-    void emptyPiecesVanish() {
+    @DisplayName("whitespace-only tokens and dangling-byte markers vanish")
+    void noisePiecesVanish() {
+        // A bare space closes the word before it; U+FFFD is a dangling byte
+        // sherpa appends when the last token was cut mid-character.
         List<LyricWord> words = Qwen3Tokens.words(
-                new String[] {" la", " ", "", "sol"},
-                new float[] {0.5f, 0.8f, 0.9f, 1.0f},
-                new float[] {0.2f, 0.0f, 0.0f, 0.2f});
+                new String[] {" la", " ", "sol�"}, 2.0);
 
-        // The bare space is a boundary with nothing in it: it closes "la" and
-        // opens nothing, so "sol" starts the next word at its own time.
         assertThat(words).extracting(LyricWord::text).containsExactly("la", "sol");
-        assertThat(words.get(1).startSeconds()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(1e-6));
     }
 
     @Test
-    @DisplayName("no tokens means no words")
-    void noTokens() {
-        assertThat(Qwen3Tokens.words(new String[0], new float[0], new float[0]))
-                .isEmpty();
+    @DisplayName("no tokens, or no window, means no words")
+    void degenerateInputs() {
+        assertThat(Qwen3Tokens.words(new String[0], 3.0)).isEmpty();
+        assertThat(Qwen3Tokens.words(new String[] {" la"}, 0.0)).isEmpty();
     }
 }

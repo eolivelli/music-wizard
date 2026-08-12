@@ -53,9 +53,15 @@ class TranscribedLyricsTest {
         assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
                 .exitCode()).isZero();
         Path descriptor = root.resolve("workspace.yaml");
+        // The alignment id is pinned to nothing on purpose: a fresh
+        // transcription is handed to the aligner, and the default id resolves
+        // to the real one -- which runs whenever a developer's model cache has
+        // its model, making word times an artefact of the machine. The chain
+        // itself is asserted separately, with the fake aligner.
         Files.writeString(descriptor, Files.readString(descriptor)
                 + "\nconfig:\n  ml:\n    asrProvider: fake-cli-asr\n"
-                + "    separationProvider: fake-cli-separation\n");
+                + "    separationProvider: fake-cli-separation\n"
+                + "    alignmentProvider: no-such-alignment\n");
         return root;
     }
 
@@ -78,6 +84,28 @@ class TranscribedLyricsTest {
         // window-relative time surviving to the score would sit at 0.2.
         assertThat(first.startSeconds()).isBetween(1.8, 2.4);
         assertThat(first.confidence().value()).isEqualTo(FakeAsrProvider.HEARD.value());
+    }
+
+    @Test
+    @DisplayName("a fresh transcription is handed to the aligner")
+    void freshTranscriptionIsAligned() throws IOException {
+        Path root = workspaceWithQuietIntro();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                .replace("alignmentProvider: no-such-alignment",
+                        "alignmentProvider: fake-cli-alignment"));
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.out()).contains("transcribed").contains("aligned");
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        LyricWord first = score.lyrics().lines().get(0).words().get(0);
+        // The fake aligner's signature: word 1 lands 0.111 s into a window
+        // opening half a second before the line, at a confidence nothing else
+        // assigns. Spread times surviving to the score would carry 0.55.
+        assertThat(first.confidence().value()).isEqualTo(0.97);
     }
 
     @Test

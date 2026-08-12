@@ -358,7 +358,14 @@ a loop that neither begins nor ends on its tonic gives it nothing to work with,
 and it answers at the coin-flip floor rather than pretending. `KeyEstimator`
 carries the rules and `tools/baselines/score-samples.txt` carries the scores.
 
-Still missing: separation and melody (#8), lyrics (#9), piano
+The lyrics chain (#9) runs end to end: vocal separation (#312), forced
+alignment of supplied LRC lyrics (#313), and transcription from the audio
+itself (#314, Qwen3-ASR through a sherpa-onnx source submodule, built by
+`tools/build-sherpa-native.sh` and present only when that has run). The
+transcriber knows words but not their times — sherpa's Qwen3 emits none — so
+words are spread across their sung stretch and the aligner measures onsets
+where it speaks the language, which today is English only.
+Still missing: melody (#8), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing

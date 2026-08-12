@@ -122,7 +122,7 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                 held.decode(stream);
                 OfflineRecognizerResult result = held.getResult(stream);
                 return Qwen3Tokens.words(result.getTokens(),
-                        result.getTimestamps(), result.getDurations());
+                        (double) resampled.length / MODEL_RATE);
             } finally {
                 stream.release();
             }

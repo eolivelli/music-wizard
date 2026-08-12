@@ -382,9 +382,10 @@ final class AnalyzeCommand implements Callable<Integer> {
      * The score with its lyric words placed by the aligner, when one is
      * configured, present, and speaks the lyrics' language.
      *
-     * <p>This is what turns {@code SPREAD_WORD} guesses into measured onsets:
-     * each line's words are aligned inside a window around the line's own LRC
-     * timestamps, which keeps the search small and anchored. Every failure
+     * <p>This is what turns spread-word guesses into measured onsets: each
+     * line's words are aligned inside a window around the line's own
+     * timestamps — parsed from LRC, or a transcription's sung stretch — which
+     * keeps the search small and anchored. Every failure
      * degrades to parsed times — per line, counted in the summary alongside
      * the lines alignment deliberately leaves alone; whole-run with the reason
      * on stderr when the model cannot be had or the aligner fails outright —
@@ -495,7 +496,9 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>Fed the vocal stem — that is what separation exists for — and the
      * stem's sung stretches only, as {@link VocalSegments} finds them; a
      * recognizer fed an intro or a solo is free to hallucinate words into it.
-     * {@code --skip-separation} makes it hear the full mix instead.
+     * {@code --skip-separation} makes it hear the full mix instead. The
+     * recognizer returns words with spread times, so a fresh transcription is
+     * handed straight to {@link #withAlignedLyrics} for measured onsets.
      *
      * <p>Lyrics already carried forward win: they were supplied or transcribed
      * once already, and a run that quietly re-transcribed over a corrected
@@ -513,6 +516,13 @@ final class AnalyzeCommand implements Callable<Integer> {
             return score;
         }
         MusicWizardConfig.MlConfig ml = config.ml();
+        // The provider reads only the global config layer (#383); the
+        // workspace's ml.sherpaNativePath reaches it through sherpa's own
+        // property, which the provider leaves alone when already set.
+        if (ml != null && ml.sherpaNativePath() != null
+                && System.getProperty("sherpa_onnx.native.path") == null) {
+            System.setProperty("sherpa_onnx.native.path", ml.sherpaNativePath());
+        }
         String wanted = ml == null ? null : ml.asrProvider();
         var provider = MlProviders.asr(wanted);
         if (provider.isEmpty()) {
@@ -566,7 +576,11 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + " lyric lines from " + segments.size() + " sung stretches with "
                     + provider.get().id()
                     + (failed > 0 ? "; " + failed + " stretches failed" : ""));
-            return score.withLyrics(lyrics);
+            // The recognizer knows the words but not their times -- each line's
+            // words are spread across its sung stretch. The aligner measures
+            // real onsets where it speaks the language, and only for lyrics
+            // transcribed in this run: carried-forward lyrics never re-align.
+            return withAlignedLyrics(workspace, score.withLyrics(lyrics));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics not transcribed: " + e.getMessage());
             return score;

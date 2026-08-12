@@ -24,18 +24,24 @@ import java.util.List;
 /**
  * Recognizer tokens into words: pure text-and-time arithmetic, no natives.
  *
- * <p>Qwen3's tokenizer marks a word boundary with a leading space on the
- * token (BPE-style; the metaspace variants {@code ▁} and {@code Ġ}
- * are folded to the same meaning). A word runs from its first token's
- * timestamp to its last token's timestamp plus duration; a token with no
- * duration still advances the word's end to its own start, so a word is never
- * cut short by one missing measurement.
+ * <p>Qwen3-ASR decodes text the way a language model does, and sherpa-onnx's
+ * implementation carries no per-token times — {@code getTimestamps()} comes
+ * back empty. So the words' times are inferred, not recognised: spread across
+ * the transcribed window in proportion to a syllable estimate, the same
+ * apportioning the LRC parser uses for an un-timed line. The window is one
+ * sung stretch, not the whole song, which is what keeps the inference honest
+ * enough to use — and the aligner measures real onsets afterwards where it
+ * speaks the language.
  *
- * <p>Confidence is {@link Confidence#of} 0.6 for every transcribed word — a
- * deliberate constant, unlike the aligner's measured number, because
- * sherpa-onnx exposes no per-token posterior; the honest statement is "this
- * source is a transcription", not a per-word certainty the API cannot supply.
- * #386 owns reconciling the scales before anything branches on them.
+ * <p>Tokens arrive already byte-level-decoded to UTF-8, with a word boundary
+ * as leading whitespace (the metaspace variants {@code ▁} and {@code Ġ} are
+ * folded in case an export surfaces them raw). A dangling-byte token ends in
+ * U+FFFD, which is noise, not text.
+ *
+ * <p>{@link #TRANSCRIBED} is one deliberate constant for every word — text
+ * from a modest recognizer, timing inferred — because sherpa-onnx exposes no
+ * per-token posterior to be honest with. #386 owns reconciling the scales
+ * before anything branches on them.
  */
 final class Qwen3Tokens {
 
@@ -44,40 +50,45 @@ final class Qwen3Tokens {
     private Qwen3Tokens() {
     }
 
-    static List<LyricWord> words(String[] tokens, float[] timestamps,
-                                 float[] durations) {
-        List<LyricWord> out = new ArrayList<>();
-        StringBuilder text = new StringBuilder();
-        double start = 0;
-        double end = 0;
-        for (int i = 0; i < tokens.length; i++) {
-            String piece = tokens[i] == null ? "" : tokens[i];
-            boolean boundary = startsNewWord(piece);
-            String cleaned = strip(piece);
-            double at = i < timestamps.length ? timestamps[i] : end;
-            double duration = i < durations.length ? Math.max(0, durations[i]) : 0;
-            if (boundary && text.length() > 0) {
-                out.add(word(text.toString(), start, end));
-                text.setLength(0);
-            }
-            if (cleaned.isEmpty()) {
-                continue;
-            }
-            if (text.length() == 0) {
-                start = at;
-                end = at;
-            }
-            text.append(cleaned);
-            end = Math.max(end, at + duration);
+    /** The tokens as words, spread across {@code windowSeconds} of singing. */
+    static List<LyricWord> words(String[] tokens, double windowSeconds) {
+        List<String> texts = wordTexts(tokens);
+        if (texts.isEmpty() || windowSeconds <= 0) {
+            return List.of();
         }
-        if (text.length() > 0) {
-            out.add(word(text.toString(), start, end));
+        List<LyricWord> out = new ArrayList<>(texts.size());
+        int totalSyllables = 0;
+        List<LyricWord> unplaced = new ArrayList<>(texts.size());
+        for (String text : texts) {
+            LyricWord word = LyricWord.ofSeconds(text, 0, 0, TRANSCRIBED);
+            unplaced.add(word);
+            totalSyllables += word.syllableEstimate();
+        }
+        double at = 0;
+        for (LyricWord word : unplaced) {
+            double duration =
+                    windowSeconds * word.syllableEstimate() / totalSyllables;
+            out.add(LyricWord.ofSeconds(word.text(), at, at + duration, TRANSCRIBED));
+            at += duration;
         }
         return List.copyOf(out);
     }
 
-    private static LyricWord word(String text, double start, double end) {
-        return LyricWord.ofSeconds(text, start, Math.max(start, end), TRANSCRIBED);
+    private static List<String> wordTexts(String[] tokens) {
+        List<String> out = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String token : tokens) {
+            String piece = token == null ? "" : token;
+            if (startsNewWord(piece) && current.length() > 0) {
+                out.add(current.toString());
+                current.setLength(0);
+            }
+            current.append(cleaned(piece));
+        }
+        if (current.length() > 0) {
+            out.add(current.toString());
+        }
+        return out;
     }
 
     private static boolean startsNewWord(String token) {
@@ -85,15 +96,11 @@ final class Qwen3Tokens {
             return false;
         }
         char first = token.charAt(0);
-        return first == ' ' || first == '▁' || first == 'Ġ';
+        return Character.isWhitespace(first) || first == '▁' || first == 'Ġ';
     }
 
-    private static String strip(String token) {
-        int from = 0;
-        while (from < token.length() && (token.charAt(from) == ' '
-                || token.charAt(from) == '▁' || token.charAt(from) == 'Ġ')) {
-            from++;
-        }
-        return token.substring(from).strip();
+    private static String cleaned(String token) {
+        return token.replace('▁', ' ').replace('Ġ', ' ')
+                .replace("�", "").strip();
     }
 }
