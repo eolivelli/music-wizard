@@ -182,6 +182,10 @@ class AlignedLyricsTest {
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--lyrics", lrc.toString(), "--lyrics-language", "en");
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        // The aligner ran and the predicate fired -- without this, a dropped
+        // services line turns this test into a silent duplicate of the
+        // absent-aligner one below, still green.
+        assertThat(analyze.out()).contains("kept their parsed times");
 
         Score score = Workspace.open(root).readScore().orElseThrow();
         var words = score.lyrics().lines().get(0).words();

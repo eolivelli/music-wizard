@@ -550,9 +550,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         // proportional squeeze keeps the order and spacing the aligner
         // measured. The max, not the last word's end: nothing here may assume
         // recognition spans cannot overlap.
-        double lineStart = from + placed.get(0).startSeconds();
-        double lineEnd = lineStart;
+        // Min and max over the words, symmetrically: the SPI promises one
+        // word per input word, in order, and promises nothing about the times
+        // being monotone -- so neither end may be read off one word.
+        double lineStart = Double.POSITIVE_INFINITY;
+        double lineEnd = Double.NEGATIVE_INFINITY;
         for (LyricWord word : placed) {
+            lineStart = Math.min(lineStart, from + word.startSeconds());
             lineEnd = Math.max(lineEnd, from + word.endSeconds());
         }
         double scale = lineEnd > tailBound && lineEnd > lineStart
