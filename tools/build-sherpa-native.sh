@@ -23,7 +23,19 @@ SRC=third_party/sherpa-onnx
 BUILD=$SRC/build
 
 if [ ! -f "$SRC/CMakeLists.txt" ]; then
-  echo "build-sherpa-native: submodule missing; run: git submodule update --init" >&2
+  echo "build-sherpa-native: submodule missing; run: git submodule sync && git submodule update --init" >&2
+  exit 2
+fi
+
+# The tree must be at the recorded pin. An existing clone keeps the OLD
+# submodule URL in .git/config after a URL change, and update --init then
+# leaves the old commit checked out with exit 128 -- and this script would
+# happily build a native without the change the pin exists for.
+PINNED=$(git rev-parse "HEAD:$SRC")
+ACTUAL=$(git -C "$SRC" rev-parse HEAD)
+if [ "$PINNED" != "$ACTUAL" ]; then
+  echo "build-sherpa-native: submodule is at $ACTUAL, the pin is $PINNED;" >&2
+  echo "  run: git submodule sync && git submodule update --init" >&2
   exit 2
 fi
 
