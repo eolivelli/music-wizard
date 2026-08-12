@@ -27,9 +27,17 @@ import dev.olivelli.musicwizard.core.ml.SeparationProvider;
  */
 public final class FakeSeparationProvider implements SeparationProvider {
 
+    /** Not a rate anything records at, so a header carrying it proves the path. */
+    static final int PREFERRED_RATE = 32_000;
+
     @Override
     public String id() {
         return "fake-cli-separation";
+    }
+
+    @Override
+    public int preferredSampleRate() {
+        return PREFERRED_RATE;
     }
 
     @Override

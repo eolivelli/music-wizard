@@ -292,7 +292,12 @@
         <!--
           Both test plugins run with XDG_CONFIG_HOME pointed at a directory
           under target/ that nothing ever creates, so the global config layer is
-          empty in every forked test JVM.
+          empty in every forked test JVM. Two modules override the target: the
+          ones whose runtime classpath carries real providers point it at the
+          committed offline layer under test-config/ instead, whose file says
+          why. mw-core cannot share that override: its GlobalConfigLayerTest
+          plants and removes files at this location and guards that nothing
+          else lives there.
 
           This is a backstop, not the fix. The fix for #133 is that ConfigLoader
           takes its global config location as an argument, so a test states

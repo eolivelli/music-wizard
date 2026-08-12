@@ -35,6 +35,19 @@ public interface SeparationProvider {
     String id();
 
     /**
+     * The rate this provider's model wants, or zero for "any".
+     *
+     * <p>The provider resamples whatever arrives — that contract stands — but a
+     * caller that can <em>decode</em> at this rate should: a decode below it
+     * band-limits the audio under the anti-alias filter's cutoff, below what
+     * the model reads, and no later resample recovers that. The consonant band
+     * of a vocal stem is exactly what it loses. Advisory, never required.
+     */
+    default int preferredSampleRate() {
+        return 0;
+    }
+
+    /**
      * Separates a recording.
      *
      * <p>Samples are interleaved per channel: {@code channels[c][i]} is channel
@@ -45,8 +58,7 @@ public interface SeparationProvider {
      *
      * @throws ModelUnavailableException when the model this provider needs
      *         cannot be had — absent and offline, or failing its checksum. The
-     *         caller degrades the way an absent LilyPond does: says so and
-     *         continues without, rather than failing the run.
+     *         type's javadoc says what callers do with it.
      */
     Separation separate(float[][] channels, int sampleRate);
 

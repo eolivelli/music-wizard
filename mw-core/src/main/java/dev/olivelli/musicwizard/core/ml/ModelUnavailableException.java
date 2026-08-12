@@ -26,9 +26,11 @@ package dev.olivelli.musicwizard.core.ml;
  * because "could not load model" with none of that is the error message this
  * project's LilyPond discovery was written to avoid.
  *
- * <p>Callers treat it the way they treat an absent LilyPond binary: report and
- * continue without the stage, never fail the run. Unchecked because a checked
- * type on an SPI forces every future provider method to redeclare it.
+ * <p>What a caller does with it depends on what it was producing: a pipeline
+ * reports and continues without the stage, the way an absent LilyPond is
+ * survived, while a command whose only product is the stage reports it and
+ * exits nonzero. Unchecked because a checked type on an SPI forces every
+ * future provider method to redeclare it.
  */
 public class ModelUnavailableException extends RuntimeException {
 
