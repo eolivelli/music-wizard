@@ -54,6 +54,9 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
 
+    /** What the notes file held when last read or written, so an untouched field is a no-op. */
+    private String loadedNotes = "";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -73,17 +76,19 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
 
-        notes.setText(RecordingStore.readNotes(new RecordingStore.Recording(wav)));
+        loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
+        notes.setText(loadedNotes);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
         findViewById(R.id.bundleButton).setOnClickListener(view -> {
-            // Flushed first, so what is typed and what is bundled cannot
-            // disagree; the file is where BundleShare reads it from.
-            saveNotes();
-            BundleShare.share(this, wav);
+            // A failed flush aborts: bundling the previous note as though it
+            // were this one is the one wrong outcome.
+            if (saveNotes()) {
+                BundleShare.share(this, wav);
+            }
         });
     }
 
@@ -136,20 +141,26 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     }
 
     /**
-     * Writes the note beside the take.
+     * Writes the note when it changed; true when the file now matches the field.
      *
-     * <p>On every pause rather than on a save button: the note is the one
-     * thing about a take that cannot be recovered by pressing anything again,
-     * so leaving the screen is what commits it. A failure is worth a toast for
-     * the same reason.
+     * <p>Leaving the screen is what commits the words — there is no save
+     * button. Only on a change, so that an untouched field is a no-op: a note
+     * file that could not be read arrives here as a blank field, and writing
+     * that back would delete the very file the blank stood for.
      */
-    private void saveNotes() {
+    private boolean saveNotes() {
+        String typed = notes.getText().toString();
+        if (typed.equals(loadedNotes)) {
+            return true;
+        }
         try {
-            RecordingStore.writeNotes(new RecordingStore.Recording(wav),
-                    notes.getText().toString());
+            RecordingStore.writeNotes(new RecordingStore.Recording(wav), typed);
+            loadedNotes = typed;
+            return true;
         } catch (IOException e) {
             Toast.makeText(this, getString(R.string.notes_unsaved, e.getMessage()),
                     Toast.LENGTH_LONG).show();
+            return false;
         }
     }
 

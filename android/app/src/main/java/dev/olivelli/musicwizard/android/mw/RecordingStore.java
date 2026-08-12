@@ -30,12 +30,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The recordings directory: what is in it, and the four things done to it.
+ * The recordings directory: what is in it, and what is done to it.
  *
  * <p>App-private storage, so no storage permission is involved and uninstalling
- * the app takes the takes with it. Each recording is a WAV and, once analysed,
- * a {@code .score.json} beside it with the same stem — the cache that makes
- * re-opening instant and that "re-analyze" overwrites.
+ * the app takes the takes with it. Each recording is a WAV and, beside it with
+ * the same stem, up to two side files: a {@code .score.json} once analysed —
+ * the cache that makes re-opening instant and that "re-analyze" overwrites —
+ * and a {@code .notes.txt} once the player has said what was played.
  *
  * <p>Everything here is plain {@code java.io}, so it is tested on the JVM
  * against a temporary directory rather than on a device.
@@ -93,7 +94,7 @@ public final class RecordingStore {
         /**
          * Where the player's own account of the take lives: beside the WAV,
          * same stem. "What was played", typed on the result screen and carried
-         * in the bundle — the one thing about a take that cannot be recomputed.
+         * in the bundle — the one file beside a take that cannot be recomputed.
          */
         public File notesFile() {
             String name = wav.getName();
@@ -190,13 +191,20 @@ public final class RecordingStore {
         if (target.exists()) {
             throw new IOException("there is already a recording called " + stem);
         }
+        Recording renamed = new Recording(target);
+        // The target stem can carry side files orphaned by an interrupted move;
+        // cleared now, so the take moving in cannot inherit another take's
+        // analysis or words as its own.
+        //noinspection ResultOfMethodCallIgnored
+        renamed.scoreFile().delete();
+        //noinspection ResultOfMethodCallIgnored
+        renamed.notesFile().delete();
 
         File oldScore = recording.scoreFile();
         File oldNotes = recording.notesFile();
         if (!recording.wav().renameTo(target)) {
             throw new IOException("could not rename " + recording.displayName());
         }
-        Recording renamed = new Recording(target);
         if (oldScore.isFile() && !oldScore.renameTo(renamed.scoreFile())) {
             // The audio moved and its analysis did not. Drop the stale cache
             // rather than leave it under the old stem, where it would be
@@ -205,10 +213,10 @@ public final class RecordingStore {
             oldScore.delete();
         }
         if (oldNotes.isFile() && !oldNotes.renameTo(renamed.notesFile())) {
-            // Not the cache's rule: the note is the player's own words and
-            // cannot be recomputed, so a failed move copies instead — and if
-            // even that fails, the original is left under the old stem, where
-            // surviving wrongly filed beats vanishing.
+            // Not the cache's rule — see notesFile(): a failed move copies
+            // instead, and if even that fails the original stays under the old
+            // stem. A stray, not an heirloom: the clearing above keeps a later
+            // rename onto that stem from serving it as another take's account.
             try {
                 Files.copy(oldNotes.toPath(), renamed.notesFile().toPath(),
                         StandardCopyOption.REPLACE_EXISTING);

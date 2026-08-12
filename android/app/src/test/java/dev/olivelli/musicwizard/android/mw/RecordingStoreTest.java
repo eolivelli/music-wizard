@@ -122,12 +122,30 @@ public class RecordingStoreTest {
         Recording recording = new Recording(wav);
         assertEquals("", RecordingStore.readNotes(recording));
 
-        RecordingStore.writeNotes(recording, "G C D, twice round");
-        assertEquals("G C D, twice round", RecordingStore.readNotes(recording));
+        // Accented, so a default-charset mismatch between the two sides fails.
+        RecordingStore.writeNotes(recording, "G C D, poi il ponte in Mi però più lento");
+        assertEquals("G C D, poi il ponte in Mi però più lento",
+                RecordingStore.readNotes(recording));
 
         RecordingStore.writeNotes(recording, "  \n");
         assertFalse("an emptied note must not leave a ghost file",
                 recording.notesFile().isFile());
+    }
+
+    /**
+     * A stem can carry side files orphaned by an interrupted move; a take
+     * renamed onto it must not inherit them as its own analysis or words.
+     */
+    @Test
+    public void renamingOntoAStemClearsOrphanedSideFiles() throws IOException {
+        File wav = new File(store.directory(), "one.wav");
+        touch(wav);
+        write(new File(store.directory(), "kitchen.notes.txt"), "another take's words");
+        write(new File(store.directory(), "kitchen.score.json"), "{}");
+
+        Recording after = store.rename(new Recording(wav), "kitchen");
+        assertEquals("", RecordingStore.readNotes(after));
+        assertFalse(after.isAnalyzed());
     }
 
     /**

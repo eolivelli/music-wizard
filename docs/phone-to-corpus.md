@@ -9,8 +9,9 @@ phone and on the desktop, with what was played written down beside it.
 Long-press the take in the library and choose **Share bundle** — that is the
 corpus-export path. It is one zip holding the WAV, the chart the phone made of
 it, the cached `score.json` where one could be written, the note typed on the
-result screen ("what was played", in the player's words), and an info file with
-the duration, the recorded date and the app version; sharing it to a cloud
+result screen when there is one ("what was played", in the player's words), and
+an info file with the duration, the recorded date, the tempo and meter, and the
+app version; sharing it to a cloud
 drive is how someone who is not holding the phone fetches it, and the WAV
 inside is what step 4 runs on. **Share WAV** sends the audio alone.
 
@@ -39,8 +40,9 @@ in one more place — its recording and its `.lrc` go in the `LYRICS` table of
 Follow the entries already in whichever of the two files it is: file name, then
 a paragraph. A phone take has no fetch command, so its provenance goes in that
 place instead — who played, on what, when — and then what was played, marked as
-known or as remembered. A bundled take arrives with its `.notes.txt`, the
-player's account written at the time; start from that rather than from memory.
+known or as remembered. A bundled take whose player typed a note arrives with
+its `.notes.txt`, the account written at the time; start from that rather than
+from memory.
 
 ## 4. Run the desktop CLI on the same file
 

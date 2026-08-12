@@ -124,8 +124,8 @@ final class BundleShare {
             }
         }
         String chart = score == null ? null : MwAnalysis.chartText(score);
-        // The result screen flushes its field to this file before calling here,
-        // so what is typed and what is bundled cannot disagree.
+        // The file is authoritative: the result screen shares only after a
+        // successful flush of its field into it.
         String typed = RecordingStore.readNotes(recording);
         String notes = typed.trim().isEmpty() ? null : typed;
         String info = infoText(application, take, recording.durationSeconds(),
