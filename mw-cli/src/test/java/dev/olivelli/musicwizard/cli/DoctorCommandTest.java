@@ -61,17 +61,21 @@ class DoctorCommandTest {
     @DisplayName("a present provider and an absent one each read as what they are")
     void eachProviderLineReadsAsWhatItIs() {
         // Separation became the present branch's ordinary case when #312
-        // landed its real provider under the default id; ASR is still the
-        // absent branch until #314, an expected state with an issue number
-        // rather than a broken install, and neither may fail the run.
+        // landed its real provider under the default id. The ASR provider
+        // exists only in builds carrying the sherpa profile, so its line is
+        // asserted against this build's own classpath: present as present,
+        // absent as an expected state with an issue number rather than a
+        // broken install. Neither may fail the run.
         CliRunner.Result doctor = CliRunner.run("doctor");
 
         assertThat(doctor.exitCode()).as(doctor.all()).isZero();
         assertThat(doctor.out())
                 .contains("onnx-spleeter (present)")
                 .contains("Lyrics ASR")
-                .contains("sherpa-qwen3")
-                .contains("#314")
+                .contains(dev.olivelli.musicwizard.core.ml.MlProviders.asrIds()
+                        .contains("sherpa-qwen3")
+                        ? "sherpa-qwen3 (present)"
+                        : "sherpa-qwen3 -- no such provider on this classpath yet (#314)")
                 .contains("Alignment")
                 .contains("onnx-wav2vec2 (present)")
                 .contains("fake-cli-separation")

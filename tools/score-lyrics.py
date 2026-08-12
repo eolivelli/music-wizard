@@ -85,11 +85,11 @@ LYRICS = {
 # The line main() prints above the rows. It holds no ".mp3:", which is what
 # keeps premerge.sh from reading it as a row; the Keying tests execute that.
 PREAMBLE = ("lyric words MW carries, against the file they were read from"
-            " (nothing transcribes them from audio yet, #314):")
+            " (the supplied-lyrics loop; #391 scores the transcription loop):")
 
-# Flipped by #314, when MW starts producing lyrics from the audio instead of
-# being handed them. Printed in every line, so the baseline says which loop it
-# measured.
+# Which loop the rows measure. Printed in every line, so the baseline says.
+# "asr" -- analyze with no lyrics file, words transcribed from the audio,
+# scored against the same reference -- is #391.
 SOURCE = "lrc"
 
 # LrcLyrics' own two, transcribed: three-digit minutes, either separator.

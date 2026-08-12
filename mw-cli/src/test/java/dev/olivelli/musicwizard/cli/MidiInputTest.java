@@ -599,12 +599,29 @@ class MidiInputTest {
         }
 
         @Test
-        @DisplayName("--skip-separation is answered for what it is: not implemented anywhere")
+        @DisplayName("a transcription request is answered, because render advises it blind")
+        void transcriptionRequestIsAnswered() {
+            // render's no-lyrics message offers --lyrics-language without
+            // naming a source kind, since it cannot know one. A MIDI user who
+            // follows that advice must hear why nothing happened.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+
+            CliRunner.Result analyze = CliRunner.run(
+                    "analyze", workspace.toString(), "--lyrics-language", "en");
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.err())
+                    .contains("--lyrics-language alone asks for transcription")
+                    .contains("MIDI");
+        }
+
+        @Test
+        @DisplayName("--skip-separation is answered for what it is: doing nothing in this run")
         void skipSeparationIsNotAMidiSpecificExclusion() {
             // Round 3 found it described as an audio option, ignored in silence
             // by an audio run, and reported to a MIDI user in words implying an
-            // audio run would honour it. Nothing separates stems on either path
-            // until #8, so that is what it says -- and it must not be listed
+            // audio run would honour it. On a MIDI workspace it changes nothing
+            // whatever else is asked for, so that is what it says -- and it must not be listed
             // among the overrides the *file* supersedes, which is a different
             // reason entirely.
             Path workspace = imported(MidiFixtures.fourChordSong(), "four");
@@ -614,7 +631,7 @@ class MidiInputTest {
 
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.err())
-                    .contains("skipping separation has no effect yet on any input")
+                    .contains("skipping separation changes nothing in this run")
                     .contains("#8");
             assertThat(analyze.err())
                     .as("listed among the options the file's own declarations supersede")
@@ -638,7 +655,7 @@ class MidiInputTest {
 
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.err())
-                    .contains("skipping separation has no effect yet on any input");
+                    .contains("skipping separation changes nothing in this run");
             // And the other half of the rule, which must stay silent: a tempo in
             // a config file does apply, just not on this path.
             assertThat(analyze.err())

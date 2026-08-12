@@ -1,0 +1,7 @@
+[submodule "third_party/sherpa-onnx"]
+	path = third_party/sherpa-onnx
+	url = https://github.com/k2-fsa/sherpa-onnx.git
+	branch = master
+	# The in-tree native build writes under the submodule's working tree;
+	# without this every git status reads "untracked content" forever.
+	ignore = untracked

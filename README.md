@@ -173,12 +173,17 @@ voice` — and it says so and why, rather than listing it and writing nothing.
 
 ### Lyrics
 
-Nothing transcribes lyrics from a recording yet ([#9][i9]). What works today is
-supplying them: point `analyze` at an [LRC][lrc] file and they are placed under
-the chords.
+Lyrics arrive two ways. Supplying them is the reliable one: point `analyze` at
+an [LRC][lrc] file and they are placed under the chords. Naming a language
+without supplying a file asks for the words to be heard from the recording
+itself — a build with the sherpa-onnx provider (see
+`tools/build-sherpa-native.sh`) transcribes the separated vocal, and sung
+speech recognition is modest, so expect to correct the result rather than
+trust it.
 
 ```sh
 mw analyze song.mwz --lyrics song.lrc --lyrics-language it
+mw analyze song.mwz --lyrics-language it   # no file: transcribe from the audio
 mw render song.mwz                   # writes the chords-lyrics files as well
 ```
 

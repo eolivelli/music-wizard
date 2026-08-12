@@ -1,2 +1,2 @@
-lyric words MW carries, against the file they were read from (nothing transcribes them from audio yet, #314):
+lyric words MW carries, against the file they were read from (the supplied-lyrics loop; #391 scores the transcription loop):
   sere-doltremare.mp3: words 289  wer 0.0% (sub 0, del 0, ins 0)  onset median 0.000s, max 0.000s  anchors 59/59 line-level  source lrc

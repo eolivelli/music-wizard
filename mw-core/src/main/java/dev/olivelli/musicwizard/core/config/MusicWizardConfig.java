@@ -105,6 +105,10 @@ public record MusicWizardConfig(
             String alignmentProvider,
             /* Directory holding downloaded models; defaults under the user cache. */
             String modelCacheDirectory,
+            /* Directory holding the sherpa-onnx native libraries; unset means
+             * the JVM's own library path. tools/build-sherpa-native.sh writes
+             * the directory this names. */
+            String sherpaNativePath,
             /* Refuse to download anything, failing instead. */
             Boolean offline) {
     }
@@ -161,7 +165,7 @@ public record MusicWizardConfig(
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
             new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3",
-                    "onnx-wav2vec2", null, false),
+                    "onnx-wav2vec2", null, null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
@@ -249,6 +253,7 @@ public record MusicWizardConfig(
                 pick(over.asrProvider(), base.asrProvider()),
                 pick(over.alignmentProvider(), base.alignmentProvider()),
                 pick(over.modelCacheDirectory(), base.modelCacheDirectory()),
+                pick(over.sherpaNativePath(), base.sherpaNativePath()),
                 pick(over.offline(), base.offline()));
     }
 

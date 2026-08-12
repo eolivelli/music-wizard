@@ -179,9 +179,13 @@ already thought of and nothing else.
   rule.
 - LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
   never linked or redistributed, and the tool works without it.
-- No model weights ship in the repo, and nothing fetches one yet. A stage that
-  does will download on first use into a local cache; `NOTICE` lists what has
-  been chosen so far.
+- No model weights ship in the repo. Stages that need one download it on first
+  use into a local cache, checksummed, provenance beside it; `NOTICE` lists
+  what has been chosen so far.
+- The sherpa-onnx native (ASR) is built from a source submodule with TTS off,
+  because the default build statically links a GPL-3.0 espeak fork.
+  `tools/check-sherpa-native.sh` asserts the built library against that, in CI
+  too; the flags live in `tools/build-sherpa-native.sh`, nowhere else.
 
 **Lyrics and reference charts are input, not output, and are governed
 separately.** Everything above is about what MW *ships* — code it links, weights
@@ -358,7 +362,14 @@ a loop that neither begins nor ends on its tonic gives it nothing to work with,
 and it answers at the coin-flip floor rather than pretending. `KeyEstimator`
 carries the rules and `tools/baselines/score-samples.txt` carries the scores.
 
-Still missing: separation and melody (#8), lyrics (#9), piano
+The lyrics chain (#9) runs end to end: vocal separation (#312), forced
+alignment of supplied LRC lyrics (#313), and transcription from the audio
+itself (#314, Qwen3-ASR through a sherpa-onnx source submodule, built by
+`tools/build-sherpa-native.sh` and present only when that has run). The
+transcriber knows words but not their times — sherpa's Qwen3 emits none — so
+words are spread across their sung stretch and the aligner measures onsets
+where it speaks the language, which today is English only.
+Still missing: melody (#8), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing

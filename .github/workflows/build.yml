@@ -48,6 +48,39 @@ jobs:
       - name: Run integration tests
         run: mvn -B --no-transfer-progress verify -Pintegration
 
+  # The sherpa-onnx ASR provider: built from the source submodule, which the
+  # other jobs deliberately do not check out -- their builds must stay free of
+  # it, which is also what keeps the default build's behaviour identical to a
+  # clone without the submodule. The native build is cached on the submodule
+  # commit plus the build script (whose flags are the licence position); a
+  # cache hit makes this job minutes, a miss ~half an hour of C++.
+  sherpa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+      - name: Compute the native cache key
+        id: nativekey
+        run: echo "submodule=$(git rev-parse HEAD:third_party/sherpa-onnx)" >> "$GITHUB_OUTPUT"
+      - name: Cache the native build
+        uses: actions/cache@v4
+        with:
+          path: third_party/sherpa-onnx/build
+          key: sherpa-native-${{ runner.os }}-${{ steps.nativekey.outputs.submodule }}-${{ hashFiles('tools/build-sherpa-native.sh') }}
+      # The script ends by running tools/check-sherpa-native.sh: the espeak
+      # symbol scan that asserts the GPL fork stayed out of the link.
+      - name: Build the native library
+        run: tools/build-sherpa-native.sh
+      - name: Build and test the sherpa provider
+        run: mvn -B --no-transfer-progress -pl mw-ml -am test
+
   # Runs the enforcer, which denies the artifacts named in the root pom. It reads
   # no licence metadata, so this catches a coordinate someone has already ruled
   # out and not a GPL artifact nobody has listed; CONTRIBUTING.md says what the

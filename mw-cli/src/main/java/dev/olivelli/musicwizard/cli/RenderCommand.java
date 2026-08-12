@@ -180,8 +180,9 @@ final class RenderCommand implements Callable<Integer> {
             // one, lyric meta events on the other -- and this command cannot
             // tell which score it is holding.
             if (this == LYRICS && score.lyrics().isEmpty()) {
-                return "this score holds no lyrics; pass --lyrics to analyze with an"
-                        + " LRC file, since nothing produces them automatically yet (#9)";
+                return "this score holds no lyrics; analyze with --lyrics and an"
+                        + " LRC file, or with --lyrics-language alone to ask for"
+                        + " transcription";
             }
             return null;
         }
