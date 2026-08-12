@@ -141,6 +141,15 @@ public class TakeBundleTest {
         }
     }
 
+    /**
+     * The shared file is {@code <take>.mwz.zip} — "mwz" is what a Drive
+     * search finds bundles by, so the suffix is a contract, not a default.
+     */
+    @Test
+    public void aBundleIsNamedSoASearchForMwzFindsIt() {
+        assertEquals("wednesday-blues.mwz.zip", TakeBundle.fileNameFor("wednesday-blues"));
+    }
+
     /** The take's name, not a fixed one, names the entries — a chart pulled out beside another take's stays identifiable. */
     @Test
     public void entriesCarryTheTakesName() throws IOException {

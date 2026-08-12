@@ -39,7 +39,23 @@ import java.util.zip.ZipOutputStream;
  */
 public final class TakeBundle {
 
+    /**
+     * What a bundle is called: {@code <take>.mwz.zip}.
+     *
+     * <p>The double extension is the findability: a Drive folder that collects
+     * bundles among everything else answers a search for "mwz" with exactly
+     * them, and the file still opens as the plain zip it is. {@code .mwz}
+     * alone is taken — it is the desktop workspace extension — and a bare
+     * {@code .zip} is what #397 shipped and what nothing could search for.
+     */
+    public static final String EXTENSION = ".mwz.zip";
+
     private TakeBundle() {
+    }
+
+    /** The file name a take's bundle is shared under. */
+    public static String fileNameFor(String takeName) {
+        return takeName + EXTENSION;
     }
 
     /**
