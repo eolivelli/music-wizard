@@ -110,6 +110,16 @@ final class DoctorCommand implements Callable<Integer> {
                         + nativePath + " -- run tools/build-sherpa-native.sh");
                 allWell = false;
             }
+            // The user-supplied model directory (#396) outranks the fetched
+            // archive, so a wrong path fails transcription; the check mirrors
+            // the provider's own.
+            String modelDirectory = ml == null ? null : ml.asrModelDirectory();
+            if (modelDirectory != null
+                    && !Files.isRegularFile(Path.of(modelDirectory, "conv_frontend.onnx"))) {
+                System.out.println("            ml.asrModelDirectory holds no Qwen3-ASR"
+                        + " export (no conv_frontend.onnx): " + modelDirectory);
+                allWell = false;
+            }
         }
         report("Alignment", ml == null ? null : ml.alignmentProvider(),
                 MlProviders.alignmentIds(), "#313");

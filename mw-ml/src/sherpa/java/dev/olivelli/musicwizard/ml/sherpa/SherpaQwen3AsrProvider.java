@@ -76,6 +76,7 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private final ModelCache cache;
     private final ModelRef archive;
     private final String nativePath;
+    private final String configuredModelDirectory;
 
     private OfflineRecognizer recognizer;
 
@@ -90,13 +91,16 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                                 config.ml() == null ? null : config.ml().modelCacheDirectory()),
                         config.isOffline()),
                 Qwen3Models.ARCHIVE,
-                config.ml() == null ? null : config.ml().sherpaNativePath());
+                config.ml() == null ? null : config.ml().sherpaNativePath(),
+                config.ml() == null ? null : config.ml().asrModelDirectory());
     }
 
-    SherpaQwen3AsrProvider(ModelCache cache, ModelRef archive, String nativePath) {
+    SherpaQwen3AsrProvider(ModelCache cache, ModelRef archive, String nativePath,
+                           String configuredModelDirectory) {
         this.cache = cache;
         this.archive = archive;
         this.nativePath = nativePath;
+        this.configuredModelDirectory = configuredModelDirectory;
     }
 
     private static MusicWizardConfig environmentConfig() {
@@ -151,11 +155,26 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
      * The unpacked model directory, fetching and unpacking the archive first
      * when it is absent.
      *
+     * <p>{@code ml.asrModelDirectory} outranks the archive: only the 0.6B
+     * export is published, so running another size means producing the
+     * directory locally (#396) and pointing here. It must already hold the
+     * model — a checked claim, because a typo in the path must not silently
+     * fall back to the smaller published model.
+     *
      * <p>The archive is the unit the checksum covers; the unpacked tree is
      * derived from it locally, marked done only after tar succeeds, so a
      * killed unpack re-runs rather than being trusted.
      */
     private Path modelDirectory() {
+        if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
+            Path configured = Path.of(configuredModelDirectory);
+            if (!Files.isRegularFile(configured.resolve("conv_frontend.onnx"))) {
+                throw new ModelUnavailableException(
+                        "ml.asrModelDirectory does not hold a Qwen3-ASR export"
+                        + " (no conv_frontend.onnx): " + configured);
+            }
+            return configured;
+        }
         Path tarball = cache.fetch(archive, System.out::println);
         Path directory = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY);
         Path marker = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY + ".ok");
@@ -216,8 +235,8 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private static OfflineRecognizer build(Path modelDirectory) {
         OfflineQwen3AsrModelConfig qwen = OfflineQwen3AsrModelConfig.builder()
                 .setConvFrontend(modelDirectory.resolve("conv_frontend.onnx").toString())
-                .setEncoder(modelDirectory.resolve("encoder.int8.onnx").toString())
-                .setDecoder(modelDirectory.resolve("decoder.int8.onnx").toString())
+                .setEncoder(preferInt8(modelDirectory, "encoder"))
+                .setDecoder(preferInt8(modelDirectory, "decoder"))
                 .setTokenizer(modelDirectory.resolve("tokenizer").toString())
                 .setHotwords("")
                 .build();
@@ -231,5 +250,17 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         return new OfflineRecognizer(OfflineRecognizerConfig.builder()
                 .setOfflineModelConfig(model)
                 .build());
+    }
+
+    /**
+     * The int8 file when the directory holds one, the plain export otherwise.
+     * A supplied directory (#396) may carry either: per-tensor int8 is
+     * reported to hurt the larger decoder, so an export that deliberately
+     * keeps fp32 must be runnable as it is.
+     */
+    private static String preferInt8(Path directory, String stem) {
+        Path int8 = directory.resolve(stem + ".int8.onnx");
+        return (Files.isRegularFile(int8) ? int8 : directory.resolve(stem + ".onnx"))
+                .toString();
     }
 }
