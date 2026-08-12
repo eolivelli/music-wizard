@@ -1,9 +1,9 @@
 # Music Wizard
 
 **Point it at a recording; get sheet music back.** MW listens to an MP3 or WAV
-and works out the beat grid, the tempo and meter, the key and the chords —
-then engraves a chord chart as a PDF, with the words under the chords when you
-supply lyrics or let it transcribe the singing. It runs on your machine, on
+and works out the beat grid, the tempo, the key and the chords — then engraves
+a chord chart as a PDF, with the words under the chords when you supply lyrics
+or let it transcribe the singing. It runs on your machine, on
 open models, with no account and no server: plain Java, Apache-2.0.
 
 ```
@@ -23,18 +23,19 @@ pipeline unaided.
 
 ## What it does today
 
-- **Beats, tempo and meter** tracked from the audio, with the two corrections
-  that matter most exposed as flags — `--tempo` and `--first-downbeat` —
-  because beat tracking is the least reliable stage and everything downstream
-  hangs on it.
+- **Beats and tempo** tracked from the audio — the meter is assumed 4/4 unless
+  `--time-signature` says otherwise — with the corrections that matter most
+  exposed as flags (`--tempo`, `--first-downbeat`), because beat tracking is
+  the least reliable stage and everything downstream hangs on it.
 - **Key**, reported with separate confidences for the signature and for which
   of a relative pair is home, because those are decisions of very different
   reliability.
 - **Chords** from the full mix — major and minor triads, dominant and minor
   sevenths — behind an NNLS chroma front end built for real recordings rather
   than clean synthetic ones.
-- **Lyrics**, two ways: place a supplied [LRC][lrc] file under the chords, or
-  transcribe the singing from the recording itself. Italian and English.
+- **Lyrics**, two ways: place a supplied [LRC][lrc] file under the chords —
+  any language — or transcribe the singing from the recording itself;
+  transcription and syllable splitting cover Italian and English.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart and the chords-and-lyrics sheet. `--transpose` moves the
   chords, the key and the spelling together.
@@ -61,9 +62,10 @@ the whole loop for collecting it:
    test pins the manifest to the microphone alone.
 2. **Write down what was played**, in the app, while it is fresh — the note
    travels with the take.
-3. **Share the bundle.** One zip, `<take>.mwz.zip`: the WAV, the phone's
-   chart, your note, and the analysis cache. Hand it to any app you trust —
-   a cloud drive, typically — straight from the share sheet.
+3. **Share the bundle.** One zip, `<take>.mwz.zip`: the WAV, your note, an
+   info file — and, when the take was analysed on the phone, its chart and
+   analysis cache. Hand it to any app you trust — a cloud drive, typically —
+   straight from the share sheet.
 4. **Import it here.** A [Claude Code](https://claude.com/claude-code) agent
    definition ships in-repo (`.claude/agents/take-importer.md`): it sweeps the
    drive with `rclone`, verifies each bundle, runs the full pipeline on the
@@ -91,12 +93,13 @@ Naming a language without a file asks MW to *hear* the words:
 - Transcription is **Qwen3-ASR** through [sherpa-onnx], built from a source
   submodule by `tools/build-sherpa-native.sh` — currently
   [Enrico's fork][sherpa-fork], which carries the Qwen3-ASR feature-alignment
-  fix ([k2-fsa/sherpa-onnx#3535][sherpa-pr]) ahead of upstream review, and
+  fix ([k2-fsa/sherpa-onnx#3873][sherpa-pr]) ahead of upstream review, and
   points back at upstream once it lands. The build keeps TTS off so no GPL
   code reaches the link; `tools/check-sherpa-native.sh` asserts that against
   the built artifact, in CI too.
-- Any sherpa-onnx-compatible ASR model directory can be substituted via
-  `ml.asrModelDirectory` in the global config.
+- Another Qwen3-ASR export can be substituted via `ml.asrModelDirectory` in
+  the global config — only one size is published ready-made, so a different
+  one means exporting the model yourself.
 - Word-level timing comes from a **wav2vec2** forced aligner, English only
   today; other languages get their words spread across the sung stretch.
 
@@ -128,7 +131,7 @@ mvn package -DskipTests    # produces mw-cli/target/mw.jar
 
 No model weights ship in the repo or the jar; stages that need one download it
 on first use into a local cache, checksummed, with its provenance beside it.
-The jar is large regardless — it bundles ONNX Runtime and audio codec natives.
+The jar is large regardless; slimming it is its own line of work.
 
 ## Using it
 
@@ -172,9 +175,10 @@ What reaches the pipeline is `analysis`, `ml` — provider and model selection
 for separation, transcription and alignment — plus `notation.lilypondPath`
 and `notation.transposeSemitones`. Providers configure themselves from the
 global file ([#383][i383]), so `ml.asrModelDirectory` is read from there only,
-and `analyze` says so when a workspace tries to override it. Keys that reach
-nothing are warned about rather than silently accepted; `arrangement` is
-entirely inert until the piano work lands ([#144][i144]).
+and `analyze` says so when a workspace tries to override it. Several notation
+keys that reach nothing draw a warning rather than silence; `arrangement`
+reaches nothing *and* warns nothing — entirely inert until the piano work
+lands ([#144][i144]).
 
 ## Roadmap
 
@@ -215,7 +219,7 @@ read — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
 [LilyPond]: https://lilypond.org
 [sherpa-onnx]: https://github.com/k2-fsa/sherpa-onnx
 [sherpa-fork]: https://github.com/eolivelli/sherpa-onnx/tree/qwen3-asr-stft-center-alignment
-[sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3535
+[sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3873
 [i233]: https://github.com/eolivelli/music-wizard/issues/233
 [i187]: https://github.com/eolivelli/music-wizard/issues/187
 [i383]: https://github.com/eolivelli/music-wizard/issues/383
