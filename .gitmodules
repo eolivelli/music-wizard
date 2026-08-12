@@ -1,8 +1,8 @@
 [submodule "third_party/sherpa-onnx"]
 	path = third_party/sherpa-onnx
-	# Enrico's fork, carrying the #3535 fix (Qwen3-ASR feature alignment +
-	# in-decoder loop trimming) ahead of upstream review; back to k2-fsa
-	# once it lands there.
+	# Enrico's fork, carrying PR k2-fsa/sherpa-onnx#3873 (Qwen3-ASR feature
+	# alignment + in-decoder loop trimming, towards issue #3535) ahead of
+	# upstream review; back to k2-fsa once it lands there.
 	url = https://github.com/eolivelli/sherpa-onnx.git
 	branch = qwen3-asr-stft-center-alignment
 	# The in-tree native build writes under the submodule's working tree;
