@@ -52,27 +52,28 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # executions, so it runs everything plain `verify` runs and the ITs as well;
 # running both would run the unit suite twice for nothing.
 if [ "$full" -eq 1 ]; then
-  step "1/4 full suite (unit + integration)"
+  step "1/5 full suite (unit + integration)"
   mvn -B -q -T 1C $REPO_ARGS -Pintegration verify \
     || { echo "FAIL: mvn -Pintegration verify"; fail=1; }
 else
-  step "1/4 build (suites left to CI; --full runs them here)"
+  step "1/5 build (suites left to CI; --full runs them here)"
   mvn -B -q -T 1C $REPO_ARGS -DskipTests package \
     || { echo "FAIL: mvn package"; fail=1; }
 fi
 
-compare() { # $1 harness  $2 baseline
+compare() { # $1 harness  $2 baseline  $3... harness args
+  local harness="$1" baseline="$2"; shift 2
   local out rc
-  out=$(python3 "tools/$1" 2>&1); rc=$?
+  out=$(python3 "tools/$harness" ${1+"$@"} 2>&1); rc=$?
   printf '%s\n' "$out"
   if [ "$rc" -ne 0 ]; then
     # A dead harness must not read as a clean one: every row it never got
     # to print would otherwise become a silent skip.
-    echo "FAIL: $1 exited $rc"
+    echo "FAIL: $harness exited $rc"
     return 1
   fi
   local diffs
-  diffs=$(python3 - "$2" <<'PY' "$out"
+  diffs=$(python3 - "$baseline" <<'PY' "$out"
 import sys
 baseline = {l.split(":")[0].strip(): l.rstrip() for l in open(sys.argv[1])
             if ".mp3:" in l}
@@ -91,8 +92,7 @@ for name, base in sorted(baseline.items()):
         # cannot read as a corpus run. Only the CURRENT side may say so: a
         # committed baseline that certifies absence is a defect, and where
         # this machine can measure the file it falls through to DIFF below.
-        print(f"SKIP {name}: not measurable here"
-              f" (fetch commands: samples/list.txt or uncommitted/list.txt)")
+        print(f"SKIP {name}: not measurable here (the row above says how)")
     elif current[name] != base:
         print(f"DIFF {name}\n  baseline: {base}\n  current:  {current[name]}")
 PY
@@ -102,14 +102,22 @@ PY
   grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
 }
 
-step "2/4 model harness vs baseline"
+step "2/5 model harness vs baseline"
 compare score-samples.py tools/baselines/score-samples.txt || { echo "FAIL: score-samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "3/4 chart harness vs baseline"
+step "3/5 chart harness vs baseline"
 compare score-chart.py tools/baselines/score-chart.txt || { echo "FAIL: score-chart moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "4/4 lyric harness vs baseline"
+step "4/5 lyric harness vs baseline"
 compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-lyrics moved — if intended, regenerate the baseline and commit it"; fail=1; }
+
+# The transcription loop (#391): the same recordings through the ASR with no
+# lyrics file, scored against the same truth. Costs about a minute per row,
+# which is why it runs unconditionally like its siblings; it needs the sherpa
+# native, and a machine without one reports every row skipped rather than
+# failing (the harness prints the build command per row).
+step "5/5 transcription harness vs baseline"
+compare score-lyrics.py tools/baselines/score-asr.txt --source asr || { echo "FAIL: score-lyrics --source asr moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering

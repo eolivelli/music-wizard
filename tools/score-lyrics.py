@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Scores the lyric words MW carries against the file they were read from.
+"""Scores the lyric words MW carries against a reference text, on two loops.
 
-Nothing transcribes lyrics from audio yet (#314), so the only lyric input is a
-supplied LRC and this is a **loop-closure gate**: an LRC in, `analyze`,
-`render`, MW's words back out of `score/score.json`, scored against that same
-LRC. Both columns are expected to read zero. That is the point of it -- what it
-catches is the day they stop: a dropped, duplicated or reordered line, a word
-lost to a tokenizer disagreement, a stated onset moved by the offset sign or the
-sort.
+`--source lrc` (the default) is the **loop-closure gate**: an LRC in,
+`analyze`, `render`, MW's words back out of `score/score.json`, scored against
+that same LRC. Both columns are expected to read zero. That is the point of it
+-- what it catches is the day they stop: a dropped, duplicated or reordered
+line, a word lost to a tokenizer disagreement, a stated onset moved by the
+offset sign or the sort.
+
+`--source asr` is the **transcription measurement** (#391): the same
+recordings, `analyze --lyrics-language` with no lyrics file, the words MW
+heard scored against the same LRC as truth. Its columns are honest quality
+numbers, not zeros. The subprocess runs with its own empty config home and
+the repo's own native build, so a machine's config cannot sway a committed
+baseline. How each of analyze's reported outcomes is treated -- scored,
+skipped with the reason, or a red gate -- is the classification block's own
+story, told beside the code that implements it.
 
 **It sees where runs start, which on a line-level file is where lines start.**
 So the break heuristic and the plausible length are invisible to it -- neither
@@ -31,12 +39,6 @@ consequence is that these numbers do not depend on `--lyrics-language` or on
 the hyphenation patterns at all -- changing `hyph-it.pat.txt` moves every
 within-line onset and moves neither column.
 
-When #314 lands, the `.lrc` stops being an input and becomes only the truth
-file: `analyze` is no longer given `--lyrics`, `SOURCE` below flips, and the
-printed `source lrc` becomes `source audio` so the committed baseline itself
-records the day the numbers changed meaning. The table, the columns, the
-normalisation and the alignment are unchanged by that.
-
 Ad-hoc use, against any recording and LRC without touching the baseline:
 
     tools/score-lyrics.py --file uncommitted/generale.mp3 \\
@@ -54,6 +56,7 @@ nothing moved.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -82,14 +85,17 @@ LYRICS = {
     ),
 }
 
-# The line main() prints above the rows. It holds no ".mp3:", which is what
-# keeps premerge.sh from reading it as a row; the Keying tests execute that.
-PREAMBLE = ("lyric words MW carries, against the file they were read from"
-            " (the supplied-lyrics loop; #391 scores the transcription loop):")
+# The line main() prints above the rows, per source. Neither holds ".mp3:",
+# which is what keeps premerge.sh from reading it as a row; the Keying tests
+# execute that.
+PREAMBLES = {
+    "lrc": ("lyric words MW carries, against the file they were read from"
+            " (the supplied-lyrics loop):"),
+    "asr": ("lyric words MW hears in the audio, against the same file as"
+            " truth (the transcription loop, #391):"),
+}
 
 # Which loop the rows measure. Printed in every line, so the baseline says.
-# "asr" -- analyze with no lyrics file, words transcribed from the audio,
-# scored against the same reference -- is #391.
 SOURCE = "lrc"
 
 # LrcLyrics' own two, transcribed: three-digit minutes, either separator.
@@ -396,6 +402,31 @@ def missing_line(name: str, where: str) -> str:
     return f"  {name}: not present (local-only; see {where} to fetch)"
 
 
+def native_missing_line(name: str) -> str:
+    """The dependency worth checking before spending a run per row: without
+    the native nothing can decode, and the check is one stat. The loop's
+    other needs -- the model archives a first run fetches -- are judged from
+    analyze's own report instead (see SKIPPED), so their absence skips with
+    the real reason rather than being guessed at up front."""
+    return (f"  {name}: not present (local-only;"
+            " run tools/build-sherpa-native.sh for this loop)")
+
+
+def adhoc_unavailable_line(name: str, reason: str) -> str:
+    """The ad-hoc twin of unavailable_line, deliberately keyed out of the
+    comparison the way every ad-hoc line is: text between the name and the
+    colon, so nothing gates a one-off reading."""
+    return f"  ad-hoc {name} (not measurable here): {reason[:160]}"
+
+
+def unavailable_line(name: str, reason: str) -> str:
+    """A row the environment could not measure, in the same skip key, with
+    analyze's own first line of explanation beside it. Never baselined: a
+    committed baseline that certifies absence is a defect (premerge.sh says
+    so), and this text exists only on the current side of the diff."""
+    return f"  {name}: not present (local-only; {reason[:160]})"
+
+
 def adhoc_line(name: str, truth, hypothesis, anchors, starts, word_level: bool) -> str:
     """A row for a file that is not ground truth. Deliberately keyed so it holds
     no `.mp3:` -- premerge.sh filters on that substring, so this cannot drift
@@ -423,13 +454,88 @@ def run(jar: Path, mp3: Path, lrc: Path, language: str, workspace: Path) -> dict
     return json.loads((workspace / "score" / "score.json").read_text(encoding="utf-8"))
 
 
-def words_of(document: dict, name: str) -> tuple[list[str], list[float]]:
+# Where the provider loads its native from, pinned by this harness so the row
+# measures the repo's own build; built by tools/build-sherpa-native.sh.
+NATIVE_LIB = REPO / "third_party/sherpa-onnx/build/lib"
+
+
+# What analyze prints for the ways this loop ends, classified by what each
+# one IS rather than by one shared prefix. A decode that happened is scored,
+# and so is a pipeline that ran and found nothing -- no sung stretches, no
+# words -- because those are results this gate exists to notice. Only an
+# environment that could not run the ASR at all (model not fetchable, native
+# not loadable, provider absent in this build) is a skip carrying analyze's
+# own reason: scoring a could-not-run as a page of deletions would fail the
+# merge gate on a machine problem dressed as a regression. And a defect --
+# analyze's transcription block throwing -- fails the harness loudly rather
+# than skipping: hiding our own exception behind a skip row is the exact
+# inversion of the gate's job. Analyze prints all of these with exit 0, so
+# the report is the only witness; a Keying test holds these literals against
+# AnalyzeCommand's source so a rewording there fails before the gate lies.
+SCORED = (re.compile(r"\btranscribed \d+ lyric line"),
+          re.compile(r"heard no words in"),
+          re.compile(r"no sung stretches found"))
+SKIPPED = (re.compile(r"warning: lyrics not transcribed: "),
+           re.compile(r"lyrics not transcribed: no ASR provider"))
+DEFECT = re.compile(r"lyric transcription failed")
+
+
+def run_asr(jar: Path, mp3: Path, language: str, workspace: Path,
+            config_home: Path) -> tuple[dict | None, str | None]:
+    """init and analyze with no lyrics file: the words come from the audio.
+
+    Returns (score document, None) when the ASR ran -- an empty transcription
+    is a result, a full deletion, and is scored -- or (None, reason) when the
+    environment could not run it; a reported defect does not return, it ends
+    the harness red. No `render` gate on this loop. The config
+    home is an empty directory this harness owns, so a machine's
+    ml.asrModelDirectory or provider choice cannot move a committed baseline;
+    the native path is the repo's own build, passed as sherpa's property,
+    which outranks any config.
+    """
+    environment = dict(os.environ, XDG_CONFIG_HOME=str(config_home))
+    report = ""
+    for args in (["init", str(mp3), "--workspace", str(workspace)],
+                 ["analyze", str(workspace), "--lyrics-language", language]):
+        result = subprocess.run(
+            ["java", f"-Dsherpa_onnx.native.path={NATIVE_LIB}",
+             "-jar", str(jar), *args],
+            capture_output=True, text=True, env=environment)
+        if result.returncode != 0:
+            sys.exit(f"mw {args[0]} failed on {mp3.name}:\n{result.stdout}{result.stderr}")
+        report = result.stdout + "\n" + result.stderr
+    if DEFECT.search(report):
+        # Our code threw and analyze survived it; the gate must go red with
+        # the reason, not quietly skip our own exception.
+        sys.exit(f"{mp3.name}: analyze reported a transcription defect:\n"
+                 + first_line(report, DEFECT))
+    if any(marker.search(report) for marker in SCORED):
+        document = json.loads(
+            (workspace / "score" / "score.json").read_text(encoding="utf-8"))
+        return document, None
+    if any(marker.search(report) for marker in SKIPPED):
+        for marker in SKIPPED:
+            if marker.search(report):
+                return None, first_line(report, marker).removeprefix("warning: ").strip()
+    sys.exit(f"{mp3.name}: analyze reported no transcription outcome at all:\n"
+             + report[-500:])
+
+
+def first_line(report: str, marker: re.Pattern) -> str:
+    for line in report.splitlines():
+        if marker.search(line):
+            return line.strip()
+    return ""
+
+
+def words_of(document: dict, name: str, source: str) -> tuple[list[str], list[float]]:
     """MW's words and their onsets, normalised the same way the truth is."""
     lines = document.get("lyrics", {}).get("lines", [])
     words = [word for line in lines for word in line["words"]]
-    if not words:
-        # Only reachable while the lyrics are an input. After #314 an empty
-        # transcription is a result -- a full deletion -- and is scored.
+    if not words and source == "lrc":
+        # On the lrc loop the lyrics were an input, so nothing carried means
+        # nothing was read. On the asr loop an empty transcription is a
+        # result -- a full deletion -- and is scored as one.
         sys.exit(f"{name}: analysis carried no lyric words; the LRC was not read")
     return ([normalize(word["text"]) for word in words],
             [word["startSeconds"] for word in words])
@@ -444,28 +550,56 @@ def truth_of(lrc: Path, name: str) -> tuple[list[str], dict[int, float], bool]:
     return tokens, anchors, word_level
 
 
+def measure(jar: Path, mp3: Path, lrc: Path, language: str,
+            source: str) -> tuple[dict | None, str | None]:
+    """One row's (document, skip reason), through whichever loop `source`
+    names. The lrc loop never skips: its inputs are files this process can
+    see, and run() exits hard on anything else."""
+    with tempfile.TemporaryDirectory() as tmp:
+        if source == "asr":
+            config_home = Path(tmp) / "xdg"
+            config_home.mkdir()
+            return run_asr(jar, mp3, language, Path(tmp) / "w.mwz", config_home)
+        return run(jar, mp3, lrc, language, Path(tmp) / "w.mwz"), None
+
+
 def main() -> None:
+    global SOURCE
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
+    parser.add_argument("--source", choices=("lrc", "asr"), default="lrc",
+                        help="lrc: the supplied-lyrics loop; asr: transcription")
     parser.add_argument("--file", help="score this recording instead of the table")
     parser.add_argument("--lrc", help="its lyrics; required with --file")
     parser.add_argument("--language", default="it", help="its language tag")
     args = parser.parse_args()
+    SOURCE = args.source
     jar = Path(args.jar)
     if not jar.exists():
         sys.exit(f"build first: mvn -B -DskipTests package   (missing {jar})")
 
-    print(PREAMBLE)
+    print(PREAMBLES[SOURCE])
 
     if args.file:
         if not args.lrc:
             sys.exit("--file needs --lrc: there is nothing to score it against")
         mp3, lrc = Path(args.file), Path(args.lrc)
         truth, anchors, word_level = truth_of(lrc, mp3.name)
-        with tempfile.TemporaryDirectory() as tmp:
-            document = run(jar, mp3, lrc, args.language, Path(tmp) / "w.mwz")
-        hypothesis, starts = words_of(document, mp3.name)
+        document, reason = measure(jar, mp3, lrc, args.language, SOURCE)
+        if document is None:
+            print(adhoc_unavailable_line(mp3.name, reason))
+            return
+        hypothesis, starts = words_of(document, mp3.name, SOURCE)
         print(adhoc_line(mp3.name, truth, hypothesis, anchors, starts, word_level))
+        return
+
+    if SOURCE == "asr" and not (NATIVE_LIB / "libsherpa-onnx-jni.so").exists():
+        # After the --file branch: an ad-hoc question about one recording
+        # must not be answered with rows about the corpus table. For the
+        # table this is worth checking up front -- it saves a full analysis
+        # per row on a machine that cannot decode anything.
+        for name in LYRICS:
+            print(native_missing_line(name))
         return
 
     missing = []
@@ -475,9 +609,11 @@ def main() -> None:
             missing.append((name, Path(audio).parent / "list.txt"))
             continue
         truth, anchors, word_level = truth_of(lrc, name)
-        with tempfile.TemporaryDirectory() as tmp:
-            document = run(jar, mp3, lrc, language, Path(tmp) / "w.mwz")
-        hypothesis, starts = words_of(document, name)
+        document, reason = measure(jar, mp3, lrc, language, SOURCE)
+        if document is None:
+            print(unavailable_line(name, reason))
+            continue
+        hypothesis, starts = words_of(document, name, SOURCE)
         print(score_line(name, truth, hypothesis, anchors, starts, word_level))
     for name, where in missing:
         print(missing_line(name, where))

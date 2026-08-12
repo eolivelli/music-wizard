@@ -405,10 +405,53 @@ class Keying(unittest.TestCase):
         row, so its line is deliberately keyed out of the comparison."""
         self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
 
-    def test_the_preamble_is_not_gated(self):
-        """The line main() prints, not the module docstring -- premerge.sh reads
-        the former."""
-        self.assertNotIn(".mp3:", lyrics.PREAMBLE)
+    def test_the_preambles_are_not_gated(self):
+        """The lines main() prints, not the module docstring -- premerge.sh
+        reads the former, one per source."""
+        for preamble in lyrics.PREAMBLES.values():
+            self.assertNotIn(".mp3:", preamble)
+
+    def test_a_missing_native_row_is_a_skip_not_a_failure(self):
+        """The asr loop needs the sherpa native; a machine without one must
+        report each baselined row in the marker premerge turns into a SKIP,
+        exactly as an absent benchmark file does -- and the row must still be
+        keyed, or the corpus-disagreement guard would fire instead."""
+        line = lyrics.native_missing_line("sere-doltremare.mp3")
+        self.assertIn(self.MARKER, line)
+        self.assertIn(".mp3:", line)
+        self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
+
+    def test_the_report_literals_exist_in_analyze_itself(self):
+        """The asr loop's classification reads analyze's printed report, so
+        its literals are held against AnalyzeCommand's source the same way
+        the skip marker is held against premerge.sh: a rewording there must
+        fail here before the gate starts skipping every row in silence."""
+        source = (Path(__file__).resolve().parent.parent
+                  / "mw-cli/src/main/java/dev/olivelli/musicwizard/cli"
+                  / "AnalyzeCommand.java").read_text(encoding="utf-8")
+        for literal in ('"  transcribed "', '"lyric line"',
+                        "heard no words in", "no sung stretches found",
+                        "lyrics not transcribed", "lyric transcription failed",
+                        "no ASR provider"):
+            self.assertIn(literal, source)
+
+    def test_an_adhoc_environment_skip_is_not_gated(self):
+        """Like every ad-hoc line: a one-off reading must not look gated."""
+        line = lyrics.adhoc_unavailable_line("generale.mp3", "no native")
+        self.assertNotIn(".mp3:", line)
+        self.assertIn("no native", line)
+
+    def test_an_environment_skip_carries_the_reason_in_the_skip_key(self):
+        """An ASR the machine could not run is a skip naming analyze's own
+        reason -- never a scored row, whose 289 deletions would read as a
+        catastrophic regression on a machine problem."""
+        line = lyrics.unavailable_line("sere-doltremare.mp3", "model x is not in cache")
+        self.assertIn(self.MARKER, line)
+        self.assertIn(".mp3:", line)
+        self.assertIn("model x is not in cache", line)
+        # Bounded, so a stack trace pasted as the reason cannot wrap the row.
+        long = lyrics.unavailable_line("x.mp3", "y" * 500)
+        self.assertLess(len(long), 220)
 
     MARKER = ": not present (local-only"
 
