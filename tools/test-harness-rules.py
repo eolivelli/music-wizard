@@ -405,10 +405,21 @@ class Keying(unittest.TestCase):
         row, so its line is deliberately keyed out of the comparison."""
         self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
 
-    def test_the_preamble_is_not_gated(self):
-        """The line main() prints, not the module docstring -- premerge.sh reads
-        the former."""
-        self.assertNotIn(".mp3:", lyrics.PREAMBLE)
+    def test_the_preambles_are_not_gated(self):
+        """The lines main() prints, not the module docstring -- premerge.sh
+        reads the former, one per source."""
+        for preamble in lyrics.PREAMBLES.values():
+            self.assertNotIn(".mp3:", preamble)
+
+    def test_a_missing_native_row_is_a_skip_not_a_failure(self):
+        """The asr loop needs the sherpa native; a machine without one must
+        report each baselined row in the marker premerge turns into a SKIP,
+        exactly as an absent benchmark file does -- and the row must still be
+        keyed, or the corpus-disagreement guard would fire instead."""
+        line = lyrics.native_missing_line("sere-doltremare.mp3")
+        self.assertIn(self.MARKER, line)
+        self.assertIn(".mp3:", line)
+        self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
 
     MARKER = ": not present (local-only"
 
