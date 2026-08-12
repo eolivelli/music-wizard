@@ -374,10 +374,11 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>This is what turns {@code SPREAD_WORD} guesses into measured onsets:
      * each line's words are aligned inside a window around the line's own LRC
      * timestamps, which keeps the search small and anchored. Every failure
-     * degrades to parsed times — per line for a line's own error, counted in
-     * the summary; whole-run with the reason on stderr when the model cannot
-     * be had or the aligner fails outright — because the analysis has already
-     * succeeded and an aligner must not be able to take it down. Alignment
+     * degrades to parsed times — per line, counted in the summary alongside
+     * the lines alignment deliberately leaves alone; whole-run with the reason
+     * on stderr when the model cannot be had or the aligner fails outright —
+     * because the analysis has already succeeded and an aligner must not be
+     * able to take it down. Alignment
      * runs outside the transcription cache for the same reason the lyrics do:
      * correcting a lyric file must not recompute the DSP.
      */
@@ -506,13 +507,14 @@ final class AnalyzeCommand implements Callable<Integer> {
      * One line, aligned inside a window that starts where the previous line's
      * alignment ended.
      *
-     * <p>The tail keeps half a second of slack past the parsed end — a display
-     * cue anticipates — but the head is sequential: an aligned line cannot
-     * start before its predecessor ended. The paths that keep parsed times
-     * instead can, which is why the invariant every sheet cursor depends on is
-     * enforced where the list is assembled, not here. The window also caps the
-     * trellis, so a whole song is many small alignments rather than one
-     * enormous one.
+     * <p>The window hears half a second past the parsed end, so the trellis
+     * can place a last word the singer holds — the reported times still end at
+     * the tail bound, by compression. The head is sequential: an aligned line
+     * cannot start before its predecessor ended. The paths that keep parsed
+     * times instead can, which is why the invariant every sheet cursor depends
+     * on is enforced where the list is assembled, not here. The window also
+     * caps the trellis, so a whole song is many small alignments rather than
+     * one enormous one.
      */
     private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
                                   String language, LyricLine line,
@@ -522,7 +524,11 @@ final class AnalyzeCommand implements Callable<Integer> {
         double to = Math.min(audio.durationSeconds(), line.endSeconds() + 0.5);
         int start = audio.indexOf(from);
         int end = Math.max(start, audio.indexOf(to));
-        if (end - start < audio.sampleRate() / 10) {
+        if (end - start < audio.sampleRate() / 10 || tailBound <= from + 0.1) {
+            // No room to align: a degenerate window, or a tail bound at the
+            // window head -- which a word-tagged twin can produce -- would
+            // compress the whole line to a point. The parsed guess is better
+            // than a point.
             return line;
         }
         float[] window = new float[end - start];
@@ -541,16 +547,30 @@ final class AnalyzeCommand implements Callable<Integer> {
             // than the parsed guess. Keep the guess.
             return line;
         }
+        // The tail bound is honoured by compression, not clamping: clamping
+        // both ends flattened every overrunning word into a zero-length pile
+        // on the bound -- neither measured nor the parser's guess, worse than
+        // both, on a third of a real file's lines, since a half second of
+        // slack routinely lets the last word cross the next line's tag. A
+        // linear squeeze into [first word, bound] keeps the order and the
+        // proportions the aligner measured; it binds only when the result
+        // overruns, and gently when the overrun is small.
+        double lineStart = from + placed.get(0).startSeconds();
+        double lineEnd = from + placed.get(placed.size() - 1).endSeconds();
+        double scale = lineEnd > tailBound && lineEnd > lineStart
+                ? (tailBound - lineStart) / (lineEnd - lineStart)
+                : 1.0;
         List<LyricWord> out = new ArrayList<>(line.words().size());
         for (int i = 0; i < placed.size(); i++) {
             LyricWord original = line.words().get(i);
             LyricWord timed = placed.get(i);
             // The aligner's clock starts at the window; the line's starts at
             // the recording. Keep the original text and engraving flags -- the
-            // aligner only ever decides when. The tail bound clamps what the
-            // half-second of slack let the aligner reach past.
-            double wordStart = Math.min(from + timed.startSeconds(), tailBound);
-            double wordEnd = Math.min(from + timed.endSeconds(), tailBound);
+            // aligner only ever decides when.
+            double wordStart = lineStart
+                    + (from + timed.startSeconds() - lineStart) * scale;
+            double wordEnd = lineStart
+                    + (from + timed.endSeconds() - lineStart) * scale;
             out.add(new LyricWord(original.text(), wordStart,
                     Math.max(wordStart, wordEnd),
                     java.util.Optional.empty(), java.util.Optional.empty(),

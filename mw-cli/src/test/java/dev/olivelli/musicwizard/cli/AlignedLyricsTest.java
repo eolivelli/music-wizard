@@ -126,6 +126,10 @@ class AlignedLyricsTest {
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--lyrics", lrc.toString(), "--lyrics-language", "en");
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        // The aligner genuinely ran on the non-twin line: without this the
+        // whole test passes on parsed times with no provider at all.
+        assertThat(analyze.out()).contains("aligned 1 lyric lines")
+                .contains("2 kept their parsed times");
 
         Score score = Workspace.open(root).readScore().orElseThrow();
         var lines = score.lyrics().lines();
