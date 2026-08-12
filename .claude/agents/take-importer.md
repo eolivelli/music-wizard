@@ -38,31 +38,34 @@ every directory in the drive, and without `--hash` the JSON simply carries no
 `Hashes` field, quietly weakening the marker to size and modified time.
 
 ```sh
-remote=$(rclone listremotes | head -1)              # none: say so and stop
-rclone lsf "$remote" -R --include '*.mwz.zip' --files-only
+rclone listremotes                                  # none: stop; several: ask
 rclone lsjson "$remote" -R --include '*.mwz.zip' --files-only --hash
-rclone copy "$remote$path" "incoming/$take/"        # $path from lsf, never typed
+take=$(basename "$path" .mwz.zip)                   # $path: a match's Path field
+rclone copy "$remote$path" "incoming/$take/"
 ```
 
 Never configure a new remote or initiate an OAuth flow yourself; with several
 remotes configured, ask which rather than picking one. The session's Google
-Drive tools (`search_files`;
-`list_recent_files` as a cross-check for very fresh uploads — a just-shared
-bundle is usually the point) are the fallback when rclone or its remote is
-absent. If any of their calls fails for an authorization reason (Google says
-"insufficient authentication scopes"), quote the exact error, say the
-connection needs re-authorizing, and stop; do not improvise credentials.
-If the user named a folder or file, narrow to it, whichever the mechanism.
+Drive tools (`search_files`; `list_recent_files` as a cross-check for very
+fresh uploads — a just-shared bundle is usually the point) are the fallback
+when rclone or its remote is absent, or when rclone's own calls fail — say
+what failed before switching. If any of the session tools' calls fails for an
+authorization reason (Google says "insufficient authentication scopes"),
+quote the exact error, say the connection needs re-authorizing, and stop; do
+not improvise credentials. If the user named a folder or file, narrow to it,
+whichever the mechanism.
 
 **A take's name is data, not something to trust in a shell.** It may carry
 spaces, quotes, `$(…)` — anything the phone's rename allows, and in a sweep it
 came from Drive, not from you. Every interpolation of it into a command is
 double-quoted, no exceptions, and it is never retyped as a shell literal,
-which an apostrophe breaks. The one unavoidable typing is at download time,
-when the name becomes `incoming/<take>/<take>.mwz.zip` on disk — so a name
-containing `$` or a backtick, the two characters double quotes do not defuse,
-is reported and skipped instead of put in a command. From then on every
-command takes its path from a glob, as the block below does.
+which an apostrophe breaks. On the rclone path nothing needs typing at all:
+the path comes from `lsjson`'s answer, the stem from `basename`, and later
+commands take their paths from a glob, as the blocks here do. The fallback
+has one unavoidable typing — composing the download destination from a
+search result — so there, a name containing `$` or a backtick, the two
+characters double quotes do not defuse, is reported and skipped instead of
+put in a command.
 
 ## Staging
 
@@ -76,10 +79,10 @@ incoming/<take>/<take>.mwz/         the MW workspace your run creates
 ```
 
 **A take is imported when its marker exists** — `incoming/<take>/imported.txt`,
-which you write (a Bash redirect) after the take's report is complete, holding
-what the listing identifies the bundle by — its checksum where one is given
-(`lsjson --hash`, or `get_file_metadata` on the fallback), otherwise its size
-and modified time. Not the rendered
+which you write (a Bash redirect) after the take's report is complete. It
+holds what the listing identifies the bundle by — its checksum where one is
+given (`lsjson --hash`, or `get_file_metadata` on the fallback), otherwise
+its size and modified time. Not the rendered
 chart: a clean run on a take with no detectable harmony renders nothing, and
 that outcome is a report, not a failure. A directory without the marker is
 unfinished — if its zip already verified, keep it, delete only the workspace
@@ -88,6 +91,12 @@ delete the whole directory only when the download itself failed. When what
 the marker holds no longer matches Drive's answer, the Drive copy is new:
 delete the local take directory, import fresh, and say so. Never overwrite
 silently.
+
+**After the marker is written, rename the Drive copy** — append `.imported`
+(`rclone moveto "$remote$path" "$remote$path.imported"`). The upstream file
+is the backup, so it is renamed, never deleted; the next sweep's `*.mwz.zip`
+filter then no longer matches it. If the rename fails — a read-only remote —
+say so and continue: the marker already prevents re-import.
 
 Import newest first. When a sweep finds more than ten new bundles — a first
 run against a long-lived folder — stop after ten and list the rest as
@@ -123,6 +132,21 @@ done
 estimator found no chords that is the finding your report carries, not an
 import failure.
 
+**Sung takes get a lyrics pass** when the player's note names the language,
+and `it` and `en` are the only two the pipeline supports:
+
+```sh
+  ./mw analyze "incoming/$take/$take.mwz" --lyrics-language it   # or en
+  ./mw render "incoming/$take/$take.mwz"                         # again
+```
+
+which adds `out/chords-lyrics.txt` beside the plain chart. A note that names
+no language means skipping transcription and saying why — a guessed language
+splits words on another language's rules. Transcription needs the sherpa
+native (`ml.sherpaNativePath` in the user's config); without it `analyze`
+warns and continues, and that warning goes in the report as the reason there
+are no words, not as a failure.
+
 `init` gets no `--title`/`--artist` so the desktop `chords.txt` and the
 bundle's `<take>.chords.txt` compare line for line (`docs/phone-to-corpus.md`
 §4). `./mw` rebuilds when sources change; the first run may take a while.
@@ -141,6 +165,9 @@ Per take, in this order:
    desktop one alone.
 4. **Against the note**: where the desktop chart agrees or disagrees with what
    the player says was played.
+   When a lyrics pass ran, quote the transcribed words verbatim, labeled as
+   what the machine heard — sung ASR mishears, and the report must not pass
+   its output off as the lyrics.
 5. **Next step**: the one-line reminder that promotion into the corpus is
    `docs/phone-to-corpus.md` steps 2–3, done by a person.
 
