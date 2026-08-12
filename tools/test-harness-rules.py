@@ -421,6 +421,26 @@ class Keying(unittest.TestCase):
         self.assertIn(".mp3:", line)
         self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
 
+    def test_the_report_literals_exist_in_analyze_itself(self):
+        """The asr loop's classification reads analyze's printed report, so
+        its literals are held against AnalyzeCommand's source the same way
+        the skip marker is held against premerge.sh: a rewording there must
+        fail here before the gate starts skipping every row in silence."""
+        source = (Path(__file__).resolve().parent.parent
+                  / "mw-cli/src/main/java/dev/olivelli/musicwizard/cli"
+                  / "AnalyzeCommand.java").read_text(encoding="utf-8")
+        for literal in ('"  transcribed "', '"lyric line"',
+                        "heard no words in", "no sung stretches found",
+                        "lyrics not transcribed", "lyric transcription failed",
+                        "no ASR provider"):
+            self.assertIn(literal, source)
+
+    def test_an_adhoc_environment_skip_is_not_gated(self):
+        """Like every ad-hoc line: a one-off reading must not look gated."""
+        line = lyrics.adhoc_unavailable_line("generale.mp3", "no native")
+        self.assertNotIn(".mp3:", line)
+        self.assertIn("no native", line)
+
     def test_an_environment_skip_carries_the_reason_in_the_skip_key(self):
         """An ASR the machine could not run is a skip naming analyze's own
         reason -- never a scored row, whose 289 deletions would read as a

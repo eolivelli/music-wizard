@@ -412,6 +412,13 @@ def native_missing_line(name: str) -> str:
             " run tools/build-sherpa-native.sh for this loop)")
 
 
+def adhoc_unavailable_line(name: str, reason: str) -> str:
+    """The ad-hoc twin of unavailable_line, deliberately keyed out of the
+    comparison the way every ad-hoc line is: text between the name and the
+    colon, so nothing gates a one-off reading."""
+    return f"  ad-hoc {name} (not measurable here): {reason[:160]}"
+
+
 def unavailable_line(name: str, reason: str) -> str:
     """A row the environment could not measure, in the same skip key, with
     analyze's own first line of explanation beside it. Never baselined: a
@@ -452,16 +459,25 @@ def run(jar: Path, mp3: Path, lrc: Path, language: str, workspace: Path) -> dict
 NATIVE_LIB = REPO / "third_party/sherpa-onnx/build/lib"
 
 
-# What analyze prints for the three ways this loop ends. A decode that
-# happened -- including one that honestly heard nothing -- is scored; an
-# environment that could not run the ASR (model not fetchable, native not
-# loadable, provider absent) is a skip carrying analyze's own reason, because
-# analyze degrades on all of those with exit 0 and only its report tells the
-# cases apart. Scoring a could-not-run as 289 deletions would fail the merge
-# gate on a machine problem dressed as a regression.
-TRANSCRIBED = re.compile(r"\btranscribed \d+ lyric line")
-HEARD_NOTHING = "heard no words in"
-NOT_RUN = ("lyrics not transcribed", "lyric transcription failed")
+# What analyze prints for the ways this loop ends, classified by what each
+# one IS rather than by one shared prefix. A decode that happened is scored,
+# and so is a pipeline that ran and found nothing -- no sung stretches, no
+# words -- because those are results this gate exists to notice. Only an
+# environment that could not run the ASR at all (model not fetchable, native
+# not loadable, provider absent in this build) is a skip carrying analyze's
+# own reason: scoring a could-not-run as a page of deletions would fail the
+# merge gate on a machine problem dressed as a regression. And a defect --
+# analyze's transcription block throwing -- fails the harness loudly rather
+# than skipping: hiding our own exception behind a skip row is the exact
+# inversion of the gate's job. Analyze prints all of these with exit 0, so
+# the report is the only witness; a Keying test holds these literals against
+# AnalyzeCommand's source so a rewording there fails before the gate lies.
+SCORED = (re.compile(r"\btranscribed \d+ lyric line"),
+          re.compile(r"heard no words in"),
+          re.compile(r"no sung stretches found"))
+SKIPPED = (re.compile(r"warning: lyrics not transcribed: "),
+           re.compile(r"lyrics not transcribed: no ASR provider"))
+DEFECT = re.compile(r"lyric transcription failed")
 
 
 def run_asr(jar: Path, mp3: Path, language: str, workspace: Path,
@@ -487,14 +503,28 @@ def run_asr(jar: Path, mp3: Path, language: str, workspace: Path,
         if result.returncode != 0:
             sys.exit(f"mw {args[0]} failed on {mp3.name}:\n{result.stdout}{result.stderr}")
         report = result.stdout + "\n" + result.stderr
-    if TRANSCRIBED.search(report) or HEARD_NOTHING in report:
+    if DEFECT.search(report):
+        # Our code threw and analyze survived it; the gate must go red with
+        # the reason, not quietly skip our own exception.
+        sys.exit(f"{mp3.name}: analyze reported a transcription defect:\n"
+                 + first_line(report, DEFECT))
+    if any(marker.search(report) for marker in SCORED):
         document = json.loads(
             (workspace / "score" / "score.json").read_text(encoding="utf-8"))
         return document, None
+    if any(marker.search(report) for marker in SKIPPED):
+        for marker in SKIPPED:
+            if marker.search(report):
+                return None, first_line(report, marker).removeprefix("warning: ").strip()
+    sys.exit(f"{mp3.name}: analyze reported no transcription outcome at all:\n"
+             + report[-500:])
+
+
+def first_line(report: str, marker: re.Pattern) -> str:
     for line in report.splitlines():
-        if any(marker in line for marker in NOT_RUN):
-            return None, line.strip().removeprefix("warning: ").strip()
-    return None, "analyze reported no transcription outcome at all"
+        if marker.search(line):
+            return line.strip()
+    return ""
 
 
 def words_of(document: dict, name: str, source: str) -> tuple[list[str], list[float]]:
@@ -556,8 +586,7 @@ def main() -> None:
         truth, anchors, word_level = truth_of(lrc, mp3.name)
         document, reason = measure(jar, mp3, lrc, args.language, SOURCE)
         if document is None:
-            # Deliberately not keyed, like every ad-hoc line: nothing gates it.
-            print(f"  ad-hoc {mp3.name}: not measurable here ({reason})")
+            print(adhoc_unavailable_line(mp3.name, reason))
             return
         hypothesis, starts = words_of(document, mp3.name, SOURCE)
         print(adhoc_line(mp3.name, truth, hypothesis, anchors, starts, word_level))
