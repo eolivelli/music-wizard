@@ -1,162 +1,134 @@
 # Music Wizard
 
-Generate sheet music from a recording. Give it an MP3 and it works out the
-melody, the bass line, the chords and the lyrics, then engraves a PDF for each
-part — plus a simplified two-hand piano arrangement.
-
-Built on JDK 25, targeting Java 21 bytecode; Maven, Apache-2.0. Command line
-for now; a web UI later.
-
-> **Status: early, but it runs.** Give it an MP3 or WAV and it will find the
-> beats, estimate the chords, and engrave a chord chart as a PDF. Melody, bass,
-> lyrics and the piano reduction are not built yet — see
-> [Milestones](#milestones).
+**Point it at a recording; get sheet music back.** MW listens to an MP3 or WAV
+and works out the beat grid, the tempo and meter, the key and the chords —
+then engraves a chord chart as a PDF, with the words under the chords when you
+supply lyrics or let it transcribe the singing. It runs on your machine, on
+open models, with no account and no server: plain Java, Apache-2.0.
 
 ```
 $ mw init song.mp3 && mw analyze song.mwz && mw render song.mwz
 
-Tags   [A] marks lines that print identically
+Tempo  116 BPM
+Meter  4/4
+Key    G major (92% confidence)
 
-| C           | G           | Am          | F           |  [A]
-| C           | G           | Am          | F           |  [A]
+| N.C. G      | %           | %           | D           |
+| %           | G           | C           | G           |
 ```
 
-## What to expect
+That chart is real output: *Happy Birthday* sung at a kitchen piano, recorded
+on a phone with the app below, shared through a cloud drive, and read by the
+pipeline unaided.
 
-Automatic transcription is genuinely hard, and it is worth being honest about
-where the quality lands rather than discovering it later:
+## What it does today
 
-| Output | Realistic quality |
-|---|---|
-| **Chord chart with lyrics** | The strongest output. Usable with light edits on most pop. |
-| **Bass line** | Good. The bass is the best-separated, most reliably tracked part. |
-| **Lead vocal melody** | Pitch mostly right, rhythm approximate. Expect to fix a few notes per phrase. |
-| **Piano reduction** | Plausible but generic. It is an arrangement built from our own estimates, not a transcription of the actual piano part. |
+- **Beats, tempo and meter** tracked from the audio, with the two corrections
+  that matter most exposed as flags — `--tempo` and `--first-downbeat` —
+  because beat tracking is the least reliable stage and everything downstream
+  hangs on it.
+- **Key**, reported with separate confidences for the signature and for which
+  of a relative pair is home, because those are decisions of very different
+  reliability.
+- **Chords** from the full mix — major and minor triads, dominant and minor
+  sevenths — behind an NNLS chroma front end built for real recordings rather
+  than clean synthetic ones.
+- **Lyrics**, two ways: place a supplied [LRC][lrc] file under the chords, or
+  transcribe the singing from the recording itself. Italian and English.
+- **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
+  the chord chart and the chords-and-lyrics sheet. `--transpose` moves the
+  chords, the key and the spelling together.
+- **Standard MIDI File input**, read symbolically, with its declared tempo and
+  meter kept apart from anything estimated.
+- **A workspace per song** (`song.mwz/`) with per-stage caching keyed on
+  inputs, so re-running recomputes only what changed.
 
-This is roughly the tier of a good automatic chord-recognition service, plus
-notation. It is not a replacement for a human transcriber.
+Honestly: the quality is that of a good automatic chord-recognition service,
+plus notation — usable with light edits on most pop, and not a replacement for
+a human transcriber. The corpus it is measured on lives in `samples/`, the
+current readings in `tools/baselines/`, and the single most valuable thing you
+can do by hand is correct the tempo or the first downbeat
+([#233][i233], [#187][i187]).
 
-The single highest-value thing you can do to improve output is correct the
-tempo by hand. Beat tracking is the least reliable stage and everything
-downstream depends on it, so one right number fixes a lot:
+## From a phone in the room to a chart
 
+MW's benchmark material is real playing, not fixtures, and the repo carries
+the whole loop for collecting it:
+
+1. **Record on the phone.** The [Android app](android/README.md) is an offline
+   field-recording instrument — record a take, run the same harmony analysis
+   on the device, read the chart as text. It holds no network permission; a
+   test pins the manifest to the microphone alone.
+2. **Write down what was played**, in the app, while it is fresh — the note
+   travels with the take.
+3. **Share the bundle.** One zip, `<take>.mwz.zip`: the WAV, the phone's
+   chart, your note, and the analysis cache. Hand it to any app you trust —
+   a cloud drive, typically — straight from the share sheet.
+4. **Import it here.** A [Claude Code](https://claude.com/claude-code) agent
+   definition ships in-repo (`.claude/agents/take-importer.md`): it sweeps the
+   drive with `rclone`, verifies each bundle, runs the full pipeline on the
+   WAV, transcribes the singing when your note names the language, renames the
+   drive copy `*.imported` so it stays behind as a backup, and reports the
+   desktop chart against the phone's and against your own account of the take.
+5. **Promote what deserves it.** [docs/phone-to-corpus.md](docs/phone-to-corpus.md)
+   is the path from a staged take into `samples/` — by a person, by ear.
+
+## Hearing the words
+
+Supplying lyrics is the reliable path: point `analyze` at an LRC file and the
+words land under the chords, timed from the file's tags where it has them.
+
+```sh
+mw analyze song.mwz --lyrics song.lrc --lyrics-language it
+mw analyze song.mwz --lyrics-language it   # no file: transcribe the singing
+mw render song.mwz                         # adds the chords-lyrics sheet
 ```
-mw analyze mysong.mwz --tempo 128 --time-signature 4/4
-```
 
-`--tempo` is in the beat you count, so in 6/8 it is dotted quarters rather than
-quarters. It replaces the tracked *rate* only. The tracked beats survive — the
-map is anchored on the first of them rather than on the start of the recording,
-so the map and the grid agree about where beat one falls — but they keep the
-spacing they were tracked at, so halving the tempo leaves a grid whose beats are
-now eighth notes. The grid records that, so its own bar marks follow the tempo
-you typed rather than the one that was tracked ([#139][i139]).
-Correcting a half-or-double reading fixes the chart; it does not re-track the
-beats, and it does not line the map's bar lines up with them ([#84][i84]).
+Naming a language without a file asks MW to *hear* the words:
 
-`--first-downbeat` is in seconds from the start of the recording. It is snapped
-to the nearest tracked beat — it says which beat begins a bar, not that a beat
-was missed — and it overrides the downbeat detector outright rather than being
-weighed against it.
+- The vocal is separated from the mix with **Spleeter** (ONNX, MIT — code and
+  weights both).
+- Transcription is **Qwen3-ASR** through [sherpa-onnx], built from a source
+  submodule by `tools/build-sherpa-native.sh` — currently
+  [Enrico's fork][sherpa-fork], which carries the Qwen3-ASR feature-alignment
+  fix ([k2-fsa/sherpa-onnx#3535][sherpa-pr]) ahead of upstream review, and
+  points back at upstream once it lands. The build keeps TTS off so no GPL
+  code reaches the link; `tools/check-sherpa-native.sh` asserts that against
+  the built artifact, in CI too.
+- Any sherpa-onnx-compatible ASR model directory can be substituted via
+  `ml.asrModelDirectory` in the global config.
+- Word-level timing comes from a **wav2vec2** forced aligner, English only
+  today; other languages get their words spread across the sung stretch.
 
-**It moves the bar lines on the engraved page** ([#83][i83]). The chart's first
-bar line is the downbeat at or before the first chord, so nominating a different
-beat re-bars the PDF: the chords move within their bars, and a chord change
-landing mid-bar shows up as one.
-
-The text chart moves less, and it is worth knowing why before you compare two
-runs. It prints chord *names*, not lengths, so it can tell you the harmony
-starts part-way into the first bar — an `N.C.` appears — but not by how much
-([#186][i186]). Two different wrong downbeats can give the same `.txt` and
-different pages.
-
-Bar *spacing* still comes from the tempo, not from the rest of the grid: only
-the first bar line is read off a downbeat, and the ones after it are laid out at
-the tempo the chart prints ([#187][i187]). **On real audio this is the chart's
-largest remaining error.** How large is no longer known: the figure that used to
-sit here — on an eleven minute twelve-bar blues, the first twenty-five changes in
-the right bar and every one after that in the wrong one — was measured before
-both [#196][i196] and [#200][i200], and it has not been re-taken. Between them
-those two cut a bar line's drift against the recording by roughly an order of
-magnitude — the figures, and a caveat on the earliest of them, are below. They
-did not do it in the same place, which is why the twenty-five wants re-measuring
-rather than adjusting: at the point that figure comes from, a hundred beats in,
-#196 left the error where it was and #200 halved it. What *is* current is the
-score of the printed chart, below.
-
-That twenty-five is the bar arithmetic measured on real *timing* with the chords
-supplied, not a figure for what the tool recognises. Chord recognition on that
-recording used to return nothing but `N.C.`; since [#3][i3] it returns hundreds
-of spans and no `N.C.` at all, most of them in the right bar with the right root
-since [#196][i196] stopped the beat grid drifting. The chords were supplied
-anyway, because a layout measurement wants a
-progression known to be right rather than one that is half right.
-
-Several things cause that drift and they are not the same size on every
-recording. Two have been fixed: the beat tracker was leaving the grid for loud
-offbeats ([#196][i196]), and the bar lines were spaced at the median tracked
-interval rather than at a rate ([#200][i200]). Two are open, and neither is a
-leftover of the other:
-
-- the whole bar axis hangs on the grid's *first* downbeat, which on a recording
-  with a lead-in is the least reliable beat in it ([#233][i233]);
-- a recording does not hold one bar length anyway, and one constant spacing
-  cannot follow one that does not ([#187][i187]). On the blues above, a bar line
-  placed by index still ends about a beat and a half from the recording's own
-  beats by the end of the eleven minutes — down from about seven once
-  [#196][i196] had landed and before [#200][i200]. The figure before either was
-  about seventeen, but that one is inherited rather than re-measured, and it is
-  not on the same axis: #196 moved the tracked beat times themselves, so the
-  seventeen is against the beats that tracker read and the one and a half is
-  against today's.
-
-So correcting the downbeat by hand is now worth more than correcting `--tempo`,
-which is the other way round from how it used to be.
-
-Those two fixes do show up in what the tool actually prints. Scoring the emitted
-chart against the known changes — `tools/score-chart.py`, which reads the
-engraved source rather than the model behind it — the share of bars carrying the
-right chord on that recording went from 67% to 82% at [#200][i200]. All five
-benchmarks that existed at the time improved or held; the next largest was 80% to
-93%. The corpus has grown since, and that recording is no longer in the scored
-set, so those figures record what #200 did rather than what the corpus reads
-today — which is in `tools/baselines/`.
-
-[i83]: https://github.com/eolivelli/music-wizard/issues/83
-[i84]: https://github.com/eolivelli/music-wizard/issues/84
-[i139]: https://github.com/eolivelli/music-wizard/issues/139
-[i186]: https://github.com/eolivelli/music-wizard/issues/186
-[i187]: https://github.com/eolivelli/music-wizard/issues/187
-[i3]: https://github.com/eolivelli/music-wizard/issues/3
-[i200]: https://github.com/eolivelli/music-wizard/issues/200
-[i233]: https://github.com/eolivelli/music-wizard/issues/233
-[i196]: https://github.com/eolivelli/music-wizard/issues/196
+`--lyrics-language` also splits words into the syllables they are sung on —
+*a-mo-re*, not *amore* — with hyphenation patterns for Italian and English;
+on any other language words deliberately stay whole, because splitting on the
+wrong rules is worse than not splitting. Sung speech recognition is modest:
+expect to correct the transcription, not to trust it. Supplied lyrics survive
+later `analyze` runs, so correcting the tempo does not throw them away.
 
 ## Installing
 
-Building requires **JDK 25**; the jar it produces is Java 21 bytecode and runs
-on **JDK 21 or newer**, which is what lets an Android build link the same
-modules. For PDF output you also need
-[LilyPond](https://lilypond.org) on your `PATH`:
+Building requires **JDK 25**; the jar is Java 21 bytecode and runs on JDK 21
+or newer — which is what lets the Android app link the same modules. For PDF
+output you also need [LilyPond] on your `PATH`:
 
 ```sh
 brew install lilypond      # macOS, or Homebrew on Linux
 apt install lilypond       # Debian or Ubuntu
 ```
 
-Without LilyPond everything still runs — you get the `.ly` source, which you can
-engrave elsewhere. MusicXML and MIDI export are planned and not written yet.
-
-Build and check your setup:
+Without LilyPond everything still runs — you get the `.ly` source and engrave
+it elsewhere. Then:
 
 ```sh
 mvn package -DskipTests    # produces mw-cli/target/mw.jar
 ./mw doctor                # the wrapper rebuilds when sources change
 ```
 
-The jar is large (~88 MB) because it bundles ONNX Runtime, FFmpeg natives and
-the Anthropic SDK. Slimming it — most obviously by making the ML stack an
-optional download rather than a bundled dependency — is tracked separately.
+No model weights ship in the repo or the jar; stages that need one download it
+on first use into a local cache, checksummed, with its provenance beside it.
+The jar is large regardless — it bundles ONNX Runtime and audio codec natives.
 
 ## Using it
 
@@ -167,76 +139,9 @@ mw render song.mwz                                   # engrave what can be engra
 mw info song.mwz                                     # what has been computed
 ```
 
-`render` defaults to the parts that are implemented, which today are the chord
-chart and the chords-and-lyrics sheet. Ask for one that is not — `--parts
-voice` — and it says so and why, rather than listing it and writing nothing.
-
-### Lyrics
-
-Lyrics arrive two ways. Supplying them is the reliable one: point `analyze` at
-an [LRC][lrc] file and they are placed under the chords. Naming a language
-without supplying a file asks for the words to be heard from the recording
-itself — a build with the sherpa-onnx provider (see
-`tools/build-sherpa-native.sh`) transcribes the separated vocal, and sung
-speech recognition is modest, so expect to correct the result rather than
-trust it.
-
-```sh
-mw analyze song.mwz --lyrics song.lrc --lyrics-language it
-mw analyze song.mwz --lyrics-language it   # no file: transcribe from the audio
-mw render song.mwz                   # writes the chords-lyrics files as well
-```
-
-`--lyrics-language` splits words into the syllables they are sung on, so the
-engraved sheet reads *a-mo-re* where it used to carry the word whole. Italian and
-English have patterns; an LRC file does not say which
-language it is in, and splitting on the wrong one is worse than not splitting, so
-without the option words stay whole. It also decides how a plain (un-timed) line
-shares itself out among its words.
-
-Word timings are read from the file where it has them — the `<mm:ss.xx>` tags of
-"enhanced" LRC — and estimated within each line where it does not. A file that
-cannot be read, or that carries no timestamps, is a warning and never a failed
-analysis: the listening is the expensive part and a mistyped path must not cost
-it.
-
-Lyrics are kept out of the transcription cache key, so correcting the lyric file
-re-reads it without re-analysing the recording — and a later `analyze` **without**
-`--lyrics` keeps the ones already there, so correcting the tempo does not throw
-them away. Pass `--lyrics` again to replace them.
-
-**Two outputs, not one.** `out/chords.txt` and `out/chords.pdf` are unchanged — a
-bar grid, which is what to read when there is nothing to sing. `chords-lyrics.txt`
-puts each chord symbol over the word it arrives on, and `chords-lyrics.pdf`
-engraves the same thing with the lyrics under the chord names. Neither is the
-other with rows added; they answer different questions, and the grid is what the
-measurement harness parses.
-
-The two can differ about which words appear and where. The engraved sheet hangs
-syllables on bars and a bar axis cannot carry everything a column can, so a word
-sung after the last chord has nowhere to go at all. The text sheet prints every
-word at its own moment and is the one to read when they disagree.
-
-[i9]: https://github.com/eolivelli/music-wizard/issues/9
-[lrc]: https://en.wikipedia.org/wiki/LRC_(file_format)
-
-**`init` also takes a Standard MIDI File.** The input is identified by its
-header rather than its extension, and a MIDI file is read symbolically rather
-than measured. `analyze` reports its tempo, meter and key under a heading saying
-where they came from — *from the file, or the MIDI default where it declares
-nothing*, because a file that declares no tempo is played at 120 in 4/4 by the
-specification and the import cannot tell the two apart ([#119][i119]).
-
-Its chords are the one thing that is *not* declared: a MIDI file states which
-notes sound, not what chord they spell, so the harmony is estimated from the
-notes. That is why the chord count is printed outside that heading and not
-under it.
-
-[i119]: https://github.com/eolivelli/music-wizard/issues/119
-
-```sh
-mw init song.mid && mw analyze song.mwz
-```
+`render` defaults to the parts that are implemented — the chord chart and the
+chords-and-lyrics sheet. Ask for one that is not (`--parts voice`) and it says
+so and why, rather than listing it and writing nothing.
 
 A **workspace** is a directory holding the recording and everything derived
 from it:
@@ -250,106 +155,68 @@ song.mwz/
   out/               .txt, .ly and .pdf per part
 ```
 
-Results are cached per stage and keyed by the stage's inputs and parameters, so
-re-running only recomputes what actually changed. Separating stems takes
-minutes; adjusting the piano arrangement afterwards should not pay that again.
-
-## Configuration
+### Configuration
 
 Settings layer, weakest first: built-in defaults, your global config at
-`~/.config/music-wizard/config.yaml`, the workspace's own `workspace.yaml`, then
-command-line flags. Each layer only states what it changes.
+`~/.config/music-wizard/config.yaml`, the workspace's own `workspace.yaml`,
+then command-line flags. Each layer states only what it changes.
 
 ```yaml
 notation:
-  paperSize: letter
   transposeSemitones: -2
-arrangement:
-  pianoDifficulty: 0.3      # 0 easiest, 1 most faithful
-llm:
-  enabled: true
+ml:
+  sherpaNativePath: /path/to/sherpa-onnx/build/lib
 ```
 
-Much of this is read, layered, and then read by nothing. What reaches the
-pipeline is `analysis`, `ml` — provider and model selection for separation,
-transcription and alignment — plus `notation.lilypondPath` and
-`notation.transposeSemitones`, the last moving the chords, the key and the
-spelling together, exactly as `render --transpose` does. One caveat on `ml`:
-providers configure themselves from the global config file ([#383][i383]), so
-`ml.asrModelDirectory` is read from there only, and `analyze` says so when a
-workspace tries to override it.
+What reaches the pipeline is `analysis`, `ml` — provider and model selection
+for separation, transcription and alignment — plus `notation.lilypondPath`
+and `notation.transposeSemitones`. Providers configure themselves from the
+global file ([#383][i383]), so `ml.asrModelDirectory` is read from there only,
+and `analyze` says so when a workspace tries to override it. Keys that reach
+nothing are warned about rather than silently accepted; `arrangement` is
+entirely inert until the piano work lands ([#144][i144]).
 
-The keys that do nothing divide in two. `analyze` and `render` **warn** about
-`analysis.skipSeparation`, `notation.paperSize` ([#180][i180]) and
-`notation.capo` and `notation.accidentalPreference` ([#181][i181]) — from a flag
-or from this file — rather than producing the default output in silence. All of
-`arrangement` is equally inert, and nothing warns about it: it has no flags,
-and no command to warn from yet ([#144][i144]). The advisor is the
-section below.
+## Roadmap
 
-[i383]: https://github.com/eolivelli/music-wizard/issues/383
+Where this is going, in rough order of pull:
 
-[i144]: https://github.com/eolivelli/music-wizard/issues/144
+- **Melody detection, and the piano sheet** — the sung line as a voice part,
+  and a playable two-hand reduction built from everything MW knows about the
+  song.
+- **Drums detection, and drum sheets** — the kit written the way drummers
+  read.
+- **Sharper lyric hearing** — better sung-speech transcription and word
+  timing, on more of a mix than the clean separated vocal.
+- **Harmony, always** — a richer chord vocabulary (major sevenths, sixths,
+  half-diminished) once four-note candidates can be ranked on more than which
+  extra note is loudest, and bar lines that follow a recording that does not
+  hold one constant tempo.
+- **More languages** than English and Italian, for both transcription and
+  syllable splitting.
+- **More genres** — the corpus and the estimators lean pop and blues today;
+  jazz voicings, swing feel and denser harmony are the next frontier.
 
-[i180]: https://github.com/eolivelli/music-wizard/issues/180
+## Not built yet
 
-[i181]: https://github.com/eolivelli/music-wizard/issues/181
-
-
-## The Claude advisor (optional, and not built yet)
-
-**None of this section is implemented.** `mw-llm` holds no code; the config keys
-below are read and layered but reach nothing, and `analyze` and `doctor` both say
-so. It is recorded here as the design ([#11][i11]) rather than as behaviour — in
-particular the safety property below, that a suggestion is re-scored against the
-audio before being applied, is a guarantee about a mechanism that does not exist.
-
-[i11]: https://github.com/eolivelli/music-wizard/issues/11
-
-
-The pipeline is fully functional offline with no API key. If one is present and
-you enable it, Claude post-processes the *symbolic* results — it never sees
-audio. It is used only where musical convention matters more than signal:
-
-- repairing speech-recognition errors in lyrics, voting across repeated choruses
-- naming sections (deciding which repeated block is "the chorus")
-- picking the key signature and enharmonic spelling (F♯ versus G♭)
-- choosing a piano accompaniment style
-- proposing corrections to implausible chord progressions
-
-That last one is *proposer only*. Every suggested chord change is re-scored
-against the actual audio evidence and applied only if the evidence still
-supports it, so a confident wrong answer cannot overwrite a correct one.
-
-Responses are cached in the workspace, so re-runs cost nothing and stay
-reproducible.
-
-## Building
-
-```sh
-mvn verify                 # fast, offline; no models, no LilyPond needed
-mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
-```
-
-## Milestones
-
-- **M0 — Foundation.** Reactor, domain model, workspace, config, CLI. *Done.*
-- **M1b — Audio track.** Decode → beats → chroma → chords → key. *Chords, key
-  and chart working.*
-- **M1a — Symbolic track.** MIDI in, MusicXML and MIDI out, staff notation.
-- **M2 — Separation, bass and melody.**
-- **M3 — Lyrics.**
-- **M4 — Piano reduction.**
-- **M5 — Claude advisor.**
-- **M6 — Quality pass.** Metrics and tuning.
-
-M1a and M1b run in parallel and meet at the `Score` type, which is why the
-domain model was settled first.
+Named so nothing has to be discovered by trying it: the **voice**, **bass**
+and **piano** parts (`render` refuses them by name and says why), **drums**,
+**MusicXML and MIDI export**, and a **web UI**. The CLI is the product today.
 
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-No model weights are shipped. See NOTICE for the models chosen so far and their
-licences. Models and datasets under non-commercial terms are deliberately
-avoided — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
+No model weights are shipped. See NOTICE for the models chosen so far and
+their licences. Models and datasets under non-commercial terms are
+deliberately avoided — code and weights carry separate licences, and both are
+read — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
+
+[lrc]: https://en.wikipedia.org/wiki/LRC_(file_format)
+[LilyPond]: https://lilypond.org
+[sherpa-onnx]: https://github.com/k2-fsa/sherpa-onnx
+[sherpa-fork]: https://github.com/eolivelli/sherpa-onnx/tree/qwen3-asr-stft-center-alignment
+[sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3535
+[i233]: https://github.com/eolivelli/music-wizard/issues/233
+[i187]: https://github.com/eolivelli/music-wizard/issues/187
+[i383]: https://github.com/eolivelli/music-wizard/issues/383
+[i144]: https://github.com/eolivelli/music-wizard/issues/144
