@@ -82,8 +82,7 @@ pending, rather than filling the disk in one go.
 ## Downloading
 
 The copy on disk must be intact — `unzip -t` must pass, which catches
-truncation and corruption, and Drive's checksum from `get_file_metadata` is
-the stronger comparison where you need one. If the download path you used
+truncation and corruption. If the download path you used
 cannot produce an intact zip (a content-export tool that transcodes or
 truncates, base64 you cannot faithfully decode), stop trying that path and use
 another; a corrupt import is worse than no import. Verify every zip before
@@ -97,14 +96,14 @@ derived from it, neither ever typed:
 
 ```sh
 for zip in incoming/*/*.mwz.zip; do
+  [ -e "$zip" ] || continue                     # nothing staged
   take=$(basename "$zip" .mwz.zip)
+  [ -e "incoming/$take/imported.txt" ] && continue
   ./mw init "incoming/$take/$take.wav"        # no --title/--artist, deliberately
   ./mw analyze "incoming/$take/$take.mwz"
   ./mw render "incoming/$take/$take.mwz"
 done
 ```
-
-(The loop shape; skip takes whose marker exists, per Staging.)
 
 `render` exits nonzero when it has nothing to write; on a take where the
 estimator found no chords that is the finding your report carries, not an
