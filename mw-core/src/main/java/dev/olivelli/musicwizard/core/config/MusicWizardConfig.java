@@ -101,6 +101,8 @@ public record MusicWizardConfig(
             String pitchProvider,
             /* Provider id for lyric transcription, e.g. "sherpa-qwen3". */
             String asrProvider,
+            /* Provider id for forced alignment of known lyrics, e.g. "onnx-wav2vec2". */
+            String alignmentProvider,
             /* Directory holding downloaded models; defaults under the user cache. */
             String modelCacheDirectory,
             /* Refuse to download anything, failing instead. */
@@ -158,7 +160,8 @@ public record MusicWizardConfig(
             new AnalysisConfig(null, null, null, false),
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
-            new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3", null, false),
+            new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3",
+                    "onnx-wav2vec2", null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
@@ -244,6 +247,7 @@ public record MusicWizardConfig(
                 pick(over.separationProvider(), base.separationProvider()),
                 pick(over.pitchProvider(), base.pitchProvider()),
                 pick(over.asrProvider(), base.asrProvider()),
+                pick(over.alignmentProvider(), base.alignmentProvider()),
                 pick(over.modelCacheDirectory(), base.modelCacheDirectory()),
                 pick(over.offline(), base.offline()));
     }

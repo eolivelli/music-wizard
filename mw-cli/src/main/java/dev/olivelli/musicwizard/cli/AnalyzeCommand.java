@@ -19,6 +19,14 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LrcLyrics;
+import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.core.ml.AlignmentProvider;
+import dev.olivelli.musicwizard.core.ml.MlProviders;
+import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
@@ -196,7 +204,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
-        Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
+        Score score = withAlignedLyrics(workspace,
+                withSuppliedLyrics(workspace, titled(workspace, result.score())));
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
@@ -350,6 +359,108 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println("  read " + lyrics.lines().size() + " lyric lines from "
                 + lyricsFile.getFileName());
         return score.withLyrics(lyrics);
+    }
+
+    /**
+     * The score with its lyric words placed by the aligner, when one is
+     * configured, present, and speaks the lyrics' language.
+     *
+     * <p>This is what turns {@code SPREAD_WORD} guesses into measured onsets:
+     * each line's words are aligned inside a window around the line's own LRC
+     * timestamps, which keeps the search small and anchored. Every failure
+     * path degrades to the parsed times with a warning — the analysis has
+     * already succeeded, and an aligner must not be able to take it down.
+     * Alignment runs outside the transcription cache for the same reason the
+     * lyrics do: correcting a lyric file must not recompute the DSP.
+     */
+    private Score withAlignedLyrics(Workspace workspace, Score score) {
+        if (score.lyrics().isEmpty()) {
+            return score;
+        }
+        MusicWizardConfig.MlConfig ml = workspace.effectiveConfig().ml();
+        String wanted = ml == null ? null : ml.alignmentProvider();
+        var provider = MlProviders.alignment(wanted);
+        if (provider.isEmpty()) {
+            return score;
+        }
+        Lyrics lyrics = score.lyrics();
+        String language = lyrics.language();
+        if (!provider.get().languages().contains(language)) {
+            System.out.println("  lyrics not aligned: " + provider.get().id()
+                    + " speaks " + provider.get().languages() + ", the lyrics are '"
+                    + language + "'");
+            return score;
+        }
+        try {
+            AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
+            List<LyricLine> aligned = new ArrayList<>(lyrics.lines().size());
+            for (LyricLine line : lyrics.lines()) {
+                aligned.add(alignedLine(provider.get(), audio, language, line));
+            }
+            Confidence overall = aligned.stream()
+                    .map(LyricLine::confidence)
+                    .min(java.util.Comparator.comparingDouble(Confidence::value))
+                    .orElse(lyrics.confidence());
+            System.out.println("  aligned " + aligned.size() + " lyric lines with "
+                    + provider.get().id());
+            return score.withLyrics(new Lyrics(aligned, language, overall));
+        } catch (ModelUnavailableException e) {
+            System.err.println("warning: lyrics stay at their parsed times: "
+                    + e.getMessage());
+            return score;
+        } catch (RuntimeException e) {
+            // An aligner defect must not cost the analysis; the parsed times
+            // are what we had before it existed.
+            System.err.println("warning: lyric alignment failed, keeping parsed"
+                    + " times: " + e.getMessage());
+            return score;
+        }
+    }
+
+    /**
+     * One line, aligned inside a window around its own parsed span.
+     *
+     * <p>Half a second of slack each side: the LRC timestamp is a display cue
+     * and singers anticipate it. The window also caps the trellis, so a whole
+     * song is many small alignments rather than one enormous one.
+     */
+    private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
+                                  String language, LyricLine line) {
+        double from = Math.max(0, line.startSeconds() - 0.5);
+        double to = Math.min(audio.durationSeconds(), line.endSeconds() + 0.5);
+        int start = audio.indexOf(from);
+        int end = Math.max(start, audio.indexOf(to));
+        if (end - start < audio.sampleRate() / 10) {
+            return line;
+        }
+        float[] window = new float[end - start];
+        System.arraycopy(audio.samples(), start, window, 0, window.length);
+        List<String> texts = line.words().stream().map(LyricWord::text).toList();
+        List<LyricWord> placed = aligner.align(window, audio.sampleRate(),
+                language, texts);
+        if (placed.size() != line.words().size()) {
+            return line;
+        }
+        List<LyricWord> out = new ArrayList<>(line.words().size());
+        for (int i = 0; i < placed.size(); i++) {
+            LyricWord original = line.words().get(i);
+            LyricWord timed = placed.get(i);
+            // The aligner's clock starts at the window; the line's starts at
+            // the recording. Keep the original text and engraving flags -- the
+            // aligner only ever decides when.
+            out.add(new LyricWord(original.text(),
+                    from + timed.startSeconds(), from + timed.endSeconds(),
+                    java.util.Optional.empty(), java.util.Optional.empty(),
+                    original.hyphenatedToNext(), original.melisma(),
+                    timed.confidence()));
+        }
+        return new LyricLine(out, weakestOf(out));
+    }
+
+    private static Confidence weakestOf(List<LyricWord> words) {
+        return words.stream().map(LyricWord::confidence)
+                .min(java.util.Comparator.comparingDouble(Confidence::value))
+                .orElse(Confidence.of(0));
     }
 
     // ------------------------------------------------------------------- cache
