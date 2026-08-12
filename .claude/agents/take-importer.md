@@ -30,16 +30,29 @@ A bundle is named `<take>.mwz.zip` — the suffix is a contract, pinned by
 `TakeBundleTest.aBundleIsNamedSoASearchForMwzFindsIt`, so `mwz` is the query
 token.
 
-Use the Google Drive tools available in the session (`search_files`;
+**rclone, with a remote the user has already configured, is the preferred
+mechanism** — it lists, downloads byte-exact, and answers a bundle's identity
+in one tool. Two flags are load-bearing, and forgetting either fails silently
+rather than loudly: without `--files-only` an `--include` filter still lists
+every directory in the drive, and without `--hash` the JSON simply carries no
+`Hashes` field, quietly weakening the marker to size and modified time.
+
+```sh
+remote=$(rclone listremotes | head -1)              # none: say so and stop
+rclone lsf "$remote" -R --include '*.mwz.zip' --files-only
+rclone lsjson "$remote" -R --include '*.mwz.zip' --files-only --hash
+rclone copy "$remote$path" "incoming/$take/"        # $path from lsf, never typed
+```
+
+Never configure a new remote or initiate an OAuth flow yourself; with several
+remotes configured, ask which rather than picking one. The session's Google
+Drive tools (`search_files`;
 `list_recent_files` as a cross-check for very fresh uploads — a just-shared
-bundle is usually the point). If the user named a folder or file, narrow to
-it. If no Drive tools are connected — or any call fails for an authorization
-reason (Google says "insufficient authentication scopes") — quote the exact
-error, say the connection needs re-authorizing, and stop; do not improvise
-credentials. If a CLI the user has configured is available (`rclone lsf`/
-`rclone copy` with an existing remote), it is an acceptable alternative for
-both listing and download; never configure a new remote or initiate an OAuth
-flow yourself.
+bundle is usually the point) are the fallback when rclone or its remote is
+absent. If any of their calls fails for an authorization reason (Google says
+"insufficient authentication scopes"), quote the exact error, say the
+connection needs re-authorizing, and stop; do not improvise credentials.
+If the user named a folder or file, narrow to it, whichever the mechanism.
 
 **A take's name is data, not something to trust in a shell.** It may carry
 spaces, quotes, `$(…)` — anything the phone's rename allows, and in a sweep it
@@ -64,8 +77,9 @@ incoming/<take>/<take>.mwz/         the MW workspace your run creates
 
 **A take is imported when its marker exists** — `incoming/<take>/imported.txt`,
 which you write (a Bash redirect) after the take's report is complete, holding
-what `get_file_metadata` identifies the bundle by — its checksum where one is
-given, otherwise its size and modified time. Not the rendered
+what the listing identifies the bundle by — its checksum where one is given
+(`lsjson --hash`, or `get_file_metadata` on the fallback), otherwise its size
+and modified time. Not the rendered
 chart: a clean run on a take with no detectable harmony renders nothing, and
 that outcome is a report, not a failure. A directory without the marker is
 unfinished — if its zip already verified, keep it, delete only the workspace
