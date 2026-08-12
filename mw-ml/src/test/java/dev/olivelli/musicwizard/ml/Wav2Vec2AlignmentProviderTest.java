@@ -94,11 +94,13 @@ class Wav2Vec2AlignmentProviderTest {
     @Test
     @DisplayName("an inexpressible word rides its predecessor's end, and shifts nothing")
     void inexpressibleWordKeepsItsSlot() {
+        // One separator frame, not a run: a run absorbs the extra token a
+        // double-separator regression emits, and the mutant stays green.
         float[][] logProbs = plan(
                 new int[] {v('L'), 10},
-                new int[] {Wav2Vec2Models.SEPARATOR, 5},
+                new int[] {Wav2Vec2Models.SEPARATOR, 1},
                 new int[] {v('S'), 10},
-                new int[] {Wav2Vec2Models.BLANK, 25});
+                new int[] {Wav2Vec2Models.BLANK, 29});
         // "..." maps to no vocabulary entry; "l" and "s" surround it.
         var words = provider(logProbs).align(new float[16_000], 16_000, "en",
                 List.of("l", "...", "s"));
@@ -111,6 +113,8 @@ class Wav2Vec2AlignmentProviderTest {
         // The third word aligned normally: the separator count skipped the
         // empty word rather than emitting a double separator.
         assertThat(words.get(2).endSeconds()).isGreaterThan(words.get(2).startSeconds());
+        // To the frame: S starts right after the single separator frame.
+        assertThat(words.get(2).startSeconds()).isEqualTo(11 * 0.02);
     }
 
     @Test

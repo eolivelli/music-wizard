@@ -80,12 +80,13 @@ class AlignedLyricsTest {
     @Test
     @DisplayName("aligned lines never overlap, whatever the aligner returns")
     void alignedLinesDoNotOverlap() throws IOException {
-        // The fake returns every word early in its window, so with independent
-        // windows line 2 would start half a second before line 1's parsed end.
-        // Sequential windows make overlap structurally impossible, and the
-        // sheet's chord cursor -- which walks line ends in order -- depends on
-        // exactly that.
-        Path root = analysed("fake-cli-alignment");
+        // The late fake places words in the last fifth of each window, so with
+        // independent windows line 1's result runs past line 2's parsed start
+        // and the two collide -- an early-times fake never makes windows
+        // interact, and this test passed with the fix reverted until review
+        // caught it. The sheet's chord cursor, which walks line ends in order,
+        // depends on the invariant asserted here.
+        Path root = analysed("fake-cli-late-alignment");
 
         Score score = Workspace.open(root).readScore().orElseThrow();
         var lines = score.lyrics().lines();

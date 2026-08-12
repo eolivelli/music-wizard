@@ -208,8 +208,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (lyricsFile != null) {
             // Only what this run supplied: carried-forward lyrics were aligned
             // when they were supplied, and re-aligning aligned times moves the
-            // windows they are computed from -- measured in review as an
-            // unbounded walk toward zero, one step per analyze.
+            // windows they are computed from, one step per analyze, without
+            // bound.
             score = withAlignedLyrics(workspace, score);
         }
 
@@ -374,10 +374,12 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>This is what turns {@code SPREAD_WORD} guesses into measured onsets:
      * each line's words are aligned inside a window around the line's own LRC
      * timestamps, which keeps the search small and anchored. Every failure
-     * path degrades to the parsed times with a warning — the analysis has
-     * already succeeded, and an aligner must not be able to take it down.
-     * Alignment runs outside the transcription cache for the same reason the
-     * lyrics do: correcting a lyric file must not recompute the DSP.
+     * degrades to parsed times — per line for a line's own error, counted in
+     * the summary; whole-run with the reason on stderr when the model cannot
+     * be had or the aligner fails outright — because the analysis has already
+     * succeeded and an aligner must not be able to take it down. Alignment
+     * runs outside the transcription cache for the same reason the lyrics do:
+     * correcting a lyric file must not recompute the DSP.
      */
     private Score withAlignedLyrics(Workspace workspace, Score score) {
         if (score.lyrics().isEmpty()) {
@@ -404,19 +406,34 @@ final class AnalyzeCommand implements Callable<Integer> {
             AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
             List<LyricLine> aligned = new ArrayList<>(lyrics.lines().size());
             double previousEnd = 0;
-            int failed = 0;
+            int kept = 0;
             for (int i = 0; i < lyrics.lines().size(); i++) {
                 LyricLine line = lyrics.lines().get(i);
                 LyricLine result;
                 try {
                     result = alignedLine(provider.get(), audio, language, line,
                             previousEnd);
+                } catch (ModelUnavailableException e) {
+                    // The model itself cannot be had: no later line will fare
+                    // better, and retrying the fetch once per line would
+                    // re-download a checksum-failing model per line. Whole-run
+                    // degradation, with the reason.
+                    throw e;
                 } catch (RuntimeException e) {
-                    // One line's failure keeps that line's parsed times; the
-                    // thirty-nine that aligned are not thrown away with it.
+                    // One line's failure keeps that line's parsed times without
+                    // discarding the lines that aligned.
                     result = line;
-                    failed++;
                 }
+                if (result == line) {
+                    kept++;
+                }
+                // The one place the no-overlap invariant is enforced, for every
+                // path that produced the line -- aligned, kept-parsed, failed.
+                // Patching each fallback instead is how the next fallback
+                // reintroduces it. A shifted line keeps its duration; monotone
+                // starts also keep the lines in LRC order through Lyrics's
+                // sort.
+                result = shiftedAfter(result, previousEnd);
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
             }
@@ -424,15 +441,40 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .map(LyricLine::confidence)
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(lyrics.confidence());
-            System.out.println("  aligned " + (aligned.size() - failed)
+            System.out.println("  aligned " + (aligned.size() - kept)
                     + " lyric lines with " + provider.get().id()
-                    + (failed > 0 ? "; " + failed + " kept their parsed times" : ""));
+                    + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
             return score.withLyrics(new Lyrics(aligned, lyrics.language(), overall));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics stay at their parsed times: "
                     + e.getMessage());
             return score;
+        } catch (RuntimeException e) {
+            // An aligner defect must not take down an analysis that already
+            // succeeded; the parsed times are what we had before it existed.
+            System.err.println("warning: lyric alignment failed, keeping parsed"
+                    + " times: " + e.getMessage());
+            return score;
         }
+    }
+
+    /**
+     * The line, shifted forward just enough to start at or after the previous
+     * line's end, keeping its duration and every within-line interval.
+     */
+    private static LyricLine shiftedAfter(LyricLine line, double previousEnd) {
+        double shift = previousEnd - line.startSeconds();
+        if (shift <= 0) {
+            return line;
+        }
+        List<LyricWord> shifted = new ArrayList<>(line.words().size());
+        for (LyricWord word : line.words()) {
+            shifted.add(new LyricWord(word.text(),
+                    word.startSeconds() + shift, word.endSeconds() + shift,
+                    java.util.Optional.empty(), java.util.Optional.empty(),
+                    word.hyphenatedToNext(), word.melisma(), word.confidence()));
+        }
+        return new LyricLine(shifted, line.confidence());
     }
 
     /**
@@ -440,17 +482,12 @@ final class AnalyzeCommand implements Callable<Integer> {
      * alignment ended.
      *
      * <p>The tail keeps half a second of slack past the parsed end — a display
-     * cue anticipates — but the head is sequential, and that is what makes
-     * overlap between aligned lines structurally impossible: every time the
-     * aligner can return is at or after the window's start, and the window
-     * starts at or after the previous line's aligned end. Review measured what
-     * independent ±0.5 s windows did instead: twenty-six of forty lines
-     * starting before their predecessor ended, and the sheet's chord cursor —
-     * which walks line ends in order — handing eighteen lines the wrong
-     * chords.
-     *
-     * <p>The window also caps the trellis, so a whole song is many small
-     * alignments rather than one enormous one.
+     * cue anticipates — but the head is sequential: an aligned line cannot
+     * start before its predecessor ended. The paths that keep parsed times
+     * instead can, which is why the invariant every sheet cursor depends on is
+     * enforced where the list is assembled, not here. The window also caps the
+     * trellis, so a whole song is many small alignments rather than one
+     * enormous one.
      */
     private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
                                   String language, LyricLine line,

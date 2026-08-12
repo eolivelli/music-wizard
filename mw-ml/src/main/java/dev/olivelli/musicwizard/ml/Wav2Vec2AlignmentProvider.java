@@ -61,10 +61,10 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
      * The session, built once and held for the provider's lifetime.
      *
      * <p>analyze calls {@link #align} once per lyric line, and rebuilding a
-     * 378 MB session per line was measured at a third of the whole alignment
-     * pass. The CLI process ends when the command does, which is when the
-     * native memory comes back; a long-lived embedder would want an explicit
-     * close, and can have one the day such an embedder exists.
+     * session per line pays the model load per line. The CLI process ends when
+     * the command does, which is when the native memory comes back; a
+     * long-lived embedder would want an explicit close, and can have one the
+     * day such an embedder exists.
      */
     private OrtSession session;
     private OrtEnvironment environment;
