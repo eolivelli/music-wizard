@@ -86,6 +86,24 @@ final class DoctorCommand implements Callable<Integer> {
                 MlProviders.separationIds(), "#312");
         report("Lyrics ASR", ml == null ? null : ml.asrProvider(),
                 MlProviders.asrIds(), "#314");
+        // The one provider whose Java class alone is not enough: without its
+        // native directory the first transcription fails, and this command's
+        // whole job is saying so before that. Only when the provider is
+        // present -- a build without it has nothing for the key to point at.
+        if (MlProviders.asrIds().contains("sherpa-qwen3")) {
+            String nativePath = ml == null ? null : ml.sherpaNativePath();
+            if (nativePath == null) {
+                nativePath = System.getProperty("sherpa_onnx.native.path");
+            }
+            if (nativePath == null) {
+                System.out.println("            ml.sherpaNativePath not set; the JVM"
+                        + " library path will be tried at first use");
+            } else if (!Files.isDirectory(Path.of(nativePath))) {
+                System.out.println("            ml.sherpaNativePath is not a directory: "
+                        + nativePath + " -- run tools/build-sherpa-native.sh");
+                allWell = false;
+            }
+        }
         report("Alignment", ml == null ? null : ml.alignmentProvider(),
                 MlProviders.alignmentIds(), "#313");
         Path modelDir = ModelCacheLocation.directoryFor(

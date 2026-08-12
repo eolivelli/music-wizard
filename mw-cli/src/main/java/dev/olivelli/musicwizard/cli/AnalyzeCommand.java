@@ -215,8 +215,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             // windows they are computed from, one step per analyze, without
             // bound.
             score = withAlignedLyrics(workspace, score);
-        } else if (lyricsLanguage != null && !lyricsLanguage.isBlank()
-                && kind == SourceKind.AUDIO) {
+        } else if (transcriptionRequested() && kind == SourceKind.AUDIO) {
             // The language alone is the ask: "this is sung in Italian, hear the
             // words". Stated rather than detected, because a recognizer told to
             // guess the language produces fluent wrong words when it guesses
@@ -577,10 +576,11 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " heard no words in " + segments.size() + " sung stretches");
                 return score;
             }
-            System.out.println("  transcribed " + lyrics.lines().size()
-                    + " lyric lines from " + segments.size() + " sung stretches with "
-                    + provider.get().id()
-                    + (failed > 0 ? "; " + failed + " stretches failed" : ""));
+            System.out.println("  transcribed " + counted(lyrics.lines().size(),
+                    "lyric line") + " from " + counted(segments.size(),
+                    "sung stretch", "sung stretches") + " with " + provider.get().id()
+                    + (failed > 0 ? "; " + counted(failed, "stretch", "stretches")
+                            + " failed" : ""));
             // The recognizer knows the words but not their times -- each line's
             // words are spread across its sung stretch. The aligner measures
             // real onsets where it speaks the language, and only for lyrics
@@ -618,10 +618,21 @@ final class AnalyzeCommand implements Callable<Integer> {
         AudioBuffer mix = preferred > 0
                 ? AudioDecoder.decode(workspace.sourceFile(), preferred)
                 : AudioDecoder.decode(workspace.sourceFile());
+        // Announced like every other stage: this takes real time, and a
+        // command that reports each step must not sit mute through it.
+        System.out.println("  separating the vocal with " + separation.get().id());
         float[] vocals = separation.get()
                 .separate(new float[][] {mix.samples()}, mix.sampleRate())
                 .vocals()[0];
         return new AudioBuffer(vocals, mix.sampleRate());
+    }
+
+    private static String counted(int n, String singular) {
+        return counted(n, singular, singular + "s");
+    }
+
+    private static String counted(int n, String singular, String plural) {
+        return n + " " + (n == 1 ? singular : plural);
     }
 
     /** The word, moved from segment-relative to recording time. */
@@ -1186,25 +1197,14 @@ final class AnalyzeCommand implements Callable<Integer> {
      * #82 was filed for -- announcing something that does not happen -- one
      * command over.
      *
-     * <p>Two separate reasons, because they are separate. The tempo, meter and
-     * downbeat overrides correct stages a MIDI import does not run, so on that
-     * path honouring them would mean overriding what the file declares with a
-     * guess. {@code --skip-separation} is different: it does nothing on
-     * <em>either</em> path, because nothing separates anything yet (#8). Round 3
-     * found it announced as an audio option, quietly ignored by an audio run and
-     * reported to a MIDI user in words implying an audio run would honour it.
-     *
-     * <p>The two are read from different places, and the split is the rule
-     * {@code render} arrived at in round 10. The tempo, meter and downbeat
-     * overrides are read from the <em>typed fields</em>: they apply on the audio
-     * path and not the MIDI one, so a config file carrying them is a preference
-     * that happens not to apply to this run, and saying so every time somebody
-     * analysed a MIDI file would be noise. {@code --skip-separation} is read
-     * from the <em>effective config</em>, because it applies to no run at all --
-     * "happens not to apply here" and "cannot apply anywhere" are different
-     * claims and only the first is safe to leave unsaid. An earlier draft of
-     * this paragraph stated the first rule flatly and governed both, which made
-     * a false sentence out of the one option it was wrong about.
+     * <p>The tempo, meter and downbeat overrides are read from the <em>typed
+     * fields</em>: they correct stages a MIDI import does not run, so a config
+     * file carrying them is a preference that happens not to apply to this
+     * run, and saying so on every MIDI analysis would be noise.
+     * {@code --skip-separation} is read from the <em>effective config</em> and
+     * warned about whenever this particular run has no transcription for it to
+     * affect -- "happens not to apply here" and "does nothing in this run" are
+     * different claims and only the first is safe to leave unsaid.
      */
     private void warnAboutOptionsThatDoNothing(SourceKind kind, MusicWizardConfig config) {
         if (kind == SourceKind.MIDI) {
@@ -1226,12 +1226,23 @@ final class AnalyzeCommand implements Callable<Integer> {
             }
         }
         if (skipSeparationRequested(config)
-                && (kind == SourceKind.MIDI || lyricsFile != null || lyricsLanguage == null)) {
+                && !(kind == SourceKind.AUDIO && transcriptionRequested())) {
             System.err.println("warning: skipping separation changes nothing in this run;"
                     + " its only effect today is making lyric transcription"
                     + " (--lyrics-language without --lyrics, audio only) hear the full"
                     + " mix, and separation feeds the rest of the analysis under #8");
         }
+    }
+
+    /**
+     * Whether this run asks for lyrics to be heard from the recording: a
+     * language stated, no file supplied. One predicate, because round 1 found
+     * the gate and its do-nothing warning disagreeing on a blank tag, which
+     * neither transcribed nor warned.
+     */
+    private boolean transcriptionRequested() {
+        return lyricsFile == null
+                && lyricsLanguage != null && !lyricsLanguage.isBlank();
     }
 
     /** Whether this run was asked to skip separation, from any config layer. */

@@ -60,6 +60,10 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     static final int MODEL_RATE = 16_000;
 
+    /** SPI subtag to the model's forcing vocabulary; keys are languages(). */
+    private static final java.util.Map<String, String> LANGUAGE_NAMES =
+            java.util.Map.of("it", "Italian", "en", "English");
+
     private final ModelCache cache;
     private final ModelRef archive;
     private final String nativePath;
@@ -116,8 +120,13 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
             OfflineStream stream = held.createStream();
             try {
                 // The per-stream language hint: without it the model detects,
-                // and a wrong detection produces fluent wrong words.
-                stream.setOption("language", languageTag);
+                // and a wrong detection produces fluent wrong words. The
+                // model's forcing vocabulary is language NAMES -- upstream's
+                // own example documents "Korean, Chinese, English", and probed
+                // against a real recording the bare tag "it" changed nothing
+                // while "Italian" did -- so the tag is mapped here, at the one
+                // boundary between the SPI's vocabulary and the model's.
+                stream.setOption("language", LANGUAGE_NAMES.get(languageTag));
                 stream.acceptWaveform(resampled, MODEL_RATE);
                 held.decode(stream);
                 OfflineRecognizerResult result = held.getResult(stream);
@@ -141,7 +150,9 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         Path tarball = cache.fetch(archive, System.out::println);
         Path directory = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY);
         Path marker = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY + ".ok");
-        if (Files.isRegularFile(marker)) {
+        if (Files.isRegularFile(marker) && Files.isDirectory(directory)) {
+            // Both, not the marker alone: a partial cache cleanup that kept
+            // the marker would otherwise be trusted into a missing tree.
             return directory;
         }
         try {

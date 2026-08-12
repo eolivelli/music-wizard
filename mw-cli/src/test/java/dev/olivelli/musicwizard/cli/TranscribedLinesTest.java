@@ -75,18 +75,25 @@ class TranscribedLinesTest {
     }
 
     @Test
-    @DisplayName("stretches cut from one run cannot overlap by an ulp")
+    @DisplayName("overlapping stretches are shifted whole, words in order")
     void tiledStretchesStayMonotone() {
         // The two float routes to a shared cut differ in the last bit; the
         // sheet's chord cursor walks line ends and depends on monotone lines.
-        double boundary = 2.0;
-        double hair = Math.nextUp(boundary);
+        // More than one word in the trailing line, because round 1 showed a
+        // first-word-only clamp being re-sorted behind its own siblings.
         Lyrics lyrics = TranscribedLines.grouped(List.of(
-                List.of(word("la", 0.0, hair, 0.8)),
-                List.of(word("sol", boundary, 3.0, 0.8))), "en");
+                List.of(word("la", 0.0, 10.0, 0.8)),
+                List.of(word("sol", 1.0, 2.0, 0.8), word("mi", 2.0, 3.0, 0.8))),
+                "en");
 
-        assertThat(lyrics.lines().get(1).words().get(0).startSeconds())
-                .isGreaterThanOrEqualTo(lyrics.lines().get(0).words().get(0).endSeconds());
+        var first = lyrics.lines().get(0);
+        var second = lyrics.lines().get(1);
+        assertThat(second.startSeconds()).isGreaterThanOrEqualTo(first.endSeconds());
+        assertThat(second.words()).extracting(LyricWord::text)
+                .containsExactly("sol", "mi");
+        // The shift keeps every within-line interval.
+        assertThat(second.words().get(1).startSeconds()
+                - second.words().get(0).endSeconds()).isEqualTo(0.0);
     }
 
     @Test

@@ -88,6 +88,9 @@ final class VocalSegments {
 
     /** Quiet cut-off, or 0 when the whole stem is silence. */
     private static double threshold(double[] rms) {
+        if (rms.length == 0) {
+            return 0;
+        }
         double[] sorted = rms.clone();
         java.util.Arrays.sort(sorted);
         double loud = sorted[(int) ((sorted.length - 1) * 0.95)];

@@ -11,6 +11,13 @@
 # LibraryUtils expects from sherpa_onnx.native.path.
 set -euo pipefail
 
+if [ "$(uname -s)" != "Linux" ]; then
+  # nproc, the .so names and the symbol scan are all GNU/Linux; saying so
+  # beats dying half-way with a glob error.
+  echo "build-sherpa-native: only Linux is supported today ($(uname -s))" >&2
+  exit 2
+fi
+
 cd "$(dirname "$0")/.."
 SRC=third_party/sherpa-onnx
 BUILD=$SRC/build

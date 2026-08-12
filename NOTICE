@@ -25,6 +25,16 @@ are deliberately excluded (see CONTRIBUTING.md).
   com.tagtraum:ffsampledsp-complete          LGPL-2.1 (bundles FFmpeg natives, LGPL-2.1+)
   org.audiveris:proxymusic                   LGPL-3.0
 
+One dependency is vendored as source rather than resolved from Maven Central,
+so the enforcer's banned-artifact list never sees it -- its licence position is
+executed against the built artifact by tools/check-sherpa-native.sh instead:
+
+  sherpa-onnx (k2-fsa/sherpa-onnx)           Apache-2.0
+    a git submodule under third_party/; its Java API is compiled into builds
+    that carry the sherpa profile and ships inside mw.jar, unmodified; its
+    native library is built locally with TTS off, keeping the GPL-3.0 espeak
+    fork out of the link, and is never redistributed
+
 --------------------------------------------------------------------------------
 Machine learning models
 --------------------------------------------------------------------------------

@@ -33,7 +33,10 @@ import java.util.List;
  * silences between phrases; on the first real recording through this path a
  * gap rule alone merged whole verses into one line, the stretch padding
  * having shrunk each pause below any workable threshold. Within a stretch, a
- * gap of {@link #LINE_GAP_SECONDS} or more breaks again.
+ * gap of {@link #LINE_GAP_SECONDS} or more breaks again — which the shipped
+ * provider can never trigger, since it spreads words contiguously across the
+ * stretch; the rule is here for a provider whose words carry measured gaps,
+ * which the SPI allows.
  *
  * <p>Line and sheet confidence are the minimum over what they contain, the
  * same floor-not-average the aligner reports: one guessed word in a line
@@ -72,21 +75,18 @@ final class TranscribedLines {
     }
 
     /**
-     * Adds the line, its first word clamped to start no earlier than the
-     * previous line ended. Stretches cut from one long run share a boundary
-     * that two float routes place apart by an ulp, and the sheet's chord
-     * cursor depends on lines that never overlap; the times are inferred
-     * spreads, so an ulp of clamping costs nothing true.
+     * Adds the line, shifted whole to start no earlier than the previous line
+     * ended. Stretches cut from one long run share a boundary that two float
+     * routes place apart by an ulp, and the sheet's chord cursor depends on
+     * lines that never overlap. {@link AnalyzeCommand#shiftedAfter} is the
+     * enforcement the aligned path already wears at its own assembly point;
+     * a first draft here clamped only the first word instead, which the
+     * line's own start-order sorting turned into reordered words.
      */
     private static void addMonotone(List<LyricLine> lines, List<LyricWord> words) {
         double previousEnd = lines.isEmpty() ? 0
-                : lines.getLast().words().getLast().endSeconds();
-        LyricWord first = words.get(0);
-        if (first.startSeconds() < previousEnd) {
-            words.set(0, LyricWord.ofSeconds(first.text(), previousEnd,
-                    Math.max(previousEnd, first.endSeconds()), first.confidence()));
-        }
-        lines.add(line(words));
+                : lines.getLast().endSeconds();
+        lines.add(AnalyzeCommand.shiftedAfter(line(words), previousEnd));
     }
 
     private static LyricLine line(List<LyricWord> words) {
