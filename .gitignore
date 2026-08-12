@@ -51,3 +51,7 @@ samples/gmajorblues.mp3
 # Only the descriptive list.txt is tracked.
 uncommitted/*
 !uncommitted/list.txt
+
+# Drive-fetched phone bundles staged by the take-importer agent
+# (.claude/agents/take-importer.md); personal recordings, never committed.
+incoming/
