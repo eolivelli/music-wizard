@@ -19,8 +19,10 @@ android {
         // see MwAnalysis.writeCache.
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = '0.1'
+        // Bumped per release now that updates are possible at all: an update
+        // must not carry a versionCode below the installed one.
+        versionCode = 2
+        versionName = '0.3'
     }
 
     compileOptions {
@@ -31,12 +33,28 @@ android {
         coreLibraryDesugaringEnabled = true
     }
 
+    signingConfigs {
+        // The committed keystore, not the machine's auto-generated one: four
+        // releases signed with four fresh certificates, so Android refused
+        // every update and each release wiped app-private storage (#377). A
+        // debug keystore is not a secret — its passwords are the Android
+        // defaults on purpose; what matters is that every machine and every
+        // CI run signs identically, so updates install as updates.
+        // checkApkSignature holds the fingerprint this keystore must produce.
+        debug {
+            storeFile = file('debug.keystore')
+            storePassword = 'android'
+            keyAlias = 'androiddebugkey'
+            keyPassword = 'android'
+        }
+    }
+
     buildTypes {
         debug {
-            // Debug only, on purpose: a debug APK is signed with the
-            // auto-generated debug keystore, so CI can publish something that
-            // installs on a real phone without holding a signing secret.
+            // Debug only, on purpose: a debug-signed APK installs on a real
+            // phone without CI holding any secret.
             minifyEnabled = false
+            signingConfig = signingConfigs.debug
         }
     }
 
@@ -230,3 +248,56 @@ tasks.register('checkDexedApiLevel') {
 }
 
 tasks.matching { it.name == 'assembleDebug' }.configureEach { finalizedBy 'checkDexedApiLevel' }
+
+/**
+ * The one certificate every build must sign with, as apksigner prints it.
+ *
+ * <p>The defect behind #377 was that the keystore's source was silently
+ * variable — four releases, four certificates, one of them from a source never
+ * identified. The signingConfig above names the committed keystore; this
+ * constant is what proves the APK was actually signed by it, from the
+ * committed tree, on every build. If the keystore is ever deliberately
+ * replaced, update this fingerprint in the same commit — and say in it that
+ * every installed build stops updating.
+ */
+ext.debugCertSha256 = '66d1dabcdbd822893edf76308ea24c06a0b324212b627f54beec520b328ffe71'
+
+tasks.register('checkApkSignature') {
+    description = 'Fails if the debug APK is not signed by the committed debug keystore.'
+    def apkDir = layout.buildDirectory.dir('outputs/apk/debug')
+    def apksigner = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}/apksigner"
+    def expected = debugCertSha256
+
+    doLast {
+        def apk = apkDir.get().asFile.listFiles({ f -> f.name.endsWith('.apk') } as FileFilter)
+        if (apk == null || apk.length == 0) {
+            throw new GradleException("no debug APK under ${apkDir.get().asFile}")
+        }
+        def tool = file(apksigner)
+        if (!tool.canExecute()) {
+            throw new GradleException("apksigner not found at ${tool};"
+                    + " the check that keeps the APK's signature deterministic cannot run")
+        }
+        def process = new ProcessBuilder(tool.absolutePath, 'verify', '--print-certs',
+                apk[0].absolutePath).redirectErrorStream(true).start()
+        def out = process.inputStream.getText('UTF-8')
+        if (process.waitFor() != 0) {
+            throw new GradleException("apksigner failed on ${apk[0].name}:\n${out}")
+        }
+        def match = out =~ /certificate SHA-256 digest: ([0-9a-f]{64})/
+        if (!match.find()) {
+            throw new GradleException("no SHA-256 digest in apksigner's output, so this is"
+                    + " not the report this check reads:\n${out}")
+        }
+        def actual = match.group(1)
+        if (actual != expected) {
+            throw new GradleException("the debug APK is signed with ${actual}, not the"
+                    + " committed debug.keystore's ${expected}. Whatever signed it, phones"
+                    + " with an existing install will refuse this build as an update —"
+                    + " which is the defect (#377) this check exists to catch.")
+        }
+        logger.lifecycle("apk signature check: signed by the committed debug keystore")
+    }
+}
+
+tasks.matching { it.name == 'assembleDebug' }.configureEach { finalizedBy 'checkApkSignature' }
