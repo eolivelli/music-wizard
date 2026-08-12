@@ -18,6 +18,9 @@ package dev.olivelli.musicwizard.android.mw;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -27,12 +30,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The recordings directory: what is in it, and the four things done to it.
+ * The recordings directory: what is in it, and what is done to it.
  *
  * <p>App-private storage, so no storage permission is involved and uninstalling
- * the app takes the takes with it. Each recording is a WAV and, once analysed,
- * a {@code .score.json} beside it with the same stem — the cache that makes
- * re-opening instant and that "re-analyze" overwrites.
+ * the app takes the takes with it. Each recording is a WAV and, beside it with
+ * the same stem, up to two side files: a {@code .score.json} once analysed —
+ * the cache that makes re-opening instant and that "re-analyze" overwrites —
+ * and a {@code .notes.txt} once the player has said what was played.
  *
  * <p>Everything here is plain {@code java.io}, so it is tested on the JVM
  * against a temporary directory rather than on a device.
@@ -85,6 +89,18 @@ public final class RecordingStore {
 
         public File scoreFile() {
             return MwAnalysis.scoreFileFor(wav);
+        }
+
+        /**
+         * Where the player's own account of the take lives: beside the WAV,
+         * same stem. "What was played", typed on the result screen and carried
+         * in the bundle — the one file beside a take that cannot be recomputed.
+         */
+        public File notesFile() {
+            String name = wav.getName();
+            int dot = name.lastIndexOf('.');
+            String stem = dot > 0 ? name.substring(0, dot) : name;
+            return new File(wav.getParentFile(), stem + ".notes.txt");
         }
 
         /** The name shown in the library: the file name without {@code .wav}. */
@@ -175,12 +191,25 @@ public final class RecordingStore {
         if (target.exists()) {
             throw new IOException("there is already a recording called " + stem);
         }
-
+        Recording renamed = new Recording(target);
         File oldScore = recording.scoreFile();
+        File oldNotes = recording.notesFile();
+        // The target stem can carry side files orphaned by an interrupted move;
+        // cleared, so the take moving in cannot inherit another take's analysis
+        // or words as its own. Only where the moving take supplies no
+        // replacement: the move overwrites the rest — and when the old and new
+        // stems alias, an unconditional clear would delete the take's own files.
+        if (!oldScore.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.scoreFile().delete();
+        }
+        if (!oldNotes.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.notesFile().delete();
+        }
         if (!recording.wav().renameTo(target)) {
             throw new IOException("could not rename " + recording.displayName());
         }
-        Recording renamed = new Recording(target);
         if (oldScore.isFile() && !oldScore.renameTo(renamed.scoreFile())) {
             // The audio moved and its analysis did not. Drop the stale cache
             // rather than leave it under the old stem, where it would be
@@ -188,15 +217,63 @@ public final class RecordingStore {
             //noinspection ResultOfMethodCallIgnored
             oldScore.delete();
         }
+        if (oldNotes.isFile() && !oldNotes.renameTo(renamed.notesFile())) {
+            // Not the cache's rule — see notesFile(): a failed move copies
+            // instead, and if even that fails the original stays under the old
+            // stem. A stray, not an heirloom: the clearing above keeps a later
+            // rename onto that stem from serving it as another take's account.
+            try {
+                Files.copy(oldNotes.toPath(), renamed.notesFile().toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+                //noinspection ResultOfMethodCallIgnored
+                oldNotes.delete();
+            } catch (IOException e) {
+                // Left behind, knowingly.
+            }
+        }
         return renamed;
     }
 
-    /** Deletes a take and its cached analysis. */
+    /** Deletes a take, its cached analysis, and its note. */
     public void delete(Recording recording) {
         //noinspection ResultOfMethodCallIgnored
         recording.scoreFile().delete();
         //noinspection ResultOfMethodCallIgnored
+        recording.notesFile().delete();
+        //noinspection ResultOfMethodCallIgnored
         recording.wav().delete();
+    }
+
+    /**
+     * The player's note for a take, or an empty string when there is none.
+     *
+     * <p>Unreadable counts as none: the audio is still there, and an error
+     * screen over a side file would cost more than the words it reports on.
+     */
+    public static String readNotes(Recording recording) {
+        File file = recording.notesFile();
+        if (!file.isFile()) {
+            return "";
+        }
+        try {
+            return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    /**
+     * Writes the note, replacing what was there; a blank note deletes the file,
+     * so an emptied field does not leave a ghost entry in the bundle.
+     */
+    public static void writeNotes(Recording recording, String text) throws IOException {
+        File file = recording.notesFile();
+        if (text == null || text.trim().isEmpty()) {
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+            return;
+        }
+        Files.write(file.toPath(), text.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

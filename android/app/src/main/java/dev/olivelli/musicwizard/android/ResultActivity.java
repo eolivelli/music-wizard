@@ -19,10 +19,14 @@ package dev.olivelli.musicwizard.android;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
+import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
+import java.io.IOException;
 
 /**
  * The result screen: tempo, meter, and the chart as text.
@@ -43,11 +47,15 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     private File wav;
     private TextView status;
     private TextView chart;
+    private EditText notes;
     private Button analyzeButton;
     private Button shareButton;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
+
+    /** What the notes file held when last read or written, so an untouched field is a no-op. */
+    private String loadedNotes = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,16 +72,24 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
 
         status = findViewById(R.id.status);
         chart = findViewById(R.id.chart);
+        notes = findViewById(R.id.notes);
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
 
+        loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
+        notes.setText(loadedNotes);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
-        findViewById(R.id.bundleButton).setOnClickListener(
-                view -> BundleShare.share(this, wav));
+        findViewById(R.id.bundleButton).setOnClickListener(view -> {
+            // A failed flush aborts: bundling the previous note as though it
+            // were this one is the one wrong outcome.
+            if (saveNotes()) {
+                BundleShare.share(this, wav);
+            }
+        });
     }
 
     @Override
@@ -119,6 +135,34 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     protected void onPause() {
         super.onPause();
         AnalysisJobs.get().stopObserving(this);
+        if (wav != null) {
+            saveNotes();
+        }
+    }
+
+    /**
+     * Writes the note when it changed; false only when a write was attempted
+     * and failed.
+     *
+     * <p>Leaving the screen is what commits the words — there is no save
+     * button. Only on a change, so that an untouched field is a no-op: a note
+     * file that could not be read arrives here as a blank field, and writing
+     * that back would delete the very file the blank stood for.
+     */
+    private boolean saveNotes() {
+        String typed = notes.getText().toString();
+        if (typed.equals(loadedNotes)) {
+            return true;
+        }
+        try {
+            RecordingStore.writeNotes(new RecordingStore.Recording(wav), typed);
+            loadedNotes = typed;
+            return true;
+        } catch (IOException e) {
+            Toast.makeText(this, getString(R.string.notes_unsaved, e.getMessage()),
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
     }
 
     private void analyze() {

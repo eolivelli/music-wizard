@@ -28,4 +28,7 @@
     <string name="ok">OK</string>
     <string name="not_analyzed">Not analyzed yet.</string>
     <string name="analyzing">Analyzing…</string>
+    <string name="notes_hint">What was played? Saved with the take and shared in
+        the bundle.</string>
+    <string name="notes_unsaved">The note could not be saved: %1$s</string>
 </resources>
