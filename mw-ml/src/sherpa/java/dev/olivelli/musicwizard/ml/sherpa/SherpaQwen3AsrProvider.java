@@ -34,6 +34,7 @@ import dev.olivelli.musicwizard.ml.ModelRef;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -50,15 +51,44 @@ import java.util.List;
  * the submodule builds and runs everything else, and {@code doctor} reports
  * this provider as the absent capability it then is.
  *
- * <p>The model arrives as the official sherpa-onnx release archive, fetched
- * and checksummed by {@link ModelCache} like any other model, then unpacked
- * beside its note. It is the 0.6B checkpoint: the 1.7B named by #314 has no
- * official export yet, and an unprovenanced mirror is not a model this project
- * runs. When one appears the table grows a row.
+ * <p>The model arrives as the official sherpa-onnx release archive — the 0.6B
+ * checkpoint — fetched and checksummed by {@link ModelCache} like any other
+ * model, then unpacked beside its note. A different model, such as a locally
+ * produced 1.7B export (#396), runs via {@code ml.asrModelDirectory} instead.
  */
 public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     static final int MODEL_RATE = 16_000;
+
+    /**
+     * What sherpa's own config validation requires of a model directory, as
+     * alternatives separated by {@code |}. One list, because a half-copied
+     * export must refuse up front with the file names, and {@code doctor}
+     * reports the same set through {@link #missingModelFiles}: two
+     * hand-maintained copies is how the two would drift.
+     */
+    static final List<String> REQUIRED_FILES = List.of(
+            "conv_frontend.onnx",
+            "encoder.int8.onnx|encoder.onnx",
+            "decoder.int8.onnx|decoder.onnx",
+            "tokenizer/vocab.json",
+            "tokenizer/merges.txt",
+            "tokenizer/tokenizer_config.json");
+
+    /** The entries of {@link #REQUIRED_FILES} absent from this directory. */
+    public static List<String> missingModelFiles(Path directory) {
+        List<String> missing = new ArrayList<>();
+        for (String wanted : REQUIRED_FILES) {
+            boolean found = false;
+            for (String option : wanted.split("\\|")) {
+                found |= Files.isRegularFile(directory.resolve(option));
+            }
+            if (!found) {
+                missing.add(wanted.replace('|', ' ').replace(" ", " or "));
+            }
+        }
+        return List.copyOf(missing);
+    }
 
     /**
      * SPI subtag to the model's forcing vocabulary. {@link #languages()} is
@@ -76,6 +106,7 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private final ModelCache cache;
     private final ModelRef archive;
     private final String nativePath;
+    private final String configuredModelDirectory;
 
     private OfflineRecognizer recognizer;
 
@@ -90,13 +121,16 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                                 config.ml() == null ? null : config.ml().modelCacheDirectory()),
                         config.isOffline()),
                 Qwen3Models.ARCHIVE,
-                config.ml() == null ? null : config.ml().sherpaNativePath());
+                config.ml() == null ? null : config.ml().sherpaNativePath(),
+                config.ml() == null ? null : config.ml().asrModelDirectory());
     }
 
-    SherpaQwen3AsrProvider(ModelCache cache, ModelRef archive, String nativePath) {
+    SherpaQwen3AsrProvider(ModelCache cache, ModelRef archive, String nativePath,
+                           String configuredModelDirectory) {
         this.cache = cache;
         this.archive = archive;
         this.nativePath = nativePath;
+        this.configuredModelDirectory = configuredModelDirectory;
     }
 
     private static MusicWizardConfig environmentConfig() {
@@ -111,6 +145,81 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     @Override
     public List<String> languages() {
         return List.copyOf(LANGUAGE_NAMES.keySet());
+    }
+
+    /**
+     * The checks mirror loading's own routes, in its order: the native path
+     * property, the config key behind it, the jar resource sherpa extracts,
+     * the JVM library path — a Java class that compiled says nothing about
+     * whether any of them can produce the library — and then the supplied
+     * model directory, file by file. Blank values are unset here as
+     * everywhere the keys are read.
+     */
+    @Override
+    public java.util.Optional<String> readinessProblem() {
+        String mapped = System.mapLibraryName("sherpa-onnx-jni");
+        // One read of the property, so the directory checked and the key
+        // named for it cannot come from different instants.
+        String propertyValue = normalized(System.getProperty("sherpa_onnx.native.path"));
+        String libraryDirectory = propertyValue != null ? propertyValue
+                : normalized(nativePath);
+        String source = propertyValue != null
+                ? "sherpa_onnx.native.path" : "ml.sherpaNativePath";
+        if (libraryDirectory != null) {
+            if (!Files.isRegularFile(Path.of(libraryDirectory, mapped))) {
+                return java.util.Optional.of(source + " holds no " + mapped + ": "
+                        + libraryDirectory + " -- run tools/build-sherpa-native.sh");
+            }
+        } else if (!jarCarriesTheNative(mapped)
+                && !libraryPathCarriesTheNative(mapped)) {
+            return java.util.Optional.of("the sherpa-onnx native library ("
+                    + mapped + ") is nowhere loading will look; run"
+                    + " tools/build-sherpa-native.sh and set ml.sherpaNativePath"
+                    + " to its lib directory");
+        }
+        if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
+            List<String> missing = missingModelFiles(Path.of(configuredModelDirectory));
+            if (!missing.isEmpty()) {
+                return java.util.Optional.of("ml.asrModelDirectory holds no Qwen3-ASR"
+                        + " export; missing " + String.join(", ", missing)
+                        + " under " + configuredModelDirectory);
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Whether sherpa's resource route would find what it needs: both the JNI
+     * library and the onnxruntime beside it, under LibraryUtils' own os-arch
+     * naming — loading rejects a jar carrying only one of the two.
+     */
+    private static boolean jarCarriesTheNative(String mapped) {
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        String arch = System.getProperty("os.arch", "").toLowerCase(java.util.Locale.ROOT);
+        String osPart = os.contains("mac") || os.contains("darwin") ? "osx"
+                : os.contains("win") ? "win" : "linux";
+        String archPart = arch.startsWith("aarch64") || arch.startsWith("arm64")
+                ? (osPart.equals("win") ? "arm64" : "aarch64")
+                : arch.startsWith("x86") && !arch.startsWith("x86_64") ? "x86"
+                : arch.startsWith("arm") ? "arm" : "x64";
+        String prefix = "sherpa-onnx/native/" + osPart + "-" + archPart + "/";
+        ClassLoader loader = SherpaQwen3AsrProvider.class.getClassLoader();
+        return loader.getResource(prefix + mapped) != null
+                && loader.getResource(prefix + System.mapLibraryName("onnxruntime")) != null;
+    }
+
+    private static boolean libraryPathCarriesTheNative(String mapped) {
+        String libraryPath = System.getProperty("java.library.path", "");
+        for (String entry : libraryPath.split(java.io.File.pathSeparator)) {
+            if (!entry.isBlank() && Files.isRegularFile(Path.of(entry, mapped))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -139,6 +248,11 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                 stream.acceptWaveform(resampled, MODEL_RATE);
                 held.decode(stream);
                 OfflineRecognizerResult result = held.getResult(stream);
+                if (Qwen3Tokens.looksLikeALoop(result.getTokens())) {
+                    // A capped decode of near-identical tokens is the decoder
+                    // looping, not singing; heard nothing is the honest answer.
+                    return List.of();
+                }
                 return Qwen3Tokens.words(result.getTokens(),
                         (double) resampled.length / MODEL_RATE);
             } finally {
@@ -151,11 +265,31 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
      * The unpacked model directory, fetching and unpacking the archive first
      * when it is absent.
      *
+     * <p>{@code ml.asrModelDirectory} outranks the archive: only the 0.6B
+     * export is published, so running another size means producing the
+     * directory locally (#396) and pointing here — <b>from the global config
+     * layer</b>, the only one a ServiceLoader-built provider reads (#383).
+     * It must already hold everything {@code build()} loads, checked file by
+     * file, because a typo in the path or a half-copied export must not
+     * silently fall back to the smaller published model or surface as a
+     * per-stretch decode failure.
+     *
      * <p>The archive is the unit the checksum covers; the unpacked tree is
      * derived from it locally, marked done only after tar succeeds, so a
      * killed unpack re-runs rather than being trusted.
      */
     private Path modelDirectory() {
+        if (configuredModelDirectory != null && !configuredModelDirectory.isBlank()) {
+            Path configured = Path.of(configuredModelDirectory);
+            List<String> missing = missingModelFiles(configured);
+            if (!missing.isEmpty()) {
+                throw new ModelUnavailableException(
+                        "ml.asrModelDirectory does not hold a Qwen3-ASR export;"
+                        + " missing " + String.join(", ", missing)
+                        + " under " + configured);
+            }
+            return configured;
+        }
         Path tarball = cache.fetch(archive, System.out::println);
         Path directory = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY);
         Path marker = tarball.getParent().resolve(Qwen3Models.UNPACKED_DIRECTORY + ".ok");
@@ -194,10 +328,13 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         if (recognizer == null) {
             // sherpa's LibraryUtils reads this property first; setting it from
             // config gives one discovery story (config key, then the JVM's own
-            // library path) instead of asking the user to pass -D flags.
-            if (nativePath != null
-                    && System.getProperty("sherpa_onnx.native.path") == null) {
-                System.setProperty("sherpa_onnx.native.path", nativePath);
+            // library path) instead of asking the user to pass -D flags. Blank
+            // is unset on both sides, so an empty property does not block a
+            // good config value from being installed.
+            String configured = normalized(nativePath);
+            if (configured != null
+                    && normalized(System.getProperty("sherpa_onnx.native.path")) == null) {
+                System.setProperty("sherpa_onnx.native.path", configured);
             }
             try {
                 recognizer = build(modelDirectory);
@@ -208,6 +345,15 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                         "sherpa-onnx native library not found ("
                         + e.getMessage() + "); run tools/build-sherpa-native.sh"
                         + " and set ml.sherpaNativePath to its lib directory", e);
+            } catch (RuntimeException e) {
+                // A recognizer that cannot be built is a model that cannot be
+                // had -- a corrupt unpack, a half-made export -- and not a
+                // per-stretch decode failure: left unwrapped it was retried
+                // and miscounted once per stretch and summarised as the model
+                // having heard nothing.
+                throw new ModelUnavailableException(
+                        "the ASR model in " + modelDirectory
+                        + " could not be loaded: " + e.getMessage(), e);
             }
         }
         return recognizer;
@@ -216,8 +362,8 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     private static OfflineRecognizer build(Path modelDirectory) {
         OfflineQwen3AsrModelConfig qwen = OfflineQwen3AsrModelConfig.builder()
                 .setConvFrontend(modelDirectory.resolve("conv_frontend.onnx").toString())
-                .setEncoder(modelDirectory.resolve("encoder.int8.onnx").toString())
-                .setDecoder(modelDirectory.resolve("decoder.int8.onnx").toString())
+                .setEncoder(preferInt8(modelDirectory, "encoder"))
+                .setDecoder(preferInt8(modelDirectory, "decoder"))
                 .setTokenizer(modelDirectory.resolve("tokenizer").toString())
                 .setHotwords("")
                 .build();
@@ -231,5 +377,18 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
         return new OfflineRecognizer(OfflineRecognizerConfig.builder()
                 .setOfflineModelConfig(model)
                 .build());
+    }
+
+    /**
+     * The int8 file when the directory holds one, the plain export otherwise.
+     * A supplied directory (#396) may carry either, and an export that
+     * deliberately keeps fp32 must be runnable as it is. The choice is
+     * per-file and implicit: a directory holding both runs the int8 file, so
+     * choosing fp32 means curating a directory without the int8 one.
+     */
+    static String preferInt8(Path directory, String stem) {
+        Path int8 = directory.resolve(stem + ".int8.onnx");
+        return (Files.isRegularFile(int8) ? int8 : directory.resolve(stem + ".onnx"))
+                .toString();
     }
 }

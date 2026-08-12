@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.cli;
 
+import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LrcLyrics;
@@ -518,12 +519,25 @@ final class AnalyzeCommand implements Callable<Integer> {
             return score;
         }
         MusicWizardConfig.MlConfig ml = config.ml();
-        // The provider reads only the global config layer (#383); the
-        // workspace's ml.sherpaNativePath reaches it through sherpa's own
-        // property, which the provider leaves alone when already set.
-        if (ml != null && ml.sherpaNativePath() != null
-                && System.getProperty("sherpa_onnx.native.path") == null) {
-            System.setProperty("sherpa_onnx.native.path", ml.sherpaNativePath());
+        // The provider reads only the global config layer (#383). A model
+        // directory set in the workspace layer therefore never reaches it;
+        // said out loud, because the silent alternative is transcribing with
+        // the published model while the user believes their own is running.
+        String mergedModelDirectory = normalized(ml == null ? null : ml.asrModelDirectory());
+        MusicWizardConfig.MlConfig globalMl =
+                new ConfigLoader().effectiveConfig(null, null).ml();
+        if (!java.util.Objects.equals(mergedModelDirectory,
+                normalized(globalMl == null ? null : globalMl.asrModelDirectory()))) {
+            System.err.println("warning: ml.asrModelDirectory is read from the"
+                    + " global config only (#383); the value in this workspace's"
+                    + " config layer does not reach the provider");
+        }
+        // The workspace's ml.sherpaNativePath reaches the provider through
+        // sherpa's own property, which the provider leaves alone when set.
+        String forwardedNativePath = normalized(ml == null ? null : ml.sherpaNativePath());
+        if (forwardedNativePath != null
+                && normalized(System.getProperty("sherpa_onnx.native.path")) == null) {
+            System.setProperty("sherpa_onnx.native.path", forwardedNativePath);
         }
         String wanted = ml == null ? null : ml.asrProvider();
         var provider = MlProviders.asr(wanted);
@@ -626,6 +640,11 @@ final class AnalyzeCommand implements Callable<Integer> {
                 .separate(new float[][] {mix.samples()}, mix.sampleRate())
                 .vocals()[0];
         return new AudioBuffer(vocals, mix.sampleRate());
+    }
+
+    /** Blank and unset mean the same thing to every reader of the key. */
+    private static String normalized(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private static String counted(int n, String singular) {

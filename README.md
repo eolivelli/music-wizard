@@ -271,17 +271,23 @@ llm:
 ```
 
 Much of this is read, layered, and then read by nothing. What reaches the
-pipeline is `analysis`, apart from `skipSeparation`, plus
-`notation.lilypondPath` and `notation.transposeSemitones` — the last moves the
-chords, the key and the spelling together, exactly as `render --transpose` does.
+pipeline is `analysis`, `ml` — provider and model selection for separation,
+transcription and alignment — plus `notation.lilypondPath` and
+`notation.transposeSemitones`, the last moving the chords, the key and the
+spelling together, exactly as `render --transpose` does. One caveat on `ml`:
+providers configure themselves from the global config file ([#383][i383]), so
+`ml.asrModelDirectory` is read from there only, and `analyze` says so when a
+workspace tries to override it.
 
 The keys that do nothing divide in two. `analyze` and `render` **warn** about
 `analysis.skipSeparation`, `notation.paperSize` ([#180][i180]) and
 `notation.capo` and `notation.accidentalPreference` ([#181][i181]) — from a flag
 or from this file — rather than producing the default output in silence. All of
-`arrangement` and `ml` is equally inert, and nothing warns about those: they have
-no flags, and no command to warn from yet ([#144][i144]). The advisor is the
+`arrangement` is equally inert, and nothing warns about it: it has no flags,
+and no command to warn from yet ([#144][i144]). The advisor is the
 section below.
+
+[i383]: https://github.com/eolivelli/music-wizard/issues/383
 
 [i144]: https://github.com/eolivelli/music-wizard/issues/144
 

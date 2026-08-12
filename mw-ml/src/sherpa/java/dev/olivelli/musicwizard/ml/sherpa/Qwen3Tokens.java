@@ -50,6 +50,24 @@ final class Qwen3Tokens {
     private Qwen3Tokens() {
     }
 
+    /**
+     * Whether a decode is a repetition loop rather than lyrics: at least 64
+     * tokens with at most a tenth of them distinct. The larger locally
+     * exported model produces such decodes on some sung stretches (#396) --
+     * running to its token cap on two or three distinct tokens -- and 128
+     * copies of one syllable engraved under a verse is strictly worse than a
+     * line missing. The threshold is deliberately far from singing: a chorus
+     * repeats words, and even a sustained vocalise varies more of its window
+     * than this.
+     */
+    static boolean looksLikeALoop(String[] tokens) {
+        if (tokens.length < 64) {
+            return false;
+        }
+        long distinct = java.util.Arrays.stream(tokens).distinct().count();
+        return distinct * 10 <= tokens.length;
+    }
+
     /** The tokens as words, spread across {@code windowSeconds} of singing. */
     static List<LyricWord> words(String[] tokens, double windowSeconds) {
         List<String> texts = wordTexts(tokens);

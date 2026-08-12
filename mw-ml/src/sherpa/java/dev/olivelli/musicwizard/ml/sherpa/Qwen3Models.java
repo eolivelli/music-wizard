@@ -27,10 +27,9 @@ import java.net.URI;
  * provider links, with the conversion scripts in the same repository. The
  * weights are Alibaba's Qwen3-ASR, Apache-2.0 on code and weights alike.
  *
- * <p><b>Why not the 1.7B that #314 names:</b> no official export of it exists
- * — the only copies are unprovenanced mirrors, which this project does not
- * run. When sherpa-onnx publishes one, this table grows a row and the larger
- * model becomes selectable; the digest below was read from the file itself.
+ * <p>The digest below was read from the file itself. A model this table does
+ * not list — a locally produced export (#396) — runs via
+ * {@code ml.asrModelDirectory} rather than a row here.
  */
 final class Qwen3Models {
 

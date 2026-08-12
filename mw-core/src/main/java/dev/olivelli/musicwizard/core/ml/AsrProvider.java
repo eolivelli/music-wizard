@@ -48,6 +48,18 @@ public interface AsrProvider {
     List<String> languages();
 
     /**
+     * What will stop the first transcription, said before it happens: a
+     * missing native, a half-copied model directory. Empty when the provider
+     * is ready as far as cheap checks can tell — a clean answer here does not
+     * promise a working model, it promises no failure a file check could
+     * have caught. {@code doctor} prints whatever this names; providers with
+     * no environment to check keep the default.
+     */
+    default java.util.Optional<String> readinessProblem() {
+        return java.util.Optional.empty();
+    }
+
+    /**
      * Transcribes one mono recording.
      *
      * <p>Samples in {@code [-1, 1]} at the given rate, which the caller states

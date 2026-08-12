@@ -92,7 +92,10 @@ public record MusicWizardConfig(
             Integer maxHandSpanSemitones) {
     }
 
-    /** Which providers run the neural stages. */
+    /**
+     * Which providers run the neural stages. Providers configure themselves
+     * from the global config layer (#383).
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record MlConfig(
             /* Provider id for stem separation, e.g. "onnx-spleeter". */
@@ -109,6 +112,14 @@ public record MusicWizardConfig(
              * the JVM's own library path. tools/build-sherpa-native.sh writes
              * the directory this names. */
             String sherpaNativePath,
+            /* Directory holding an ASR model the user produced or chose
+             * themselves, in the provider's own layout; unset means the
+             * provider fetches its published archive. What made it exist:
+             * only the 0.6B Qwen3-ASR export is published, and running the
+             * 1.7B means exporting it locally (#396). analyze warns when a
+             * workspace layer sets this, since only the global layer
+             * reaches the provider. */
+            String asrModelDirectory,
             /* Refuse to download anything, failing instead. */
             Boolean offline) {
     }
@@ -165,7 +176,7 @@ public record MusicWizardConfig(
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
             new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3",
-                    "onnx-wav2vec2", null, null, false),
+                    "onnx-wav2vec2", null, null, null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
@@ -254,6 +265,7 @@ public record MusicWizardConfig(
                 pick(over.alignmentProvider(), base.alignmentProvider()),
                 pick(over.modelCacheDirectory(), base.modelCacheDirectory()),
                 pick(over.sherpaNativePath(), base.sherpaNativePath()),
+                pick(over.asrModelDirectory(), base.asrModelDirectory()),
                 pick(over.offline(), base.offline()));
     }
 
