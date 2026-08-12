@@ -7,32 +7,26 @@ off the phone so it can join `samples/` or `uncommitted/` on the desktop. Epic
 
 Plain Java, `minSdk` 26, app-private storage, no PDF and no LilyPond.
 
-## Sending a take to the repository
+## Getting a take off the phone
 
-Epic #236 listed "no network" as a v1 non-goal. #291 overrode it: the corpus
-loop otherwise depends on someone remembering, later, what was played, and later
-is when that is lost. "Send to repo" — on a library long-press and on the result
-screen — files a take at the moment it is freshest.
+The app holds no network permission and opens no socket. #291 had added a
+GitHub upload (`INTERNET`, a personal access token, a release asset and an
+inbox-issue comment); it was removed in favour of the share sheet, so the app
+holds no credential — share to a cloud drive and whoever needs the take
+fetches it from there. What the upload also carried, the player's own account
+of what was played, has no home in the bundle yet; #398 tracks that.
 
-The override is narrow, and the shape of it is the point:
+Two shares, both through `FileProvider`:
 
-- **`INTERNET`, and one screen that uses it.** `ReportActivity` is the only class
-  that opens a socket, and only when its Send button is pressed. Recording and
-  analysis run with the phone in flight mode, as before.
-- **The audio goes up as a release asset**, FLAC-encoded on the device by
-  `MediaCodec`, on the rolling `field-takes` prerelease. Lossless because these
-  files are ground truth. There is no API for attaching a file to an issue.
-- **The account of it goes up as one comment** on the standing "field takes
-  inbox" issue: the player's own words, the asset's link, the chart the phone
-  made of it, and the versions. `res/values/report.xml` is the only place the
-  repository, the release tag and the inbox issue's number appear.
-- **A fine-grained personal access token**, pasted once into `TokenActivity` and
-  kept in this app's private `SharedPreferences`. No OAuth: that would mean a
-  client secret inside an APK. What that storage is and is not proof against is
-  in `ReportSettings`'s javadoc.
+- **Share WAV** (library long-press): the audio alone.
+- **Share bundle** (library long-press and the result screen): one zip holding
+  the recording, the chart as text, the cached `score.json` where one could be
+  written, and an info file with the take's duration, recorded date,
+  tempo/meter and the app version. `BundleShare` builds it; entries are named
+  by the take, so files pulled out of the zip stay identifiable.
 
-Both GitHub-side pieces have to exist for any of it to work, and both say so in
-their own text; the release is a container and holds no build.
+**Share chart** on the result screen still sends the chart as plain text, no
+file involved — useful when the audio is already on the desktop.
 
 ## Building
 
@@ -79,11 +73,10 @@ exists to prevent, and it is silent.
 ## What the checks are for
 
 `./gradlew test` runs the JVM unit tests: the WAV header, the recordings
-directory, the analysis glue, the background-job lifecycle, and the reporting
-path — the three requests a field report is assembled from, what leaves the
-socket when they are sent, and how a send ends when something fails. There are
-no emulator tests, so the one piece of that path with no unit test is the FLAC
-encoding: `MediaCodec` exists only on a device.
+directory, the analysis glue, the background-job lifecycle, the bundle's zip
+layout, and the screen-level facts nothing else checks — among them that the
+manifest asks for no permission beyond the microphone. There are no emulator
+tests.
 
 `checkDexedApiLevel` runs after `assembleDebug` and fails the build if the dex
 still calls a JDK method Android does not have at `minSdk`. It exists because

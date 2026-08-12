@@ -39,12 +39,12 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * The library: every take on the phone, and the five things to do with one.
+ * The library: every take on the phone, and the four things to do with one.
  *
  * <p>Two of them get a take off the phone and into the corpus, which is what the
- * app is for. "Share" hands the WAV to another app through {@link FileProvider},
- * for a cable or a cloud drive; "Send to repo" ({@link ReportActivity}) files it
- * on GitHub there and then, together with what the player says was played.
+ * app is for, both through {@link FileProvider} and another app — a cable or a
+ * cloud drive. "Share WAV" hands over the audio alone; "Share bundle"
+ * ({@link BundleShare}) zips it together with everything the phone made of it.
  */
 public final class LibraryActivity extends MwActivity {
 
@@ -97,7 +97,7 @@ public final class LibraryActivity extends MwActivity {
     private void showActions(Recording recording) {
         String[] actions = {
                 getString(R.string.share_wav),
-                getString(R.string.report_send),
+                getString(R.string.share_bundle),
                 getString(R.string.rename),
                 getString(R.string.delete),
         };
@@ -109,7 +109,7 @@ public final class LibraryActivity extends MwActivity {
                             shareWav(recording);
                             break;
                         case 1:
-                            report(recording.wav());
+                            BundleShare.share(this, recording.wav());
                             break;
                         case 2:
                             askForName(recording);
@@ -120,12 +120,6 @@ public final class LibraryActivity extends MwActivity {
                     }
                 })
                 .show();
-    }
-
-    private void report(File wav) {
-        Intent intent = new Intent(this, ReportActivity.class);
-        intent.putExtra(ReportActivity.EXTRA_WAV, wav.getAbsolutePath());
-        startActivity(intent);
     }
 
     private void shareWav(Recording recording) {
@@ -166,11 +160,6 @@ public final class LibraryActivity extends MwActivity {
                         // the copy held in memory has to move with it too, and
                         // that is often the only copy there is.
                         AnalysisJobs.get().moved(recording.wav(), renamed.wav());
-                        // And an unsent comment about this take, which is keyed
-                        // by the take's name and would otherwise be left behind
-                        // for whichever take is called that next.
-                        ReportActivity.sends(this).moved(recording.displayName(),
-                                renamed.displayName());
                     } catch (IOException e) {
                         Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
                     }
@@ -187,10 +176,8 @@ public final class LibraryActivity extends MwActivity {
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
                     store.delete(recording);
                     // The analysis is keyed by path, and this path is now free
-                    // for another take to be renamed onto. The unsent comment
-                    // is keyed by the name, and so is the same hazard.
+                    // for another take to be renamed onto.
                     AnalysisJobs.get().forget(recording.wav());
-                    ReportActivity.sends(this).forget(recording.displayName());
                     reload();
                 })
                 .show();

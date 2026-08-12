@@ -46,14 +46,10 @@ public class MwActivityTest {
 
     private static final String MANIFEST = "src/main/AndroidManifest.xml";
 
-    private static final String REPORT_LAYOUT = "src/main/res/layout/activity_report.xml";
-
     private static final List<String> SCREENS = List.of(
             PACKAGE + ".RecordActivity",
             PACKAGE + ".LibraryActivity",
-            PACKAGE + ".ResultActivity",
-            PACKAGE + ".ReportActivity",
-            PACKAGE + ".TokenActivity");
+            PACKAGE + ".ResultActivity");
 
     @Test
     public void everyDeclaredActivityInheritsSystemBarPadding() throws Exception {
@@ -68,6 +64,28 @@ public class MwActivityTest {
             assertTrue(name + " must extend MwActivity, or it will draw under the system bars",
                     MwActivity.class.isAssignableFrom(screen));
         }
+    }
+
+    /**
+     * The microphone, and nothing else — in particular, not INTERNET.
+     *
+     * <p>The app's one promise about data is that nothing leaves the phone
+     * except through the share sheet, where the user picks who gets it. A
+     * permission quietly re-added here would break that promise with no other
+     * symptom: the app would run exactly as before. (This reads the app's own
+     * manifest; what a library merges in is visible only in the built APK.)
+     */
+    @Test
+    public void theAppAsksForNoPermissionButTheMicrophone() throws Exception {
+        NodeList permissions = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(new File(MANIFEST))
+                .getElementsByTagName("uses-permission");
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < permissions.getLength(); i++) {
+            names.add(((Element) permissions.item(i)).getAttribute("android:name"));
+        }
+        assertEquals(List.of("android.permission.RECORD_AUDIO"), names);
     }
 
     /**
@@ -86,43 +104,6 @@ public class MwActivityTest {
                 bars, MwActivity.insetTypes(Build.VERSION_CODES.Q));
         assertEquals("the bars and the cutout from API 30",
                 bars | cutout, MwActivity.insetTypes(Build.VERSION_CODES.R));
-    }
-
-    /**
-     * The comment field must not have its text saved by the framework.
-     *
-     * <p>Its text already lives in the app's preferences, written by
-     * {@code onPause} and read back by {@code onCreate}. The framework's copy
-     * is the same fact stored twice, and restoring it dispatches a text change
-     * that nobody typed — which the send screen reads as "this comment is no
-     * longer the one that was sent" and uses to un-file a take already on
-     * GitHub, deleting the record that says so. Nothing else in the build
-     * notices: it needs a configuration change the manifest does not list, or
-     * a killed process.
-     */
-    @Test
-    public void theCommentFieldDoesNotLetTheFrameworkSaveItsText() throws Exception {
-        Element field = elementById(REPORT_LAYOUT, "@+id/comment");
-        assertEquals("android:saveEnabled on the comment field in " + REPORT_LAYOUT,
-                "false", field.getAttribute("android:saveEnabled"));
-    }
-
-    /** The one element in {@code layout} whose {@code android:id} is {@code id}. */
-    private static Element elementById(String layout, String id) throws Exception {
-        File file = new File(layout);
-        assertTrue("not found from " + new File(".").getAbsolutePath() + ": " + layout,
-                file.isFile());
-        NodeList all = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder()
-                .parse(file)
-                .getElementsByTagName("*");
-        for (int i = 0; i < all.getLength(); i++) {
-            Element element = (Element) all.item(i);
-            if (id.equals(element.getAttribute("android:id"))) {
-                return element;
-            }
-        }
-        throw new AssertionError("no element with android:id=\"" + id + "\" in " + layout);
     }
 
     /** The fully qualified name of every {@code <activity>} in the manifest. */
