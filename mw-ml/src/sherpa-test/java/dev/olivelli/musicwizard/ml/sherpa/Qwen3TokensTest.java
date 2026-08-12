@@ -70,6 +70,28 @@ class Qwen3TokensTest {
     }
 
     @Test
+    @DisplayName("a capped decode of near-identical tokens is a loop, not lyrics")
+    void loopsAreRecognized() {
+        String[] loop = new String[128];
+        java.util.Arrays.fill(loop, " la");
+        assertThat(Qwen3Tokens.looksLikeALoop(loop)).isTrue();
+
+        // A real chorus repeats words without collapsing to a handful of
+        // distinct tokens across a whole capped window.
+        String[] chorus = new String[80];
+        for (int i = 0; i < chorus.length; i++) {
+            chorus[i] = " tok" + (i % 20);
+        }
+        assertThat(Qwen3Tokens.looksLikeALoop(chorus)).isFalse();
+
+        // Short output is never a loop, however repetitive: a two-word answer
+        // repeated is singing, not a runaway decoder.
+        String[] shortOutput = new String[20];
+        java.util.Arrays.fill(shortOutput, " la");
+        assertThat(Qwen3Tokens.looksLikeALoop(shortOutput)).isFalse();
+    }
+
+    @Test
     @DisplayName("no tokens, or no window, means no words")
     void degenerateInputs() {
         assertThat(Qwen3Tokens.words(new String[0], 3.0)).isEmpty();

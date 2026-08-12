@@ -143,6 +143,11 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
                 stream.acceptWaveform(resampled, MODEL_RATE);
                 held.decode(stream);
                 OfflineRecognizerResult result = held.getResult(stream);
+                if (Qwen3Tokens.looksLikeALoop(result.getTokens())) {
+                    // A capped decode of near-identical tokens is the decoder
+                    // looping, not singing; heard nothing is the honest answer.
+                    return List.of();
+                }
                 return Qwen3Tokens.words(result.getTokens(),
                         (double) resampled.length / MODEL_RATE);
             } finally {
