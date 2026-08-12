@@ -61,15 +61,19 @@ public final class TakeBundle {
      * @param wav       the recording
      * @param scoreJson the cached analysis, skipped when null or absent
      * @param chartText the chart as text, skipped when null
+     * @param notesText the player's own account of the take, skipped when null
      * @param infoText  a few lines about the take, skipped when null
      */
-    public static void write(File zip, String takeName, File wav,
-                             File scoreJson, String chartText, String infoText)
+    public static void write(File zip, String takeName, File wav, File scoreJson,
+                             String chartText, String notesText, String infoText)
             throws IOException {
         File tmp = new File(zip.getParentFile(), zip.getName() + ".tmp");
         try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(tmp))) {
             if (infoText != null) {
                 text(out, takeName + ".info.txt", infoText);
+            }
+            if (notesText != null) {
+                text(out, takeName + ".notes.txt", notesText);
             }
             if (chartText != null) {
                 text(out, takeName + ".chords.txt", chartText);

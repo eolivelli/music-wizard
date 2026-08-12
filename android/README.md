@@ -14,16 +14,19 @@ GitHub upload (`INTERNET`, a personal access token, a release asset and an
 inbox-issue comment); it was removed in favour of the share sheet, so the app
 holds no credential — share to a cloud drive and whoever needs the take
 fetches it from there. What the upload also carried, the player's own account
-of what was played, has no home in the bundle yet; #398 tracks that.
+of what was played, is typed on the result screen and travels in the bundle
+(#398): written beside the take on leaving the screen, so it is captured while
+it is fresh, which was #291's reason all along.
 
 Two shares, both through `FileProvider`:
 
 - **Share WAV** (library long-press): the audio alone.
 - **Share bundle** (library long-press and the result screen): one zip holding
   the recording, the chart as text, the cached `score.json` where one could be
-  written, and an info file with the take's duration, recorded date,
-  tempo/meter and the app version. `BundleShare` builds it; entries are named
-  by the take, so files pulled out of the zip stay identifiable.
+  written, the player's note when one was typed, and an info file with the
+  take's duration, recorded date, tempo/meter and the app version.
+  `BundleShare` builds it; entries are named by the take, so files pulled out
+  of the zip stay identifiable.
 
 **Share chart** on the result screen still sends the chart as plain text, no
 file involved — useful when the audio is already on the desktop.
@@ -46,8 +49,11 @@ never be handed the JDK that built the jars.
 
 The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. It is a debug
 build on purpose: debug-signed APKs install on a real device with no signing
-secret in CI. Pushing an `android-v*` tag builds one and attaches it to the
-GitHub release.
+secret in CI. The signature is deterministic (#377): `app/debug.keystore` is
+committed — a debug keystore is not a secret — and `checkApkSignature` fails
+any build signed by anything else, which is what lets one release install as
+an update over another. Pushing an `android-v*` tag builds one and attaches it
+to the GitHub release.
 
 `local.properties` (pointing at your Android SDK) is generated per machine and
 is not committed. The Gradle wrapper jar *is* committed, against the repository

@@ -39,6 +39,18 @@
             android:text="@string/share_bundle" />
     </LinearLayout>
 
+    <!-- "What was played", in the player's own words. Written beside the take
+         on leaving the screen and carried in the bundle; see BundleShare. -->
+    <EditText
+        android:id="@+id/notes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/notes_hint"
+        android:importantForAutofill="no"
+        android:inputType="textMultiLine|textCapSentences"
+        android:maxLines="4"
+        android:textSize="14sp" />
+
     <!-- The chart is laid out in columns, so it must not wrap: it scrolls both
          ways and is drawn in a monospaced face, the way the CLI prints it. -->
     <ScrollView
