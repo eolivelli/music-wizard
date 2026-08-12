@@ -40,12 +40,11 @@ import picocli.CommandLine.Parameters;
 /**
  * Separates a workspace's recording into a vocal stem and the rest.
  *
- * <p>Its own command rather than a stage inside {@code analyze}, because
- * nothing downstream consumes a stem yet — the aligner (#313) and the
- * transcriber (#314) will — and the stems are meanwhile something a person
- * judges by ear. Writing them where {@code render} writes its PDFs makes that
- * audition a file manager away. When a consumer lands, it decides its own
- * wiring; this command stays the way to listen.
+ * <p>Its own command rather than a stage inside {@code analyze}, because the
+ * stems are something a person judges by ear. Writing them where {@code render}
+ * writes its PDFs makes that audition a file manager away. The lyric
+ * transcriber (#314) consumes the vocal stem too and does its own separation
+ * in memory; this command stays the way to listen.
  *
  * <p>Chords are untouched by any of this: they are estimated from the full
  * mix, never from stems, and that rule outranks every provider.

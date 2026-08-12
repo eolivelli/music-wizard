@@ -234,7 +234,7 @@ class TranscriptionCacheTest {
                 .contains("estimating chords");
         assertThat(skipped.err())
                 .as("the audio path swallowed the option in silence")
-                .contains("skipping separation has no effect yet on any input");
+                .contains("skipping separation changes nothing in this run");
     }
 
     @Test
@@ -275,9 +275,11 @@ class TranscriptionCacheTest {
         assertThat(corrected)
                 .as("a corrected tempo produces a different audio analysis")
                 .isNotEqualTo(plain);
-        // Keyed although nothing reads it yet: separation lands under #8, and a
-        // setting that changes the analysis while the key does not change is how
-        // a corrected run gets served the answer it was correcting.
+        // Keyed although the cached analysis does not read it yet: today it is
+        // read only by lyric transcription, which runs outside the cache, and
+        // separation feeds the analysis itself under #8 -- a setting that
+        // changes the analysis while the key does not change is how a corrected
+        // run gets served the answer it was correcting.
         assertThat(AnalyzeCommand.transcriptionKey(
                 SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true, true)
                 .digest())

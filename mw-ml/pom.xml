@@ -65,4 +65,72 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      The sherpa-onnx ASR provider. A profile, not the default build, because
+      its Java API lives in the third_party/sherpa-onnx submodule: a clone
+      without the submodule (or without its native build) must still compile
+      every other provider. Activates on the submodule's presence; CI builds
+      the native separately (cached on the submodule commit) and runs the
+      sherpa tests only in that job.
+    -->
+    <profile>
+      <id>sherpa</id>
+      <activation>
+        <file>
+          <exists>${maven.multiModuleProjectDirectory}/third_party/sherpa-onnx/sherpa-onnx/java-api/pom.xml</exists>
+        </file>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>add-sherpa-sources</id>
+                <phase>generate-sources</phase>
+                <goals>
+                  <goal>add-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>${maven.multiModuleProjectDirectory}/third_party/sherpa-onnx/sherpa-onnx/java-api/src/main/java</source>
+                    <source>src/sherpa/java</source>
+                  </sources>
+                </configuration>
+              </execution>
+              <execution>
+                <id>add-sherpa-resources</id>
+                <phase>generate-resources</phase>
+                <goals>
+                  <goal>add-resource</goal>
+                </goals>
+                <configuration>
+                  <resources>
+                    <resource>
+                      <directory>src/sherpa/resources</directory>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+              <execution>
+                <id>add-sherpa-test-sources</id>
+                <phase>generate-test-sources</phase>
+                <goals>
+                  <goal>add-test-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/sherpa-test/java</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

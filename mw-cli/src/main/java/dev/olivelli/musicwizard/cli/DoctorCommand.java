@@ -117,9 +117,10 @@ final class DoctorCommand implements Callable<Integer> {
     /**
      * One provider line: the configured id, and whether the classpath has it.
      *
-     * <p>A configured id with no provider behind it is ordinary today -- the
-     * defaults name the providers #312 and #314 will build -- so the line says
-     * which issue supplies it rather than reading as a broken install.
+     * <p>A configured id with no provider behind it is ordinary -- the default
+     * ASR id names a provider that exists only in builds carrying the sherpa
+     * profile (#314) -- so the line says which issue supplies it rather than
+     * reading as a broken install.
      */
     private static void report(String label, String configured, List<String> present,
                                String issue) {

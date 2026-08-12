@@ -116,6 +116,7 @@
     <enforcer.version>3.6.3</enforcer.version>
     <jar.plugin.version>3.5.1</jar.plugin.version>
     <shade.plugin.version>3.6.2</shade.plugin.version>
+    <build.helper.plugin.version>3.6.0</build.helper.plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -279,6 +280,11 @@
   <build>
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>${build.helper.plugin.version}</version>
+        </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>

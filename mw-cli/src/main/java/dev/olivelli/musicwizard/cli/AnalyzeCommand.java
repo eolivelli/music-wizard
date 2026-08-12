@@ -146,8 +146,9 @@ final class AnalyzeCommand implements Callable<Integer> {
     Double firstDownbeat;
 
     @Option(names = "--skip-separation",
-            description = "Analyse the mix directly instead of separating stems. Has no "
-                    + "effect yet: nothing separates stems until #8 lands.")
+            description = "Analyse the mix directly instead of separating stems. Today "
+                    + "this only makes lyric transcription hear the full mix; chords "
+                    + "always come from the mix regardless.")
     boolean skipSeparation;
 
     @Option(names = "--no-llm",
@@ -159,15 +160,18 @@ final class AnalyzeCommand implements Callable<Integer> {
     @Option(names = "--lyrics", paramLabel = "FILE",
             description = "Read lyrics from an LRC file and place them under the "
                     + "chords. Word timings are used when the file carries them "
-                    + "and estimated within each line when it does not. Nothing "
-                    + "transcribes lyrics from audio yet (#9).")
+                    + "and estimated within each line when it does not. Without "
+                    + "this option, --lyrics-language alone transcribes the words "
+                    + "from the recording when an ASR provider is available.")
     Path lyricsFile;
 
     @Option(names = "--lyrics-language", paramLabel = "TAG",
             description = "What language the lyrics are in, e.g. it or en. Used to "
                     + "split words into syllables for the engraved sheet. An LRC "
                     + "file does not say, and a wrong answer splits words on "
-                    + "another language's rules, so without this they stay whole.")
+                    + "another language's rules, so without this they stay whole. "
+                    + "Given without --lyrics, also asks for the words to be "
+                    + "transcribed from the recording itself.")
     String lyricsLanguage;
 
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
@@ -211,6 +215,13 @@ final class AnalyzeCommand implements Callable<Integer> {
             // windows they are computed from, one step per analyze, without
             // bound.
             score = withAlignedLyrics(workspace, score);
+        } else if (lyricsLanguage != null && !lyricsLanguage.isBlank()
+                && kind == SourceKind.AUDIO) {
+            // The language alone is the ask: "this is sung in Italian, hear the
+            // words". Stated rather than detected, because a recognizer told to
+            // guess the language produces fluent wrong words when it guesses
+            // wrong, which nothing downstream can notice.
+            score = withTranscribedLyrics(workspace, score, config);
         }
 
         // The score is persisted before the cache entry, and never after. The
@@ -475,6 +486,130 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + " times: " + e.getMessage());
             return score;
         }
+    }
+
+    /**
+     * The score with lyrics heard from the recording, when an ASR provider is
+     * configured, present, and speaks the asked-for language.
+     *
+     * <p>Fed the vocal stem — that is what separation exists for — and the
+     * stem's sung stretches only, as {@link VocalSegments} finds them; a
+     * recognizer fed an intro or a solo is free to hallucinate words into it.
+     * {@code --skip-separation} makes it hear the full mix instead.
+     *
+     * <p>Lyrics already carried forward win: they were supplied or transcribed
+     * once already, and a run that quietly re-transcribed over a corrected
+     * file would undo the correction. Every failure degrades to the score as
+     * it stands — per segment for one bad window, whole-run with the reason on
+     * stderr when the model cannot be had — because the analysis has already
+     * succeeded. Outside the transcription cache like the other lyric paths:
+     * asking for lyrics must not recompute the DSP.
+     */
+    private Score withTranscribedLyrics(Workspace workspace, Score score,
+                                        MusicWizardConfig config) {
+        if (!score.lyrics().isEmpty()) {
+            System.out.println("  lyrics kept from the previous analysis;"
+                    + " pass --lyrics to replace them");
+            return score;
+        }
+        MusicWizardConfig.MlConfig ml = config.ml();
+        String wanted = ml == null ? null : ml.asrProvider();
+        var provider = MlProviders.asr(wanted);
+        if (provider.isEmpty()) {
+            System.out.println("  lyrics not transcribed: no ASR provider"
+                    + (wanted == null || wanted.isBlank()
+                            ? " is configured (ml.asrProvider)."
+                            : " named '" + wanted + "' is on this classpath.")
+                    + (MlProviders.asrIds().isEmpty()
+                            ? " None are available in this build."
+                            : " Available: " + String.join(", ", MlProviders.asrIds())));
+            return score;
+        }
+        String language = java.util.Locale.forLanguageTag(lyricsLanguage).getLanguage();
+        if (!provider.get().languages().contains(language)) {
+            System.out.println("  lyrics not transcribed: " + provider.get().id()
+                    + " speaks " + provider.get().languages()
+                    + ", asked for '" + lyricsLanguage + "'");
+            return score;
+        }
+        try {
+            AudioBuffer voice = voiceFor(workspace, config);
+            var segments = VocalSegments.split(voice.samples(), voice.sampleRate());
+            if (segments.isEmpty()) {
+                System.out.println("  lyrics not transcribed: no sung stretches found");
+                return score;
+            }
+            List<LyricWord> words = new ArrayList<>();
+            int failed = 0;
+            for (VocalSegments.Segment segment : segments) {
+                float[] window = java.util.Arrays.copyOfRange(
+                        voice.samples(), segment.start(), segment.end());
+                try {
+                    for (LyricWord word : provider.get().transcribe(
+                            window, voice.sampleRate(), language)) {
+                        words.add(offsetBy(word, segment.startSeconds(voice.sampleRate())));
+                    }
+                } catch (ModelUnavailableException e) {
+                    // No later segment will fare better; whole-run degradation.
+                    throw e;
+                } catch (RuntimeException e) {
+                    failed++;
+                }
+            }
+            Lyrics lyrics = TranscribedLines.grouped(words, language);
+            if (lyrics.isEmpty()) {
+                System.out.println("  lyrics not transcribed: " + provider.get().id()
+                        + " heard no words in " + segments.size() + " sung stretches");
+                return score;
+            }
+            System.out.println("  transcribed " + lyrics.lines().size()
+                    + " lyric lines from " + segments.size() + " sung stretches with "
+                    + provider.get().id()
+                    + (failed > 0 ? "; " + failed + " stretches failed" : ""));
+            return score.withLyrics(lyrics);
+        } catch (ModelUnavailableException e) {
+            System.err.println("warning: lyrics not transcribed: " + e.getMessage());
+            return score;
+        } catch (RuntimeException e) {
+            // A transcriber defect must not take down an analysis that already
+            // succeeded; without it the score is simply what it always was.
+            System.err.println("warning: lyric transcription failed: " + e.getMessage());
+            return score;
+        }
+    }
+
+    /**
+     * What the transcriber listens to: the vocal stem, or the mix when
+     * separation was skipped or has no provider — said out loud, because mix
+     * transcription hears the guitars too and the words are measurably worse.
+     */
+    private static AudioBuffer voiceFor(Workspace workspace, MusicWizardConfig config) {
+        var separation = skipSeparationRequested(config)
+                ? java.util.Optional.<dev.olivelli.musicwizard.core.ml.SeparationProvider>empty()
+                : MlProviders.separation(
+                        config.ml() == null ? null : config.ml().separationProvider());
+        if (separation.isEmpty()) {
+            AudioBuffer mix = AudioDecoder.decode(workspace.sourceFile());
+            System.out.println("  transcribing from the full mix"
+                    + (skipSeparationRequested(config)
+                            ? " (--skip-separation)" : ": no separation provider"));
+            return mix;
+        }
+        int preferred = separation.get().preferredSampleRate();
+        AudioBuffer mix = preferred > 0
+                ? AudioDecoder.decode(workspace.sourceFile(), preferred)
+                : AudioDecoder.decode(workspace.sourceFile());
+        float[] vocals = separation.get()
+                .separate(new float[][] {mix.samples()}, mix.sampleRate())
+                .vocals()[0];
+        return new AudioBuffer(vocals, mix.sampleRate());
+    }
+
+    /** The word, moved from segment-relative to recording time. */
+    private static LyricWord offsetBy(LyricWord word, double seconds) {
+        return LyricWord.ofSeconds(word.text(),
+                word.startSeconds() + seconds, word.endSeconds() + seconds,
+                word.confidence());
     }
 
     /** Whether this line shares its parsed start with either neighbour. */
@@ -1071,11 +1206,12 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " and meter");
             }
         }
-        if (skipSeparationRequested(config)) {
-            System.err.println("warning: skipping separation has no effect yet on any input,"
-                    + " whether asked for on the command line or in the config;"
-                    + " nothing separates stems until #8 lands, so the mix is what every"
-                    + " stage already analyses");
+        if (skipSeparationRequested(config)
+                && (kind == SourceKind.MIDI || lyricsFile != null || lyricsLanguage == null)) {
+            System.err.println("warning: skipping separation changes nothing in this run;"
+                    + " its only effect today is making lyric transcription"
+                    + " (--lyrics-language without --lyrics, audio only) hear the full"
+                    + " mix, and separation feeds the rest of the analysis under #8");
         }
     }
 
