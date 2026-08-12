@@ -158,8 +158,12 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
     @Override
     public java.util.Optional<String> readinessProblem() {
         String mapped = System.mapLibraryName("sherpa-onnx-jni");
-        String libraryDirectory = nativeDirectory();
-        String source = normalized(System.getProperty("sherpa_onnx.native.path")) != null
+        // One read of the property, so the directory checked and the key
+        // named for it cannot come from different instants.
+        String propertyValue = normalized(System.getProperty("sherpa_onnx.native.path"));
+        String libraryDirectory = propertyValue != null ? propertyValue
+                : normalized(nativePath);
+        String source = propertyValue != null
                 ? "sherpa_onnx.native.path" : "ml.sherpaNativePath";
         if (libraryDirectory != null) {
             if (!Files.isRegularFile(Path.of(libraryDirectory, mapped))) {
@@ -186,17 +190,6 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     private static String normalized(String value) {
         return value == null || value.isBlank() ? null : value;
-    }
-
-    /**
-     * The directory loading will consult: the property, then the config key,
-     * blank meaning unset in both. One accessor, because readiness answering
-     * from one reading of the pair while loading acts on another is how the
-     * two once said "ready" and "not found" about the same environment.
-     */
-    private String nativeDirectory() {
-        String property = normalized(System.getProperty("sherpa_onnx.native.path"));
-        return property != null ? property : normalized(nativePath);
     }
 
     /**

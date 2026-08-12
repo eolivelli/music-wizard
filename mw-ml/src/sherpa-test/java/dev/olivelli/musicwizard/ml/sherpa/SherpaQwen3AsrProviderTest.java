@@ -54,6 +54,10 @@ class SherpaQwen3AsrProviderTest {
     void restoreNativePathProperty() {
         if (savedNativePathProperty != null) {
             System.setProperty("sherpa_onnx.native.path", savedNativePathProperty);
+        } else {
+            // Symmetric, or a test that sets the property leaks it into every
+            // later class in the shared fork.
+            System.clearProperty("sherpa_onnx.native.path");
         }
     }
 
@@ -180,11 +184,26 @@ class SherpaQwen3AsrProviderTest {
     @Test
     @DisplayName("a blank property does not block a good config value from loading")
     void blankPropertyDoesNotOutrankTheConfigKey() throws java.io.IOException {
-        // Readiness and loading must read the pair the same way: a blank
-        // property with a good config key is ready, and stays ready when
-        // loading installs the config value over the blank.
+        // The branch under test is loading's property install, not readiness:
+        // transcribe reaches it through a model directory holding every
+        // required file, and the assertion is on the property afterwards --
+        // the load attempt itself may fail however the machine pleases (the
+        // library here is an empty file), but the good config value must have
+        // replaced the blank the environment carried.
+        Path model = directory.resolve("model");
+        java.nio.file.Files.createDirectories(model.resolve("tokenizer"));
+        for (String required : new String[] {"conv_frontend.onnx", "encoder.onnx",
+                "decoder.onnx", "tokenizer/vocab.json", "tokenizer/merges.txt",
+                "tokenizer/tokenizer_config.json"}) {
+            java.nio.file.Files.createFile(model.resolve(required));
+        }
+        String good = goodNativeDirectory().toString();
         System.setProperty("sherpa_onnx.native.path", "");
-        assertThat(provider(goodNativeDirectory().toString(), null)
-                .readinessProblem()).isEmpty();
+
+        assertThat(provider(good, model.toString()).readinessProblem()).isEmpty();
+        assertThatThrownBy(() -> provider(good, model.toString())
+                .transcribe(new float[16_000], 16_000, "en"))
+                .isInstanceOf(ModelUnavailableException.class);
+        assertThat(System.getProperty("sherpa_onnx.native.path")).isEqualTo(good);
     }
 }
