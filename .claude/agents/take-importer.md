@@ -33,8 +33,10 @@ token.
 Use the Google Drive tools available in the session (`search_files`;
 `list_recent_files` as a cross-check for very fresh uploads — a just-shared
 bundle is usually the point). If the user named a folder or file, narrow to
-it. If no Drive tools are connected, say so and stop — do not improvise
-credentials. If a CLI the user has configured is available (`rclone lsf`/
+it. If no Drive tools are connected — or they are present but every call
+fails for an authorization reason, which the first live run met as
+"insufficient authentication scopes" — quote the exact error, say the
+connection needs re-authorizing, and stop; do not improvise credentials. If a CLI the user has configured is available (`rclone lsf`/
 `rclone copy` with an existing remote), it is an acceptable alternative for
 both listing and download; never configure a new remote or initiate an OAuth
 flow yourself.
@@ -42,7 +44,9 @@ flow yourself.
 **A take's name is data, not something to trust in a shell.** It may carry
 spaces, quotes, `$(…)` — anything the phone's rename allows, and in a sweep it
 came from Drive, not from you. Every interpolation of it into a command is
-double-quoted, no exceptions.
+double-quoted, no exceptions — and it is never retyped as a shell literal,
+which an apostrophe in the name breaks: derive it from the file on disk, as
+the command block below does.
 
 ## Staging
 
@@ -55,13 +59,16 @@ incoming/<take>/…                   its entries, unpacked beside it
 incoming/<take>/<take>.mwz/         the MW workspace your run creates
 ```
 
-**A take is imported when its rendered chart exists** —
-`incoming/<take>/<take>.mwz/out/chords.txt`. That file, not the directory, is
-the skip marker: a directory without it is a failed or interrupted import, so
-delete the whole take directory and import again. When the Drive copy is newer
-than the completed local one (`get_file_metadata`; its checksum also settles
-"same file or not"), delete the local take directory, import fresh, and say
-so. Never overwrite silently.
+**A take is imported when its marker exists** — `incoming/<take>/imported.txt`,
+which you write (a Bash redirect) after the take's report is complete, holding
+Drive's checksum of the bundle from `get_file_metadata`. Not the rendered
+chart: a clean run on a take with no detectable harmony renders nothing, and
+that outcome is a report, not a failure. A directory without the marker is
+unfinished — if its zip already verified, keep it, delete only the workspace
+(`<take>.mwz/`, which `init` refuses to overwrite) and rerun the pipeline;
+delete the whole directory only when the download itself failed. When Drive's
+checksum differs from the marker's, the Drive copy is new: delete the local
+take directory, import fresh, and say so. Never overwrite silently.
 
 Import newest first. When a sweep finds more than ten new bundles — a first
 run against a long-lived folder — stop after ten and list the rest as
@@ -80,14 +87,19 @@ later run retries rather than skipping.
 
 ## Running MW
 
-For each new take, from the repository root — quoted, as above:
+For each new take, from the repository root — the stem derived from the
+fetched file, never typed:
 
 ```sh
-take='wednesday blues'                          # the bundle's stem, verbatim
+take=$(basename "$zip" .mwz.zip)                # $zip is the bundle you fetched
 ./mw init "incoming/$take/$take.wav"            # no --title/--artist, deliberately
 ./mw analyze "incoming/$take/$take.mwz"
 ./mw render "incoming/$take/$take.mwz"
 ```
+
+`render` exits nonzero when it has nothing to write; on a take where the
+estimator found no chords that is the finding your report carries, not an
+import failure.
 
 `init` gets no `--title`/`--artist` so the desktop `chords.txt` and the
 bundle's `<take>.chords.txt` compare line for line (`docs/phone-to-corpus.md`
