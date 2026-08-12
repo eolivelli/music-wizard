@@ -80,8 +80,8 @@ final class TranscribedLines {
      * routes place apart by an ulp, and the sheet's chord cursor depends on
      * lines that never overlap. {@link AnalyzeCommand#shiftedAfter} is the
      * enforcement the aligned path already wears at its own assembly point;
-     * a first draft here clamped only the first word instead, which the
-     * line's own start-order sorting turned into reordered words.
+     * anything narrower falls to the line's own start-order word sorting,
+     * which turns a partially-clamped line into reordered words.
      */
     private static void addMonotone(List<LyricLine> lines, List<LyricWord> words) {
         double previousEnd = lines.isEmpty() ? 0

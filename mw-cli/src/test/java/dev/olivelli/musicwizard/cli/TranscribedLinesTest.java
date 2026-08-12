@@ -79,8 +79,9 @@ class TranscribedLinesTest {
     void tiledStretchesStayMonotone() {
         // The two float routes to a shared cut differ in the last bit; the
         // sheet's chord cursor walks line ends and depends on monotone lines.
-        // More than one word in the trailing line, because round 1 showed a
-        // first-word-only clamp being re-sorted behind its own siblings.
+        // More than one word in the trailing line: a first-word-only clamp
+        // passes the single-word case and is re-sorted behind its siblings
+        // here.
         Lyrics lyrics = TranscribedLines.grouped(List.of(
                 List.of(word("la", 0.0, 10.0, 0.8)),
                 List.of(word("sol", 1.0, 2.0, 0.8), word("mi", 2.0, 3.0, 0.8))),

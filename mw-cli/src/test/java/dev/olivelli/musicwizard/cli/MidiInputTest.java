@@ -599,6 +599,23 @@ class MidiInputTest {
         }
 
         @Test
+        @DisplayName("a transcription request is answered, because render advises it blind")
+        void transcriptionRequestIsAnswered() {
+            // render's no-lyrics message offers --lyrics-language without
+            // naming a source kind, since it cannot know one. A MIDI user who
+            // follows that advice must hear why nothing happened.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+
+            CliRunner.Result analyze = CliRunner.run(
+                    "analyze", workspace.toString(), "--lyrics-language", "en");
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.err())
+                    .contains("--lyrics-language alone asks for transcription")
+                    .contains("MIDI");
+        }
+
+        @Test
         @DisplayName("--skip-separation is answered for what it is: doing nothing in this run")
         void skipSeparationIsNotAMidiSpecificExclusion() {
             // Round 3 found it described as an audio option, ignored in silence

@@ -180,9 +180,6 @@ final class RenderCommand implements Callable<Integer> {
             // one, lyric meta events on the other -- and this command cannot
             // tell which score it is holding.
             if (this == LYRICS && score.lyrics().isEmpty()) {
-                // Neither source kind may be named here -- the test above this
-                // branch pins why -- so the transcription path is offered in
-                // words analyze itself will qualify.
                 return "this score holds no lyrics; analyze with --lyrics and an"
                         + " LRC file, or with --lyrics-language alone to ask for"
                         + " transcription";

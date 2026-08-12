@@ -372,8 +372,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                             + " cannot be placed; expected an LRC file.");
             return score;
         }
-        System.out.println("  read " + lyrics.lines().size() + " lyric lines from "
-                + lyricsFile.getFileName());
+        System.out.println("  read " + counted(lyrics.lines().size(), "lyric line")
+                + " from " + lyricsFile.getFileName());
         return score.withLyrics(lyrics);
     }
 
@@ -471,8 +471,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .map(LyricLine::confidence)
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(lyrics.confidence());
-            System.out.println("  aligned " + (aligned.size() - kept)
-                    + " lyric lines with " + provider.get().id()
+            System.out.println("  aligned " + counted(aligned.size() - kept,
+                    "lyric line") + " with " + provider.get().id()
                     + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
             return score.withLyrics(new Lyrics(aligned, lyrics.language(), overall));
         } catch (ModelUnavailableException e) {
@@ -573,7 +573,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             Lyrics lyrics = TranscribedLines.grouped(stretches, language);
             if (lyrics.isEmpty()) {
                 System.out.println("  lyrics not transcribed: " + provider.get().id()
-                        + " heard no words in " + segments.size() + " sung stretches");
+                        + " heard no words in " + counted(segments.size(),
+                                "sung stretch", "sung stretches"));
                 return score;
             }
             System.out.println("  transcribed " + counted(lyrics.lines().size(),
@@ -660,8 +661,12 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         List<LyricWord> shifted = new ArrayList<>(line.words().size());
         for (LyricWord word : line.words()) {
+            // The max: s + (p - s) rounds below p when the shift exceeds the
+            // start, so the guard must not trust the addition to land exactly
+            // where it aimed -- this is the total-enforcement point.
+            double from = Math.max(previousEnd, word.startSeconds() + shift);
             shifted.add(new LyricWord(word.text(),
-                    word.startSeconds() + shift, word.endSeconds() + shift,
+                    from, Math.max(from, word.endSeconds() + shift),
                     java.util.Optional.empty(), java.util.Optional.empty(),
                     word.hyphenatedToNext(), word.melisma(), word.confidence()));
         }
@@ -1207,6 +1212,15 @@ final class AnalyzeCommand implements Callable<Integer> {
      * different claims and only the first is safe to leave unsaid.
      */
     private void warnAboutOptionsThatDoNothing(SourceKind kind, MusicWizardConfig config) {
+        if (transcriptionRequested() && kind != SourceKind.AUDIO) {
+            // render's no-lyrics message offers this option without naming a
+            // source kind, because render cannot know one; this command can,
+            // and following that advice on a MIDI workspace must not be
+            // answered with silence.
+            System.err.println("warning: --lyrics-language alone asks for"
+                    + " transcription, which needs a recording; this workspace"
+                    + " holds a MIDI file, so no lyrics are produced");
+        }
         if (kind == SourceKind.MIDI) {
             List<String> ignored = new ArrayList<>();
             if (tempo != null) {
@@ -1236,9 +1250,9 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     /**
      * Whether this run asks for lyrics to be heard from the recording: a
-     * language stated, no file supplied. One predicate, because round 1 found
-     * the gate and its do-nothing warning disagreeing on a blank tag, which
-     * neither transcribed nor warned.
+     * language stated, no file supplied. One predicate, shared with the
+     * do-nothing warning — two spellings of it disagreed on a blank tag,
+     * which neither transcribed nor warned.
      */
     private boolean transcriptionRequested() {
         return lyricsFile == null

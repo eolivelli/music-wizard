@@ -60,9 +60,18 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     static final int MODEL_RATE = 16_000;
 
-    /** SPI subtag to the model's forcing vocabulary; keys are languages(). */
-    private static final java.util.Map<String, String> LANGUAGE_NAMES =
-            java.util.Map.of("it", "Italian", "en", "English");
+    /**
+     * SPI subtag to the model's forcing vocabulary. {@link #languages()} is
+     * derived from these keys, so a language cannot be declared spoken
+     * without naming what to tell the model — a divergence would reach
+     * {@code setOption} as null, which the JNI dereferences unchecked.
+     */
+    private static final java.util.SequencedMap<String, String> LANGUAGE_NAMES =
+            new java.util.LinkedHashMap<>();
+    static {
+        LANGUAGE_NAMES.put("it", "Italian");
+        LANGUAGE_NAMES.put("en", "English");
+    }
 
     private final ModelCache cache;
     private final ModelRef archive;
@@ -101,7 +110,7 @@ public final class SherpaQwen3AsrProvider implements AsrProvider {
 
     @Override
     public List<String> languages() {
-        return List.of("it", "en");
+        return List.copyOf(LANGUAGE_NAMES.keySet());
     }
 
     @Override

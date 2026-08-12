@@ -91,15 +91,19 @@ final class DoctorCommand implements Callable<Integer> {
         // whole job is saying so before that. Only when the provider is
         // present -- a build without it has nothing for the key to point at.
         if (MlProviders.asrIds().contains("sherpa-qwen3")) {
+            // Named by where it was actually read from, so a bad value sends
+            // the user to the setting they wrote, not one they never touched.
+            String source = "ml.sherpaNativePath";
             String nativePath = ml == null ? null : ml.sherpaNativePath();
             if (nativePath == null) {
-                nativePath = System.getProperty("sherpa_onnx.native.path");
+                source = "sherpa_onnx.native.path";
+                nativePath = System.getProperty(source);
             }
             if (nativePath == null) {
                 System.out.println("            ml.sherpaNativePath not set; the JVM"
                         + " library path will be tried at first use");
             } else if (!Files.isDirectory(Path.of(nativePath))) {
-                System.out.println("            ml.sherpaNativePath is not a directory: "
+                System.out.println("            " + source + " is not a directory: "
                         + nativePath + " -- run tools/build-sherpa-native.sh");
                 allWell = false;
             }
