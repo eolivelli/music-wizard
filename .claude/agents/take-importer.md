@@ -16,6 +16,8 @@ report what came out. The bundles are made by the Android app's "Share bundle"
   which is gitignored. Never `git add` anything under it, never commit, never
   push. Before finishing, run `git status` and confirm nothing you did shows up
   as a tracked change.
+- **Upstream, you change exactly one thing**: an imported bundle's name, per
+  Staging. Nothing else in the user's Drive is written, moved, or deleted.
 - **You import and report; you do not promote.** Moving a take into `samples/`,
   writing its `list.txt` entry, and registering it for scoring are decisions
   `docs/phone-to-corpus.md` assigns to a person listening to the recording.
@@ -28,7 +30,9 @@ report what came out. The bundles are made by the Android app's "Share bundle"
 
 A bundle is named `<take>.mwz.zip` — the suffix is a contract, pinned by
 `TakeBundleTest.aBundleIsNamedSoASearchForMwzFindsIt`, so `mwz` is the query
-token.
+token. A candidate counts only when its name *ends* in `.mwz.zip`, whichever
+mechanism listed it: the token is a search convenience, and an
+already-imported file — renamed upstream, see Staging — still contains it.
 
 **rclone, with a remote the user has already configured, is the preferred
 mechanism** — it lists, downloads byte-exact, and answers a bundle's identity
@@ -38,7 +42,7 @@ every directory in the drive, and without `--hash` the JSON simply carries no
 `Hashes` field, quietly weakening the marker to size and modified time.
 
 ```sh
-rclone listremotes                                  # none: stop; several: ask
+remote=$(rclone listremotes)                        # none or several: stop, ask
 rclone lsjson "$remote" -R --include '*.mwz.zip' --files-only --hash
 take=$(basename "$path" .mwz.zip)                   # $path: a match's Path field
 rclone copy "$remote$path" "incoming/$take/"
@@ -92,11 +96,15 @@ the marker holds no longer matches Drive's answer, the Drive copy is new:
 delete the local take directory, import fresh, and say so. Never overwrite
 silently.
 
-**After the marker is written, rename the Drive copy** — append `.imported`
-(`rclone moveto "$remote$path" "$remote$path.imported"`). The upstream file
-is the backup, so it is renamed, never deleted; the next sweep's `*.mwz.zip`
-filter then no longer matches it. If the rename fails — a read-only remote —
-say so and continue: the marker already prevents re-import.
+**After the marker is written, rename the Drive copy** — rclone path only;
+the fallback has no tool that writes to Drive, and the report then says the
+rename is still pending. With `rclone moveto`, the new name is the old one
+plus the marker's identity plus `.imported`:
+`<take>.mwz.zip.<checksum>.imported`. The upstream file is the backup, so it
+is renamed, never deleted — and never overwritten, which is what the identity
+in the suffix is for: a re-shared take renames to a different name instead of
+onto the earlier backup. A failed rename is said and survived: the marker
+already prevents re-import.
 
 Import newest first. When a sweep finds more than ten new bundles — a first
 run against a long-lived folder — stop after ten and list the rest as
@@ -142,10 +150,10 @@ and `it` and `en` are the only two the pipeline supports:
 
 which adds `out/chords-lyrics.txt` beside the plain chart. A note that names
 no language means skipping transcription and saying why — a guessed language
-splits words on another language's rules. Transcription needs the sherpa
-native (`ml.sherpaNativePath` in the user's config); without it `analyze`
-warns and continues, and that warning goes in the report as the reason there
-are no words, not as a failure.
+splits words on another language's rules. Transcription needs an ASR provider
+this build may not have; when it is missing, `analyze` prints why and
+continues, and that line goes in the report as the reason there are no
+words, not as a failure.
 
 `init` gets no `--title`/`--artist` so the desktop `chords.txt` and the
 bundle's `<take>.chords.txt` compare line for line (`docs/phone-to-corpus.md`
@@ -171,5 +179,7 @@ Per take, in this order:
 5. **Next step**: the one-line reminder that promotion into the corpus is
    `docs/phone-to-corpus.md` steps 2–3, done by a person.
 
-End with the list of bundles seen in Drive and skipped as already imported, so
-the user knows the sweep was complete rather than lucky.
+End with the sweep's accounting: what was imported now, what a marker
+skipped, and the `.imported` names an unfiltered listing shows upstream —
+those are the earlier imports' renames, and naming them is what shows the
+sweep was complete rather than lucky.
