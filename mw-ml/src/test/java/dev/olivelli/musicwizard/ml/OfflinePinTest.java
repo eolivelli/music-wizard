@@ -40,7 +40,7 @@ class OfflinePinTest {
                         + " aimed at test-config/ through"
                         + " maven.multiModuleProjectDirectory, which needs the"
                         + " .mvn marker directory at the repo root to resolve"
-                        + " from inside a module. An IDE run sets no such"
+                        + " from inside a module. An IDE running JUnit directly sets no such"
                         + " variable and needs it in its run configuration.")
                 .isTrue();
     }

@@ -221,14 +221,18 @@ class SpleeterSeparationProviderTest {
     void shapeEdges() {
         // The guards run before any model is touched, so a provider with no
         // cache behind it exercises them all. Order matters and is asserted by
-        // the [empty, nonempty] rows: ragged is checked before empty, which is
+        // the [empty, eight] row: ragged is checked before empty, which is
         // the only order in which that input is a named contract error rather
         // than a silent pair of empty stems for eight real samples.
         SpleeterSeparationProvider bare =
                 new SpleeterSeparationProvider(null, null, null);
         float[] eight = new float[8];
 
-        assertThat(bare.separate(new float[0][], 44100).vocals()).isEmpty();
+        // hasNumberOfRows(0), not isEmpty(): AssertJ's 2D isEmpty() asserts
+        // every row is empty, which [[]] satisfies -- the exact answer the
+        // reverted emptyLike gives a zero-channel input.
+        assertThat(bare.separate(new float[0][], 44100).vocals())
+                .hasNumberOfRows(0);
         assertThat(bare.separate(new float[][] {new float[0]}, 44100).vocals())
                 .hasNumberOfRows(1);
         assertThat(bare.separate(new float[][] {new float[0], new float[0]}, 44100)
