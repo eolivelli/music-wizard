@@ -204,8 +204,14 @@ final class AnalyzeCommand implements Callable<Integer> {
         System.out.println();
 
         Transcription result = transcribe(workspace, kind, source, config);
-        Score score = withAlignedLyrics(workspace,
-                withSuppliedLyrics(workspace, titled(workspace, result.score())));
+        Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
+        if (lyricsFile != null) {
+            // Only what this run supplied: carried-forward lyrics were aligned
+            // when they were supplied, and re-aligning aligned times moves the
+            // windows they are computed from -- measured in review as an
+            // unbounded walk toward zero, one step per analyze.
+            score = withAlignedLyrics(workspace, score);
+        }
 
         // The score is persisted before the cache entry, and never after. The
         // score is what the user asked for; the cache is an optimisation for the
@@ -384,49 +390,73 @@ final class AnalyzeCommand implements Callable<Integer> {
             return score;
         }
         Lyrics lyrics = score.lyrics();
-        String language = lyrics.language();
+        // The gate normalises the way the SPI contract asks: lowercase language
+        // subtag, no region -- the user's en-US and EN both mean en.
+        String language = java.util.Locale.forLanguageTag(lyrics.language())
+                .getLanguage();
         if (!provider.get().languages().contains(language)) {
             System.out.println("  lyrics not aligned: " + provider.get().id()
                     + " speaks " + provider.get().languages() + ", the lyrics are '"
-                    + language + "'");
+                    + lyrics.language() + "'");
             return score;
         }
         try {
             AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
             List<LyricLine> aligned = new ArrayList<>(lyrics.lines().size());
-            for (LyricLine line : lyrics.lines()) {
-                aligned.add(alignedLine(provider.get(), audio, language, line));
+            double previousEnd = 0;
+            int failed = 0;
+            for (int i = 0; i < lyrics.lines().size(); i++) {
+                LyricLine line = lyrics.lines().get(i);
+                LyricLine result;
+                try {
+                    result = alignedLine(provider.get(), audio, language, line,
+                            previousEnd);
+                } catch (RuntimeException e) {
+                    // One line's failure keeps that line's parsed times; the
+                    // thirty-nine that aligned are not thrown away with it.
+                    result = line;
+                    failed++;
+                }
+                aligned.add(result);
+                previousEnd = Math.max(previousEnd, result.endSeconds());
             }
             Confidence overall = aligned.stream()
                     .map(LyricLine::confidence)
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(lyrics.confidence());
-            System.out.println("  aligned " + aligned.size() + " lyric lines with "
-                    + provider.get().id());
-            return score.withLyrics(new Lyrics(aligned, language, overall));
+            System.out.println("  aligned " + (aligned.size() - failed)
+                    + " lyric lines with " + provider.get().id()
+                    + (failed > 0 ? "; " + failed + " kept their parsed times" : ""));
+            return score.withLyrics(new Lyrics(aligned, lyrics.language(), overall));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics stay at their parsed times: "
                     + e.getMessage());
-            return score;
-        } catch (RuntimeException e) {
-            // An aligner defect must not cost the analysis; the parsed times
-            // are what we had before it existed.
-            System.err.println("warning: lyric alignment failed, keeping parsed"
-                    + " times: " + e.getMessage());
             return score;
         }
     }
 
     /**
-     * One line, aligned inside a window around its own parsed span.
+     * One line, aligned inside a window that starts where the previous line's
+     * alignment ended.
      *
-     * <p>Half a second of slack each side: the LRC timestamp is a display cue
-     * and singers anticipate it. The window also caps the trellis, so a whole
-     * song is many small alignments rather than one enormous one.
+     * <p>The tail keeps half a second of slack past the parsed end — a display
+     * cue anticipates — but the head is sequential, and that is what makes
+     * overlap between aligned lines structurally impossible: every time the
+     * aligner can return is at or after the window's start, and the window
+     * starts at or after the previous line's aligned end. Review measured what
+     * independent ±0.5 s windows did instead: twenty-six of forty lines
+     * starting before their predecessor ended, and the sheet's chord cursor —
+     * which walks line ends in order — handing eighteen lines the wrong
+     * chords.
+     *
+     * <p>The window also caps the trellis, so a whole song is many small
+     * alignments rather than one enormous one.
      */
     private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
-                                  String language, LyricLine line) {
-        double from = Math.max(0, line.startSeconds() - 0.5);
+                                  String language, LyricLine line,
+                                  double previousAlignedEnd) {
+        double from = Math.max(Math.max(0, line.startSeconds() - 0.5),
+                previousAlignedEnd);
         double to = Math.min(audio.durationSeconds(), line.endSeconds() + 0.5);
         int start = audio.indexOf(from);
         int end = Math.max(start, audio.indexOf(to));
@@ -439,6 +469,14 @@ final class AnalyzeCommand implements Callable<Integer> {
         List<LyricWord> placed = aligner.align(window, audio.sampleRate(),
                 language, texts);
         if (placed.size() != line.words().size()) {
+            return line;
+        }
+        boolean anyExpressed = placed.stream()
+                .anyMatch(word -> word.endSeconds() > word.startSeconds());
+        if (!anyExpressed) {
+            // A line of digits or punctuation has nothing the vocabulary can
+            // carry; the aligner stacks it at the window start, which is worse
+            // than the parsed guess. Keep the guess.
             return line;
         }
         List<LyricWord> out = new ArrayList<>(line.words().size());

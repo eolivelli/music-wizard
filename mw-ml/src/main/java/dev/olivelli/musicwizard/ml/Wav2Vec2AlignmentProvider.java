@@ -48,14 +48,27 @@ import java.util.Map;
  * every later word one slot.
  *
  * <p>Confidence is measured, not assigned: each word carries the exponential
- * of its mean per-frame log posterior along the chosen path. Downstream draws
- * the measured-against-guessed line on this number, so a constant here would
- * quietly erase that distinction.
+ * of the mean over its tokens of each token's own per-frame mean log
+ * posterior. Its scale is the aligner's, low on sung audio, and must not be
+ * compared with the parser's constants until calibrated (#386).
  */
 public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
 
     private final ModelCache cache;
     private final ModelRef model;
+
+    /**
+     * The session, built once and held for the provider's lifetime.
+     *
+     * <p>analyze calls {@link #align} once per lyric line, and rebuilding a
+     * 378 MB session per line was measured at a third of the whole alignment
+     * pass. The CLI process ends when the command does, which is when the
+     * native memory comes back; a long-lived embedder would want an explicit
+     * close, and can have one the day such an embedder exists.
+     */
+    private OrtSession session;
+    private OrtEnvironment environment;
+    private final PosteriorSource posteriors;
 
     /** The ServiceLoader constructor: configuration from the environment (#383). */
     public Wav2Vec2AlignmentProvider() {
@@ -65,6 +78,19 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
     Wav2Vec2AlignmentProvider(ModelCache cache, ModelRef model) {
         this.cache = cache;
         this.model = model;
+        this.posteriors = this::logPosteriors;
+    }
+
+    /** For tests: the text half — tokens, separators, word spans — without a model. */
+    Wav2Vec2AlignmentProvider(PosteriorSource posteriors) {
+        this.cache = null;
+        this.model = null;
+        this.posteriors = posteriors;
+    }
+
+    /** What turns audio into per-frame log posteriors; the model, ordinarily. */
+    interface PosteriorSource {
+        float[][] posteriorsOf(Path modelPath, float[] samples);
     }
 
     private static ModelCache environmentCache() {
@@ -98,11 +124,11 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         if (words.isEmpty()) {
             return List.of();
         }
-        Path modelPath = cache.fetch(model, System.out::println);
+        Path modelPath = cache == null ? null : cache.fetch(model, System.out::println);
 
         float[] resampled = Resampler.resample(samples, sampleRate,
                 Wav2Vec2Models.MODEL_RATE);
-        float[][] logProbs = logPosteriors(modelPath, normalized(resampled));
+        float[][] logProbs = posteriors.posteriorsOf(modelPath, normalized(resampled));
 
         // Tokens: each word's characters, a separator between words. tokenSpans
         // remembers which token range belongs to which word so the walk back
@@ -258,31 +284,40 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return out;
     }
 
+    private synchronized OrtSession session(Path modelPath) throws OrtException {
+        if (session == null) {
+            environment = OrtEnvironment.getEnvironment();
+            session = environment.createSession(modelPath.toString(),
+                    new OrtSession.SessionOptions());
+        }
+        return session;
+    }
+
     /** Runs the model and log-softmaxes each frame's logits. */
     private float[][] logPosteriors(Path modelPath, float[] samples) {
-        try (OrtEnvironment environment = OrtEnvironment.getEnvironment();
-             OrtSession session = environment.createSession(modelPath.toString(),
-                     new OrtSession.SessionOptions());
-             OnnxTensor tensor = OnnxTensor.createTensor(environment,
+        try {
+            OrtSession held = session(modelPath);
+            try (OnnxTensor tensor = OnnxTensor.createTensor(environment,
                      FloatBuffer.wrap(samples), new long[] {1, samples.length});
-             OrtSession.Result result = session.run(Map.of("input_values", tensor))) {
-            float[][][] logits = (float[][][]) result.get(0).getValue();
-            float[][] frames = logits[0];
-            for (float[] frame : frames) {
-                float max = Float.NEGATIVE_INFINITY;
-                for (float logit : frame) {
-                    max = Math.max(max, logit);
+                 OrtSession.Result result = held.run(Map.of("input_values", tensor))) {
+                float[][][] logits = (float[][][]) result.get(0).getValue();
+                float[][] frames = logits[0];
+                for (float[] frame : frames) {
+                    float max = Float.NEGATIVE_INFINITY;
+                    for (float logit : frame) {
+                        max = Math.max(max, logit);
+                    }
+                    double sum = 0;
+                    for (float logit : frame) {
+                        sum += Math.exp(logit - max);
+                    }
+                    float logSum = (float) (max + Math.log(sum));
+                    for (int v = 0; v < frame.length; v++) {
+                        frame[v] -= logSum;
+                    }
                 }
-                double sum = 0;
-                for (float logit : frame) {
-                    sum += Math.exp(logit - max);
-                }
-                float logSum = (float) (max + Math.log(sum));
-                for (int v = 0; v < frame.length; v++) {
-                    frame[v] -= logSum;
-                }
+                return frames;
             }
-            return frames;
         } catch (OrtException e) {
             throw new ModelUnavailableException(
                     "ONNX Runtime could not run the alignment model: " + e.getMessage(), e);

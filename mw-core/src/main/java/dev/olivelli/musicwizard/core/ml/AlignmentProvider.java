@@ -59,8 +59,8 @@ public interface AlignmentProvider {
      * its neighbours' boundary with a confidence that says so.
      *
      * <p>Each word's confidence is the aligner's own measure of that word's
-     * path, never a constant: downstream draws the line between measured and
-     * guessed times on exactly this number.
+     * path — never assigned. Its scale is the aligner's, not the parser's, and
+     * the two must not be compared until calibrated (#386).
      *
      * @throws ModelUnavailableException when the model cannot be had — absent
      *         and offline, or failing its checksum. The type's javadoc says

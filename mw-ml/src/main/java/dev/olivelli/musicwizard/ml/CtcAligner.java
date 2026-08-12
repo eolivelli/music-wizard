@@ -66,8 +66,11 @@ final class CtcAligner {
         }
         int frames = logProbs.length;
         int states = 2 * tokens.length + 1;
-        // A path must at least pass every token once; blanks may be skipped
-        // between differing tokens, so tokens.length is the true floor.
+        // A cheap lower bound, not the true floor: equal adjacent tokens must
+        // pass the blank between them, so the exact minimum is tokens plus the
+        // count of equal adjacent pairs. A sequence under the true floor but
+        // over this one is caught below as "no alignment path" -- costlier,
+        // but the arithmetic here stays too simple to get wrong.
         if (frames < tokens.length) {
             throw new IllegalArgumentException(
                     "cannot align " + tokens.length + " tokens to " + frames

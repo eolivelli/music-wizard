@@ -78,6 +78,42 @@ class AlignedLyricsTest {
     }
 
     @Test
+    @DisplayName("aligned lines never overlap, whatever the aligner returns")
+    void alignedLinesDoNotOverlap() throws IOException {
+        // The fake returns every word early in its window, so with independent
+        // windows line 2 would start half a second before line 1's parsed end.
+        // Sequential windows make overlap structurally impossible, and the
+        // sheet's chord cursor -- which walks line ends in order -- depends on
+        // exactly that.
+        Path root = analysed("fake-cli-alignment");
+
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        var lines = score.lyrics().lines();
+        for (int i = 1; i < lines.size(); i++) {
+            assertThat(lines.get(i).startSeconds())
+                    .as("line %d must not start before line %d ended", i, i - 1)
+                    .isGreaterThanOrEqualTo(lines.get(i - 1).endSeconds());
+        }
+    }
+
+    @Test
+    @DisplayName("a bare re-analyze does not move aligned times")
+    void reAnalyzeIsIdempotent() throws IOException {
+        // Carried-forward lyrics were aligned when supplied. Re-aligning them
+        // recomputes every window from the aligned times, which review
+        // measured as an unbounded walk toward zero, one step per analyze.
+        Path root = analysed("fake-cli-alignment");
+        Score first = Workspace.open(root).readScore().orElseThrow();
+
+        CliRunner.Result again = CliRunner.run("analyze", root.toString());
+        assertThat(again.exitCode()).as(again.all()).isZero();
+
+        Score second = Workspace.open(root).readScore().orElseThrow();
+        assertThat(second.lyrics().lines().get(0).words().get(0).startSeconds())
+                .isEqualTo(first.lyrics().lines().get(0).words().get(0).startSeconds());
+    }
+
+    @Test
     @DisplayName("an absent aligner leaves the parsed times untouched")
     void absentAlignerKeepsParsedTimes() throws IOException {
         Path root = analysed("no-such-aligner");
