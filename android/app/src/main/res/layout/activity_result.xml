@@ -32,11 +32,11 @@
             android:text="@string/share_chart" />
 
         <Button
-            android:id="@+id/reportButton"
+            android:id="@+id/bundleButton"
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:text="@string/report_send" />
+            android:text="@string/share_bundle" />
     </LinearLayout>
 
     <!-- The chart is laid out in columns, so it must not wrap: it scrolls both

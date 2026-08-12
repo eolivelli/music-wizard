@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Recordings live in app-private storage, which needs no permission. -->
+    <!-- Recordings live in app-private storage, which needs no permission.
+         No INTERNET either: nothing in this app opens a socket. #291 added a
+         GitHub upload and the permission with it; both were removed in favour
+         of sharing the bundle to whatever app the user trusts to move it. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Only ReportActivity opens a socket, and only when its Send button is
-         pressed: recording and analysis run with the phone in flight mode.
-         Epic #236 listed "no network" as a non-goal and #291 overrode it
-         knowingly; android/README.md says why. -->
-    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature
         android:name="android.hardware.microphone"
@@ -46,22 +43,8 @@
             android:name=".ResultActivity"
             android:exported="false" />
 
-        <!-- configChanges so that turning the phone during an upload does not
-             tear this screen down under an in-flight request. It has nothing to
-             re-inflate for a new orientation: one column of full-width views. -->
-        <activity
-            android:name=".ReportActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:exported="false"
-            android:label="@string/report_title" />
-
-        <activity
-            android:name=".TokenActivity"
-            android:exported="false"
-            android:label="@string/token_title" />
-
-        <!-- Sharing a take out is the corpus-export path: a WAV recorded in the
-             room reaches samples/ or uncommitted/ this way. -->
+        <!-- Sharing a take out is the corpus-export path: a WAV or a bundle
+             recorded in the room reaches samples/ or uncommitted/ this way. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

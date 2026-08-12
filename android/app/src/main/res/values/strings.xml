@@ -19,41 +19,13 @@
     <string name="reanalyze">Re-analyze</string>
     <string name="share_chart">Share chart</string>
     <string name="share_wav">Share WAV</string>
+    <string name="share_bundle">Share bundle</string>
+    <string name="bundle_building">Building the bundle…</string>
+    <string name="bundle_failed">The bundle could not be built: %1$s</string>
     <string name="rename">Rename</string>
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
     <string name="not_analyzed">Not analyzed yet.</string>
     <string name="analyzing">Analyzing…</string>
-
-    <string name="report_title">Send to repo</string>
-    <string name="report_send">Send to repo</string>
-    <string name="report_prompt">What was played? This is filed as the ground
-        truth for this take.</string>
-    <string name="report_hint">G C D, twice round, then the bridge in E minor…</string>
-    <string name="report_ready">The recording and this comment go to the repository
-        when you press Send. Nothing else on this phone does.</string>
-    <string name="report_no_token">No GitHub token yet — paste one under “GitHub
-        token”.</string>
-    <string name="report_encoding">Compressing and uploading…</string>
-    <!-- Always says why. "This phone has no FLAC encoder" was the only wording
-         and it claimed that for a full disk and an unreadable take too. -->
-    <string name="report_wav_instead">Not compressed, so the WAV went instead:
-        %1$s</string>
-    <string name="report_sent">Sent.</string>
-    <string name="report_sent_toast">Take sent to the repository.</string>
-    <string name="report_failed">Not sent. Your comment is kept; press Send to repo
-        to try again.</string>
-    <string name="report_no_reason">The send stopped without saying why.</string>
-
-    <string name="token_title">GitHub token</string>
-    <string name="token_explanation">A fine-grained personal access token for this
-        repository, with read and write on Contents (to upload the recording) and on
-        Issues (to post the comment). It is kept on this phone, in this app’s private
-        storage, and is used only when you press Send.</string>
-    <string name="token_hint">github_pat_…</string>
-    <string name="token_save">Save</string>
-    <string name="token_forget">Forget</string>
-    <string name="token_present">A token is stored. Saving a new one replaces it.</string>
-    <string name="token_absent">No token stored.</string>
 </resources>
