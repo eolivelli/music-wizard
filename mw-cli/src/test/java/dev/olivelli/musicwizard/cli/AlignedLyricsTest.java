@@ -128,7 +128,7 @@ class AlignedLyricsTest {
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
         // The aligner genuinely ran on the non-twin line: without this the
         // whole test passes on parsed times with no provider at all.
-        assertThat(analyze.out()).contains("aligned 1 lyric line")
+        assertThat(analyze.out()).contains("aligned 1 lyric line with")
                 .contains("2 kept their parsed times");
 
         Score score = Workspace.open(root).readScore().orElseThrow();

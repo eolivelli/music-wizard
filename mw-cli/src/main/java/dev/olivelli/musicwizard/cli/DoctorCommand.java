@@ -91,13 +91,16 @@ final class DoctorCommand implements Callable<Integer> {
         // whole job is saying so before that. Only when the provider is
         // present -- a build without it has nothing for the key to point at.
         if (MlProviders.asrIds().contains("sherpa-qwen3")) {
-            // Named by where it was actually read from, so a bad value sends
-            // the user to the setting they wrote, not one they never touched.
-            String source = "ml.sherpaNativePath";
-            String nativePath = ml == null ? null : ml.sherpaNativePath();
+            // Property first, then the config key: that is loading's own
+            // precedence -- sherpa's LibraryUtils reads the property before
+            // anything else, and the provider fills it from config only when
+            // unset -- so this checks the value that will be consulted and
+            // names the setting it came from.
+            String source = "sherpa_onnx.native.path";
+            String nativePath = System.getProperty(source);
             if (nativePath == null) {
-                source = "sherpa_onnx.native.path";
-                nativePath = System.getProperty(source);
+                source = "ml.sherpaNativePath";
+                nativePath = ml == null ? null : ml.sherpaNativePath();
             }
             if (nativePath == null) {
                 System.out.println("            ml.sherpaNativePath not set; the JVM"

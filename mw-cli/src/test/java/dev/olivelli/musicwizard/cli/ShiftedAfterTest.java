@@ -43,6 +43,20 @@ class ShiftedAfterTest {
     }
 
     @Test
+    @DisplayName("the shifted line starts exactly at the boundary, in every rounding")
+    void shiftLandsExactlyOnTheBoundary() {
+        // s + (p - s) can round below p: with these values the naive sum gives
+        // 17.089999999999996. The clamp is what makes the enforcement total,
+        // and this pair is the one that discriminates it.
+        LyricLine shifted = AnalyzeCommand.shiftedAfter(
+                line(1.08, 1.5, 1.6, 2.0), 17.09);
+
+        assertThat(shifted.startSeconds()).isGreaterThanOrEqualTo(17.09);
+        assertThat(shifted.words().get(1).startSeconds())
+                .isGreaterThanOrEqualTo(shifted.words().get(0).startSeconds());
+    }
+
+    @Test
     @DisplayName("a line starting at or after the previous end is untouched")
     void noShiftWhenOrdered() {
         LyricLine before = line(2.0, 2.5, 2.5, 3.0);

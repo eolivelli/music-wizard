@@ -661,9 +661,10 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         List<LyricWord> shifted = new ArrayList<>(line.words().size());
         for (LyricWord word : line.words()) {
-            // The max: s + (p - s) rounds below p when the shift exceeds the
-            // start, so the guard must not trust the addition to land exactly
-            // where it aimed -- this is the total-enforcement point.
+            // The max: s + (p - s) can round below p (never when the shift
+            // is at most the start; Sterbenz), so the guard must not trust
+            // the addition to land where it aimed -- this is the
+            // total-enforcement point.
             double from = Math.max(previousEnd, word.startSeconds() + shift);
             shifted.add(new LyricWord(word.text(),
                     from, Math.max(from, word.endSeconds() + shift),
@@ -1216,10 +1217,12 @@ final class AnalyzeCommand implements Callable<Integer> {
             // render's no-lyrics message offers this option without naming a
             // source kind, because render cannot know one; this command can,
             // and following that advice on a MIDI workspace must not be
-            // answered with silence.
+            // answered with silence. "Nothing is transcribed", not "no lyrics
+            // are produced": carried-forward lyrics may reach the score anyway.
             System.err.println("warning: --lyrics-language alone asks for"
                     + " transcription, which needs a recording; this workspace"
-                    + " holds a MIDI file, so no lyrics are produced");
+                    + " holds a " + kind.description() + ", so nothing is"
+                    + " transcribed");
         }
         if (kind == SourceKind.MIDI) {
             List<String> ignored = new ArrayList<>();
