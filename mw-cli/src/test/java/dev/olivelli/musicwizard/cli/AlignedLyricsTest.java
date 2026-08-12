@@ -80,12 +80,14 @@ class AlignedLyricsTest {
     @Test
     @DisplayName("aligned lines never overlap, whatever the aligner returns")
     void alignedLinesDoNotOverlap() throws IOException {
-        // The late fake places words in the last fifth of each window, so with
-        // independent windows line 1's result runs past line 2's parsed start
-        // and the two collide -- an early-times fake never makes windows
-        // interact, and this test passed with the fix reverted until review
-        // caught it. The sheet's chord cursor, which walks line ends in order,
-        // depends on the invariant asserted here.
+        // The whole-window fake pushes each line's result to both edges of
+        // its window. The invariant is enforced once, at assembly, so no
+        // single revert of the window head or the tail bound can break this
+        // assertion -- that is the design, not a gap: the head and the bound
+        // exist so the assembly guard is a no-op and the times stay genuine
+        // rather than shifted. ShiftedAfterTest pins the guard directly. The
+        // sheet's chord cursor, which walks line ends in order, depends on
+        // the invariant asserted here.
         Path root = analysed("fake-cli-late-alignment");
 
         Score score = Workspace.open(root).readScore().orElseThrow();
@@ -98,11 +100,51 @@ class AlignedLyricsTest {
     }
 
     @Test
+    @DisplayName("lines on one moment keep their shared span, and nothing cascades")
+    void sharedMomentsSurviveAlignment() throws IOException {
+        // Two entries on one timestamp share a span by the model's own design
+        // (#340): a second voice is sung together, not in sequence. A spacing
+        // rule keyed on the predecessor's end once displaced the twin by a
+        // whole line and pushed every later line off the end of the recording,
+        // where the engraving drops words.
+        Path source = directory.resolve("song.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 8.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("song.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
+                .exitCode()).isZero();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                + "\nconfig:\n  ml:\n    alignmentProvider: fake-cli-late-alignment\n");
+        Path lrc = directory.resolve("twins.lrc");
+        Files.writeString(lrc, """
+                [00:01.00]la sol
+                [00:01.00]mi fa
+                [00:04.00]do re
+                """);
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        var lines = score.lyrics().lines();
+        assertThat(lines).hasSize(3);
+        // The twins keep the parser's shared span, untouched by alignment.
+        assertThat(lines.get(0).startSeconds()).isEqualTo(1.0);
+        assertThat(lines.get(1).startSeconds()).isEqualTo(1.0);
+        assertThat(lines.get(0).endSeconds()).isEqualTo(lines.get(1).endSeconds());
+        // The line after them is aligned normally and stays on the recording.
+        assertThat(lines.get(2).endSeconds())
+                .isLessThanOrEqualTo(8.0);
+    }
+
+    @Test
     @DisplayName("a bare re-analyze does not move aligned times")
     void reAnalyzeIsIdempotent() throws IOException {
         // Carried-forward lyrics were aligned when supplied. Re-aligning them
-        // recomputes every window from the aligned times, which review
-        // measured as an unbounded walk toward zero, one step per analyze.
+        // recomputes every window from the aligned times, an unbounded walk,
+        // one step per analyze.
         Path root = analysed("fake-cli-alignment");
         Score first = Workspace.open(root).readScore().orElseThrow();
 

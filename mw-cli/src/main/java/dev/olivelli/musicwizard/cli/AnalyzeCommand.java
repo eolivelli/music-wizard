@@ -404,15 +404,35 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         try {
             AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
-            List<LyricLine> aligned = new ArrayList<>(lyrics.lines().size());
+            List<LyricLine> parsed = lyrics.lines();
+            List<LyricLine> aligned = new ArrayList<>(parsed.size());
             double previousEnd = 0;
             int kept = 0;
-            for (int i = 0; i < lyrics.lines().size(); i++) {
-                LyricLine line = lyrics.lines().get(i);
+            for (int i = 0; i < parsed.size(); i++) {
+                LyricLine line = parsed.get(i);
+                // Lines on one moment share a span by the model's own design
+                // (#340) -- a second voice, a two-line display. Aligning them
+                // would sequence what is sung together, and any spacing rule
+                // keyed on the predecessor's end would displace the twin by a
+                // whole line and cascade the drift to the end of the file.
+                // They keep their shared parsed span, untouched.
+                if (sharesAMoment(parsed, i)) {
+                    kept++;
+                    aligned.add(line);
+                    previousEnd = Math.max(previousEnd, line.endSeconds());
+                    continue;
+                }
                 LyricLine result;
                 try {
+                    // The tail bound is the parser's own rule: a line ends no
+                    // later than the next distinct start. An aligned line
+                    // honouring it cannot take the next line's chords, which
+                    // was round 1's harm.
+                    double bound = i + 1 < parsed.size()
+                            ? parsed.get(i + 1).startSeconds()
+                            : audio.durationSeconds();
                     result = alignedLine(provider.get(), audio, language, line,
-                            previousEnd);
+                            previousEnd, bound);
                 } catch (ModelUnavailableException e) {
                     // The model itself cannot be had: no later line will fare
                     // better, and retrying the fetch once per line would
@@ -427,12 +447,10 @@ final class AnalyzeCommand implements Callable<Integer> {
                 if (result == line) {
                     kept++;
                 }
-                // The one place the no-overlap invariant is enforced, for every
-                // path that produced the line -- aligned, kept-parsed, failed.
-                // Patching each fallback instead is how the next fallback
-                // reintroduces it. A shifted line keeps its duration; monotone
-                // starts also keep the lines in LRC order through Lyrics's
-                // sort.
+                // Belt and braces at the one assembly point: the sequential
+                // window head and the tail bound above make this a no-op on
+                // every expected path, and a path nobody expected is exactly
+                // when the sheet's cursor must still find monotone lines.
                 result = shiftedAfter(result, previousEnd);
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
@@ -458,11 +476,18 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
     }
 
+    /** Whether this line shares its parsed start with either neighbour. */
+    private static boolean sharesAMoment(List<LyricLine> lines, int i) {
+        double start = lines.get(i).startSeconds();
+        return (i > 0 && lines.get(i - 1).startSeconds() == start)
+                || (i + 1 < lines.size() && lines.get(i + 1).startSeconds() == start);
+    }
+
     /**
      * The line, shifted forward just enough to start at or after the previous
      * line's end, keeping its duration and every within-line interval.
      */
-    private static LyricLine shiftedAfter(LyricLine line, double previousEnd) {
+    static LyricLine shiftedAfter(LyricLine line, double previousEnd) {
         double shift = previousEnd - line.startSeconds();
         if (shift <= 0) {
             return line;
@@ -491,7 +516,7 @@ final class AnalyzeCommand implements Callable<Integer> {
      */
     private LyricLine alignedLine(AlignmentProvider aligner, AudioBuffer audio,
                                   String language, LyricLine line,
-                                  double previousAlignedEnd) {
+                                  double previousAlignedEnd, double tailBound) {
         double from = Math.max(Math.max(0, line.startSeconds() - 0.5),
                 previousAlignedEnd);
         double to = Math.min(audio.durationSeconds(), line.endSeconds() + 0.5);
@@ -522,9 +547,12 @@ final class AnalyzeCommand implements Callable<Integer> {
             LyricWord timed = placed.get(i);
             // The aligner's clock starts at the window; the line's starts at
             // the recording. Keep the original text and engraving flags -- the
-            // aligner only ever decides when.
-            out.add(new LyricWord(original.text(),
-                    from + timed.startSeconds(), from + timed.endSeconds(),
+            // aligner only ever decides when. The tail bound clamps what the
+            // half-second of slack let the aligner reach past.
+            double wordStart = Math.min(from + timed.startSeconds(), tailBound);
+            double wordEnd = Math.min(from + timed.endSeconds(), tailBound);
+            out.add(new LyricWord(original.text(), wordStart,
+                    Math.max(wordStart, wordEnd),
                     java.util.Optional.empty(), java.util.Optional.empty(),
                     original.hyphenatedToNext(), original.melisma(),
                     timed.confidence()));

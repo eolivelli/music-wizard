@@ -23,10 +23,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Places every word in the last fifth of its window, so consecutive lines'
- * results genuinely collide unless the windows are sequential — the shape the
- * overlap test needs. An aligner returning early times never makes windows
- * interact, and a test built on one passes with the fix reverted.
+ * Spreads the words across the whole window, so a line's result reaches the
+ * window's far edge: without the sequential head the next line's window opens
+ * half a second before this line's parsed end and its first word lands inside
+ * this line's span, and without the tail bound this line's last word crosses
+ * the next line's parsed start. Uniformly early or uniformly late times catch
+ * neither — both leave consecutive results apart.
  */
 public final class LateFakeAlignmentProvider implements AlignmentProvider {
 
@@ -44,12 +46,11 @@ public final class LateFakeAlignmentProvider implements AlignmentProvider {
     public List<LyricWord> align(float[] samples, int sampleRate, String languageTag,
                                  List<String> words) {
         double window = samples.length / (double) sampleRate;
-        double start = window * 0.8;
-        double step = (window - start) / Math.max(1, words.size() + 1);
+        double step = window / Math.max(1, words.size());
         List<LyricWord> out = new ArrayList<>(words.size());
         for (int i = 0; i < words.size(); i++) {
-            double at = start + step * i;
-            out.add(LyricWord.ofSeconds(words.get(i), at, at + step * 0.8,
+            double at = step * i;
+            out.add(LyricWord.ofSeconds(words.get(i), at, at + step * 0.9,
                     Confidence.of(0.8)));
         }
         return List.copyOf(out);
