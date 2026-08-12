@@ -49,8 +49,11 @@ never be handed the JDK that built the jars.
 
 The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. It is a debug
 build on purpose: debug-signed APKs install on a real device with no signing
-secret in CI. Pushing an `android-v*` tag builds one and attaches it to the
-GitHub release.
+secret in CI. The signature is deterministic (#377): `app/debug.keystore` is
+committed — a debug keystore is not a secret — and `checkApkSignature` fails
+any build signed by anything else, which is what lets one release install as
+an update over another. Pushing an `android-v*` tag builds one and attaches it
+to the GitHub release.
 
 `local.properties` (pointing at your Android SDK) is generated per machine and
 is not committed. The Gradle wrapper jar *is* committed, against the repository

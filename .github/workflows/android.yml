@@ -6,9 +6,10 @@
 # release, which is how a testable build reaches a phone.
 #
 # The app is built as a DEBUG APK on purpose: debug builds are signed with
-# the auto-generated debug keystore, so they install on a real device with
-# no signing secrets in CI. A proper release signature is a later problem;
-# a data-collection instrument does not need one.
+# the committed android/app/debug.keystore (#377) — not a secret, so CI holds
+# none, and every run signs identically, which is what lets one release
+# install as an update over another. A proper release signature is a later
+# problem; a data-collection instrument does not need one.
 name: android
 
 on:
