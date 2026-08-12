@@ -21,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -94,6 +95,46 @@ public class TakeBundleTest {
                 zip, "take", new File(temp.getRoot(), "no-such.wav"), null, "chart", "info"));
 
         assertFalse("a half-written bundle must be deleted, not offered", zip.exists());
+        assertFalse("nor left behind under the temp name",
+                new File(temp.getRoot(), "take.zip.tmp").exists());
+    }
+
+    /**
+     * A failure must not take out the previous share's good bundle either —
+     * the write goes beside it and only a success replaces it.
+     */
+    @Test
+    public void aFailedWriteLeavesThePreviousBundleIntact() throws IOException {
+        File zip = new File(temp.getRoot(), "take.zip");
+        TakeBundle.write(zip, "take", wav(), null, "the good chart", null);
+
+        assertThrows(IOException.class, () -> TakeBundle.write(
+                zip, "take", new File(temp.getRoot(), "no-such.wav"), null, null, null));
+
+        try (ZipFile in = new ZipFile(zip)) {
+            assertEquals("the good chart", textOf(in, "take.chords.txt"));
+        }
+    }
+
+    /**
+     * The recording's entry carries the file's own time — until a rename, the
+     * take's default name is its date, and nothing else in the zip has one.
+     */
+    @Test
+    public void theAudioEntryCarriesTheRecordingsOwnTime() throws IOException {
+        File wav = wav();
+        long recorded = 1_700_000_000_000L;
+        assertTrue(wav.setLastModified(recorded));
+        File zip = new File(temp.getRoot(), "take.zip");
+
+        TakeBundle.write(zip, "take", wav, null, null, null);
+
+        try (ZipFile in = new ZipFile(zip)) {
+            long entryTime = in.getEntry("take.wav").getTime();
+            // Within DOS-time resolution, in case the extended timestamp is absent.
+            assertTrue("entry time " + entryTime + " should be about " + recorded,
+                    Math.abs(entryTime - recorded) <= 2_000);
+        }
     }
 
     /** The take's name, not a fixed one, names the entries — a chart pulled out beside another take's stays identifiable. */

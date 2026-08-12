@@ -20,6 +20,7 @@
     <string name="share_chart">Share chart</string>
     <string name="share_wav">Share WAV</string>
     <string name="share_bundle">Share bundle</string>
+    <string name="bundle_building">Building the bundle…</string>
     <string name="bundle_failed">The bundle could not be built: %1$s</string>
     <string name="rename">Rename</string>
     <string name="delete">Delete</string>

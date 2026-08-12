@@ -9,8 +9,9 @@ phone and on the desktop, with what was played written down beside it.
 Long-press the take in the library and choose **Share bundle** — that is the
 corpus-export path. It is one zip holding the WAV, the chart the phone made of
 it, the cached `score.json` where one could be written, and an info file with
-the duration and the app version; sharing it to a cloud drive is how someone
-who is not holding the phone fetches it. **Share WAV** sends the audio alone.
+the duration, the recorded date and the app version; sharing it to a cloud
+drive is how someone who is not holding the phone fetches it, and the WAV
+inside is what step 4 runs on. **Share WAV** sends the audio alone.
 
 A take is a PCM 16-bit mono 44100 Hz WAV in app-private storage, named
 `yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says otherwise, and

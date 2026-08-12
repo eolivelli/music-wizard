@@ -49,6 +49,13 @@ public final class TakeBundle {
      * that was never analysed bundles as the recording and the info lines, which
      * is still worth sharing — the analysis can be run on the desktop.
      *
+     * <p>The write goes to a sibling temp file and is renamed into place, so a
+     * failure can neither leave a half-written zip for the share sheet to offer
+     * nor cost a good bundle already at {@code zip} from an earlier share.
+     * {@code Throwable}, not {@code Exception}, for the same reason as
+     * {@code AnalysisJobs.run}: an {@link Error} mid-write is exactly when the
+     * cleanup matters most.
+     *
      * @param zip       where to write; its parent directory must exist
      * @param takeName  the take's display name, used as the stem of every entry
      * @param wav       the recording
@@ -59,7 +66,8 @@ public final class TakeBundle {
     public static void write(File zip, String takeName, File wav,
                              File scoreJson, String chartText, String infoText)
             throws IOException {
-        try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(zip))) {
+        File tmp = new File(zip.getParentFile(), zip.getName() + ".tmp");
+        try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(tmp))) {
             if (infoText != null) {
                 text(out, takeName + ".info.txt", infoText);
             }
@@ -70,12 +78,21 @@ public final class TakeBundle {
                 file(out, takeName + ".score.json", scoreJson);
             }
             file(out, takeName + ".wav", wav);
-        } catch (IOException | RuntimeException e) {
-            // A half-written zip must not be left behind: the share sheet would
-            // offer it, and it opens on the other side or not at all.
+        } catch (Throwable t) {
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
+            throw t;
+        }
+        if (!tmp.renameTo(zip)) {
+            // POSIX replaces an existing target atomically; a filesystem that
+            // refuses to gets one retry over a cleared path.
             //noinspection ResultOfMethodCallIgnored
             zip.delete();
-            throw e;
+            if (!tmp.renameTo(zip)) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+                throw new IOException("could not move the bundle into place at " + zip);
+            }
         }
     }
 
@@ -88,7 +105,14 @@ public final class TakeBundle {
 
     private static void file(ZipOutputStream out, String name, File source)
             throws IOException {
-        out.putNextEntry(new ZipEntry(name));
+        ZipEntry entry = new ZipEntry(name);
+        // The source's own time, not the bundling's: for the recording that is
+        // the take's date, which nothing else in the zip carries.
+        long modified = source.lastModified();
+        if (modified > 0) {
+            entry.setTime(modified);
+        }
+        out.putNextEntry(entry);
         try (InputStream in = new FileInputStream(source)) {
             copy(in, out);
         }
