@@ -18,7 +18,6 @@ package dev.olivelli.musicwizard.android.mw;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import java.io.BufferedInputStream;
-import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -163,51 +162,6 @@ public final class WavFile {
             Format format = reader.readToData();
             float[] mono = reader.readMono(format);
             return new AudioBuffer(mono, format.sampleRate());
-        }
-    }
-
-    /**
-     * The format, and a stream standing at the first byte of the payload.
-     *
-     * <p>{@link #read} averages to mono floats, which is what the analysis wants
-     * and what an encoder must not be given: FLAC is here because these takes
-     * are ground truth, and a lossless codec fed a lossy conversion is a
-     * contradiction. So this hands back the file's own samples, interleaved and
-     * unaltered, for {@code FlacEncoder} to compress.
-     */
-    public static Pcm openPcm(File wav) throws IOException {
-        InputStream in = new BufferedInputStream(new FileInputStream(wav), 1 << 16);
-        try {
-            return new Pcm(new Reader(in, wav.length()).readToData(), in);
-        } catch (IOException | RuntimeException e) {
-            in.close();
-            throw e;
-        }
-    }
-
-    /** What {@link #openPcm} returns: the header's answer, and the audio after it. */
-    public static final class Pcm implements Closeable {
-
-        private final Format format;
-        private final InputStream stream;
-
-        Pcm(Format format, InputStream stream) {
-            this.format = format;
-            this.stream = stream;
-        }
-
-        public Format format() {
-            return format;
-        }
-
-        /** Interleaved 16-bit little-endian samples, {@code format().dataBytes()} of them. */
-        public InputStream stream() {
-            return stream;
-        }
-
-        @Override
-        public void close() throws IOException {
-            stream.close();
         }
     }
 

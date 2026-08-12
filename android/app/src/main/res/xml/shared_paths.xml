@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only the recordings directory is ever shared out, and it is app-private
-     otherwise. Sharing the WAV is how a take reaches the desktop corpus. -->
+<!-- Only these two directories are ever shared out, and both are app-private
+     otherwise. Sharing the WAV or the bundle is how a take reaches the desktop
+     corpus; bundles are transient, so they live in the cache. -->
 <paths>
     <files-path name="recordings" path="recordings/" />
+    <cache-path name="bundles" path="bundles/" />
 </paths>

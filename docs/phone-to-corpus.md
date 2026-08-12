@@ -4,13 +4,18 @@ The phone app (`android/README.md`) records; this note is what to do with a take
 once it is off the phone. The loop is the point: the same recording read on the
 phone and on the desktop, with what was played written down beside it.
 
-## 1. Share the WAV out
+## 1. Share the take out
 
-Long-press the take in the library and choose **Share WAV** — that is the
-corpus-export path. A take is a PCM 16-bit mono 44100 Hz WAV in app-private
-storage, named `yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says
-otherwise, and the app offers it under whatever that name is. Rename it first,
-to something that says what it is.
+Long-press the take in the library and choose **Share bundle** — that is the
+corpus-export path. It is one zip holding the WAV, the chart the phone made of
+it, the cached `score.json` where one could be written, and an info file with
+the duration and the app version; sharing it to a cloud drive is how someone
+who is not holding the phone fetches it. **Share WAV** sends the audio alone.
+
+A take is a PCM 16-bit mono 44100 Hz WAV in app-private storage, named
+`yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says otherwise, and
+both shares name their files after whatever that name is. Rename it first, to
+something that says what it is.
 
 ## 2. Where it goes
 
