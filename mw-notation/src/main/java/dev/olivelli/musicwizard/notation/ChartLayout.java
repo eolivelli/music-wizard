@@ -330,9 +330,9 @@ final class ChartLayout {
         // its downbeat anchored on that downbeat, snapped to a negative
         // position, and shunted every chord behind it a grid step along -- into
         // the next bar, in the text as well as on the page.
-        BarAxis unopened = BarAxis.of(score, meter, quarterSeconds);
+        BarLines unopened = BarLines.of(score, meter, quarterSeconds);
         double grid = chartGrid(chords, unopened, meter);
-        BarAxis axis = unopened.opening(chords.stream()
+        BarLines axis = unopened.opening(chords.stream()
                 .mapToDouble(Chord::startSeconds).min().orElse(0.0), grid);
 
         double[] starts = new double[chords.size()];
@@ -451,7 +451,7 @@ final class ChartLayout {
      * what the grid can absorb -- is now a much narrower claim than it was.
      *
      * <p>What was left of the drift was neither the tracker nor the statistic
-     * but the recording not holding one bar length, and {@link BarAxis} follows
+     * but the recording not holding one bar length, and {@link BarLines} follows
      * that rather than spacing through it.
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
@@ -480,7 +480,7 @@ final class ChartLayout {
      * contain -- but it now wants a recording that still exhibits the defect.
      *
      * <p>Past there the recording's beat keeps to no single bar length, which
-     * is {@link BarAxis}'s.
+     * is {@link BarLines}'s.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
@@ -494,7 +494,7 @@ final class ChartLayout {
      * up to half a beat longer or shorter than the nominal one, and measuring
      * the gap through one while placing the chord through the other put two
      * chords on one grid point in a third of a synthetic sweep. It is still a
-     * fact about the progression alone -- see {@link BarAxis#quartersBetween},
+     * fact about the progression alone -- see {@link BarLines#quartersBetween},
      * which is what keeps it independent of where the chart starts.
      *
      * <p>Bounded below by {@link LilyPondDuration#SHORTEST_QUARTERS}, since no
@@ -508,7 +508,7 @@ final class ChartLayout {
      * grid varying along it. That costs only how a duration reads, never where a
      * chord sits: a finer grid moves a chord less, not more.
      */
-    private static double chartGrid(List<Chord> chords, BarAxis axis, TimeSignature meter) {
+    private static double chartGrid(List<Chord> chords, BarLines axis, TimeSignature meter) {
         double closest = Double.MAX_VALUE;
         for (int i = 1; i < chords.size(); i++) {
             closest = Math.min(closest, axis.quartersBetween(
@@ -1016,31 +1016,39 @@ final class ChartLayout {
      * here because they have to agree -- a chord placed by one and a bar line
      * drawn by the other used to be the same arithmetic and now is not.
      *
-     * <p><b>Bar lines follow the grid's own downbeats where the chart is
-     * counted at the grid's own rate.</b> That is #187. Each line is predicted
-     * one bar after the one before it and then moved onto the downbeat the grid
-     * marks for it, which follows a recording that pushes and pulls; a constant
-     * bar length cannot, and on real recordings it drew its bar lines most of a
-     * bar from the downbeats they belong to. Where the grid marks no downbeat
-     * within half a bar of the prediction -- past the last one it tracked, or
-     * over a bar it skipped -- the prediction stands and that bar is spaced at
-     * the tempo.
+     * <p><b>Where the chart is counted at the grid's own rate and the grid's
+     * downbeats are every one of them a bar, they are the bar lines.</b> That
+     * is #187. A constant bar length cannot follow a recording that pushes and
+     * pulls, and on real recordings it drew its bar lines most of a bar from
+     * the downbeats they belong to. Outside the tracked sequence -- before its
+     * first downbeat, after its last -- the stated bar carries the chart,
+     * because out there nothing was measured.
      *
-     * <p><b>The move is bounded by half a counted beat per bar.</b> Past that
-     * the line would sit on a beat other than the one the tempo counts to, and
-     * a detector that emits a gap of three quarters of a bar is wrong about
-     * that downbeat rather than reporting a bar of that length. The bound is
-     * per bar and the walk carries on from wherever it reached, so a single
-     * misplaced downbeat costs half a beat on one line and a genuine step is
-     * taken up over the next two or three.
+     * <p><b>Nothing is predicted and nothing is repaired.</b> Every line is a
+     * moment the tracker heard, so a line that is wrong cannot make the next
+     * one wrong. #421 established that the alternative does not work: three
+     * ways of mending a faulty sequence -- substituting a prediction for a
+     * missed downbeat, dropping an invented one, re-anchoring where the two
+     * disagree -- each measured worse than the constant rate over a sweep of a
+     * thousand perturbed grids, and each was a loop whose base could walk away
+     * from the recording and not come back. So a sequence is taken whole or not
+     * at all; see {@link #evenThroughout}.
+     *
+     * <p><b>The phase (#233) decides the axis exactly where the sequence is
+     * not taken.</b> Where it is, every bar line is a downbeat and there is no
+     * phase left to choose; where it is not, the chart is one bar length hung
+     * on the offset the downbeats agree on, which is what it was before this.
      *
      * <p><b>A tempo the user supplied is spaced uniformly at that tempo.</b>
      * {@code --tempo} is an instruction about how long a bar is, and fitting the
      * bars back onto the grid would discard it -- the correction that matters
      * most is the one where the grid is what the user is disagreeing with. So
-     * the fit applies only while the chart's quarter is the grid's own, which is
-     * exactly the case where {@link Score#estimatedTempo()} answered with
-     * {@link BeatGrid#steadyTempo}.
+     * the sequence is followed only while the chart's quarter is the grid's own,
+     * which is exactly the case where {@link Score#estimatedTempo()} answered
+     * with {@link BeatGrid#steadyTempo}. It is a guard of its own and not a
+     * corollary of {@link #evenThroughout}: a grid at a rate close enough to a
+     * corrected one passes that and must still not be followed, which
+     * {@code ChordChartTest.aCorrectedTempoKeepsItsOwnBars} holds.
      *
      * <p>Compared as quarter lengths for exact equality, and both parts of that
      * are load-bearing. Equality, because each side is {@code 60.0} divided by
@@ -1053,10 +1061,20 @@ final class ChartLayout {
      * and 6/8, whose factor is three, disagree for about a third of tempi. That
      * turns the whole fit off in triple and compound time, and every benchmark
      * is barred 4/4, so no baseline would move.
-     * {@code ChordChartTest.aWaltzGridWandersOntoItsOwnDownbeats} and
-     * {@code headerAndBarsCannotDisagree} hold the two sides.
+     * {@code ChordChartTest.aWaltzGridWandersOntoItsOwnDownbeats} holds the
+     * other side.
      */
-    private static final class BarAxis {
+    private static final class BarLines {
+
+        /**
+         * How far a bar may sit from the sequence's own rate and still be a
+         * bar. #421's, with its sweep behind it; see {@link #evenThroughout}.
+         */
+        private static final double EVEN_ENOUGH = 0.25;
+
+        /** The shortest and longest bar the stated tempo admits. #421's. */
+        private static final double SHORTEST_BAR = 0.8;
+        private static final double LONGEST_BAR = 1.25;
 
         /**
          * The bar lines, in seconds and ascending, or empty for an axis that is
@@ -1076,7 +1094,7 @@ final class ChartLayout {
         private final double quarterSeconds;
         private final double barQuarters;
 
-        private BarAxis(double[] lines, int zero, double origin, double quarterSeconds,
+        private BarLines(double[] lines, int zero, double origin, double quarterSeconds,
                         double barQuarters) {
             this.lines = lines;
             this.zero = zero;
@@ -1189,7 +1207,7 @@ final class ChartLayout {
          * {@link #chartGrid} reads the gaps between them <em>on this axis</em>,
          * so it cannot be known first. {@link #opening} is the second half.
          */
-        static BarAxis of(Score score, TimeSignature meter, double quarterSeconds) {
+        static BarLines of(Score score, TimeSignature meter, double quarterSeconds) {
             double barQuarters = meter.quarterBeatsPerBar();
             double barSeconds = barQuarters * quarterSeconds;
             double firstChord = score.chords().chords().stream()
@@ -1199,21 +1217,21 @@ final class ChartLayout {
             Optional<BeatGrid> grid = score.beatGrid();
             List<Double> downbeats = grid.map(BeatGrid::downbeatTimes).orElse(List.of());
             if (downbeats.isEmpty() || !(barSeconds > 0)) {
-                return new BarAxis(new double[0], 0, firstChord, quarterSeconds, barQuarters);
+                return new BarLines(new double[0], 0, firstChord, quarterSeconds, barQuarters);
             }
             double beatSeconds = barSeconds / meter.beatsPerBar();
             double phase = barPhase(downbeats, barSeconds, beatSeconds);
-            if (!atTheGridsOwnRate(grid.orElseThrow(), meter, quarterSeconds)) {
-                return new BarAxis(new double[0], 0, phase, quarterSeconds, barQuarters);
+            if (!atTheGridsOwnRate(grid.orElseThrow(), meter, quarterSeconds)
+                    || !evenThroughout(downbeats, barSeconds)) {
+                return new BarLines(new double[0], 0, phase, quarterSeconds, barQuarters);
             }
             double lastChord = score.chords().chords().stream()
                     .mapToDouble(Chord::endSeconds)
                     .max()
                     .orElse(firstChord);
-            double[] lines = fittedLines(downbeats, phase, barSeconds, beatSeconds / 2,
-                    Math.min(firstChord, phase) - 2 * barSeconds,
-                    Math.max(lastChord, phase) + 2 * barSeconds);
-            return new BarAxis(lines, 0, lines[0], quarterSeconds, barQuarters);
+            double[] lines = extended(downbeats, barSeconds,
+                    firstChord - 2 * barSeconds, lastChord + 2 * barSeconds);
+            return new BarLines(lines, 0, lines[0], quarterSeconds, barQuarters);
         }
 
         /**
@@ -1226,16 +1244,83 @@ final class ChartLayout {
          *                     how far the opening line may overshoot the first
          *                     chord -- see {@link #firstBarOf}
          */
-        BarAxis opening(double firstChord, double gridQuarters) {
+        BarLines opening(double firstChord, double gridQuarters) {
             if (lines.length == 0) {
                 double barSeconds = barQuarters * quarterSeconds;
                 double bars = Math.floor(
                         (firstChord + gridQuarters * quarterSeconds / 2 - origin) / barSeconds);
-                return new BarAxis(lines, 0, origin + bars * barSeconds, quarterSeconds,
+                return new BarLines(lines, 0, origin + bars * barSeconds, quarterSeconds,
                         barQuarters);
             }
             int bar = firstBarOf(lines, firstChord, gridQuarters, barQuarters);
-            return new BarAxis(lines, bar, lines[bar], quarterSeconds, barQuarters);
+            return new BarLines(lines, bar, lines[bar], quarterSeconds, barQuarters);
+        }
+
+        /**
+         * Whether every bar the grid marks is a bar, so the sequence can be
+         * followed at all.
+         *
+         * <p><b>This test is #421's, and so is the evidence for it.</b> That
+         * session swept a thousand perturbed downbeat sequences and found every
+         * way of <em>repairing</em> a faulty one -- substituting a prediction
+         * for a missed downbeat, dropping an invented one, re-anchoring when
+         * the two disagree -- worse than the constant rate on cases the
+         * constant rate handles exactly. What survives that sweep is refusing
+         * the whole sequence rather than mending part of it: a chart cannot
+         * tell from the downbeats alone where the tracker lost the beat, so one
+         * bar that is not a bar means none of them can be trusted.
+         *
+         * <p>Two conditions, both #421's: every gap within a quarter of the
+         * sequence's own rate, and within a fifth short to a quarter long of
+         * the bar the chart is headed with. The second is what a dropped or
+         * doubled downbeat fails -- it gives half or twice the bar -- and the
+         * first is what a sequence with no rate of its own fails.
+         *
+         * <p><b>What is not taken from #421 is its other gate</b>, which
+         * follows a grid only where the median bar-to-bar change exceeds a
+         * hundredth of a bar. Measured over the corpus and over nine commercial
+         * recordings in {@code uncommitted/}, that statistic is the derivative
+         * of the error the chart makes and the error is its integral: a
+         * recording whose bars change by a hundredth of a second each can still
+         * put its bar lines two beats from the music by the end, and four of
+         * those nine recordings fall below the line while two of them are more
+         * than half a beat out today. This condition alone refuses one
+         * recording of the twenty-three, on a gap of two and a half bars, which
+         * is a tracker that lost the beat rather than a band that pushed.
+         *
+         * <p>Fewer than four downbeats is refused too: three gaps give nothing
+         * to take a median of.
+         */
+        private static boolean evenThroughout(List<Double> downbeats, double barSeconds) {
+            if (downbeats.size() < 4) {
+                return false;
+            }
+            double[] gaps = new double[downbeats.size() - 1];
+            for (int i = 0; i < gaps.length; i++) {
+                gaps[i] = downbeats.get(i + 1) - downbeats.get(i);
+            }
+            double[] sorted = gaps.clone();
+            java.util.Arrays.sort(sorted);
+            double typical = sorted[sorted.length / 2];
+            // The mean of the gaps that look like bars, which is a rate; the
+            // median of all of them is a typical value and not one, which is
+            // the correction #200 made a layer up.
+            double total = 0;
+            int counted = 0;
+            for (double gap : gaps) {
+                if (Math.abs(gap - typical) <= EVEN_ENOUGH * typical) {
+                    total += gap;
+                    counted++;
+                }
+            }
+            double rate = total / counted;
+            for (double gap : gaps) {
+                if (Math.abs(gap - rate) > EVEN_ENOUGH * rate
+                        || gap < barSeconds * SHORTEST_BAR || gap > barSeconds * LONGEST_BAR) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /**
@@ -1251,85 +1336,37 @@ final class ChartLayout {
         }
 
         /**
-         * Bar lines covering {@code [from, to]}, each one bar after the last and
-         * then moved onto the nearest downbeat within {@code tolerance}.
+         * The tracked downbeats, with whole bars of the stated length added at
+         * each end until they cover {@code [from, to]}.
          *
-         * <p>Walked outwards from {@code phase} in both directions, so which
-         * line the chart opens on is decided afterwards and cannot change the
-         * others. Backwards as well as forwards because the harmony can begin
-         * before the first downbeat the tracker marked.
+         * <p>The bar lines <em>are</em> the downbeats. Nothing is predicted,
+         * so nothing accumulates: every line is a moment the tracker heard,
+         * and a line being wrong cannot make the next one wrong. That is what
+         * {@link #evenThroughout} buys and it is why the veto has to come
+         * first -- with it, every bar in the sequence is already a plausible
+         * bar, and there is nothing left for a correction to correct.
+         *
+         * <p>The extensions are the stated bar because there is no measurement
+         * out there: the harmony can begin before the tracker's first downbeat
+         * and reaches the end of the recording after its last.
          */
-        private static double[] fittedLines(List<Double> downbeats, double phase,
-                                            double barSeconds, double tolerance,
-                                            double from, double to) {
-            List<Double> back = new ArrayList<>();
-            double at = phase;
-            while (at > from) {
-                at = fitted(downbeats, at - barSeconds, tolerance, barSeconds);
-                back.add(at);
+        private static double[] extended(List<Double> downbeats, double barSeconds,
+                                         double from, double to) {
+            double first = downbeats.get(0);
+            double last = downbeats.get(downbeats.size() - 1);
+            int before = (int) Math.max(0, Math.ceil((first - from) / barSeconds));
+            int after = (int) Math.max(0, Math.ceil((to - last) / barSeconds));
+            double[] lines = new double[before + downbeats.size() + after];
+            for (int i = 0; i < before; i++) {
+                lines[i] = first - (before - i) * barSeconds;
             }
-            List<Double> ahead = new ArrayList<>();
-            at = phase;
-            while (at < to) {
-                at = fitted(downbeats, at + barSeconds, tolerance, barSeconds);
-                ahead.add(at);
+            for (int i = 0; i < downbeats.size(); i++) {
+                lines[before + i] = downbeats.get(i);
             }
-            double[] lines = new double[back.size() + 1 + ahead.size()];
-            for (int i = 0; i < back.size(); i++) {
-                lines[back.size() - 1 - i] = back.get(i);
-            }
-            lines[back.size()] = phase;
-            for (int i = 0; i < ahead.size(); i++) {
-                lines[back.size() + 1 + i] = ahead.get(i);
+            for (int i = 0; i < after; i++) {
+                lines[before + downbeats.size() + i] = last + (i + 1) * barSeconds;
             }
             return lines;
-        }
-
-        /**
-         * A predicted bar line moved onto the downbeat the grid marks for it,
-         * as far as {@code tolerance} allows.
-         *
-         * <p>Which downbeat that is: the nearest one within half a bar. Past
-         * that it belongs to another bar, and the grid is saying nothing about
-         * this one -- which is the case after the last downbeat the tracker
-         * marked as much as it is the case for a bar it skipped.
-         *
-         * <p>Moved as far as the bound rather than refused past it, and the two
-         * differ only where the grid states a bar length no chart bar can have.
-         * Refusing there leaves the walk stepping at the tempo from a line the
-         * grid has already left behind, and every later prediction is then out
-         * by the same amount: measured on real recordings, one short bar cost
-         * the rest of the song. Moving to the bound absorbs it over the two or
-         * three bars the bound needs and then follows the grid again.
-         *
-         * <p>Not the same decision as {@link #barPhase}'s, which refuses. That
-         * one is taken once for the whole chart and clamping it lands the
-         * opening bar line on a phase no downbeat states; this one is taken per
-         * bar, and the next bar carries on from wherever it got to.
-         */
-        private static double fitted(List<Double> downbeats, double prediction,
-                                     double tolerance, double barSeconds) {
-            int found = java.util.Collections.binarySearch(downbeats, prediction);
-            if (found >= 0) {
-                return downbeats.get(found);
-            }
-            int insert = -found - 1;
-            double moved = 0;
-            double least = barSeconds / 2;
-            // The later candidate first, so that the earlier one wins a tie --
-            // which takes a prediction exactly between two downbeats, and is
-            // therefore unreachable while they are about a bar apart.
-            for (int i = insert; i >= insert - 1; i--) {
-                if (i < 0 || i >= downbeats.size()) {
-                    continue;
-                }
-                double away = Math.abs(downbeats.get(i) - prediction);
-                if (away <= least) {
-                    least = away;
-                    moved = downbeats.get(i) - prediction;
-                }
-            }
-            return prediction + Math.max(-tolerance, Math.min(tolerance, moved));
         }
 
         /**
@@ -1419,7 +1456,7 @@ final class ChartLayout {
      * is in {@code tools/baselines/score-chart.txt}, as the rows this PR did not
      * move.
      *
-     * <p>This decides the phase alone, and it is where {@link BarAxis} starts
+     * <p>This decides the phase alone, and it is where {@link BarLines} starts
      * walking rather than where the whole chart hangs: a line the walk then
      * fits onto a downbeat of its own no longer carries this answer.
      */
