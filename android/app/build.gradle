@@ -78,6 +78,16 @@ android {
             // Log.i does turn up in the classes that carry it; returning
             // defaults keeps that from throwing.
             returnDefaultValues = true
+
+            // InnerTubeLiveTest is the one test that makes a real request, and
+            // it skips itself unless this is set. The forwarding is needed
+            // because a -D on the Gradle JVM does not reach the test JVM, so
+            // without it the live check would silently skip however it was
+            // asked for -- which is the worst of both: no coverage, and no sign
+            // that there is none. Defaults to false, so CI stays offline.
+            all {
+                systemProperty 'mw.yt.live', System.getProperty('mw.yt.live', 'false')
+            }
         }
     }
 
@@ -150,15 +160,14 @@ dependencies {
 
 /**
  * Denylist for {@code checkDexedApiLevel}: JDK methods newer than {@code minSdk}
- * that the analysis really calls, which must therefore not survive into the dex.
+ * that code the app really runs calls, and which must therefore not survive into
+ * the dex — where the symptom is a {@code NoSuchMethodError} on an old device and
+ * nothing at all on a new one or in CI.
  *
- * <p>This is not a general API-level audit — lint does not see inside the MW
- * jars, and every other post-26 method those jars carry is in a class the app
- * never loads (the workspace, the config loader, the LilyPond runner, the MIDI
- * importer). These two are different: they sit on the path every analysis takes,
- * and both are handled by the toolchain rather than by anything in this
- * repository, so a toolchain downgrade would put them back silently and the app
- * would die with NoSuchMethodError on the first recording.
+ * <p>It is not an API-level audit. Some of what is below was added because
+ * someone had already been bitten by it, which is the weakness of the shape:
+ * #419 is the sweep of the dex against the platform's own
+ * {@code api-versions.xml}, which would not need to be told what to look for.
  */
 ext.dexForbiddenCalls = [
         // Java 21, Android API 35. D8 backports it -- but not every D8 does:
@@ -170,6 +179,13 @@ ext.dexForbiddenCalls = [
         // Java 16, Android API 34. Comes from the desugared library, so this
         // also fails if coreLibraryDesugaringEnabled is turned off.
         'Ljava/util/stream/Stream;.toList',
+        // Java 11, Android API 33, and D8 does not backport it. The YouTube
+        // import reached for it on an ordinary path -- the error stream of a
+        // reply that carries no body -- and the build stayed green. On any
+        // device below Android 13 that is a NoSuchMethodError, and an Error
+        // rather than an IOException, so the retry logic written for failures
+        // on that very path would not have caught it.
+        'Ljava/io/InputStream;.nullInputStream',
 ]
 
 /**

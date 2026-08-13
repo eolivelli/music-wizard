@@ -1,0 +1,68 @@
+{
+  "responseContext": {
+    "visitorData": "CgtGQUtFVklTSVRPUiIDEgAqAA%3D%3D"
+  },
+  "playabilityStatus": {
+    "status": "OK"
+  },
+  "videoDetails": {
+    "videoId": "dQw4w9WgXcQ",
+    "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+    "author": "Rick Astley",
+    "lengthSeconds": "213",
+    "isLiveContent": false
+  },
+  "streamingData": {
+    "expiresInSeconds": "21540",
+    "adaptiveFormats": [
+      {
+        "itag": 313,
+        "mimeType": "video/webm; codecs=\"vp9\"",
+        "bitrate": 18076636,
+        "contentLength": "358608461",
+        "url": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&itag=313&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&bui=SCRUBBED&spc=SCRUBBED&vprv=SCRUBBED&svpuc=1&mime=video%2Fwebm&rqh=1&gir=yes&clen=358608461&dur=213.040&lmt=1766963492248817&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&txp=SCRUBBED&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+      },
+      {
+        "itag": 139,
+        "mimeType": "audio/mp4; codecs=\"mp4a.40.5\"",
+        "bitrate": 50152,
+        "contentLength": "1300631",
+        "audioSampleRate": "22050",
+        "audioChannels": 2,
+        "approxDurationMs": "213159",
+        "url": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&itag=139&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&bui=SCRUBBED&spc=SCRUBBED&vprv=SCRUBBED&svpuc=1&mime=audio%2Fmp4&rqh=1&gir=yes&clen=1300631&dur=213.159&lmt=1766955925459591&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&txp=SCRUBBED&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+      },
+      {
+        "itag": 140,
+        "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+        "bitrate": 130677,
+        "contentLength": "3449447",
+        "audioSampleRate": "44100",
+        "audioChannels": 2,
+        "approxDurationMs": "213089",
+        "url": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&itag=140&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&bui=SCRUBBED&spc=SCRUBBED&vprv=SCRUBBED&svpuc=1&mime=audio%2Fmp4&rqh=1&gir=yes&clen=3449447&dur=213.089&lmt=1766955925572207&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&txp=SCRUBBED&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+      },
+      {
+        "itag": 249,
+        "mimeType": "audio/webm; codecs=\"opus\"",
+        "bitrate": 49496,
+        "contentLength": "1231355",
+        "audioSampleRate": "48000",
+        "audioChannels": 2,
+        "approxDurationMs": "213061",
+        "url": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&itag=249&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&bui=SCRUBBED&spc=SCRUBBED&vprv=SCRUBBED&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=1231355&dur=213.061&lmt=1766955883595299&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&txp=SCRUBBED&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+      },
+      {
+        "itag": 251,
+        "mimeType": "audio/webm; codecs=\"opus\"",
+        "bitrate": 136544,
+        "contentLength": "3433755",
+        "audioSampleRate": "48000",
+        "audioChannels": 2,
+        "approxDurationMs": "213061",
+        "url": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&bui=SCRUBBED&spc=SCRUBBED&vprv=SCRUBBED&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=3433755&dur=213.061&lmt=1766955883819090&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&txp=SCRUBBED&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+      }
+    ],
+    "serverAbrStreamingUrl": "https://media.example.invalid/videoplayback?expire=1786637357&ei=SCRUBBED&ip=0.0.0.0&id=SCRUBBED&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=1085&met=SCRUBBED&mh=SCRUBBED&mm=SCRUBBED&mn=SCRUBBED&ms=SCRUBBED&mv=m&mvi=1&pl=24&rms=SCRUBBED&initcwndbps=2107500&spc=SCRUBBED&svpuc=1&sabr=1&rqh=1&mt=1786615281&fvip=5&keepalive=yes&fexp=51565116%2C51946837%2C52089683&c=ANDROID_VR&sparams=SCRUBBED&sig=SCRUBBED&lsparams=SCRUBBED&lsig=SCRUBBED"
+  }
+}
