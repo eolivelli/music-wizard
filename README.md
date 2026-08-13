@@ -38,7 +38,9 @@ pipeline unaided.
   transcription and syllable splitting cover Italian and English.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart and the chords-and-lyrics sheet. `--transpose` moves the
-  chords, the key and the spelling together.
+  chords, the key and the spelling together; `--beat-marks` numbers the tracked
+  beats under the chords so placement inside a bar can be read off the page,
+  and `--repeat-tags` labels the lines the chart prints more than once.
 - **Standard MIDI File input**, read symbolically, with its declared tempo and
   meter kept apart from anything estimated.
 - **A workspace per song** (`song.mwz/`) with per-stage caching keyed on
@@ -56,10 +58,11 @@ can do by hand is correct the tempo or the first downbeat
 MW's benchmark material is real playing, not fixtures, and the repo carries
 the whole loop for collecting it:
 
-1. **Record on the phone.** The [Android app](android/README.md) is an offline
+1. **Record on the phone.** The [Android app](android/README.md) is a
    field-recording instrument — record a take, run the same harmony analysis
-   on the device, read the chart as text. It holds no network permission; a
-   test pins the manifest to the microphone alone.
+   on the device, read the chart as text. It can also take a YouTube link
+   shared into it and fetch the audio as a take; those are marked as what they
+   are, and never reach the committed corpus.
 2. **Write down what was played**, in the app, while it is fresh — the note
    travels with the take.
 3. **Share the bundle.** One zip, `<take>.mwz.zip`: the WAV, your note, an
@@ -176,8 +179,9 @@ ml:
 ```
 
 What reaches the pipeline is `analysis`, `ml` — provider and model selection
-for separation, transcription and alignment — plus `notation.lilypondPath`
-and `notation.transposeSemitones`. Providers configure themselves from the
+for separation, transcription and alignment — plus `notation.lilypondPath`,
+`notation.transposeSemitones`, `notation.beatMarks` and
+`notation.repeatTags`. Providers configure themselves from the
 global file ([#383][i383]), so `ml.asrModelDirectory` and
 `ml.alignmentModelDirectory` are read from there only,
 and `analyze` says so when a workspace tries to override it. Several notation
