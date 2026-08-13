@@ -37,11 +37,11 @@ import java.net.URI;
  * beside it: characters plus a word separator, no BPE and no tokenizer
  * dependency — which is what makes forced alignment tractable in Java at all
  * (#313). <b>The vocabulary is also the authority on normalisation.</b> Its
- * own case decides whether text is folded up or down, and whether it spells
- * accented vowels decides whether they are folded away: the English
- * checkpoint has neither {@code è} nor {@code e} with a mark, so the accent
- * goes; the Italian one spells them, and folding there would delete the
- * nucleus of the syllable the aligner is trying to place.
+ * own case decides whether text is folded up or down, and a character it
+ * spells is spelled: the English checkpoint has no accented vowel, so
+ * {@code è} folds to E there, while the Italian one spells it and folding
+ * would delete the nucleus of the syllable the aligner is trying to place.
+ * A character no alphabet spells folds either way, per character.
  */
 final class Wav2Vec2Models {
 
@@ -63,16 +63,6 @@ final class Wav2Vec2Models {
         /** True when the alphabet spells lower-case letters. */
         boolean isLowerCase() {
             return indexOf("a") >= 0;
-        }
-
-        /** True when the alphabet spells at least one accented vowel. */
-        boolean spellsAccents() {
-            for (String entry : vocabulary) {
-                if (entry.length() == 1 && entry.charAt(0) > 127) {
-                    return true;
-                }
-            }
-            return false;
         }
 
         int indexOf(String entry) {

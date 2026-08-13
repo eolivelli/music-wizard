@@ -332,13 +332,7 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return java.util.Arrays.copyOf(tokens, count);
     }
 
-    /**
-     * How a word reaches the model: its characters as the alphabet spells
-     * them, back as text. The alignment itself consumes indices; this is the
-     * same journey in a form a test and a reader can check, and what it
-     * shows is the part that decides whether the aligner is listening for
-     * the word being sung.
-     */
+    /** A word as the alphabet spells it: the indices the aligner consumes, as text. */
     static String spelling(String word, Wav2Vec2Models.Checkpoint checkpoint) {
         StringBuilder out = new StringBuilder();
         for (int index : tokensOf(word, checkpoint)) {
@@ -354,7 +348,8 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
      * aligner listens for a word that is not being sung.
      */
     private static char plainApostrophe(char c) {
-        return c == '\u2019' || c == '\u02bc' || c == '\u00b4' ? '\'' : c;
+        return c == '\u2018' || c == '\u2019' || c == '\u02bc' || c == '\u00b4'
+                ? '\'' : c;
     }
 
     /** The character without its combining marks, or itself when it has none. */
@@ -373,8 +368,9 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
      */
     private static int vocabularyIndexOf(char c, Wav2Vec2Models.Checkpoint checkpoint) {
         String[] vocabulary = checkpoint.vocabulary();
+        int separator = checkpoint.separator();
         for (int v = 0; v < vocabulary.length; v++) {
-            if (v != checkpoint.separator() && vocabulary[v].length() == 1
+            if (v != separator && vocabulary[v].length() == 1
                     && vocabulary[v].charAt(0) == c) {
                 return v;
             }
@@ -423,6 +419,15 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
                 // A session that will not close is one this process is done
                 // with either way; the new model is what the caller needs.
             }
+            // Before the create, not after: a create that throws would
+            // otherwise leave the field naming the session just closed, and
+            // the next request for that path would be handed it. What escapes
+            // then is an IllegalStateException from a closed session rather
+            // than the OrtException this class converts into
+            // ModelUnavailableException, so a whole run degrades line by line
+            // with no reason printed.
+            session = null;
+            sessionPath = null;
         }
         environment = OrtEnvironment.getEnvironment();
         session = environment.createSession(modelPath.toString(),

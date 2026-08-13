@@ -52,12 +52,10 @@ class Wav2Vec2CheckpointTest {
     }
 
     @Test
-    @DisplayName("the alphabet decides the case and whether accents survive")
+    @DisplayName("the alphabet decides the case text is folded to")
     void normalisationFollowsTheAlphabet() {
         assertThat(Wav2Vec2Models.ENGLISH.isLowerCase()).isFalse();
-        assertThat(Wav2Vec2Models.ENGLISH.spellsAccents()).isFalse();
         assertThat(Wav2Vec2Models.ITALIAN.isLowerCase()).isTrue();
-        assertThat(Wav2Vec2Models.ITALIAN.spellsAccents()).isTrue();
     }
 
     /** Frames that make one vocabulary index near-certain, in order. */
