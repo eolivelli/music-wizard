@@ -123,6 +123,7 @@ jobs:
         run: mvn -B --no-transfer-progress -DskipTests package
       - name: Score the synthetic corpus and diff the baseline
         run: |
+          mkdir -p target
           python3 tools/score-synthetic.py | tee target/score-synthetic.txt
           diff -u tools/baselines/score-synthetic.txt target/score-synthetic.txt
 
