@@ -16,7 +16,9 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.Locale;
 import java.util.Optional;
@@ -31,11 +33,10 @@ import java.util.Optional;
  * itself, because every part of the decision has already been got wrong once on
  * this project. The beat unit is the one #4 is about: the map stores quarter
  * notes per minute, so an unqualified figure in 6/8 is a metronome marking 50%
- * fast. The figure itself has to be {@link Score#estimatedTempo()}, which is
- * what the text chart and the {@code analyze} summary print, or the page
- * contradicts the two lines the user read before looking at it. And how much to
- * trust it is {@link #ESTIMATE}, which round 1 of review found stated two ways
- * in two goldens of one fixture.
+ * fast. The figure itself has to be {@link #headline}'s, which is what the text
+ * chart prints, or the page contradicts the two lines the user read before
+ * looking at it. And how much to trust it is {@link #ESTIMATE}, which round 1
+ * of review found stated two ways in two goldens of one fixture.
  *
  * <p>How each emitter reaches it differs, and only the decision is shared. The
  * chart asks {@link #of} directly. A staff goes through {@link StaffLayout},
@@ -47,8 +48,8 @@ import java.util.Optional;
  * <p><b>Marked as an estimate, always.</b> The mark reads {@code ca. (♩ = 159)}
  * rather than {@code ♩ = 159}, because one figure for a whole piece is an
  * estimate even when every tempo in the map was stated: a file that changes
- * tempo states no single number, and {@link Score#estimatedTempo()} answers with
- * a duration-weighted average nothing declared. On the input this project exists
+ * tempo states no single number, so one of them has to be picked and
+ * {@link #headline} picks the first. On the input this project exists
  * for — a recording — it is an estimate outright, from the least reliable stage
  * in the pipeline. The one case the qualifier understates is a constant tempo
  * read from a MIDI file or typed at {@code --tempo}, and that is the trade taken
@@ -92,17 +93,65 @@ record TempoMark(NoteValue unit, long perMinute) {
      *              engraving opens in rather than the piece's, since those
      *              differ after a meter change and it is the opening bar the
      *              mark sits over
+     * @param opensAt where that bar falls, in seconds, for the same reason
      */
-    static Optional<TempoMark> of(Score score, TimeSignature meter) {
+    static Optional<TempoMark> of(Score score, TimeSignature meter, double opensAt) {
         Optional<NoteValue> unit = LilyPondDuration.valueOf(meter.beatUnitQuarters());
         if (unit.isEmpty()) {
             return Optional.empty();
         }
-        double counted = meter.countedTempo(score.estimatedTempo());
+        double counted = meter.countedTempo(headline(score, opensAt));
         if (!Double.isFinite(counted) || counted < 1) {
             return Optional.empty();
         }
         return Optional.of(new TempoMark(unit.get(), Math.round(counted)));
+    }
+
+    /**
+     * The one tempo a page headed at {@code opensAt} states, in quarter notes a
+     * minute.
+     *
+     * <p>{@link Score#estimatedTempo()}, except where the score states more than
+     * one tempo from there on. That accessor answers such a map with a
+     * duration-weighted average, and a file stating 120 BPM and then 60 makes
+     * that an 80 the file never plays (#66); the stated tempo in force where the
+     * page opens is printed instead, which is a tempo the piece has.
+     *
+     * <p>It does not answer with the opening segment outright, because on the
+     * audio path that is not a tempo either: a supplied {@code --tempo} builds a
+     * lead-in segment carrying a rate nobody asked for, and the accessor already
+     * knows to answer with the correction. So the average is displaced only
+     * where something else was stated to displace it with.
+     */
+    static double headline(Score score, double opensAt) {
+        return statedChangesAfter(score, opensAt) == 0
+                ? score.estimatedTempo()
+                : score.tempoMap().segmentAtSeconds(opensAt).beatsPerMinute();
+    }
+
+    /**
+     * How many times a stated tempo changes after {@code opensAt}.
+     *
+     * <p>Only a <em>stated</em> tempo counts, which is what
+     * {@link Provenance#isStated()} says: a tracked map carries one segment per
+     * beat, none of which anybody asserted, and counting those would report
+     * several hundred changes on every recording. Transitions rather than
+     * entries, like {@code AnalyzeCommand}'s declared block, so a sequencer
+     * export restating one tempo at every section boundary reports none.
+     */
+    static int statedChangesAfter(Score score, double opensAt) {
+        int changes = 0;
+        double previous = score.tempoMap().segmentAtSeconds(opensAt).beatsPerMinute();
+        for (TempoMap.TempoSegment segment : score.tempoMap().segments()) {
+            if (!segment.provenance().isStated() || segment.startSeconds() <= opensAt) {
+                continue;
+            }
+            if (segment.beatsPerMinute() != previous) {
+                changes++;
+                previous = segment.beatsPerMinute();
+            }
+        }
+        return changes;
     }
 
     /**

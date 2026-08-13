@@ -462,6 +462,18 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("engraves the mark the text header states, on a file stating two tempos")
+    void theTextAndTheEngravingStateOneTempo() {
+        // The two artefacts of one score, and the reader holds them together.
+        // Heading the text with the tempo the file opens on while the page keeps
+        // the average is the disagreement TempoMark exists to prevent, arriving
+        // through the header.
+        assertThat(ChordChart.toText(statingTwoTemposAndTwoMeters())).contains("Tempo  120 BPM");
+        assertThat(ChordChart.toLilyPond(statingTwoTemposAndTwoMeters()))
+                .contains("\\tempo \\markup { \\italic \"ca.\" } 4 = 120");
+    }
+
+    @Test
     @DisplayName("says so where the chart holds more than one meter (#191)")
     void aChartHoldingTwoMetersSaysSo() {
         // The engraving restates \time wherever a change falls (#64/#160), so a

@@ -19,9 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Key;
-import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
-import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
@@ -107,8 +105,7 @@ public final class ChordChart {
     /**
      * How many times the chart's own bars change meter.
      *
-     * <p>Read off the bars rather than off {@link TempoMap#meterChanges}, which
-     * is the piece's: a chart beginning after a change, or ending before one,
+     * <p>Read off the bars rather than off the piece's {@code meterChanges}: a chart beginning after a change, or ending before one,
      * must not report it. That is the same rule {@link #countedIn} applies to
      * the meter it names, and it is #191 -- the header stated one meter where
      * the engraving of the same score restates {@code \time} wherever a change
@@ -172,43 +169,31 @@ public final class ChordChart {
      * metronome marking 50% fast, because a 6/8 bar is counted in dotted
      * quarters. Identical in every x/4 meter, where the two coincide.
      *
-     * <p><b>A piece that states more than one tempo is headed with the one it
-     * opens on, and told that it changes.</b> That is #66. {@link
-     * Score#estimatedTempo()} answers such a map with a duration-weighted
-     * average, which a MIDI import stating 120 and then 60 makes an 80 the file
-     * never plays -- under a bar grid that honours both, since the beat route
-     * lays those bars out on the map. Only a <em>stated</em> tempo counts, which
-     * is what {@link Provenance#isStated()} says: a tracked map carries one
-     * segment per beat, none of which anybody asserted, and counting those would
-     * head every chart taken from audio with several hundred changes.
-     *
-     * <p>Where nothing changes the row is what it always was, and that is not
-     * the same as the opening segment. A supplied {@code --tempo} builds a
-     * lead-in segment carrying a rate nobody asked for, and the accessor knows
-     * to answer with the correction instead.
+     * <p><b>A piece that states more than one tempo is headed with the one the
+     * chart opens on, and told that it changes.</b> That is #66, and which
+     * figure that is belongs to {@link TempoMark#headline} rather than here:
+     * the engraved chart carries the same number as a metronome mark, and the
+     * two lines a reader takes off the text file are the ones the page has to
+     * agree with.
      */
     private static String tempoLine(Score score, TimeSignature meter,
                                     List<ChartLayout.Bar> bars) {
-        TempoMap map = score.tempoMap();
-        double opens = bars.isEmpty() ? 0 : bars.get(0).startSeconds();
-        double opening = map.segmentAtSeconds(opens).beatsPerMinute();
-        int changes = 0;
-        double previous = opening;
-        for (TempoMap.TempoSegment segment : map.segments()) {
-            // At or before the chart's first bar line is the chart's opening
-            // tempo, not a change within it -- the same rule the meter row
-            // applies by reading the chart's own bars.
-            if (!segment.provenance().isStated() || segment.startSeconds() <= opens) {
-                continue;
-            }
-            if (segment.beatsPerMinute() != previous) {
-                changes++;
-                previous = segment.beatsPerMinute();
-            }
-        }
-        return changes == 0
-                ? "Tempo  " + tempo(score.estimatedTempo(), meter) + "\n"
-                : "Tempo  " + tempo(opening, meter) + more(changes) + "\n";
+        double opensAt = opensAt(bars);
+        return "Tempo  " + tempo(TempoMark.headline(score, opensAt), meter)
+                + more(TempoMark.statedChangesAfter(score, opensAt)) + "\n";
+    }
+
+    /**
+     * Where the chart's first bar line falls, in seconds, or the start of the
+     * piece when it has no bars.
+     *
+     * <p>Read by both tempo rows -- the header's and the engraved mark's -- so
+     * that a chart opening after a tempo or meter change is headed with what it
+     * opens on rather than with what the piece did. The same rule {@link
+     * #countedIn} applies to the meter.
+     */
+    private static double opensAt(List<ChartLayout.Bar> bars) {
+        return bars.isEmpty() ? 0 : bars.get(0).startSeconds();
     }
 
     /** One tempo, in the beat {@code meter} is counted in. */
@@ -383,7 +368,7 @@ public final class ChordChart {
         // Outside \chordmode, which is where a mark belongs that is not a chord:
         // inside it, every line of the block is a bar whose durations have to
         // sum to the meter, and this one has no duration at all.
-        TempoMark.of(score, countedIn(score, bars))
+        TempoMark.of(score, countedIn(score, bars), opensAt(bars))
                 .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 

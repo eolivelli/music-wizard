@@ -698,7 +698,7 @@ final class StaffLayout {
      * be able to count the same score differently.
      */
     private static void writeTempo(StaffWriter writer, Score score, TimeSignature meter) {
-        TempoMark.of(score, meter)
+        TempoMark.of(score, meter, 0)
                 .ifPresent(mark -> writer.tempo(mark.unit(), mark.perMinute()));
     }
 

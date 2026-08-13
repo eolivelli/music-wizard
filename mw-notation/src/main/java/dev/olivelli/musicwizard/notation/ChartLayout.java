@@ -328,6 +328,12 @@ final class ChartLayout {
         // gaps between chords, which is a fact about the progression and not
         // about where the chart happens to start, so it can be known first.
         double grid = chartGrid(chords, quarterSeconds, meter);
+        // Measured at the nominal quarter length rather than on the axis below,
+        // which is a fitted bar and so up to an eighth longer or shorter. What
+        // that costs is one more reason the input to chartGrid is known to about
+        // a percent and read as exact, which is #214: a gap read as wider than
+        // it is can pick a grid coarser than the closest pair, and assemble then
+        // nudges the second chord a grid step along rather than losing it.
         BarAxis axis = BarAxis.of(score, meter, quarterSeconds, grid);
 
         double[] starts = new double[chords.size()];
@@ -1297,13 +1303,16 @@ final class ChartLayout {
         private static int firstBarOf(double[] lines, double firstChord, double gridQuarters,
                                       double barQuarters) {
             int bar = 0;
-            while (bar + 2 < lines.length && lines[bar + 1] <= firstChord) {
+            while (bar + 1 < lines.length && lines[bar + 1] <= firstChord) {
                 bar++;
             }
             if (bar + 2 < lines.length && lines[bar + 1] - firstChord
                     <= gridQuarters * (lines[bar + 2] - lines[bar + 1]) / barQuarters / 2) {
                 bar++;
             }
+            // Every bar needs the line after it to state its own rate, and the
+            // lines run two bars past the harmony, so the walk cannot reach the
+            // end. Clamped anyway rather than relying on that.
             return Math.min(bar, lines.length - 2);
         }
     }
