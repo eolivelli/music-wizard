@@ -99,6 +99,13 @@ final class DoctorCommand implements Callable<Integer> {
         }
         report("Alignment", ml == null ? null : ml.alignmentProvider(),
                 MlProviders.alignmentIds(), "#313");
+        // Which languages align is environment-dependent now: a checkpoint
+        // with no published export runs only from ml.alignmentModelDirectory
+        // (#388), so this is the one place a user can see a mis-set directory
+        // before a run reports the provider not speaking their language.
+        MlProviders.alignment(ml == null ? null : ml.alignmentProvider())
+                .ifPresent(aligner -> System.out.println(
+                        "            languages: " + String.join(", ", aligner.languages())));
         Path modelDir = ModelCacheLocation.directoryFor(
                 ml == null ? null : ml.modelCacheDirectory());
         boolean offline = ml != null && Boolean.TRUE.equals(ml.offline());

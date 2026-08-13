@@ -100,8 +100,12 @@ Naming a language without a file asks MW to *hear* the words:
 - Another Qwen3-ASR export can be substituted via `ml.asrModelDirectory` in
   the global config — only one size is published ready-made, so a different
   one means exporting the model yourself.
-- Word-level timing comes from a **wav2vec2** forced aligner, English only
-  today; other languages get their words spread across the sung stretch.
+- Word-level timing comes from a **wav2vec2** forced aligner. English has a
+  published export and always aligns; Italian has none, so it aligns when you
+  produce one and name it in `ml.alignmentModelDirectory`
+  ([docs/italian-alignment-model.md](docs/italian-alignment-model.md)). A
+  language with no model gets its words spread across the sung stretch
+  instead, and `mw doctor` lists which ones this machine can align.
 
 `--lyrics-language` also splits words into the syllables they are sung on —
 *a-mo-re*, not *amore* — with hyphenation patterns for Italian and English;
@@ -174,7 +178,8 @@ ml:
 What reaches the pipeline is `analysis`, `ml` — provider and model selection
 for separation, transcription and alignment — plus `notation.lilypondPath`
 and `notation.transposeSemitones`. Providers configure themselves from the
-global file ([#383][i383]), so `ml.asrModelDirectory` is read from there only,
+global file ([#383][i383]), so `ml.asrModelDirectory` and
+`ml.alignmentModelDirectory` are read from there only,
 and `analyze` says so when a workspace tries to override it. Several notation
 keys that reach nothing draw a warning rather than silence; `arrangement`
 reaches nothing *and* warns nothing — entirely inert until the piano work
