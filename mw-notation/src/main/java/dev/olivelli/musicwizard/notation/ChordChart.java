@@ -43,9 +43,21 @@ public final class ChordChart {
     private ChordChart() {
     }
 
+    /** A tag per line, or none at all when the caller did not ask for them. */
+    private static List<Optional<String>> tagsOf(List<String> lines, ChartOptions options) {
+        return options.repeatTags() ? LineRepeats.tagsOf(lines)
+                : lines.stream().map(line -> Optional.<String>empty()).toList();
+    }
+
     /** Renders the chart as plain text. */
     public static String toText(Score score) {
+        return toText(score, ChartOptions.defaults());
+    }
+
+    /** The same, with whatever the caller wants annotated over it. */
+    public static String toText(Score score, ChartOptions options) {
         Objects.requireNonNull(score, "score");
+        Objects.requireNonNull(options, "options");
         if (score.chords().isEmpty()) {
             return "(no chords were found)\n";
         }
@@ -54,7 +66,7 @@ public final class ChordChart {
         StringBuilder out = new StringBuilder(header(score, bars));
 
         List<String> lines = linesOf(bars);
-        List<Optional<String>> tags = LineRepeats.tagsOf(lines);
+        List<Optional<String>> tags = tagsOf(lines, options);
         // Only when there is something to read: a legend for a notation the
         // chart does not use is a line of the header spent on nothing. Named
         // in seven characters, like the rows above it.
@@ -224,13 +236,19 @@ public final class ChordChart {
      * #lilyPondOf}.
      */
     public static String toLilyPond(Score score) {
+        return toLilyPond(score, ChartOptions.defaults());
+    }
+
+    /** The same, with whatever the caller wants annotated over it. */
+    public static String toLilyPond(Score score, ChartOptions options) {
         Objects.requireNonNull(score, "score");
-        return lilyPondOf(score, ChartLayout.of(score), false);
+        Objects.requireNonNull(options, "options");
+        return lilyPondOf(score, ChartLayout.of(score), false, options);
     }
 
     /** The same, over a layout the caller has already taken. See {@link #linesOf}. */
     static String lilyPondOf(Score score, List<ChartLayout.Bar> bars) {
-        return lilyPondOf(score, bars, false);
+        return lilyPondOf(score, bars, false, ChartOptions.defaults());
     }
 
     /**
@@ -242,7 +260,8 @@ public final class ChordChart {
      * different thing from one who wants the words, and adding lyrics to the
      * chart would silently change what {@code chords.pdf} has always been.
      */
-    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars, boolean withLyrics) {
+    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars, boolean withLyrics,
+                             ChartOptions options) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -253,13 +272,15 @@ public final class ChordChart {
         out.append("}\n\n");
 
         out.append("\\score {\n");
-        List<Optional<String>> tags = LineRepeats.tagsOf(linesOf(bars));
+        List<Optional<String>> tags = tagsOf(linesOf(bars), options);
         boolean tagged = tags.stream().anyMatch(Optional::isPresent);
         // The lyric block is built before anything is written, because whether
         // there is one decides that the score needs a parallel block at all.
         Optional<String> lyrics = withLyrics
                 ? LyricEngraving.block(score, bars) : Optional.empty();
-        boolean parallel = tagged || lyrics.isPresent();
+        Optional<String> beats = options.beatMarks()
+                ? BeatMarks.block(score, bars) : Optional.empty();
+        boolean parallel = tagged || lyrics.isPresent() || beats.isPresent();
         if (parallel) {
             out.append("  <<\n");
         }
@@ -330,9 +351,14 @@ public final class ChordChart {
             out.append("    \\bar \"|.\"\n");
         }
         out.append("  }\n");
-        // After the chord names, not before: the staff affinities of the three
-        // contexts must not increase read top to bottom, and this one points
-        // down like the two above it.
+        // After the chord names, not before: read top to bottom the staff
+        // affinities must not increase, and every lane here points DOWN as the
+        // chord names do. Equal affinities do not increase, which is what makes
+        // any number of these legal under the chords.
+        //
+        // The marks before the words, which is the order a reader compares them
+        // in: the chords, then where the beats fell, then what was sung.
+        beats.ifPresent(out::append);
         lyrics.ifPresent(out::append);
         if (parallel) {
             out.append("  >>\n");

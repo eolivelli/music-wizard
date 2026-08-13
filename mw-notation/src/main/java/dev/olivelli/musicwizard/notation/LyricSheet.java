@@ -128,8 +128,14 @@ public final class LyricSheet {
      * place it is stated.
      */
     public static String toLilyPond(Score score) {
+        return toLilyPond(score, ChartOptions.defaults());
+    }
+
+    /** The same, with whatever the caller wants annotated over it. */
+    public static String toLilyPond(Score score, ChartOptions options) {
         Objects.requireNonNull(score, "score");
-        return ChordChart.lilyPondOf(score, ChartLayout.of(score), true);
+        Objects.requireNonNull(options, "options");
+        return ChordChart.lilyPondOf(score, ChartLayout.of(score), true, options);
     }
 
     /**

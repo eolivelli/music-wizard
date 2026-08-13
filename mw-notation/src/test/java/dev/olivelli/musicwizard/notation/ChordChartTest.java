@@ -47,6 +47,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class ChordChartTest {
 
+    /** With the repeat tags asked for, which is not the default (#417). */
+    private static final ChartOptions TAGGED = new ChartOptions(false, true);
+
     private static PitchSpelling root(NoteLetter letter) {
         return new PitchSpelling(letter, Accidental.NATURAL, 4);
     }
@@ -1663,8 +1666,13 @@ class ChordChartTest {
 
     /** The text chart's tag for each printed line, {@code "."} where it has none. */
     private static String textTags(Score score) {
+        return textTagsOf(ChordChart.toText(score, TAGGED));
+    }
+
+    /** The same, over a chart the caller has already rendered. */
+    private static String textTagsOf(String chart) {
         StringBuilder tags = new StringBuilder();
-        for (String line : ChordChart.toText(score).lines().toList()) {
+        for (String line : chart.lines().toList()) {
             if (line.startsWith("|")) {
                 Matcher tag = Pattern.compile("\\[([A-Z]+)]$").matcher(line);
                 tags.append(tag.find() ? tag.group(1) : ".");
@@ -1674,14 +1682,27 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("no tags at all unless the caller asks for them")
+    void tagsAreOffByDefault() {
+        // Held on a chart that does repeat, so what is asserted is the gate
+        // rather than nothing having been found.
+        Score repeats = fourChordSong(3);
+
+        assertThat(textTagsOf(ChordChart.toText(repeats))).isEqualTo("...");
+        assertThat(ChordChart.toText(repeats)).doesNotContain("Tags");
+        assertThat(bracketsOf(ChordChart.toLilyPond(repeats))).isEmpty();
+        assertThat(ChordChart.toLilyPond(repeats)).doesNotContain("\\new Dynamics");
+    }
+
+    @Test
     @DisplayName("says nothing at all about a chart that never repeats a line")
     void aChartThatDoesNotRepeatIsNotAnnotated() {
         Score once = fourChordSong(1);
 
         assertThat(textTags(once)).isEqualTo(".");
-        assertThat(ChordChart.toText(once)).doesNotContain("Tags");
-        assertThat(bracketsOf(ChordChart.toLilyPond(once))).isEmpty();
-        assertThat(ChordChart.toLilyPond(once))
+        assertThat(ChordChart.toText(once, TAGGED)).doesNotContain("Tags");
+        assertThat(bracketsOf(ChordChart.toLilyPond(once, TAGGED))).isEmpty();
+        assertThat(ChordChart.toLilyPond(once, TAGGED))
                 .as("no annotation, no context to carry it")
                 .doesNotContain("\\new Dynamics");
     }
@@ -1697,13 +1718,13 @@ class ChordChartTest {
         // With the one line that says what a tag is. Its absence is asserted on
         // a chart that does not repeat; without this, deleting it outright would
         // leave the suite green.
-        assertThat(ChordChart.toText(fourChordSong(3))).contains("Tags   [A]");
+        assertThat(ChordChart.toText(fourChordSong(3), TAGGED)).contains("Tags   [A]");
     }
 
     @Test
     @DisplayName("brackets exactly the bars of the line it tags")
     void aBracketCoversItsOwnLine() {
-        assertThat(bracketsOf(ChordChart.toLilyPond(fourChordSong(3))))
+        assertThat(bracketsOf(ChordChart.toLilyPond(fourChordSong(3), TAGGED)))
                 .containsExactly(new Bracket("A", 0, 3),
                         new Bracket("A", 4, 7),
                         new Bracket("A", 8, 11));
@@ -1719,7 +1740,7 @@ class ChordChartTest {
         Score score = fourChordSong(3);
         String tags = textTags(score);
 
-        List<Bracket> brackets = bracketsOf(ChordChart.toLilyPond(score));
+        List<Bracket> brackets = bracketsOf(ChordChart.toLilyPond(score, TAGGED));
         assertThat(brackets).hasSize((int) tags.chars().filter(c -> c != '.').count());
         for (Bracket bracket : brackets) {
             assertThat(bracket.tag())
@@ -1734,7 +1755,7 @@ class ChordChartTest {
         // is spelled against are the chord cells' own durations, written by the
         // same call. If the two timelines could come apart, a bracket would
         // still be emitted and would simply cover the wrong bars.
-        String source = ChordChart.toLilyPond(aSplitBarLineTwice());
+        String source = ChordChart.toLilyPond(aSplitBarLineTwice(), TAGGED);
 
         assertThat(spacerDurations(source)).isEqualTo(chordDurations(source));
     }
@@ -1821,7 +1842,7 @@ class ChordChartTest {
         // LilyPond drew. Both take a line ending in a bar check and not opening
         // with a backslash, and both would break on a chord carrying a
         // post-event. It is why the brackets ride in a context of their own.
-        for (String line : ChordChart.toLilyPond(fourChordSong(3)).lines().toList()) {
+        for (String line : ChordChart.toLilyPond(fourChordSong(3), TAGGED).lines().toList()) {
             String stripped = line.strip();
             if (!stripped.endsWith("|") || stripped.startsWith("\\")) {
                 continue;
@@ -1841,7 +1862,7 @@ class ChordChartTest {
         // Like the bar-extent request above, this only says the request is made.
         // ChordChartEngravingIT engraves a bracket across a break and counts the
         // labels and the hooks LilyPond drew.
-        String source = ChordChart.toLilyPond(fourChordSong(3));
+        String source = ChordChart.toLilyPond(fourChordSong(3), TAGGED);
 
         assertThat(source)
                 .contains("\\override TextSpanner.bound-details.left-broken.text = ##f")
@@ -1858,7 +1879,7 @@ class ChordChartTest {
         Score score = aChordPerBar(9);
 
         assertThat(textTags(score)).isEqualTo("AA.");
-        assertThat(bracketsOf(ChordChart.toLilyPond(score)))
+        assertThat(bracketsOf(ChordChart.toLilyPond(score, TAGGED)))
                 .allSatisfy(bracket -> assertThat(bracket.lastBar())
                         .isGreaterThan(bracket.firstBar()));
     }
