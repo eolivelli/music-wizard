@@ -62,6 +62,35 @@ class AlignedLyricsTest {
     }
 
     @Test
+    @DisplayName("a workspace-layer alignment model directory is named as unreachable")
+    void workspaceAlignmentModelDirectoryIsCalledOut() throws IOException {
+        // The twin of the ASR key's warning. Without it the run reports the
+        // provider not speaking the language while the model sits installed
+        // in the layer the provider never reads (#383) -- a symptom pointing
+        // at the wrong cause, which is worse than silence.
+        Path source = directory.resolve("song.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 6.0, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("layered.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
+                .exitCode()).isZero();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                + "\nconfig:\n  ml:\n    alignmentProvider: fake-cli-alignment\n"
+                + "    alignmentModelDirectory: " + directory.resolve("mine") + "\n");
+        Path lrc = directory.resolve("layered.lrc");
+        Files.writeString(lrc, LRC);
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
+                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.err())
+                .contains("ml.alignmentModelDirectory is read from the global config only");
+    }
+
+    @Test
     @DisplayName("aligned words carry the aligner's times, offset to the line's window")
     void alignedTimesReplaceSpreadTimes() throws IOException {
         Path root = analysed("fake-cli-alignment");

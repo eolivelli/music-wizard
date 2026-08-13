@@ -41,7 +41,7 @@ class Wav2Vec2AlignmentProviderTest {
             frames += run[1];
         }
         float[][] logProbs = new float[frames]
-                [Wav2Vec2Models.VOCABULARY.length];
+                [Wav2Vec2Models.ENGLISH.vocabulary().length];
         float low = (float) Math.log(1e-4);
         float high = (float) Math.log(0.999);
         int f = 0;
@@ -56,8 +56,8 @@ class Wav2Vec2AlignmentProviderTest {
     }
 
     private static int v(char c) {
-        for (int i = 5; i < Wav2Vec2Models.VOCABULARY.length; i++) {
-            if (Wav2Vec2Models.VOCABULARY[i].charAt(0) == c) {
+        for (int i = 5; i < Wav2Vec2Models.ENGLISH.vocabulary().length; i++) {
+            if (Wav2Vec2Models.ENGLISH.vocabulary()[i].charAt(0) == c) {
                 return i;
             }
         }
@@ -74,11 +74,11 @@ class Wav2Vec2AlignmentProviderTest {
     void wordsAtTheirFrames() {
         // blank, then LA, separator, SOL as runs of frames.
         float[][] logProbs = plan(
-                new int[] {Wav2Vec2Models.BLANK, 10},
+                new int[] {Wav2Vec2Models.ENGLISH.blank(), 10},
                 new int[] {v('L'), 5}, new int[] {v('A'), 5},
-                new int[] {Wav2Vec2Models.SEPARATOR, 5},
+                new int[] {Wav2Vec2Models.ENGLISH.separator(), 5},
                 new int[] {v('S'), 5}, new int[] {v('O'), 5}, new int[] {v('L'), 5},
-                new int[] {Wav2Vec2Models.BLANK, 10});
+                new int[] {Wav2Vec2Models.ENGLISH.blank(), 10});
         var words = provider(logProbs).align(new float[16_000], 16_000, "en",
                 List.of("la", "sol"));
 
@@ -98,9 +98,9 @@ class Wav2Vec2AlignmentProviderTest {
         // double-separator regression emits, and the mutant stays green.
         float[][] logProbs = plan(
                 new int[] {v('L'), 10},
-                new int[] {Wav2Vec2Models.SEPARATOR, 1},
+                new int[] {Wav2Vec2Models.ENGLISH.separator(), 1},
                 new int[] {v('S'), 10},
-                new int[] {Wav2Vec2Models.BLANK, 29});
+                new int[] {Wav2Vec2Models.ENGLISH.blank(), 29});
         // "..." maps to no vocabulary entry; "l" and "s" surround it.
         var words = provider(logProbs).align(new float[16_000], 16_000, "en",
                 List.of("l", "...", "s"));
@@ -120,7 +120,7 @@ class Wav2Vec2AlignmentProviderTest {
     @Test
     @DisplayName("nothing expressible at all comes back zero-length, one per word")
     void allInexpressible() {
-        float[][] logProbs = plan(new int[] {Wav2Vec2Models.BLANK, 50});
+        float[][] logProbs = plan(new int[] {Wav2Vec2Models.ENGLISH.blank(), 50});
         var words = provider(logProbs).align(new float[16_000], 16_000, "en",
                 List.of("...", "123"));
 
@@ -138,7 +138,7 @@ class Wav2Vec2AlignmentProviderTest {
         // dropped instead, the word would lose its nucleus.
         float[][] logProbs = plan(
                 new int[] {v('S'), 10}, new int[] {v('I'), 10},
-                new int[] {Wav2Vec2Models.BLANK, 30});
+                new int[] {Wav2Vec2Models.ENGLISH.blank(), 30});
         var words = provider(logProbs).align(new float[16_000], 16_000, "en",
                 List.of("sì"));
 
@@ -150,7 +150,7 @@ class Wav2Vec2AlignmentProviderTest {
     @Test
     @DisplayName("an unsupported language is refused, not guessed at")
     void unsupportedLanguageRefused() {
-        var provider = provider(plan(new int[] {Wav2Vec2Models.BLANK, 10}));
+        var provider = provider(plan(new int[] {Wav2Vec2Models.ENGLISH.blank(), 10}));
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> provider.align(new float[1600], 16_000, "xx", List.of("la")))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -160,7 +160,7 @@ class Wav2Vec2AlignmentProviderTest {
     @Test
     @DisplayName("no words align to no words")
     void emptyWords() {
-        assertThat(provider(plan(new int[] {Wav2Vec2Models.BLANK, 10}))
+        assertThat(provider(plan(new int[] {Wav2Vec2Models.ENGLISH.blank(), 10}))
                 .align(new float[1600], 16_000, "en", List.of())).isEmpty();
     }
 }

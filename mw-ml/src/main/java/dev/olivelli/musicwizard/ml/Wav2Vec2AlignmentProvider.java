@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import java.nio.FloatBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -40,9 +41,9 @@ import java.util.Map;
  *
  * <p>The model emits per-frame character posteriors; {@link CtcAligner} walks
  * the known text through them. Everything acoustic is the model's problem and
- * everything textual is handled here: uppercase, accents folded to their base
- * letter (the English vocabulary has none), anything else outside the
- * vocabulary dropped. A word left with no expressible characters still comes
+ * everything textual is handled here, spelled against the checkpoint's own
+ * alphabet — see {@code tokensOf} — with anything it cannot express dropped.
+ * A word left with no expressible characters still comes
  * back — zero-length at its predecessor's end, confidence zero — because the
  * contract is one result per input word, and a silent omission would shift
  * every later word one slot.
@@ -55,10 +56,11 @@ import java.util.Map;
 public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
 
     private final ModelCache cache;
-    private final ModelRef model;
+    private final Wav2Vec2Models.Checkpoint fixedCheckpoint;
+    private final String modelDirectory;
 
     /**
-     * The session, built once and held for the provider's lifetime.
+     * The session for the model in use, held until the model changes.
      *
      * <p>analyze calls {@link #align} once per lyric line, and rebuilding a
      * session per line pays the model load per line. The CLI process ends when
@@ -67,25 +69,84 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
      * day such an embedder exists.
      */
     private OrtSession session;
+    private Path sessionPath;
     private OrtEnvironment environment;
     private final PosteriorSource posteriors;
 
     /** The ServiceLoader constructor: configuration from the environment (#383). */
     public Wav2Vec2AlignmentProvider() {
-        this(environmentCache(), Wav2Vec2Models.ENGLISH);
+        this(environmentConfig());
     }
 
-    Wav2Vec2AlignmentProvider(ModelCache cache, ModelRef model) {
+    Wav2Vec2AlignmentProvider(ModelCache cache, Wav2Vec2Models.Checkpoint checkpoint,
+                              String modelDirectory) {
         this.cache = cache;
-        this.model = model;
+        this.fixedCheckpoint = checkpoint;
+        this.modelDirectory = modelDirectory;
         this.posteriors = this::logPosteriors;
+    }
+
+    private Wav2Vec2AlignmentProvider(MusicWizardConfig config) {
+        this(ModelCache.at(
+                        ModelCacheLocation.directoryFor(
+                                config.ml() == null ? null : config.ml().modelCacheDirectory()),
+                        config.isOffline()),
+                null,
+                config.ml() == null ? null : config.ml().alignmentModelDirectory());
     }
 
     /** For tests: the text half — tokens, separators, word spans — without a model. */
     Wav2Vec2AlignmentProvider(PosteriorSource posteriors) {
-        this.cache = null;
-        this.model = null;
+        this(null, Wav2Vec2Models.ENGLISH, null, posteriors);
+    }
+
+    /** For tests: a chosen checkpoint's alphabet against supplied posteriors. */
+    Wav2Vec2AlignmentProvider(ModelCache cache, Wav2Vec2Models.Checkpoint checkpoint,
+                              String modelDirectory, PosteriorSource posteriors) {
+        this.cache = cache;
+        this.fixedCheckpoint = checkpoint;
+        this.modelDirectory = modelDirectory;
         this.posteriors = posteriors;
+    }
+
+    /**
+     * The checkpoint for a language, or null when this build cannot run it:
+     * a fixed one when a test pinned it, otherwise the table's entry.
+     */
+    private Wav2Vec2Models.Checkpoint checkpointFor(String languageTag) {
+        if (fixedCheckpoint != null) {
+            return fixedCheckpoint.name().equals(languageTag) ? fixedCheckpoint : null;
+        }
+        return Wav2Vec2Models.BY_LANGUAGE.get(languageTag);
+    }
+
+    /**
+     * Where a checkpoint's model.onnx is: the user's directory when they
+     * supplied one for this language, else the published export. A language
+     * with neither is not offered by {@link #languages()}, so this returning
+     * null means only that a caller went around that gate.
+     */
+    private Path modelPathFor(Wav2Vec2Models.Checkpoint checkpoint) {
+        Path supplied = suppliedModel(checkpoint);
+        if (supplied != null) {
+            return supplied;
+        }
+        return cache == null || checkpoint.published() == null
+                ? null : cache.fetch(checkpoint.published(), System.out::println);
+    }
+
+    /**
+     * The model a user produced for this language, under
+     * {@code <ml.alignmentModelDirectory>/<language>/model.onnx}. One key for
+     * every language rather than one per language: a third checkpoint needs
+     * a subdirectory, not another setting.
+     */
+    private Path suppliedModel(Wav2Vec2Models.Checkpoint checkpoint) {
+        if (modelDirectory == null || modelDirectory.isBlank()) {
+            return null;
+        }
+        Path candidate = Path.of(modelDirectory, checkpoint.name(), "model.onnx");
+        return Files.isRegularFile(candidate) ? candidate : null;
     }
 
     /** What turns audio into per-frame log posteriors; the model, ordinarily. */
@@ -93,13 +154,8 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         float[][] posteriorsOf(Path modelPath, float[] samples);
     }
 
-    private static ModelCache environmentCache() {
-        MusicWizardConfig config = new ConfigLoader().effectiveConfig(null, null);
-        MusicWizardConfig.MlConfig ml = config.ml();
-        return ModelCache.at(
-                ModelCacheLocation.directoryFor(
-                        ml == null ? null : ml.modelCacheDirectory()),
-                config.isOffline());
+    private static MusicWizardConfig environmentConfig() {
+        return new ConfigLoader().effectiveConfig(null, null);
     }
 
     @Override
@@ -107,11 +163,27 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return "onnx-wav2vec2";
     }
 
+    /**
+     * The languages this machine can actually align: a checkpoint with a
+     * published export, plus any the user supplied a model for. Italian has
+     * no export to publish (#388), so it appears exactly when
+     * {@code ml.alignmentModelDirectory/it/model.onnx} does — a caller that
+     * asked for a language absent here is told so and keeps its parsed
+     * times, which is what analyze already does.
+     */
     @Override
     public List<String> languages() {
-        // English only until a trusted Italian ONNX export exists; the
-        // follow-up issue tracks it, and the vocabulary simply grows a table.
-        return List.of("en");
+        if (fixedCheckpoint != null) {
+            return List.of(fixedCheckpoint.name());
+        }
+        List<String> available = new ArrayList<>();
+        for (var entry : new java.util.TreeMap<>(Wav2Vec2Models.BY_LANGUAGE).entrySet()) {
+            if (entry.getValue().published() != null
+                    || suppliedModel(entry.getValue()) != null) {
+                available.add(entry.getKey());
+            }
+        }
+        return List.copyOf(available);
     }
 
     @Override
@@ -124,7 +196,8 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         if (words.isEmpty()) {
             return List.of();
         }
-        Path modelPath = cache == null ? null : cache.fetch(model, System.out::println);
+        Wav2Vec2Models.Checkpoint checkpoint = checkpointFor(languageTag);
+        Path modelPath = modelPathFor(checkpoint);
 
         float[] resampled = Resampler.resample(samples, sampleRate,
                 Wav2Vec2Models.MODEL_RATE);
@@ -136,7 +209,7 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         List<int[]> perWord = new ArrayList<>(words.size());
         int total = 0;
         for (String word : words) {
-            int[] tokens = tokensOf(word);
+            int[] tokens = tokensOf(word, checkpoint);
             perWord.add(tokens);
             total += tokens.length;
         }
@@ -154,7 +227,7 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
                 continue;
             }
             if (anyBefore) {
-                sequence[at++] = Wav2Vec2Models.SEPARATOR;
+                sequence[at++] = checkpoint.separator();
             }
             wordFirstToken[w] = at;
             for (int token : tokens) {
@@ -173,7 +246,7 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         }
 
         List<CtcAligner.TokenSpan> spans =
-                CtcAligner.align(logProbs, Wav2Vec2Models.BLANK, sequence);
+                CtcAligner.align(logProbs, checkpoint.blank(), sequence);
 
         // First and last frame per token index, and its mean log posterior.
         int[] firstFrame = new int[sequence.length];
@@ -228,23 +301,27 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
     }
 
     /**
-     * A word as vocabulary indices: uppercased, accents folded, the rest
-     * dropped.
-     *
-     * <p>Folding first, because the vocabulary is bare ASCII and an accented
-     * vowel dropped outright would delete the nucleus of most Italian
-     * syllables the day the Italian model lands — the fold is the part of
-     * normalisation that is language-independent.
+     * A word as vocabulary indices, normalised the way the checkpoint's own
+     * alphabet asks: cased to match it, and accents kept where it spells them.
+     * The vocabulary decides, not the language tag.
      */
-    private static int[] tokensOf(String word) {
-        String folded = Normalizer.normalize(word, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toUpperCase(java.util.Locale.ROOT);
-        int[] tokens = new int[folded.length()];
+    private static int[] tokensOf(String word, Wav2Vec2Models.Checkpoint checkpoint) {
+        String text = Normalizer.normalize(word, Normalizer.Form.NFC);
+        text = checkpoint.isLowerCase()
+                ? text.toLowerCase(java.util.Locale.ROOT)
+                : text.toUpperCase(java.util.Locale.ROOT);
+        int[] tokens = new int[text.length()];
         int count = 0;
-        for (int i = 0; i < folded.length(); i++) {
-            char c = folded.charAt(i);
-            int index = vocabularyIndexOf(c);
+        for (int i = 0; i < text.length(); i++) {
+            char c = plainApostrophe(text.charAt(i));
+            int index = vocabularyIndexOf(c, checkpoint);
+            if (index < 0) {
+                // The fold is a fallback, per character, not a property of the
+                // alphabet: an alphabet that spells è still spells no ô, and
+                // dropping that outright deletes the nucleus of the syllable
+                // being placed -- which is the harm this branch exists for.
+                index = vocabularyIndexOf(folded(c), checkpoint);
+            }
             if (index >= 0) {
                 tokens[count++] = index;
             }
@@ -252,10 +329,46 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return java.util.Arrays.copyOf(tokens, count);
     }
 
-    private static int vocabularyIndexOf(char c) {
-        for (int v = 5; v < Wav2Vec2Models.VOCABULARY.length; v++) {
-            if (Wav2Vec2Models.VOCABULARY[v].length() == 1
-                    && Wav2Vec2Models.VOCABULARY[v].charAt(0) == c) {
+    /** A word as the alphabet spells it: the indices the aligner consumes, as text. */
+    static String spelling(String word, Wav2Vec2Models.Checkpoint checkpoint) {
+        StringBuilder out = new StringBuilder();
+        for (int index : tokensOf(word, checkpoint)) {
+            out.append(checkpoint.vocabulary()[index]);
+        }
+        return out.toString();
+    }
+
+    /**
+     * A typographic apostrophe as the plain one the alphabets spell. Italian
+     * elides constantly -- c'è, un'altra -- and a lyric file typed in a word
+     * processor carries U+2019, which no vocabulary has: dropped, the
+     * aligner listens for a word that is not being sung.
+     */
+    private static char plainApostrophe(char c) {
+        return c == '\u2018' || c == '\u2019' || c == '\u02bc' || c == '\u00b4'
+                ? '\'' : c;
+    }
+
+    /** The character without its combining marks, or itself when it has none. */
+    private static char folded(char c) {
+        String stripped = Normalizer.normalize(String.valueOf(c), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return stripped.isEmpty() ? c : stripped.charAt(0);
+    }
+
+    /**
+     * The alphabet's index for a character, or -1. Multi-character entries are
+     * the sequence tokens ({@code <pad>}, {@code <s>}…) and the separator is
+     * the aligner's own, so both are skipped by what they are rather than by
+     * a count of leading specials — the Italian alphabet already spells real,
+     * alignable entries at 5 and 6.
+     */
+    private static int vocabularyIndexOf(char c, Wav2Vec2Models.Checkpoint checkpoint) {
+        String[] vocabulary = checkpoint.vocabulary();
+        int separator = checkpoint.separator();
+        for (int v = 0; v < vocabulary.length; v++) {
+            if (v != separator && vocabulary[v].length() == 1
+                    && vocabulary[v].charAt(0) == c) {
                 return v;
             }
         }
@@ -284,12 +397,37 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return out;
     }
 
+    /**
+     * The session for a model, held across calls and rebuilt when the model
+     * changes. Keyed on the path, not merely non-null: this provider picks a
+     * checkpoint per language now, and a session reused across two of them
+     * reads one model's logits with the other's alphabet — which throws in
+     * one order and, in the other, quietly returns plausible words spelled
+     * against the wrong letters.
+     */
     private synchronized OrtSession session(Path modelPath) throws OrtException {
-        if (session == null) {
-            environment = OrtEnvironment.getEnvironment();
-            session = environment.createSession(modelPath.toString(),
-                    new OrtSession.SessionOptions());
+        if (session != null && modelPath.equals(sessionPath)) {
+            return session;
         }
+        if (session != null) {
+            try {
+                session.close();
+            } catch (OrtException e) {
+                // A session that will not close is one this process is done
+                // with either way; the new model is what the caller needs.
+            }
+            // Between the close and the create: a create that throws would
+            // otherwise leave the field naming the closed session, and the
+            // next request for that path would be handed it -- as an
+            // IllegalStateException, which is not the OrtException this class
+            // converts into ModelUnavailableException.
+            session = null;
+            sessionPath = null;
+        }
+        environment = OrtEnvironment.getEnvironment();
+        session = environment.createSession(modelPath.toString(),
+                new OrtSession.SessionOptions());
+        sessionPath = modelPath;
         return session;
     }
 
