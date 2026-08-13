@@ -1,0 +1,192 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.android.yt;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.function.BooleanSupplier;
+
+/**
+ * Shared text in, one audio file out.
+ *
+ * <p>The whole of what the app calls. Everything below this is testable without
+ * a network and everything above it is Android, so this is the seam the two
+ * halves meet at.
+ */
+public final class Fetch {
+
+    /**
+     * The longest video this will fetch.
+     *
+     * <p>Not a network limit but a memory one, downstream: the analysis holds the
+     * whole take as a {@code float[]} at the file's own rate and an STFT
+     * magnitude matrix over it at the same time. Twenty minutes at 48 kHz is
+     * already ~230 MB of the first alone. A two-hour set would fail later, in
+     * the analysis, where the cause would be much harder to read than here.
+     */
+    public static final long MAX_SECONDS = 20 * 60;
+
+    private final InnerTube tube;
+    private final StreamDownload download;
+
+    public Fetch(Http http) {
+        this(new InnerTube(http), new StreamDownload(http));
+    }
+
+    Fetch(InnerTube tube, StreamDownload download) {
+        this.tube = tube;
+        this.download = download;
+    }
+
+    /** What was fetched, and what it is. */
+    public static final class Fetched {
+
+        private final File file;
+        private final String videoId;
+        private final String title;
+        private final String author;
+        private final long lengthSeconds;
+
+        Fetched(File file, String videoId, String title, String author, long lengthSeconds) {
+            this.file = file;
+            this.videoId = videoId;
+            this.title = title;
+            this.author = author;
+            this.lengthSeconds = lengthSeconds;
+        }
+
+        /** The downloaded container, a whole MP4 or WebM a decoder can open. */
+        public File file() {
+            return file;
+        }
+
+        public String videoId() {
+            return videoId;
+        }
+
+        /** Never blank: the video id stands in when YouTube gave no title. */
+        public String title() {
+            return title;
+        }
+
+        public String author() {
+            return author;
+        }
+
+        public long lengthSeconds() {
+            return lengthSeconds;
+        }
+
+        /** The canonical link, which is what gets recorded as the take's provenance. */
+        public String url() {
+            return VideoLink.watchUrl(videoId);
+        }
+    }
+
+    /**
+     * Fetches the audio of the first video linked in {@code shareText}.
+     *
+     * <p>Writes into {@code directory} and nowhere else, and leaves nothing
+     * behind on any path but success. Cancellation surfaces as an
+     * {@code InterruptedIOException}, which is an {@code IOException} the caller
+     * reports as cancelled rather than failed.
+     */
+    public Fetched run(String shareText, File directory, StreamDownload.Progress progress,
+            BooleanSupplier cancelled) throws ExtractionException, IOException {
+        String videoId = VideoLink.videoId(shareText);
+        if (videoId == null) {
+            throw new ExtractionException(ExtractionException.Reason.NO_VIDEO,
+                    describe(VideoLink.problem(shareText)));
+        }
+
+        PlayerInfo info = tube.resolve(videoId);
+        if (info.isLive()) {
+            throw new ExtractionException(ExtractionException.Reason.LIVE,
+                    "This is a live stream, which has no fixed length to fetch.");
+        }
+        if (info.lengthSeconds() > MAX_SECONDS) {
+            throw new ExtractionException(ExtractionException.Reason.TOO_LONG,
+                    "That video is " + info.lengthSeconds() / 60 + " minutes long."
+                            + " The app fetches up to " + MAX_SECONDS / 60 + ".");
+        }
+
+        AudioStream stream = AudioStream.choose(info.audio());
+        File part = new File(directory, videoId + ".part");
+        try {
+            download.to(part, stream, progress, cancelled);
+        } catch (StreamDownload.ExpiredException expired) {
+            // URLs last about six hours, so this is a confirmation screen that was
+            // left open. Resolving again is the cure, and it is worth exactly one
+            // try: fresh URLs that are refused too are not stale ones.
+            info = tube.resolve(videoId);
+            stream = AudioStream.choose(info.audio());
+            if (stream == null) {
+                throw new ExtractionException(ExtractionException.Reason.SABR_ONLY,
+                        "YouTube changed how it serves this audio."
+                                + " This version of the app cannot fetch it.");
+            }
+            try {
+                download.to(part, stream, progress, cancelled);
+            } catch (StreamDownload.ExpiredException again) {
+                // Freshly resolved URLs, refused anyway, after the download had
+                // already retried each chunk. That is the media host rate-limiting
+                // this address, not a link that went stale, and it clears by
+                // itself — so say so rather than blaming the link.
+                throw new ExtractionException(ExtractionException.Reason.RATE_LIMITED,
+                        "YouTube is refusing downloads just now."
+                                + " Wait a minute and try again.", again);
+            }
+        }
+
+        File media = new File(directory, videoId + extensionFor(stream.mimeType()));
+        if (media.exists() && !media.delete()) {
+            throw new IOException("could not replace " + media.getName());
+        }
+        if (!part.renameTo(media)) {
+            throw new IOException("could not name the downloaded audio " + media.getName());
+        }
+
+        String title = info.title() == null || info.title().isBlank() ? videoId : info.title();
+        return new Fetched(media, videoId, title, info.author(), info.lengthSeconds());
+    }
+
+    /** What to tell the user when the share held no video. */
+    private static String describe(VideoLink.Problem problem) {
+        switch (problem) {
+            case PLAYLIST:
+                return "That is a playlist. Share one video.";
+            case CHANNEL:
+                return "That is a channel. Share one video.";
+            case NO_VIDEO_ID:
+                return "That YouTube link does not name a video.";
+            case NO_LINK:
+            default:
+                return "That does not hold a YouTube link.";
+        }
+    }
+
+    /**
+     * The extension a decoder will recognise the container by.
+     *
+     * <p>{@code MediaExtractor} sniffs content rather than names, but a file
+     * called {@code .part} is also what a half-finished download is called, and
+     * the two must not be confusable in a cache directory that is swept.
+     */
+    private static String extensionFor(String mimeType) {
+        return mimeType.startsWith("audio/webm") ? ".webm" : ".m4a";
+    }
+}

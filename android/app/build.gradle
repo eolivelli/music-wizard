@@ -78,6 +78,16 @@ android {
             // Log.i does turn up in the classes that carry it; returning
             // defaults keeps that from throwing.
             returnDefaultValues = true
+
+            // InnerTubeLiveTest is the one test that makes a real request, and
+            // it skips itself unless this is set. The forwarding is needed
+            // because a -D on the Gradle JVM does not reach the test JVM, so
+            // without it the live check would silently skip however it was
+            // asked for -- which is the worst of both: no coverage, and no sign
+            // that there is none. Defaults to false, so CI stays offline.
+            all {
+                systemProperty 'mw.yt.live', System.getProperty('mw.yt.live', 'false')
+            }
         }
     }
 
