@@ -493,7 +493,9 @@ final class ChartLayout {
      * is why this takes the axis rather than a quarter length: a fitted bar is
      * up to half a beat longer or shorter than the nominal one, and measuring
      * the gap through one while placing the chord through the other put two
-     * chords on one grid point in a third of a synthetic sweep.
+     * chords on one grid point in a third of a synthetic sweep. It is still a
+     * fact about the progression alone -- see {@link BarAxis#quartersBetween},
+     * which is what keeps it independent of where the chart starts.
      *
      * <p>Bounded below by {@link LilyPondDuration#SHORTEST_QUARTERS}, since no
      * duration can name anything shorter, and above by
@@ -509,8 +511,8 @@ final class ChartLayout {
     private static double chartGrid(List<Chord> chords, BarAxis axis, TimeSignature meter) {
         double closest = Double.MAX_VALUE;
         for (int i = 1; i < chords.size(); i++) {
-            closest = Math.min(closest, axis.quartersAt(chords.get(i).startSeconds())
-                    - axis.quartersAt(chords.get(i - 1).startSeconds()));
+            closest = Math.min(closest, axis.quartersBetween(
+                    chords.get(i - 1).startSeconds(), chords.get(i).startSeconds()));
         }
         double finest = LilyPondDuration.SHORTEST_QUARTERS;
         for (double grid = COARSEST_GRID_BEATS * meter.beatUnitQuarters();
@@ -1090,6 +1092,26 @@ final class ChartLayout {
             }
             int bar = barOf(quarters);
             return lines[bar] + (quarters - (bar - zero) * barQuarters) * rateOf(bar);
+        }
+
+        /**
+         * How far apart two moments are on this axis, in quarter beats.
+         *
+         * <p>Not the difference of two {@link #quartersAt} calls, though it is
+         * that on the fitted axis, where the origin term cancels bit for bit
+         * because it is a small whole number of bars. On a uniform axis it does
+         * not: {@code (b - o)/q - (a - o)/q} rounds twice where {@code (b - a)/q}
+         * rounds once, so the same progression charted from two different phases
+         * could measure its own gaps differently -- and {@link #chartGrid}
+         * compares that measure for exact inequality, so a last-bit difference
+         * chooses a different grid and moves a chord half a beat. A gap is a
+         * fact about the two moments and not about where the chart starts, and
+         * this is the one place that is decided.
+         */
+        double quartersBetween(double from, double to) {
+            return lines.length == 0
+                    ? (to - from) / quarterSeconds
+                    : quartersAt(to) - quartersAt(from);
         }
 
         /** Where a moment in the recording falls on that axis. */

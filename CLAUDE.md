@@ -69,7 +69,7 @@ counted beat (#187). What the chart's bar lines are wrong by is now what the
 grid is wrong by, and nothing else. On the benchmarks whose tracked downbeats
 sit further from the music than one constant bar length did, the chart sits
 further too, which is #424 and not the chart's;
-`tools/baselines/score-chart.txt` carries the two rows that moved.
+`tools/baselines/score-chart.txt` carries the readings.
 
 Then: the vocabulary still has no major seventh,
 sixth, minor sixth or half-diminished, each of which was measured and costs more

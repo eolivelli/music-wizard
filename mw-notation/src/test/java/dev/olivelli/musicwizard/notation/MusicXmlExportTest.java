@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -455,6 +456,27 @@ class MusicXmlExportTest {
         // <sound tempo> is quarter notes a minute by definition, whatever the
         // printed mark counts in. The two say the same tempo in different units.
         assertThat(first(document, "sound").getAttribute("tempo")).isEqualTo("180");
+    }
+
+    @Test
+    @DisplayName("the printed mark and the playback tempo are one figure, over a stated change")
+    void theMarkAndTheSoundTempoAgreeAcrossATempoChange() {
+        // One file states the tempo twice, once for a reader and once for a
+        // player, and a score stating 120 and then 60 makes estimatedTempo()'s
+        // duration-weighted average neither. Both now come from TempoMark, so
+        // the page cannot say one thing and the playback another.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(8, 4, 60, Provenance.DECLARED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        Score changing = Score.empty(map, 60).withTrack(voice);
+        assertThat(changing.estimatedTempo()).isNotEqualTo(120.0).isNotEqualTo(60.0);
+
+        Document document = parse(MusicXmlExport.toMusicXml(changing, voice));
+
+        assertThat(text(first(document, "per-minute"))).isEqualTo("120");
+        assertThat(first(document, "sound").getAttribute("tempo")).isEqualTo("120");
     }
 
     @Test

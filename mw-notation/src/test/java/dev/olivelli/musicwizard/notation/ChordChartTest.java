@@ -1364,6 +1364,39 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("measures a chord gap without reference to where the chart starts")
+    void aGapIsTheSameGapWhereverTheChartOpens() {
+        // How finely the chart resolves is read off the closest two chord
+        // changes, and that is a fact about the progression: measured as two
+        // positions on the axis and subtracted, it rounds twice where the gap
+        // rounds once, and the comparison against a candidate grid is exact. The
+        // pair below is exactly one counted beat apart and reads as a hair under
+        // one through the subtraction, which halves the grid for the whole chart
+        // and writes the bar the two chords share as an eighth and seven eighths
+        // rather than a beat and three.
+        //
+        // A grid running at a rate the chart is not counted at, so the bar lines
+        // are spaced uniformly and the axis has an origin at 0.51s to subtract.
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            beats.add(new BeatGrid.Beat(0.51 + i * 0.55, i % 4 == 0, i % 4));
+        }
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.D, NoteLetter.G, NoteLetter.A,
+                NoteLetter.F};
+        double[] starts = {0.51, 4.81, 8.51, 16.01, 16.51};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < starts.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR, starts[i],
+                    i + 1 < starts.length ? starts[i + 1] : 18.51, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 22.0)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(chordModeOf(unreducedLilyPond(score))).contains("c4 d2. |");
+    }
+
+    @Test
     @DisplayName("draws the same chart wherever one more downbeat is marked in the grid")
     void anExtraDownbeatAnywhereLeavesTheChartAlone() {
         // One more downbeat adds one candidate to the phase and one term to

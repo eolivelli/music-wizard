@@ -52,9 +52,8 @@ import java.util.Optional;
  * estimate even when every tempo in the map was stated: a file that changes
  * tempo states no single number, so one of them has to be picked and
  * {@link #headline} picks the one the page opens on. On the input this project
- * exists
- * for — a recording — it is an estimate outright, from the least reliable stage
- * in the pipeline. The one case the qualifier understates is a constant tempo
+ * exists for — a recording — it is an estimate outright, from the least
+ * reliable stage in the pipeline. The one case the qualifier understates is a constant tempo
  * read from a MIDI file or typed at {@code --tempo}, and that is the trade taken
  * deliberately: printing an estimate as exact is the error CLAUDE.md calls a
  * defect, and printing an exact figure as approximate is a page a musician can
