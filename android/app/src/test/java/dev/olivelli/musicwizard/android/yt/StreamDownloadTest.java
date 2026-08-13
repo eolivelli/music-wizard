@@ -449,8 +449,8 @@ public class StreamDownloadTest {
      * A format with no declared length is refused without touching anything.
      *
      * <p>The file it was handed has to survive intact, and that is the half worth
-     * asserting: "no request was made" was already true when the guard sat after
-     * the file had been opened — and opening it truncates.
+     * asserting. "No request was made" does not pin where the check sits, because
+     * opening the target truncates it and no request is made either way.
      */
     @Test
     public void aFormatWithNoLengthIsRefusedBeforeAnythingIsTouched() throws Exception {

@@ -142,6 +142,29 @@ public class InnerTubeTest {
         assertEquals(1, http.requests.size());
     }
 
+    /**
+     * A bare call that succeeds still keeps the session it was offered.
+     *
+     * <p>Every reply carries one, refusal or not. Dropping the ones that arrive
+     * on the happy path costs nothing visible — each video simply bootstraps
+     * again — so the class would go on working while quietly doing twice the
+     * calls it claims.
+     */
+    @Test
+    public void aBareCallThatSucceedsStillHarvestsItsSession() throws Exception {
+        FakeHttp http = new FakeHttp()
+                .reply(200, FakeHttp.fixture("player-ok.json"))
+                .reply(200, FakeHttp.fixture("player-ok.json"));
+
+        InnerTube tube = new InnerTube(http);
+        tube.resolve(VIDEO);
+        tube.resolve("9bZkp7q19f0");
+
+        assertEquals(2, http.requests.size());
+        assertNotNull("the second video re-bootstrapped instead of reusing the session",
+                http.requests.get(1).headers().get("X-Goog-Visitor-Id"));
+    }
+
     @Test
     public void aRefusalThatSurvivesTheRetryIsTheBotCheck() throws Exception {
         FakeHttp http = new FakeHttp()

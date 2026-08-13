@@ -164,10 +164,10 @@ dependencies {
  * the dex — where the symptom is a {@code NoSuchMethodError} on an old device and
  * nothing at all on a new one or in CI.
  *
- * <p>It is not an API-level audit, and each entry below is here because someone
- * was already bitten by it, which is the whole weakness of the shape: #419 is
- * the sweep of the dex against the platform's own {@code api-versions.xml} that
- * would not need to be told what to look for.
+ * <p>It is not an API-level audit. Some of what is below was added because
+ * someone had already been bitten by it, which is the weakness of the shape:
+ * #419 is the sweep of the dex against the platform's own
+ * {@code api-versions.xml}, which would not need to be told what to look for.
  */
 ext.dexForbiddenCalls = [
         // Java 21, Android API 35. D8 backports it -- but not every D8 does:
