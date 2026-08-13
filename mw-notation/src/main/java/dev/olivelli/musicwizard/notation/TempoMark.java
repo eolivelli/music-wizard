@@ -20,6 +20,8 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -49,7 +51,8 @@ import java.util.Optional;
  * rather than {@code ♩ = 159}, because one figure for a whole piece is an
  * estimate even when every tempo in the map was stated: a file that changes
  * tempo states no single number, so one of them has to be picked and
- * {@link #headline} picks the first. On the input this project exists
+ * {@link #headline} picks the one the page opens on. On the input this project
+ * exists
  * for — a recording — it is an estimate outright, from the least reliable stage
  * in the pipeline. The one case the qualifier understates is a constant tempo
  * read from a MIDI file or typed at {@code --tempo}, and that is the trade taken
@@ -108,50 +111,92 @@ record TempoMark(NoteValue unit, long perMinute) {
     }
 
     /**
-     * The one tempo a page headed at {@code opensAt} states, in quarter notes a
-     * minute.
+     * The one tempo a page opening at {@code opensAt} is headed with, in quarter
+     * notes a minute.
      *
-     * <p>{@link Score#estimatedTempo()}, except where the score states more than
-     * one tempo from there on. That accessor answers such a map with a
+     * <p>{@link Score#estimatedTempo()}, except where the score <em>states</em>
+     * more than one tempo. That accessor answers such a map with a
      * duration-weighted average, and a file stating 120 BPM and then 60 makes
      * that an 80 the file never plays (#66); the stated tempo in force where the
      * page opens is printed instead, which is a tempo the piece has.
      *
-     * <p>It does not answer with the opening segment outright, because on the
-     * audio path that is not a tempo either: a supplied {@code --tempo} builds a
-     * lead-in segment carrying a rate nobody asked for, and the accessor already
-     * knows to answer with the correction. So the average is displaced only
-     * where something else was stated to displace it with.
+     * <p>Only a stated tempo counts, which is what {@link Provenance#isStated()}
+     * says. A tracked map carries one segment per beat, none of which anybody
+     * asserted, so a recording is headed with the accessor's answer as it always
+     * was. So is a supplied {@code --tempo}, which states exactly one tempo: the
+     * map also holds a {@code DERIVED} lead-in carrying a rate nobody asked for
+     * -- at a first tracked beat 0.05s in, 1200 BPM -- and reporting that as the
+     * user's instruction is what {@code Provenance}'s own javadoc says must not
+     * happen. Reading the segment in force at {@code opensAt} without the
+     * stated-only filter does exactly that, because the chart's opening bar line
+     * can precede the first tracked beat.
+     *
+     * <p>Whether the piece states several is asked of the whole map and not of
+     * the page's own span: a chart of two bars at 120, over a file that changes
+     * to 60 after it ends, must not be headed with an average of the two.
+     * {@link #statedChangesIn} is where the span comes back, because that is
+     * the claim a header makes about what a reader will meet further down.
      */
     static double headline(Score score, double opensAt) {
-        return statedChangesAfter(score, opensAt) == 0
+        List<TempoMap.TempoSegment> stated = statedSegments(score);
+        return changesAmong(stated) == 0
                 ? score.estimatedTempo()
-                : score.tempoMap().segmentAtSeconds(opensAt).beatsPerMinute();
+                : inForceAt(stated, opensAt).beatsPerMinute();
     }
 
     /**
-     * How many times a stated tempo changes after {@code opensAt}.
+     * How many times a stated tempo changes between {@code opensAt} and
+     * {@code endsAt}.
      *
-     * <p>Only a <em>stated</em> tempo counts, which is what
-     * {@link Provenance#isStated()} says: a tracked map carries one segment per
-     * beat, none of which anybody asserted, and counting those would report
-     * several hundred changes on every recording. Transitions rather than
-     * entries, like {@code AnalyzeCommand}'s declared block, so a sequencer
-     * export restating one tempo at every section boundary reports none.
+     * <p>The page's own span, because a header row is a claim about the page:
+     * a chart that ends before a change does not hold it, exactly as a chart
+     * that begins after one does not. Transitions rather than entries, like
+     * {@code AnalyzeCommand}'s declared block, so a sequencer export restating
+     * one tempo at every section boundary reports none.
      */
-    static int statedChangesAfter(Score score, double opensAt) {
-        int changes = 0;
-        double previous = score.tempoMap().segmentAtSeconds(opensAt).beatsPerMinute();
-        for (TempoMap.TempoSegment segment : score.tempoMap().segments()) {
-            if (!segment.provenance().isStated() || segment.startSeconds() <= opensAt) {
-                continue;
-            }
-            if (segment.beatsPerMinute() != previous) {
-                changes++;
-                previous = segment.beatsPerMinute();
+    static int statedChangesIn(Score score, double opensAt, double endsAt) {
+        List<TempoMap.TempoSegment> stated = statedSegments(score);
+        if (stated.isEmpty()) {
+            return 0;
+        }
+        List<TempoMap.TempoSegment> within = new ArrayList<>();
+        within.add(inForceAt(stated, opensAt));
+        for (TempoMap.TempoSegment segment : stated) {
+            if (segment.startSeconds() > opensAt && segment.startSeconds() < endsAt) {
+                within.add(segment);
             }
         }
-        return changes;
+        return changesAmong(within);
+    }
+
+    /** The segments somebody asserted, in order, or empty where nobody did. */
+    private static List<TempoMap.TempoSegment> statedSegments(Score score) {
+        List<TempoMap.TempoSegment> stated = new ArrayList<>();
+        for (TempoMap.TempoSegment segment : score.tempoMap().segments()) {
+            if (segment.provenance().isStated()) {
+                stated.add(segment);
+            }
+        }
+        return stated;
+    }
+
+    /**
+     * The stated tempo governing a moment: the last one starting at or before
+     * it, or the first stated one where none does.
+     *
+     * <p>Never null while any tempo is stated, and only ever asked while one is.
+     * The fallback is for a page opening before the first stated segment, which
+     * a chart anchored on a downbeat before the first tracked beat can do.
+     */
+    private static TempoMap.TempoSegment inForceAt(
+            List<TempoMap.TempoSegment> stated, double seconds) {
+        TempoMap.TempoSegment governing = stated.get(0);
+        for (TempoMap.TempoSegment segment : stated) {
+            if (segment.startSeconds() <= seconds) {
+                governing = segment;
+            }
+        }
+        return governing;
     }
 
     /**
@@ -176,5 +221,16 @@ record TempoMark(NoteValue unit, long perMinute) {
         // fractional digit is printed, which is AnalyzeCommand's %.1f.
         return String.format(Locale.ROOT, "\\tempo \\markup { \\italic \"%s\" } %s = %d",
                 ESTIMATE, unit.lilyPondToken(), perMinute);
+    }
+
+    /** Transitions in a sequence of segments, which an empty one has none of. */
+    private static int changesAmong(List<TempoMap.TempoSegment> segments) {
+        int changes = 0;
+        for (int i = 1; i < segments.size(); i++) {
+            if (segments.get(i).beatsPerMinute() != segments.get(i - 1).beatsPerMinute()) {
+                changes++;
+            }
+        }
+        return changes;
     }
 }

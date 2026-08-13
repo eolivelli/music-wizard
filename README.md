@@ -48,8 +48,7 @@ Honestly: the quality is that of a good automatic chord-recognition service,
 plus notation — usable with light edits on most pop, and not a replacement for
 a human transcriber. The corpus it is measured on lives in `samples/`, the
 current readings in `tools/baselines/`, and the single most valuable thing you
-can do by hand is correct the tempo or the first downbeat
-([`--tempo`, `--first-downbeat`][i83]).
+can do by hand is correct the tempo or the first downbeat.
 
 ## From a phone in the room to a chart
 
@@ -225,6 +224,5 @@ read — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
 [sherpa-onnx]: https://github.com/k2-fsa/sherpa-onnx
 [sherpa-fork]: https://github.com/eolivelli/sherpa-onnx/tree/qwen3-asr-stft-center-alignment
 [sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3873
-[i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i383]: https://github.com/eolivelli/music-wizard/issues/383
 [i144]: https://github.com/eolivelli/music-wizard/issues/144

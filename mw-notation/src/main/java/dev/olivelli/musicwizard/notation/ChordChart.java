@@ -105,8 +105,9 @@ public final class ChordChart {
     /**
      * How many times the chart's own bars change meter.
      *
-     * <p>Read off the bars rather than off the piece's {@code meterChanges}: a chart beginning after a change, or ending before one,
-     * must not report it. That is the same rule {@link #countedIn} applies to
+     * <p>Read off the bars rather than off the piece's {@code meterChanges}: a
+     * chart beginning after a change, or ending before one, must not report it.
+     * That is the same rule {@link #countedIn} applies to
      * the meter it names, and it is #191 -- the header stated one meter where
      * the engraving of the same score restates {@code \time} wherever a change
      * falls, so the two disagreed with no cue in the text that anything had
@@ -170,17 +171,20 @@ public final class ChordChart {
      * quarters. Identical in every x/4 meter, where the two coincide.
      *
      * <p><b>A piece that states more than one tempo is headed with the one the
-     * chart opens on, and told that it changes.</b> That is #66, and which
-     * figure that is belongs to {@link TempoMark#headline} rather than here:
-     * the engraved chart carries the same number as a metronome mark, and the
-     * two lines a reader takes off the text file are the ones the page has to
-     * agree with.
+     * chart opens on, and told if it changes within the chart.</b> That is #66,
+     * and which figure that is belongs to {@link TempoMark#headline} rather than
+     * here: the engraved chart carries the same number as a metronome mark, and
+     * the two lines a reader takes off the text file are the ones the page has
+     * to agree with. The count is over the chart's own span at both ends, like
+     * {@link #meterChanges}: a chart that ends before a change does not hold it
+     * any more than one beginning after it does.
      */
     private static String tempoLine(Score score, TimeSignature meter,
                                     List<ChartLayout.Bar> bars) {
         double opensAt = opensAt(bars);
+        double endsAt = bars.isEmpty() ? 0 : bars.get(bars.size() - 1).endSeconds();
         return "Tempo  " + tempo(TempoMark.headline(score, opensAt), meter)
-                + more(TempoMark.statedChangesAfter(score, opensAt)) + "\n";
+                + more(TempoMark.statedChangesIn(score, opensAt, endsAt)) + "\n";
     }
 
     /**

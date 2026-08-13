@@ -318,23 +318,22 @@ final class ChartLayout {
         if (!(quarterSeconds > 0) || !Double.isFinite(quarterSeconds)) {
             return oneChordPerBar(chords, meter);
         }
-        // The grid first, because it is the one value that says how far a chord
-        // may be moved, and both the anchor and the snapping have to agree on
-        // it. They did not, for one round: the anchor was allowed half a counted
-        // beat while the snapping could be much finer, so a first chord heard
-        // just before its downbeat anchored on that downbeat, snapped to a
-        // negative position, and shunted every chord behind it a grid step along
-        // -- into the next bar, in the text as well as on the page. Read off the
-        // gaps between chords, which is a fact about the progression and not
-        // about where the chart happens to start, so it can be known first.
-        double grid = chartGrid(chords, quarterSeconds, meter);
-        // Measured at the nominal quarter length rather than on the axis below,
-        // which is a fitted bar and so up to an eighth longer or shorter. What
-        // that costs is one more reason the input to chartGrid is known to about
-        // a percent and read as exact, which is #214: a gap read as wider than
-        // it is can pick a grid coarser than the closest pair, and assemble then
-        // nudges the second chord a grid step along rather than losing it.
-        BarAxis axis = BarAxis.of(score, meter, quarterSeconds, grid);
+        // Where the bar lines fall, then how finely the chart resolves, then
+        // which line it opens on -- in that order, because each needs the one
+        // before it. The grid is read off the gaps between chords measured on
+        // the axis, which is a fact about the progression rather than about
+        // where the chart starts, so it does not need the opening line; and the
+        // opening line needs the grid, because it is the one value that says how
+        // far a chord may be moved and the two have to agree on it. They did
+        // not, for one round: the anchor was allowed half a counted beat while
+        // the snapping could be much finer, so a first chord heard just before
+        // its downbeat anchored on that downbeat, snapped to a negative
+        // position, and shunted every chord behind it a grid step along -- into
+        // the next bar, in the text as well as on the page.
+        BarAxis unopened = BarAxis.of(score, meter, quarterSeconds);
+        double grid = chartGrid(chords, unopened, meter);
+        BarAxis axis = unopened.opening(chords.stream()
+                .mapToDouble(Chord::startSeconds).min().orElse(0.0), grid);
 
         double[] starts = new double[chords.size()];
         double lastEnd = 0;
@@ -489,7 +488,12 @@ final class ChartLayout {
      * because the anchor may not move a chord further than the snapping will.
      * And a gap of at least one grid step guarantees two distinct positions
      * after snapping, since {@code round(x + 1) == round(x) + 1} exactly, so
-     * above the floor no chord can land on another.
+     * above the floor no chord can land on another. That last one holds only
+     * while the gaps are read on the axis the chords will be placed on, which
+     * is why this takes the axis rather than a quarter length: a fitted bar is
+     * up to half a beat longer or shorter than the nominal one, and measuring
+     * the gap through one while placing the chord through the other put two
+     * chords on one grid point in a third of a synthetic sweep.
      *
      * <p>Bounded below by {@link LilyPondDuration#SHORTEST_QUARTERS}, since no
      * duration can name anything shorter, and above by
@@ -502,13 +506,11 @@ final class ChartLayout {
      * grid varying along it. That costs only how a duration reads, never where a
      * chord sits: a finer grid moves a chord less, not more.
      */
-    private static double chartGrid(List<Chord> chords, double quarterSeconds,
-                                    TimeSignature meter) {
+    private static double chartGrid(List<Chord> chords, BarAxis axis, TimeSignature meter) {
         double closest = Double.MAX_VALUE;
         for (int i = 1; i < chords.size(); i++) {
-            closest = Math.min(closest,
-                    (chords.get(i).startSeconds() - chords.get(i - 1).startSeconds())
-                            / quarterSeconds);
+            closest = Math.min(closest, axis.quartersAt(chords.get(i).startSeconds())
+                    - axis.quartersAt(chords.get(i - 1).startSeconds()));
         }
         double finest = LilyPondDuration.SHORTEST_QUARTERS;
         for (double grid = COARSEST_GRID_BEATS * meter.beatUnitQuarters();
@@ -1034,13 +1036,23 @@ final class ChartLayout {
      * {@code --tempo} is an instruction about how long a bar is, and fitting the
      * bars back onto the grid would discard it -- the correction that matters
      * most is the one where the grid is what the user is disagreeing with. So
-     * the fit applies only while the chart's bar is the grid's own, which is
+     * the fit applies only while the chart's quarter is the grid's own, which is
      * exactly the case where {@link Score#estimatedTempo()} answered with
-     * {@link BeatGrid#steadyTempo}. Compared for equality rather than
-     * approximately: both sides are the same arithmetic over the same two
-     * values, so they agree bit for bit or the chart is being counted at
-     * something else. {@code ChordChartTest.headerAndBarsCannotDisagree} holds
-     * the case that matters.
+     * {@link BeatGrid#steadyTempo}.
+     *
+     * <p>Compared as quarter lengths for exact equality, and both parts of that
+     * are load-bearing. Equality, because each side is {@code 60.0} divided by
+     * the same tempo, which is one operation with no association to get wrong;
+     * a tolerance would have to say how far a tempo a user typed must be from
+     * the tracked rate, which is not a question this can answer. Quarter
+     * lengths, because comparing <em>bars</em> multiplies each side by the
+     * quarters in one, and {@code a * b / c} is not {@code a * (b / c)} in
+     * floating point unless the factor is a power of two: 4/4 is exact and 3/4
+     * and 6/8, whose factor is three, disagree for about a third of tempi. That
+     * turns the whole fit off in triple and compound time, and every benchmark
+     * is barred 4/4, so no baseline would move.
+     * {@code ChordChartTest.aWaltzGridWandersOntoItsOwnDownbeats} and
+     * {@code headerAndBarsCannotDisagree} hold the two sides.
      */
     private static final class BarAxis {
 
@@ -1150,12 +1162,12 @@ final class ChartLayout {
          * chord change, and this reads the phase without reading the confidence
          * beside it.
          *
-         * @param gridQuarters the grid chord starts will be snapped to, which is
-         *                     how far the first bar line may overshoot the first
-         *                     chord -- see {@link #firstBarOf}
+         * <p>Where the bar lines fall, and not yet which of them the chart
+         * opens on: that needs the grid chord starts are snapped to, and
+         * {@link #chartGrid} reads the gaps between them <em>on this axis</em>,
+         * so it cannot be known first. {@link #opening} is the second half.
          */
-        static BarAxis of(Score score, TimeSignature meter, double quarterSeconds,
-                          double gridQuarters) {
+        static BarAxis of(Score score, TimeSignature meter, double quarterSeconds) {
             double barQuarters = meter.quarterBeatsPerBar();
             double barSeconds = barQuarters * quarterSeconds;
             double firstChord = score.chords().chords().stream()
@@ -1169,16 +1181,8 @@ final class ChartLayout {
             }
             double beatSeconds = barSeconds / meter.beatsPerBar();
             double phase = barPhase(downbeats, barSeconds, beatSeconds);
-            if (!atTheGridsOwnRate(grid.orElseThrow(), meter, barSeconds)) {
-                // Stepped by whole bars to the last line at or before the first
-                // chord, so the chart opens on a bar line and the harmony's
-                // offset within that first bar is visible rather than absorbed.
-                // A grid that starts after the harmony is stepped backwards by
-                // the same arithmetic.
-                double bars = Math.floor(
-                        (firstChord + gridQuarters * quarterSeconds / 2 - phase) / barSeconds);
-                return new BarAxis(new double[0], 0, phase + bars * barSeconds,
-                        quarterSeconds, barQuarters);
+            if (!atTheGridsOwnRate(grid.orElseThrow(), meter, quarterSeconds)) {
+                return new BarAxis(new double[0], 0, phase, quarterSeconds, barQuarters);
             }
             double lastChord = score.chords().chords().stream()
                     .mapToDouble(Chord::endSeconds)
@@ -1187,8 +1191,29 @@ final class ChartLayout {
             double[] lines = fittedLines(downbeats, phase, barSeconds, beatSeconds / 2,
                     Math.min(firstChord, phase) - 2 * barSeconds,
                     Math.max(lastChord, phase) + 2 * barSeconds);
-            int zero = firstBarOf(lines, firstChord, gridQuarters, barQuarters);
-            return new BarAxis(lines, zero, lines[zero], quarterSeconds, barQuarters);
+            return new BarAxis(lines, 0, lines[0], quarterSeconds, barQuarters);
+        }
+
+        /**
+         * The same axis, opened on the last bar line at or before the first
+         * chord, so the chart opens on a bar line and the harmony's offset
+         * within that first bar is visible rather than absorbed. An axis whose
+         * lines all follow the harmony is stepped backwards by the same rule.
+         *
+         * @param gridQuarters the grid chord starts will be snapped to, which is
+         *                     how far the opening line may overshoot the first
+         *                     chord -- see {@link #firstBarOf}
+         */
+        BarAxis opening(double firstChord, double gridQuarters) {
+            if (lines.length == 0) {
+                double barSeconds = barQuarters * quarterSeconds;
+                double bars = Math.floor(
+                        (firstChord + gridQuarters * quarterSeconds / 2 - origin) / barSeconds);
+                return new BarAxis(lines, 0, origin + bars * barSeconds, quarterSeconds,
+                        barQuarters);
+            }
+            int bar = firstBarOf(lines, firstChord, gridQuarters, barQuarters);
+            return new BarAxis(lines, bar, lines[bar], quarterSeconds, barQuarters);
         }
 
         /**
@@ -1199,9 +1224,8 @@ final class ChartLayout {
          * whose bar lines may be fitted back onto the beats it was read from.
          */
         private static boolean atTheGridsOwnRate(BeatGrid grid, TimeSignature meter,
-                                                 double barSeconds) {
-            return grid.size() >= 2
-                    && barSeconds == meter.quarterBeatsPerBar() * 60.0 / grid.steadyTempo(meter);
+                                                 double quarterSeconds) {
+            return grid.size() >= 2 && quarterSeconds == 60.0 / grid.steadyTempo(meter);
         }
 
         /**
@@ -1292,13 +1316,19 @@ final class ChartLayout {
          *
          * <p>"At or before" is allowed to overshoot by half the grid the chart
          * will snap to, so that a chord heard a hair early opens the bar it
-         * belongs to rather than the one a bar back. Half a grid step
-         * <em>of that bar</em>, since a fitted bar is not the nominal length:
-         * any wider and the first chord snaps to a negative position, which the
-         * caller clamps to zero and then pushes every chord behind it a grid
-         * step along, into the next bar. Round 4 of review on #184 measured that
-         * -- nine chords placed correctly became eight in one bar and one alone
-         * in the next.
+         * belongs to rather than the one a bar back. Any wider and the first
+         * chord snaps to a negative position, which the caller clamps to zero
+         * and then pushes every chord behind it a grid step along, into the next
+         * bar. Round 4 of review on #184 measured that -- nine chords placed
+         * correctly became eight in one bar and one alone in the next.
+         *
+         * <p>Half a grid step <em>of the bar the chord is in</em>, which is the
+         * one before the line being considered rather than the one it opens,
+         * because that is the bar {@link #quartersAt} measures the same gap
+         * through. Taken on the other bar, an overshoot into a bar shorter than
+         * the one after it passes this check and still snaps past half a step,
+         * and the chart back-dates its first chord onto a bar line that sounds
+         * after it.
          */
         private static int firstBarOf(double[] lines, double firstChord, double gridQuarters,
                                       double barQuarters) {
@@ -1307,7 +1337,7 @@ final class ChartLayout {
                 bar++;
             }
             if (bar + 2 < lines.length && lines[bar + 1] - firstChord
-                    <= gridQuarters * (lines[bar + 2] - lines[bar + 1]) / barQuarters / 2) {
+                    <= gridQuarters * (lines[bar + 1] - lines[bar]) / barQuarters / 2) {
                 bar++;
             }
             // Every bar needs the line after it to state its own rate, and the

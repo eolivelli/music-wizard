@@ -65,11 +65,11 @@ The chart's bar axis no longer hangs on one downbeat and one constant rate. It
 takes its phase from the offset the grid's downbeats agree on, keeping the first
 downbeat where they agree on no offset within the beat (#233), and each bar line
 after that is moved onto the downbeat the grid marks for it, by at most half a
-counted beat (#187). What the chart's bar lines are now wrong by is what the
-grid is wrong by: on nine commercial recordings they land on the tracked
-downbeats to within a millisecond where they used to sit up to a bar away, and
-on the two benchmarks whose tracked downbeats are further from the music than a
-constant rate was, the chart is now further too. `tools/baselines/` carries both.
+counted beat (#187). What the chart's bar lines are wrong by is now what the
+grid is wrong by, and nothing else. On the benchmarks whose tracked downbeats
+sit further from the music than one constant bar length did, the chart sits
+further too, which is #424 and not the chart's;
+`tools/baselines/score-chart.txt` carries the two rows that moved.
 
 Then: the vocabulary still has no major seventh,
 sixth, minor sixth or half-diminished, each of which was measured and costs more

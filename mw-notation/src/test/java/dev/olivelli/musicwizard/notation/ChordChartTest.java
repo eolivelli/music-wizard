@@ -485,6 +485,74 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("heads a corrected --tempo with the correction, not with the lead-in's rate")
+    void aSuppliedTempoIsNotReadAsATempoChange() {
+        // The map --tempo builds: a DERIVED lead-in stretched to land on the
+        // first tracked beat, then the correction. The lead-in's rate is an
+        // artefact of where that beat fell -- a whole quarter beat crammed into
+        // 0.05s reads as 1200 BPM -- and Provenance carries DERIVED so that it
+        // is never reported as what the user asked for.
+        //
+        // The chart's opening bar line can precede the first tracked beat, since
+        // it steps back by whole bars from the grid's phase, and a grid whose
+        // downbeats do not fall on the first beat puts it there. Read as "the
+        // segment in force at the opening", that is the lead-in.
+        List<Double> pulses = new ArrayList<>();
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            pulses.add(0.05 + i * 0.5);
+            int position = Math.floorMod(i - 3, 4);
+            beats.add(new BeatGrid.Beat(0.05 + i * 0.5, position == 0, position));
+        }
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
+        for (int i = 0; i < 3; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    0.05 + i * 4.0, 0.05 + (i + 1) * 4.0, Confidence.of(0.9)));
+        }
+        Score corrected = Score.empty(new TempoMap(
+                        List.of(new TempoMap.TempoSegment(0, 0, 1200, Provenance.DERIVED),
+                                new TempoMap.TempoSegment(1, 0.05, 60, Provenance.SUPPLIED)),
+                        List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))), 12.05)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(corrected.estimatedTempo()).isEqualTo(60.0);
+        assertThat(ChartLayout.unreduced(corrected).get(0).startSeconds())
+                .as("the opening bar line precedes the first tracked beat")
+                .isLessThan(0.05);
+        assertThat(ChordChart.toText(corrected))
+                .contains("Tempo  60 BPM\n")
+                .doesNotContain("changed");
+    }
+
+    @Test
+    @DisplayName("reports no tempo change where the chart ends before one")
+    void aTempoChangeAfterTheChartIsNotReported() {
+        // The same rule the meter row applies by reading the chart's own bars.
+        // The chart is two bars long and the file's second tempo begins long
+        // after them, so a reader is told the tempo of the two bars in front of
+        // them and nothing about music the page does not carry.
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(40, 20.0, 60, Provenance.DECLARED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 2; bar++) {
+            chords.add(Chord.ofSeconds(root(bar == 0 ? NoteLetter.C : NoteLetter.G),
+                            ChordQuality.MAJOR, bar * 2.0, bar * 2.0 + 2.0, Confidence.of(0.9))
+                    .quantizedTo(bar * 4.0, bar * 4.0 + 4.0));
+        }
+        Score score = Score.empty(map, map.beatsToSeconds(48))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChordChart.barLines(score)).hasSize(1);
+        assertThat(ChordChart.toText(score))
+                .contains("Tempo  120 BPM\n")
+                .doesNotContain("changed");
+    }
+
+    @Test
     @DisplayName("counts only stated tempos, so a tracked map heads one chart with one number")
     void aTrackedMapIsNotReadAsHundredsOfTempoChanges() {
         // TempoMap.fromBeatTimes emits a segment per tracked beat, each at its
@@ -1150,7 +1218,7 @@ class ChordChartTest {
     }
 
     @Test
-    @DisplayName("moves a bar line at most half a counted beat towards a downbeat no bar could begin on")
+    @DisplayName("moves a bar line half a counted beat at most towards a stray downbeat")
     void aDownbeatNoBarCouldBeginOnMovesTheLineHalfABeat() {
         // The case #187's own first comment raises: a detector that emits a gap
         // of three quarters of a bar is wrong about that downbeat, and barring
@@ -1186,6 +1254,53 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("follows a wandering grid in 3/4 as well as in 4/4")
+    void aWaltzGridWandersOntoItsOwnDownbeats() {
+        // Every benchmark is barred 4/4, so no baseline can tell whether the fit
+        // is running in any other meter. It is switched on by comparing the
+        // chart's quarter with the grid's own, and comparing bars instead
+        // multiplies each side by the quarters in one: exact where that factor
+        // is a power of two, and not in 3/4, where it is three. A 0.32s pulse is
+        // one of the tempi it disagrees at.
+        //
+        // The same shape as the 4/4 fixture: three beats to the bar, every third
+        // bar a detour short, and the detour outside BeatGrid's steady band so
+        // the rate stays the pulse.
+        List<Double> times = new ArrayList<>();
+        double[] downbeats = new double[24];
+        double at = 0;
+        for (int bar = 0; bar < 24; bar++) {
+            downbeats[bar] = at;
+            for (int position = 0; position < 3; position++) {
+                times.add(at);
+                at += position == 2 && bar % 3 == 2 ? 0.2 : 0.32;
+            }
+        }
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < times.size(); i++) {
+            beats.add(new BeatGrid.Beat(times.get(i), i % 3 == 0, i % 3));
+        }
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 24; bar++) {
+            chords.add(Chord.ofSeconds(root(roots[bar % 4]), ChordQuality.MAJOR, downbeats[bar],
+                    bar + 1 < 24 ? downbeats[bar + 1] : at, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(
+                        TempoMap.fromBeatTimes(times, TimeSignature.THREE_FOUR), at)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChartLayout.unreduced(score).stream()
+                .map(ChartLayout.Bar::startSeconds)
+                .toList())
+                .containsExactlyElementsOf(score.beatGrid().orElseThrow().downbeatTimes());
+        assertThat(unreducedBarLines(score)).containsOnly(
+                "| C           | G           | A           | F           |");
+        assertBarsFillTheirMeter(ChordChart.toLilyPond(score));
+    }
+
+    @Test
     @DisplayName("spaces at the tempo past the last downbeat the tracker marked")
     void barsPastTheGridAreSpacedAtTheTempo() {
         // The tail of every chart, since the harmony reaches the end of the
@@ -1212,6 +1327,40 @@ class ChordChartTest {
                 .toList())
                 .containsExactly(0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0,
                         22.0);
+    }
+
+    @Test
+    @DisplayName("measures how far it may overshoot the first chord on the bar that chord is in")
+    void aChordJustShortOfALongBarKeepsItsLeadIn() {
+        // How far the opening bar line may be drawn past the first chord is half
+        // a grid step, and a fitted bar is not the nominal length -- so which
+        // bar's length that is decides. Here the bar the chord sounds in is a
+        // beat and a half short of the one after it, and the chord sits between
+        // the two answers: half a step of its own bar refuses to move the line,
+        // half a step of the next one takes it. Taking it back-dates the chord
+        // onto a bar line a quarter of a second after it sounds and swallows the
+        // lead-in gap that says the phase is out, which is #83's signal.
+        double[] downbeats = {0, 2.0, 3.75, 6.0, 8.0, 10.0};
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int bar = 0; bar < downbeats.length; bar++) {
+            for (int position = 0; position < 4; position++) {
+                beats.add(new BeatGrid.Beat(downbeats[bar] + position * 0.5, position == 0,
+                        position));
+            }
+        }
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        double[] starts = {3.5, 6.0, 8.0, 10.0};
+        for (int i = 0; i < starts.length; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR, starts[i],
+                    i + 1 < starts.length ? starts[i + 1] : 12.0, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 12.0)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChartLayout.unreduced(score).get(0).startSeconds()).isEqualTo(2.0);
+        assertThat(unreducedBarLines(score).get(0)).startsWith("| N.C. C");
     }
 
     @Test
