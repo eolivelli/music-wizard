@@ -28,6 +28,7 @@ import android.widget.Toast;
 import androidx.core.content.FileProvider;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.mw.TakeBundle;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
@@ -129,7 +130,7 @@ final class BundleShare {
         String typed = RecordingStore.readNotes(recording);
         String notes = typed.trim().isEmpty() ? null : typed;
         String info = infoText(application, take, recording.durationSeconds(),
-                wav.lastModified(), score);
+                wav.lastModified(), score, RecordingStore.readSource(recording));
 
         File directory = new File(application.getCacheDir(), "bundles");
         File zip = new File(directory, TakeBundle.fileNameFor(take));
@@ -208,7 +209,7 @@ final class BundleShare {
 
     /** A few lines for whoever finds the zip later: what this is, and what read it. */
     private static String infoText(Context application, String take, double durationSeconds,
-                                   long recordedMillis, Score score) {
+                                   long recordedMillis, Score score, String source) {
         StringBuilder out = new StringBuilder();
         out.append(take).append("  ·  ")
                 .append(RecordingStore.formatDuration(durationSeconds)).append('\n');
@@ -217,6 +218,14 @@ final class BundleShare {
                     Instant.ofEpochMilli(recordedMillis).atZone(ZoneId.systemDefault())))
                     .append('\n');
         }
+        // The line the desktop reads to decide where a take may go: a take
+        // fetched from YouTube is commercial audio and belongs in uncommitted/,
+        // whatever it sounds like. Written for a microphone take too, so that a
+        // missing line means "an older app version" rather than "recorded in a
+        // room" -- see TakeSource and docs/phone-to-corpus.md.
+        out.append((source == null || source.trim().isEmpty()
+                ? TakeSource.microphone()
+                : TakeSource.parse(source)).infoLine()).append('\n');
         out.append(score == null
                 ? "not analyzed on the phone"
                 : MwAnalysis.summary(score)).append('\n');
