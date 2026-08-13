@@ -33,9 +33,9 @@ import java.util.function.BooleanSupplier;
  *
  * <p><strong>The chunking is not an optimisation and must not be simplified
  * away.</strong> YouTube paces an unranged {@code GET} at roughly playback
- * speed: measured on a 3.4 MB track, one plain request delivered 4 MB in 107
- * seconds — 0.03 MB/s — while the same file fetched as sequential 1 MiB {@code
- * Range} requests took 1.62 seconds, 2.13 MB/s. That is sixty-six times, and a
+ * speed: measured on a 3.4 MB track, one plain request took 107 seconds —
+ * 0.03 MB/s — while the same file fetched as sequential 1 MiB {@code Range}
+ * requests took 1.62 seconds, 2.13 MB/s. That is sixty-six times, and a
  * "tidy-up" to a single request would look obviously correct and make every
  * import unusable.
  *
@@ -48,9 +48,11 @@ import java.util.function.BooleanSupplier;
  * gets a {@code 403} on the second chunk, which reads exactly like bot detection
  * and costs a day.
  *
- * <p>Everything this class refuses, it refuses rather than works around, because
- * every alternative silently produces a container that is the right length and
- * the wrong bytes — and MW would analyse that without complaint.
+ * <p>Several things below are refused rather than worked around, and they share
+ * one reason worth stating once: the alternative is a container of the right
+ * length holding the wrong bytes, which still decodes. A download that fails is
+ * a message on a screen; a download that succeeds and is wrong is a chart of a
+ * song nobody played.
  */
 public final class StreamDownload {
 
@@ -144,14 +146,22 @@ public final class StreamDownload {
      */
     public void to(File target, AudioStream stream, Progress progress, BooleanSupplier cancelled)
             throws IOException {
+        // Before the file is opened, so a format this will never fetch does not
+        // cost the caller the file it handed over.
+        declaredLength(stream);
+
         boolean complete = false;
-        try (OutputStream out = new FileOutputStream(target)) {
-            writeTo(out, stream, progress, cancelled);
+        try {
+            // Closed inside, so that a close which itself fails — a deferred
+            // out-of-space on a FUSE-backed cache directory is the way that
+            // happens — is a failure like any other rather than one reported
+            // beside a file left on disk.
+            try (OutputStream out = new FileOutputStream(target)) {
+                writeTo(out, stream, progress, cancelled);
+            }
             complete = true;
         } finally {
             if (!complete) {
-                // A partial container decodes to a truncated take, and MW would
-                // analyse the short version without complaint.
                 deleteQuietly(target);
             }
         }
@@ -166,10 +176,7 @@ public final class StreamDownload {
      */
     void writeTo(OutputStream out, AudioStream stream, Progress progress,
             BooleanSupplier cancelled) throws IOException {
-        long total = stream.contentLength();
-        if (total <= 0) {
-            throw new IOException("YouTube declared no length for this audio format.");
-        }
+        long total = declaredLength(stream);
 
         // Where the last redirect led. Carried between chunks so the hop is
         // walked once rather than once per megabyte.
@@ -195,6 +202,15 @@ public final class StreamDownload {
         }
     }
 
+    /** The length to fetch and verify against, refusing a format that declares none. */
+    private static long declaredLength(AudioStream stream) throws IOException {
+        long total = stream.contentLength();
+        if (total <= 0) {
+            throw new IOException("YouTube declared no length for this audio format.");
+        }
+        return total;
+    }
+
     /** One range's bytes, and the URL they finally came from. */
     private static final class Chunk {
 
@@ -212,9 +228,8 @@ public final class StreamDownload {
      *
      * <p>The chunk is assembled in memory and handed back rather than written as
      * it arrives, and the caller writes it only once this has returned. Both
-     * halves of that matter, and each fixes a way of corrupting the file in the
-     * middle — which is worse than failing, because a spliced container still
-     * decodes and MW would analyse it:
+     * halves of that matter, and each closes a way of splicing the file in the
+     * middle:
      *
      * <ul>
      *   <li>A connection that dies mid-chunk must contribute nothing, or the
@@ -277,13 +292,11 @@ public final class StreamDownload {
                 }
                 if (status == 200) {
                     // The range was ignored, so this is the file from byte zero.
-                    // Harmless for the first chunk and catastrophic for the rest:
-                    // capping the read would file the opening bytes under an
-                    // offset they do not belong to, producing a container of
-                    // exactly the right length spliced with a copy of its own
-                    // beginning. An intermediary that strips Range — a captive
-                    // portal, a carrier proxy — is the realistic cause, and there
-                    // is nothing to retry, so say so.
+                    // Harmless for the first chunk; for any later one, capping
+                    // the read would file the opening bytes under an offset they
+                    // do not belong to. An intermediary that strips Range — a
+                    // captive portal, a carrier proxy — is the realistic cause,
+                    // and there is nothing to retry, so say so.
                     if (from != 0) {
                         throw new FatalIOException("the server ignored the range request"
                                 + " and answered from the start of the file");
@@ -304,9 +317,9 @@ public final class StreamDownload {
     /**
      * Checks that a 206 is answering the range that was asked for.
      *
-     * <p>A partial reply for the wrong offset would be written where the asked-for
-     * bytes belong. The header is advisory — its absence is not treated as a
-     * failure — but when it is there it is believed.
+     * <p>Those bytes would be written where the asked-for ones belong. The header
+     * is advisory — its absence is not treated as a failure — but when it is
+     * there it is believed.
      */
     private static void verifyRange(String contentRange, long from) throws IOException {
         if (contentRange == null || contentRange.isEmpty()) {

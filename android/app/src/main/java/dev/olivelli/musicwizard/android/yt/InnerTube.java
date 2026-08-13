@@ -149,6 +149,14 @@ public final class InnerTube {
             }
         }
 
+        if ("LOGIN_REQUIRED".equals(status)) {
+            // Leaving with a session that was just refused would spend a
+            // guaranteed wasted round trip on the next video before
+            // rediscovering the same thing. It costs nothing to start clean:
+            // a bare call is how a session is found in the first place.
+            visitorData = null;
+        }
+
         return interpret(videoId, reply, status);
     }
 

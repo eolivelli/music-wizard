@@ -169,9 +169,8 @@ public class VideoLinkTest {
      *
      * <p>The input that matters is one long unbroken run of host-legal
      * characters, because that is what lets the scan restart at every offset.
-     * Prose full of spaces does not exercise it: each word bounds the work, and
-     * an earlier version of this test used exactly that and so passed against a
-     * parser that took 100 seconds on 160,000 characters.
+     * Prose full of spaces does not exercise it at all: each word bounds the
+     * work, whatever the parser does.
      */
     @Test(timeout = 10_000)
     public void anUnbrokenRunOfCharactersDoesNotStallTheParser() {

@@ -305,10 +305,8 @@ public class StreamDownloadTest {
      * <p>A 200 to a ranged request means the body starts at byte zero. For the
      * first chunk that is the same thing; for any later one, capping the read
      * would file the opening bytes of the track under an offset they do not
-     * belong to — a container of exactly the right length, spliced with a copy
-     * of its own beginning, which still decodes and which MW would analyse
-     * without complaint. An intermediary that strips Range is the realistic
-     * cause, so this is a real shape and not a hypothetical one.
+     * belong to. An intermediary that strips Range is the realistic cause, so
+     * this is a shape to expect rather than a hypothetical one.
      */
     @Test
     public void aServerThatIgnoresRangesFailsRatherThanCorruptingTheFile() throws Exception {
@@ -341,8 +339,8 @@ public class StreamDownloadTest {
     /**
      * A 206 answering a different offset is refused.
      *
-     * <p>Those bytes would be written where the asked-for ones belong, which is
-     * the same mid-file splice by another route.
+     * <p>Those bytes would be written where the asked-for ones belong: the same
+     * mid-file splice by another route.
      */
     @Test
     public void aPartialReplyForTheWrongOffsetIsRefused() throws Exception {
@@ -372,7 +370,11 @@ public class StreamDownloadTest {
     @Test
     public void aFailedWriteIsNotRetriedIntoADuplicate() throws Exception {
         byte[] whole = bytes(1024, 23);
+        // Three replies, not one: with the write back inside the retry loop this
+        // fails on the request count below rather than on an empty queue, which
+        // is the sentence a future reader needs.
         FakeHttp http = new FakeHttp()
+                .content(206, Map.of(), whole)
                 .content(206, Map.of(), whole)
                 .content(206, Map.of(), whole);
 

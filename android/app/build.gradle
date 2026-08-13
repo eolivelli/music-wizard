@@ -180,6 +180,16 @@ ext.dexForbiddenCalls = [
         // Java 16, Android API 34. Comes from the desugared library, so this
         // also fails if coreLibraryDesugaringEnabled is turned off.
         'Ljava/util/stream/Stream;.toList',
+        // Java 11, Android API 33, and D8 does not backport it. #418 shipped a
+        // call to it and the build stayed green; it would have been a
+        // NoSuchMethodError on every device below Android 13, and an Error
+        // rather than an IOException, so the code written to handle failures on
+        // that path would not have caught it.
+        //
+        // Which is the argument against this list rather than for it: it names
+        // what someone has already been bitten by. A sweep of the whole dex
+        // against the platform's own api-versions.xml is #419.
+        'Ljava/io/InputStream;.nullInputStream',
 ]
 
 /**

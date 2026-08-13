@@ -155,34 +155,36 @@ public class InnerTubeTest {
     }
 
     /**
-     * A session is committed only once it has been proved.
+     * An offered session is never cached until something has proved it.
      *
-     * <p>Caching the offered value before the retry would store something
-     * nothing has tested, and — worse — would throw away a session that was
-     * working the moment any refusal offered a different one.
+     * <p>The script matters as much as the assertion: the retry has to be
+     * refused too. If it succeeds, the offered value ends up cached either way
+     * and the test passes against the very defect it is named for — which is
+     * what an earlier version of it did.
      */
     @Test
-    public void aWorkingSessionSurvivesARefusalThatOffersAnother() throws Exception {
+    public void anUnprovedOfferIsNeverCached() throws Exception {
         String poison = FakeHttp.fixture("player-login-required.json")
                 .replace("CgtGQUtFVklTSVRPUiIDEgAqAA%3D%3D", "POISON");
 
         FakeHttp http = new FakeHttp()
+                // A session is bootstrapped and proved.
                 .reply(200, FakeHttp.fixture("player-login-required.json"))
                 .reply(200, FakeHttp.fixture("player-ok.json"))
+                // The next video is refused, and offers POISON.
                 .reply(200, poison)
-                .reply(200, FakeHttp.fixture("player-ok.json"));
+                // POISON is tried, and refused as well — so nothing proved it.
+                .reply(200, poison)
+                .reply(200, poison);
 
         InnerTube tube = new InnerTube(http);
         tube.resolve(VIDEO);
-        String working = tube.visitorData();
-        tube.resolve("9bZkp7q19f0");
+        assertNotNull(tube.visitorData());
 
-        // The refusal offered POISON and the retry with it succeeded, so POISON
-        // is now proved and held. What must not happen is the working value
-        // being discarded before anything tested its replacement.
-        assertEquals("POISON", tube.visitorData());
-        assertEquals("POISON", http.requests.get(3).headers().get("X-Goog-Visitor-Id"));
-        assertNotNull(working);
+        assertThrows(ExtractionException.class, () -> tube.resolve("9bZkp7q19f0"));
+
+        assertNotEquals("an unproved value was cached", "POISON", tube.visitorData());
+        assertNull("a session that was just refused is still held", tube.visitorData());
     }
 
     /**
@@ -224,9 +226,9 @@ public class InnerTubeTest {
     /**
      * A stream in progress is refused here, not in the caller.
      *
-     * <p>It is a different mechanism from the ended-stream case above — that one
-     * arrives as UNPLAYABLE, this one is playable and says so in videoDetails —
-     * and both belong to the same decision, so one place owns them.
+     * <p>A different mechanism from the ended-stream case: that one arrives as
+     * UNPLAYABLE, this one is playable and says so in videoDetails. Both belong
+     * to the same decision, so one place owns them.
      */
     @Test
     public void aStreamStillRunningIsRefusedToo() throws Exception {
