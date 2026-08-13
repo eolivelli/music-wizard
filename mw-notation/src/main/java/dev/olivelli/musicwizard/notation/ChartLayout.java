@@ -221,10 +221,10 @@ final class ChartLayout {
      *
      * <p>Taken from the beat axis whenever the progression carries one, and from
      * seconds only when it does not. The two agree at a constant tempo and
-     * disagree everywhere else: the seconds route steps at a single bar length
-     * derived from {@link Score#estimatedTempo()} and corrects that step
-     * against the beat grid's downbeats, which a score stating its own tempo
-     * change does not carry. A MIDI import states its rhythm exactly and has
+     * disagree everywhere else: the seconds route draws its bar lines on the
+     * beat grid's downbeats, which a score stating its own tempo change does
+     * not carry, and falls back to one bar length where it has none to draw
+     * on. A MIDI import states its rhythm exactly and has
      * done since #115, so on that path the question has an answer and
      * estimating it would be a step backwards.
      *
@@ -490,10 +490,10 @@ final class ChartLayout {
      * after snapping, since {@code round(x + 1) == round(x) + 1} exactly, so
      * above the floor no chord can land on another. That last one holds only
      * while the gaps are read on the axis the chords will be placed on, which
-     * is why this takes the axis rather than a quarter length: a fitted bar is
-     * up to half a beat longer or shorter than the nominal one, and measuring
-     * the gap through one while placing the chord through the other put two
-     * chords on one grid point in a third of a synthetic sweep. It is still a
+     * is why this takes the axis rather than a quarter length: a followed bar
+     * runs from a fifth short to a quarter long of the stated one, and
+     * measuring the gap through one while placing the chord through the other
+     * put two chords on one grid point in a third of a synthetic sweep. It is still a
      * fact about the progression alone -- see {@link BarLines#quartersBetween},
      * which is what keeps it independent of where the chart starts.
      *
@@ -1080,8 +1080,8 @@ final class ChartLayout {
          * The bar lines, in seconds and ascending, or empty for an axis that is
          * uniform in seconds too.
          *
-         * <p>Strictly increasing: a line is never moved by more than half a
-         * counted beat, and a bar is at least two counted beats even in 2/4.
+         * <p>Strictly increasing, which {@link BeatGrid} guarantees of the
+         * downbeats and {@link #SHORTEST_BAR} of the extensions.
          */
         private final double[] lines;
 
@@ -1219,11 +1219,13 @@ final class ChartLayout {
             if (downbeats.isEmpty() || !(barSeconds > 0)) {
                 return new BarLines(new double[0], 0, firstChord, quarterSeconds, barQuarters);
             }
-            double beatSeconds = barSeconds / meter.beatsPerBar();
-            double phase = barPhase(downbeats, barSeconds, beatSeconds);
             if (!atTheGridsOwnRate(grid.orElseThrow(), meter, quarterSeconds)
                     || !evenThroughout(downbeats, barSeconds)) {
-                return new BarLines(new double[0], 0, phase, quarterSeconds, barQuarters);
+                // The phase is asked for here and nowhere else: a followed
+                // sequence hangs on its own downbeats and has none to choose.
+                return new BarLines(new double[0], 0,
+                        barPhase(downbeats, barSeconds, barSeconds / meter.beatsPerBar()),
+                        quarterSeconds, barQuarters);
             }
             double lastChord = score.chords().chords().stream()
                     .mapToDouble(Chord::endSeconds)
@@ -1456,9 +1458,9 @@ final class ChartLayout {
      * is in {@code tools/baselines/score-chart.txt}, as the rows this PR did not
      * move.
      *
-     * <p>This decides the phase alone, and it is where {@link BarLines} starts
-     * walking rather than where the whole chart hangs: a line the walk then
-     * fits onto a downbeat of its own no longer carries this answer.
+     * <p>This decides the phase alone, and only for a chart whose bar lines are
+     * not the grid's own downbeats: where they are, every one of them states
+     * its own phase and there is nothing here to choose.
      */
     private static double barPhase(List<Double> downbeats, double barSeconds, double beatSeconds) {
         double nominated = downbeats.get(0);
@@ -1484,20 +1486,30 @@ final class ChartLayout {
     /**
      * How long a quarter note lasts, for a progression that has no beat axis.
      *
-     * <p>Derived from {@link Score#estimatedTempo()}, which is also what the
-     * chart's header prints, so the header and the bar lines cannot disagree.
-     * They used to: the header read the tempo map while this measured the tracked
-     * beats, and {@code --tempo} moves only the map, so a chart could be headed
-     * 60 BPM above bars a musician would count at 120.
+     * <p>{@link TempoMark#headline}, which is what the chart's header prints, so
+     * the two cannot disagree about how fast the chart goes. They used to: the
+     * header read the tempo map while this measured the tracked beats, and
+     * {@code --tempo} moves only the map, so a chart could be headed 60 BPM
+     * above bars a musician would count at 120.
      *
-     * <p>That accessor keeps the reason this preferred the grid in the first
-     * place -- the map's synthetic lead-in segment carries an implausible tempo
-     * when the first tracked beat is a fraction of a beat in, and a drifting bar
-     * grid shows up immediately as chords landing in the wrong bar. It just keeps
-     * it in one place rather than two.
+     * <p>Read at the start of the piece rather than at the chart's own opening,
+     * which is what the header row reads. The two differ only for a score
+     * stating a tempo change before its first chord and not carrying a beat
+     * axis, which nothing the pipeline builds produces -- the estimator that
+     * reads a stated tempo also quantizes, and the audio path states none. On
+     * such a score the header names the tempo where the chart opens and these
+     * bars are spaced at the one the piece opens on, and a hand-built score can
+     * be that. It is a narrower claim than "cannot disagree" and it is the
+     * claim that is true.
+     *
+     * <p>{@code headline} keeps the reason this preferred the grid in the first
+     * place, since it defers to {@link Score#estimatedTempo()} wherever nothing
+     * is stated -- the map's synthetic lead-in segment carries an implausible
+     * tempo when the first tracked beat is a fraction of a beat in, and a
+     * drifting bar grid shows up immediately as chords landing in the wrong bar.
      */
     private static double quarterNoteSeconds(Score score) {
-        return 60.0 / score.estimatedTempo();
+        return 60.0 / TempoMark.headline(score, 0);
     }
 
     /**

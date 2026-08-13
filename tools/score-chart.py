@@ -7,10 +7,10 @@ asks the question a reader of the page asks: how many chords are printed in a
 bar, and is the one a reader takes away from that bar the right one.
 
 The two differ in a way worth keeping visible, and it is not the way it looks.
-On the audio path the chart's bar lines take their phase from the offset the
-grid's downbeats agree on (#233) and are then moved onto the downbeat the grid
-marks for each of them, by at most half a counted beat (#187) -- so what they
-are wrong by is what the grid is wrong by, plus whatever that bound refused.
+On the audio path the chart's bar lines *are* the grid's downbeats wherever
+every one of them is a plausible bar (#187), and one bar length hung on the
+offset they agree on wherever they are not (#233) -- so what they are wrong by
+is what the grid is wrong by, or what a constant bar length is wrong by.
 That holds of the seconds route only; a progression carrying beats is laid out
 on the beat axis instead, and `short_changes` below refuses to measure one.
 
