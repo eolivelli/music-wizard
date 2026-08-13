@@ -134,8 +134,7 @@ public class MwActivityTest {
     /**
      * Every label the phone can draw as this app's name, by where it is declared.
      *
-     * <p>Four declarations can supply it, and each of the last three was found
-     * only after the previous one was fixed: a component's own label overrides
+     * <p>Four declarations can supply it: a component's own label overrides
      * the application's on the home screen and in the share sheet; an
      * {@code activity-alias} is a component that {@code getElementsByTagName(
      * "activity")} does not return; and an {@code intent-filter}'s label
@@ -143,8 +142,9 @@ public class MwActivityTest {
      * — which is what a launcher entry and a share target are.
      *
      * <p>An inner screen may still label itself, and Recordings does. That is a
-     * heading rather than a name, and it is never what the launcher draws, so
-     * only exported components are gathered here.
+     * heading rather than a name, and nothing exported inherits it today, so
+     * only exported components are gathered here — see #430 for the alias that
+     * could change that.
      */
     private Map<String, String> nameLabels() throws Exception {
         Map<String, String> out = new LinkedHashMap<>();
