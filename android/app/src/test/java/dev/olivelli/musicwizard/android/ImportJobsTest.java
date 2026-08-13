@@ -26,6 +26,7 @@ import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.mw.WavFile;
 import dev.olivelli.musicwizard.android.mw.WavWriter;
+import dev.olivelli.musicwizard.android.yt.ExtractionException;
 import dev.olivelli.musicwizard.android.yt.Fetch;
 import java.io.File;
 import java.io.IOException;
@@ -478,6 +479,31 @@ public class ImportJobsTest {
                     left.isFile());
         }
         assertEquals(1, store.directory().listFiles().length);
+    }
+
+    /**
+     * A failure with no message is still a failure.
+     *
+     * <p>{@code finish} routes on cancellation, then on the message being
+     * non-null, and otherwise reports success — so a null message would put a
+     * failed import on the success path with no take behind it, and the screen
+     * would open a result for a file that does not exist.
+     */
+    @Test
+    public void aFailureWithNoMessageIsStillReportedAsAFailure() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher,
+                (shareText, directory, progress, cancelled) -> {
+                    throw new ExtractionException(ExtractionException.Reason.REFUSED, null);
+                },
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+        jobs.start("https://youtu.be/dQw4w9WgXcQ", cache, store, watcher);
+        settle(jobs);
+
+        assertNotNull("a failure with no message was reported as success",
+                watcher.failure);
+        assertNull(watcher.finished);
+        assertFalse(watcher.cancelled);
     }
 
     /** A second import of the same video does not collide with the first. */

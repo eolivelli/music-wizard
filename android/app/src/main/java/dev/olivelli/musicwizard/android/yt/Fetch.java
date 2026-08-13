@@ -43,14 +43,24 @@ public final class Fetch {
 
     private final InnerTube tube;
     private final StreamDownload download;
+    private final Trace trace;
 
     public Fetch(Http http) {
-        this(new InnerTube(http), new StreamDownload(http));
+        this(http, Trace.NONE);
+    }
+
+    public Fetch(Http http, Trace trace) {
+        this(new InnerTube(http, trace), new StreamDownload(http, trace), trace);
     }
 
     Fetch(InnerTube tube, StreamDownload download) {
+        this(tube, download, Trace.NONE);
+    }
+
+    Fetch(InnerTube tube, StreamDownload download, Trace trace) {
         this.tube = tube;
         this.download = download;
+        this.trace = trace;
     }
 
     /** What was fetched, and what it is. */
@@ -124,10 +134,12 @@ public final class Fetch {
         }
 
         AudioStream stream = AudioStream.choose(info.audio());
+        trace.line("chose " + stream);
         File part = new File(directory, videoId + ".part");
         try {
             download.to(part, stream, progress, cancelled);
         } catch (StreamDownload.ExpiredException expired) {
+            trace.line("the link was refused; resolving again");
             // URLs last about six hours, so this is a confirmation screen that was
             // left open. Resolving again is the cure, and it is worth exactly one
             // try: fresh URLs that are refused too are not stale ones.
@@ -136,6 +148,7 @@ public final class Fetch {
             // PlayerInfo whose formats have no URL. One place owns that.
             info = tube.resolve(videoId);
             stream = AudioStream.choose(info.audio());
+            trace.line("chose " + stream + " on the second resolve");
             try {
                 download.to(part, stream, progress, cancelled);
             } catch (StreamDownload.ExpiredException again) {
@@ -169,6 +182,7 @@ public final class Fetch {
             }
         }
 
+        trace.line("fetched " + media.length() + " bytes as " + media.getName());
         String title = info.title() == null || info.title().isBlank() ? videoId : info.title();
         return new Fetched(media, videoId, title, info.author(), info.lengthSeconds());
     }

@@ -101,6 +101,25 @@ the network, and `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
 --tests '*InnerTubeLiveTest*' -Dmw.yt.live=true` — is the one check that
 notices, because every other test answers a canned reply.
 
+### When an import fails
+
+The import screen shows a log of what it did — each stage, the formats offered,
+the format chosen, and every range request with its HTTP status — and a **Copy
+the log** button. That text is what to put in a bug report; a failed import
+otherwise reports one sentence chosen from a taxonomy calibrated on a desktop,
+which cannot tell a media host refusing an address from a build that can no
+longer read what YouTube serves.
+
+It is scrubbed on the way in, by `ImportLog`, and that is a requirement rather
+than a courtesy: a media URL carries the phone's public address, the session id
+and per-request signatures, and the whole point of the panel is that its
+contents get sent to someone. The lines the app composes name the host, the
+format and the status rather than a URL — but a transport failure carries
+whatever the transport chose to say, and Android's connect message names both
+endpoints while a refused redirect carries the whole signed URL, so the
+scrubber is what stands between those and the clipboard. The same scrubbing is
+applied to the failure shown on screen, because a screenshot is a report too.
+
 ### Checking it by hand
 
 `AudioImport` drives `MediaExtractor` and `MediaCodec`, which are stubs under
@@ -115,10 +134,10 @@ it on a device after any change to the import:
    the decode path is least exercised on, so it is worth hunting for one.
 3. Not a step yet, and worth knowing why. A take fetched as itag 139 would
    exercise HE-AAC, whose decoders report their output format twice. But there
-   is no way to ask for that format and no way to tell afterwards: the app
-   records nothing about which one it fetched, and the sample rate does not
-   distinguish it, because HE-AAC is dual-rate and decodes to 44100 exactly
-   like itag 140. Surfacing the itag is #427.
+   is no way to ask for that format, and the sample rate does not tell you
+   afterwards, because HE-AAC is dual-rate and decodes to 44100 exactly like
+   itag 140. The import log does now say which itag was chosen, so the step can
+   at least be recognised when it happens; recording it with the take is #427.
 4. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
 5. Cancel mid-download → back to the confirm screen, nothing in the library,
@@ -129,7 +148,13 @@ it on a device after any change to the import:
    than the previous take being reopened.
 9. Back from the import screen → returns to YouTube, leaving MW's own screens
    where they were.
-10. Long-press the imported take → **Share bundle** → the zip's
+10. After a failed or cancelled import → the log panel has content, **Copy the
+    log** puts it on the clipboard, and what it holds is `sig=SCRUBBED` rather
+    than a signature, `0.0.0.0` rather than an address, and
+    `an-edge.googlevideo.invalid` rather than a host beginning `rr`. (A
+    successful import leaves for the result screen, so the panel is not shown;
+    that is #438.)
+11. Long-press the imported take → **Share bundle** → the zip's
     `<take>.info.txt` says `source: youtube` and carries the link.
 
 ## What the checks are for
