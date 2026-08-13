@@ -30,8 +30,12 @@ import dev.olivelli.musicwizard.android.yt.Fetch;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.Before;
@@ -56,7 +60,13 @@ public class ImportJobsTest {
 
     private File cache;
     private RecordingStore store;
-    private final Deque<Runnable> posted = new ArrayDeque<>();
+    /**
+     * Concurrent, because the worker posts into it while the test thread drains
+     * it — a plain ArrayDeque here dropped runnables and threw
+     * ArrayIndexOutOfBoundsException, which shows up as a rare hang in whichever
+     * test happened to lose the race.
+     */
+    private final Queue<Runnable> posted = new ConcurrentLinkedQueue<>();
 
     /** Runs callbacks when the test says so, standing in for the main looper. */
     private final ImportJobs.Dispatcher dispatcher = posted::add;
@@ -349,6 +359,79 @@ public class ImportJobsTest {
         // Still marked, whatever it ended up called.
         assertTrue(TakeSource.parse(RecordingStore.readSource(
                 new RecordingStore.Recording(watcher.finished))).isCommercial());
+    }
+
+    /**
+     * A result the screen has already been given is not handed out again.
+     *
+     * <p>Retaining it turns the next share into a replay: a fresh screen finds
+     * the old result before it has a chance to fetch, opens the previous take,
+     * and the new link is never fetched or even shown. Two shares in one process
+     * is the ordinary case, so this is not an edge.
+     */
+    @Test
+    public void aDeliveredResultIsNotHandedOutAgain() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("Some Song"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+        jobs.start("https://youtu.be/dQw4w9WgXcQ", cache, store, watcher);
+        settle(jobs);
+
+        assertNotNull("the watching screen was never told", watcher.finished);
+        assertNull("the next share would reopen this take instead of fetching",
+                jobs.lastResult());
+    }
+
+    /** The same for a failure the screen was told about. */
+    @Test
+    public void aDeliveredFailureIsNotHandedOutAgain() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher,
+                (shareText, directory, progress, cancelled) -> {
+                    throw new IOException("no route to host");
+                },
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+        jobs.start("https://youtu.be/dQw4w9WgXcQ", cache, store, watcher);
+        settle(jobs);
+
+        assertEquals("no route to host", watcher.failure);
+        assertNull(jobs.lastResult());
+    }
+
+    /**
+     * Commercial audio never sits in the library unmarked.
+     *
+     * <p>If anything fails between moving the take in and marking it, the take
+     * has to go with it. The user has been told the import failed, so nobody
+     * goes looking — and what is left behind is indistinguishable from a field
+     * recording, which is the one thing the committed corpus is allowed to hold.
+     *
+     * <p>The failure is planted where a full disk would land: the move into the
+     * library succeeds, and writing the provenance beside it does not. A
+     * directory standing at the {@code .source.txt} path does that reliably,
+     * and the take's stem is a timestamp, so a few seconds' worth are blocked to
+     * cover the clock ticking mid-test.
+     */
+    @Test
+    public void aFailureAfterTheMoveLeavesNoUnmarkedTake() throws Exception {
+        store.ensureDirectory();
+        DateTimeFormatter stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss", Locale.ROOT);
+        Instant now = Instant.now();
+        for (int second = 0; second <= 3; second++) {
+            String stem = stamp.format(now.plusSeconds(second).atZone(ZoneId.systemDefault()));
+            assertTrue(new File(store.directory(), stem + ".source.txt").mkdirs());
+        }
+
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("Some Song"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+        jobs.start("https://youtu.be/dQw4w9WgXcQ", cache, store, watcher);
+        settle(jobs);
+
+        assertNotNull("the failure was not reported", watcher.failure);
+        assertNull(watcher.finished);
+        assertTrue("an unmarked take was left in the library: " + store.list(),
+                store.list().isEmpty());
     }
 
     /** A second import of the same video does not collide with the first. */

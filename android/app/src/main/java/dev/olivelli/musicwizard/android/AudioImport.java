@@ -53,6 +53,9 @@ final class AudioImport {
 
     private static final long DEQUEUE_TIMEOUT_MICROS = 10_000;
 
+    /** Past anything Fetch will hand over, and small enough that scaling it cannot overflow. */
+    private static final long MAX_DURATION_MILLIS = 6L * 60 * 60 * 1000;
+
     private AudioImport() {
     }
 
@@ -128,8 +131,12 @@ final class AudioImport {
         int channels = 0;
         int encoding = AudioFormat.ENCODING_PCM_16BIT;
 
+        // Clamped before it is scaled: a container declaring a nonsense duration
+        // would otherwise overflow into a deadline already in the past, and every
+        // decode would fail at the first check with a message about progress.
+        long declaredMillis = Math.max(0, Math.min(durationMicros / 1000, MAX_DURATION_MILLIS));
         long deadline = System.nanoTime() / 1_000_000L
-                + Math.max(MIN_DEADLINE_MILLIS, durationMicros / 1000 * STALL_FACTOR);
+                + Math.max(MIN_DEADLINE_MILLIS, declaredMillis * STALL_FACTOR);
 
         try {
             while (!outputDone) {
@@ -146,7 +153,14 @@ final class AudioImport {
                     int index = codec.dequeueInputBuffer(DEQUEUE_TIMEOUT_MICROS);
                     if (index >= 0) {
                         ByteBuffer buffer = codec.getInputBuffer(index);
-                        int read = buffer == null ? -1 : extractor.readSampleData(buffer, 0);
+                        if (buffer == null) {
+                            // Not end-of-stream. Treating it as one would queue
+                            // EOS and finish early, producing a take that is
+                            // short and looks complete -- which is the outcome
+                            // this class exists to avoid.
+                            throw new IOException("the decoder gave up a buffer");
+                        }
+                        int read = extractor.readSampleData(buffer, 0);
                         if (read < 0) {
                             // Queued exactly once; a second end-of-stream is an
                             // IllegalStateException on some devices.
@@ -179,6 +193,13 @@ final class AudioImport {
                             && encoding != AudioFormat.ENCODING_PCM_FLOAT) {
                         throw new IOException("the decoder produced a sample format"
                                 + " this app cannot read");
+                    }
+                    if (writer != null) {
+                        // A second format change mid-stream. Opening another
+                        // writer would leak this one and, because the constructor
+                        // truncates, throw away everything decoded so far -- a
+                        // take that is quietly the tail of the song.
+                        throw new IOException("the audio changes format partway through");
                     }
                     writer = new WavWriter(target, rate);
                     continue;

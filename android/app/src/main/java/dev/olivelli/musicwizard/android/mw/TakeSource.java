@@ -30,9 +30,12 @@ import java.util.Map;
  * to keep it out of the committed corpus without a person having to remember
  * which takes were which. The token it looks for is pinned by a test.
  *
- * <p>Absence means "an older version of the app wrote this take", not "recorded
- * in a room" — which is why a microphone take says so explicitly rather than
- * saying nothing.
+ * <p>A microphone take writes no file at all today, so absence means either
+ * "recorded in a room" or "written by an older version of the app", and nothing
+ * distinguishes them. {@link #microphone()} exists so that the readers are
+ * already right if that changes: absence is parsed <em>as</em> a microphone
+ * take, and every reader asks {@link #isCommercial()} rather than asking whether
+ * a file is there.
  */
 public final class TakeSource {
 

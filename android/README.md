@@ -107,9 +107,12 @@ notices, because every other test answers a canned reply.
 the JVM tests and have no emulator here, so this list is its only coverage. Run
 it on a device after any change to the import:
 
-1. An Opus upload (most recent videos) → take appears, plays, analyses.
-2. An older AAC upload → same, and the two takes' WAV headers differ in rate:
-   48000 and 44100. Both are correct; nothing resamples at import.
+1. Any ordinary music video → take appears, named after the video, and analyses.
+   Its WAV header will almost always read 44100: the fetch prefers itag 140
+   precisely because that rate decimates exactly to the analysis rate.
+2. A video with no itag 140, if you can find one → the take is Opus at 48000.
+   That is equally correct — nothing resamples at import — and it is the case
+   the decode path is least exercised on, so it is worth hunting for one.
 3. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
 4. Cancel mid-download → back to the confirm screen, nothing in the library,
@@ -132,9 +135,9 @@ the only door into the app besides the launcher. There are no emulator tests.
 
 `checkDexedApiLevel` runs after `assembleDebug` and fails the build if the dex
 still calls a JDK method Android does not have at `minSdk`. It exists because
-three of them — `Math.clamp`, `Stream.toList` and `InputStream.nullInputStream`
-— are called by code the app runs, so a change of AGP version or of
-`coreLibraryDesugaringEnabled` would remove them with
+two of them — `Math.clamp` and `Stream.toList` — sit on the path every analysis
+takes and are handled by the toolchain rather than by any source file here, so a
+change of AGP version or of `coreLibraryDesugaringEnabled` would remove them with
 no compile error anywhere and kill the app on its first recording.
 
 ## Known limitation

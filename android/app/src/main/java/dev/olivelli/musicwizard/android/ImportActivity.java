@@ -94,8 +94,11 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     }
 
     private void readIntent(Intent intent) {
-        shareText = intent == null ? null : intent.getStringExtra(Intent.EXTRA_TEXT);
-        String subject = intent == null ? null : intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        // As a CharSequence, which is what the extra is documented to hold:
+        // getStringExtra returns null for the SpannableString some senders use,
+        // and the screen would then say the share held no link when it did.
+        shareText = text(intent, Intent.EXTRA_TEXT);
+        String subject = text(intent, Intent.EXTRA_SUBJECT);
 
         String id = VideoLink.videoId(shareText);
         videoUrl = id == null ? null : VideoLink.watchUrl(id);
@@ -247,6 +250,11 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         startActivity(new Intent(this, ResultActivity.class)
                 .putExtra(ResultActivity.EXTRA_WAV, wav.getAbsolutePath()));
         finish();
+    }
+
+    private static String text(Intent intent, String extra) {
+        CharSequence value = intent == null ? null : intent.getCharSequenceExtra(extra);
+        return value == null ? null : value.toString();
     }
 
     private static String firstLineOf(String text) {

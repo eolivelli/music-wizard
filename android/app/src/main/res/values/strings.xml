@@ -45,8 +45,5 @@
     <string name="import_cancelled">Cancelled.</string>
     <string name="import_busy">Another import is still running.</string>
     <string name="import_retry">Try again</string>
-    <string name="import_long">This one is long, so the analysis afterwards will
-        be slow and may run out of memory.</string>
-    <string name="import_no_space">There is not enough free space on this phone.</string>
     <string name="imported_marker">imported</string>
 </resources>

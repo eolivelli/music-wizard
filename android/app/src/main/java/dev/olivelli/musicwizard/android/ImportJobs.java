@@ -131,6 +131,16 @@ final class ImportJobs {
      */
     private static final int DOWNLOAD_SHARE = 70;
 
+    /**
+     * Refuse to start when the phone is this close to full.
+     *
+     * <p>An import needs room for the container and then for the decoded WAV,
+     * which is several times larger — a four-minute track is about 4 MB fetched
+     * and 21 MB decoded at 44100. Failing before the download is a better answer
+     * than failing after it.
+     */
+    private static final long MIN_FREE_BYTES = 250L * 1024 * 1024;
+
     private static ImportJobs instance;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -244,6 +254,9 @@ final class ImportJobs {
         File decoded = null;
         try {
             prune(cacheDirectory);
+            if (cacheDirectory.getUsableSpace() < MIN_FREE_BYTES) {
+                throw new IOException("there is not enough free space on this phone");
+            }
             report("downloading", 0);
 
             Fetch.Fetched fetched = fetcher.fetch(shareText, cacheDirectory,
@@ -295,19 +308,36 @@ final class ImportJobs {
         }
 
         RecordingStore.Recording recording = new RecordingStore.Recording(placed);
-        recording = named(store, recording, fetched.title());
-
-        String when = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
-                .format(Instant.now().atZone(ZoneId.systemDefault()));
-        RecordingStore.writeSource(recording,
-                TakeSource.youtube(fetched.url(), fetched.title(), when).toText());
-        // Seeded rather than left empty, so the fact travels in the player's own
-        // field too — which is what the desktop's report quotes — and so the user
-        // sees it and can add to it. Blank line first, so their words start on a
-        // line of their own.
-        RecordingStore.writeNotes(recording,
-                "Imported from YouTube: " + fetched.title() + "\n" + fetched.url() + "\n\n");
-        return recording.wav();
+        boolean marked = false;
+        try {
+            String when = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
+                    .format(Instant.now().atZone(ZoneId.systemDefault()));
+            // Written before the take is given its final name, so the audio is
+            // never in the library under any name without saying where it came
+            // from. The rename below carries both side files along, which is the
+            // path RecordingStoreTest covers.
+            RecordingStore.writeSource(recording,
+                    TakeSource.youtube(fetched.url(), fetched.title(), when).toText());
+            // Seeded rather than left empty, so the fact travels in the player's
+            // own field too — which is what the desktop's report quotes — and so
+            // the user sees it and can add to it. Blank line last, so their words
+            // start on a line of their own.
+            RecordingStore.writeNotes(recording,
+                    "Imported from YouTube: " + fetched.title() + "\n"
+                            + fetched.url() + "\n\n");
+            recording = named(store, recording, fetched.title());
+            marked = true;
+            return recording.wav();
+        } finally {
+            if (!marked) {
+                // Anything that fails between the move and the marking would
+                // otherwise leave commercial audio in the library looking exactly
+                // like a field recording — and the user has been told the import
+                // failed, so nobody goes looking for it. Running out of space
+                // partway is the ordinary way to get here.
+                store.delete(recording);
+            }
+        }
     }
 
     /**
@@ -330,14 +360,25 @@ final class ImportJobs {
         return recording;
     }
 
+    /**
+     * Ends the job, and hands the outcome to a screen if one is still watching.
+     *
+     * <p>A result that reached a listener is <em>consumed</em>, and that is the
+     * load-bearing half. {@link #lastResult} exists for the screen that was away
+     * when the job ended; retaining a result the screen has already acted on
+     * turns the next share into a replay of the last one — a new link would be
+     * swallowed and the previous take reopened, with no fetch and nothing to say
+     * why.
+     */
     private void finish(Result result) {
         running = false;
-        finished = result;
         progressPercent = -1;
         Listener watcher = listener;
         if (watcher == null) {
+            finished = result;
             return;
         }
+        finished = null;
         if (result.cancelled) {
             watcher.onCancelled();
         } else if (result.failure != null) {

@@ -164,7 +164,11 @@ bundle's `<take>.chords.txt` compare line for line (`docs/phone-to-corpus.md`
 Per take, in this order:
 
 1. **The take**: name, duration and recorded date from `<take>.info.txt`, and
-   the app version that made the bundle.
+   the app version that made the bundle. Read the `source:` line in that same
+   file and **say what it is in the report's first line**: a take marked
+   `source: youtube` is commercial audio fetched from a link, and its only
+   destination is `uncommitted/`. Say so plainly rather than leaving it to be
+   inferred from the name — a take called "kitchen blues" can be either.
 2. **The player's account**: `<take>.notes.txt` quoted verbatim if present,
    "no note" if not.
 3. **Phone vs desktop**: tempo and meter from each; then the two charts side
@@ -177,7 +181,9 @@ Per take, in this order:
    what the machine heard — sung ASR mishears, and the report must not pass
    its output off as the lyrics.
 5. **Next step**: the one-line reminder that promotion into the corpus is
-   `docs/phone-to-corpus.md` steps 2–3, done by a person.
+   `docs/phone-to-corpus.md` steps 2–3, done by a person. For a `source: youtube`
+   take, narrow it: `uncommitted/` is the only destination, and never `samples/`,
+   whatever the recording sounds like.
 
 End with the sweep's accounting: what was imported now, what a marker
 skipped, and the `.imported` names upstream (a listing filtered on

@@ -16,12 +16,29 @@ with exactly the bundles; sharing it to a cloud
 drive is how someone who is not holding the phone fetches it, and the WAV
 inside is what step 4 runs on. **Share WAV** sends the audio alone.
 
-A take is a PCM 16-bit mono 44100 Hz WAV in app-private storage, named
+A take is a mono 16-bit PCM WAV in app-private storage, named
 `yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says otherwise, and
 both shares name their files after whatever that name is. Rename it first, to
-something that says what it is.
+something that says what it is. The rate is 44100 when the phone recorded it,
+and whatever the decoder produced when the take was imported rather than played
+— usually 44100 there too, 48000 for an Opus-only video. Nothing resamples at
+import and nothing downstream needs it to.
 
 ## 2. Where it goes
+
+**First, read the bundle's `info.txt` and find its `source:` line.** A take whose
+line says `source: youtube` was fetched from a link, not played into a
+microphone: it is a commercial recording, it goes to `uncommitted/`
+unconditionally, and no amount of it sounding like someone's kitchen changes
+that. `source: microphone` is a take of your own playing. A bundle with no
+`source:` line at all was made by an app older than #415 — those predate the
+import feature, so they are field recordings, but check the app version in the
+same file rather than assuming.
+
+The app marks this at the source: an imported take carries a `.source.txt`
+beside it, the marking survives a rename, and its note is seeded with the link
+it came from. That is deliberate — a take that arrives with the marking lost is
+indistinguishable from one you played, and the two do not go to the same place.
 
 A take of your own playing belongs in `samples/`, the corpus MW is measured on:
 committed where the licensing allows it, and otherwise gitignored by name, as
@@ -41,7 +58,9 @@ in one more place — its recording and its `.lrc` go in the `LYRICS` table of
 Follow the entries already in whichever of the two files it is: file name, then
 a paragraph. A phone take has no fetch command, so its provenance goes in that
 place instead — who played, on what, when — and then what was played, marked as
-known or as remembered. A bundled take whose player typed a note arrives with
+known or as remembered. An imported take does have a source, and it is the one
+kind of phone take that gets a URL there: take it from the `.source.txt` or the
+note, and write it where a fetch command would go in `uncommitted/list.txt`. A bundled take whose player typed a note arrives with
 its `.notes.txt`, the account written at the time; start from that rather than
 from memory.
 
