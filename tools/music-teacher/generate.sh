@@ -44,9 +44,12 @@ sf2="${MW_SOUNDFONT:-$root/.mw-cache/soundfonts/GeneralUser-GS.sf2}"
 
 fluidsynth -ni -r 44100 -o synth.gain=0.4 -F "$wav" "$sf2" "$mid" >/dev/null
 
+# FluidSynth renders well past the end of the track; trim the digital silence
+# (keeping the instruments' natural decay) before normalizing, or the dead air
+# both pads the package and skews the integrated loudness measurement.
 ffmpeg -loglevel error -y -i "$wav" \
-  -af loudnorm=I=-14:TP=-1.5:LRA=11 -ar 44100 \
-  -codec:a libmp3lame -b:a 192k "$mp3"
+  -af "areverse,silenceremove=start_periods=1:start_threshold=-70dB,areverse,loudnorm=I=-14:TP=-1.5:LRA=11" \
+  -ar 44100 -codec:a libmp3lame -b:a 192k "$mp3"
 
 echo "$mid"
 echo "$mp3"
