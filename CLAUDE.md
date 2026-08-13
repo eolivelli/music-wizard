@@ -62,9 +62,11 @@ small movements did not mean much either way, which is exactly why the two are
 quoted separately.
 
 What is now top is what all three exposed, in order. One constant bar length
-still cannot follow a recording that does not hold one (#187) — the chart no
-longer hangs its whole bar axis on the grid's first downbeat but on the offset
-the downbeats agree on (#233), which centres that drift rather than removing it.
+still cannot follow a recording that does not hold one (#187). The chart's bar
+axis no longer hangs on the grid's first downbeat: it takes the offset the
+downbeats agree on, which centres that drift rather than removing it, and keeps
+the first downbeat where they agree on no offset within the beat (#233).
+
 Then: the vocabulary still has no major seventh,
 sixth, minor sixth or half-diminished, each of which was measured and costs more
 than it buys until four-note candidates can be ranked on something better than

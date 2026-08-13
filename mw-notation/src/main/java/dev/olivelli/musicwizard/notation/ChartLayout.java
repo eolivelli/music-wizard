@@ -449,8 +449,7 @@ final class ChartLayout {
      * what the grid can absorb -- is now a much narrower claim than it was.
      *
      * <p>What is left of the drift is neither the tracker nor the statistic: it
-     * is that the recording does not hold one bar length (#187). The chart's
-     * phase used to be the second half of that and is #233, now fixed.
+     * is that the recording does not hold one bar length (#187).
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
      * carry it alone: a grid narrower than the timing error trips over it, which
@@ -477,10 +476,8 @@ final class ChartLayout {
      * about what a grid must survive, not about what this recording happens to
      * contain -- but it now wants a recording that still exhibits the defect.
      *
-     * <p>Past there the recording's beat does not keep to any single bar length,
-     * which is #187 and where that measurement is. The bar *length* used to be
-     * the second of these and is #200, and the bar *phase* the third and is
-     * #233; both are fixed.
+     * <p>What is left past there is that the recording's beat does not keep to
+     * any single bar length, which is #187 and where that measurement is.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
@@ -576,7 +573,7 @@ final class ChartLayout {
 
         List<Span> spans = new ArrayList<>(chords.size() + 1);
         // The gap between the first bar line and the first chord, when the
-        // downbeat the chart is anchored on sits before the harmony starts.
+        // bar line the chart opens on sits before the harmony starts.
         // Printed rather than absorbed: a chart whose first chord arrives half a
         // bar late is telling the reader the downbeat is out, which is precisely
         // what --first-downbeat is for, and back-dating the chord would hide it.
@@ -1002,8 +999,8 @@ final class ChartLayout {
     /**
      * Where the chart's first bar line falls, in seconds.
      *
-     * <p>On the beat grid's downbeat, and on the first chord only when the grid
-     * has none. That is a reversal, and the reason the old behaviour existed is
+     * <p>On the beat grid's phase, and on the first chord only when the grid
+     * states none. That is a reversal, and the reason the old behaviour existed is
      * worth stating before the reason it changed: this used to anchor on the
      * first chord because the downbeat detector had been measured half a bar
      * out on a fixture whose chord changes were right -- 0.05s, 1.96s and 3.96s
@@ -1096,8 +1093,11 @@ final class ChartLayout {
      * rather than by rounding each against the first, so a recording whose
      * downbeats wander more than half a bar over its length does not fold its
      * late bars onto its early ones. {@code Math.max(1, ...)} keeps that count
-     * moving forward across two downbeats closer together than a bar, which a
-     * dropped beat produces.
+     * strictly increasing across two downbeats closer together than half a bar,
+     * so that every offset is right to within a whole number of bars -- which is
+     * all any of them has to be, since the caller steps the answer by whole bars
+     * anyway. The tracker does not produce such a pair, marking every counted
+     * beat of the bar; a grid read back from a workspace can carry one.
      *
      * <p><b>It may not move a bar line by more than half a counted beat, and
      * this is the load-bearing half of the method.</b> Past that the line is no
@@ -1106,14 +1106,23 @@ final class ChartLayout {
      * --first-downbeat} is how it is corrected, which is #83. So a fit that far
      * out is refused rather than clamped, and the nominated downbeat stands.
      *
-     * <p>What that refuses is not a corner. A supplied {@code --tempo} moves the
-     * chart's bar off the grid's own, and the grid's downbeats then sit at every
-     * phase in turn, which is what {@code
+     * <p>The comparison is <em>modulo one bar</em>, because that is the only
+     * thing the caller reads: a phase and the same phase a bar along give the
+     * same chart. Comparing the two absolutely instead let one whole-bar step of
+     * the unwrap above -- which is a no-op downstream -- discard the fit whole
+     * and put the chart back on the first downbeat, which is the defect this
+     * closes. Round 1 of review found that and built the grid that reaches it.
+     *
+     * <p>What the bound refuses is not a corner. A supplied {@code --tempo}
+     * moves the chart's bar off the grid's own, and the grid's downbeats then
+     * sit at every phase in turn, which is what {@code
      * ChordChartTest.headerAndBarsCannotDisagree} charts. On real recordings it
-     * refuses the ones whose tracked downbeats drift furthest from their own
-     * steady rate, and measured against a beat lattice combed out of the audio
-     * -- no tracker in it -- taking the median there moves the drawn bar lines
-     * away from the music rather than towards it.
+     * refuses a grid whose downbeats have walked more than half a beat against
+     * their own steady rate -- and there, measured against a beat lattice combed
+     * out of the audio with no tracker in it, taking the median moves the drawn
+     * bar lines away from the music rather than towards it. Which rows those are
+     * is in {@code tools/baselines/score-chart.txt}, as the rows this PR did not
+     * move.
      *
      * <p>This decides the phase alone. One constant bar length still cannot
      * follow a recording that does not hold one (#187); it now walks both ways
@@ -1132,7 +1141,8 @@ final class ChartLayout {
         double agreed = offsets.length % 2 == 1
                 ? offsets[middle]
                 : (offsets[middle - 1] + offsets[middle]) / 2.0;
-        return Math.abs(agreed - nominated) <= beatSeconds / 2 ? agreed : nominated;
+        double moved = Math.IEEEremainder(agreed - nominated, barSeconds);
+        return Math.abs(moved) <= beatSeconds / 2 ? agreed : nominated;
     }
 
     /**
