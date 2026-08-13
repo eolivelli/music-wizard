@@ -134,10 +134,12 @@ final class ImportJobs {
     /**
      * Refuse to start when the phone is this close to full.
      *
-     * <p>An import needs room for the container and then for the decoded WAV,
-     * which is several times larger — a four-minute track is about 4 MB fetched
-     * and 21 MB decoded at 44100. Failing before the download is a better answer
-     * than failing after it.
+     * <p>Sized for the worst case {@link Fetch#MAX_SECONDS} allows rather than
+     * for a typical song, because the length is not known until the fetch has
+     * already begun: twenty minutes of Opus is around 24 MB, and the WAV decoded
+     * from it is 48000 × 2 bytes a second — over 100 MB — with both alive at
+     * once. Failing before the download is a better answer than failing after
+     * it.
      */
     private static final long MIN_FREE_BYTES = 250L * 1024 * 1024;
 
@@ -294,10 +296,10 @@ final class ImportJobs {
     /**
      * Moves the decoded take into the library and records where it came from.
      *
-     * <p>The side files are written after the rename rather than before, so the
-     * import does not depend on {@code rename} carrying them — that path is
-     * exercised by the user's own later renames, where the store's tests cover
-     * it.
+     * <p>Whole or not at all, and the "whole" includes the marking: audio that
+     * reaches the library without it is indistinguishable from a field
+     * recording, and the user has been told the import failed, so nobody goes
+     * looking.
      */
     private static File store(RecordingStore store, File decoded, Fetch.Fetched fetched)
             throws IOException {
@@ -326,7 +328,15 @@ final class ImportJobs {
                     "Imported from YouTube: " + fetched.title() + "\n"
                             + fetched.url() + "\n\n");
             recording = named(store, recording, fetched.title());
-            marked = true;
+            // Read back rather than assumed. RecordingStore.rename carries the
+            // side files best-effort: a failed move becomes a copy, and a failed
+            // copy leaves the file behind and returns normally, with the audio
+            // already moved. Asking the same question every other reader asks is
+            // what makes this an invariant rather than a comment.
+            marked = TakeSource.parse(RecordingStore.readSource(recording)).isCommercial();
+            if (!marked) {
+                throw new IOException("the take could not be marked as imported");
+            }
             return recording.wav();
         } finally {
             if (!marked) {

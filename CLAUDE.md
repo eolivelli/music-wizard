@@ -402,5 +402,5 @@ syllable counts. `docs/phone-to-corpus.md` is the route
 a recording made with the phone app takes into `uncommitted/` or `samples/`,
 and what to write down beside it. The app can also fetch a shared YouTube link
 as a take, and those have only one of those two destinations: the bundle's
-`info.txt` carries a `source:` line, and `source: youtube` means commercial
-audio whatever it sounds like.
+`<take>.info.txt` carries a `source:` line, and `source: youtube` means
+commercial audio whatever it sounds like.

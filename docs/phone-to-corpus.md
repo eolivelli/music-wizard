@@ -26,9 +26,9 @@ import and nothing downstream needs it to.
 
 ## 2. Where it goes
 
-**First, read the bundle's `info.txt` and find its `source:` line.** A take whose
-line says `source: youtube` was fetched from a link, not played into a
-microphone: it is a commercial recording, it goes to `uncommitted/`
+**First, read `<take>.info.txt` from the bundle and find its `source:` line.** A
+take whose line says `source: youtube` was fetched from a link, not played into
+a microphone: it is a commercial recording, it goes to `uncommitted/`
 unconditionally, and no amount of it sounding like someone's kitchen changes
 that. `source: microphone` is a take of your own playing. A bundle with no
 `source:` line at all was made by an app older than #415 — those predate the
@@ -59,8 +59,9 @@ Follow the entries already in whichever of the two files it is: file name, then
 a paragraph. A phone take has no fetch command, so its provenance goes in that
 place instead — who played, on what, when — and then what was played, marked as
 known or as remembered. An imported take does have a source, and it is the one
-kind of phone take that gets a URL there: take it from the `.source.txt` or the
-note, and write it where a fetch command would go in `uncommitted/list.txt`. A bundled take whose player typed a note arrives with
+kind of phone take that gets a URL there: take it from the `.source.txt` or
+the note, and write it where a fetch command would go in
+`uncommitted/list.txt`. A bundled take whose player typed a note arrives with
 its `.notes.txt`, the account written at the time; start from that rather than
 from memory.
 

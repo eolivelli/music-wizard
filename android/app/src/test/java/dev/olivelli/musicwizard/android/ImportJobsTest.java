@@ -434,6 +434,43 @@ public class ImportJobsTest {
                 store.list().isEmpty());
     }
 
+    /**
+     * A rename that drops the provenance takes the take with it.
+     *
+     * <p>{@code RecordingStore.rename} carries the side files best-effort: a
+     * failed move becomes a copy, and a failed copy leaves the file behind and
+     * returns <em>normally</em>, with the audio already under its new name. So
+     * writing the marking before the rename is not on its own enough — the
+     * import has to read it back afterwards. Without that, the library keeps a
+     * take that looks like a field recording while the user is told nothing
+     * went wrong.
+     *
+     * <p>Planted at the renamed stem rather than the timestamped one, which is
+     * what makes this a different case from the failure before the rename.
+     */
+    @Test
+    public void aRenameThatLosesTheProvenanceLeavesNoTake() throws Exception {
+        store.ensureDirectory();
+        // Non-empty, so neither renameTo nor Files.copy can replace it.
+        File blocked = new File(store.directory(), "Some Song.source.txt");
+        assertTrue(new File(blocked, "occupied").mkdirs());
+
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("Some Song"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+        jobs.start("https://youtu.be/dQw4w9WgXcQ", cache, store, watcher);
+        settle(jobs);
+
+        assertNotNull("the failure was not reported", watcher.failure);
+        assertNull(watcher.finished);
+        for (RecordingStore.Recording take : store.list()) {
+            assertTrue("a take was left in the library without its provenance: "
+                            + take.displayName(),
+                    TakeSource.parse(RecordingStore.readSource(take)).isCommercial());
+        }
+        assertTrue("the unmarked take survived: " + store.list(), store.list().isEmpty());
+    }
+
     /** A second import of the same video does not collide with the first. */
     @Test
     public void aRepeatedImportGetsItsOwnName() throws Exception {

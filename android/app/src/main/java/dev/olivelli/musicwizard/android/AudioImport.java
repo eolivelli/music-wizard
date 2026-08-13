@@ -194,12 +194,19 @@ final class AudioImport {
                         throw new IOException("the decoder produced a sample format"
                                 + " this app cannot read");
                     }
-                    if (writer != null) {
-                        // A second format change mid-stream. Opening another
-                        // writer would leak this one and, because the constructor
-                        // truncates, throw away everything decoded so far -- a
-                        // take that is quietly the tail of the song.
+                    if (writer != null && writer.frames() > 0) {
+                        // A format change after audio has been written. Opening
+                        // another writer would leak this one and, because the
+                        // constructor truncates, throw away everything decoded so
+                        // far -- a take that is quietly the tail of the song.
                         throw new IOException("the audio changes format partway through");
+                    }
+                    if (writer != null) {
+                        // Reported twice before emitting anything, which the codec
+                        // contract permits and some HE-AAC decoders do when the
+                        // rate is revised after the first frames. Nothing has been
+                        // written, so the second answer is simply the right one.
+                        writer.abort();
                     }
                     writer = new WavWriter(target, rate);
                     continue;
