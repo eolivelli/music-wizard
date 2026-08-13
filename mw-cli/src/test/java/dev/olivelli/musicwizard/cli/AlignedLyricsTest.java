@@ -125,8 +125,13 @@ class AlignedLyricsTest {
 
         assertThat(words).extracting(LyricWord::text)
                 .containsExactly("la", "la", "la", "sol-", "mi");
+        // The flag says a piece continues into the next, so a compound's own
+        // break is a join like any other: everything downstream that rejoins a
+        // word -- the text sheet, the harness, the engraver's all-or-nothing --
+        // reads the chain and would otherwise see two words. Whether a hyphen
+        // is drawn between them is the engraver's, from the text.
         assertThat(words).extracting(LyricWord::hyphenatedToNext)
-                .containsExactly(true, true, false, false, false);
+                .containsExactly(true, true, false, true, false);
         // Each syllable carries its own measurement rather than a share of its
         // word's: the fake gives every token it is handed a different time.
         assertThat(words).extracting(LyricWord::startSeconds).doesNotHaveDuplicates();

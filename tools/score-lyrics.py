@@ -535,9 +535,9 @@ def rejoined(words: list[dict]) -> list[dict]:
     measured them (#414), because that is what the engraved sheet places. This
     harness scores words against a lyric file's words, so the two have to be
     counted the same way: a run joined by `hyphenatedToNext` is one word,
-    taking the first syllable's onset and the last one's end. Scoring the
-    syllables instead would report a substitution and a fistful of insertions
-    for every word MW got exactly right.
+    taking the first syllable's onset. Scoring the syllables instead would
+    report a substitution and a fistful of insertions for every word MW got
+    exactly right.
 
     A word that was never split has the flag false and passes through, so this
     is the identity on lyrics that were not aligned.

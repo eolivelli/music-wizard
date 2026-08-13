@@ -688,11 +688,14 @@ final class AnalyzeCommand implements Callable<Integer> {
      * its word's parsed span so a failure downstream falls back to what the
      * caller had.
      *
-     * <p>Each piece carries the flag the hyphenator gave it, and the last
-     * carries whatever the word itself said. Only a break the hyphenator chose
-     * is drawn: a compound arrives with the hyphen it was written with, and
-     * claiming one there too would engrave {@code well--known}. The chain of
-     * flags is what still reads a split word as one word downstream.
+     * <p>Every piece but the last joins the next, and the last carries whatever
+     * the word itself said. The flag says the piece continues into the one
+     * after it and nothing else — which is what makes the chain readable as one
+     * word by everything downstream that rejoins it, the text sheet and the
+     * engraver's all-or-nothing among them. Whether a hyphen is <em>drawn</em>
+     * between two pieces is not this decision and is not encoded here: a piece
+     * that already ends at a break of its own draws none, and the engraver asks
+     * {@link Hyphenator#endsAtItsOwnBreak} where it draws.
      *
      * <p>A language with no patterns, or a word the patterns leave in one
      * piece, comes back unchanged: this can only ever split a word further,
@@ -716,7 +719,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 out.add(new LyricWord(parts.get(i).text(),
                         word.startSeconds(), word.endSeconds(),
                         java.util.Optional.empty(), java.util.Optional.empty(),
-                        last ? word.hyphenatedToNext() : parts.get(i).hyphenToNext(),
+                        last ? word.hyphenatedToNext() : true,
                         word.melisma(), word.confidence()));
             }
         }

@@ -245,14 +245,12 @@ class LyricEngravingTest {
         assertThat(block).doesNotContain("\"strayed\"");
     }
 
-    /** Two lines that overlap: the first ends after the second has begun. */
     /**
-     * A four-syllable word written as four hyphen-joined words, sung from
-     * {@code at}, on a chart two bars long.
+     * A word written as hyphen-joined pieces, sung from {@code at}, on a chart
+     * two bars long.
      */
-    private static Score joinedRun(double at) {
+    private static Score joinedRun(double at, String... parts) {
         Confidence sure = Confidence.of(0.9);
-        String[] parts = {"la", "la", "la", "la"};
         List<LyricWord> words = new ArrayList<>();
         for (int i = 0; i < parts.length; i++) {
             double start = at + i * 0.3;
@@ -260,8 +258,10 @@ class LyricEngravingTest {
                     Optional.empty(), Optional.empty(),
                     i + 1 < parts.length, false, sure));
         }
+        // Tagged, because whether a piece already ends at a break is a question
+        // about the language's own word characters.
         return chart(2).withLyrics(new Lyrics(
-                List.of(new LyricLine(words, sure)), "und", sure));
+                List.of(new LyricLine(words, sure)), "it", sure));
     }
 
     @Test
@@ -271,7 +271,8 @@ class LyricEngravingTest {
         // syllables hands each of them over separately. All-or-nothing has to
         // cover the run, or the page prints a fragment of a word -- which reads
         // as a transcription rather than as the omission it is.
-        List<List<String>> engraved = lyricLanes(LyricSheet.toLilyPond(joinedRun(3.4)));
+        List<List<String>> engraved = lyricLanes(LyricSheet.toLilyPond(
+                joinedRun(3.4, "la", "la", "la", "la")));
 
         assertThat(String.join(" ", engraved.stream().flatMap(List::stream).toList()))
                 .doesNotContain("\"la\"");
@@ -280,11 +281,27 @@ class LyricEngravingTest {
     @Test
     @DisplayName("the same word wholly inside the chart is engraved whole")
     void aRunThatFitsIsEngravedWhole() {
-        List<String> bars = lyricBars(LyricSheet.toLilyPond(joinedRun(0.4)));
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(
+                joinedRun(0.4, "la", "la", "la", "la")));
 
         assertThat(String.join(" ", bars).split("\"la\"", -1)).hasSize(5);
     }
 
+    /** Two lines that overlap: the first ends after the second has begun. */
+    @Test
+    @DisplayName("a piece that already ends at a break is not given a second hyphen")
+    void aWrittenHyphenIsNotDrawnTwice() {
+        // "sol-" joins "mi" -- they are one word and are placed as one -- but
+        // the hyphen is already in the text, and lyricmode's own would print
+        // sol- -- mi.
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(joinedRun(0.4, "sol-", "mi")));
+
+        String lane = String.join(" ", bars);
+        assertThat(lane).contains("\"sol-\"").contains("\"mi\"");
+        assertThat(lane).doesNotContain("--");
+    }
+
+    /** Two lines that overlap: the first ends after the second has begun. */
     private static Score overlapping() {
         Confidence sure = Confidence.of(0.9);
         return chart(2).withLyrics(new Lyrics(List.of(
