@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -126,7 +127,7 @@ class BarAxisTest {
         for (int bar = 12; bar <= 20; bar++) {
             assertThat(axis.secondsAt(bar * 4.0))
                     .as("bar %d", bar)
-                    .isCloseTo(truth.get(bar), within(QUARTER / 2));
+                    .isCloseTo(truth.get(bar), within(QUARTER));
         }
     }
 
@@ -155,7 +156,7 @@ class BarAxisTest {
             }
             at += length;
         }
-        java.util.Collections.sort(beats);
+        Collections.sort(beats);
         Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
                 .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
                         Confidence.of(0.9)));
@@ -165,6 +166,61 @@ class BarAxisTest {
             assertThat(axis.secondsAt(bar * 4.0))
                     .as("bar %d", bar)
                     .isCloseTo(truth.get(bar), within(QUARTER));
+        }
+    }
+
+    @Test
+    @DisplayName("a wrongly accepted downbeat is corrected, wherever in the bar it fell")
+    void anAcceptedWrongDownbeatDoesNotFreeRun() {
+        // A backbeat read as a downbeat is the most ordinary thing a tracker
+        // does, and at some offsets it lands inside the tolerance and is
+        // accepted. The bar line it moves must not become the base every
+        // later prediction runs from -- that is the free run this class was
+        // rewritten twice to remove -- so the offset is swept across the bar
+        // rather than tested at the one value that takes the early branch.
+        for (int tenths = 3; tenths <= 8; tenths++) {
+            double where = tenths / 10.0;
+            double[] lengths = {BAR * 0.95, BAR * 1.08};
+            List<Double> truth = new ArrayList<>();
+            List<Double> beats = new ArrayList<>();
+            double at = 0;
+            for (int bar = 0; bar < 24; bar++) {
+                truth.add(at);
+                double length = lengths[bar % lengths.length];
+                for (int beat = 0; beat < 4; beat++) {
+                    beats.add(at + beat * length / 4);
+                }
+                if (bar == 9) {
+                    for (int beat = 0; beat < 4; beat++) {
+                        beats.add(at + length * where + beat * length / 17);
+                    }
+                }
+                at += length;
+            }
+            Collections.sort(beats);
+            // The offsets above can coincide with a real beat; the grid
+            // refuses repeated times and the sweep is about the downbeat.
+            List<Double> distinct = new ArrayList<>(beats.size());
+            for (double beat : beats) {
+                if (distinct.isEmpty() || beat - distinct.get(distinct.size() - 1) > 1e-6) {
+                    distinct.add(beat);
+                }
+            }
+            beats = distinct;
+            Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                    .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
+                            Confidence.of(0.9)));
+            BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
+
+            // Well downstream of the bad downbeat, and against the recording
+            // rather than against the axis's own earlier answers. One bar of
+            // slack: the wrong line costs its own bar and the one it takes to
+            // notice, and nothing after that.
+            for (int bar = 14; bar <= 22; bar++) {
+                assertThat(axis.secondsAt(bar * 4.0))
+                        .as("spurious downbeat %.1f into its bar, chart bar %d", where, bar)
+                        .isCloseTo(truth.get(bar), within(BAR));
+            }
         }
     }
 

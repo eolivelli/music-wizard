@@ -332,11 +332,13 @@ final class ChartLayout {
                 grid * quarterSeconds / 2);
         // The grid above measures the closest two chord changes in quarters
         // by the stated rate, and the positions below are taken from the bar
-        // axis. On a followed chart a bar runs up to a quarter longer than
-        // the stated one, so the same pair of chords spans more quarters on
-        // the axis than the grid was chosen for -- enough to cross a rung of
-        // the ladder. Re-read on the axis, so the grid and the positions are
-        // measured on the same ruler.
+        // axis. A followed bar is not the stated length, so the same pair of
+        // chords spans a different number of quarters on the axis -- fewer
+        // where the bar is longer -- which can cross a rung of the ladder in
+        // either direction. The finer direction is the one that matters: the
+        // anchor tolerance is set from the grid before the axis exists, and
+        // it must not exceed half the step positions are snapped to. Re-read
+        // on the axis, so the grid and the positions share a ruler.
 
         // Seconds and quarters are converted through the bar axis the
         // tracker heard, not by dividing by one mean quarter (#187). One
@@ -545,7 +547,7 @@ final class ChartLayout {
         return gridFor(closest, meter);
     }
 
-    /** The finest grid rung no closer than the closest pair of changes. */
+    /** The coarsest grid rung no wider than the closest pair of changes. */
     private static double gridFor(double closest, TimeSignature meter) {
         double finest = LilyPondDuration.SHORTEST_QUARTERS;
         for (double grid = COARSEST_GRID_BEATS * meter.beatUnitQuarters();

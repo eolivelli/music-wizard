@@ -27,7 +27,8 @@ import java.util.List;
  * <p>A chart hung on one downbeat plus one constant bar length cannot follow
  * a recording that does not hold one (#187). The wander is small bar to bar
  * and it accumulates: on the recording that motivated this the printed bar
- * line ran most of a beat early by the ninth bar and further later, and with
+ * line ran about a beat and a half early by the ninth bar and further
+ * later, and with
  * the words at their measured times a reader saw them sitting a syllable or
  * two late against bar lines that were themselves early.
  *
@@ -50,7 +51,6 @@ import java.util.List;
  * dropped or doubled downbeat costs its own bar rather than the ones after
  * it, and a bar the stated tempo disagrees with reverts to the stated
  * length, so the axis cannot walk away from the recording.
- *
  */
 final class BarAxis {
 
@@ -181,44 +181,68 @@ final class BarAxis {
         for (int i = 1; i < n; i++) {
             gaps.add(downbeats.get(i) - downbeats.get(i - 1));
         }
-        Collections.sort(gaps);
-        double typical = gaps.get(gaps.size() / 2);
+        List<Double> sorted = new ArrayList<>(gaps);
+        Collections.sort(sorted);
+        double typical = sorted.get(sorted.size() / 2);
+
         // How much a bar typically differs from the one before it. A median
         // rather than a spread, so the dropped and doubled downbeats that
         // every tracker produces cannot make a metronome look like a band.
         List<Double> changes = new ArrayList<>(n - 2);
         for (int i = 2; i < n; i++) {
-            changes.add(Math.abs((downbeats.get(i) - downbeats.get(i - 1))
-                    - (downbeats.get(i - 1) - downbeats.get(i - 2))));
+            changes.add(Math.abs(gaps.get(i - 1) - gaps.get(i - 2)));
         }
         Collections.sort(changes);
         if (changes.get(changes.size() / 2) <= WANDER * typical) {
             // Machine-timed: it has no bars of its own to follow.
             return List.of();
         }
+
+        // The rate the predictions run at is the MEAN of the bars that look
+        // like bars, not the median of all of them. A median is a typical
+        // value and not a rate: half the bars are longer than it, so
+        // predicting with it walks steadily behind a recording whose bars are
+        // unevenly distributed -- the correction #200 made one layer up, for
+        // the same reason.
+        double total = 0;
+        int counted = 0;
+        for (double gap : gaps) {
+            if (Math.abs(gap - typical) <= TOLERANCE * typical) {
+                total += gap;
+                counted++;
+            }
+        }
+        double rate = counted > 0 ? total / counted : typical;
+
         List<Double> out = new ArrayList<>(n);
         out.add(downbeats.get(0));
+        int consecutiveEarly = 0;
         for (int i = 1; i < n; i++) {
-            double predicted = out.get(out.size() - 1) + typical;
+            double predicted = out.get(out.size() - 1) + rate;
             double error = downbeats.get(i) - predicted;
-            if (Math.abs(error) <= TOLERANCE * typical) {
+            if (Math.abs(error) <= TOLERANCE * rate) {
                 out.add(downbeats.get(i));
+                consecutiveEarly = 0;
             } else if (error < 0) {
-                // Too early to be the next bar: the tracker heard a downbeat
-                // that is not one. Dropped rather than substituted, because
-                // substituting would give this bar a boundary the recording
-                // does not have and push every later bar one along.
-                continue;
+                // Too early to be the next bar. Once, that is a downbeat the
+                // tracker invented, and honouring it would give this bar a
+                // line the recording does not have. Twice running, it is this
+                // axis that is wrong -- a bar line accepted earlier was not
+                // one, and every real downbeat since has looked early against
+                // it. The recording gets the benefit of the doubt, because a
+                // base that cannot be corrected free-runs exactly as far as
+                // the open loop this replaced.
+                if (++consecutiveEarly >= 2) {
+                    out.add(downbeats.get(i));
+                    consecutiveEarly = 0;
+                }
             } else {
                 // Too late: a downbeat the tracker missed. The prediction
                 // stands in for the bar that has none, and this measurement
-                // is offered again to the bar after it -- so a miss costs its
-                // own bar. Without the re-offer the chain runs open loop:
-                // every later measurement is a whole bar from a prediction
-                // that no longer knows where the recording is, so every one
-                // is substituted and the axis ends further from the recording
-                // than the constant rate it replaced.
+                // is offered again to the bar after it, so a miss costs its
+                // own bar rather than every bar after it.
                 out.add(predicted);
+                consecutiveEarly = 0;
                 if (out.size() > n * 2) {
                     // A gap so long that filling it is guesswork. Whatever
                     // follows is not this recording's bar line.
