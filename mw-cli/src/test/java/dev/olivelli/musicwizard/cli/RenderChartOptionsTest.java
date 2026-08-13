@@ -165,8 +165,8 @@ class RenderChartOptionsTest {
     @Test
     @DisplayName("the tags reach the config layer and the printed copy alike")
     void repeatTagsReachEveryCopy() throws IOException {
-        // The chart echoed to the terminal is a second call to the renderer and
-        // has disagreed with the file before (#129), so both are asserted.
+        // The chart echoed to the terminal is a second call to the renderer, so
+        // it can disagree with the file. Both are asserted.
         Path workspace = tracked("tags-config");
         Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
                 new MusicWizardConfig.NotationConfig(null, null, null, null, null, null, true),

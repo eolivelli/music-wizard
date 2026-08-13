@@ -1684,10 +1684,8 @@ class ChordChartTest {
     @Test
     @DisplayName("no tags at all unless the caller asks for them")
     void tagsAreOffByDefault() {
-        // #417: a tag is a letter over the chord names and is read as one of
-        // them at arm's length, so a chart handed to somebody to play from does
-        // not carry any. Held on a chart that does repeat, so what is asserted
-        // is the gate rather than nothing having been found.
+        // Held on a chart that does repeat, so what is asserted is the gate
+        // rather than nothing having been found.
         Score repeats = fourChordSong(3);
 
         assertThat(textTagsOf(ChordChart.toText(repeats))).isEqualTo("...");

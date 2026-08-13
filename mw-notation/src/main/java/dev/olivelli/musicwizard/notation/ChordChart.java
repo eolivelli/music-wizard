@@ -43,16 +43,7 @@ public final class ChordChart {
     private ChordChart() {
     }
 
-    /**
-     * A tag per line, or none at all when the caller did not ask for them.
-     *
-     * <p>Off unless asked for, which is #417 and is about the page rather than
-     * about the estimate. A tag is drawn as a letter above the chord names and
-     * read at arm's length as one of them — {@code A} over a bar of {@code A} is
-     * the case that was reported — so a chart handed to somebody to play from is
-     * better without. What the tags claim is unchanged and {@link LineRepeats}
-     * still decides it.
-     */
+    /** A tag per line, or none at all when the caller did not ask for them. */
     private static List<Optional<String>> tagsOf(List<String> lines, ChartOptions options) {
         return options.repeatTags() ? LineRepeats.tagsOf(lines)
                 : lines.stream().map(line -> Optional.<String>empty()).toList();

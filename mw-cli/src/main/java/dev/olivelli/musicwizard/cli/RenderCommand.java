@@ -329,7 +329,7 @@ final class RenderCommand implements Callable<Integer> {
         boolean chartWritten = false;
         // Above the block, because the copy printed to the terminal below is a
         // second call to the chart renderer and has to be given what the file
-        // was given. It has disagreed with the file before (#129).
+        // was given.
         ChartOptions options = chartOptions(config);
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
