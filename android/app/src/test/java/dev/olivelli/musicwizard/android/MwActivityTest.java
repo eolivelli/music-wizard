@@ -49,7 +49,8 @@ public class MwActivityTest {
     private static final List<String> SCREENS = List.of(
             PACKAGE + ".RecordActivity",
             PACKAGE + ".LibraryActivity",
-            PACKAGE + ".ResultActivity");
+            PACKAGE + ".ResultActivity",
+            PACKAGE + ".ImportActivity");
 
     @Test
     public void everyDeclaredActivityInheritsSystemBarPadding() throws Exception {
@@ -67,16 +68,23 @@ public class MwActivityTest {
     }
 
     /**
-     * The microphone, and nothing else — in particular, not INTERNET.
+     * The microphone and the network, and nothing else.
      *
-     * <p>The app's one promise about data is that nothing leaves the phone
-     * except through the share sheet, where the user picks who gets it. A
-     * permission quietly re-added here would break that promise with no other
-     * symptom: the app would run exactly as before. (This reads the app's own
-     * manifest; what a library merges in is visible only in the built APK.)
+     * <p>The app used to promise that nothing it held ever left the phone by any
+     * route but the share sheet, and #415 retired that deliberately: a shared
+     * YouTube link is fetched over the network. What replaced it is narrower and
+     * still worth pinning — nothing the microphone records is uploaded, the app
+     * holds no credential, and the only host it contacts is one the user asked
+     * it to fetch from. A third permission added here would go past all of that
+     * with no other symptom: the app would run exactly as before.
+     *
+     * <p>Compared as a sorted set rather than in document order, because pinning
+     * the order of a manifest fails on a cosmetic edit and teaches nothing.
+     * (This reads the app's own manifest; what a library merges in is visible
+     * only in the built APK.)
      */
     @Test
-    public void theAppAsksForNoPermissionButTheMicrophone() throws Exception {
+    public void theAppAsksForTheMicrophoneTheNetworkAndNothingElse() throws Exception {
         NodeList permissions = DocumentBuilderFactory.newInstance()
                 .newDocumentBuilder()
                 .parse(new File(MANIFEST))
@@ -85,7 +93,35 @@ public class MwActivityTest {
         for (int i = 0; i < permissions.getLength(); i++) {
             names.add(((Element) permissions.item(i)).getAttribute("android:name"));
         }
-        assertEquals(List.of("android.permission.RECORD_AUDIO"), names);
+        names.sort(String::compareTo);
+        assertEquals(List.of(
+                "android.permission.INTERNET",
+                "android.permission.RECORD_AUDIO"), names);
+    }
+
+    /**
+     * The share target is exported, and it is the only thing that is.
+     *
+     * <p>Exported means any app on the phone can start it with any text, which
+     * is inherent to being a share target. What keeps that safe is that the
+     * screen does nothing until a tap — so the thing worth pinning here is that
+     * the set of doors into the app has not quietly grown.
+     */
+    @Test
+    public void onlyTheLauncherAndTheShareTargetAreExported() throws Exception {
+        NodeList activities = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(new File(MANIFEST))
+                .getElementsByTagName("activity");
+        List<String> exported = new ArrayList<>();
+        for (int i = 0; i < activities.getLength(); i++) {
+            Element activity = (Element) activities.item(i);
+            if ("true".equals(activity.getAttribute("android:exported"))) {
+                exported.add(activity.getAttribute("android:name"));
+            }
+        }
+        exported.sort(String::compareTo);
+        assertEquals(List.of(".ImportActivity", ".RecordActivity"), exported);
     }
 
     /**

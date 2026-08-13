@@ -2,10 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Recordings live in app-private storage, which needs no permission.
-         No INTERNET either: nothing in this app opens a socket. #291 added a
-         GitHub upload and the permission with it; both were removed in favour
-         of sharing the bundle to whatever app the user trusts to move it. -->
+
+         INTERNET is here for one feature: a YouTube link shared into
+         ImportActivity is fetched and decoded into a take (#415). That
+         deliberately retires the app's older promise that nothing it held ever
+         left the phone by any route but the share sheet. What replaces it is
+         narrower and still worth stating: nothing the microphone records is
+         ever uploaded, the app holds no credential, and the only host it
+         contacts is the one the user asked it to fetch from. #291's GitHub
+         upload is still gone.
+
+         Not added: ACCESS_NETWORK_STATE, which would only let the app say "no
+         network" a moment before the download's own failure says it. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature
         android:name="android.hardware.microphone"
@@ -42,6 +52,33 @@
         <activity
             android:name=".ResultActivity"
             android:exported="false" />
+
+        <!-- The one door into the app from outside it. text/plain is what
+             YouTube's Share puts on the sheet.
+
+             singleTop: a second share arrives at onNewIntent rather than
+             stacking a second copy of this screen, so two of them cannot both
+             think they own the import.
+
+             taskAffinity="": the import gets its own task, so Back returns to
+             YouTube instead of dropping the user into whatever MW screen
+             happened to be open behind it.
+
+             Deliberately no ACTION_VIEW filter on the YouTube hosts: that would
+             offer Music Wizard for every YouTube link tapped anywhere on the
+             phone, which is not what this is for. -->
+        <activity
+            android:name=".ImportActivity"
+            android:exported="true"
+            android:label="@string/import_title"
+            android:launchMode="singleTop"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <!-- Sharing a take out is the corpus-export path: a WAV or a bundle
              recorded in the room reaches samples/ or uncommitted/ this way. -->

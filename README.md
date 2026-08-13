@@ -56,10 +56,11 @@ can do by hand is correct the tempo or the first downbeat
 MW's benchmark material is real playing, not fixtures, and the repo carries
 the whole loop for collecting it:
 
-1. **Record on the phone.** The [Android app](android/README.md) is an offline
+1. **Record on the phone.** The [Android app](android/README.md) is a
    field-recording instrument — record a take, run the same harmony analysis
-   on the device, read the chart as text. It holds no network permission; a
-   test pins the manifest to the microphone alone.
+   on the device, read the chart as text. It can also take a YouTube link
+   shared into it and fetch the audio as a take; those are marked as what they
+   are, and never reach the committed corpus.
 2. **Write down what was played**, in the app, while it is fresh — the note
    travels with the take.
 3. **Share the bundle.** One zip, `<take>.mwz.zip`: the WAV, your note, an

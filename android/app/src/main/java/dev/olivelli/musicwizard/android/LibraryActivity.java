@@ -207,7 +207,10 @@ public final class LibraryActivity extends MwActivity {
                     .format(new Date(recording.modifiedMillis()));
             String length = RecordingStore.formatDuration(recording.durationSeconds());
             String state = recording.isAnalyzed() ? "analyzed" : "not analyzed";
-            return length + "  ·  " + state + "  ·  " + when;
+            // One File.isFile() per row, the cost isAnalyzed() already pays.
+            String origin = recording.sourceFile().isFile()
+                    ? "  ·  " + getString(R.string.imported_marker) : "";
+            return length + "  ·  " + state + origin + "  ·  " + when;
         }
     }
 }

@@ -34,9 +34,10 @@ import java.util.Locale;
  *
  * <p>App-private storage, so no storage permission is involved and uninstalling
  * the app takes the takes with it. Each recording is a WAV and, beside it with
- * the same stem, up to two side files: a {@code .score.json} once analysed —
- * the cache that makes re-opening instant and that "re-analyze" overwrites —
- * and a {@code .notes.txt} once the player has said what was played.
+ * the same stem, up to three side files: a {@code .score.json} once analysed —
+ * the cache that makes re-opening instant and that "re-analyze" overwrites — a
+ * {@code .notes.txt} once the player has said what was played, and a
+ * {@code .source.txt} when the take did not come from the microphone.
  *
  * <p>Everything here is plain {@code java.io}, so it is tested on the JVM
  * against a temporary directory rather than on a device.
@@ -97,10 +98,29 @@ public final class RecordingStore {
          * in the bundle — the one file beside a take that cannot be recomputed.
          */
         public File notesFile() {
+            return sibling(".notes.txt");
+        }
+
+        /**
+         * Where the take's provenance lives, when it has any.
+         *
+         * <p>Absent for a take made with the microphone, present for one fetched
+         * from elsewhere. It is the most load-bearing of the three side files
+         * and the least obviously so: losing a {@code .score.json} costs a
+         * re-analysis and losing a {@code .notes.txt} costs the player's words,
+         * but losing this one silently turns a commercial recording into what
+         * looks like a field recording — and a field recording is what the
+         * committed corpus is allowed to hold. See {@code docs/phone-to-corpus.md}.
+         */
+        public File sourceFile() {
+            return sibling(".source.txt");
+        }
+
+        private File sibling(String suffix) {
             String name = wav.getName();
             int dot = name.lastIndexOf('.');
             String stem = dot > 0 ? name.substring(0, dot) : name;
-            return new File(wav.getParentFile(), stem + ".notes.txt");
+            return new File(wav.getParentFile(), stem + suffix);
         }
 
         /** The name shown in the library: the file name without {@code .wav}. */
@@ -194,6 +214,7 @@ public final class RecordingStore {
         Recording renamed = new Recording(target);
         File oldScore = recording.scoreFile();
         File oldNotes = recording.notesFile();
+        File oldSource = recording.sourceFile();
         // The target stem can carry side files orphaned by an interrupted move;
         // cleared, so the take moving in cannot inherit another take's analysis
         // or words as its own. Only where the moving take supplies no
@@ -206,6 +227,10 @@ public final class RecordingStore {
         if (!oldNotes.isFile()) {
             //noinspection ResultOfMethodCallIgnored
             renamed.notesFile().delete();
+        }
+        if (!oldSource.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.sourceFile().delete();
         }
         if (!recording.wav().renameTo(target)) {
             throw new IOException("could not rename " + recording.displayName());
@@ -231,15 +256,31 @@ public final class RecordingStore {
                 // Left behind, knowingly.
             }
         }
+        if (oldSource.isFile() && !oldSource.renameTo(renamed.sourceFile())) {
+            // The note's rule, and for a stronger reason: a take that arrives
+            // under its new name with no provenance is indistinguishable from
+            // one recorded in a room, and the two have different destinations
+            // in the corpus. Copy rather than give up.
+            try {
+                Files.copy(oldSource.toPath(), renamed.sourceFile().toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+                //noinspection ResultOfMethodCallIgnored
+                oldSource.delete();
+            } catch (IOException e) {
+                // Left behind, knowingly.
+            }
+        }
         return renamed;
     }
 
-    /** Deletes a take, its cached analysis, and its note. */
+    /** Deletes a take and every side file that belongs to it. */
     public void delete(Recording recording) {
         //noinspection ResultOfMethodCallIgnored
         recording.scoreFile().delete();
         //noinspection ResultOfMethodCallIgnored
         recording.notesFile().delete();
+        //noinspection ResultOfMethodCallIgnored
+        recording.sourceFile().delete();
         //noinspection ResultOfMethodCallIgnored
         recording.wav().delete();
     }
@@ -251,7 +292,28 @@ public final class RecordingStore {
      * screen over a side file would cost more than the words it reports on.
      */
     public static String readNotes(Recording recording) {
-        File file = recording.notesFile();
+        return readText(recording.notesFile());
+    }
+
+    /**
+     * Writes the note, replacing what was there; a blank note deletes the file,
+     * so an emptied field does not leave a ghost entry in the bundle.
+     */
+    public static void writeNotes(Recording recording, String text) throws IOException {
+        writeText(recording.notesFile(), text);
+    }
+
+    /** A take's provenance, or an empty string when it has none. */
+    public static String readSource(Recording recording) {
+        return readText(recording.sourceFile());
+    }
+
+    /** Writes the provenance, replacing what was there. */
+    public static void writeSource(Recording recording, String text) throws IOException {
+        writeText(recording.sourceFile(), text);
+    }
+
+    private static String readText(File file) {
         if (!file.isFile()) {
             return "";
         }
@@ -262,12 +324,7 @@ public final class RecordingStore {
         }
     }
 
-    /**
-     * Writes the note, replacing what was there; a blank note deletes the file,
-     * so an emptied field does not leave a ghost entry in the bundle.
-     */
-    public static void writeNotes(Recording recording, String text) throws IOException {
-        File file = recording.notesFile();
+    private static void writeText(File file, String text) throws IOException {
         if (text == null || text.trim().isEmpty()) {
             //noinspection ResultOfMethodCallIgnored
             file.delete();
