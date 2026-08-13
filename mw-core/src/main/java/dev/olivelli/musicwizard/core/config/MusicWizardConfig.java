@@ -120,6 +120,14 @@ public record MusicWizardConfig(
              * workspace layer sets this, since only the global layer
              * reaches the provider. */
             String asrModelDirectory,
+            /* Directory holding alignment models the user produced, one
+             * subdirectory per language: <dir>/<language>/model.onnx. Unset
+             * means only the languages with a published export align. What
+             * made it exist: no trusted Italian wav2vec2 ONNX export is
+             * published, so Italian alignment runs from a local one (#388);
+             * docs/italian-alignment-model.md is the recipe. Global layer
+             * only, like its siblings. */
+            String alignmentModelDirectory,
             /* Refuse to download anything, failing instead. */
             Boolean offline) {
     }
@@ -176,7 +184,7 @@ public record MusicWizardConfig(
             new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY),
             new ArrangementConfig(0.5, 4, 9),
             new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3",
-                    "onnx-wav2vec2", null, null, null, false),
+                    "onnx-wav2vec2", null, null, null, null, false),
             new LlmConfig(false, "claude-opus-5", "high", true, true, true, true, true));
 
     /** An entirely unset layer, which merges as a no-op. */
@@ -266,6 +274,7 @@ public record MusicWizardConfig(
                 pick(over.modelCacheDirectory(), base.modelCacheDirectory()),
                 pick(over.sherpaNativePath(), base.sherpaNativePath()),
                 pick(over.asrModelDirectory(), base.asrModelDirectory()),
+                pick(over.alignmentModelDirectory(), base.alignmentModelDirectory()),
                 pick(over.offline(), base.offline()));
     }
 
