@@ -102,6 +102,30 @@ jobs:
       - name: Record the resolved dependency tree
         run: mvn -B --no-transfer-progress dependency:tree -Dscope=compile
 
+  # The synthetic corpus gate (#447). Unlike samples/, every synthetic package
+  # is committed — spec, MIDI and audio — so this harness runs here end to
+  # end, and its output is diffed exactly against the committed baseline. Any
+  # movement fails the job, an improvement included: regenerating the baseline
+  # in the same PR is what puts the movement in front of a reviewer. This is
+  # what lets the music-teacher corpus grow without silently regressing what
+  # MW already reads correctly.
+  synthetic-samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+      - name: Build the CLI
+        run: mvn -B --no-transfer-progress -DskipTests package
+      - name: Score the synthetic corpus and diff the baseline
+        run: |
+          python3 tools/score-synthetic.py | tee target/score-synthetic.txt
+          diff -u tools/baselines/score-synthetic.txt target/score-synthetic.txt
+
   # Analyzes every committed sample and publishes the corpus status to the
   # run's summary page: tempo, meter and span count per file, plus the scored
   # harnesses for the files with registered ground truth. Local-only samples

@@ -400,8 +400,11 @@ short of a licence (#204).
 mainstream genres. The spec is ground truth by construction — see its README.
 Rendering uses FluidSynth and a cached, checksummed soundbank that is never
 committed (`tools/music-teacher/`). Coverage is tracked as one
-`synthetic-sample` issue per package; these sit between tiers 1 and 2 and are
-never quoted as product accuracy.
+`synthetic-sample` issue per package; `tools/score-synthetic.py` scores every
+package against its own spec, sequence-aligned, and both premerge and CI diff
+it against `tools/baselines/score-synthetic.txt` — CI can run this harness in
+full because every package is committed (#447). These sit between tiers 1 and
+2 and are never quoted as product accuracy.
 
 `tools/score-samples.py` scores every grid written down there and
 `BluesLoopIT` gates one recording in CI. Lyric ground truth is gated on one

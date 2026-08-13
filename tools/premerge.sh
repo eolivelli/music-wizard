@@ -52,11 +52,11 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # executions, so it runs everything plain `verify` runs and the ITs as well;
 # running both would run the unit suite twice for nothing.
 if [ "$full" -eq 1 ]; then
-  step "1/5 full suite (unit + integration)"
+  step "1/6 full suite (unit + integration)"
   mvn -B -q -T 1C $REPO_ARGS -Pintegration verify \
     || { echo "FAIL: mvn -Pintegration verify"; fail=1; }
 else
-  step "1/5 build (suites left to CI; --full runs them here)"
+  step "1/6 build (suites left to CI; --full runs them here)"
   mvn -B -q -T 1C $REPO_ARGS -DskipTests package \
     || { echo "FAIL: mvn package"; fail=1; }
 fi
@@ -102,13 +102,13 @@ PY
   grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
 }
 
-step "2/5 model harness vs baseline"
+step "2/6 model harness vs baseline"
 compare score-samples.py tools/baselines/score-samples.txt || { echo "FAIL: score-samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "3/5 chart harness vs baseline"
+step "3/6 chart harness vs baseline"
 compare score-chart.py tools/baselines/score-chart.txt || { echo "FAIL: score-chart moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "4/5 lyric harness vs baseline"
+step "4/6 lyric harness vs baseline"
 compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-lyrics moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The transcription loop (#391): the same recordings through the ASR with no
@@ -116,8 +116,13 @@ compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-
 # which is why it runs unconditionally like its siblings; it needs the sherpa
 # native, and a machine without one reports every row skipped rather than
 # failing (the harness prints the build command per row).
-step "5/5 transcription harness vs baseline"
+step "5/6 transcription harness vs baseline"
 compare score-lyrics.py tools/baselines/score-asr.txt --source asr || { echo "FAIL: score-lyrics --source asr moved — if intended, regenerate the baseline and commit it"; fail=1; }
+
+# The synthetic corpus (#447): every package committed, so CI runs this same
+# diff on the pull request; here it costs one analysis per package.
+step "6/6 synthetic harness vs baseline"
+compare score-synthetic.py tools/baselines/score-synthetic.txt || { echo "FAIL: score-synthetic moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering

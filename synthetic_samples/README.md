@@ -25,6 +25,9 @@ tools/music-teacher/generate.sh synthetic_samples/<name>.spec.txt
 Each package has a GitHub issue labelled `synthetic-sample` recording what MW
 currently reads against the grid; open means MW still gets it wrong somewhere,
 closed means it is read correctly. pr-workers take one issue at a time.
+`tools/score-synthetic.py` scores the whole corpus against the specs, and its
+committed baseline (`tools/baselines/score-synthetic.txt`) is diffed by both
+`tools/premerge.sh` and CI, so a package once read correctly stays that way.
 
 **These sit between tiers 1 and 2**: real instruments' samples and full-band
 arrangements, but synthesized timing and mixing, which is systematically easier
