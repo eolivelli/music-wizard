@@ -1048,9 +1048,8 @@ class ChordChartTest {
         // out of the audio, the agreed phase moves the bar lines away from the
         // music -- so the trade is paid for as well as argued.
         //
-        // The grid starts at 1.3s and not at zero, so that the answer names the
-        // nominated downbeat rather than agreeing with it by arithmetic: at an
-        // origin of zero every wrong answer this could give reads 0.0 too.
+        // The grid starts at 1.3s and not at zero, so the assertion names the
+        // nominated downbeat instead of agreeing with zero.
         double first = 1.3;
         List<BeatGrid.Beat> beats = new ArrayList<>();
         double at = first;

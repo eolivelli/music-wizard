@@ -1093,8 +1093,7 @@ final class ChartLayout {
      * gives: the distance from one downbeat to the nearest bar line through
      * another, signed, never more than half a bar. A phase and the same phase a
      * bar along draw the same chart, since the caller steps the answer by whole
-     * bars, and an extra downbeat anywhere in a grid leaves every offset after
-     * it exactly that far out.
+     * bars.
      *
      * <p>Total distance rather than the mean of anything, because a badly placed
      * downbeat is exactly what this has to survive: the answer is a median, and
