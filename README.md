@@ -49,7 +49,7 @@ plus notation — usable with light edits on most pop, and not a replacement for
 a human transcriber. The corpus it is measured on lives in `samples/`, the
 current readings in `tools/baselines/`, and the single most valuable thing you
 can do by hand is correct the tempo or the first downbeat
-([#187][i187]).
+([`--tempo`, `--first-downbeat`][i83]).
 
 ## From a phone in the room to a chart
 
@@ -225,6 +225,6 @@ read — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
 [sherpa-onnx]: https://github.com/k2-fsa/sherpa-onnx
 [sherpa-fork]: https://github.com/eolivelli/sherpa-onnx/tree/qwen3-asr-stft-center-alignment
 [sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3873
-[i187]: https://github.com/eolivelli/music-wizard/issues/187
+[i83]: https://github.com/eolivelli/music-wizard/issues/83
 [i383]: https://github.com/eolivelli/music-wizard/issues/383
 [i144]: https://github.com/eolivelli/music-wizard/issues/144

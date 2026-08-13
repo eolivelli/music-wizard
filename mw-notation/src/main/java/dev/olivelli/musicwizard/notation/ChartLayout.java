@@ -52,8 +52,8 @@ import java.util.Optional;
  * found by review rather than reasoned about here. Whether a bar <em>names</em>
  * its chord is decided twice, because {@code chordmode} cannot be told not to
  * print a name and {@code chordChanges} has to be left to apply the same rule
- * (see {@link Cell#named()}). And the text chart's {@code Meter} header states
- * one meter where {@link Bar#meter()} can state several, which is #191.
+ * (see {@link Cell#named()}). And a chart can hold several meters, so its text
+ * header names the one it opens in and says that it changes.
  *
  * <p><b>A chord holds until the next one starts.</b> Cell boundaries are chord
  * <em>starts</em>, never ends, which is how a chart is read: every chord in the
@@ -221,11 +221,11 @@ final class ChartLayout {
      *
      * <p>Taken from the beat axis whenever the progression carries one, and from
      * seconds only when it does not. The two agree at a constant tempo and
-     * disagree everywhere else, because the seconds route divides by a
-     * <em>single</em> bar length derived from {@link Score#estimatedTempo()}: on
-     * a piece that changes tempo the grid drifts, and chords pile into one bar
-     * while later bars come out empty. A MIDI import states its rhythm exactly
-     * and has done since #115, so on that path the question has an answer and
+     * disagree everywhere else: the seconds route steps at a single bar length
+     * derived from {@link Score#estimatedTempo()} and corrects that step
+     * against the beat grid's downbeats, which a score stating its own tempo
+     * change does not carry. A MIDI import states its rhythm exactly and has
+     * done since #115, so on that path the question has an answer and
      * estimating it would be a step backwards.
      *
      * <p>Seconds remain the route for the audio path, whose chords are not
@@ -445,8 +445,9 @@ final class ChartLayout {
      * that the reason the paragraph above gives for the failure -- drift past
      * what the grid can absorb -- is now a much narrower claim than it was.
      *
-     * <p>What is left of the drift is neither the tracker nor the statistic: it
-     * is that the recording does not hold one bar length (#187).
+     * <p>What was left of the drift was neither the tracker nor the statistic
+     * but the recording not holding one bar length, and {@link BarAxis} follows
+     * that rather than spacing through it.
      *
      * <p>So the choice stands and its evidence does not, and the reason has to
      * carry it alone: a grid narrower than the timing error trips over it, which
@@ -473,8 +474,8 @@ final class ChartLayout {
      * about what a grid must survive, not about what this recording happens to
      * contain -- but it now wants a recording that still exhibits the defect.
      *
-     * <p>What is left past there is that the recording's beat does not keep to
-     * any single bar length, which is #187 and where that measurement is.
+     * <p>Past there the recording's beat keeps to no single bar length, which
+     * is {@link BarAxis}'s.
      *
      * <p>Measured on <em>gaps</em> rather than on positions, which matters for
      * two reasons beyond taste. It is a fact about the progression alone, so it
@@ -721,8 +722,8 @@ final class ChartLayout {
      * Measured against the <em>tracked</em> beat grid, no change on any benchmark
      * is faster than a beat, and that is structural rather than lucky: {@code
      * ChordEstimator} takes both boundaries of every span from the tracked beat
-     * times. Measured against the beat the chart's bars are spaced at, which is
-     * the grid's steady rate, some are: on some recordings none at all and on
+     * times. Measured against the beat the chart counts at, which is the grid's
+     * steady rate, some are: on some recordings none at all and on
      * others a substantial minority. Both columns are in {@code
      * tools/baselines/score-chart.txt} per recording.
      *
@@ -753,14 +754,14 @@ final class ChartLayout {
      * diff whenever it moves. That is a better home for that column than a
      * javadoc that has to be edited every time the corpus grows.
      *
-     * <p>The whole of that difference is one constant bar length drifting
-     * against a recording that does not keep one -- #187 -- and
-     * it says nothing about how fast the harmony moves. So the signal such a gate
-     * would read is mostly the chart's own grid error: it would decline to reduce
-     * a substantial minority of perfectly ordinary bars, which is where the
-     * chatter is, and it would still fire on a wrong {@code --tempo}, where the
-     * same drift is total rather than partial. What is left is how much of its
-     * bar a chord holds, and that is what this reads.
+     * <p>The whole of that difference is the tracked interval varying against
+     * the one rate the chart counts at, and it says nothing about how fast the
+     * harmony moves. So the signal such a gate would read is mostly that
+     * variation: it would decline to reduce a substantial minority of perfectly
+     * ordinary bars, which is where the chatter is, and it would still fire on
+     * a wrong {@code --tempo}, where the counted beat is not the recording's at
+     * all. What is left is how much of its bar a chord holds, and that is what
+     * this reads.
      *
      * <p><b>What it costs, and it is a reduction rather than a clean-up.</b>
      *

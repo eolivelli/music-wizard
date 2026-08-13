@@ -1202,9 +1202,11 @@ final class AnalyzeCommand implements Callable<Integer> {
      * straight off the map, so this and the engraved chart's header print the
      * same number.
      *
-     * <p>The meter is the one the piece opens in, so a piece that changes meter
-     * part-way would be converted with the wrong beat unit for its later
-     * sections. Nothing emits a meter change today; see #66.
+     * <p>The audio summary's row, and only that one: the declared block reports
+     * a stated tempo and its changes through {@link #statedTempo}. The meter is
+     * the one the piece opens in, which is every bar of it, because nothing on
+     * the audio path estimates a meter change. A file that declares one arrives
+     * through {@code midiSummary} instead.
      */
     static String tempoLine(Score score) {
         return "Tempo   " + formatTempo(

@@ -61,11 +61,15 @@ or two on two of them — at the time that column was dominated by #208, whose
 small movements did not mean much either way, which is exactly why the two are
 quoted separately.
 
-What is now top is what all three exposed, in order. One constant bar length
-still cannot follow a recording that does not hold one (#187). The chart's bar
-axis no longer hangs on the grid's first downbeat: it takes the offset the
-downbeats agree on, which centres that drift rather than removing it, and keeps
-the first downbeat where they agree on no offset within the beat (#233).
+The chart's bar axis no longer hangs on one downbeat and one constant rate. It
+takes its phase from the offset the grid's downbeats agree on, keeping the first
+downbeat where they agree on no offset within the beat (#233), and each bar line
+after that is moved onto the downbeat the grid marks for it, by at most half a
+counted beat (#187). What the chart's bar lines are now wrong by is what the
+grid is wrong by: on nine commercial recordings they land on the tracked
+downbeats to within a millisecond where they used to sit up to a bar away, and
+on the two benchmarks whose tracked downbeats are further from the music than a
+constant rate was, the chart is now further too. `tools/baselines/` carries both.
 
 Then: the vocabulary still has no major seventh,
 sixth, minor sixth or half-diminished, each of which was measured and costs more

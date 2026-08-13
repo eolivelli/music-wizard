@@ -36,8 +36,8 @@ import java.util.Optional;
  * the cells {@link ChartLayout.Cell#named()} marks, so a mid-bar change it
  * cannot show can make two identical-looking lines differ underneath. What the
  * line does not print is not read here either: two lines of the same chords in
- * different meters are tagged alike, because the chart states one meter for the
- * whole of itself (#191).
+ * different meters are tagged alike, because a bar prints its chords and not
+ * its meter.
  *
  * <p><b>A tag is a claim about its own line and nothing further.</b> Every
  * occurrence carries it, and none of them says a section starts, ends, or runs
@@ -47,9 +47,7 @@ import java.util.Optional;
  * line is printed elsewhere too.
  *
  * <p><b>Exact match only.</b> A real recording's chord estimate is noisy bar to
- * bar, and the chart's bar axis is one constant bar length over a recording
- * that does not hold one (#187), so a returning chorus often prints differently
- * enough not to match. Nothing is tagged then, which is the failure worth
+ * bar, so a returning chorus often prints differently enough not to match. Nothing is tagged then, which is the failure worth
  * having: a chart that says nothing about its structure asks a reader to find
  * it, and one that says the wrong thing asks them to un-learn it. A tolerant
  * match would find more repeats and would also stitch two different sections
