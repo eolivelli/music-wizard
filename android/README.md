@@ -113,10 +113,11 @@ it on a device after any change to the import:
 2. A video with no itag 140, if you can find one → the take is Opus at 48000.
    That is equally correct — nothing resamples at import — and it is the case
    the decode path is least exercised on, so it is worth hunting for one.
-3. A low-bitrate or older upload, where the only audio offered is the 50 kbps
-   tier → the take still decodes. That tier is HE-AAC, whose decoders report
-   their output format twice, which is the one path in `AudioImport` that JVM
-   tests cannot reach at all.
+3. An upload old enough to offer no Opus, so the fetch falls back to itag 139
+   → the take still decodes. That one is HE-AAC, whose decoders report their
+   output format twice, and that is the single path in `AudioImport` no JVM
+   test can reach. Checking this against a video that offers itag 249 instead
+   proves nothing: 249 is Opus at the same bitrate, and its decoder does not.
 4. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
 5. Cancel mid-download → back to the confirm screen, nothing in the library,

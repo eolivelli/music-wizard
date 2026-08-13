@@ -470,12 +470,14 @@ public class ImportJobsTest {
         }
         assertTrue("the unmarked take survived: " + store.list(), store.list().isEmpty());
 
-        // And nothing under the name the take was moved in as, either: the
-        // rename that dropped the provenance left it under the old stem.
+        // Nothing at all is left but the obstruction this test planted — not the
+        // provenance the rename dropped under the old stem, and not the note
+        // beside it.
         for (File left : store.directory().listFiles()) {
-            assertFalse("a side file outlived the take it belonged to: " + left.getName(),
-                    left.isFile() && left.getName().endsWith(".source.txt"));
+            assertFalse("a file outlived the take it belonged to: " + left.getName(),
+                    left.isFile());
         }
+        assertEquals(1, store.directory().listFiles().length);
     }
 
     /** A second import of the same video does not collide with the first. */

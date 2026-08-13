@@ -332,8 +332,8 @@ final class ImportJobs {
             if (!marked) {
                 // The user has been told the import failed, so nobody goes
                 // looking: what is left behind has to be nothing. Both stems,
-                // because the path that gets here is usually a rename that moved
-                // the audio and left a side file under the name it came from.
+                // because a rename can move the audio and leave a side file
+                // under the name it came from.
                 store.delete(recording);
                 if (!placed.equals(recording.wav())) {
                     store.delete(new RecordingStore.Recording(placed));
