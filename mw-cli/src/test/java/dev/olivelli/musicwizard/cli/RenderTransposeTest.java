@@ -147,7 +147,7 @@ class RenderTransposeTest {
             // every command line.
             Path workspace = cMajorWorkspace("song");
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, null, -2, null, null),
+                    new MusicWizardConfig.NotationConfig(null, null, -2, null, null, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(
@@ -163,7 +163,7 @@ class RenderTransposeTest {
         void theFlagWins() throws IOException {
             Path workspace = cMajorWorkspace("song");
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, null, -2, null, null),
+                    new MusicWizardConfig.NotationConfig(null, null, -2, null, null, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(

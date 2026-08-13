@@ -193,7 +193,7 @@ class GlobalConfigLayerTest {
             Files.writeString(workspaceConfig, "notation:\n  paperSize: legal\n");
 
             MusicWizardConfig overrides = new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "a3", null, null, null), null, null, null);
+                    new NotationConfig(null, "a3", null, null, null, null), null, null, null);
 
             MusicWizardConfig effective = ConfigLoader.withGlobalConfigFile(global)
                     .effectiveConfig(workspaceConfig, overrides);
@@ -214,7 +214,7 @@ class GlobalConfigLayerTest {
                     .isEqualTo("letter");
 
             workspace.updateConfig(new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "legal", null, null, null), null, null, null));
+                    new NotationConfig(null, "legal", null, null, null, null), null, null, null));
 
             assertThat(workspace.effectiveConfig().notation().paperSize())
                     .isEqualTo("legal");

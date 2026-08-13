@@ -204,7 +204,7 @@ class RenderPartsTest {
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
                     new MusicWizardConfig.NotationConfig(null, null, null, 3,
-                            MusicWizardConfig.AccidentalPreference.SHARPS),
+                            MusicWizardConfig.AccidentalPreference.SHARPS, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(
@@ -256,7 +256,7 @@ class RenderPartsTest {
             // that merely does not apply to this run; these apply to no run.
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null),
+                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null, null),
                     null, null, null));
 
             CliRunner.Result render = CliRunner.run(

@@ -224,13 +224,19 @@ public final class ChordChart {
      * #lilyPondOf}.
      */
     public static String toLilyPond(Score score) {
+        return toLilyPond(score, ChartOptions.defaults());
+    }
+
+    /** The same, with whatever the caller wants annotated over it. */
+    public static String toLilyPond(Score score, ChartOptions options) {
         Objects.requireNonNull(score, "score");
-        return lilyPondOf(score, ChartLayout.of(score), false);
+        Objects.requireNonNull(options, "options");
+        return lilyPondOf(score, ChartLayout.of(score), false, options);
     }
 
     /** The same, over a layout the caller has already taken. See {@link #linesOf}. */
     static String lilyPondOf(Score score, List<ChartLayout.Bar> bars) {
-        return lilyPondOf(score, bars, false);
+        return lilyPondOf(score, bars, false, ChartOptions.defaults());
     }
 
     /**
@@ -242,7 +248,8 @@ public final class ChordChart {
      * different thing from one who wants the words, and adding lyrics to the
      * chart would silently change what {@code chords.pdf} has always been.
      */
-    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars, boolean withLyrics) {
+    static String lilyPondOf(Score score, List<ChartLayout.Bar> bars, boolean withLyrics,
+                             ChartOptions options) {
         StringBuilder out = new StringBuilder();
         out.append("\\version \"2.24.0\"\n\n");
         out.append("\\header {\n");
@@ -259,7 +266,9 @@ public final class ChordChart {
         // there is one decides that the score needs a parallel block at all.
         Optional<String> lyrics = withLyrics
                 ? LyricEngraving.block(score, bars) : Optional.empty();
-        boolean parallel = tagged || lyrics.isPresent();
+        Optional<String> beats = options.beatMarks()
+                ? BeatMarks.block(score, bars) : Optional.empty();
+        boolean parallel = tagged || lyrics.isPresent() || beats.isPresent();
         if (parallel) {
             out.append("  <<\n");
         }
@@ -333,6 +342,9 @@ public final class ChordChart {
         // After the chord names, not before: the staff affinities of the three
         // contexts must not increase read top to bottom, and this one points
         // down like the two above it.
+        // Between the chords and the words, which is the order a reader compares
+        // them in, and below both for the affinity reason above.
+        beats.ifPresent(out::append);
         lyrics.ifPresent(out::append);
         if (parallel) {
             out.append("  >>\n");
