@@ -30,6 +30,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.core.content.FileProvider;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.mw.RecordingStore.Recording;
 import java.io.File;
 import java.io.IOException;
@@ -207,7 +208,12 @@ public final class LibraryActivity extends MwActivity {
                     .format(new Date(recording.modifiedMillis()));
             String length = RecordingStore.formatDuration(recording.durationSeconds());
             String state = recording.isAnalyzed() ? "analyzed" : "not analyzed";
-            return length + "  ·  " + state + "  ·  " + when;
+            // What it says, not merely that it exists: BundleShare reads the
+            // same file as a kind, and a presence test here would label every
+            // take "imported" the day a microphone take starts writing one.
+            String origin = TakeSource.parse(RecordingStore.readSource(recording)).isCommercial()
+                    ? "  ·  " + getString(R.string.imported_marker) : "";
+            return length + "  ·  " + state + origin + "  ·  " + when;
         }
     }
 }

@@ -62,7 +62,9 @@ public final class Fetch {
         private final String author;
         private final long lengthSeconds;
 
-        Fetched(File file, String videoId, String title, String author, long lengthSeconds) {
+        /** Public so the Android side can build one for a test without a network. */
+        public Fetched(File file, String videoId, String title, String author,
+                long lengthSeconds) {
             this.file = file;
             this.videoId = videoId;
             this.title = title;
