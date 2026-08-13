@@ -92,10 +92,10 @@ public class ImportLogTest {
     /**
      * The shapes a boundary-anchored pattern steps over.
      *
-     * <p>Each of these was produced by the shipped scrubber and survived it: a
-     * percent-encoded address has a word character in front of its first digit,
-     * and a phone on mobile data reports an IPv6 address with {@code ::}
-     * compression rather than all eight groups.
+     * <p>A percent-encoded address has a word character in front of its first
+     * digit, so a leading word boundary steps over it. The compressed and mixed
+     * IPv6 forms are not what the platform emits — it writes all eight groups —
+     * but this text can come from a server as easily as from the runtime.
      */
     @Test
     public void anAddressSurvivesNoEncodingAndNoCompression() {
@@ -129,6 +129,54 @@ public class ImportLogTest {
         assertFalse(scrubbed, scrubbed.contains("sn-4g5e6nzs"));
         // Still says it was a connect failure and how long it waited.
         assertTrue(scrubbed, scrubbed.contains("15000ms"));
+    }
+
+    /**
+     * A mixed-notation address loses all four octets, not three of them.
+     *
+     * <p>The plain IPv6 alternative is greedy enough to eat the colon and the
+     * quad's first octet and then stop at a dot, so the form ending in a dotted
+     * quad has to be tried first. Getting that order wrong leaves most of a
+     * public address in the text while looking like it worked.
+     */
+    @Test
+    public void aMixedNotationAddressLosesEveryOctet() {
+        for (String line : new String[] {
+                "connect failed to ::ffff:203.0.113.47",
+                "connect failed to 64:ff9b::203.0.113.47"}) {
+            String scrubbed = ImportLog.scrub(line);
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("203"));
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("113"));
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains(".47"));
+        }
+    }
+
+    /**
+     * What must survive, or the panel redacts its own diagnosis.
+     *
+     * <p>A clock is two colons and hex digits, which is also the shape of a
+     * short address; a codec string and a client version are dotted numbers,
+     * which is the shape of an IPv4. A scrubber that eats these is as useless
+     * as one that leaks, and it fails silently in a panel nobody re-reads.
+     */
+    @Test
+    public void whatIsNotAnAddressIsLeftAlone() {
+        for (String line : new String[] {
+                "12:34:56 import started",
+                "elapsed 0:03:43",
+                "2026-08-13 09:41:07 failed",
+                "offered itag 140 audio/mp4; codecs=\"mp4a.40.2\" 130k 44100Hz",
+                "import started, asking as ANDROID_VR 1.65.10",
+                "range 1048576-2097151 -> HTTP 403 (hop 1)"}) {
+            assertEquals("the scrubber ate its own diagnosis", line, ImportLog.scrub(line));
+        }
+    }
+
+    /** A host followed by a full stop is still the host. */
+    @Test
+    public void aTrailingDotDoesNotHideTheServingHost() {
+        String scrubbed = ImportLog.scrub("host rr5---sn-4g5e6nzs.googlevideo.com. (port 443)");
+        assertFalse(scrubbed, scrubbed.contains("sn-4g5e6nzs"));
     }
 
     /** The playback nonce identifies the session as surely as the visitor id. */

@@ -54,16 +54,29 @@ public final class ImportLog {
     /**
      * A bare address, wherever it turns up outside a parameter.
      *
+     * <p>Three alternatives, and their order is load-bearing. The mixed form
+     * {@code ::ffff:203.0.113.47} has to be tried before the plain IPv6 one,
+     * because that one is greedy enough to swallow the colon <em>and</em> the
+     * quad's first octet and then stop happily at a dot — leaving three octets
+     * of a public address in the text.
+     *
      * <p>No leading {@code \b}: percent-encoding puts a word character in front
      * of the first digit ({@code %3D203.0.113.47}) and a boundary there would
-     * step over it. The IPv6 half allows {@code ::} compression, which is the
-     * form a phone on mobile data actually reports, and is case-insensitive
-     * like its two siblings.
+     * step over it.
+     *
+     * <p>The plain IPv6 form needs three colons rather than two. Two is also
+     * {@code 12:34:56}, and a panel that redacts the clock is a panel whose
+     * timestamps read {@code 0.0.0.0}. Nothing with fewer than three identifies
+     * a network: {@code ::1} is this machine and {@code fe80::1} is a link-local
+     * router. Compressed forms are handled defensively rather than because the
+     * platform emits them — {@code Inet6Address.getHostAddress} writes all eight
+     * groups — since the text here can come from a server as easily as from the
+     * runtime.
      */
     private static final Pattern BARE_IP = Pattern.compile(
             "(?i)(?<![\\d.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![\\d.])"
-                    + "|(?<![0-9a-f:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}"
-                    + "(?::\\d{1,3}(?:\\.\\d{1,3}){3})?(?![0-9a-f:])");
+                    + "|(?<![0-9a-f:])(?:[0-9a-f]{0,4}:){2,7}\\d{1,3}(?:\\.\\d{1,3}){3}(?![\\d.])"
+                    + "|(?<![0-9a-f:])(?:[0-9a-f]{0,4}:){3,7}[0-9a-f]{0,4}(?![0-9a-f:])");
 
     /**
      * The edge that served this phone, with or without a scheme in front of it.
@@ -74,7 +87,7 @@ public final class ImportLog {
      * because the lines that carry a host name it on its own.
      */
     private static final Pattern MEDIA_HOST = Pattern.compile(
-            "(?i)(?:https://)?[a-z0-9\\-]+(?:\\.[a-z0-9\\-]+)*\\.googlevideo\\.com(?![a-z0-9.\\-])");
+            "(?i)(?:https://)?[a-z0-9\\-]+(?:\\.[a-z0-9\\-]+)*\\.googlevideo\\.com(?![a-z0-9\\-])");
 
     private final Deque<String> lines = new ArrayDeque<>();
     private int dropped;

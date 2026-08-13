@@ -128,7 +128,10 @@ final class ImportJobs {
          * panel exists to be sent, and so does a screenshot.
          */
         static Result failed(String failure) {
-            return new Result(null, ImportLog.scrub(failure), false);
+            // Null stays null: scrub maps it to "", which is right for a log
+            // line and wrong here, where null is what finish() reads as
+            // "cancelled" rather than "failed".
+            return new Result(null, failure == null ? null : ImportLog.scrub(failure), false);
         }
 
         static Result cancelled() {
@@ -328,7 +331,6 @@ final class ImportJobs {
             log.add("cancelled");
         } else if (result.failure != null) {
             log.add("failed: " + result.failure);
-            // Already scrubbed by Result.failed; add() would do it again harmlessly.
         } else {
             log.add("done");
         }

@@ -87,7 +87,7 @@ public class TraceTest {
      * link that has gone bad.
      */
     @Test
-    public void arefusedDownloadSaysWhichRangeAndWhichStatus() throws Exception {
+    public void aRefusedDownloadSaysWhichRangeAndWhichStatus() throws Exception {
         FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"));
         for (int i = 0; i < 3; i++) {
             http.content(403, Map.of(), new byte[0]);
