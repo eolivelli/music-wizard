@@ -404,6 +404,15 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (provider.isEmpty()) {
             return score;
         }
+        // Providers read the global layer only (#383), so a model directory
+        // set in the workspace never reaches them -- and the failure it
+        // produces is a provider reporting it does not speak the language,
+        // which points at the wrong thing entirely. Same warning the ASR key
+        // carries, for the same reason.
+        warnIfLayerUnreachable("ml.alignmentModelDirectory",
+                ml == null ? null : ml.alignmentModelDirectory(),
+                global -> global == null ? null : global.alignmentModelDirectory());
+
         Lyrics lyrics = score.lyrics();
         // The gate normalises the way the SPI contract asks: lowercase language
         // subtag, no region -- the user's en-US and EN both mean en.
@@ -523,15 +532,9 @@ final class AnalyzeCommand implements Callable<Integer> {
         // directory set in the workspace layer therefore never reaches it;
         // said out loud, because the silent alternative is transcribing with
         // the published model while the user believes their own is running.
-        String mergedModelDirectory = normalized(ml == null ? null : ml.asrModelDirectory());
-        MusicWizardConfig.MlConfig globalMl =
-                new ConfigLoader().effectiveConfig(null, null).ml();
-        if (!java.util.Objects.equals(mergedModelDirectory,
-                normalized(globalMl == null ? null : globalMl.asrModelDirectory()))) {
-            System.err.println("warning: ml.asrModelDirectory is read from the"
-                    + " global config only (#383); the value in this workspace's"
-                    + " config layer does not reach the provider");
-        }
+        warnIfLayerUnreachable("ml.asrModelDirectory",
+                ml == null ? null : ml.asrModelDirectory(),
+                global -> global == null ? null : global.asrModelDirectory());
         // The workspace's ml.sherpaNativePath reaches the provider through
         // sherpa's own property, which the provider leaves alone when set.
         String forwardedNativePath = normalized(ml == null ? null : ml.sherpaNativePath());
@@ -640,6 +643,24 @@ final class AnalyzeCommand implements Callable<Integer> {
                 .separate(new float[][] {mix.samples()}, mix.sampleRate())
                 .vocals()[0];
         return new AudioBuffer(vocals, mix.sampleRate());
+    }
+
+    /**
+     * Says so when a key the provider reads from the global layer only was
+     * set somewhere else. The alternative is a run that ignores what the user
+     * wrote and reports a symptom with no visible cause.
+     */
+    private static void warnIfLayerUnreachable(
+            String key, String merged,
+            java.util.function.Function<MusicWizardConfig.MlConfig, String> fromGlobal) {
+        MusicWizardConfig.MlConfig globalMl =
+                new ConfigLoader().effectiveConfig(null, null).ml();
+        if (!java.util.Objects.equals(normalized(merged),
+                normalized(fromGlobal.apply(globalMl)))) {
+            System.err.println("warning: " + key + " is read from the global config"
+                    + " only (#383); the value in this workspace's config layer does"
+                    + " not reach the provider");
+        }
     }
 
     /** Blank and unset mean the same thing to every reader of the key. */

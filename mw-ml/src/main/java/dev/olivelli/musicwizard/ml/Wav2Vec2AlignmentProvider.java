@@ -69,16 +69,13 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
      * day such an embedder exists.
      */
     private OrtSession session;
+    private Path sessionPath;
     private OrtEnvironment environment;
     private final PosteriorSource posteriors;
 
     /** The ServiceLoader constructor: configuration from the environment (#383). */
     public Wav2Vec2AlignmentProvider() {
         this(environmentConfig());
-    }
-
-    Wav2Vec2AlignmentProvider(ModelCache cache, Wav2Vec2Models.Checkpoint checkpoint) {
-        this(cache, checkpoint, null);
     }
 
     Wav2Vec2AlignmentProvider(ModelCache cache, Wav2Vec2Models.Checkpoint checkpoint,
@@ -319,15 +316,45 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         int[] tokens = new int[text.length()];
         int count = 0;
         for (int i = 0; i < text.length(); i++) {
-            int index = vocabularyIndexOf(text.charAt(i), checkpoint);
-            if (index < 0 && !checkpoint.spellsAccents()) {
-                index = vocabularyIndexOf(folded(text.charAt(i)), checkpoint);
+            char c = plainApostrophe(text.charAt(i));
+            int index = vocabularyIndexOf(c, checkpoint);
+            if (index < 0) {
+                // The fold is a fallback, per character, not a property of the
+                // alphabet: an alphabet that spells è still spells no ô, and
+                // dropping that outright deletes the nucleus of the syllable
+                // being placed -- which is the harm this branch exists for.
+                index = vocabularyIndexOf(folded(c), checkpoint);
             }
             if (index >= 0) {
                 tokens[count++] = index;
             }
         }
         return java.util.Arrays.copyOf(tokens, count);
+    }
+
+    /**
+     * How a word reaches the model: its characters as the alphabet spells
+     * them, back as text. The alignment itself consumes indices; this is the
+     * same journey in a form a test and a reader can check, and what it
+     * shows is the part that decides whether the aligner is listening for
+     * the word being sung.
+     */
+    static String spelling(String word, Wav2Vec2Models.Checkpoint checkpoint) {
+        StringBuilder out = new StringBuilder();
+        for (int index : tokensOf(word, checkpoint)) {
+            out.append(checkpoint.vocabulary()[index]);
+        }
+        return out.toString();
+    }
+
+    /**
+     * A typographic apostrophe as the plain one the alphabets spell. Italian
+     * elides constantly -- c'è, un'altra -- and a lyric file typed in a word
+     * processor carries U+2019, which no vocabulary has: dropped, the
+     * aligner listens for a word that is not being sung.
+     */
+    private static char plainApostrophe(char c) {
+        return c == '\u2019' || c == '\u02bc' || c == '\u00b4' ? '\'' : c;
     }
 
     /** The character without its combining marks, or itself when it has none. */
@@ -337,10 +364,18 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return stripped.isEmpty() ? c : stripped.charAt(0);
     }
 
+    /**
+     * The alphabet's index for a character, or -1. Multi-character entries are
+     * the sequence tokens ({@code <pad>}, {@code <s>}…) and the separator is
+     * the aligner's own, so both are skipped by what they are rather than by
+     * a count of leading specials — the Italian alphabet already spells real,
+     * alignable entries at 5 and 6.
+     */
     private static int vocabularyIndexOf(char c, Wav2Vec2Models.Checkpoint checkpoint) {
         String[] vocabulary = checkpoint.vocabulary();
-        for (int v = 5; v < vocabulary.length; v++) {
-            if (vocabulary[v].length() == 1 && vocabulary[v].charAt(0) == c) {
+        for (int v = 0; v < vocabulary.length; v++) {
+            if (v != checkpoint.separator() && vocabulary[v].length() == 1
+                    && vocabulary[v].charAt(0) == c) {
                 return v;
             }
         }
@@ -369,12 +404,30 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
         return out;
     }
 
+    /**
+     * The session for a model, held across calls and rebuilt when the model
+     * changes. Keyed on the path, not merely non-null: this provider picks a
+     * checkpoint per language now, and a session reused across two of them
+     * reads one model's logits with the other's alphabet — which throws in
+     * one order and, in the other, quietly returns plausible words spelled
+     * against the wrong letters.
+     */
     private synchronized OrtSession session(Path modelPath) throws OrtException {
-        if (session == null) {
-            environment = OrtEnvironment.getEnvironment();
-            session = environment.createSession(modelPath.toString(),
-                    new OrtSession.SessionOptions());
+        if (session != null && modelPath.equals(sessionPath)) {
+            return session;
         }
+        if (session != null) {
+            try {
+                session.close();
+            } catch (OrtException e) {
+                // A session that will not close is one this process is done
+                // with either way; the new model is what the caller needs.
+            }
+        }
+        environment = OrtEnvironment.getEnvironment();
+        session = environment.createSession(modelPath.toString(),
+                new OrtSession.SessionOptions());
+        sessionPath = modelPath;
         return session;
     }
 

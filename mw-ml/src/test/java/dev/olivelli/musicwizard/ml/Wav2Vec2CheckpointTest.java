@@ -105,11 +105,48 @@ class Wav2Vec2CheckpointTest {
                 List.of("c'è"));
 
         assertThat(placed).hasSize(1);
-        // The accented frames are the evidence, so the word cannot start
-        // before them; folded away, the run would have matched nothing and
-        // the word would sit at the window head.
-        assertThat(placed.get(0).startSeconds()).isGreaterThan(0.05);
+        // The accented run is the evidence for the last letter, so it is the
+        // word's END that moves: spelled with its accent the word runs
+        // through those frames, and folded to "e" it stops before them at a
+        // confidence the trellis is not entitled to. The start is the same
+        // either way, which is why asserting it would prove nothing.
+        assertThat(placed.get(0).endSeconds()).isGreaterThan(0.4);
         assertThat(placed.get(0).confidence().value()).isGreaterThan(0.5);
+    }
+
+    @Test
+    @DisplayName("a character the alphabet lacks folds rather than vanishing")
+    void unknownCharactersFoldPerCharacter() {
+        // The fold is per character, not a property of the alphabet: Italian
+        // spells è and does not spell ô, and dropping the ô outright deletes
+        // the nucleus of the syllable being placed. The typographic
+        // apostrophe is the same case -- lyric files are full of it and no
+        // vocabulary has it.
+        var it = Wav2Vec2Models.ITALIAN;
+        assertThat(Wav2Vec2AlignmentProvider.spelling("hôtel", it)).isEqualTo("hotel");
+        assertThat(Wav2Vec2AlignmentProvider.spelling("sî", it)).isEqualTo("si");
+        assertThat(Wav2Vec2AlignmentProvider.spelling("città", it)).isEqualTo("città");
+        assertThat(Wav2Vec2AlignmentProvider.spelling("un\u2019altra", it))
+                .isEqualTo("un'altra");
+        // English spells no accents at all, so everything folds, as before.
+        assertThat(Wav2Vec2AlignmentProvider.spelling("café", Wav2Vec2Models.ENGLISH))
+                .isEqualTo("CAFE");
+    }
+
+    @Test
+    @DisplayName("the transcribed Italian alphabet is pinned to the export's own")
+    void italianAlphabetIsPinned() {
+        // The javadoc makes this table the authority over the export's
+        // vocab.json, so a stray edit re-indexes every letter silently. These
+        // are read from the export: 44 entries, è at 35, the two punctuation
+        // entries the English alphabet does not have at 5 and 6.
+        var it = Wav2Vec2Models.ITALIAN;
+        assertThat(it.vocabulary()).hasSize(44);
+        assertThat(it.indexOf("è")).isEqualTo(35);
+        assertThat(it.indexOf("'")).isEqualTo(5);
+        assertThat(it.indexOf("-")).isEqualTo(6);
+        assertThat(it.indexOf("a")).isEqualTo(7);
+        assertThat(it.indexOf("z")).isEqualTo(32);
     }
 
     @Test

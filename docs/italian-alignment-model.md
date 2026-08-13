@@ -40,9 +40,10 @@ ml:
 ```
 
 The provider looks for `<that directory>/<language>/model.onnx`, so a third
-language is a subdirectory rather than another setting. `mw doctor` reports
-which languages the machine can align; a language with no model is reported by
-`analyze` and its lyrics keep their parsed times, exactly as before.
+language is a subdirectory rather than another setting. `mw doctor` prints the
+languages this machine can align under the alignment line; a language with no
+model is reported by `analyze` and its lyrics keep their parsed times, exactly
+as before.
 
 The key is read from the **global** config file only — providers configure
 themselves from the environment (#383).
