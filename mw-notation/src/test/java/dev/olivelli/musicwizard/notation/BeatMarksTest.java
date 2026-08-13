@@ -50,7 +50,7 @@ class BeatMarksTest {
     private static final Pattern DURATION =
             Pattern.compile("(\\d+)(\\.*)(?:\\*(\\d+)/(\\d+))?");
 
-    private static final ChartOptions MARKED = new ChartOptions(true);
+    private static final ChartOptions MARKED = new ChartOptions(true, false);
 
     /** One mark: where in its bar it falls, in quarter beats, and what it prints. */
     private record Mark(double quarters, String text) {

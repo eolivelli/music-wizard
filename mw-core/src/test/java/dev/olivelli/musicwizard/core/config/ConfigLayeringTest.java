@@ -61,7 +61,7 @@ class ConfigLayeringTest {
         @DisplayName("a set value wins over the layer beneath it")
         void moreSpecificLayerWins() {
             MusicWizardConfig over = new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "letter", null, null, null, null), null, null, null);
+                    new NotationConfig(null, "letter", null, null, null, null, null), null, null, null);
 
             MusicWizardConfig resolved = MusicWizardConfig.DEFAULTS.overriddenBy(over);
 
@@ -72,7 +72,7 @@ class ConfigLayeringTest {
         @DisplayName("an unset sibling keeps the value from below")
         void unsetSiblingsSurvive() {
             MusicWizardConfig over = new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "letter", null, null, null, null), null, null, null);
+                    new NotationConfig(null, "letter", null, null, null, null, null), null, null, null);
 
             MusicWizardConfig resolved = MusicWizardConfig.DEFAULTS.overriddenBy(over);
 
@@ -101,9 +101,9 @@ class ConfigLayeringTest {
         @DisplayName("the last layer applied wins")
         void lastLayerWins() {
             MusicWizardConfig global = new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "letter", null, null, null, null), null, null, null);
+                    new NotationConfig(null, "letter", null, null, null, null, null), null, null, null);
             MusicWizardConfig workspace = new MusicWizardConfig(null, null,
-                    new NotationConfig(null, "a3", null, null, null, null), null, null, null);
+                    new NotationConfig(null, "a3", null, null, null, null, null), null, null, null);
 
             MusicWizardConfig resolved = MusicWizardConfig.DEFAULTS
                     .overriddenBy(global)
@@ -209,7 +209,7 @@ class ConfigLayeringTest {
             // Falling back to a discovered binary would silently ignore an
             // explicit instruction, which is worse than refusing to run.
             MusicWizardConfig config = new MusicWizardConfig(null, null,
-                    new NotationConfig("/definitely/not/here/lilypond", null, null, null, null, null),
+                    new NotationConfig("/definitely/not/here/lilypond", null, null, null, null, null, null),
                     null, null, null);
 
             assertThatThrownBy(() -> ConfigLoader.findLilyPond(config))
@@ -226,7 +226,7 @@ class ConfigLayeringTest {
             assertThat(fake.toFile().setExecutable(true)).isTrue();
 
             MusicWizardConfig config = new MusicWizardConfig(null, null,
-                    new NotationConfig(fake.toString(), null, null, null, null, null),
+                    new NotationConfig(fake.toString(), null, null, null, null, null, null),
                     null, null, null);
 
             assertThat(ConfigLoader.findLilyPond(config)).contains(fake);

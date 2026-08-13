@@ -103,7 +103,7 @@ class RenderDiagnosticsTest {
                 descriptor.createdAt(), descriptor.title(), descriptor.artist(),
                 new MusicWizardConfig(null, null,
                         new MusicWizardConfig.NotationConfig(
-                                engraver.toString(), null, null, null, null, null),
+                                engraver.toString(), null, null, null, null, null, null),
                         null, null, null)));
         return root;
     }

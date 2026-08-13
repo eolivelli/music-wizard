@@ -38,9 +38,9 @@ pipeline unaided.
   transcription and syllable splitting cover Italian and English.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart and the chords-and-lyrics sheet. `--transpose` moves the
-  chords, the key and the spelling together, and `--beat-marks` numbers the
-  tracked beats under the chords so placement inside a bar can be read off
-  the page.
+  chords, the key and the spelling together; `--beat-marks` numbers the tracked
+  beats under the chords so placement inside a bar can be read off the page,
+  and `--repeat-tags` labels the lines the chart prints more than once.
 - **Standard MIDI File input**, read symbolically, with its declared tempo and
   meter kept apart from anything estimated.
 - **A workspace per song** (`song.mwz/`) with per-stage caching keyed on
@@ -180,8 +180,9 @@ ml:
 
 What reaches the pipeline is `analysis`, `ml` — provider and model selection
 for separation, transcription and alignment — plus `notation.lilypondPath`,
-`notation.transposeSemitones` and `notation.beatMarks`. Providers configure
-themselves from the global file ([#383][i383]), so `ml.asrModelDirectory` and
+`notation.transposeSemitones`, `notation.beatMarks` and
+`notation.repeatTags`. Providers configure themselves from the
+global file ([#383][i383]), so `ml.asrModelDirectory` and
 `ml.alignmentModelDirectory` are read from there only,
 and `analyze` says so when a workspace tries to override it. Several notation
 keys that reach nothing draw a warning rather than silence; `arrangement`
