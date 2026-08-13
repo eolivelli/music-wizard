@@ -16,12 +16,16 @@
 
 package dev.olivelli.musicwizard.android;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.yt.VideoLink;
 import java.io.File;
@@ -43,6 +47,10 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     private ProgressBar progressView;
     private Button downloadButton;
     private Button cancelButton;
+    private Button copyLogButton;
+    private TextView logLabel;
+    private TextView logView;
+    private View logScroll;
 
     private RecordingStore store;
     private File cacheDirectory;
@@ -63,12 +71,17 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         progressView = findViewById(R.id.progress);
         downloadButton = findViewById(R.id.downloadButton);
         cancelButton = findViewById(R.id.cancelButton);
+        copyLogButton = findViewById(R.id.copyLogButton);
+        logLabel = findViewById(R.id.logLabel);
+        logView = findViewById(R.id.log);
+        logScroll = findViewById(R.id.logScroll);
 
         store = new RecordingStore(new File(getFilesDir(), "recordings"));
         cacheDirectory = new File(getCacheDir(), "imports");
 
         downloadButton.setOnClickListener(v -> onDownloadTapped());
         cancelButton.setOnClickListener(v -> finish());
+        copyLogButton.setOnClickListener(v -> copyLog());
 
         readIntent(getIntent());
     }
@@ -143,7 +156,29 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         ImportJobs.get().stopObserving(this);
     }
 
+    /** Draws the log if there is one, whatever the outcome was. */
+    private void showLog() {
+        String text = ImportJobs.get().log().text();
+        int visibility = text.isEmpty() ? View.GONE : View.VISIBLE;
+        logLabel.setVisibility(visibility);
+        logScroll.setVisibility(visibility);
+        copyLogButton.setVisibility(visibility);
+        logView.setText(text);
+    }
+
+    private void copyLog() {
+        ClipboardManager clipboard =
+                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Music Wizard import log",
+                ImportJobs.get().log().text()));
+        Toast.makeText(this, R.string.import_log_copied, Toast.LENGTH_SHORT).show();
+    }
+
     private void showConfirmation() {
+        showLog();
         progressView.setVisibility(View.GONE);
         getWindow().getDecorView().setKeepScreenOn(false);
         cancelButton.setText(R.string.cancel);
@@ -178,6 +213,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     }
 
     private void showRunning() {
+        showLog();
         progressView.setVisibility(View.VISIBLE);
         downloadButton.setEnabled(true);
         downloadButton.setText(R.string.import_cancel_download);
@@ -211,6 +247,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
 
     @Override
     public void onProgress(String line, int percent) {
+        showLog();
         statusView.setText(getString(R.string.import_running, line));
         if (percent < 0) {
             progressView.setIndeterminate(true);
@@ -228,6 +265,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     public void onFailed(String message) {
         showConfirmation();
+        showLog();
         statusView.setText(getString(R.string.import_failed, message));
         downloadButton.setText(R.string.import_retry);
     }

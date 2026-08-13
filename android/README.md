@@ -101,6 +101,24 @@ the network, and `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
 --tests '*InnerTubeLiveTest*' -Dmw.yt.live=true` — is the one check that
 notices, because every other test answers a canned reply.
 
+### When an import fails
+
+The import screen shows a log of what it did — each stage, the formats offered,
+the format chosen, and every range request with its HTTP status — and a **Copy
+the log** button. That text is what to put in a bug report; a failed import
+otherwise reports one sentence chosen from a taxonomy calibrated on a desktop,
+which cannot tell a media host refusing an address from a build that can no
+longer read what YouTube serves.
+
+It is scrubbed on the way in, by `ImportLog`, and that is a requirement rather
+than a courtesy: a media URL carries the phone's public address, the session id
+and per-request signatures, and the whole point of the panel is that its
+contents get sent to someone. Lines name the host, the format and the status and
+never the URL. Verified against a real fetch, not only against test input —
+the first version of the scrubber passed its tests while letting the real
+serving host through, because the tests fed it a URL and the code logs a bare
+hostname.
+
 ### Checking it by hand
 
 `AudioImport` drives `MediaExtractor` and `MediaCodec`, which are stubs under
@@ -129,7 +147,10 @@ it on a device after any change to the import:
    than the previous take being reopened.
 9. Back from the import screen → returns to YouTube, leaving MW's own screens
    where they were.
-10. Long-press the imported take → **Share bundle** → the zip's
+10. After any import, failed or not → the log panel has content, **Copy the
+    log** puts it on the clipboard, and nothing in it is an IP address, a
+    `sig=`, or a hostname beginning `rr`.
+11. Long-press the imported take → **Share bundle** → the zip's
     `<take>.info.txt` says `source: youtube` and carries the link.
 
 ## What the checks are for

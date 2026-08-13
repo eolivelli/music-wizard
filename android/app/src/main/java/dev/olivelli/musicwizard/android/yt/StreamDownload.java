@@ -78,16 +78,27 @@ public final class StreamDownload {
     private static final long THROTTLED_BACKOFF_MILLIS = 1_500;
 
     private final Http http;
+    private final Trace trace;
     private final long retryBackoffMillis;
     private final long throttledBackoffMillis;
 
     public StreamDownload(Http http) {
-        this(http, RETRY_BACKOFF_MILLIS, THROTTLED_BACKOFF_MILLIS);
+        this(http, Trace.NONE);
+    }
+
+    public StreamDownload(Http http, Trace trace) {
+        this(http, trace, RETRY_BACKOFF_MILLIS, THROTTLED_BACKOFF_MILLIS);
     }
 
     /** Visible for tests, which have no reason to spend the waits. */
     StreamDownload(Http http, long retryBackoffMillis, long throttledBackoffMillis) {
+        this(http, Trace.NONE, retryBackoffMillis, throttledBackoffMillis);
+    }
+
+    StreamDownload(Http http, Trace trace, long retryBackoffMillis,
+            long throttledBackoffMillis) {
         this.http = http;
+        this.trace = trace;
         this.retryBackoffMillis = retryBackoffMillis;
         this.throttledBackoffMillis = throttledBackoffMillis;
     }
@@ -260,6 +271,7 @@ public final class StreamDownload {
                 throw fatal;
             } catch (IOException failure) {
                 last = failure;
+                trace.line("  attempt " + attempt + " failed: " + failure.getMessage());
                 if (attempt < CHUNK_ATTEMPTS) {
                     backoff(attempt, failure instanceof ExpiredException);
                 }
@@ -280,10 +292,15 @@ public final class StreamDownload {
             try (Http.Content content =
                     http.open(new Http.Request("GET", target, headers, null))) {
                 int status = content.status();
+                // Host and status, never the URL: see Trace.
+                trace.line("range " + from + "-" + to + " -> HTTP " + status
+                        + " from " + hostOf(target)
+                        + (hop > 0 ? " (hop " + hop + ")" : ""));
 
                 if (status == 301 || status == 302 || status == 303
                         || status == 307 || status == 308) {
                     target = redirect(target, content.header("Location"));
+                    trace.line("  redirected to " + hostOf(target));
                     continue;
                 }
                 if (status == 403 || status == 410) {
@@ -403,6 +420,16 @@ public final class StreamDownload {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("the download was interrupted");
+        }
+    }
+
+    /** Just the host, which is the part worth reporting and the part that is safe. */
+    private static String hostOf(String url) {
+        try {
+            String host = new URI(url).getHost();
+            return host == null ? "?" : host;
+        } catch (URISyntaxException unreadable) {
+            return "?";
         }
     }
 

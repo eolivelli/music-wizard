@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.android;
 
 import android.os.Handler;
 import android.os.Looper;
+import dev.olivelli.musicwizard.android.mw.ImportLog;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.yt.ExtractionException;
@@ -155,6 +156,15 @@ final class ImportJobs {
     private final Fetcher fetcher;
     private final Decoder decoder;
 
+    /**
+     * What the last import did, for a screen to show and a user to send on.
+     *
+     * <p>Kept on the singleton rather than in the result, because it is as much
+     * use after a success that produced a silent take as after a failure, and
+     * because the screen that reads it is often not the one that started it.
+     */
+    private final ImportLog log = new ImportLog();
+
     private boolean running;
     private String progressLine = "";
     private int progressPercent = -1;
@@ -168,12 +178,19 @@ final class ImportJobs {
         this.decoder = decoder;
     }
 
+    /** What the last import did. Never null; empty before the first one. */
+    ImportLog log() {
+        return log;
+    }
+
     /** The single instance. Main thread only. */
     static ImportJobs get() {
         if (instance == null) {
             Handler main = new Handler(Looper.getMainLooper());
-            Fetch fetch = new Fetch(new UrlConnectionHttp());
-            instance = new ImportJobs(main::post,
+            ImportJobs[] self = new ImportJobs[1];
+            Fetch fetch = new Fetch(new UrlConnectionHttp(),
+                    message -> self[0].log.add(message));
+            self[0] = instance = new ImportJobs(main::post,
                     (text, directory, progress, stop) -> fetch.run(text, directory,
                             (done, total) -> progress.onProgress(
                                     total > 0 ? done / (double) total : -1),
@@ -255,6 +272,8 @@ final class ImportJobs {
         File container = null;
         File decoded = null;
         try {
+            log.clear();
+            log.add("import started");
             prune(cacheDirectory);
             if (cacheDirectory.getUsableSpace() < MIN_FREE_BYTES) {
                 throw new IOException("there is not enough free space on this phone");
@@ -287,6 +306,14 @@ final class ImportJobs {
         } finally {
             deleteQuietly(container);
             deleteQuietly(decoded);
+        }
+
+        if (result.cancelled) {
+            log.add("cancelled");
+        } else if (result.failure != null) {
+            log.add("failed: " + result.failure);
+        } else {
+            log.add("done");
         }
 
         Result outcome = result;

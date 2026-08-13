@@ -79,6 +79,7 @@ public final class InnerTube {
                     + " (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
 
     private final Http http;
+    private final Trace trace;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
@@ -90,7 +91,12 @@ public final class InnerTube {
     private volatile String visitorData;
 
     public InnerTube(Http http) {
+        this(http, Trace.NONE);
+    }
+
+    public InnerTube(Http http, Trace trace) {
         this.http = http;
+        this.trace = trace;
     }
 
     /** The session id in use, or null before the first call. Visible for tests. */
@@ -118,8 +124,12 @@ public final class InnerTube {
         // session has gone stale, and one carrying what the refusal offered.
         for (int attempt = 1; ; attempt++) {
             triedBare |= session == null;
+            trace.line("player call " + attempt + " for " + videoId
+                    + (session == null ? " with no session" : " with a session"));
             reply = call(videoId, session);
             status = status(reply);
+            trace.line("  playability " + status
+                    + (reason(reply).isEmpty() ? "" : ": " + reason(reply)));
 
             if (!"LOGIN_REQUIRED".equals(status)) {
                 // Committed only now, having been proved. Assigning before the
@@ -206,6 +216,10 @@ public final class InnerTube {
         }
 
         List<AudioStream> audio = audioFormats(reply);
+        for (AudioStream stream : audio) {
+            trace.line("  offered " + stream
+                    + (stream.isFetchable() ? "" : "  NO URL"));
+        }
         if (audio.isEmpty()) {
             throw new ExtractionException(ExtractionException.Reason.NO_AUDIO,
                     "YouTube offered no audio track for this video.");
