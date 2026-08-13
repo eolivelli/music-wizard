@@ -203,9 +203,8 @@ final class AudioImport {
                     }
                     if (writer != null) {
                         // Reported twice before emitting anything, which the codec
-                        // contract permits and some HE-AAC decoders do when the
-                        // rate is revised after the first frames. Nothing has been
-                        // written, so the second answer is simply the right one.
+                        // contract permits. Nothing has been written, so the
+                        // second answer is simply the right one.
                         writer.abort();
                     }
                     writer = new WavWriter(target, rate);

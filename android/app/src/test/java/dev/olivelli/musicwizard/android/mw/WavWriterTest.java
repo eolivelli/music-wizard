@@ -148,6 +148,54 @@ public class WavWriterTest {
         }
     }
 
+    /**
+     * The counter the decoder uses to tell "nothing written yet" from "the song
+     * so far".
+     *
+     * <p>{@code AudioImport} reads this to decide whether a second format change
+     * is a decoder settling on its answer or a stream changing underneath a take
+     * already being written — and it throws away the take in one case and not
+     * the other. Frames, not samples: a stereo write of five frames advances it
+     * by five.
+     */
+    @Test
+    public void framesCountsWhatHasBeenWrittenAndNothingElse() throws Exception {
+        File wav = folder.newFile("counted.wav");
+        try (WavWriter writer = new WavWriter(wav, 44_100)) {
+            assertEquals("the header is not audio", 0, writer.frames());
+            writer.write(new short[7], 7, 1);
+            assertEquals(7, writer.frames());
+            writer.write(new short[10], 5, 2);
+            assertEquals(12, writer.frames());
+            writer.finish();
+        }
+    }
+
+    /**
+     * Aborting and reopening at another rate is the decoder's second answer.
+     *
+     * <p>A codec may report its output format twice before emitting anything,
+     * and {@code AudioImport} takes the second one. What must come out is a take
+     * at the later rate with nothing of the first attempt in it.
+     */
+    @Test
+    public void reopeningAfterAnAbortWritesTheSecondAnswer() throws Exception {
+        File wav = new File(folder.getRoot(), "reopened.wav");
+
+        WavWriter first = new WavWriter(wav, 44_100);
+        first.abort();
+        assertFalse(wav.exists());
+
+        try (WavWriter second = new WavWriter(wav, 48_000)) {
+            second.write(new short[100], 100, 1);
+            second.finish();
+        }
+
+        WavFile.Format format = WavFile.readFormat(wav);
+        assertEquals(48_000, format.sampleRate());
+        assertEquals(100, format.frames());
+    }
+
     /** A decode that failed halfway must not leave a take behind. */
     @Test
     public void anAbortedWriteLeavesNothing() throws Exception {

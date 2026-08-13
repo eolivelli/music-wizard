@@ -88,7 +88,7 @@ Two things about it are worth knowing before relying on it.
 
 **It is marked, and the marking matters.** An imported take gets a
 `<take>.source.txt` beside it, its note is seeded with the link, and the bundle's
-`info.txt` carries `source: youtube`. That is what tells the desktop it is
+`<take>.info.txt` carries `source: youtube`. That is what tells the desktop it is
 holding commercial audio, which belongs in `uncommitted/` and never in the
 committed corpus — see `docs/phone-to-corpus.md`. A microphone take says
 `source: microphone`, so a missing line means an older version of the app rather
@@ -113,16 +113,22 @@ it on a device after any change to the import:
 2. A video with no itag 140, if you can find one → the take is Opus at 48000.
    That is equally correct — nothing resamples at import — and it is the case
    the decode path is least exercised on, so it is worth hunting for one.
-3. A playlist URL, a channel URL, and a plain text message → three different
+3. A low-bitrate or older upload, where the only audio offered is the 50 kbps
+   tier → the take still decodes. That tier is HE-AAC, whose decoders report
+   their output format twice, which is the one path in `AudioImport` that JVM
+   tests cannot reach at all.
+4. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
-4. Cancel mid-download → back to the confirm screen, nothing in the library,
+5. Cancel mid-download → back to the confirm screen, nothing in the library,
    nothing left in the cache.
-5. Airplane mode → a failure that names the network, and **Try again**.
-6. Share a second video while one is downloading → the running one survives.
-7. Back from the import screen → returns to YouTube, leaving MW's own screens
+6. Airplane mode → a failure that names the network, and **Try again**.
+7. Share a second video while one is downloading → the running one survives.
+8. **Share a second video after the first has finished** → it is fetched, rather
+   than the previous take being reopened.
+9. Back from the import screen → returns to YouTube, leaving MW's own screens
    where they were.
-8. Long-press the imported take → **Share bundle** → the zip's `info.txt` says
-   `source: youtube` and carries the link.
+10. Long-press the imported take → **Share bundle** → the zip's
+    `<take>.info.txt` says `source: youtube` and carries the link.
 
 ## What the checks are for
 

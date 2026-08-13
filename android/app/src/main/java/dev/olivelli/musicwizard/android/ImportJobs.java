@@ -293,14 +293,7 @@ final class ImportJobs {
         dispatcher.post(() -> finish(outcome));
     }
 
-    /**
-     * Moves the decoded take into the library and records where it came from.
-     *
-     * <p>Whole or not at all, and the "whole" includes the marking: audio that
-     * reaches the library without it is indistinguishable from a field
-     * recording, and the user has been told the import failed, so nobody goes
-     * looking.
-     */
+    /** Moves the decoded take into the library, or leaves the library as it was. */
     private static File store(RecordingStore store, File decoded, Fetch.Fetched fetched)
             throws IOException {
         File placed = store.newRecordingFile(Instant.now(), ZoneId.systemDefault());
@@ -316,8 +309,7 @@ final class ImportJobs {
                     .format(Instant.now().atZone(ZoneId.systemDefault()));
             // Written before the take is given its final name, so the audio is
             // never in the library under any name without saying where it came
-            // from. The rename below carries both side files along, which is the
-            // path RecordingStoreTest covers.
+            // from.
             RecordingStore.writeSource(recording,
                     TakeSource.youtube(fetched.url(), fetched.title(), when).toText());
             // Seeded rather than left empty, so the fact travels in the player's
@@ -328,11 +320,9 @@ final class ImportJobs {
                     "Imported from YouTube: " + fetched.title() + "\n"
                             + fetched.url() + "\n\n");
             recording = named(store, recording, fetched.title());
-            // Read back rather than assumed. RecordingStore.rename carries the
-            // side files best-effort: a failed move becomes a copy, and a failed
-            // copy leaves the file behind and returns normally, with the audio
-            // already moved. Asking the same question every other reader asks is
-            // what makes this an invariant rather than a comment.
+            // Read back rather than assumed: RecordingStore.rename carries the
+            // side files best-effort and can leave one behind with the audio
+            // already moved.
             marked = TakeSource.parse(RecordingStore.readSource(recording)).isCommercial();
             if (!marked) {
                 throw new IOException("the take could not be marked as imported");
@@ -340,12 +330,14 @@ final class ImportJobs {
             return recording.wav();
         } finally {
             if (!marked) {
-                // Anything that fails between the move and the marking would
-                // otherwise leave commercial audio in the library looking exactly
-                // like a field recording — and the user has been told the import
-                // failed, so nobody goes looking for it. Running out of space
-                // partway is the ordinary way to get here.
+                // The user has been told the import failed, so nobody goes
+                // looking: what is left behind has to be nothing. Both stems,
+                // because the path that gets here is usually a rename that moved
+                // the audio and left a side file under the name it came from.
                 store.delete(recording);
+                if (!placed.equals(recording.wav())) {
+                    store.delete(new RecordingStore.Recording(placed));
+                }
             }
         }
     }

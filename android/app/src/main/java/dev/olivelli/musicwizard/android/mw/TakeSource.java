@@ -106,10 +106,10 @@ public final class TakeSource {
     }
 
     /**
-     * The line that goes into the bundle's {@code info.txt}.
+     * The line that goes into the bundle's {@code <take>.info.txt}.
      *
-     * <p>One line, because that file is a list of one-line facts and the desktop
-     * reads it with a grep.
+     * <p>One line, because {@code <take>.info.txt} is a list of one-line facts
+     * and the desktop reads it with a grep.
      */
     public String infoLine() {
         StringBuilder out = new StringBuilder("source: ").append(oneLine(kind));

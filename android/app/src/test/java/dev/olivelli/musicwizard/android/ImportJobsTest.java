@@ -469,6 +469,13 @@ public class ImportJobsTest {
                     TakeSource.parse(RecordingStore.readSource(take)).isCommercial());
         }
         assertTrue("the unmarked take survived: " + store.list(), store.list().isEmpty());
+
+        // And nothing under the name the take was moved in as, either: the
+        // rename that dropped the provenance left it under the old stem.
+        for (File left : store.directory().listFiles()) {
+            assertFalse("a side file outlived the take it belonged to: " + left.getName(),
+                    left.isFile() && left.getName().endsWith(".source.txt"));
+        }
     }
 
     /** A second import of the same video does not collide with the first. */
