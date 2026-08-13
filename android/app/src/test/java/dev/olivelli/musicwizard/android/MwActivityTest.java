@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.Test;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -102,32 +103,29 @@ public class MwActivityTest {
     /**
      * The app is called Music Wizard everywhere the phone shows a name.
      *
-     * <p>Android draws the <em>launcher activity's</em> label on the home screen
-     * and in Recents, not the application's, and it draws a share target's label
-     * in the sheet. So a label on either of those is the name of the app, and
-     * for a while there were three: the launcher said "Record", the share sheet
-     * would have said "Import from YouTube", and everywhere else said "Music
-     * Wizard". Nothing in the code looks wrong when that happens — it is only
-     * visible on a phone.
+     * <p>Three things decide that name and none of them is obvious. The
+     * application's label is the default; the <em>launcher activity's</em> label
+     * overrides it on the home screen and in Recents; and a share target's label
+     * is what the sheet shows. So this reads all three, because a fix that moves
+     * the name from one of them to another has only moved where it can go wrong.
      *
      * <p>An inner screen may still label itself, and Recordings does; that is a
-     * heading, not a name, and it is never what the launcher shows.
+     * heading, not a name, and it is never what the launcher draws.
      */
     @Test
     public void everyScreenThePhoneNamesTheAppByIsCalledMusicWizard() throws Exception {
-        NodeList activities = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder()
-                .parse(new File(MANIFEST))
-                .getElementsByTagName("activity");
+        Element application = (Element) manifest()
+                .getElementsByTagName("application").item(0);
+        assertEquals("the application label is the name every screen falls back to",
+                "@string/app_name", application.getAttribute("android:label"));
+        // And what it resolves to, since the assertion above would pass just as
+        // happily while app_name said something else.
+        assertEquals("Music Wizard", appName());
 
-        for (int i = 0; i < activities.getLength(); i++) {
-            Element activity = (Element) activities.item(i);
-            if (!"true".equals(activity.getAttribute("android:exported"))) {
-                continue;
-            }
-            String label = activity.getAttribute("android:label");
-            assertTrue(activity.getAttribute("android:name")
-                            + " is reachable from outside the app, so its label is what the"
+        for (Element entry : exportedEntryPoints()) {
+            String label = entry.getAttribute("android:label");
+            assertTrue(entry.getAttribute("android:name")
+                            + " can be reached from outside the app, so its label is what the"
                             + " phone calls Music Wizard: " + label,
                     label.isEmpty() || "@string/app_name".equals(label));
         }
@@ -143,19 +141,55 @@ public class MwActivityTest {
      */
     @Test
     public void onlyTheLauncherAndTheShareTargetAreExported() throws Exception {
-        NodeList activities = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder()
-                .parse(new File(MANIFEST))
-                .getElementsByTagName("activity");
         List<String> exported = new ArrayList<>();
-        for (int i = 0; i < activities.getLength(); i++) {
-            Element activity = (Element) activities.item(i);
-            if ("true".equals(activity.getAttribute("android:exported"))) {
-                exported.add(activity.getAttribute("android:name"));
-            }
+        for (Element entry : exportedEntryPoints()) {
+            exported.add(entry.getAttribute("android:name"));
         }
         exported.sort(String::compareTo);
         assertEquals(List.of(".ImportActivity", ".RecordActivity"), exported);
+    }
+
+    /**
+     * Everything another app or the launcher can start, whatever tag declares it.
+     *
+     * <p>{@code activity-alias} is the standard way to put a second entry on the
+     * home screen, and it carries its own label and its own intent filters — so
+     * a test that asked only for {@code activity} elements would watch the front
+     * door while the side door was being fitted. Shared rather than repeated,
+     * because three tests were each making that choice on their own.
+     */
+    private List<Element> exportedEntryPoints() throws Exception {
+        Document manifest = manifest();
+        List<Element> out = new ArrayList<>();
+        for (String tag : List.of("activity", "activity-alias")) {
+            NodeList declared = manifest.getElementsByTagName(tag);
+            for (int i = 0; i < declared.getLength(); i++) {
+                Element element = (Element) declared.item(i);
+                if ("true".equals(element.getAttribute("android:exported"))) {
+                    out.add(element);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static Document manifest() throws Exception {
+        return DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new File(MANIFEST));
+    }
+
+    /** What {@code app_name} actually says. */
+    private static String appName() throws Exception {
+        NodeList strings = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new File("src/main/res/values/strings.xml"))
+                .getElementsByTagName("string");
+        for (int i = 0; i < strings.getLength(); i++) {
+            Element string = (Element) strings.item(i);
+            if ("app_name".equals(string.getAttribute("name"))) {
+                return string.getTextContent().trim();
+            }
+        }
+        throw new AssertionError("no app_name in strings.xml");
     }
 
     /**

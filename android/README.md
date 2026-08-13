@@ -113,14 +113,13 @@ it on a device after any change to the import:
 2. A video with no itag 140, if you can find one → the take is Opus at 48000.
    That is equally correct — nothing resamples at import — and it is the case
    the decode path is least exercised on, so it is worth hunting for one.
-3. Not a step yet, and worth knowing why. A take fetched as itag 139 is the
-   one path in `AudioImport` no JVM test reaches — HE-AAC, whose decoders
-   report their output format twice. There is no way to ask for it and no way
-   to tell afterwards: the app records nothing about which format it fetched,
-   and the sample rate does not distinguish it, because HE-AAC is dual-rate and
-   decodes to 44100 exactly like itag 140. Surfacing the itag is #427; until
-   then this path is untested by every means available here, and saying so is
-   more use than a step that cannot be performed.
+3. Not a step yet, and worth knowing why. A take fetched as itag 139 would
+   exercise HE-AAC, whose decoders report their output format twice — the one
+   branch this list would otherwise be the only cover for. But there is no way
+   to ask for that format and no way to tell afterwards: the app records
+   nothing about which one it fetched, and the sample rate does not
+   distinguish it, because HE-AAC is dual-rate and decodes to 44100 exactly
+   like itag 140. Surfacing the itag is #427.
 4. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
 5. Cancel mid-download → back to the confirm screen, nothing in the library,
