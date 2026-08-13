@@ -127,11 +127,18 @@ final class ImportJobs {
          * log and showing it raw underneath would be the property backwards: the
          * panel exists to be sent, and so does a screenshot.
          */
+        /**
+         * A failure always has a message, because a null one is not a failure.
+         *
+         * <p>{@code finish} routes on {@code cancelled}, then on {@code failure
+         * != null}, and otherwise calls {@code onFinished} — so a null here is
+         * read as success, with a null take behind it. Substituting a sentence
+         * keeps the routing honest whatever a caller hands over.
+         */
         static Result failed(String failure) {
-            // Null stays null: scrub maps it to "", which is right for a log
-            // line and wrong here, where null is what finish() reads as
-            // "cancelled" rather than "failed".
-            return new Result(null, failure == null ? null : ImportLog.scrub(failure), false);
+            String message = failure == null || failure.trim().isEmpty()
+                    ? "the import failed" : ImportLog.scrub(failure);
+            return new Result(null, message, false);
         }
 
         static Result cancelled() {
