@@ -89,8 +89,7 @@ final class BeatMarks {
      *
      * <p>Past the last bar needs no such guard, and does not have one: the same
      * clamp puts those beats on the chart's end, which the loop below is already
-     * stopping at. A second test of the same fact would be one that could not
-     * fail.
+     * stopping at.
      *
      * <p>Two beats can still round onto one unit, the grid being finer than any
      * tracker but not infinitely fine. The second is nudged one unit along
