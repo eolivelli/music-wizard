@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import dev.olivelli.musicwizard.notation.LyricSheet;
@@ -136,8 +137,9 @@ final class RenderCommand implements Callable<Integer> {
             return emitter != null;
         }
 
-        Emitted emit(Workspace workspace, Score score, Optional<Path> lilypond) {
-            return emitter.emit(workspace, score, lilypond);
+        Emitted emit(Workspace workspace, Score score, Optional<Path> lilypond,
+                ChartOptions options) {
+            return emitter.emit(workspace, score, lilypond, options);
         }
 
         /**
@@ -225,7 +227,8 @@ final class RenderCommand implements Callable<Integer> {
     /** How one part is produced, once it is known that it can be. */
     @FunctionalInterface
     private interface Emitter {
-        Emitted emit(Workspace workspace, Score score, Optional<Path> lilypond);
+        Emitted emit(Workspace workspace, Score score, Optional<Path> lilypond,
+                ChartOptions options);
     }
 
     @Spec
@@ -251,6 +254,12 @@ final class RenderCommand implements Callable<Integer> {
             description = "Paper size, e.g. a4 or letter. Has no effect yet: nothing "
                     + "reads it (#180).")
     String paperSize;
+
+    @Option(names = "--beat-marks", negatable = true,
+            description = "Draw the tracked beats under the chords, so placement inside a "
+                    + "bar can be read off the page. Off unless asked for: a chart to play "
+                    + "from wants fewer marks than a chart to check (#416).")
+    Boolean beatMarks;
 
     @Option(names = "--no-pdf", description = "Write sources only; do not invoke LilyPond.")
     boolean noPdf;
@@ -315,8 +324,21 @@ final class RenderCommand implements Callable<Integer> {
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
             Optional<Path> lilypond = announceEngraver(config);
+            ChartOptions options = chartOptions(config);
+            // Once, before the parts, rather than per part: the marks are
+            // missing from every page for one reason, and saying so twice reads
+            // as two problems. A score with no tracked grid has no beat times to
+            // draw from, and every other output is intact -- so this is a
+            // warning beside the files rather than a refusal, under the rule the
+            // javadoc of warnAboutOptionsThatDoNothing states: a setting the run
+            // discards in silence is a confident wrong answer.
+            if (options.beatMarks() && score.beatGrid().isEmpty()) {
+                warnings.add("no beat marks were drawn: the marks are tracked beat times and"
+                        + " this score has none, which is the case for every score read from"
+                        + " a MIDI file, where the beats are declared rather than heard");
+            }
             for (Part part : producible) {
-                Emitted emitted = part.emit(workspace, score, lilypond);
+                Emitted emitted = part.emit(workspace, score, lilypond, options);
                 written.addAll(emitted.files());
                 warnings.addAll(emitted.warnings());
                 chartWritten |= part == Part.CHORDS;
@@ -421,7 +443,7 @@ final class RenderCommand implements Callable<Integer> {
 
     /** Writes the chord chart's sources, and its PDF where there is an engraver. */
     private static Emitted writeChordChart(
-            Workspace workspace, Score score, Optional<Path> lilypond) {
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -432,7 +454,7 @@ final class RenderCommand implements Callable<Integer> {
             written.add(txt);
 
             Path ly = out.resolve("chords.ly");
-            Files.writeString(ly, ChordChart.toLilyPond(score));
+            Files.writeString(ly, ChordChart.toLilyPond(score, options));
             written.add(ly);
 
             Emitted engraved = engrave(lilypond, ly);
@@ -446,7 +468,7 @@ final class RenderCommand implements Callable<Integer> {
 
     /** Writes the chords-and-lyrics sheet, and its PDF where there is an engraver. */
     private static Emitted writeLyricSheet(
-            Workspace workspace, Score score, Optional<Path> lilypond) {
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -457,7 +479,7 @@ final class RenderCommand implements Callable<Integer> {
             written.add(txt);
 
             Path ly = out.resolve("chords-lyrics.ly");
-            Files.writeString(ly, LyricSheet.toLilyPond(score));
+            Files.writeString(ly, LyricSheet.toLilyPond(score, options));
             written.add(ly);
 
             Emitted engraved = engrave(lilypond, ly);
@@ -694,12 +716,27 @@ final class RenderCommand implements Callable<Integer> {
         return requested != null && !requested.equals(byDefault);
     }
 
+    /**
+     * What to annotate the chart with, from the flag or from the config file.
+     *
+     * <p>Read from the <em>effective</em> config for the reason {@link
+     * #requestedTransposition} is: a preference belongs in {@code
+     * workspace.yaml} just as much as on the command line, and reading the typed
+     * field would honour only the second.
+     */
+    private static ChartOptions chartOptions(MusicWizardConfig config) {
+        var notation = config.notation();
+        Boolean marks = notation == null ? null : notation.beatMarks();
+        return new ChartOptions(Boolean.TRUE.equals(marks));
+    }
+
     private MusicWizardConfig overrides() {
-        if (transpose == null && paperSize == null) {
+        if (transpose == null && paperSize == null && beatMarks == null) {
             return null;
         }
         return new MusicWizardConfig(null, null,
-                new MusicWizardConfig.NotationConfig(null, paperSize, transpose, null, null),
+                new MusicWizardConfig.NotationConfig(null, paperSize, transpose, null, null,
+                        beatMarks),
                 null, null, null);
     }
 }

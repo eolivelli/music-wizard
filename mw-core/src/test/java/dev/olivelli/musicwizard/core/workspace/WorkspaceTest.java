@@ -261,7 +261,7 @@ class WorkspaceTest {
             assertThat(workspace.effectiveConfig().notation().paperSize()).isEqualTo("a4");
 
             workspace.updateConfig(new MusicWizardConfig(null, null,
-                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null),
+                    new MusicWizardConfig.NotationConfig(null, "letter", null, null, null, null),
                     null, null, null));
 
             MusicWizardConfig effective = workspace.effectiveConfig();

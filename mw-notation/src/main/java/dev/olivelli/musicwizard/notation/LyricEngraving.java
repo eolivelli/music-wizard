@@ -60,8 +60,11 @@ import java.util.Optional;
  */
 final class LyricEngraving {
 
-    /** The grid syllables are placed on: the shortest value a duration can name. */
-    private static final double UNIT = LilyPondDuration.SHORTEST_QUARTERS;
+    /**
+     * The grid syllables are placed on, shared with every other lane the chart
+     * carries -- see {@link ChartGrid}, which owns it and the placement.
+     */
+    private static final double UNIT = ChartGrid.UNIT;
 
     /**
      * How many {@code Lyrics} contexts the page carries.
@@ -126,7 +129,7 @@ final class LyricEngraving {
         if (score.lyrics().isEmpty() || bars.isEmpty()) {
             return Optional.empty();
         }
-        long[] barStart = barStarts(bars);
+        long[] barStart = ChartGrid.barStarts(bars);
         List<List<Syllable>> lanes = placed(score, bars, barStart);
         if (lanes.isEmpty()) {
             return Optional.empty();
@@ -179,7 +182,7 @@ final class LyricEngraving {
             while (at < syllables.size() && syllables.get(at).unit() < to) {
                 Syllable syllable = syllables.get(at);
                 if (syllable.unit() > cursor) {
-                    line.append(skip(syllable.unit() - cursor)).append(' ');
+                    line.append(ChartGrid.skip(syllable.unit() - cursor)).append(' ');
                     cursor = syllable.unit();
                 }
                 long until = at + 1 < syllables.size()
@@ -198,7 +201,7 @@ final class LyricEngraving {
                 at++;
             }
             if (cursor < to) {
-                line.append(skip(to - cursor)).append(' ');
+                line.append(ChartGrid.skip(to - cursor)).append(' ');
             }
             // One bar to a line and a check closing each, so a duration that does
             // not sum is reported against the bar it is in rather than against
@@ -207,23 +210,6 @@ final class LyricEngraving {
             out.append("    ").append(line).append("|\n");
         }
         out.append("  }\n");
-    }
-
-    /**
-     * Each bar's start on the grid, with one extra entry for the chart's end.
-     *
-     * <p>Accumulated from the first bar's own position rather than read off each
-     * bar, so the boundaries are contiguous by construction: a syllable cannot
-     * fall in a crack between two bars, and the durations of one bar always sum
-     * to the distance to the next.
-     */
-    private static long[] barStarts(List<ChartLayout.Bar> bars) {
-        long[] starts = new long[bars.size() + 1];
-        starts[0] = Math.round(bars.get(0).startQuarters() / UNIT);
-        for (int i = 0; i < bars.size(); i++) {
-            starts[i + 1] = starts[i] + Math.round(bars.get(i).lengthQuarters() / UNIT);
-        }
-        return starts;
     }
 
     /**
@@ -347,7 +333,7 @@ final class LyricEngraving {
         List<Syllable> placed = new ArrayList<>(parts.size());
         long cursor = previous;
         for (int i = 0; i < parts.size(); i++) {
-            long unit = Math.max(unitOf(syllableSeconds(word, i, parts.size()), bars, barStart),
+            long unit = Math.max(ChartGrid.unitOf(syllableSeconds(word, i, parts.size()), bars, barStart),
                     cursor + 1);
             if (unit >= chartEnd) {
                 return List.of();
@@ -374,25 +360,6 @@ final class LyricEngraving {
     private static double syllableSeconds(LyricWord word, int index, int parts) {
         return word.startSeconds()
                 + (word.endSeconds() - word.startSeconds()) * index / parts;
-    }
-
-    /** Where a moment falls on the grid, by the bar holding it. */
-    private static long unitOf(double seconds, List<ChartLayout.Bar> bars, long[] barStart) {
-        int index = 0;
-        while (index + 1 < bars.size() && bars.get(index + 1).startSeconds() <= seconds) {
-            index++;
-        }
-        ChartLayout.Bar bar = bars.get(index);
-        // The bar's own rate, so the last bar is measured like every other and a
-        // tempo change inside the chart cannot be read at a neighbour's tempo.
-        double perQuarter = bar.secondsPerQuarter();
-        double into = perQuarter > 0 ? (seconds - bar.startSeconds()) / perQuarter : 0;
-        long unit = barStart[index] + Math.round(into / UNIT);
-        return Math.max(barStart[0], Math.min(unit, barStart[index + 1]));
-    }
-
-    private static String skip(long units) {
-        return "\\skip " + LilyPondDuration.scaled(units * UNIT);
     }
 
     private static String escape(String text) {
