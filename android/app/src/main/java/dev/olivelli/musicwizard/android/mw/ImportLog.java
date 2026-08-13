@@ -49,31 +49,41 @@ public final class ImportLog {
     /** Query parameters that identify the phone, the session, or the request. */
     private static final Pattern SECRETS = Pattern.compile(
             "(?i)([?&](?:ip|ipbits|sig|lsig|lsparams|sparams|spc|ei|bui|vprv|txp|pcm2cms"
-                    + "|met|mh|mm|mn|ms|rms|id|key|c|cver|n|pot)=)[^&\\s]*");
+                    + "|met|mh|mm|mn|ms|rms|id|key|c|cver|cpn|n|pot)=)[^&\\s]*");
 
-    /** A bare IPv4 or IPv6-ish run, wherever it turns up outside a parameter. */
+    /**
+     * A bare address, wherever it turns up outside a parameter.
+     *
+     * <p>No leading {@code \b}: percent-encoding puts a word character in front
+     * of the first digit ({@code %3D203.0.113.47}) and a boundary there would
+     * step over it. The IPv6 half allows {@code ::} compression, which is the
+     * form a phone on mobile data actually reports, and is case-insensitive
+     * like its two siblings.
+     */
     private static final Pattern BARE_IP = Pattern.compile(
-            "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b|\\b(?:[0-9a-f]{1,4}:){4,}[0-9a-f]{1,4}\\b");
+            "(?i)(?<![\\d.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![\\d.])"
+                    + "|(?<![0-9a-f:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}"
+                    + "(?::\\d{1,3}(?:\\.\\d{1,3}){3})?(?![0-9a-f:])");
 
     /**
      * The edge that served this phone, with or without a scheme in front of it.
      *
      * <p>Names like {@code rr1---sn-uxaxpu5ap5-ca9l.googlevideo.com} are chosen
      * per session from where the request came from, so they carry a hint of the
-     * network and the region the way an address does. Written bare by
-     * {@code StreamDownload}, which is why this cannot require a {@code https://}
-     * in front — an earlier version did, and passed its test while letting the
-     * real thing straight through.
+     * network and the region the way an address does. The scheme is optional
+     * because the lines that carry a host name it on its own.
      */
     private static final Pattern MEDIA_HOST = Pattern.compile(
-            "(?i)(?:https://)?[a-z0-9\\-]+(?:\\.[a-z0-9\\-]+)*\\.googlevideo\\.com");
+            "(?i)(?:https://)?[a-z0-9\\-]+(?:\\.[a-z0-9\\-]+)*\\.googlevideo\\.com(?![a-z0-9.\\-])");
 
     private final Deque<String> lines = new ArrayDeque<>();
     private int dropped;
+    private int revision;
 
     /** Adds one line, scrubbed. */
     public synchronized void add(String line) {
         lines.add(scrub(line));
+        revision++;
         while (lines.size() > MAX_LINES) {
             lines.poll();
             dropped++;
@@ -99,16 +109,31 @@ public final class ImportLog {
     public synchronized void clear() {
         lines.clear();
         dropped = 0;
+        revision++;
+    }
+
+    /**
+     * Changes whenever the text does.
+     *
+     * <p>The decode reports progress once per output buffer — thousands of times
+     * for one track, tens of thousands for a long one — and the log usually says
+     * nothing new between them. A screen that redrew on each would rebuild a
+     * selectable {@code TextView} inside a {@code ScrollView} every time, and
+     * drop the user's selection with it.
+     */
+    public synchronized int revision() {
+        return revision;
     }
 
     /**
      * Removes everything that identifies the phone, the session or the request.
      *
      * <p>An allow-list would be safer than this deny-list and is not available:
-     * the lines are prose written at a dozen call sites, not structured records.
-     * So the rule is that no line should carry a URL at all — callers name the
-     * host and the itag instead — and this is the backstop for the ones that
-     * slip through, not the first line of defence.
+     * the lines are prose, not structured records. The lines this app composes
+     * name the host and the format rather than a URL — but a transport failure
+     * carries whatever the transport chose to say, and Android's names both
+     * endpoints while a refused redirect carries the whole signed URL. Those
+     * are what this is for.
      */
     public static String scrub(String line) {
         if (line == null) {

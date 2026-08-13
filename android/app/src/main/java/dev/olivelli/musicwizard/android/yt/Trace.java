@@ -25,11 +25,16 @@ package dev.olivelli.musicwizard.android.yt;
  * are the evidence, and they exist to be read by someone who is not holding the
  * phone.
  *
- * <p>So the rule for what goes in one: <strong>name the host, the format and
- * the status; never the URL.</strong> A media URL carries the phone's public
- * address and the session's signatures, and this text is written to be sent to
- * somebody. {@code ImportLog} scrubs what arrives as a backstop, but a line
- * that never held a secret cannot leak one through a gap in a pattern.
+ * <p>So the rule for what a line composed here says: <strong>name the host, the
+ * format and the status; never the URL.</strong> A media URL carries the
+ * phone's public address and the session's signatures, and this text is written
+ * to be sent to somebody. A line that never held a secret cannot leak one
+ * through a gap in a pattern.
+ *
+ * <p>That rule can only bind what this package writes. A line that quotes a
+ * transport failure quotes whatever the transport chose to say, and those do
+ * carry URLs — which is why {@code ImportLog} scrubs everything on the way in
+ * rather than trusting this.
  */
 public interface Trace {
 

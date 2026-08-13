@@ -171,6 +171,17 @@ public final class InnerTube {
         return interpret(videoId, reply, status);
     }
 
+    /**
+     * The client this build asks as, for a log to carry.
+     *
+     * <p>The first question when a fetch stops working is whether the client
+     * constants have been overtaken, and a report that does not say which ones
+     * were used cannot answer it.
+     */
+    public static String clientDescription() {
+        return CLIENT_NAME + " " + CLIENT_VERSION;
+    }
+
     /** The session id a reply offers, whether it succeeded or refused. */
     private static String offeredSession(JsonNode reply) {
         String offered = reply.path("responseContext").path("visitorData").asText(null);

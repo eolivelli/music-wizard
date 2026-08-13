@@ -26,6 +26,7 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import dev.olivelli.musicwizard.android.mw.ImportLog;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.yt.VideoLink;
 import java.io.File;
@@ -51,6 +52,9 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     private TextView logLabel;
     private TextView logView;
     private View logScroll;
+
+    /** The log revision already drawn, so an unchanged log is not redrawn. */
+    private int drawnRevision = -1;
 
     private RecordingStore store;
     private File cacheDirectory;
@@ -124,6 +128,9 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     protected void onResume() {
         super.onResume();
+        // The instance may be new while the log is not, so nothing drawn by a
+        // previous screen counts as drawn by this one.
+        drawnRevision = -1;
         ImportJobs jobs = ImportJobs.get();
 
         if (jobs.observe(this)) {
@@ -156,9 +163,22 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         ImportJobs.get().stopObserving(this);
     }
 
-    /** Draws the log if there is one, whatever the outcome was. */
+    /**
+     * Draws the log if there is one, and only when it has changed.
+     *
+     * <p>The decode reports progress once per output buffer, which is thousands
+     * of calls for one track. Setting the same text on a selectable view inside
+     * a scroller that many times would relayout each time and throw away any
+     * selection the user had made in it.
+     */
     private void showLog() {
-        String text = ImportJobs.get().log().text();
+        ImportLog log = ImportJobs.get().log();
+        if (log.revision() == drawnRevision) {
+            return;
+        }
+        drawnRevision = log.revision();
+
+        String text = log.text();
         int visibility = text.isEmpty() ? View.GONE : View.VISIBLE;
         logLabel.setVisibility(visibility);
         logScroll.setVisibility(visibility);
@@ -265,7 +285,6 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     public void onFailed(String message) {
         showConfirmation();
-        showLog();
         statusView.setText(getString(R.string.import_failed, message));
         downloadButton.setText(R.string.import_retry);
     }

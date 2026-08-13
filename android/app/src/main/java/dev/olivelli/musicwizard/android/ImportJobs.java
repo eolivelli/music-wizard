@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.yt.ExtractionException;
 import dev.olivelli.musicwizard.android.yt.Fetch;
+import dev.olivelli.musicwizard.android.yt.InnerTube;
 import dev.olivelli.musicwizard.android.yt.UrlConnectionHttp;
 import java.io.File;
 import java.io.IOException;
@@ -115,8 +116,19 @@ final class ImportJobs {
             return new Result(wav, null, false);
         }
 
+        /**
+         * Scrubbed here, once, because this string has three readers and two of
+         * them are the screen.
+         *
+         * <p>A transport failure carries what the transport chose to say, and
+         * Android's connect message names both endpoints — {@code from
+         * /<address>} is the phone's own, globally routable on mobile data — while
+         * a refused redirect carries the whole signed URL. Redacting it for the
+         * log and showing it raw underneath would be the property backwards: the
+         * panel exists to be sent, and so does a screenshot.
+         */
         static Result failed(String failure) {
-            return new Result(null, failure, false);
+            return new Result(null, ImportLog.scrub(failure), false);
         }
 
         static Result cancelled() {
@@ -163,7 +175,7 @@ final class ImportJobs {
      * use after a success that produced a silent take as after a failure, and
      * because the screen that reads it is often not the one that started it.
      */
-    private final ImportLog log = new ImportLog();
+    private final ImportLog log;
 
     private boolean running;
     private String progressLine = "";
@@ -173,6 +185,11 @@ final class ImportJobs {
     private AtomicBoolean cancelled = new AtomicBoolean(false);
 
     ImportJobs(Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
+        this(new ImportLog(), dispatcher, fetcher, decoder);
+    }
+
+    ImportJobs(ImportLog log, Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
+        this.log = log;
         this.dispatcher = dispatcher;
         this.fetcher = fetcher;
         this.decoder = decoder;
@@ -187,10 +204,9 @@ final class ImportJobs {
     static ImportJobs get() {
         if (instance == null) {
             Handler main = new Handler(Looper.getMainLooper());
-            ImportJobs[] self = new ImportJobs[1];
-            Fetch fetch = new Fetch(new UrlConnectionHttp(),
-                    message -> self[0].log.add(message));
-            self[0] = instance = new ImportJobs(main::post,
+            ImportLog log = new ImportLog();
+            Fetch fetch = new Fetch(new UrlConnectionHttp(), log::add);
+            instance = new ImportJobs(log, main::post,
                     (text, directory, progress, stop) -> fetch.run(text, directory,
                             (done, total) -> progress.onProgress(
                                     total > 0 ? done / (double) total : -1),
@@ -273,7 +289,7 @@ final class ImportJobs {
         File decoded = null;
         try {
             log.clear();
-            log.add("import started");
+            log.add("import started, asking as " + InnerTube.clientDescription());
             prune(cacheDirectory);
             if (cacheDirectory.getUsableSpace() < MIN_FREE_BYTES) {
                 throw new IOException("there is not enough free space on this phone");
@@ -312,6 +328,7 @@ final class ImportJobs {
             log.add("cancelled");
         } else if (result.failure != null) {
             log.add("failed: " + result.failure);
+            // Already scrubbed by Result.failed; add() would do it again harmlessly.
         } else {
             log.add("done");
         }

@@ -51,8 +51,8 @@ public class ImportLogTest {
         assertFalse("a bare address anywhere in a line, not only in a parameter",
                 ImportLog.scrub("connect failed to 198.51.100.9").contains("198.51.100.9"));
         assertFalse("IPv6 too",
-                ImportLog.scrub("connect failed to 2001:0db8:85a3:0000:8a2e:0370:7334")
-                        .contains("2001:0db8:85a3:0000:8a2e:0370:7334"));
+                ImportLog.scrub("connect failed to 2001:0db8:85a3:0000:0000:8a2e:0370:7334")
+                        .contains("2001:0db8:85a3:0000:0000:8a2e:0370:7334"));
     }
 
     @Test
@@ -70,11 +70,8 @@ public class ImportLogTest {
      * The serving host is per-session, so it goes too — written bare as well as
      * inside a URL.
      *
-     * <p>The bare form is the one that matters and the one an earlier version
-     * missed: {@code StreamDownload} logs the host on its own, deliberately, so
-     * a pattern that required a scheme passed this test against a URL while the
-     * real log carried the edge name in full. Both shapes are asserted now
-     * because only one of them actually occurs.
+     * <p>The bare form is the one that actually occurs: the lines that carry a
+     * host name it on its own.
      */
     @Test
     public void theServingHostIsGeneralisedWithOrWithoutAScheme() {
@@ -90,6 +87,55 @@ public class ImportLogTest {
         // Still says what it was and what happened.
         assertTrue(bare, bare.contains("HTTP 206"));
         assertTrue(bare, bare.contains("0-1048575"));
+    }
+
+    /**
+     * The shapes a boundary-anchored pattern steps over.
+     *
+     * <p>Each of these was produced by the shipped scrubber and survived it: a
+     * percent-encoded address has a word character in front of its first digit,
+     * and a phone on mobile data reports an IPv6 address with {@code ::}
+     * compression rather than all eight groups.
+     */
+    @Test
+    public void anAddressSurvivesNoEncodingAndNoCompression() {
+        for (String line : new String[] {
+                "GET %3Fip%3D203.0.113.47%26sig%3Dx",
+                "connect failed to 2001:db8::1",
+                "connect failed to 2a01:e0a:abc:1234::5",
+                "connect failed to 2A01:0E0A:0ABC:1234:5678:9ABC:DEF0:1234",
+                "connect failed to ::1",
+                "connect failed to ::ffff:203.0.113.47"}) {
+            String scrubbed = ImportLog.scrub(line);
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("203.0.113.47"));
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("2001:db8::1"));
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("2a01:e0a"));
+            assertFalse(line + " -> " + scrubbed, scrubbed.contains("2A01:0E0A"));
+        }
+    }
+
+    /**
+     * A transport failure is the one that carries a URL, because the message is
+     * the transport's rather than this app's.
+     */
+    @Test
+    public void androidsOwnConnectMessageLosesBothEndpoints() {
+        String scrubbed = ImportLog.scrub("failed to connect to"
+                + " rr5---sn-4g5e6nzs.googlevideo.com/142.250.185.78 (port 443)"
+                + " from /192.168.1.37 (port 40122) after 15000ms");
+
+        assertFalse(scrubbed, scrubbed.contains("142.250.185.78"));
+        assertFalse(scrubbed, scrubbed.contains("192.168.1.37"));
+        assertFalse(scrubbed, scrubbed.contains("sn-4g5e6nzs"));
+        // Still says it was a connect failure and how long it waited.
+        assertTrue(scrubbed, scrubbed.contains("15000ms"));
+    }
+
+    /** The playback nonce identifies the session as surely as the visitor id. */
+    @Test
+    public void theClientPlaybackNonceGoes() {
+        assertFalse(ImportLog.scrub("?cpn=AbCdEfGhIjKlMnOp&itag=140")
+                .contains("AbCdEfGhIjKlMnOp"));
     }
 
     /** What is left has to still be worth reading, or the panel is pointless. */
@@ -127,6 +173,23 @@ public class ImportLogTest {
                 text.contains("range 999"));
         assertFalse("the head is what gets dropped", text.contains("range 0\n"));
         assertTrue("bounded", text.split("\n").length < 500);
+    }
+
+    /** The screen redraws on this rather than on every progress tick. */
+    @Test
+    public void theRevisionMovesWhenTheTextDoes() {
+        ImportLog log = new ImportLog();
+        int before = log.revision();
+
+        log.add("one");
+        int afterAdd = log.revision();
+        assertTrue("adding a line did not move the revision", afterAdd != before);
+
+        log.text();
+        assertEquals("reading is not a change", afterAdd, log.revision());
+
+        log.clear();
+        assertTrue("clearing did not move the revision", log.revision() != afterAdd);
     }
 
     @Test
