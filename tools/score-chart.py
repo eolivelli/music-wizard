@@ -7,9 +7,10 @@ asks the question a reader of the page asks: how many chords are printed in a
 bar, and is the one a reader takes away from that bar the right one.
 
 The two differ in a way worth keeping visible, and it is not the way it looks.
-On the audio path the chart's bar lines are its own -- one downbeat for phase
-and `Score.estimatedTempo()` for rate -- so wherever those two disagree with
-the grid they walk away from the recording's downbeats (#187, #200, #233).
+On the audio path the chart's bar lines are its own -- the offset the grid's
+downbeats agree on for phase and `Score.estimatedTempo()` for rate -- so
+wherever those two disagree with the grid they walk away from the recording's
+downbeats (#187, #200, #233).
 That holds of the seconds route only; a progression carrying beats is laid out
 on the beat axis instead, and `short_changes` below refuses to measure one.
 
@@ -26,9 +27,9 @@ twelve minutes than the tracker's accumulated phase did.
 on four of those five, because the tracker's phase was the better of the two and
 the constant bar length was what was left drifting -- it was spaced at the median
 tracked interval where the grid ran at a rate half a percent from it. #200 has
-since replaced that statistic with a rate, which closed most of the gap again
-without closing it entirely, since what remains of it is the chart's phase
-(#233) and the recording's own unevenness (#187). Both readings had the same
+since replaced that statistic with a rate and #233 the chart's phase, which
+closed most of the gap again without closing it entirely, since what remains of
+it is the recording's own unevenness (#187). Both readings had the same
 cause under them, seen from opposite sides, which is the reason to state the
 mechanism here rather than a rule of thumb about which column wins. A maintainer
 who runs both chord harnesses and finds them disagreeing is looking at the bar
