@@ -547,7 +547,9 @@ def rejoined(words: list[dict]) -> list[dict]:
         if out and out[-1].get("hyphenatedToNext"):
             out[-1] = dict(out[-1],
                            text=out[-1]["text"] + word["text"],
-                           endSeconds=word["endSeconds"],
+                           # The maximum, as LyricLine.endSeconds is: sung spans
+                           # overlap, so the last piece need not end last.
+                           endSeconds=max(out[-1]["endSeconds"], word["endSeconds"]),
                            hyphenatedToNext=word.get("hyphenatedToNext", False))
         else:
             out.append(word)

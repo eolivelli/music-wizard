@@ -246,6 +246,45 @@ class LyricEngravingTest {
     }
 
     /** Two lines that overlap: the first ends after the second has begun. */
+    /**
+     * A four-syllable word written as four hyphen-joined words, sung from
+     * {@code at}, on a chart two bars long.
+     */
+    private static Score joinedRun(double at) {
+        Confidence sure = Confidence.of(0.9);
+        String[] parts = {"la", "la", "la", "la"};
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < parts.length; i++) {
+            double start = at + i * 0.3;
+            words.add(new LyricWord(parts[i], start, start + 0.3,
+                    Optional.empty(), Optional.empty(),
+                    i + 1 < parts.length, false, sure));
+        }
+        return chart(2).withLyrics(new Lyrics(
+                List.of(new LyricLine(words, sure)), "und", sure));
+    }
+
+    @Test
+    @DisplayName("a hyphen-joined word running off the chart is dropped whole")
+    void aRunOffTheEndIsDroppedWhole() {
+        // The list is not one word to a word: an aligner that measures
+        // syllables hands each of them over separately. All-or-nothing has to
+        // cover the run, or the page prints a fragment of a word -- which reads
+        // as a transcription rather than as the omission it is.
+        List<List<String>> engraved = lyricLanes(LyricSheet.toLilyPond(joinedRun(3.4)));
+
+        assertThat(String.join(" ", engraved.stream().flatMap(List::stream).toList()))
+                .doesNotContain("\"la\"");
+    }
+
+    @Test
+    @DisplayName("the same word wholly inside the chart is engraved whole")
+    void aRunThatFitsIsEngravedWhole() {
+        List<String> bars = lyricBars(LyricSheet.toLilyPond(joinedRun(0.4)));
+
+        assertThat(String.join(" ", bars).split("\"la\"", -1)).hasSize(5);
+    }
+
     private static Score overlapping() {
         Confidence sure = Confidence.of(0.9);
         return chart(2).withLyrics(new Lyrics(List.of(

@@ -688,10 +688,11 @@ final class AnalyzeCommand implements Callable<Integer> {
      * its word's parsed span so a failure downstream falls back to what the
      * caller had.
      *
-     * <p>The hyphen flags are the engraver's: every syllable but the last
-     * joins the next, and the last carries whatever the word itself said —
-     * which is how {@code LyricSheet} still reads a split word as one word
-     * and how {@code LyricEngraving} finds a syllable already whole.
+     * <p>Each piece carries the flag the hyphenator gave it, and the last
+     * carries whatever the word itself said. Only a break the hyphenator chose
+     * is drawn: a compound arrives with the hyphen it was written with, and
+     * claiming one there too would engrave {@code well--known}. The chain of
+     * flags is what still reads a split word as one word downstream.
      *
      * <p>A language with no patterns, or a word the patterns leave in one
      * piece, comes back unchanged: this can only ever split a word further,
@@ -715,7 +716,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 out.add(new LyricWord(parts.get(i).text(),
                         word.startSeconds(), word.endSeconds(),
                         java.util.Optional.empty(), java.util.Optional.empty(),
-                        last ? word.hyphenatedToNext() : true,
+                        last ? word.hyphenatedToNext() : parts.get(i).hyphenToNext(),
                         word.melisma(), word.confidence()));
             }
         }
@@ -829,6 +830,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             return line;
         }
         List<LyricWord> out = new ArrayList<>(tokens.size());
+        double joinedAfter = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < placed.size(); i++) {
             LyricWord original = tokens.get(i);
             LyricWord timed = placed.get(i);
@@ -837,6 +839,13 @@ final class AnalyzeCommand implements Callable<Integer> {
             // aligner only ever decides when.
             double wordStart = lineStart
                     + (from + timed.startSeconds() - lineStart) * scale;
+            // Syllables of one word are kept in order, and only they. The SPI
+            // promises nothing about the times being monotone, and LyricLine
+            // sorts its words by start -- so two syllables returned the wrong
+            // way round would come back as a misspelt word rather than as two
+            // words out of order. Words are left alone: their order is a
+            // measurement, and overriding it here would hide a real fault.
+            wordStart = Math.max(wordStart, joinedAfter);
             double wordEnd = lineStart
                     + (from + timed.endSeconds() - lineStart) * scale;
             out.add(new LyricWord(original.text(), wordStart,
@@ -844,6 +853,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     java.util.Optional.empty(), java.util.Optional.empty(),
                     original.hyphenatedToNext(), original.melisma(),
                     timed.confidence()));
+            joinedAfter = original.hyphenatedToNext()
+                    ? wordStart : Double.NEGATIVE_INFINITY;
         }
         return new LyricLine(out, weakestOf(out));
     }

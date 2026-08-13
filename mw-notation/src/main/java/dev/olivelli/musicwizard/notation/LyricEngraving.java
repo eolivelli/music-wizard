@@ -257,28 +257,73 @@ final class LyricEngraving {
         long chartEnd = barStart[bars.size()];
         for (LyricLine line : score.lyrics().lines()) {
             Lane lane = lanes.get(laneFor(line.startSeconds(), lanes));
-            for (LyricWord word : line.words()) {
-                List<Hyphenator.Syllable> parts = hyphenator
-                        .map(h -> h.syllables(word.text()))
-                        .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)));
-                // All of a word or none of it -- see fitted. The unsplit word is
-                // tried when the syllables will not fit, and only then is the
-                // word dropped.
-                List<Syllable> placed =
-                        fitted(parts, word, bars, barStart, chartEnd, lane.lastUnit);
-                if (placed.isEmpty() && parts.size() > 1) {
-                    placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
-                            word, bars, barStart, chartEnd, lane.lastUnit);
+            List<LyricWord> words = line.words();
+            int at = 0;
+            while (at < words.size()) {
+                // A run of words joined by hyphens, which is one word on the
+                // page. The list is not always one word to a word: an aligner
+                // that measures syllables hands this each of them separately,
+                // and a lyric may be written with a compound in it. All of a
+                // run or none of it -- see fitted. Half a run is a misspelling,
+                // which reads as a transcription rather than as the omission it
+                // is, and that is the distinction fitted exists to keep.
+                int end = at;
+                while (end + 1 < words.size() && words.get(end).hyphenatedToNext()) {
+                    end++;
                 }
-                if (!placed.isEmpty()) {
-                    lane.add(placed, syllableSeconds(word, placed.size() - 1, placed.size()));
+                List<LyricWord> run = words.subList(at, end + 1);
+                // The unsplit run is tried when the syllables will not fit, and
+                // only then is it dropped.
+                Placed placed = fittedRun(run, hyphenator, true, bars, barStart,
+                        chartEnd, lane.lastUnit);
+                if (placed == null) {
+                    placed = fittedRun(run, hyphenator, false, bars, barStart,
+                            chartEnd, lane.lastUnit);
                 }
+                if (placed != null) {
+                    lane.add(placed.syllables(), placed.sungThrough());
+                }
+                at = end + 1;
             }
         }
         // A lane nothing reached is not engraved: lyrics whose lines follow one
         // another come out the one block they always did.
         return lanes.stream().filter(lane -> !lane.syllables.isEmpty())
                 .map(lane -> lane.syllables).toList();
+    }
+
+    /** A run that fitted: its syllables, and when the last of them is sung. */
+    private record Placed(List<Syllable> syllables, double sungThrough) {
+    }
+
+    /**
+     * One run of hyphen-joined words on the grid, or {@code null} when any part
+     * of it does not fit.
+     *
+     * <p>{@code split} chooses between the hyphenator's syllables and the words
+     * as written, which is what makes the retry above a weaker attempt at the
+     * same run rather than a different one.
+     */
+    private static Placed fittedRun(List<LyricWord> run, Optional<Hyphenator> hyphenator,
+                                    boolean split, List<ChartLayout.Bar> bars,
+                                    long[] barStart, long chartEnd, long previous) {
+        List<Syllable> all = new ArrayList<>();
+        long cursor = previous;
+        double sungThrough = 0;
+        for (LyricWord word : run) {
+            List<Hyphenator.Syllable> parts = split
+                    ? hyphenator.map(h -> h.syllables(word.text()))
+                            .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)))
+                    : List.of(new Hyphenator.Syllable(word.text(), false));
+            List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, cursor);
+            if (placed.isEmpty()) {
+                return null;
+            }
+            all.addAll(placed);
+            cursor = placed.get(placed.size() - 1).unit();
+            sungThrough = syllableSeconds(word, placed.size() - 1, placed.size());
+        }
+        return new Placed(List.copyOf(all), sungThrough);
     }
 
     /**
