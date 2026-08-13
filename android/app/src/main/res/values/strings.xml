@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Music Wizard</string>
-    <string name="record_title">Record</string>
     <string name="library_title">Recordings</string>
 
     <string name="record_idle">Ready. Recordings stay in this app.</string>

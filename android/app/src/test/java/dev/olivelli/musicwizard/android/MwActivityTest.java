@@ -100,6 +100,40 @@ public class MwActivityTest {
     }
 
     /**
+     * The app is called Music Wizard everywhere the phone shows a name.
+     *
+     * <p>Android draws the <em>launcher activity's</em> label on the home screen
+     * and in Recents, not the application's, and it draws a share target's label
+     * in the sheet. So a label on either of those is the name of the app, and
+     * for a while there were three: the launcher said "Record", the share sheet
+     * would have said "Import from YouTube", and everywhere else said "Music
+     * Wizard". Nothing in the code looks wrong when that happens — it is only
+     * visible on a phone.
+     *
+     * <p>An inner screen may still label itself, and Recordings does; that is a
+     * heading, not a name, and it is never what the launcher shows.
+     */
+    @Test
+    public void everyScreenThePhoneNamesTheAppByIsCalledMusicWizard() throws Exception {
+        NodeList activities = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(new File(MANIFEST))
+                .getElementsByTagName("activity");
+
+        for (int i = 0; i < activities.getLength(); i++) {
+            Element activity = (Element) activities.item(i);
+            if (!"true".equals(activity.getAttribute("android:exported"))) {
+                continue;
+            }
+            String label = activity.getAttribute("android:label");
+            assertTrue(activity.getAttribute("android:name")
+                            + " is reachable from outside the app, so its label is what the"
+                            + " phone calls Music Wizard: " + label,
+                    label.isEmpty() || "@string/app_name".equals(label));
+        }
+    }
+
+    /**
      * The share target is exported, and it is the only thing that is.
      *
      * <p>Exported means any app on the phone can start it with any text, which
