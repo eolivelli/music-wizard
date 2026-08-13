@@ -269,6 +269,19 @@ public final class Hyphenator {
     }
 
     /**
+     * Whether {@code text} already ends at a break of its own, so that a hyphen
+     * drawn after it would be a second one — {@code well--known}.
+     *
+     * <p>Here because it is the same question {@link #append} answers about its
+     * own breaks, and per language because which characters are word material
+     * is. Asked from outside because a syllable does not always reach the
+     * engraver from this class.
+     */
+    public boolean endsAtItsOwnBreak(String text) {
+        return !text.isEmpty() && !isWordMaterial(text.charAt(text.length() - 1));
+    }
+
+    /**
      * Adds one run's syllables, carrying whatever separated it from the last.
      *
      * <p>What is not word material rides the syllable beside it, so the pieces

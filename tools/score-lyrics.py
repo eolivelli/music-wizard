@@ -528,10 +528,38 @@ def first_line(report: str, marker: re.Pattern) -> str:
     return ""
 
 
+def rejoined(words: list[dict]) -> list[dict]:
+    """Syllables put back into the words they were split from.
+
+    MW carries a lyric word as the syllables it is sung on once alignment has
+    measured them (#414), because that is what the engraved sheet places. This
+    harness scores words against a lyric file's words, so the two have to be
+    counted the same way: a run joined by `hyphenatedToNext` is one word,
+    taking the first syllable's onset. Scoring the syllables instead would
+    report a substitution and a fistful of insertions for every word MW got
+    exactly right.
+
+    A word that was never split has the flag false and passes through, so this
+    is the identity on lyrics that were not aligned.
+    """
+    out: list[dict] = []
+    for word in words:
+        if out and out[-1].get("hyphenatedToNext"):
+            out[-1] = dict(out[-1],
+                           text=out[-1]["text"] + word["text"],
+                           # The maximum, as LyricLine.endSeconds is: sung spans
+                           # overlap, so the last piece need not end last.
+                           endSeconds=max(out[-1]["endSeconds"], word["endSeconds"]),
+                           hyphenatedToNext=word.get("hyphenatedToNext", False))
+        else:
+            out.append(word)
+    return out
+
+
 def words_of(document: dict, name: str, source: str) -> tuple[list[str], list[float]]:
     """MW's words and their onsets, normalised the same way the truth is."""
     lines = document.get("lyrics", {}).get("lines", [])
-    words = [word for line in lines for word in line["words"]]
+    words = [word for line in lines for word in rejoined(line["words"])]
     if not words and source == "lrc":
         # On the lrc loop the lyrics were an input, so nothing carried means
         # nothing was read. On the asr loop an empty transcription is a

@@ -57,7 +57,9 @@ import java.util.Optional;
  * @param endSeconds        approximate end
  * @param startBeat         beat-snapped start, once decided
  * @param endBeat           beat-snapped end, once decided
- * @param hyphenatedToNext  true when this syllable joins the next one with a hyphen
+ * @param hyphenatedToNext  true when this piece continues into the next one, so
+ *                          the two are one word. Whether a hyphen is drawn
+ *                          between them is decided where it is drawn
  * @param melisma           true when this syllable is sung over more than one note
  * @param confidence        how much the pipeline trusts this word
  */
@@ -194,7 +196,7 @@ public record LyricWord(
                 hyphenatedToNext, melisma, confidence);
     }
 
-    /** Returns a copy that joins the following syllable with a hyphen, or stops doing so. */
+    /** Returns a copy that continues into the following piece, or stops doing so. */
     public LyricWord withHyphenToNext(boolean hyphenated) {
         return new LyricWord(text, startSeconds, endSeconds, startBeat, endBeat,
                 hyphenated, melisma, confidence);
