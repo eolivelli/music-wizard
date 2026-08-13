@@ -23,7 +23,9 @@ import android.os.Build;
 import androidx.core.view.WindowInsetsCompat;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.Test;
 import org.w3c.dom.Document;
@@ -103,36 +105,64 @@ public class MwActivityTest {
     /**
      * The app is called Music Wizard everywhere the phone shows a name.
      *
-     * <p>Three things decide that name and none of them is obvious. The
-     * application's label is the default; the <em>launcher activity's</em> label
-     * overrides it on the home screen and in Recents; and a share target's label
-     * is what the sheet shows. So this reads all three, because a fix that moves
-     * the name from one of them to another has only moved where it can go wrong.
-     *
-     * <p>An inner screen may still label itself, and Recordings does; that is a
-     * heading, not a name, and it is never what the launcher draws.
+     * <p>Nothing about this is visible in a code review — the manifest looks
+     * right and the name is wrong only on a phone — and the number of ways to
+     * get it wrong is the reason this reads a gathered set rather than asking
+     * about each in turn. Writing it the other way missed a declaration site
+     * three times running.
      */
     @Test
     public void everyScreenThePhoneNamesTheAppByIsCalledMusicWizard() throws Exception {
-        Element application = (Element) manifest()
-                .getElementsByTagName("application").item(0);
-        assertEquals("the application label is the name every screen falls back to",
-                "@string/app_name", application.getAttribute("android:label"));
+        // Explicitly, not merely "not overridden": with no application label
+        // the launcher falls all the way through to the class name.
+        assertEquals("the name every other declaration falls back to",
+                "@string/app_name",
+                ((Element) manifest().getElementsByTagName("application").item(0))
+                        .getAttribute("android:label"));
         // And what it resolves to, since the assertion above would pass just as
-        // happily while app_name said something else.
+        // happily while app_name said "Record".
         assertEquals("Music Wizard", appName());
 
-        for (Element entry : exportedEntryPoints()) {
-            String label = entry.getAttribute("android:label");
-            assertTrue(entry.getAttribute("android:name")
-                            + " can be reached from outside the app, so its label is what the"
-                            + " phone calls Music Wizard: " + label,
-                    label.isEmpty() || "@string/app_name".equals(label));
+        for (Map.Entry<String, String> label : nameLabels().entrySet()) {
+            assertTrue(label.getKey() + " decides what the phone calls this app,"
+                            + " and it says: " + label.getValue(),
+                    label.getValue().isEmpty()
+                            || "@string/app_name".equals(label.getValue()));
         }
     }
 
     /**
-     * The share target is exported, and it is the only thing that is.
+     * Every label the phone can draw as this app's name, by where it is declared.
+     *
+     * <p>Four declarations can supply it, and each of the last three was found
+     * only after the previous one was fixed: a component's own label overrides
+     * the application's on the home screen and in the share sheet; an
+     * {@code activity-alias} is a component that {@code getElementsByTagName(
+     * "activity")} does not return; and an {@code intent-filter}'s label
+     * overrides its parent's for exactly the presentation that filter describes
+     * — which is what a launcher entry and a share target are.
+     *
+     * <p>An inner screen may still label itself, and Recordings does. That is a
+     * heading rather than a name, and it is never what the launcher draws, so
+     * only exported components are gathered here.
+     */
+    private Map<String, String> nameLabels() throws Exception {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Element entry : exportedEntryPoints()) {
+            String name = entry.getAttribute("android:name");
+            out.put(name, entry.getAttribute("android:label"));
+            NodeList filters = entry.getElementsByTagName("intent-filter");
+            for (int i = 0; i < filters.getLength(); i++) {
+                out.put(name + " intent-filter " + i,
+                        ((Element) filters.item(i)).getAttribute("android:label"));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The share target is exported, and it is the only thing besides the
+     * launcher that is.
      *
      * <p>Exported means any app on the phone can start it with any text, which
      * is inherent to being a share target. What keeps that safe is that the
@@ -150,13 +180,13 @@ public class MwActivityTest {
     }
 
     /**
-     * Everything another app or the launcher can start, whatever tag declares it.
+     * The exported screens, whatever tag declares them.
      *
-     * <p>{@code activity-alias} is the standard way to put a second entry on the
-     * home screen, and it carries its own label and its own intent filters — so
-     * a test that asked only for {@code activity} elements would watch the front
-     * door while the side door was being fitted. Shared rather than repeated,
-     * because three tests were each making that choice on their own.
+     * <p>Both tags, because {@code activity-alias} is the ordinary way to put a
+     * second entry on the home screen and carries its own label and filters.
+     * Shared by the two tests above so that choice is made once; the
+     * inheritance test keeps its own list on purpose, since an alias declares
+     * no class of its own.
      */
     private List<Element> exportedEntryPoints() throws Exception {
         Document manifest = manifest();
