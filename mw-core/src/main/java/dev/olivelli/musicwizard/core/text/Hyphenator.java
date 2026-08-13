@@ -264,6 +264,10 @@ public final class Hyphenator {
     }
 
     /** Whether this character is part of a word rather than something between two. */
+    private boolean isWordMaterial(char c) {
+        return Character.isLetter(c) || wordCharacters.contains(c);
+    }
+
     /**
      * Whether {@code text} already ends at a break of its own, so that a hyphen
      * drawn after it would be a second one — {@code well--known}.
@@ -275,10 +279,6 @@ public final class Hyphenator {
      */
     public boolean endsAtItsOwnBreak(String text) {
         return !text.isEmpty() && !isWordMaterial(text.charAt(text.length() - 1));
-    }
-
-    private boolean isWordMaterial(char c) {
-        return Character.isLetter(c) || wordCharacters.contains(c);
     }
 
     /**
