@@ -9,11 +9,12 @@ Plain Java, `minSdk` 26, app-private storage, no PDF and no LilyPond.
 
 ## Getting a take off the phone
 
-The app holds no network permission and opens no socket. #291 had added a
-GitHub upload (`INTERNET`, a personal access token, a release asset and an
-inbox-issue comment); it was removed in favour of the share sheet, so the app
-holds no credential — share to a cloud drive and whoever needs the take
-fetches it from there. What the upload also carried, the player's own account
+Nothing the microphone records is ever uploaded, and the app holds no
+credential. #291 had added a GitHub upload (`INTERNET`, a personal access
+token, a release asset and an inbox-issue comment); it was removed in favour of
+the share sheet — share to a cloud drive and whoever needs the take fetches it
+from there. The `INTERNET` permission came back in #415, for one thing only:
+fetching a video the user explicitly shared into the app. What the upload also carried, the player's own account
 of what was played, is typed on the result screen and travels in the bundle
 (#398): written beside the take on leaving the screen, so it is captured while
 it is fresh, which was #291's reason all along.
@@ -77,13 +78,68 @@ Without the flag on the Gradle side, Gradle silently resolves the shared
 branch happened to be built there last. That is the failure the convention
 exists to prevent, and it is silent.
 
+## Importing from YouTube
+
+Share a video from the YouTube app to Music Wizard. The screen states what it
+will fetch and does nothing until you tap **Download**; then the audio is
+fetched, decoded to a take, and opened on the result screen ready to analyse.
+
+Two things about it are worth knowing before relying on it.
+
+**It is marked, and the marking matters.** An imported take gets a
+`<take>.source.txt` beside it, its note is seeded with the link, and the bundle's
+`<take>.info.txt` carries `source: youtube`. That is what tells the desktop it is
+holding commercial audio, which belongs in `uncommitted/` and never in the
+committed corpus — see `docs/phone-to-corpus.md`. A microphone take says
+`source: microphone`, so a missing line means an older version of the app rather
+than a field recording.
+
+**It will stop working.** The fetch uses an InnerTube client that still serves
+plain media URLs; YouTube is progressively enforcing proof-of-origin tokens on
+those. When it goes, the app says the build is out of date rather than blaming
+the network, and `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
+--tests '*InnerTubeLiveTest*' -Dmw.yt.live=true` — is the one check that
+notices, because every other test answers a canned reply.
+
+### Checking it by hand
+
+`AudioImport` drives `MediaExtractor` and `MediaCodec`, which are stubs under
+the JVM tests and have no emulator here, so this list is its only coverage. Run
+it on a device after any change to the import:
+
+1. Any ordinary music video → take appears, named after the video, and analyses.
+   Its WAV header will almost always read 44100: the fetch prefers itag 140
+   precisely because that rate decimates exactly to the analysis rate.
+2. A video with no itag 140, if you can find one → the take is Opus at 48000.
+   That is equally correct — nothing resamples at import — and it is the case
+   the decode path is least exercised on, so it is worth hunting for one.
+3. Not a step yet, and worth knowing why. A take fetched as itag 139 would
+   exercise HE-AAC, whose decoders report their output format twice. But there
+   is no way to ask for that format and no way to tell afterwards: the app
+   records nothing about which one it fetched, and the sample rate does not
+   distinguish it, because HE-AAC is dual-rate and decodes to 44100 exactly
+   like itag 140. Surfacing the itag is #427.
+4. A playlist URL, a channel URL, and a plain text message → three different
+   refusals, **Download** disabled.
+5. Cancel mid-download → back to the confirm screen, nothing in the library,
+   nothing left in the cache.
+6. Airplane mode → a failure that names the network, and **Try again**.
+7. Share a second video while one is downloading → the running one survives.
+8. **Share a second video after the first has finished** → it is fetched, rather
+   than the previous take being reopened.
+9. Back from the import screen → returns to YouTube, leaving MW's own screens
+   where they were.
+10. Long-press the imported take → **Share bundle** → the zip's
+    `<take>.info.txt` says `source: youtube` and carries the link.
+
 ## What the checks are for
 
 `./gradlew test` runs the JVM unit tests: the WAV header, the recordings
 directory, the analysis glue, the background-job lifecycle, the bundle's zip
-layout, and the screen-level facts nothing else checks — among them that the
-manifest asks for no permission beyond the microphone. There are no emulator
-tests.
+layout, the YouTube extractor against captured player responses, and the
+screen-level facts nothing else checks — among them that the manifest asks for
+the microphone and the network and nothing else, and that the share target is
+the only door into the app besides the launcher. There are no emulator tests.
 
 `checkDexedApiLevel` runs after `assembleDebug` and fails the build if the dex
 still calls a JDK method Android does not have at `minSdk`. It exists because

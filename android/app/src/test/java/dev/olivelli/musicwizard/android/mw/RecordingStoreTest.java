@@ -179,6 +179,60 @@ public class RecordingStoreTest {
         assertEquals("slow blues in G", RecordingStore.readNotes(after));
     }
 
+    /**
+     * Renaming carries the provenance, and this is the one that is a licensing
+     * bug rather than a lost convenience.
+     *
+     * <p>A take that arrives under its new name with no {@code .source.txt} is
+     * indistinguishable from one recorded in a room, and the two have different
+     * destinations: {@code docs/phone-to-corpus.md} lets a field recording into
+     * the committed corpus and keeps commercial audio out of it.
+     */
+    @Test
+    public void renamingCarriesTheProvenanceAlong() throws IOException {
+        File wav = new File(store.directory(), "2026-08-01_21-34-05.wav");
+        touch(wav);
+        Recording before = new Recording(wav);
+        RecordingStore.writeSource(before,
+                TakeSource.youtube("https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                        "Some Song", "2026-08-13 18:22").toText());
+
+        Recording after = store.rename(before, "some song");
+        assertFalse(before.sourceFile().isFile());
+        assertTrue(TakeSource.parse(RecordingStore.readSource(after)).isCommercial());
+    }
+
+    /** The clear branch again: a take with no provenance must not inherit one. */
+    @Test
+    public void aTakeWithNoProvenanceDoesNotInheritTheOrphansOnRename() throws IOException {
+        File wav = new File(store.directory(), "field.wav");
+        touch(wav);
+        write(new File(store.directory(), "pantry.source.txt"),
+                TakeSource.youtube("https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                        "Some Song", "when").toText());
+
+        Recording after = store.rename(new Recording(wav), "pantry");
+        assertEquals("", RecordingStore.readSource(after));
+        assertFalse("a field recording inherited another take's provenance",
+                TakeSource.parse(RecordingStore.readSource(after)).isCommercial());
+    }
+
+    @Test
+    public void aProvenanceRoundTripsAndABlankOneDeletesTheFile() throws IOException {
+        File wav = new File(store.directory(), "take.wav");
+        touch(wav);
+        Recording recording = new Recording(wav);
+        assertEquals("", RecordingStore.readSource(recording));
+
+        RecordingStore.writeSource(recording, TakeSource.microphone().toText());
+        assertTrue(recording.sourceFile().isFile());
+        assertEquals(TakeSource.MICROPHONE,
+                TakeSource.parse(RecordingStore.readSource(recording)).kind());
+
+        RecordingStore.writeSource(recording, "");
+        assertFalse(recording.sourceFile().isFile());
+    }
+
     /** A rename onto an existing take is refused rather than silently merging two. */
     @Test
     public void renamingOntoAnExistingTakeIsRefused() throws IOException {
@@ -203,9 +257,11 @@ public class RecordingStoreTest {
         Recording recording = new Recording(wav);
         write(recording.scoreFile(), "{}");
         RecordingStore.writeNotes(recording, "a note");
+        RecordingStore.writeSource(recording, TakeSource.microphone().toText());
 
         store.delete(recording);
         assertFalse(wav.isFile());
+        assertFalse(recording.sourceFile().isFile());
         assertFalse(recording.scoreFile().isFile());
         assertFalse(recording.notesFile().isFile());
     }
