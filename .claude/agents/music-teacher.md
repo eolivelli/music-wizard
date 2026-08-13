@@ -46,9 +46,12 @@ key: Eb major              # <tonic> major|minor
 seed: 3                    # vary it; same seed + same spec = same MIDI bytes
 melody: flute              # optional; 'none' for comping-only packages
 bars:
-Eb Cm Ab Bb                # one token per bar, X-Y a split bar, # comments
+Eb Cm Ab Bb                # one token per bar, X-Y a split bar
 ...
 ```
+
+A `#` opens a comment only at line start or after whitespace — `C#m` is a
+chord, not a comment.
 
 Rules that keep a package worth committing:
 

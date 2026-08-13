@@ -156,6 +156,15 @@ class SyntheticAlignment(unittest.TestCase):
         self.assertEqual(synthetic.sequence_accuracy([{C: 1.0}, {C: 1.0}], want),
                          (1.0, 1.0))
 
+    def test_a_sharp_is_a_chord_not_a_comment_start(self):
+        # SpecParser.java applies the same rule; a fix to one parser that
+        # misses the other corrupts the grid on exactly one side.
+        spec = synthetic.parse_spec_text(
+            "title: sharps\nbars:\nE C#m F#m B  # trailing comment\n")
+        self.assertEqual([len(bar) for bar in spec["bars"]], [1, 1, 1, 1])
+        self.assertEqual(spec["bars"][1], [(1, "MINOR")])
+        self.assertEqual(spec["bars"][3], [(11, "MAJOR")])
+
 
 class Normalisation(unittest.TestCase):
 

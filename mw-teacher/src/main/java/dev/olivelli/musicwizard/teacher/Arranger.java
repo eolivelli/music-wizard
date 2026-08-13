@@ -157,10 +157,9 @@ public final class Arranger {
     private void balladBass(int bar) {
         double start = bar * 4.0;
         ChordSymbol first = chordAt(bar, 0);
-        ChordSymbol second = chordAt(bar, 2);
         bass.note(start, 2, bassRoot(first), humanize(78, 5));
-        if (second != first) {
-            bass.note(start + 2, 2, bassRoot(second), humanize(74, 5));
+        if (spec.bars().get(bar).second() != null) {
+            bass.note(start + 2, 2, bassRoot(chordAt(bar, 2)), humanize(74, 5));
         } else {
             bass.note(start + 2, 2, bassRoot(first) + first.fifthInterval(),
                     humanize(70, 5));
@@ -261,8 +260,9 @@ public final class Arranger {
         int root = bassRoot(chord);
         bass.note(start, 1.5, root, humanize(88, 5));
         bass.note(start + 1.5, 1.0, root, humanize(72, 5));
-        ChordSymbol late = chordAt(bar, 2.5);
-        int pitch = late == chord ? root + chord.fifthInterval() : bassRoot(late);
+        int pitch = spec.bars().get(bar).second() == null
+                ? root + chord.fifthInterval()
+                : bassRoot(chordAt(bar, 2.5));
         bass.note(start + 2.5, 1.5, pitch, humanize(80, 5));
     }
 
@@ -341,7 +341,7 @@ public final class Arranger {
 
     // ---------------------------------------------------------------- helpers
 
-    /** Strums chord tones two ticks apart, the way a pick crosses strings. */
+    /** Spreads a chord's onsets two ticks apart, so the attack is not machine-simultaneous. */
     private void strum(PartBuilder part, double beat, double duration, int[] pitches,
                        int velocity) {
         for (int i = 0; i < pitches.length; i++) {

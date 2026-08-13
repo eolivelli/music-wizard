@@ -63,6 +63,30 @@ class SpecParserTest {
     }
 
     @Test
+    void aSharpIsAChordNotACommentStart() {
+        SampleSpec spec = SpecParser.parse("""
+                title: sharps
+                style: pop-rock
+                tempo: 120
+                key: E major
+                seed: 1
+                bars:
+                E C#m F#m B  # a comment after the grid still comments
+                """);
+        assertThat(spec.bars()).hasSize(4);
+        assertThat(spec.bars().get(1).first().token()).isEqualTo("C#m");
+        assertThat(spec.bars().get(2).first().token()).isEqualTo("F#m");
+        assertThat(spec.keyTonic()).isEqualTo("E");
+    }
+
+    @Test
+    void aSharpKeyHeaderSurvivesItsOwnAccidental() {
+        SampleSpec spec = SpecParser.parse(SPEC.replace("key: C major", "key: F# minor"));
+        assertThat(spec.keyTonic()).isEqualTo("F#");
+        assertThat(spec.sharpsOrFlats()).isEqualTo(3);
+    }
+
+    @Test
     void melodyNoneOmitsTheMelody() {
         SampleSpec spec = SpecParser.parse(SPEC.replace("seed: 7", "seed: 7\nmelody: none"));
         assertThat(spec.melodyProgram()).isNull();

@@ -95,6 +95,13 @@ for name, base in sorted(baseline.items()):
         print(f"SKIP {name}: not measurable here (the row above says how)")
     elif current[name] != base:
         print(f"DIFF {name}\n  baseline: {base}\n  current:  {current[name]}")
+for name, row in sorted(current.items()):
+    if name not in baseline:
+        # The reverse disagreement: the harness printed a row the baseline
+        # never recorded -- a benchmark added without regenerating the
+        # baseline. The synthetic corpus grows a package per music-teacher
+        # run, so this direction is the common one there.
+        print(f"DIFF {name}\n  baseline: (no row recorded)\n  current:  {row}")
 PY
 )
   printf '%s\n' "$diffs"

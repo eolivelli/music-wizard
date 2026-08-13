@@ -19,6 +19,7 @@ Usage:  python3 tools/score-synthetic.py [--jar mw-cli/target/mw.jar]
 """
 
 import argparse
+import re
 import sys
 from importlib import import_module
 from pathlib import Path
@@ -32,11 +33,18 @@ CORPUS = REPO / "synthetic_samples"
 
 def parse_spec(path: Path) -> dict:
     """Headers and the bar grid of a .spec.txt, as this harness needs them."""
+    return parse_spec_text(path.read_text())
+
+
+def parse_spec_text(text: str) -> dict:
     headers: dict = {}
     bars: list = []
     in_grid = False
-    for raw in path.read_text().splitlines():
-        line = raw.split("#")[0].strip()
+    for raw in text.splitlines():
+        # A '#' opens a comment only at line start or after whitespace — the
+        # one inside C#m is an accidental. SpecParser.java applies the same
+        # rule; the two parsers read the same format and must agree on it.
+        line = re.sub(r"(?:^|\s)#.*$", "", raw).strip()
         if not line:
             continue
         if not in_grid:

@@ -34,7 +34,11 @@ import java.util.Map;
  * <p>The format is line-oriented: {@code key: value} headers, then a
  * {@code bars:} line, then the chord grid in the {@code samples/list.txt}
  * shorthand — one token per bar, {@code X-Y} a bar holding both chords,
- * whitespace and line breaks free, {@code #} to end of line a comment.
+ * whitespace and line breaks free. {@code #} starts a comment only at the
+ * start of a line or after whitespace: {@code C#m} is a chord, and a rule
+ * that cut every line at the first {@code #} silently dropped the rest of
+ * any grid line with a sharp in it. {@code tools/score-synthetic.py} parses
+ * this same format and must apply the same rule.
  *
  * <p>Headers: {@code title}, {@code style}, {@code tempo}, {@code key} and
  * {@code seed} are required; {@code genre}, {@code meter} (default 4/4) and
@@ -162,7 +166,13 @@ public final class SpecParser {
     }
 
     private static String stripComment(String line) {
-        int hash = line.indexOf('#');
-        return hash < 0 ? line : line.substring(0, hash);
+        // Only a '#' at line start or after whitespace opens a comment: the
+        // one inside C#m is a chord's accidental, not a comment.
+        for (int i = line.indexOf('#'); i >= 0; i = line.indexOf('#', i + 1)) {
+            if (i == 0 || Character.isWhitespace(line.charAt(i - 1))) {
+                return line.substring(0, i);
+            }
+        }
+        return line;
     }
 }
