@@ -287,7 +287,6 @@ class LyricEngravingTest {
         assertThat(String.join(" ", bars).split("\"la\"", -1)).hasSize(5);
     }
 
-    /** Two lines that overlap: the first ends after the second has begun. */
     @Test
     @DisplayName("a piece that already ends at a break is not given a second hyphen")
     void aWrittenHyphenIsNotDrawnTwice() {

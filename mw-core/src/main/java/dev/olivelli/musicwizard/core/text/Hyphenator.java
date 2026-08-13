@@ -218,23 +218,6 @@ public final class Hyphenator {
      * <p>Nothing else needs a gate. No pattern matches a digit, so {@code 1999}
      * and {@code 24/7} come back whole without being tested for.
      */
-    /**
-     * Whether {@code text} already ends at a break of its own, so that a hyphen
-     * drawn after it would be a second one — {@code well--known}.
-     *
-     * <p>Here because it is the same question {@link #append} answers when it
-     * decides which of its own breaks to mark, and a second answer elsewhere
-     * would be a second definition of what a separator is. It is asked
-     * elsewhere because a syllable does not always reach the engraver from
-     * this class: an aligner that measures syllables hands each over as a word
-     * of its own, and whether to draw a hyphen after one is then a question
-     * about the text rather than about who split it. Per language, because
-     * which characters are word material is.
-     */
-    public boolean endsAtItsOwnBreak(String text) {
-        return !text.isEmpty() && !isWordMaterial(text.charAt(text.length() - 1));
-    }
-
     public List<Syllable> syllables(String word) {
         Objects.requireNonNull(word, "word");
         if (hasInternalStop(word)) {
@@ -281,6 +264,19 @@ public final class Hyphenator {
     }
 
     /** Whether this character is part of a word rather than something between two. */
+    /**
+     * Whether {@code text} already ends at a break of its own, so that a hyphen
+     * drawn after it would be a second one — {@code well--known}.
+     *
+     * <p>Here because it is the same question {@link #append} answers about its
+     * own breaks, and per language because which characters are word material
+     * is. Asked from outside because a syllable does not always reach the
+     * engraver from this class.
+     */
+    public boolean endsAtItsOwnBreak(String text) {
+        return !text.isEmpty() && !isWordMaterial(text.charAt(text.length() - 1));
+    }
+
     private boolean isWordMaterial(char c) {
         return Character.isLetter(c) || wordCharacters.contains(c);
     }

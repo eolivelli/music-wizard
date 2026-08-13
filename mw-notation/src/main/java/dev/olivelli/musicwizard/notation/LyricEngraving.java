@@ -102,7 +102,7 @@ final class LyricEngraving {
         private long lastUnit = Long.MIN_VALUE;
 
         /** The latest of the moments its syllables are sung at. */
-        private double sungThrough = 0;
+        private double sungThrough = Double.NEGATIVE_INFINITY;
 
         /**
          * Adds one word's syllables, the last of them sung at {@code seconds}.
