@@ -1088,26 +1088,23 @@ final class ChartLayout {
      * walk on one side of the music, where the middle of them puts half on each
      * side.
      *
-     * <p><b>A phase is a position on a circle one bar round, and every step
-     * here is taken on that circle.</b> Which is what {@link
-     * Math#IEEEremainder} gives: the distance from one downbeat to the nearest
-     * bar line through another, signed, never more than half a bar. Read as a
-     * line the offsets fail two ways at once, and one extra downbeat in a grid
-     * is enough for both: it leaves every offset after it a whole bar out, which
-     * changes no bar line the caller draws, since it steps the phase by whole
-     * bars anyway -- but a bound then compares two phases that are the same
-     * phase, and a median lands between two clusters a bar apart and so half a
-     * bar from either.
+     * <p><b>A phase is a position on a circle one bar round, and every step here
+     * is taken on that circle.</b> Which is what {@link Math#IEEEremainder}
+     * gives: the distance from one downbeat to the nearest bar line through
+     * another, signed, never more than half a bar. A phase and the same phase a
+     * bar along draw the same chart, since the caller steps the answer by whole
+     * bars, and an extra downbeat anywhere in a grid leaves every offset after
+     * it exactly that far out.
      *
      * <p>Total distance rather than the mean of anything, because a badly placed
      * downbeat is exactly what this has to survive: the answer is a median, and
      * a median on a circle is found by trying the candidates rather than by
      * sorting. The candidates are the downbeats themselves, so the answer is
-     * always a phase some downbeat states, and ties go to the first -- which
-     * makes a grid with no agreement at all keep the downbeat it nominated.
+     * always a phase some downbeat states rather than a value between two, and
+     * ties go to the first.
      *
      * <p>Quadratic in the downbeats. That is a few hundred on a recording of any
-     * length anyone charts, and it buys the whole of the paragraph above.
+     * length anyone charts, and it buys the two paragraphs above.
      *
      * <p><b>It may not move a bar line by more than half a counted beat, and
      * this is the load-bearing half of the method.</b> Past that the line is no

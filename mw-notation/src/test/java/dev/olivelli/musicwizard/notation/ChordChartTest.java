@@ -1021,11 +1021,9 @@ class ChordChartTest {
         // draws the same lines either way. Read as a line rather than as a
         // circle the phase does not survive that, and *where* the extra downbeat
         // falls decides whether it shows -- which is why this sweeps every
-        // placement rather than picking one. Read as a line, two placements
-        // print a different page, for two different reasons: a bound comparing
-        // two phases that are the same phase, and a median landing between two
-        // clusters a bar apart. Both print bars 12 to 15 as "| C G | A | F | % |",
-        // which is the page this test's sibling above is about.
+        // placement rather than picking one. What a placement that shows prints
+        // is the page this test's sibling above is about, bars 12 to 15 as
+        // "| C G | A | F | % |".
         List<String> clean = unreducedBarLines(aGridDriftingAgainstItsOwnRate(-1, -1));
         for (int bar = 0; bar < 16; bar++) {
             for (int position = 1; position < 4; position++) {
@@ -1049,22 +1047,32 @@ class ChordChartTest {
         // On the benchmarks this refuses, measured against a beat lattice combed
         // out of the audio, the agreed phase moves the bar lines away from the
         // music -- so the trade is paid for as well as argued.
+        //
+        // The grid starts at 1.3s and not at zero, so that the answer names the
+        // nominated downbeat rather than agreeing with it by arithmetic: at an
+        // origin of zero every wrong answer this could give reads 0.0 too.
+        double first = 1.3;
         List<BeatGrid.Beat> beats = new ArrayList<>();
-        double at = 0;
+        double at = first;
+        double second = 0;
         for (int bar = 0; bar < 16; bar++) {
+            second = bar == 1 ? at : second;
             for (int position = 0; position < 4; position++) {
                 beats.add(new BeatGrid.Beat(at, position == 0, position));
                 at += position == 3 && bar < 3 ? 0.3 : 0.5;
             }
         }
         List<Chord> chords = List.of(
-                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, 0, 2, Confidence.of(0.9)),
-                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR, 2, 4, Confidence.of(0.9)));
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, first, second,
+                        Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR, second, second + 1.8,
+                        Confidence.of(0.9)));
         Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
                 .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
                 .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
-        assertThat(ChartLayout.unreduced(score).get(0).startSeconds()).isEqualTo(0.0, within(1e-9));
+        assertThat(ChartLayout.unreduced(score).get(0).startSeconds())
+                .isEqualTo(first, within(1e-9));
     }
 
     @Test
