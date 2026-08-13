@@ -43,9 +43,30 @@ public final class ChordChart {
     private ChordChart() {
     }
 
+    /**
+     * A tag per line, or none at all when the caller did not ask for them.
+     *
+     * <p>Off unless asked for, which is #417 and is about the page rather than
+     * about the estimate. A tag is drawn as a letter above the chord names and
+     * read at arm's length as one of them — {@code A} over a bar of {@code A} is
+     * the case that was reported — so a chart handed to somebody to play from is
+     * better without. What the tags claim is unchanged and {@link LineRepeats}
+     * still decides it.
+     */
+    private static List<Optional<String>> tagsOf(List<String> lines, ChartOptions options) {
+        return options.repeatTags() ? LineRepeats.tagsOf(lines)
+                : lines.stream().map(line -> Optional.<String>empty()).toList();
+    }
+
     /** Renders the chart as plain text. */
     public static String toText(Score score) {
+        return toText(score, ChartOptions.defaults());
+    }
+
+    /** The same, with whatever the caller wants annotated over it. */
+    public static String toText(Score score, ChartOptions options) {
         Objects.requireNonNull(score, "score");
+        Objects.requireNonNull(options, "options");
         if (score.chords().isEmpty()) {
             return "(no chords were found)\n";
         }
@@ -54,7 +75,7 @@ public final class ChordChart {
         StringBuilder out = new StringBuilder(header(score, bars));
 
         List<String> lines = linesOf(bars);
-        List<Optional<String>> tags = LineRepeats.tagsOf(lines);
+        List<Optional<String>> tags = tagsOf(lines, options);
         // Only when there is something to read: a legend for a notation the
         // chart does not use is a line of the header spent on nothing. Named
         // in seven characters, like the rows above it.
@@ -260,7 +281,7 @@ public final class ChordChart {
         out.append("}\n\n");
 
         out.append("\\score {\n");
-        List<Optional<String>> tags = LineRepeats.tagsOf(linesOf(bars));
+        List<Optional<String>> tags = tagsOf(linesOf(bars), options);
         boolean tagged = tags.stream().anyMatch(Optional::isPresent);
         // The lyric block is built before anything is written, because whether
         // there is one decides that the score needs a parallel block at all.

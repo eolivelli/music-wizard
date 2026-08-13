@@ -43,7 +43,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * What {@code render --beat-marks} produces, which is #416.
+ * What {@code render --beat-marks} and {@code --repeat-tags} produce, which is
+ * #416 and #417.
  *
  * <p>Here rather than beside the engraving tests because what these hold is the
  * route, not the lane: an option this command accepts, layers into the config,
@@ -54,7 +55,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Everything runs with {@code --no-pdf}: the fast suite must not shell out to
  * LilyPond, and no assertion here is about engraving.
  */
-class RenderBeatMarksTest {
+class RenderChartOptionsTest {
 
     @TempDir
     Path directory;
@@ -62,6 +63,11 @@ class RenderBeatMarksTest {
     /** The marks ride in the chart's only {@code Lyrics} context. */
     private static boolean hasMarks(Path chart) throws IOException {
         return Files.readString(chart).contains("\\lyricmode {");
+    }
+
+    /** The tags ride in the chart's only {@code Dynamics} context. */
+    private static boolean hasTags(Path chart) throws IOException {
+        return Files.readString(chart).contains("\\new Dynamics");
     }
 
     @Test
@@ -85,7 +91,7 @@ class RenderBeatMarksTest {
         // which is the half of #129 that had to be filed twice.
         Path workspace = tracked("song");
         Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
-                new MusicWizardConfig.NotationConfig(null, null, null, null, null, true),
+                new MusicWizardConfig.NotationConfig(null, null, null, null, null, true, null),
                 null, null, null));
 
         CliRunner.Result render = CliRunner.run("render", workspace.toString(), "--no-pdf");
@@ -99,11 +105,11 @@ class RenderBeatMarksTest {
     void theFlagWins() throws IOException {
         Path off = tracked("off");
         Workspace.open(off).updateConfig(new MusicWizardConfig(null, null,
-                new MusicWizardConfig.NotationConfig(null, null, null, null, null, true),
+                new MusicWizardConfig.NotationConfig(null, null, null, null, null, true, null),
                 null, null, null));
         Path on = tracked("on");
         Workspace.open(on).updateConfig(new MusicWizardConfig(null, null,
-                new MusicWizardConfig.NotationConfig(null, null, null, null, null, false),
+                new MusicWizardConfig.NotationConfig(null, null, null, null, null, false, null),
                 null, null, null));
 
         CliRunner.run("render", off.toString(), "--no-beat-marks", "--no-pdf");
@@ -140,10 +146,49 @@ class RenderBeatMarksTest {
         assertThat(render.all()).doesNotContain("beat marks");
     }
 
+    @Test
+    @DisplayName("the repeat tags are off unless asked for, in both outputs")
+    void repeatTagsAreOffUnlessAskedFor() throws IOException {
+        Path plain = tracked("plain-tags");
+        Path tagged = tracked("tagged");
+
+        assertThat(CliRunner.run("render", plain.toString(), "--no-pdf").exitCode()).isZero();
+        assertThat(CliRunner.run("render", tagged.toString(), "--repeat-tags", "--no-pdf")
+                .exitCode()).isZero();
+
+        assertThat(hasTags(plain.resolve("out/chords.ly"))).isFalse();
+        assertThat(Files.readString(plain.resolve("out/chords.txt"))).doesNotContain("Tags");
+        assertThat(hasTags(tagged.resolve("out/chords.ly"))).isTrue();
+        assertThat(Files.readString(tagged.resolve("out/chords.txt"))).contains("Tags");
+    }
+
+    @Test
+    @DisplayName("the tags reach the config layer and the printed copy alike")
+    void repeatTagsReachEveryCopy() throws IOException {
+        // The chart echoed to the terminal is a second call to the renderer and
+        // has disagreed with the file before (#129), so both are asserted.
+        Path workspace = tracked("tags-config");
+        Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
+                new MusicWizardConfig.NotationConfig(null, null, null, null, null, null, true),
+                null, null, null));
+
+        CliRunner.Result render = CliRunner.run("render", workspace.toString(), "--no-pdf");
+
+        assertThat(render.exitCode()).as(render.all()).isZero();
+        assertThat(hasTags(workspace.resolve("out/chords.ly"))).isTrue();
+        assertThat(render.out()).contains("Tags");
+
+        CliRunner.Result off = CliRunner.run(
+                "render", workspace.toString(), "--no-repeat-tags", "--no-pdf");
+
+        assertThat(hasTags(workspace.resolve("out/chords.ly"))).isFalse();
+        assertThat(off.out()).doesNotContain("Tags");
+    }
+
     /** A workspace whose planted score carries a tracked beat grid. */
     private Path tracked(String name) {
         List<Double> beats = new ArrayList<>();
-        for (double at = 0; at < 8.0; at += 0.5) {
+        for (double at = 0; at < 24.0; at += 0.5) {
             beats.add(at);
         }
         return planted(name, Optional.of(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
@@ -172,7 +217,7 @@ class RenderBeatMarksTest {
         CliRunner.Result init = CliRunner.run("init", source.toString(), "-w", root.toString());
         assertThat(init.exitCode()).as(init.all()).isZero();
         Workspace workspace = Workspace.open(root);
-        Score score = Score.empty(TempoMap.constant(120), 8.0).withChords(fourChords());
+        Score score = Score.empty(TempoMap.constant(120), 24.0).withChords(twelveBars());
         if (grid.isPresent()) {
             score = score.withBeatGrid(grid.get());
         }
@@ -180,13 +225,14 @@ class RenderBeatMarksTest {
         return root;
     }
 
-    private static ChordProgression fourChords() {
+    /** Three printings of one four-bar line, so the chart has a line to tag. */
+    private static ChordProgression twelveBars() {
         NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
         List<Chord> chords = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 12; i++) {
             chords.add(Chord.ofSeconds(
-                    new PitchSpelling(roots[i], Accidental.NATURAL, 4),
-                    i == 2 ? ChordQuality.MINOR : ChordQuality.MAJOR,
+                    new PitchSpelling(roots[i % 4], Accidental.NATURAL, 4),
+                    i % 4 == 2 ? ChordQuality.MINOR : ChordQuality.MAJOR,
                     i * 2.0, i * 2.0 + 2.0, Confidence.of(0.9)));
         }
         return new ChordProgression(chords, Confidence.of(0.9));

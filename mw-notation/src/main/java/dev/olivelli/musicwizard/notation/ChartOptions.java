@@ -24,12 +24,13 @@ package dev.olivelli.musicwizard.notation;
  * to play from wants the chords and the words and nothing else, and every
  * annotation costs it a little legibility.
  *
- * @param beatMarks draw the tracked beats under the chords (#416)
+ * @param beatMarks  draw the tracked beats under the chords (#416)
+ * @param repeatTags label the lines the chart prints more than once (#417)
  */
-public record ChartOptions(boolean beatMarks) {
+public record ChartOptions(boolean beatMarks, boolean repeatTags) {
 
     /** A plain chart: the chords, the words on the lyric sheet, nothing over them. */
     public static ChartOptions defaults() {
-        return new ChartOptions(false);
+        return new ChartOptions(false, false);
     }
 }

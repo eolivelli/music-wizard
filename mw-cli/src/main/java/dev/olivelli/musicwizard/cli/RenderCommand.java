@@ -261,6 +261,12 @@ final class RenderCommand implements Callable<Integer> {
                     + "from wants fewer marks than a chart to check (#416).")
     Boolean beatMarks;
 
+    @Option(names = "--repeat-tags", negatable = true,
+            description = "Label the lines the chart prints more than once. Off unless "
+                    + "asked for: a tag is a letter over the chord names and reads as one "
+                    + "of them at arm's length (#417).")
+    Boolean repeatTags;
+
     @Option(names = "--no-pdf", description = "Write sources only; do not invoke LilyPond.")
     boolean noPdf;
 
@@ -321,10 +327,13 @@ final class RenderCommand implements Callable<Integer> {
         // do not sum.
         List<String> warnings = new ArrayList<>(transposed.partsLeftOut());
         boolean chartWritten = false;
+        // Above the block, because the copy printed to the terminal below is a
+        // second call to the chart renderer and has to be given what the file
+        // was given. It has disagreed with the file before (#129).
+        ChartOptions options = chartOptions(config);
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
             Optional<Path> lilypond = announceEngraver(config);
-            ChartOptions options = chartOptions(config);
             // Once, before the parts, rather than per part: the marks are
             // missing from every page for one reason, and saying so twice reads
             // as two problems. A score with no tracked grid has no beat times to
@@ -370,7 +379,7 @@ final class RenderCommand implements Callable<Integer> {
         }
         if (chartWritten) {
             System.out.println();
-            System.out.println(ChordChart.toText(score));
+            System.out.println(ChordChart.toText(score, options));
         }
         return CommandLine.ExitCode.OK;
     }
@@ -450,7 +459,7 @@ final class RenderCommand implements Callable<Integer> {
         try {
             Files.createDirectories(out);
             Path txt = out.resolve("chords.txt");
-            Files.writeString(txt, ChordChart.toText(score));
+            Files.writeString(txt, ChordChart.toText(score, options));
             written.add(txt);
 
             Path ly = out.resolve("chords.ly");
@@ -727,16 +736,17 @@ final class RenderCommand implements Callable<Integer> {
     private static ChartOptions chartOptions(MusicWizardConfig config) {
         var notation = config.notation();
         Boolean marks = notation == null ? null : notation.beatMarks();
-        return new ChartOptions(Boolean.TRUE.equals(marks));
+        Boolean tags = notation == null ? null : notation.repeatTags();
+        return new ChartOptions(Boolean.TRUE.equals(marks), Boolean.TRUE.equals(tags));
     }
 
     private MusicWizardConfig overrides() {
-        if (transpose == null && paperSize == null && beatMarks == null) {
+        if (transpose == null && paperSize == null && beatMarks == null && repeatTags == null) {
             return null;
         }
         return new MusicWizardConfig(null, null,
                 new MusicWizardConfig.NotationConfig(null, paperSize, transpose, null, null,
-                        beatMarks),
+                        beatMarks, repeatTags),
                 null, null, null);
     }
 }

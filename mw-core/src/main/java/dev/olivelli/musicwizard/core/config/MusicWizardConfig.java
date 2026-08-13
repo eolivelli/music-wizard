@@ -79,7 +79,9 @@ public record MusicWizardConfig(
             /* Whether to prefer sharps, flats, or let the key decide. */
             AccidentalPreference accidentalPreference,
             /* Draw the tracked beats under the chords, for checking placement. */
-            Boolean beatMarks) {
+            Boolean beatMarks,
+            /* Label the lines the chart prints more than once. */
+            Boolean repeatTags) {
     }
 
     /** How the piano reduction should be generated. */
@@ -183,7 +185,7 @@ public record MusicWizardConfig(
     public static final MusicWizardConfig DEFAULTS = new MusicWizardConfig(
             CURRENT_SCHEMA_VERSION,
             new AnalysisConfig(null, null, null, false),
-            new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY, false),
+            new NotationConfig(null, "a4", 0, 0, AccidentalPreference.FROM_KEY, false, false),
             new ArrangementConfig(0.5, 4, 9),
             new MlConfig("onnx-spleeter", "onnx-crepe", "sherpa-qwen3",
                     "onnx-wav2vec2", null, null, null, null, false),
@@ -246,7 +248,8 @@ public record MusicWizardConfig(
                 pick(over.transposeSemitones(), base.transposeSemitones()),
                 pick(over.capo(), base.capo()),
                 pick(over.accidentalPreference(), base.accidentalPreference()),
-                pick(over.beatMarks(), base.beatMarks()));
+                pick(over.beatMarks(), base.beatMarks()),
+                pick(over.repeatTags(), base.repeatTags()));
     }
 
     private static ArrangementConfig mergeArrangement(ArrangementConfig base, ArrangementConfig over) {
