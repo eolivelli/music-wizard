@@ -324,8 +324,9 @@ final class RenderCommand implements Callable<Integer> {
         if (!producible.isEmpty()) {
             System.out.println("Output     " + workspace.outputDirectory());
             Optional<Path> lilypond = announceEngraver(config);
+            ChartOptions options = chartOptions(config);
             for (Part part : producible) {
-                Emitted emitted = part.emit(workspace, score, lilypond, chartOptions(config));
+                Emitted emitted = part.emit(workspace, score, lilypond, options);
                 written.addAll(emitted.files());
                 warnings.addAll(emitted.warnings());
                 chartWritten |= part == Part.CHORDS;
