@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -930,6 +931,140 @@ class ChordChartTest {
         assertThat(score.beatGrid()).isEmpty();
         assertThat(ChordChart.barLines(score))
                 .containsExactly("| C           | G           | Am          | F           |");
+    }
+
+    /**
+     * A 4/4 grid at a nominal 120 BPM whose bars 6 and 12 are one detour short.
+     *
+     * <p>The shape #233 is about, in miniature. Every tracked interval that
+     * counts towards the rate is 0.5s, so the chart spaces its bars at exactly
+     * 2.0s; two bars are closed by a 0.3s interval instead, which is outside
+     * {@code BeatGrid}'s steady band and so does not reach the rate. The
+     * recording's downbeats therefore walk 0.4s ahead of any 2.0s grid over
+     * sixteen bars -- one-sidedly, since bar zero starts them in agreement.
+     *
+     * <p>A chord sits on each downbeat, so a chord in the wrong printed bar is a
+     * bar line in the wrong place.
+     *
+     * @param extraBar      mark one more beat a downbeat, in this bar, or -1 for
+     *                      the grid as the tracker would emit it
+     * @param extraPosition which beat of that bar to mark
+     */
+    private static Score aGridDriftingAgainstItsOwnRate(int extraBar, int extraPosition) {
+        double[] downbeats = new double[16];
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        double at = 0;
+        for (int bar = 0; bar < 16; bar++) {
+            downbeats[bar] = at;
+            for (int position = 0; position < 4; position++) {
+                boolean extra = bar == extraBar && position == extraPosition;
+                beats.add(new BeatGrid.Beat(at, position == 0 || extra, extra ? 0 : position));
+                at += position == 3 && (bar == 6 || bar == 12) ? 0.3 : 0.5;
+            }
+        }
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 16; bar++) {
+            chords.add(Chord.ofSeconds(root(roots[bar % 4]), ChordQuality.MAJOR, downbeats[bar],
+                    bar + 1 < 16 ? downbeats[bar + 1] : at, Confidence.of(0.9)));
+        }
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+    }
+
+    @Test
+    @DisplayName("phases the bar lines on every downbeat, not on the first one (#233)")
+    void theBarLinesTakeTheirPhaseFromTheWholeGrid() {
+        Score score = aGridDriftingAgainstItsOwnRate(-1, -1);
+
+        // Sixteen chords, sixteen bars, each chord alone in its own -- which is
+        // where each of them sounds. Anchored on the first downbeat the chart
+        // spent its whole drift budget in one direction and the last three
+        // chords fell a bar early: bars 12 to 15 read "| C G | A | F | % |",
+        // two chords crammed into one bar and the last bar left holding nothing
+        // of its own.
+        assertThat(unreducedBarLines(score)).containsExactly(
+                "| C           | G           | A           | F           |",
+                "| C           | G           | A           | F           |",
+                "| C           | G           | A           | F           |",
+                "| C           | G           | A           | F           |");
+        assertBarsFillTheirMeter(ChordChart.toLilyPond(score));
+
+        // The mechanism under that: the drawn bar lines straddle the recording's
+        // downbeats instead of trailing them.
+        List<Double> drawn = ChartLayout.unreduced(score).stream()
+                .map(ChartLayout.Bar::startSeconds)
+                .toList();
+        List<Double> downbeats = score.beatGrid().orElseThrow().downbeatTimes();
+        assertThat(drawn).hasSize(downbeats.size());
+        double earliest = 0;
+        double latest = 0;
+        for (int bar = 0; bar < drawn.size(); bar++) {
+            double deviation = drawn.get(bar) - downbeats.get(bar);
+            earliest = Math.min(earliest, deviation);
+            latest = Math.max(latest, deviation);
+        }
+        assertThat(earliest).isEqualTo(-0.2, within(1e-9));
+        assertThat(latest).isEqualTo(0.2, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("draws the same chart wherever one more downbeat is marked in the grid")
+    void anExtraDownbeatAnywhereLeavesTheChartAlone() {
+        // One more downbeat adds one candidate to the phase and one term to
+        // every total, and the phase must not flip. Every placement rather than
+        // one, because a placement that survives says nothing about the ones
+        // that do not, and which of them a single-placement test picked would
+        // be arbitrary.
+        List<String> clean = unreducedBarLines(aGridDriftingAgainstItsOwnRate(-1, -1));
+        for (int bar = 0; bar < 16; bar++) {
+            for (int position = 1; position < 4; position++) {
+                assertThat(unreducedBarLines(aGridDriftingAgainstItsOwnRate(bar, position)))
+                        .as("one more downbeat at bar %d, beat %d", bar, position)
+                        .isEqualTo(clean);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("refuses a phase more than half a beat off the downbeat the grid nominates")
+    void aDownbeatSequenceThatWandersOffTheBeatKeepsTheNominatedOne() {
+        // Same shape as the fixture above, drifting for three bars and then
+        // holding, so thirteen of the sixteen downbeats agree on a phase 0.6s --
+        // more than one counted beat -- from where the first one sits. The grid
+        // is stating that its first downbeat is the odd one out, and the chart
+        // still declines to act on it: moving the bar lines that far puts them
+        // on a different beat of the bar, and which beat begins a bar is the
+        // grid's decision and --first-downbeat's rather than the chart's (#83).
+        // On the benchmarks this refuses, measured against a beat lattice combed
+        // out of the audio, the agreed phase moves the bar lines away from the
+        // music -- so the trade is paid for as well as argued.
+        //
+        // The grid starts at 1.3s and not at zero, so the assertion names the
+        // nominated downbeat instead of agreeing with zero.
+        double first = 1.3;
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        double at = first;
+        double second = 0;
+        for (int bar = 0; bar < 16; bar++) {
+            second = bar == 1 ? at : second;
+            for (int position = 0; position < 4; position++) {
+                beats.add(new BeatGrid.Beat(at, position == 0, position));
+                at += position == 3 && bar < 3 ? 0.3 : 0.5;
+            }
+        }
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.C), ChordQuality.MAJOR, first, second,
+                        Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.G), ChordQuality.MAJOR, second, second + 1.8,
+                        Confidence.of(0.9)));
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChartLayout.unreduced(score).get(0).startSeconds())
+                .isEqualTo(first, within(1e-9));
     }
 
     @Test

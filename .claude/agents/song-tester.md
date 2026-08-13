@@ -70,9 +70,9 @@ rendered chart source. Establish:
 - how the dominant progression relates to what the user remembered — same
   chords, transposed, relative-minor confusion, or unrelated;
 - where the chart degrades, if it does (fade-outs, and the chart's bar lines
-  drifting away from the beats they are meant to sit on, #187 and #233, tend to
-  wreck the last bars — #200 was the rate half of that and is fixed, so what is
-  left is the phase and the recording's own unevenness).
+  drifting away from the beats they are meant to sit on, #187, tend to wreck the
+  last bars — #200 was the rate half of that and #233 the phase half, both
+  fixed, so what is left is the recording's own unevenness).
 
 **6. Append the outcome to the `list.txt` entry**, dated, in the style of the
 existing ones: what MW read, what matched the recollection, and the specific
