@@ -947,11 +947,7 @@ class ChordChartTest {
      * bar line in the wrong place.
      *
      * @param extraBar      mark one more beat a downbeat, in this bar, or -1 for
-     *                      the grid as the tracker would emit it. An extra
-     *                      downbeat leaves every offset after it a whole bar out
-     *                      -- which draws the same bar lines, since the caller
-     *                      steps the phase by whole bars, and which a phase read
-     *                      as a line rather than as a circle gets wrong
+     *                      the grid as the tracker would emit it
      * @param extraPosition which beat of that bar to mark
      */
     private static Score aGridDriftingAgainstItsOwnRate(int extraBar, int extraPosition) {
@@ -1016,14 +1012,11 @@ class ChordChartTest {
     @Test
     @DisplayName("draws the same chart wherever one more downbeat is marked in the grid")
     void anExtraDownbeatAnywhereLeavesTheChartAlone() {
-        // An extra downbeat leaves every offset after it a whole bar out, and a
-        // whole bar is nothing: the caller steps the phase by whole bars, so it
-        // draws the same lines either way. Read as a line rather than as a
-        // circle the phase does not survive that, and *where* the extra downbeat
-        // falls decides whether it shows -- which is why this sweeps every
-        // placement rather than picking one. What a placement that shows prints
-        // is the page this test's sibling above is about, bars 12 to 15 as
-        // "| C G | A | F | % |".
+        // One more downbeat adds one candidate to the phase and one term to
+        // every total, and the phase must not flip. Every placement rather than
+        // one, because a placement that survives says nothing about the ones
+        // that do not, and which of them a single-placement test picked would
+        // be arbitrary.
         List<String> clean = unreducedBarLines(aGridDriftingAgainstItsOwnRate(-1, -1));
         for (int bar = 0; bar < 16; bar++) {
             for (int position = 1; position < 4; position++) {
