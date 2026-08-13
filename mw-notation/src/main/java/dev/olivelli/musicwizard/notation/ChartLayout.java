@@ -197,8 +197,8 @@ final class ChartLayout {
      * Where a position on the chart's quarter-beat axis falls in the recording.
      *
      * <p>Supplied by whichever route built the chart, because only it knows the
-     * origin the axis is counted from and how the two units relate — a constant
-     * quarter length on the seconds route, the tempo map on the beat route. It is
+     * origin the axis is counted from and how the two units relate — the bar
+     * axis on the seconds route, the tempo map on the beat route. It is
      * read here and nowhere else: what leaves this class is each bar's own two
      * ends, so a consumer placing a moment against these bars never has to
      * rebuild an origin or a rate, which is the defect #103 and #150 are both
@@ -330,28 +330,24 @@ final class ChartLayout {
         double grid = chartGrid(chords, quarterSeconds, meter);
         double origin = firstBarStart(score, meter.quarterBeatsPerBar() * quarterSeconds,
                 grid * quarterSeconds / 2);
+        // The grid above measures the closest two chord changes in quarters
+        // by the stated rate, and the positions below are taken from the bar
+        // axis. On a followed chart a bar runs up to a quarter longer than
+        // the stated one, so the same pair of chords spans more quarters on
+        // the axis than the grid was chosen for -- enough to cross a rung of
+        // the ladder. Re-read on the axis, so the grid and the positions are
+        // measured on the same ruler.
 
-        // Seconds and quarters are converted through the bar axis the tracker
-        // heard, not by dividing by one mean quarter (#187). One constant bar
-        // length accumulates every wander a recording has instead of
-        // following it: on the first recording a reader checked unaided, the
-        // printed bar line was 0.74 s early by bar 9 and worse later, so the
-        // words read one or two syllables late against bar lines that were
-        // themselves early.
-        //
-        // The axis is built from DOWNBEATS, and time inside a bar is
-        // proportional. Following the tracker's individual beats instead
-        // would import its per-beat jitter into every chord position, which
-        // on material that really does hold one tempo splits chords across
-        // bar lines that the constant rate placed cleanly -- measured, and
-        // the reason this is a bar-level axis rather than a beat-level one.
-        //
-        // With no downbeats to read, or a grid too short to give two, the
-        // constant rate is what is left and the arithmetic below reduces to
-        // the multiplication it replaces -- as it does for a MIDI import or
-        // a typed tempo, whose charts are unmoved.
+        // Seconds and quarters are converted through the bar axis the
+        // tracker heard, not by dividing by one mean quarter (#187). One
+        // constant bar length accumulates every wander a recording has
+        // instead of following it, and the words then read late against bar
+        // lines that are early. BarAxis carries when that applies and when
+        // the constant rate is what is left -- including a MIDI import or a
+        // typed tempo, whose charts are unmoved.
         BarAxis axis = BarAxis.of(score, origin,
                 meter.quarterBeatsPerBar() * quarterSeconds, quarterSeconds);
+        grid = chartGridOnAxis(chords, axis, meter);
 
         double[] starts = new double[chords.size()];
         double lastEnd = 0;
@@ -531,6 +527,26 @@ final class ChartLayout {
                     (chords.get(i).startSeconds() - chords.get(i - 1).startSeconds())
                             / quarterSeconds);
         }
+        return gridFor(closest, meter);
+    }
+
+    /**
+     * The same measurement taken on the bar axis rather than at the stated
+     * rate — the ruler the positions are actually snapped on.
+     */
+    private static double chartGridOnAxis(List<Chord> chords, BarAxis axis,
+                                          TimeSignature meter) {
+        double closest = Double.MAX_VALUE;
+        for (int i = 1; i < chords.size(); i++) {
+            closest = Math.min(closest,
+                    axis.quartersAt(chords.get(i).startSeconds())
+                            - axis.quartersAt(chords.get(i - 1).startSeconds()));
+        }
+        return gridFor(closest, meter);
+    }
+
+    /** The finest grid rung no closer than the closest pair of changes. */
+    private static double gridFor(double closest, TimeSignature meter) {
         double finest = LilyPondDuration.SHORTEST_QUARTERS;
         for (double grid = COARSEST_GRID_BEATS * meter.beatUnitQuarters();
                 grid > finest; grid /= 2) {
@@ -781,8 +797,9 @@ final class ChartLayout {
      * diff whenever it moves. That is a better home for that column than a
      * javadoc that has to be edited every time the corpus grows.
      *
-     * <p>The whole of that difference is one constant bar length drifting
-     * against a recording that does not keep one -- #187 and #233 -- and
+     * <p>Much of that difference was one constant bar length drifting against
+     * a recording that does not keep one -- #187, now followed where the
+     * recording has bars of its own, and #233 -- and
      * it says nothing about how fast the harmony moves. So the signal such a gate
      * would read is mostly the chart's own grid error: it would decline to reduce
      * a substantial minority of perfectly ordinary bars, which is where the
@@ -1071,12 +1088,11 @@ final class ChartLayout {
      * parameter rather than something derived here, because the only value that
      * keeps the invariant is one this method cannot see.
      *
-     * <p>Exactly one downbeat is read. Everything after the first bar line is
-     * spaced at {@link Score#estimatedTempo()}, so the grid supplies a phase and
-     * the tempo supplies a rate; on a recording that drifts the later bar lines
-     * drift with it. That is #187, and it is a real limit rather than an
-     * oversight: the chart is headed with a tempo and its bars have to be
-     * countable at that tempo, which is what
+     * <p>Exactly one downbeat is read <em>here</em>, and it is the chart's
+     * phase: where the bar lines after it fall is {@link BarAxis}'s to say.
+     * The two are kept apart because the phase has to be chosen before any
+     * axis exists, and because a chart headed with a tempo must have bars
+     * countable at that tempo whichever axis carries them — which is what
      * {@code ChordChartTest.headerAndBarsCannotDisagree} holds.
      */
     private static double firstBarStart(Score score, double barSeconds, double toleranceSeconds) {

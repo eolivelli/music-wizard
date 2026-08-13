@@ -16,48 +16,41 @@
 
 package dev.olivelli.musicwizard.notation;
 
-import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Where the chart's bar lines fall in the recording, and back.
  *
- * <p>A chart hung on one downbeat plus one constant bar length cannot follow a
- * recording that does not hold one (#187). The wander is small bar to bar —
- * this recording's bars ran between 1.92 s and 2.26 s around a mean of 2.05 s
- * — and it accumulates: by bar 9 the printed line was 0.74 s early, about a
- * beat and a half, and a reader saw the words sitting one or two syllables
- * late against it.
+ * <p>A chart hung on one downbeat plus one constant bar length cannot follow
+ * a recording that does not hold one (#187). The wander is small bar to bar
+ * and it accumulates: on the recording that motivated this the printed bar
+ * line ran most of a beat early by the ninth bar and further later, and with
+ * the words at their measured times a reader saw them sitting a syllable or
+ * two late against bar lines that were themselves early.
  *
  * <p>So the axis is anchored on the tracked downbeats, and time inside a bar
- * is proportional to that bar's own length — but only on a recording whose
- * bars are actually its own. Measured over the benchmark corpus, a
- * machine-timed backing track's bar length is the same to within a fifth of
- * a percent, half the bars over; a band playing to no click varies by a
- * percent and a half. On the first kind there is nothing to follow and the
- * tracker's scatter is all error, so following it splits chords across bar
- * lines a constant rate placed cleanly — measured, seven points of root
- * accuracy on one benchmark. On the second the wander is the recording, and
- * not following it puts the bar line nearly a second early by the ninth bar.
+ * is proportional to that bar's own length. It is not anchored on every
+ * tracked <em>beat</em>: that imports the tracker's per-beat jitter into
+ * every chord position, and on material that holds one tempo it splits
+ * chords across bar lines the constant rate placed cleanly — a benchmark
+ * lost most of twenty points of root accuracy that way.
  *
- * <p>{@link #WANDER} is the line between them, read robustly so a handful of
- * dropped or doubled downbeats cannot make a metronome look human. Under it
- * this class is the constant rate it replaced, exactly. Over it, each
- * downbeat is kept when it lands within {@link #TOLERANCE} of where the bar
- * before predicts, and replaced by that prediction when it does not — so
- * small wander is followed and one gross miss costs one bar rather than
- * shifting every bar after it.
+ * <p><b>Following is not always right, and what decides it here is weaker
+ * than it looks.</b> A recording whose tempo is fixed has nothing of its own
+ * to follow, so the tracker's scatter is all error and following it makes
+ * the chart worse. {@link #WANDER} is the guard, and swept over the corpus
+ * the two populations it means to separate overlap: a backing track can
+ * scatter more than a band does, and the measure is quantised to whole onset
+ * frames, so on a fast recording the decision can turn on a frame or two.
+ * It keeps most fixed-tempo material on the constant path and that is all it
+ * claims. What makes a wrong answer survivable is the rest of the class: a
+ * dropped or doubled downbeat costs its own bar rather than the ones after
+ * it, and a bar the stated tempo disagrees with reverts to the stated
+ * length, so the axis cannot walk away from the recording.
  *
- * <p>It is not anchored on every tracked <em>beat</em> either: that imports
- * the tracker's per-beat jitter into every chord position, which the same
- * benchmark measured as worse still.
- *
- * <p>Outside the tracked downbeats — before the first, after the last, or when
- * there are none — the constant rate is what is left, and the conversions
- * reduce to multiplying and dividing by it. That is also the whole of a MIDI
- * import or a typed tempo, so those charts are unmoved.
  */
 final class BarAxis {
 
@@ -75,14 +68,11 @@ final class BarAxis {
      * recording to be taken as having bars of its own, as a fraction of the
      * bar.
      *
-     * <p>Measured over the corpus: machine-timed backing tracks sit between
-     * a sixth and three quarters of a percent, and the band recording that
-     * motivated this sits at one and a half. One percent is the line, and it
-     * is not an order of magnitude clear of either side -- the closest
-     * backing track is within a factor of two -- so the failure it is set to
-     * prefer is the safe one. A recording wrongly called machine-timed keeps
-     * the chart it has today; one wrongly followed gets a worse chart than
-     * it had.
+     * <p>One percent, and it is a rough guard rather than a line between two
+     * separable things: measured across the corpus, fixed-tempo backing
+     * tracks and live recordings both land on either side of it. Beat times
+     * are quantised to the onset hop, so this compares a small whole number
+     * of frames and the nearest other answer is one frame away.
      *
      * <p>The measure is the typical change from bar to bar, not the typical
      * distance from the average bar, because the second cannot see a
@@ -112,8 +102,8 @@ final class BarAxis {
      * bars have no measurement, so they keep the constant length. From the
      * first tracked downbeat on, each bar is the span the tracker heard.
      *
-     * <p>A downbeat is only taken while its bar is close to the stated one.
-     * The band is deliberately narrow -- a fifth either way -- because two
+     * <p>A downbeat is only taken while its bar is close to the stated one:
+     * a fifth shorter to a quarter longer. The band is narrow because two
      * different things would otherwise walk through it. A tracker that drops
      * or doubles a downbeat gives half or twice the bar, and honouring that
      * stretches a printed bar to swallow a neighbour. And a corrected tempo
@@ -145,7 +135,15 @@ final class BarAxis {
                 }
                 double length = downbeat - previous;
                 if (length < barSeconds * 0.8 || length > barSeconds * 1.25) {
-                    break;
+                    // This bar is not one: the tracker and the stated tempo
+                    // disagree about it. Only this bar reverts to the stated
+                    // length -- ending the axis here instead would change the
+                    // derivation of every later bar line on the strength of
+                    // one, and on one recording measured that decision hung
+                    // on six onset frames at three minutes in.
+                    bounds.add(previous + barSeconds);
+                    previous = bounds.get(bounds.size() - 1);
+                    continue;
                 }
                 bounds.add(downbeat);
                 previous = downbeat;
@@ -169,8 +167,8 @@ final class BarAxis {
      * accepted downbeat becomes the next prediction's base, a recording that
      * genuinely speeds up is followed rather than corrected back.
      *
-     * <p>Fewer than three downbeats give no median worth the name and are
-     * returned untouched; the plausibility band in {@link #of} still applies.
+     * <p>Fewer than four downbeats give no median successive difference worth
+     * the name, and are discarded: the constant rate is the honest answer.
      */
     private static List<Double> deglitched(List<Double> downbeats) {
         int n = downbeats.size();
@@ -183,11 +181,8 @@ final class BarAxis {
         for (int i = 1; i < n; i++) {
             gaps.add(downbeats.get(i) - downbeats.get(i - 1));
         }
-        java.util.Collections.sort(gaps);
+        Collections.sort(gaps);
         double typical = gaps.get(gaps.size() / 2);
-        if (!(typical > 0)) {
-            return downbeats;
-        }
         // How much a bar typically differs from the one before it. A median
         // rather than a spread, so the dropped and doubled downbeats that
         // every tracker produces cannot make a metronome look like a band.
@@ -196,7 +191,7 @@ final class BarAxis {
             changes.add(Math.abs((downbeats.get(i) - downbeats.get(i - 1))
                     - (downbeats.get(i - 1) - downbeats.get(i - 2))));
         }
-        java.util.Collections.sort(changes);
+        Collections.sort(changes);
         if (changes.get(changes.size() / 2) <= WANDER * typical) {
             // Machine-timed: it has no bars of its own to follow.
             return List.of();
@@ -204,10 +199,33 @@ final class BarAxis {
         List<Double> out = new ArrayList<>(n);
         out.add(downbeats.get(0));
         for (int i = 1; i < n; i++) {
-            double predicted = out.get(i - 1) + typical;
-            double measured = downbeats.get(i);
-            out.add(Math.abs(measured - predicted) <= TOLERANCE * typical
-                    ? measured : predicted);
+            double predicted = out.get(out.size() - 1) + typical;
+            double error = downbeats.get(i) - predicted;
+            if (Math.abs(error) <= TOLERANCE * typical) {
+                out.add(downbeats.get(i));
+            } else if (error < 0) {
+                // Too early to be the next bar: the tracker heard a downbeat
+                // that is not one. Dropped rather than substituted, because
+                // substituting would give this bar a boundary the recording
+                // does not have and push every later bar one along.
+                continue;
+            } else {
+                // Too late: a downbeat the tracker missed. The prediction
+                // stands in for the bar that has none, and this measurement
+                // is offered again to the bar after it -- so a miss costs its
+                // own bar. Without the re-offer the chain runs open loop:
+                // every later measurement is a whole bar from a prediction
+                // that no longer knows where the recording is, so every one
+                // is substituted and the axis ends further from the recording
+                // than the constant rate it replaced.
+                out.add(predicted);
+                if (out.size() > n * 2) {
+                    // A gap so long that filling it is guesswork. Whatever
+                    // follows is not this recording's bar line.
+                    break;
+                }
+                i--;
+            }
         }
         return out;
     }

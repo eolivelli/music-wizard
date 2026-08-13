@@ -97,13 +97,18 @@ class BarAxisTest {
     @Test
     @DisplayName("one dropped downbeat costs its own bar, not every bar after it")
     void oneGrossMissDoesNotShiftTheRest() {
-        // A wandering recording with a doubled bar in the middle: the tracker
-        // missed a downbeat. The bars after it must stay where they were, not
-        // slide by a whole bar.
+        // A wandering recording with one downbeat removed. Asserting only
+        // that the axis stays monotone would pass on an axis that had given
+        // up and gone constant -- which is what an earlier version did, ten
+        // bars adrift by the end. So the bar lines are compared against the
+        // times the fixture actually laid down.
+        double[] lengths = {BAR * 0.95, BAR * 1.08};
+        List<Double> truth = new ArrayList<>();
         List<Double> beats = new ArrayList<>();
         double at = 0;
         for (int bar = 0; bar < 24; bar++) {
-            double length = bar == 10 ? BAR * 2 : BAR * (bar % 2 == 0 ? 0.95 : 1.08);
+            truth.add(at);
+            double length = lengths[bar % lengths.length];
             if (bar != 10) {
                 for (int beat = 0; beat < 4; beat++) {
                     beats.add(at + beat * length / 4);
@@ -116,13 +121,50 @@ class BarAxisTest {
                         Confidence.of(0.9)));
         BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
 
-        // Monotone throughout, and no bar swallowed a neighbour.
-        double previous = axis.secondsAt(0);
-        for (int bar = 1; bar <= 20; bar++) {
-            double now = axis.secondsAt(bar * 4.0);
-            assertThat(now).isGreaterThan(previous);
-            assertThat(now - previous).isLessThan(BAR * 1.6);
-            previous = now;
+        // Every bar after the missing one is still where the recording put
+        // it, to well inside a beat.
+        for (int bar = 12; bar <= 20; bar++) {
+            assertThat(axis.secondsAt(bar * 4.0))
+                    .as("bar %d", bar)
+                    .isCloseTo(truth.get(bar), within(QUARTER / 2));
+        }
+    }
+
+    @Test
+    @DisplayName("a downbeat the tracker invented is dropped, not honoured")
+    void aSpuriousDownbeatIsDropped() {
+        // An extra downbeat halfway through bar 10. Honouring it would give
+        // that bar a line the recording does not have and push every later
+        // bar one along.
+        double[] lengths = {BAR * 0.95, BAR * 1.08};
+        List<Double> truth = new ArrayList<>();
+        List<Double> beats = new ArrayList<>();
+        double at = 0;
+        for (int bar = 0; bar < 24; bar++) {
+            truth.add(at);
+            double length = lengths[bar % lengths.length];
+            for (int beat = 0; beat < 4; beat++) {
+                beats.add(at + beat * length / 4);
+            }
+            if (bar == 10) {
+                // Four extra beats offset from the four above, so the grid
+                // gains a whole spurious bar without repeating a time.
+                for (int beat = 0; beat < 4; beat++) {
+                    beats.add(at + length / 8 + beat * length / 4);
+                }
+            }
+            at += length;
+        }
+        java.util.Collections.sort(beats);
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
+                        Confidence.of(0.9)));
+        BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
+
+        for (int bar = 12; bar <= 20; bar++) {
+            assertThat(axis.secondsAt(bar * 4.0))
+                    .as("bar %d", bar)
+                    .isCloseTo(truth.get(bar), within(QUARTER));
         }
     }
 
