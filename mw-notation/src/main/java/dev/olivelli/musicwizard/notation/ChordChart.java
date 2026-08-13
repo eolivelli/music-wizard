@@ -19,7 +19,9 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,10 +98,50 @@ public final class ChordChart {
             out.append('\n');
         }
         TimeSignature meter = countedIn(score, bars);
-        out.append(tempoLine(score, meter));
-        out.append("Meter  ").append(meter).append('\n');
+        out.append(tempoLine(score, meter, bars));
+        out.append("Meter  ").append(meter).append(more(meterChanges(bars))).append('\n');
         score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
         return out.toString();
+    }
+
+    /**
+     * How many times the chart's own bars change meter.
+     *
+     * <p>Read off the bars rather than off {@link TempoMap#meterChanges}, which
+     * is the piece's: a chart beginning after a change, or ending before one,
+     * must not report it. That is the same rule {@link #countedIn} applies to
+     * the meter it names, and it is #191 -- the header stated one meter where
+     * the engraving of the same score restates {@code \time} wherever a change
+     * falls, so the two disagreed with no cue in the text that anything had
+     * changed.
+     */
+    private static int meterChanges(List<ChartLayout.Bar> bars) {
+        int changes = 0;
+        for (int i = 1; i < bars.size(); i++) {
+            changes += bars.get(i).meterChanged() ? 1 : 0;
+        }
+        return changes;
+    }
+
+    /**
+     * What a header row adds when the value it names does not hold throughout.
+     *
+     * <p>Worded as {@code AnalyzeCommand}'s declared block words it, deliberately
+     * and by hand: {@code mw-notation} cannot depend on {@code mw-cli}, and a
+     * reader holding the chart beside the analysis summary should not find one
+     * piece of news reported in two idioms.
+     *
+     * <p>A count rather than a list of the changes and where they fall. The list
+     * is what a reader would rather have and it grows without bound on a piece
+     * that changes often, which is why #191 offered it as one option of three;
+     * the page already carries every meter change at the bar it falls on, so
+     * what the text chart owes the reader is that there is more to know.
+     */
+    private static String more(int changes) {
+        return changes == 0
+                ? ""
+                : " at the start, changed " + changes + (changes == 1 ? " time" : " times")
+                        + " later";
     }
 
     /**
@@ -113,8 +155,8 @@ public final class ChordChart {
      * review found that on the text chart; it is answered here rather than
      * there because the engraving now needs the same answer, and a second copy
      * of the rule is a second chance for the two charts of one score to be
-     * counted differently. The header still names one meter where a chart can
-     * hold several, which is #191.
+     * counted differently. A chart holding several meters says so beside this
+     * one; see {@link #meterChanges}.
      */
     private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
         return bars.isEmpty()
@@ -129,9 +171,48 @@ public final class ChordChart {
      * {@code Meter 6/8} line that makes it look authoritative, that is a
      * metronome marking 50% fast, because a 6/8 bar is counted in dotted
      * quarters. Identical in every x/4 meter, where the two coincide.
+     *
+     * <p><b>A piece that states more than one tempo is headed with the one it
+     * opens on, and told that it changes.</b> That is #66. {@link
+     * Score#estimatedTempo()} answers such a map with a duration-weighted
+     * average, which a MIDI import stating 120 and then 60 makes an 80 the file
+     * never plays -- under a bar grid that honours both, since the beat route
+     * lays those bars out on the map. Only a <em>stated</em> tempo counts, which
+     * is what {@link Provenance#isStated()} says: a tracked map carries one
+     * segment per beat, none of which anybody asserted, and counting those would
+     * head every chart taken from audio with several hundred changes.
+     *
+     * <p>Where nothing changes the row is what it always was, and that is not
+     * the same as the opening segment. A supplied {@code --tempo} builds a
+     * lead-in segment carrying a rate nobody asked for, and the accessor knows
+     * to answer with the correction instead.
      */
-    private static String tempoLine(Score score, TimeSignature meter) {
-        double quarterBpm = score.estimatedTempo();
+    private static String tempoLine(Score score, TimeSignature meter,
+                                    List<ChartLayout.Bar> bars) {
+        TempoMap map = score.tempoMap();
+        double opens = bars.isEmpty() ? 0 : bars.get(0).startSeconds();
+        double opening = map.segmentAtSeconds(opens).beatsPerMinute();
+        int changes = 0;
+        double previous = opening;
+        for (TempoMap.TempoSegment segment : map.segments()) {
+            // At or before the chart's first bar line is the chart's opening
+            // tempo, not a change within it -- the same rule the meter row
+            // applies by reading the chart's own bars.
+            if (!segment.provenance().isStated() || segment.startSeconds() <= opens) {
+                continue;
+            }
+            if (segment.beatsPerMinute() != previous) {
+                changes++;
+                previous = segment.beatsPerMinute();
+            }
+        }
+        return changes == 0
+                ? "Tempo  " + tempo(score.estimatedTempo(), meter) + "\n"
+                : "Tempo  " + tempo(opening, meter) + more(changes) + "\n";
+    }
+
+    /** One tempo, in the beat {@code meter} is counted in. */
+    private static String tempo(double quarterBpm, TimeSignature meter) {
         // Locale.ROOT, because this number is meant to be typed back in via
         // --tempo and picocli parses it with Double.valueOf. What a default
         // locale changes here is the digits and not the separator: %.0f prints
@@ -142,9 +223,9 @@ public final class ChordChart {
         // the sentence had been carried across to a formatter that cannot
         // reach it.
         if (meter.beatUnitQuarters() == 1.0) {
-            return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
+            return String.format(Locale.ROOT, "%.0f BPM", quarterBpm);
         }
-        return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
+        return String.format(Locale.ROOT, "%.0f BPM (%.0f quarter notes/min)",
                 meter.countedTempo(quarterBpm), quarterBpm);
     }
 
