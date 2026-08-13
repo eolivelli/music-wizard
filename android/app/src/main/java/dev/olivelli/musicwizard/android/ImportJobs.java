@@ -18,10 +18,12 @@ package dev.olivelli.musicwizard.android;
 
 import android.os.Handler;
 import android.os.Looper;
+import dev.olivelli.musicwizard.android.mw.ImportLog;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.yt.ExtractionException;
 import dev.olivelli.musicwizard.android.yt.Fetch;
+import dev.olivelli.musicwizard.android.yt.InnerTube;
 import dev.olivelli.musicwizard.android.yt.UrlConnectionHttp;
 import java.io.File;
 import java.io.IOException;
@@ -114,8 +116,29 @@ final class ImportJobs {
             return new Result(wav, null, false);
         }
 
+        /**
+         * Scrubbed here, once, because this string has three readers and two of
+         * them are the screen.
+         *
+         * <p>A transport failure carries what the transport chose to say, and
+         * Android's connect message names both endpoints — {@code from
+         * /<address>} is the phone's own, globally routable on mobile data — while
+         * a refused redirect carries the whole signed URL. Redacting it for the
+         * log and showing it raw underneath would be the property backwards: the
+         * panel exists to be sent, and so does a screenshot.
+         */
+        /**
+         * A failure always has a message, because a null one is not a failure.
+         *
+         * <p>{@code finish} routes on {@code cancelled}, then on {@code failure
+         * != null}, and otherwise calls {@code onFinished} — so a null here is
+         * read as success, with a null take behind it. Substituting a sentence
+         * keeps the routing honest whatever a caller hands over.
+         */
         static Result failed(String failure) {
-            return new Result(null, failure, false);
+            String message = failure == null || failure.trim().isEmpty()
+                    ? "the import failed" : ImportLog.scrub(failure);
+            return new Result(null, message, false);
         }
 
         static Result cancelled() {
@@ -155,6 +178,15 @@ final class ImportJobs {
     private final Fetcher fetcher;
     private final Decoder decoder;
 
+    /**
+     * What the last import did, for a screen to show and a user to send on.
+     *
+     * <p>Kept on the singleton rather than in the result, because it is as much
+     * use after a success that produced a silent take as after a failure, and
+     * because the screen that reads it is often not the one that started it.
+     */
+    private final ImportLog log;
+
     private boolean running;
     private String progressLine = "";
     private int progressPercent = -1;
@@ -163,17 +195,28 @@ final class ImportJobs {
     private AtomicBoolean cancelled = new AtomicBoolean(false);
 
     ImportJobs(Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
+        this(new ImportLog(), dispatcher, fetcher, decoder);
+    }
+
+    ImportJobs(ImportLog log, Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
+        this.log = log;
         this.dispatcher = dispatcher;
         this.fetcher = fetcher;
         this.decoder = decoder;
+    }
+
+    /** What the last import did. Never null; empty before the first one. */
+    ImportLog log() {
+        return log;
     }
 
     /** The single instance. Main thread only. */
     static ImportJobs get() {
         if (instance == null) {
             Handler main = new Handler(Looper.getMainLooper());
-            Fetch fetch = new Fetch(new UrlConnectionHttp());
-            instance = new ImportJobs(main::post,
+            ImportLog log = new ImportLog();
+            Fetch fetch = new Fetch(new UrlConnectionHttp(), log::add);
+            instance = new ImportJobs(log, main::post,
                     (text, directory, progress, stop) -> fetch.run(text, directory,
                             (done, total) -> progress.onProgress(
                                     total > 0 ? done / (double) total : -1),
@@ -255,6 +298,8 @@ final class ImportJobs {
         File container = null;
         File decoded = null;
         try {
+            log.clear();
+            log.add("import started, asking as " + InnerTube.clientDescription());
             prune(cacheDirectory);
             if (cacheDirectory.getUsableSpace() < MIN_FREE_BYTES) {
                 throw new IOException("there is not enough free space on this phone");
@@ -287,6 +332,14 @@ final class ImportJobs {
         } finally {
             deleteQuietly(container);
             deleteQuietly(decoded);
+        }
+
+        if (result.cancelled) {
+            log.add("cancelled");
+        } else if (result.failure != null) {
+            log.add("failed: " + result.failure);
+        } else {
+            log.add("done");
         }
 
         Result outcome = result;
