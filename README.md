@@ -180,8 +180,8 @@ ml:
 
 What reaches the pipeline is `analysis`, `ml` — provider and model selection
 for separation, transcription and alignment — plus `notation.lilypondPath`,
-`notation.transposeSemitones` and `notation.beatMarks`. Providers configure themselves from the
-global file ([#383][i383]), so `ml.asrModelDirectory` and
+`notation.transposeSemitones` and `notation.beatMarks`. Providers configure
+themselves from the global file ([#383][i383]), so `ml.asrModelDirectory` and
 `ml.alignmentModelDirectory` are read from there only,
 and `analyze` says so when a workspace tries to override it. Several notation
 keys that reach nothing draw a warning rather than silence; `arrangement`

@@ -339,11 +339,13 @@ public final class ChordChart {
             out.append("    \\bar \"|.\"\n");
         }
         out.append("  }\n");
-        // After the chord names, not before: the staff affinities of the three
-        // contexts must not increase read top to bottom, and this one points
-        // down like the two above it.
-        // Between the chords and the words, which is the order a reader compares
-        // them in, and below both for the affinity reason above.
+        // After the chord names, not before: read top to bottom the staff
+        // affinities must not increase, and every lane here points DOWN as the
+        // chord names do. Equal affinities do not increase, which is what makes
+        // any number of these legal under the chords.
+        //
+        // The marks before the words, which is the order a reader compares them
+        // in: the chords, then where the beats fell, then what was sung.
         beats.ifPresent(out::append);
         lyrics.ifPresent(out::append);
         if (parallel) {

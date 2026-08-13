@@ -325,6 +325,18 @@ final class RenderCommand implements Callable<Integer> {
             System.out.println("Output     " + workspace.outputDirectory());
             Optional<Path> lilypond = announceEngraver(config);
             ChartOptions options = chartOptions(config);
+            // Once, before the parts, rather than per part: the marks are
+            // missing from every page for one reason, and saying so twice reads
+            // as two problems. A score with no tracked grid has no beat times to
+            // draw from, and every other output is intact -- so this is a
+            // warning beside the files rather than a refusal, under the rule the
+            // javadoc of warnAboutOptionsThatDoNothing states: a setting the run
+            // discards in silence is a confident wrong answer.
+            if (options.beatMarks() && score.beatGrid().isEmpty()) {
+                warnings.add("no beat marks were drawn: the marks are tracked beat times and"
+                        + " this score has none, which is the case for every score read from"
+                        + " a MIDI file, where the beats are declared rather than heard");
+            }
             for (Part part : producible) {
                 Emitted emitted = part.emit(workspace, score, lilypond, options);
                 written.addAll(emitted.files());

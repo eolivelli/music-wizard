@@ -80,11 +80,17 @@ final class BeatMarks {
      * Every tracked beat the chart has room for, in order and strictly
      * increasing on the grid.
      *
-     * <p>A beat outside the bars is left out rather than clamped onto the first
-     * or last of them: the chart spans the harmony and the grid spans the
-     * recording, so a lead-in and a fade both fall outside, and a clamped mark
-     * would pile marks onto one moment and read as a beat that was tracked
-     * there.
+     * <p>A beat before the first bar is left out rather than clamped onto it.
+     * The chart spans the harmony and the grid spans the recording, so a
+     * recording that vamps before the first chord hands this a run of beats with
+     * no bar to fall in; {@link ChartGrid#unitOf} would clamp every one of them
+     * onto the chart's first unit, and the nudge below would then spread them a
+     * grid step apart — marks reading as beats that were tracked there.
+     *
+     * <p>Past the last bar needs no such guard, and does not have one: the same
+     * clamp puts those beats on the chart's end, which the loop below is already
+     * stopping at. A second test of the same fact would be one that could not
+     * fail.
      *
      * <p>Two beats can still round onto one unit, the grid being finer than any
      * tracker but not infinitely fine. The second is nudged one unit along
@@ -95,12 +101,11 @@ final class BeatMarks {
     private static List<Mark> placed(BeatGrid grid, List<ChartLayout.Bar> bars,
                                      long[] barStart) {
         double from = bars.get(0).startSeconds();
-        double to = bars.get(bars.size() - 1).endSeconds();
         long chartEnd = barStart[bars.size()];
         List<Mark> marks = new ArrayList<>();
         long cursor = barStart[0] - 1;
         for (BeatGrid.Beat beat : grid.beats()) {
-            if (beat.seconds() < from || beat.seconds() >= to) {
+            if (beat.seconds() < from) {
                 continue;
             }
             long unit = Math.max(ChartGrid.unitOf(beat.seconds(), bars, barStart), cursor + 1);

@@ -178,19 +178,43 @@ class BeatMarksTest {
     }
 
     @Test
-    @DisplayName("a beat past the end of the chart is left out rather than piled on the last bar")
-    void beatsOutsideTheChartAreDropped() {
-        Score score = tracked(2, 0.5);
-        List<String> shortChart = lanes(ChordChart.toLilyPond(score, MARKED)).get(0);
+    @DisplayName("beats before the first bar are left out rather than piled onto it")
+    void beatsBeforeTheChartAreDropped() {
+        // A recording that plays for a while before the first chord: the grid
+        // runs from the top and the chart begins where the harmony does, so
+        // twenty beats have no bar to fall in. Clamped instead of dropped they
+        // would land on the chart's first unit and be spread a grid step apart
+        // by the nudge, which reads as twenty beats tracked in the first bar.
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    10.0 + i * 2.0, 12.0 + i * 2.0, Confidence.of(0.9)));
+        }
+        Score chart = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 20.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
 
-        // The same grid under a chart of one bar: the four beats of the second
-        // bar have nowhere to go, and must not land on the first bar's last unit.
-        Score cropped = chart(1).withBeatGrid(score.beatGrid().orElseThrow());
-        List<String> oneBar = lanes(ChordChart.toLilyPond(cropped, MARKED)).get(0);
+        // The page a grid running from the top produces, against the page the
+        // same grid produces with its lead-in beats never recorded. Dropping
+        // them has to be the same thing as not having had them; clamping is what
+        // makes the two differ, and it puts the whole lead-in in the first bar.
+        List<String> withLeadIn = lanes(ChordChart.toLilyPond(
+                chart.withBeatGrid(pulse(0.0, 18.0, 0.5)), MARKED)).get(0);
+        List<String> without = lanes(ChordChart.toLilyPond(
+                chart.withBeatGrid(pulse(10.0, 18.0, 0.5)), MARKED)).get(0);
 
-        assertThat(shortChart).hasSize(2);
-        assertThat(oneBar).hasSize(1);
-        assertThat(marksIn(oneBar.get(0))).hasSize(4);
+        assertThat(withLeadIn).isEqualTo(without);
+        assertThat(withLeadIn).allSatisfy(bar ->
+                assertThat(marksIn(bar)).as("%s", bar).hasSize(4));
+    }
+
+    /** A phased 4/4 grid pulsing every {@code every} seconds over {@code [from, to)}. */
+    private static BeatGrid pulse(double from, double to, double every) {
+        List<Double> beats = new ArrayList<>();
+        for (double at = from; at < to; at += every) {
+            beats.add(at);
+        }
+        return BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR, Confidence.of(0.9));
     }
 
     @Test
