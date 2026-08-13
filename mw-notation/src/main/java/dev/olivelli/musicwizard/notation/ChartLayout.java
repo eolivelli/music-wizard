@@ -1074,30 +1074,40 @@ final class ChartLayout {
     }
 
     /**
-     * Where within the beat the grid nominates the bar lines sit: the offset the
-     * grid's downbeats agree on, modulo one bar.
+     * The downbeat the rest of the grid agrees with best: the one whose bar
+     * lines, drawn every {@code barSeconds}, leave the smallest total distance
+     * to every other downbeat.
      *
-     * <p>The chart used to take that from the grid's <em>first</em> downbeat,
-     * which is #233. Two things are wrong with it and the second is the larger.
-     * It is one sample of the phase, and the one the tracker placed with the
-     * least evidence, since a lead-in is over before the groove starts. And
-     * wherever the rate the bars are spaced at differs at all from the one the
-     * recording holds, the downbeats walk one way from whichever line the phase
-     * is pinned to -- so pinning it on the first puts the whole of that walk on
-     * one side of the music, where the middle of them puts half on each side.
+     * <p>The chart used to take its phase from the grid's <em>first</em>
+     * downbeat, which is #233. Two things are wrong with that and the second is
+     * the larger. It is one sample of the phase, and the one the tracker placed
+     * with the least evidence, since a lead-in is over before the groove starts.
+     * And wherever the rate the bars are spaced at differs at all from the one
+     * the recording holds, the downbeats walk one way from whichever line the
+     * phase is pinned to -- so pinning it on the first puts the whole of that
+     * walk on one side of the music, where the middle of them puts half on each
+     * side.
      *
-     * <p>The median rather than the mean, because a badly placed downbeat is
-     * exactly what this has to survive.
+     * <p><b>A phase is a position on a circle one bar round, and every step
+     * here is taken on that circle.</b> Which is what {@link
+     * Math#IEEEremainder} gives: the distance from one downbeat to the nearest
+     * bar line through another, signed, never more than half a bar. Read as a
+     * line the offsets fail two ways at once, and one extra downbeat in a grid
+     * is enough for both: it leaves every offset after it a whole bar out, which
+     * changes no bar line the caller draws, since it steps the phase by whole
+     * bars anyway -- but a bound then compares two phases that are the same
+     * phase, and a median lands between two clusters a bar apart and so half a
+     * bar from either.
      *
-     * <p>Offsets are unwrapped by counting bars from one downbeat to the next
-     * rather than by rounding each against the first, so a recording whose
-     * downbeats wander more than half a bar over its length does not fold its
-     * late bars onto its early ones. {@code Math.max(1, ...)} keeps that count
-     * strictly increasing across two downbeats closer together than half a bar,
-     * so that every offset is right to within a whole number of bars -- which is
-     * all any of them has to be, since the caller steps the answer by whole bars
-     * anyway. The tracker does not produce such a pair, marking every counted
-     * beat of the bar; a grid read back from a workspace can carry one.
+     * <p>Total distance rather than the mean of anything, because a badly placed
+     * downbeat is exactly what this has to survive: the answer is a median, and
+     * a median on a circle is found by trying the candidates rather than by
+     * sorting. The candidates are the downbeats themselves, so the answer is
+     * always a phase some downbeat states, and ties go to the first -- which
+     * makes a grid with no agreement at all keep the downbeat it nominated.
+     *
+     * <p>Quadratic in the downbeats. That is a few hundred on a recording of any
+     * length anyone charts, and it buys the whole of the paragraph above.
      *
      * <p><b>It may not move a bar line by more than half a counted beat, and
      * this is the load-bearing half of the method.</b> Past that the line is no
@@ -1106,20 +1116,13 @@ final class ChartLayout {
      * --first-downbeat} is how it is corrected, which is #83. So a fit that far
      * out is refused rather than clamped, and the nominated downbeat stands.
      *
-     * <p>The comparison is <em>modulo one bar</em>, because that is the only
-     * thing the caller reads: a phase and the same phase a bar along give the
-     * same chart. Comparing the two absolutely instead let one whole-bar step of
-     * the unwrap above -- which is a no-op downstream -- discard the fit whole
-     * and put the chart back on the first downbeat, which is the defect this
-     * closes. Round 1 of review found that and built the grid that reaches it.
-     *
      * <p>What the bound refuses is not a corner. A supplied {@code --tempo}
      * moves the chart's bar off the grid's own, and the grid's downbeats then
      * sit at every phase in turn, which is what {@code
      * ChordChartTest.headerAndBarsCannotDisagree} charts. On real recordings it
-     * refuses a grid whose downbeats have walked more than half a beat against
-     * their own steady rate -- and there, measured against a beat lattice combed
-     * out of the audio with no tracker in it, taking the median moves the drawn
+     * refuses a grid whose downbeats settle more than half a beat from where its
+     * first one sits -- and there, measured against a beat lattice combed out of
+     * the audio with no tracker in it, taking the agreed phase moves the drawn
      * bar lines away from the music rather than towards it. Which rows those are
      * is in {@code tools/baselines/score-chart.txt}, as the rows this PR did not
      * move.
@@ -1129,20 +1132,24 @@ final class ChartLayout {
      * from the middle rather than one way from the start.
      */
     private static double barPhase(List<Double> downbeats, double barSeconds, double beatSeconds) {
-        double[] offsets = new double[downbeats.size()];
-        offsets[0] = downbeats.get(0);
-        for (int i = 1; i < offsets.length; i++) {
-            double gap = downbeats.get(i) - downbeats.get(i - 1);
-            offsets[i] = offsets[i - 1] + gap - Math.max(1, Math.rint(gap / barSeconds)) * barSeconds;
+        double nominated = downbeats.get(0);
+        double[] around = new double[downbeats.size()];
+        for (int i = 0; i < around.length; i++) {
+            around[i] = Math.IEEEremainder(downbeats.get(i) - nominated, barSeconds);
         }
-        double nominated = offsets[0];
-        java.util.Arrays.sort(offsets);
-        int middle = offsets.length / 2;
-        double agreed = offsets.length % 2 == 1
-                ? offsets[middle]
-                : (offsets[middle - 1] + offsets[middle]) / 2.0;
-        double moved = Math.IEEEremainder(agreed - nominated, barSeconds);
-        return Math.abs(moved) <= beatSeconds / 2 ? agreed : nominated;
+        double agreed = 0;
+        double least = Double.POSITIVE_INFINITY;
+        for (double candidate : around) {
+            double total = 0;
+            for (double other : around) {
+                total += Math.abs(Math.IEEEremainder(other - candidate, barSeconds));
+            }
+            if (total < least) {
+                least = total;
+                agreed = candidate;
+            }
+        }
+        return Math.abs(agreed) <= beatSeconds / 2 ? nominated + agreed : nominated;
     }
 
     /**

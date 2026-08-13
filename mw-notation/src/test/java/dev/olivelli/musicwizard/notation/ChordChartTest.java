@@ -946,21 +946,22 @@ class ChordChartTest {
      * <p>A chord sits on each downbeat, so a chord in the wrong printed bar is a
      * bar line in the wrong place.
      *
-     * @param spurious mark the third beat of bar 2 a downbeat as well, half a bar
-     *                 after the one before it. The tracker cannot emit that,
-     *                 marking every counted beat of the bar, but a grid read back
-     *                 from a workspace can carry it -- and it is the input that
-     *                 makes the offsets a whole bar out from there on, which the
-     *                 phase is allowed to be and its bound was not
+     * @param extraBar      mark one more beat a downbeat, in this bar, or -1 for
+     *                      the grid as the tracker would emit it. An extra
+     *                      downbeat leaves every offset after it a whole bar out
+     *                      -- which draws the same bar lines, since the caller
+     *                      steps the phase by whole bars, and which a phase read
+     *                      as a line rather than as a circle gets wrong
+     * @param extraPosition which beat of that bar to mark
      */
-    private static Score aGridDriftingAgainstItsOwnRate(boolean spurious) {
+    private static Score aGridDriftingAgainstItsOwnRate(int extraBar, int extraPosition) {
         double[] downbeats = new double[16];
         List<BeatGrid.Beat> beats = new ArrayList<>();
         double at = 0;
         for (int bar = 0; bar < 16; bar++) {
             downbeats[bar] = at;
             for (int position = 0; position < 4; position++) {
-                boolean extra = spurious && bar == 2 && position == 2;
+                boolean extra = bar == extraBar && position == extraPosition;
                 beats.add(new BeatGrid.Beat(at, position == 0 || extra, extra ? 0 : position));
                 at += position == 3 && (bar == 6 || bar == 12) ? 0.3 : 0.5;
             }
@@ -979,7 +980,7 @@ class ChordChartTest {
     @Test
     @DisplayName("phases the bar lines on every downbeat, not on the first one (#233)")
     void theBarLinesTakeTheirPhaseFromTheWholeGrid() {
-        Score score = aGridDriftingAgainstItsOwnRate(false);
+        Score score = aGridDriftingAgainstItsOwnRate(-1, -1);
 
         // Sixteen chords, sixteen bars, each chord alone in its own -- which is
         // where each of them sounds. Anchored on the first downbeat the chart
@@ -1013,37 +1014,47 @@ class ChordChartTest {
     }
 
     @Test
-    @DisplayName("reads the phase through a whole-bar step in the offsets, as its caller does")
-    void oneDownbeatHalfABarAfterAnotherDoesNotDiscardThePhase() {
-        // A downbeat half a bar after the one before it leaves every offset from
-        // there on a whole bar out. That is allowed -- the caller steps the phase
-        // by whole bars anyway, so a phase and the same phase a bar along draw
-        // the same chart -- but the bound on how far the fit may move a bar line
-        // was comparing the two absolutely. It therefore refused a fit that had
-        // moved nothing, and one extra downbeat put the chart back on the first
-        // one: bars 12 to 15 printed "| C G | A | F | % |" again. Round 1 of
-        // review built this grid.
-        assertThat(unreducedBarLines(aGridDriftingAgainstItsOwnRate(true)))
-                .isEqualTo(unreducedBarLines(aGridDriftingAgainstItsOwnRate(false)));
+    @DisplayName("draws the same chart wherever one more downbeat is marked in the grid")
+    void anExtraDownbeatAnywhereLeavesTheChartAlone() {
+        // An extra downbeat leaves every offset after it a whole bar out, and a
+        // whole bar is nothing: the caller steps the phase by whole bars, so it
+        // draws the same lines either way. Read as a line rather than as a
+        // circle the phase does not survive that, and *where* the extra downbeat
+        // falls decides whether it shows -- which is why this sweeps every
+        // placement rather than picking one. Read as a line, two placements
+        // print a different page, for two different reasons: a bound comparing
+        // two phases that are the same phase, and a median landing between two
+        // clusters a bar apart. Both print bars 12 to 15 as "| C G | A | F | % |",
+        // which is the page this test's sibling above is about.
+        List<String> clean = unreducedBarLines(aGridDriftingAgainstItsOwnRate(-1, -1));
+        for (int bar = 0; bar < 16; bar++) {
+            for (int position = 1; position < 4; position++) {
+                assertThat(unreducedBarLines(aGridDriftingAgainstItsOwnRate(bar, position)))
+                        .as("one more downbeat at bar %d, beat %d", bar, position)
+                        .isEqualTo(clean);
+            }
+        }
     }
 
     @Test
     @DisplayName("refuses a phase more than half a beat off the downbeat the grid nominates")
     void aDownbeatSequenceThatWandersOffTheBeatKeepsTheNominatedOne() {
-        // Same shape as the fixture above, with the detours multiplied until the
-        // grid's downbeats have walked more than half a counted beat from the
-        // line its first one draws. Moving the bar lines that far would put them
-        // on a different beat of the bar, which is the grid's decision and
-        // --first-downbeat's rather than the chart's (#83) -- so the fit is
-        // refused whole and the first downbeat stands. On the benchmarks it
-        // refuses, measured against a beat lattice combed out of the audio, the
-        // fit moves the bar lines away from the music.
+        // Same shape as the fixture above, drifting for three bars and then
+        // holding, so thirteen of the sixteen downbeats agree on a phase 0.6s --
+        // more than one counted beat -- from where the first one sits. The grid
+        // is stating that its first downbeat is the odd one out, and the chart
+        // still declines to act on it: moving the bar lines that far puts them
+        // on a different beat of the bar, and which beat begins a bar is the
+        // grid's decision and --first-downbeat's rather than the chart's (#83).
+        // On the benchmarks this refuses, measured against a beat lattice combed
+        // out of the audio, the agreed phase moves the bar lines away from the
+        // music -- so the trade is paid for as well as argued.
         List<BeatGrid.Beat> beats = new ArrayList<>();
         double at = 0;
         for (int bar = 0; bar < 16; bar++) {
             for (int position = 0; position < 4; position++) {
                 beats.add(new BeatGrid.Beat(at, position == 0, position));
-                at += position == 3 && bar % 2 == 0 ? 0.3 : 0.5;
+                at += position == 3 && bar < 3 ? 0.3 : 0.5;
             }
         }
         List<Chord> chords = List.of(
