@@ -41,9 +41,9 @@ import java.util.Map;
  *
  * <p>The model emits per-frame character posteriors; {@link CtcAligner} walks
  * the known text through them. Everything acoustic is the model's problem and
- * everything textual is handled here: uppercase, accents folded to their base
- * letter (the English vocabulary has none), anything else outside the
- * vocabulary dropped. A word left with no expressible characters still comes
+ * everything textual is handled here, spelled against the checkpoint's own
+ * alphabet — see {@code tokensOf} — with anything it cannot express dropped.
+ * A word left with no expressible characters still comes
  * back — zero-length at its predecessor's end, confidence zero — because the
  * contract is one result per input word, and a silent omission would shift
  * every later word one slot.
@@ -60,7 +60,7 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
     private final String modelDirectory;
 
     /**
-     * The session, built once and held for the provider's lifetime.
+     * The session for the model in use, held until the model changes.
      *
      * <p>analyze calls {@link #align} once per lyric line, and rebuilding a
      * session per line pays the model load per line. The CLI process ends when
@@ -302,11 +302,8 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
 
     /**
      * A word as vocabulary indices, normalised the way the checkpoint's own
-     * alphabet asks: cased to match it, and accents kept where it spells
-     * them. An accented vowel folded away would delete the nucleus of most
-     * Italian syllables, and an unfolded one would be dropped outright by
-     * the English alphabet, which spells none — so the vocabulary decides,
-     * not the language tag.
+     * alphabet asks: cased to match it, and accents kept where it spells them.
+     * The vocabulary decides, not the language tag.
      */
     private static int[] tokensOf(String word, Wav2Vec2Models.Checkpoint checkpoint) {
         String text = Normalizer.normalize(word, Normalizer.Form.NFC);
@@ -419,13 +416,11 @@ public final class Wav2Vec2AlignmentProvider implements AlignmentProvider {
                 // A session that will not close is one this process is done
                 // with either way; the new model is what the caller needs.
             }
-            // Before the create, not after: a create that throws would
-            // otherwise leave the field naming the session just closed, and
-            // the next request for that path would be handed it. What escapes
-            // then is an IllegalStateException from a closed session rather
-            // than the OrtException this class converts into
-            // ModelUnavailableException, so a whole run degrades line by line
-            // with no reason printed.
+            // Between the close and the create: a create that throws would
+            // otherwise leave the field naming the closed session, and the
+            // next request for that path would be handed it -- as an
+            // IllegalStateException, which is not the OrtException this class
+            // converts into ModelUnavailableException.
             session = null;
             sessionPath = null;
         }
