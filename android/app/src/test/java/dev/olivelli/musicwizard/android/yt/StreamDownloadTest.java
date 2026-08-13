@@ -445,14 +445,26 @@ public class StreamDownloadTest {
         assertEquals("https://other.example.invalid/v", http.requests.get(2).url());
     }
 
+    /**
+     * A format with no declared length is refused without touching anything.
+     *
+     * <p>The file it was handed has to survive intact, and that is the half worth
+     * asserting: "no request was made" was already true when the guard sat after
+     * the file had been opened — and opening it truncates.
+     */
     @Test
-    public void aFormatWithNoLengthIsRefusedBeforeAnyRequest() throws Exception {
+    public void aFormatWithNoLengthIsRefusedBeforeAnythingIsTouched() throws Exception {
         FakeHttp http = new FakeHttp();
         File target = folder.newFile("nolength.m4a");
+        byte[] existing = bytes(512, 37);
+        Files.write(target.toPath(), existing);
 
         assertThrows(IOException.class, () -> downloader(http)
                 .to(target, streamOf(0), ignoringProgress(), NEVER_CANCELLED));
+
         assertTrue(http.requests.isEmpty());
+        assertArrayEquals("the target was opened before the format was refused",
+                existing, Files.readAllBytes(target.toPath()));
     }
 
     @Test

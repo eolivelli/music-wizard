@@ -150,10 +150,11 @@ public final class InnerTube {
         }
 
         if ("LOGIN_REQUIRED".equals(status)) {
-            // Leaving with a session that was just refused would spend a
-            // guaranteed wasted round trip on the next video before
-            // rediscovering the same thing. It costs nothing to start clean:
-            // a bare call is how a session is found in the first place.
+            // Leaving with a session that has just been refused would open the
+            // next video by sending it again. Starting clean is not free -- a
+            // bare call is itself usually refused -- but it is the same one
+            // round trip either way, and this way the refusal is the one that
+            // carries a new session rather than one that cannot.
             visitorData = null;
         }
 

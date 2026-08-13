@@ -317,9 +317,9 @@ public final class StreamDownload {
     /**
      * Checks that a 206 is answering the range that was asked for.
      *
-     * <p>Those bytes would be written where the asked-for ones belong. The header
-     * is advisory — its absence is not treated as a failure — but when it is
-     * there it is believed.
+     * <p>A reply that starts somewhere else would be written where the asked-for
+     * bytes belong. The header is advisory — its absence is not treated as a
+     * failure — but when it is there it is believed.
      */
     private static void verifyRange(String contentRange, long from) throws IOException {
         if (contentRange == null || contentRange.isEmpty()) {

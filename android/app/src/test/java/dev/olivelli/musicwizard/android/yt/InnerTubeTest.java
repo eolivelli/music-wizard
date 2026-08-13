@@ -157,10 +157,14 @@ public class InnerTubeTest {
     /**
      * An offered session is never cached until something has proved it.
      *
-     * <p>The script matters as much as the assertion: the retry has to be
-     * refused too. If it succeeds, the offered value ends up cached either way
-     * and the test passes against the very defect it is named for — which is
-     * what an earlier version of it did.
+     * <p>The script is the whole test, and it is not the obvious one. Any script
+     * that ends by <em>returning</em> from a refusal proves nothing: the clear on
+     * the way out nulls the cache whether or not the offer was written to it
+     * first, so an unproved-caching bug passes. What discriminates is a retry
+     * that never answers at all — the {@code IOException} leaves through the
+     * middle of the loop, past that clear, and whatever was cached is still
+     * cached. A connection dropped mid-bootstrap is an ordinary thing on a
+     * phone.
      */
     @Test
     public void anUnprovedOfferIsNeverCached() throws Exception {
@@ -171,20 +175,50 @@ public class InnerTubeTest {
                 // A session is bootstrapped and proved.
                 .reply(200, FakeHttp.fixture("player-login-required.json"))
                 .reply(200, FakeHttp.fixture("player-ok.json"))
-                // The next video is refused, and offers POISON.
+                // The next video is refused and offers POISON.
                 .reply(200, poison)
-                // POISON is tried, and refused as well — so nothing proved it.
-                .reply(200, poison)
-                .reply(200, poison);
+                // The retry carrying POISON never arrives.
+                .fail(new IOException("connection reset"));
+
+        InnerTube tube = new InnerTube(http);
+        tube.resolve(VIDEO);
+        String proved = tube.visitorData();
+        assertNotNull(proved);
+
+        assertThrows(IOException.class, () -> tube.resolve("9bZkp7q19f0"));
+
+        assertEquals("POISON was cached before anything proved it", proved,
+                tube.visitorData());
+    }
+
+    /**
+     * A session that was just refused is not carried into the next video.
+     *
+     * <p>Reached when every refusal offers a value not seen before, so the
+     * echo path — which clears the cache as a side effect — is never taken and
+     * the loop leaves through its attempt bound instead. Without the clear on
+     * the way out, the next call would open by sending a session it has already
+     * watched fail.
+     */
+    @Test
+    public void aSessionThatWasRefusedIsNotKept() throws Exception {
+        FakeHttp http = new FakeHttp()
+                .reply(200, FakeHttp.fixture("player-login-required.json"))
+                .reply(200, FakeHttp.fixture("player-ok.json"));
 
         InnerTube tube = new InnerTube(http);
         tube.resolve(VIDEO);
         assertNotNull(tube.visitorData());
 
-        assertThrows(ExtractionException.class, () -> tube.resolve("9bZkp7q19f0"));
+        // Every refusal offers something new, so nothing echoes.
+        for (String offer : new String[] {"A", "B", "C"}) {
+            http.reply(200, FakeHttp.fixture("player-login-required.json")
+                    .replace("CgtGQUtFVklTSVRPUiIDEgAqAA%3D%3D", offer));
+        }
 
-        assertNotEquals("an unproved value was cached", "POISON", tube.visitorData());
-        assertNull("a session that was just refused is still held", tube.visitorData());
+        assertThrows(ExtractionException.class, () -> tube.resolve("9bZkp7q19f0"));
+        assertNull("a refused session was carried into the next video",
+                tube.visitorData());
     }
 
     /**
