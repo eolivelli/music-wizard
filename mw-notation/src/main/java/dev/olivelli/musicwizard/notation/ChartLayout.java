@@ -331,15 +331,36 @@ final class ChartLayout {
         double origin = firstBarStart(score, meter.quarterBeatsPerBar() * quarterSeconds,
                 grid * quarterSeconds / 2);
 
+        // Seconds and quarters are converted through the bar axis the tracker
+        // heard, not by dividing by one mean quarter (#187). One constant bar
+        // length accumulates every wander a recording has instead of
+        // following it: on the first recording a reader checked unaided, the
+        // printed bar line was 0.74 s early by bar 9 and worse later, so the
+        // words read one or two syllables late against bar lines that were
+        // themselves early.
+        //
+        // The axis is built from DOWNBEATS, and time inside a bar is
+        // proportional. Following the tracker's individual beats instead
+        // would import its per-beat jitter into every chord position, which
+        // on material that really does hold one tempo splits chords across
+        // bar lines that the constant rate placed cleanly -- measured, and
+        // the reason this is a bar-level axis rather than a beat-level one.
+        //
+        // With no downbeats to read, or a grid too short to give two, the
+        // constant rate is what is left and the arithmetic below reduces to
+        // the multiplication it replaces -- as it does for a MIDI import or
+        // a typed tempo, whose charts are unmoved.
+        BarAxis axis = BarAxis.of(score, origin,
+                meter.quarterBeatsPerBar() * quarterSeconds, quarterSeconds);
+
         double[] starts = new double[chords.size()];
         double lastEnd = 0;
         for (int i = 0; i < chords.size(); i++) {
-            starts[i] = snap((chords.get(i).startSeconds() - origin) / quarterSeconds, grid);
+            starts[i] = snap(axis.quartersAt(chords.get(i).startSeconds()), grid);
             lastEnd = Math.max(lastEnd,
-                    snap((chords.get(i).endSeconds() - origin) / quarterSeconds, grid));
+                    snap(axis.quartersAt(chords.get(i).endSeconds()), grid));
         }
-        return assemble(chords, starts, lastEnd, grid, k -> meter,
-                quarters -> origin + quarters * quarterSeconds);
+        return assemble(chords, starts, lastEnd, grid, k -> meter, axis::secondsAt);
     }
 
     /**
