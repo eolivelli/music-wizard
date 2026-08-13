@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.android.yt;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,9 +59,8 @@ public final class UrlConnectionHttp implements Http {
         HttpURLConnection connection = connect(request);
         try {
             int status = connection.getResponseCode();
-            Map<String, String> headers = Http.firstValues(connection.getHeaderFields());
             try (InputStream reply = decoded(connection, body(connection, status))) {
-                return new Response(status, headers, read(reply));
+                return new Response(status, read(reply));
             }
         } finally {
             connection.disconnect();
@@ -104,6 +104,13 @@ public final class UrlConnectionHttp implements Http {
             connection.setFixedLengthStreamingMode(body.length());
             try (OutputStream out = connection.getOutputStream()) {
                 body.writeTo(out);
+            } catch (IOException | RuntimeException failure) {
+                // A body that dies halfway — a broken pipe posting the player
+                // request — would otherwise return the socket to the keep-alive
+                // pool in a state nobody can describe, since both callers only
+                // start guarding after this method returns.
+                connection.disconnect();
+                throw failure;
             }
         }
         return connection;
@@ -159,7 +166,14 @@ public final class UrlConnectionHttp implements Http {
             this.connection = connection;
             this.status = status;
             this.headers = headers;
-            this.stream = stream == null ? InputStream.nullInputStream() : stream;
+            // Not InputStream.nullInputStream(), which is API 33 against a
+            // minSdk of 26 and is not one of the methods D8 backports — it
+            // would be a NoSuchMethodError on every device below Android 13,
+            // thrown past the retry loop because an Error is not an
+            // IOException. The path that reaches it is ordinary: getErrorStream
+            // is null when a refusal carries no body, which is what a bare 403
+            // from the media host looks like.
+            this.stream = stream == null ? new ByteArrayInputStream(new byte[0]) : stream;
         }
 
         @Override

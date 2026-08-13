@@ -40,17 +40,14 @@ final class FakeHttp implements Http {
     /** Every request made, in order. */
     final List<Request> requests = new ArrayList<>();
 
+    /** Every streamed reply handed out, so a test can check they were closed. */
+    private final List<Canned> handedOut = new ArrayList<>();
+
     private final Deque<Object> replies = new ArrayDeque<>();
 
     /** Queues a reply for {@link #send}. */
     FakeHttp reply(int status, String body) {
-        replies.add(new Http.Response(status, Map.of(), body));
-        return this;
-    }
-
-    /** Queues a reply for {@link #send}, with headers. */
-    FakeHttp reply(int status, Map<String, String> headers, String body) {
-        replies.add(new Http.Response(status, headers, body));
+        replies.add(new Http.Response(status, body));
         return this;
     }
 
@@ -97,9 +94,21 @@ final class FakeHttp implements Http {
     public Content open(Request request) throws IOException {
         Object next = take(request);
         if (next instanceof Canned) {
+            handedOut.add((Canned) next);
             return (Canned) next;
         }
         throw new AssertionError("open() reached a reply queued for send()");
+    }
+
+    /** How many streamed replies were handed out but never closed. */
+    int unclosedContents() {
+        int leaked = 0;
+        for (Canned content : handedOut) {
+            if (!content.closed) {
+                leaked++;
+            }
+        }
+        return leaked;
     }
 
     private Object take(Request request) throws IOException {

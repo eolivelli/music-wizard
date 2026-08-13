@@ -145,14 +145,47 @@ public class VideoLinkTest {
         assertNull(VideoLink.videoId(""));
     }
 
-    /** A pathological share must not hang the screen that parses it. */
-    @Test(timeout = 5_000)
-    public void aVeryLargeShareIsParsedPromptly() {
+    /**
+     * A host that merely contains "youtube.com" is not YouTube.
+     *
+     * <p>Without a boundary the engine is free to start matching inside somebody
+     * else's domain, and a share of a link to another site silently becomes a
+     * fetch.
+     */
+    @Test
+    public void aHostThatOnlyContainsTheNameIsNotYouTube() {
+        assertNull(VideoLink.videoId("https://notyoutube.com/watch?v=" + ID));
+        assertNull(VideoLink.videoId("https://phish-youtube.com/watch?v=" + ID));
+        assertNull(VideoLink.videoId("https://myyoutu.be/" + ID));
+        assertNull(VideoLink.videoId("xyoutube.com/watch?v=" + ID));
+        assertNull(VideoLink.videoId("https://youtube.com.evil.test/watch?v=" + ID));
+
+        // A real subdomain still is.
+        assertEquals(ID, VideoLink.videoId("https://www.music.youtube.com/watch?v=" + ID));
+    }
+
+    /**
+     * A pathological share must not hang the screen that parses it.
+     *
+     * <p>The input that matters is one long unbroken run of host-legal
+     * characters, because that is what lets the scan restart at every offset.
+     * Prose full of spaces does not exercise it: each word bounds the work, and
+     * an earlier version of this test used exactly that and so passed against a
+     * parser that took 100 seconds on 160,000 characters.
+     */
+    @Test(timeout = 10_000)
+    public void anUnbrokenRunOfCharactersDoesNotStallTheParser() {
         StringBuilder text = new StringBuilder();
-        for (int i = 0; i < 40_000; i++) {
-            text.append("youtube not a link at all ");
+        for (int i = 0; i < 400_000; i++) {
+            text.append('a');
         }
         assertNull(VideoLink.videoId(text.toString()));
+
+        StringBuilder dotted = new StringBuilder();
+        for (int i = 0; i < 200_000; i++) {
+            dotted.append("a.");
+        }
+        assertNull(VideoLink.videoId(dotted.toString()));
 
         text.append("https://youtu.be/").append(ID);
         assertEquals(ID, VideoLink.videoId(text.toString()));

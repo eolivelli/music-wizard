@@ -22,9 +22,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,8 +48,11 @@ import org.junit.rules.TemporaryFolder;
  */
 public class StreamDownloadTest {
 
-    /** Smaller than the 1 MiB chunk, so a fixture stays a fixture. */
-    private static final int CHUNK = 1 << 20;
+    /**
+     * Read from the class under test rather than restated, so a change to the
+     * chunk size fails these tests on behaviour and not on arithmetic.
+     */
+    private static final int CHUNK = StreamDownload.CHUNK_BYTES;
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
@@ -57,11 +62,18 @@ public class StreamDownloadTest {
                 130_677, length, 44_100, 2, 213_000);
     }
 
+    /**
+     * A payload with no period at the chunk size.
+     *
+     * <p>The obvious {@code (byte) (i + seed)} repeats every 256 bytes, so a file
+     * assembled with its chunks swapped, duplicated or written at the wrong
+     * offset compares equal to the original — every byte assertion in this class
+     * would have been blind to exactly the corruption it is here to catch. A
+     * seeded {@code Random} has no such period.
+     */
     private static byte[] bytes(int count, int seed) {
         byte[] out = new byte[count];
-        for (int i = 0; i < count; i++) {
-            out[i] = (byte) (i + seed);
-        }
+        new java.util.Random(seed).nextBytes(out);
         return out;
     }
 
@@ -288,23 +300,147 @@ public class StreamDownloadTest {
     }
 
     /**
-     * A server that ignores the range sends the whole file for every one asked.
+     * A server that ignores the range must fail, not quietly produce nonsense.
      *
-     * <p>Without a cap the file would be written once per chunk, growing instead
-     * of completing.
+     * <p>A 200 to a ranged request means the body starts at byte zero. For the
+     * first chunk that is the same thing; for any later one, capping the read
+     * would file the opening bytes of the track under an offset they do not
+     * belong to — a container of exactly the right length, spliced with a copy
+     * of its own beginning, which still decodes and which MW would analyse
+     * without complaint. An intermediary that strips Range is the realistic
+     * cause, so this is a real shape and not a hypothetical one.
      */
     @Test
-    public void aServerThatIgnoresRangesDoesNotMultiplyTheFile() throws Exception {
+    public void aServerThatIgnoresRangesFailsRatherThanCorruptingTheFile() throws Exception {
         byte[] whole = bytes(CHUNK + 100, 6);
         FakeHttp http = new FakeHttp()
                 .content(200, Map.of(), whole)
                 .content(200, Map.of(), whole);
 
         File target = folder.newFile("ignored.m4a");
+        assertThrows(IOException.class, () -> downloader(http)
+                .to(target, streamOf(whole.length), ignoringProgress(), NEVER_CANCELLED));
+        assertFalse(target.exists());
+        // Fatal, so the chunk is not attempted three times on the way out.
+        assertEquals(2, http.requests.size());
+    }
+
+    /** A single-chunk file is allowed to arrive as a plain 200. */
+    @Test
+    public void aWholeFileAnsweredWithoutRangeIsFineWhenItIsTheFirstChunk() throws Exception {
+        byte[] whole = bytes(2048, 17);
+        FakeHttp http = new FakeHttp().content(200, Map.of(), whole);
+
+        File target = folder.newFile("plain.m4a");
         downloader(http).to(target, streamOf(whole.length),
                 ignoringProgress(), NEVER_CANCELLED);
 
-        assertEquals(whole.length, target.length());
+        assertArrayEquals(whole, Files.readAllBytes(target.toPath()));
+    }
+
+    /**
+     * A 206 answering a different offset is refused.
+     *
+     * <p>Those bytes would be written where the asked-for ones belong, which is
+     * the same mid-file splice by another route.
+     */
+    @Test
+    public void aPartialReplyForTheWrongOffsetIsRefused() throws Exception {
+        byte[] whole = bytes(CHUNK + 512, 19);
+        FakeHttp http = new FakeHttp()
+                .content(206, Map.of("Content-Range", "bytes 0-" + (CHUNK - 1) + "/"
+                        + (CHUNK + 512)), slice(whole, 0, CHUNK))
+                .content(206, Map.of("Content-Range", "bytes 0-511/" + (CHUNK + 512)),
+                        slice(whole, 0, 512));
+
+        File target = folder.newFile("misaligned.m4a");
+        assertThrows(IOException.class, () -> downloader(http)
+                .to(target, streamOf(whole.length), ignoringProgress(), NEVER_CANCELLED));
+        assertFalse(target.exists());
+    }
+
+    /**
+     * A write that fails partway must not be retried as a failed download.
+     *
+     * <p>The retry re-fetches the whole chunk and writes it again, so the bytes
+     * the failed write did land are joined by a second full copy while the
+     * caller is told about one. The file and the byte count then disagree
+     * permanently, and the total check at the end cannot see it. Asserted
+     * through the request count, because the exception looks the same either
+     * way and only the extra fetch gives it away.
+     */
+    @Test
+    public void aFailedWriteIsNotRetriedIntoADuplicate() throws Exception {
+        byte[] whole = bytes(1024, 23);
+        FakeHttp http = new FakeHttp()
+                .content(206, Map.of(), whole)
+                .content(206, Map.of(), whole);
+
+        ByteArrayOutputStream landed = new ByteArrayOutputStream();
+        OutputStream failing = new OutputStream() {
+            @Override
+            public void write(int b) throws IOException {
+                throw new IOException("no space left on device");
+            }
+
+            @Override
+            public void write(byte[] data, int offset, int length) throws IOException {
+                landed.write(data, offset, 600);
+                throw new IOException("no space left on device");
+            }
+        };
+
+        assertThrows(IOException.class, () -> downloader(http)
+                .writeTo(failing, streamOf(whole.length), ignoringProgress(), NEVER_CANCELLED));
+
+        assertEquals(1, http.requests.size());
+        assertEquals(600, landed.size());
+    }
+
+    /** Every streamed reply is closed, on the happy path and on each failure. */
+    @Test
+    public void everyReplyIsClosed() throws Exception {
+        byte[] whole = bytes(CHUNK + 64, 29);
+        FakeHttp ok = new FakeHttp()
+                .content(302, Map.of("Location", "https://other.example.invalid/v"), new byte[0])
+                .content(206, Map.of(), slice(whole, 0, CHUNK))
+                .content(206, Map.of(), slice(whole, CHUNK, 64));
+        downloader(ok).to(folder.newFile("closed-ok.m4a"), streamOf(whole.length),
+                ignoringProgress(), NEVER_CANCELLED);
+        assertEquals(0, ok.unclosedContents());
+
+        FakeHttp refused = new FakeHttp()
+                .content(403, Map.of(), new byte[0])
+                .content(403, Map.of(), new byte[0])
+                .content(403, Map.of(), new byte[0]);
+        File target = folder.newFile("closed-403.m4a");
+        assertThrows(IOException.class, () -> downloader(refused)
+                .to(target, streamOf(1024), ignoringProgress(), NEVER_CANCELLED));
+        assertEquals(0, refused.unclosedContents());
+
+        FakeHttp fatal = new FakeHttp()
+                .content(302, Map.of("Location", "http://insecure.example.invalid/v"),
+                        new byte[0]);
+        File other = folder.newFile("closed-fatal.m4a");
+        assertThrows(IOException.class, () -> downloader(fatal)
+                .to(other, streamOf(1024), ignoringProgress(), NEVER_CANCELLED));
+        assertEquals(0, fatal.unclosedContents());
+    }
+
+    /** The redirect is walked once, not once per megabyte. */
+    @Test
+    public void aRedirectIsNotRefollowedForEveryChunk() throws Exception {
+        byte[] whole = bytes(CHUNK * 2, 31);
+        FakeHttp http = new FakeHttp()
+                .content(302, Map.of("Location", "https://other.example.invalid/v"), new byte[0])
+                .content(206, Map.of(), slice(whole, 0, CHUNK))
+                .content(206, Map.of(), slice(whole, CHUNK, CHUNK));
+
+        downloader(http).to(folder.newFile("onehop.m4a"), streamOf(whole.length),
+                ignoringProgress(), NEVER_CANCELLED);
+
+        assertEquals(3, http.requests.size());
+        assertEquals("https://other.example.invalid/v", http.requests.get(2).url());
     }
 
     @Test

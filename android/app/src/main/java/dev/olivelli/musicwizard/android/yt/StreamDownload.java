@@ -47,11 +47,22 @@ import java.util.function.BooleanSupplier;
  * Range} header is set again on every hop. A client that drops it on redirect
  * gets a {@code 403} on the second chunk, which reads exactly like bot detection
  * and costs a day.
+ *
+ * <p>Everything this class refuses, it refuses rather than works around, because
+ * every alternative silently produces a container that is the right length and
+ * the wrong bytes — and MW would analyse that without complaint.
  */
 public final class StreamDownload {
 
-    /** Big enough that the per-request overhead vanishes, small enough to cancel promptly. */
-    private static final int CHUNK_BYTES = 1 << 20;
+    /**
+     * Big enough that the per-request overhead vanishes, small enough to cancel
+     * promptly.
+     *
+     * <p>Package-private so the tests read this rather than restating it: three
+     * copies of a constant is how a change to one of them turns into three test
+     * failures about arithmetic instead of one about behaviour.
+     */
+    static final int CHUNK_BYTES = 1 << 20;
 
     /** googlevideo redirects once in practice; five is room to be wrong. */
     private static final int MAX_HOPS = 5;
@@ -105,9 +116,10 @@ public final class StreamDownload {
      * A failure that retrying cannot mend.
      *
      * <p>Most {@code IOException}s here are worth another go — a dropped
-     * connection, a 500. A redirect off https and a redirect loop are not: they
-     * are the server saying something this app will refuse every time, so
-     * retrying just spends three attempts arriving at the same place.
+     * connection, a 500. A redirect off https, a redirect loop, and a server
+     * that ignores {@code Range} are not: they are the server saying something
+     * this app will refuse every time, so retrying just spends three attempts
+     * arriving at the same place.
      */
     private static final class FatalIOException extends IOException {
 
@@ -132,26 +144,9 @@ public final class StreamDownload {
      */
     public void to(File target, AudioStream stream, Progress progress, BooleanSupplier cancelled)
             throws IOException {
-        long total = stream.contentLength();
-        if (total <= 0) {
-            throw new IOException("YouTube declared no length for this audio format.");
-        }
-
         boolean complete = false;
         try (OutputStream out = new FileOutputStream(target)) {
-            long done = 0;
-            while (done < total) {
-                if (cancelled.getAsBoolean()) {
-                    throw new InterruptedIOException("the download was cancelled");
-                }
-                long last = Math.min(done + CHUNK_BYTES, total) - 1;
-                done += chunk(stream.url(), done, last, out, cancelled);
-                progress.onProgress(done, total);
-            }
-
-            if (done != total) {
-                throw new IOException("the download ended at " + done + " of " + total + " bytes");
-            }
+            writeTo(out, stream, progress, cancelled);
             complete = true;
         } finally {
             if (!complete) {
@@ -163,12 +158,73 @@ public final class StreamDownload {
     }
 
     /**
+     * The same, into any sink.
+     *
+     * <p>Visible for tests, which need one that can fail partway through a write —
+     * the case that decides whether a failed write is retried into a duplicate,
+     * and which cannot be produced through a {@link File}.
+     */
+    void writeTo(OutputStream out, AudioStream stream, Progress progress,
+            BooleanSupplier cancelled) throws IOException {
+        long total = stream.contentLength();
+        if (total <= 0) {
+            throw new IOException("YouTube declared no length for this audio format.");
+        }
+
+        // Where the last redirect led. Carried between chunks so the hop is
+        // walked once rather than once per megabyte.
+        String url = stream.url();
+        long done = 0;
+
+        while (done < total) {
+            if (cancelled.getAsBoolean()) {
+                throw new InterruptedIOException("the download was cancelled");
+            }
+            long last = Math.min(done + CHUNK_BYTES, total) - 1;
+            Chunk chunk = fetch(url, done, last, cancelled);
+            url = chunk.url;
+
+            // Outside the retry, deliberately: see fetch's javadoc.
+            out.write(chunk.data);
+            done += chunk.data.length;
+            progress.onProgress(done, total);
+        }
+
+        if (done != total) {
+            throw new IOException("the download ended at " + done + " of " + total + " bytes");
+        }
+    }
+
+    /** One range's bytes, and the URL they finally came from. */
+    private static final class Chunk {
+
+        final byte[] data;
+        final String url;
+
+        Chunk(byte[] data, String url) {
+            this.data = data;
+            this.url = url;
+        }
+    }
+
+    /**
      * One range, retried on a transient failure.
      *
-     * <p>The chunk is assembled in memory and only then written on. A retry that
-     * appended straight to the file would leave the bytes of the failed attempt
-     * in front of the bytes of the successful one — a container corrupted in the
-     * middle, which decodes far enough to look like it worked.
+     * <p>The chunk is assembled in memory and handed back rather than written as
+     * it arrives, and the caller writes it only once this has returned. Both
+     * halves of that matter, and each fixes a way of corrupting the file in the
+     * middle — which is worse than failing, because a spliced container still
+     * decodes and MW would analyse it:
+     *
+     * <ul>
+     *   <li>A connection that dies mid-chunk must contribute nothing, or the
+     *       retry's bytes land behind the failed attempt's.
+     *   <li>A <em>write</em> that fails partway — a full cache partition — must
+     *       not be retried as though the download had failed, or the bytes it
+     *       did write are joined by a whole second copy while this reports only
+     *       one. That leaves the file and the caller's count permanently
+     *       disagreeing, which the total check at the end cannot see.
+     * </ul>
      *
      * <p><strong>A 403 is retried here rather than believed.</strong> It reads
      * like an expired link and usually is not: measured against the live
@@ -176,17 +232,15 @@ public final class StreamDownload {
      * while a whole four-chunk fetch failed one time in four — so it arrives
      * partway through, which is a rate limit on quick successive ranges and not
      * a URL that has gone bad. Waiting clears it. Only a 403 that survives every
-     * attempt is reported as expiry, which is what makes
-     * {@link Fetch}'s resolve-and-start-again worth doing at all.
+     * attempt is reported as expiry, which is what makes {@link Fetch}'s
+     * resolve-and-start-again worth doing at all.
      */
-    private long chunk(String url, long from, long to, OutputStream out, BooleanSupplier cancelled)
+    private Chunk fetch(String url, long from, long to, BooleanSupplier cancelled)
             throws IOException {
         IOException last = null;
         for (int attempt = 1; attempt <= CHUNK_ATTEMPTS; attempt++) {
             try {
-                byte[] data = readRange(url, from, to, cancelled);
-                out.write(data);
-                return data.length;
+                return readRange(url, from, to, cancelled);
             } catch (InterruptedIOException | FatalIOException fatal) {
                 throw fatal;
             } catch (IOException failure) {
@@ -201,7 +255,7 @@ public final class StreamDownload {
         throw last;
     }
 
-    private byte[] readRange(String url, long from, long to, BooleanSupplier cancelled)
+    private Chunk readRange(String url, long from, long to, BooleanSupplier cancelled)
             throws IOException {
         String target = url;
         for (int hop = 0; hop <= MAX_HOPS; hop++) {
@@ -221,15 +275,59 @@ public final class StreamDownload {
                     throw new ExpiredException(
                             "the media link is no longer valid (HTTP " + status + ")");
                 }
-                if (status != 206 && status != 200) {
+                if (status == 200) {
+                    // The range was ignored, so this is the file from byte zero.
+                    // Harmless for the first chunk and catastrophic for the rest:
+                    // capping the read would file the opening bytes under an
+                    // offset they do not belong to, producing a container of
+                    // exactly the right length spliced with a copy of its own
+                    // beginning. An intermediary that strips Range — a captive
+                    // portal, a carrier proxy — is the realistic cause, and there
+                    // is nothing to retry, so say so.
+                    if (from != 0) {
+                        throw new FatalIOException("the server ignored the range request"
+                                + " and answered from the start of the file");
+                    }
+                } else if (status != 206) {
                     throw new IOException("the server answered HTTP " + status
                             + " for bytes " + from + "-" + to);
+                } else {
+                    verifyRange(content.header("Content-Range"), from);
                 }
-                return read(content.stream(), to - from + 1, cancelled);
+                return new Chunk(read(content.stream(), to - from + 1, cancelled), target);
             }
         }
         throw new FatalIOException(
                 "the media link redirected more than " + MAX_HOPS + " times");
+    }
+
+    /**
+     * Checks that a 206 is answering the range that was asked for.
+     *
+     * <p>A partial reply for the wrong offset would be written where the asked-for
+     * bytes belong. The header is advisory — its absence is not treated as a
+     * failure — but when it is there it is believed.
+     */
+    private static void verifyRange(String contentRange, long from) throws IOException {
+        if (contentRange == null || contentRange.isEmpty()) {
+            return;
+        }
+        String value = contentRange.trim();
+        int space = value.indexOf(' ');
+        int dash = value.indexOf('-', space + 1);
+        if (space < 0 || dash < 0) {
+            return;
+        }
+        try {
+            long start = Long.parseLong(value.substring(space + 1, dash).trim());
+            if (start != from) {
+                throw new FatalIOException("the server answered with bytes from " + start
+                        + " when " + from + " was asked for");
+            }
+        } catch (NumberFormatException unreadable) {
+            // An unparseable header is not evidence of anything; the total length
+            // check at the end is the backstop.
+        }
     }
 
     private static String redirect(String from, String location) throws IOException {
@@ -248,13 +346,7 @@ public final class StreamDownload {
         }
     }
 
-    /**
-     * Reads at most {@code expected} bytes, stopping early only on cancellation.
-     *
-     * <p>A server answering 200 rather than 206 sends the whole file for every
-     * range asked, so the count is capped rather than trusted; without the cap a
-     * range-ignoring server would deliver the file once per chunk.
-     */
+    /** Reads at most {@code expected} bytes, stopping early only on cancellation. */
     private static byte[] read(InputStream in, long expected, BooleanSupplier cancelled)
             throws IOException {
         byte[] chunk = new byte[(int) expected];

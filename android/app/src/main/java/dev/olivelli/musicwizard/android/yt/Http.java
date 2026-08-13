@@ -89,24 +89,22 @@ public interface Http {
         public Body body() {
             return body;
         }
-
-        /** The same request aimed somewhere else, headers and body carried over. */
-        public Request withUrl(String other) {
-            return new Request(method, other, headers, body);
-        }
     }
 
-    /** What came back: the status, the headers and the whole body, errors included. */
+    /**
+     * What came back: the status and the whole body, errors included.
+     *
+     * <p>No headers, because nothing reads one on this path — the player call
+     * cares only about the JSON. The ranged fetch does read headers, and it
+     * uses {@link Content}.
+     */
     final class Response {
 
         private final int status;
-        private final Map<String, String> headers;
         private final String body;
 
-        public Response(int status, Map<String, String> headers, String body) {
+        public Response(int status, String body) {
             this.status = status;
-            this.headers = headers == null ? Map.of()
-                    : Collections.unmodifiableMap(new LinkedHashMap<>(headers));
             this.body = body == null ? "" : body;
         }
 
@@ -116,11 +114,6 @@ public interface Http {
 
         public String body() {
             return body;
-        }
-
-        /** A header by name, case-insensitively, or null. */
-        public String header(String name) {
-            return lookup(headers, name);
         }
 
         public boolean isSuccess() {
@@ -179,10 +172,10 @@ public interface Http {
      * Finds a header whatever case it arrived in.
      *
      * <p>HTTP header names are case-insensitive and the two sides of this
-     * interface disagree in practice: a test writes {@code Content-Range}, and
-     * HTTP/2 lower-cases every name on the wire, so a downloader that compared
-     * exactly would verify nothing against a real server and everything against
-     * its own fixtures.
+     * interface disagree in practice: the fixtures spell {@code Location} and
+     * {@code Content-Range} the way a person would, while HTTP/2 lower-cases
+     * every name on the wire. A downloader that compared exactly would verify
+     * nothing against a real server and everything against its own tests.
      */
     static String lookup(Map<String, String> headers, String name) {
         String direct = headers.get(name);
@@ -197,7 +190,7 @@ public interface Http {
         return null;
     }
 
-    /** The first value of each header, in the shape {@link Response} wants. */
+    /** The first value of each header, in the shape {@link Content} wants. */
     static Map<String, String> firstValues(Map<String, List<String>> fields) {
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> field : fields.entrySet()) {

@@ -46,9 +46,31 @@ public final class VideoLink {
      *
      * <p>The trailing class excludes whitespace and the quotes and brackets a
      * link picks up when it is pasted into prose.
+     *
+     * <p>The leading lookbehind is doing two jobs and neither is obvious.
+     *
+     * <p>It is what makes the host match a <em>host</em> rather than a substring:
+     * without it {@code https://notyoutube.com/watch?v=ID} and {@code
+     * myyoutu.be/ID} both parse as YouTube links, because the engine is free to
+     * start matching in the middle of somebody else's domain name.
+     *
+     * <p>It is also what keeps this linear. The scan tries every start offset in
+     * turn, and the subdomain part can match nothing, so on a long unbroken run
+     * of letters every offset used to begin a fresh walk — quadratic, and
+     * measured at 100 seconds for 160,000 characters. Rejecting an offset whose
+     * previous character could have been part of the host means only genuine
+     * word starts do any work.
+     *
+     * <p>The subdomain repetition is bounded for a third reason, which the
+     * lookbehind does not cover: Java's engine recurses once per repetition, so
+     * an unbounded {@code *} over text like {@code a.a.a.a.…} overflows the
+     * stack rather than merely taking a long time — and a {@code
+     * StackOverflowError} is an {@code Error}, so it would come up through a
+     * screen that catches exceptions. Eight labels of sixty-three characters is
+     * past any real host and cannot recurse far enough to matter.
      */
     private static final Pattern LINK = Pattern.compile(
-            "(?i)(?:https?://)?(?:[a-z0-9-]+\\.)*"
+            "(?i)(?<![A-Za-z0-9.\\-])(?:https?://)?(?:[a-z0-9-]{1,63}\\.){0,8}"
                     + "(youtube\\.com|youtube-nocookie\\.com|youtu\\.be)"
                     + "(/[^\\s<>\"'\\]\\[)(]*)?");
 

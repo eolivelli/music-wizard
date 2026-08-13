@@ -31,16 +31,14 @@ public final class PlayerInfo {
     private final String title;
     private final String author;
     private final long lengthSeconds;
-    private final boolean live;
     private final List<AudioStream> audio;
 
     public PlayerInfo(String videoId, String title, String author, long lengthSeconds,
-            boolean live, List<AudioStream> audio) {
+            List<AudioStream> audio) {
         this.videoId = videoId;
         this.title = title;
         this.author = author;
         this.lengthSeconds = lengthSeconds;
-        this.live = live;
         this.audio = audio == null ? List.of() : Collections.unmodifiableList(audio);
     }
 
@@ -65,10 +63,6 @@ public final class PlayerInfo {
 
     public long lengthSeconds() {
         return lengthSeconds;
-    }
-
-    public boolean isLive() {
-        return live;
     }
 
     /** Every audio-only format offered, fetchable or not. */

@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.android.yt;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -151,6 +152,92 @@ public class InnerTubeTest {
                 () -> new InnerTube(http).resolve(VIDEO));
         assertEquals(ExtractionException.Reason.BOT_CHECK, refused.reason());
         assertEquals(2, http.requests.size());
+    }
+
+    /**
+     * A session is committed only once it has been proved.
+     *
+     * <p>Caching the offered value before the retry would store something
+     * nothing has tested, and — worse — would throw away a session that was
+     * working the moment any refusal offered a different one.
+     */
+    @Test
+    public void aWorkingSessionSurvivesARefusalThatOffersAnother() throws Exception {
+        String poison = FakeHttp.fixture("player-login-required.json")
+                .replace("CgtGQUtFVklTSVRPUiIDEgAqAA%3D%3D", "POISON");
+
+        FakeHttp http = new FakeHttp()
+                .reply(200, FakeHttp.fixture("player-login-required.json"))
+                .reply(200, FakeHttp.fixture("player-ok.json"))
+                .reply(200, poison)
+                .reply(200, FakeHttp.fixture("player-ok.json"));
+
+        InnerTube tube = new InnerTube(http);
+        tube.resolve(VIDEO);
+        String working = tube.visitorData();
+        tube.resolve("9bZkp7q19f0");
+
+        // The refusal offered POISON and the retry with it succeeded, so POISON
+        // is now proved and held. What must not happen is the working value
+        // being discarded before anything tested its replacement.
+        assertEquals("POISON", tube.visitorData());
+        assertEquals("POISON", http.requests.get(3).headers().get("X-Goog-Visitor-Id"));
+        assertNotNull(working);
+    }
+
+    /**
+     * A held session that has gone stale is dropped and bootstrapped again.
+     *
+     * <p>YouTube echoes back the visitor id it was sent, so a refusal of a
+     * cached session offers nothing new — retrying with it would be the same
+     * request twice, which by construction cannot answer differently. Starting
+     * over bare is the only move that can.
+     */
+    @Test
+    public void aStaleSessionIsDroppedRatherThanRepeated() throws Exception {
+        String echoed = FakeHttp.fixture("player-login-required.json")
+                .replace("CgtGQUtFVklTSVRPUiIDEgAqAA%3D%3D", "STALE");
+
+        FakeHttp http = new FakeHttp()
+                // Bootstrap a session called STALE and prove it.
+                .reply(200, echoed)
+                .reply(200, FakeHttp.fixture("player-ok.json"))
+                // Next video: STALE is refused, and the refusal echoes STALE.
+                .reply(200, echoed)
+                // So the held one is dropped and a bare call bootstraps a new one.
+                .reply(200, FakeHttp.fixture("player-login-required.json"))
+                .reply(200, FakeHttp.fixture("player-ok.json"));
+
+        InnerTube tube = new InnerTube(http);
+        tube.resolve(VIDEO);
+        assertEquals("STALE", tube.visitorData());
+
+        tube.resolve("9bZkp7q19f0");
+
+        assertEquals(5, http.requests.size());
+        assertEquals("STALE", http.requests.get(2).headers().get("X-Goog-Visitor-Id"));
+        // The bare call that starts the bootstrap over.
+        assertNull(http.requests.get(3).headers().get("X-Goog-Visitor-Id"));
+        assertNotEquals("STALE", tube.visitorData());
+    }
+
+    /**
+     * A stream in progress is refused here, not in the caller.
+     *
+     * <p>It is a different mechanism from the ended-stream case above — that one
+     * arrives as UNPLAYABLE, this one is playable and says so in videoDetails —
+     * and both belong to the same decision, so one place owns them.
+     */
+    @Test
+    public void aStreamStillRunningIsRefusedToo() throws Exception {
+        String inProgress = FakeHttp.fixture("player-ok.json")
+                .replace("\"isLiveContent\": false", "\"isLiveContent\": true,"
+                        + " \"isLive\": true");
+        FakeHttp http = new FakeHttp().reply(200, inProgress);
+
+        ExtractionException live = assertThrows(ExtractionException.class,
+                () -> new InnerTube(http).resolve(VIDEO));
+        assertEquals(ExtractionException.Reason.LIVE, live.reason());
     }
 
     @Test

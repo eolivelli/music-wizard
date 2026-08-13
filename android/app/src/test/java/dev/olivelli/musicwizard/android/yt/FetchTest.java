@@ -50,13 +50,6 @@ public class FetchTest {
         return new Fetch(new InnerTube(http), new StreamDownload(http, 0, 0));
     }
 
-    /**
-     * Queues the replies one download takes.
-     *
-     * <p>Which is more than one: the fetch is chunked into 1 MiB ranges, so the
-     * fixture's 3.4 MB is four requests. Queueing a single reply here would fail
-     * for a reason that has nothing to do with what each test is about.
-     */
     /** Queues {@code count} rate-limit refusals, which the download retries through. */
     private static void queueRefusals(FakeHttp http, int count) {
         for (int i = 0; i < count; i++) {
@@ -64,8 +57,15 @@ public class FetchTest {
         }
     }
 
+    /**
+     * Queues the replies one download takes.
+     *
+     * <p>Which is more than one: the fetch is chunked, so the fixture's 3.4 MB
+     * is several requests. Queueing a single reply would fail for a reason that
+     * has nothing to do with what each test is about.
+     */
     private static void queueDownload(FakeHttp http, int total) {
-        int chunk = 1 << 20;
+        int chunk = StreamDownload.CHUNK_BYTES;
         for (int sent = 0; sent < total; sent += chunk) {
             http.content(206, Map.of(), new byte[Math.min(chunk, total - sent)]);
         }
@@ -198,6 +198,32 @@ public class FetchTest {
                 ignoringProgress(), NEVER_CANCELLED);
 
         assertEquals(VIDEO, fetched.title());
+    }
+
+    /**
+     * The megabytes are on disk before the file is named, so a failure to name
+     * it must still clear them.
+     *
+     * <p>Otherwise every such failure leaves a multi-megabyte orphan in a cache
+     * directory nobody looks at, one per attempt — and both this class and
+     * {@code Fetch.run} claim nothing is left behind on any path but success.
+     */
+    @Test
+    public void aFailureToNameTheFileStillClearsThePartial() throws Exception {
+        FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"));
+        queueDownload(http, FIXTURE_BYTES);
+
+        File directory = folder.newFolder("blocked");
+        // A non-empty directory standing where the finished file must go: it
+        // exists, so it is deleted first, and deleting it cannot succeed.
+        File blocking = new File(directory, VIDEO + ".m4a");
+        assertTrue(new File(blocking, "occupied").mkdirs());
+
+        assertThrows(java.io.IOException.class, () -> fetch(http)
+                .run(SHARE, directory, ignoringProgress(), NEVER_CANCELLED));
+
+        assertFalse("the partial download outlived the failure",
+                new File(directory, VIDEO + ".part").exists());
     }
 
     @Test

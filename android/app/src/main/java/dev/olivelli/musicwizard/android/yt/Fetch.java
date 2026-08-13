@@ -34,9 +34,10 @@ public final class Fetch {
      *
      * <p>Not a network limit but a memory one, downstream: the analysis holds the
      * whole take as a {@code float[]} at the file's own rate and an STFT
-     * magnitude matrix over it at the same time. Twenty minutes at 48 kHz is
-     * already ~230 MB of the first alone. A two-hour set would fail later, in
-     * the analysis, where the cause would be much harder to read than here.
+     * magnitude matrix over it at the same time. At this length that is already
+     * hundreds of megabytes for the first alone. A two-hour set would fail
+     * later, inside the analysis, where the cause is much harder to read than
+     * it is here.
      */
     public static final long MAX_SECONDS = 20 * 60;
 
@@ -114,14 +115,10 @@ public final class Fetch {
         }
 
         PlayerInfo info = tube.resolve(videoId);
-        if (info.isLive()) {
-            throw new ExtractionException(ExtractionException.Reason.LIVE,
-                    "This is a live stream, which has no fixed length to fetch.");
-        }
         if (info.lengthSeconds() > MAX_SECONDS) {
             throw new ExtractionException(ExtractionException.Reason.TOO_LONG,
-                    "That video is " + info.lengthSeconds() / 60 + " minutes long."
-                            + " The app fetches up to " + MAX_SECONDS / 60 + ".");
+                    "That video is longer than " + MAX_SECONDS / 60
+                            + " minutes, which is as much as the app will fetch.");
         }
 
         AudioStream stream = AudioStream.choose(info.audio());
@@ -132,13 +129,11 @@ public final class Fetch {
             // URLs last about six hours, so this is a confirmation screen that was
             // left open. Resolving again is the cure, and it is worth exactly one
             // try: fresh URLs that are refused too are not stale ones.
+            // No null check on the re-chosen stream: InnerTube.resolve throws
+            // SABR_ONLY when nothing is fetchable, so it cannot return a
+            // PlayerInfo whose formats have no URL. One place owns that.
             info = tube.resolve(videoId);
             stream = AudioStream.choose(info.audio());
-            if (stream == null) {
-                throw new ExtractionException(ExtractionException.Reason.SABR_ONLY,
-                        "YouTube changed how it serves this audio."
-                                + " This version of the app cannot fetch it.");
-            }
             try {
                 download.to(part, stream, progress, cancelled);
             } catch (StreamDownload.ExpiredException again) {
@@ -152,12 +147,24 @@ public final class Fetch {
             }
         }
 
+        // Naming the finished file can fail too, and the megabytes are already
+        // on disk by then: without this the .part outlives every such failure,
+        // one orphan per attempt, in a cache directory nobody looks at.
         File media = new File(directory, videoId + extensionFor(stream.mimeType()));
-        if (media.exists() && !media.delete()) {
-            throw new IOException("could not replace " + media.getName());
-        }
-        if (!part.renameTo(media)) {
-            throw new IOException("could not name the downloaded audio " + media.getName());
+        boolean named = false;
+        try {
+            if (media.exists() && !media.delete()) {
+                throw new IOException("could not replace " + media.getName());
+            }
+            if (!part.renameTo(media)) {
+                throw new IOException("could not name the downloaded audio "
+                        + media.getName());
+            }
+            named = true;
+        } finally {
+            if (!named && part.exists() && !part.delete()) {
+                part.deleteOnExit();
+            }
         }
 
         String title = info.title() == null || info.title().isBlank() ? videoId : info.title();

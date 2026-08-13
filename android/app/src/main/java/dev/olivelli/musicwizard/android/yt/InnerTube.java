@@ -71,6 +71,9 @@ public final class InnerTube {
     /** The numeric client id that goes in the header beside the name. */
     private static final String CLIENT_ID = "28";
 
+    /** The session held, a bare bootstrap, and the value that bootstrap offered. */
+    private static final int MAX_CALLS = 3;
+
     private static final String USER_AGENT =
             "com.google.android.apps.youtube.vr.oculus/" + CLIENT_VERSION
                     + " (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
@@ -104,26 +107,55 @@ public final class InnerTube {
      * would be waste.
      */
     public PlayerInfo resolve(String videoId) throws ExtractionException, IOException {
-        JsonNode reply = call(videoId, visitorData);
-        String status = status(reply);
+        String session = visitorData;
+        // True once a call has gone out carrying no session, so the bootstrap is
+        // never attempted twice — the second one would be the same request.
+        boolean triedBare = false;
+        JsonNode reply;
+        String status;
 
-        if ("LOGIN_REQUIRED".equals(status)) {
-            String fresh = reply.path("responseContext").path("visitorData").asText(null);
-            if (fresh != null && !fresh.isEmpty()) {
-                visitorData = fresh;
-                reply = call(videoId, fresh);
-                status = status(reply);
+        // At most three calls: the session already held, a bare one if that
+        // session has gone stale, and one carrying what the refusal offered.
+        for (int attempt = 1; ; attempt++) {
+            triedBare |= session == null;
+            reply = call(videoId, session);
+            status = status(reply);
+
+            if (!"LOGIN_REQUIRED".equals(status)) {
+                // Committed only now, having been proved. Assigning before the
+                // retry would cache a value nothing has tested, and would throw
+                // away a working one whenever a refusal offered a different.
+                visitorData = session != null ? session : offeredSession(reply);
+                break;
             }
-        } else {
-            // Harvest on the happy path too, so the next video reuses the session
-            // rather than rediscovering it.
-            String offered = reply.path("responseContext").path("visitorData").asText(null);
-            if (visitorData == null && offered != null && !offered.isEmpty()) {
-                visitorData = offered;
+
+            String offered = offeredSession(reply);
+            if (offered != null && !offered.equals(session)) {
+                // The refusal carries the credential that lifts it.
+                session = offered;
+            } else if (session != null && !triedBare) {
+                // The reply offered nothing new, which is what happens when
+                // YouTube echoes back the session that was sent: the held one
+                // has stopped working. Drop it and bootstrap from scratch,
+                // rather than repeating a request that cannot answer differently.
+                session = null;
+                visitorData = null;
+            } else {
+                break;
+            }
+
+            if (attempt >= MAX_CALLS) {
+                break;
             }
         }
 
         return interpret(videoId, reply, status);
+    }
+
+    /** The session id a reply offers, whether it succeeded or refused. */
+    private static String offeredSession(JsonNode reply) {
+        String offered = reply.path("responseContext").path("visitorData").asText(null);
+        return offered == null || offered.isEmpty() ? null : offered;
     }
 
     private PlayerInfo interpret(String videoId, JsonNode reply, String status)
@@ -155,6 +187,15 @@ public final class InnerTube {
         }
 
         JsonNode details = reply.path("videoDetails");
+        // Both ways a live stream shows up, decided here so one place owns it: a
+        // stream in progress is playable and says so in videoDetails, while an
+        // ended one is refused above with "This live stream recording is not
+        // available." Neither has a fixed length to fetch.
+        if (details.path("isLive").asBoolean(false)) {
+            throw new ExtractionException(ExtractionException.Reason.LIVE,
+                    "This is a live stream, which has no fixed length to fetch.");
+        }
+
         List<AudioStream> audio = audioFormats(reply);
         if (audio.isEmpty()) {
             throw new ExtractionException(ExtractionException.Reason.NO_AUDIO,
@@ -171,7 +212,6 @@ public final class InnerTube {
                 details.path("title").asText(videoId),
                 details.path("author").asText(""),
                 details.path("lengthSeconds").asLong(0),
-                details.path("isLive").asBoolean(false),
                 audio);
     }
 
