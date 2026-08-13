@@ -118,8 +118,8 @@ final class BarAxis {
         List<Double> bounds = new ArrayList<>();
         bounds.add(origin);
         if (barSeconds > 0 && Double.isFinite(barSeconds) && score.beatGrid().isPresent()) {
-            double previous = origin;
-            for (double downbeat : deglitched(score.beatGrid().get().downbeatTimes())) {
+            for (double downbeat : trustedOrNothing(
+                    score.beatGrid().get().downbeatTimes(), barSeconds)) {
                 if (downbeat <= origin + barSeconds * 0.8) {
                     continue;
                 }
@@ -131,22 +131,16 @@ final class BarAxis {
                     for (long b = 1; b < leadIn; b++) {
                         bounds.add(origin + b * barSeconds);
                     }
-                    previous = bounds.get(bounds.size() - 1);
                 }
-                double length = downbeat - previous;
+                double length = downbeat - bounds.get(bounds.size() - 1);
                 if (length < barSeconds * 0.8 || length > barSeconds * 1.25) {
-                    // This bar is not one: the tracker and the stated tempo
-                    // disagree about it. Only this bar reverts to the stated
-                    // length -- ending the axis here instead would change the
-                    // derivation of every later bar line on the strength of
-                    // one, and on one recording measured that decision hung
-                    // on six onset frames at three minutes in.
-                    bounds.add(previous + barSeconds);
-                    previous = bounds.get(bounds.size() - 1);
-                    continue;
+                    // Only reachable where the lead-in's whole bars do not
+                    // meet the tracker's phase: the sequence itself is
+                    // already known to be even. Nothing is repaired here
+                    // either -- the chart keeps the rate it was headed with.
+                    return new BarAxis(new double[] {origin}, barSeconds, quarterSeconds);
                 }
                 bounds.add(downbeat);
-                previous = downbeat;
             }
         }
         double[] kept = new double[bounds.size()];
@@ -157,20 +151,30 @@ final class BarAxis {
     }
 
     /**
-     * The tracked downbeats with gross misses replaced by prediction.
+     * The tracked downbeats, or nothing when they cannot be trusted whole.
      *
-     * <p>The typical bar is the median gap — robust, so the misses this is
-     * about cannot move it. Each downbeat is then read against where the
-     * previous anchor plus that typical bar says it should fall: inside
-     * {@link #TOLERANCE} of the prediction it is the measurement and is
-     * taken, outside it is a miss and the prediction stands in. Because each
-     * accepted downbeat becomes the next prediction's base, a recording that
-     * genuinely speeds up is followed rather than corrected back.
+     * <p>All or nothing, deliberately. Three earlier versions of this method
+     * repaired a faulty sequence — substituting a prediction for a downbeat
+     * the tracker missed, dropping one it invented, re-anchoring when the
+     * two disagreed — and each repair was a feedback loop whose base could
+     * walk away from the recording and not come back. Reviewed against a
+     * thousand perturbed grids, every one of them was worse than the
+     * constant rate on cases the plain constant rate handled exactly.
      *
-     * <p>Fewer than four downbeats give no median successive difference worth
-     * the name, and are discarded: the constant rate is the honest answer.
+     * <p>So there is no repair. A sequence is used when every bar in it is
+     * close to the recording's own average bar <em>and</em> to the bar the
+     * chart is headed with; one bar that is neither means the tracker lost
+     * the beat somewhere, and a chart cannot tell where from the downbeats
+     * alone. Then the constant rate carries the whole chart, which is what
+     * it did before this class existed.
+     *
+     * <p>The cost is a recording with one bad downbeat keeping a bar axis
+     * that drifts, when following the other ninety-nine would have been
+     * better. That is the failure worth having: it is the chart there is
+     * today, rather than one that is worse than today somewhere a reader
+     * cannot predict.
      */
-    private static List<Double> deglitched(List<Double> downbeats) {
+    private static List<Double> trustedOrNothing(List<Double> downbeats, double barSeconds) {
         int n = downbeats.size();
         if (n < 4) {
             // Three downbeats give one change to read and no median worth the
@@ -198,12 +202,10 @@ final class BarAxis {
             return List.of();
         }
 
-        // The rate the predictions run at is the MEAN of the bars that look
-        // like bars, not the median of all of them. A median is a typical
-        // value and not a rate: half the bars are longer than it, so
-        // predicting with it walks steadily behind a recording whose bars are
-        // unevenly distributed -- the correction #200 made one layer up, for
-        // the same reason.
+        // The recording's own bar: the mean of the bars that look like bars,
+        // not the median of all of them. A median is a typical value and not
+        // a rate -- the correction #200 made one layer up, for the same
+        // reason.
         double total = 0;
         int counted = 0;
         for (double gap : gaps) {
@@ -212,46 +214,15 @@ final class BarAxis {
                 counted++;
             }
         }
-        double rate = counted > 0 ? total / counted : typical;
+        double rate = total / counted;
 
-        List<Double> out = new ArrayList<>(n);
-        out.add(downbeats.get(0));
-        int consecutiveEarly = 0;
-        for (int i = 1; i < n; i++) {
-            double predicted = out.get(out.size() - 1) + rate;
-            double error = downbeats.get(i) - predicted;
-            if (Math.abs(error) <= TOLERANCE * rate) {
-                out.add(downbeats.get(i));
-                consecutiveEarly = 0;
-            } else if (error < 0) {
-                // Too early to be the next bar. Once, that is a downbeat the
-                // tracker invented, and honouring it would give this bar a
-                // line the recording does not have. Twice running, it is this
-                // axis that is wrong -- a bar line accepted earlier was not
-                // one, and every real downbeat since has looked early against
-                // it. The recording gets the benefit of the doubt, because a
-                // base that cannot be corrected free-runs exactly as far as
-                // the open loop this replaced.
-                if (++consecutiveEarly >= 2) {
-                    out.add(downbeats.get(i));
-                    consecutiveEarly = 0;
-                }
-            } else {
-                // Too late: a downbeat the tracker missed. The prediction
-                // stands in for the bar that has none, and this measurement
-                // is offered again to the bar after it, so a miss costs its
-                // own bar rather than every bar after it.
-                out.add(predicted);
-                consecutiveEarly = 0;
-                if (out.size() > n * 2) {
-                    // A gap so long that filling it is guesswork. Whatever
-                    // follows is not this recording's bar line.
-                    break;
-                }
-                i--;
+        for (double gap : gaps) {
+            if (Math.abs(gap - rate) > TOLERANCE * rate
+                    || gap < barSeconds * 0.8 || gap > barSeconds * 1.25) {
+                return List.of();
             }
         }
-        return out;
+        return downbeats;
     }
 
     private double quartersPerBar() {

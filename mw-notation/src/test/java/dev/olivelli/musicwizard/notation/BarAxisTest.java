@@ -95,131 +95,53 @@ class BarAxisTest {
         }
     }
 
-    @Test
-    @DisplayName("one dropped downbeat costs its own bar, not every bar after it")
-    void oneGrossMissDoesNotShiftTheRest() {
-        // A wandering recording with one downbeat removed. Asserting only
-        // that the axis stays monotone would pass on an axis that had given
-        // up and gone constant -- which is what an earlier version did, ten
-        // bars adrift by the end. So the bar lines are compared against the
-        // times the fixture actually laid down.
+    /** A wandering grid with a fault injected at bar 9, or none. */
+    private static Score faulty(String fault) {
         double[] lengths = {BAR * 0.95, BAR * 1.08};
-        List<Double> truth = new ArrayList<>();
         List<Double> beats = new ArrayList<>();
         double at = 0;
         for (int bar = 0; bar < 24; bar++) {
-            truth.add(at);
             double length = lengths[bar % lengths.length];
-            if (bar != 10) {
+            boolean drop = "missing".equals(fault) && bar == 9;
+            if (!drop) {
                 for (int beat = 0; beat < 4; beat++) {
                     beats.add(at + beat * length / 4);
                 }
             }
-            at += length;
-        }
-        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
-                .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
-                        Confidence.of(0.9)));
-        BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
-
-        // Every bar after the missing one is still where the recording put
-        // it, to well inside a beat.
-        for (int bar = 12; bar <= 20; bar++) {
-            assertThat(axis.secondsAt(bar * 4.0))
-                    .as("bar %d", bar)
-                    .isCloseTo(truth.get(bar), within(QUARTER));
-        }
-    }
-
-    @Test
-    @DisplayName("a downbeat the tracker invented is dropped, not honoured")
-    void aSpuriousDownbeatIsDropped() {
-        // An extra downbeat halfway through bar 10. Honouring it would give
-        // that bar a line the recording does not have and push every later
-        // bar one along.
-        double[] lengths = {BAR * 0.95, BAR * 1.08};
-        List<Double> truth = new ArrayList<>();
-        List<Double> beats = new ArrayList<>();
-        double at = 0;
-        for (int bar = 0; bar < 24; bar++) {
-            truth.add(at);
-            double length = lengths[bar % lengths.length];
-            for (int beat = 0; beat < 4; beat++) {
-                beats.add(at + beat * length / 4);
-            }
-            if (bar == 10) {
-                // Four extra beats offset from the four above, so the grid
-                // gains a whole spurious bar without repeating a time.
+            if ("invented".equals(fault) && bar == 9) {
                 for (int beat = 0; beat < 4; beat++) {
-                    beats.add(at + length / 8 + beat * length / 4);
+                    beats.add(at + length * 0.7 + beat * length / 17);
                 }
             }
             at += length;
         }
         Collections.sort(beats);
-        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
-                .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
-                        Confidence.of(0.9)));
-        BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
-
-        for (int bar = 12; bar <= 20; bar++) {
-            assertThat(axis.secondsAt(bar * 4.0))
-                    .as("bar %d", bar)
-                    .isCloseTo(truth.get(bar), within(QUARTER));
+        List<Double> distinct = new ArrayList<>(beats.size());
+        for (double beat : beats) {
+            if (distinct.isEmpty() || beat - distinct.get(distinct.size() - 1) > 1e-6) {
+                distinct.add(beat);
+            }
         }
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
+                .withBeatGrid(BeatGrid.ofTimes(distinct, TimeSignature.FOUR_FOUR,
+                        Confidence.of(0.9)));
     }
 
     @Test
-    @DisplayName("a wrongly accepted downbeat is corrected, wherever in the bar it fell")
-    void anAcceptedWrongDownbeatDoesNotFreeRun() {
-        // A backbeat read as a downbeat is the most ordinary thing a tracker
-        // does, and at some offsets it lands inside the tolerance and is
-        // accepted. The bar line it moves must not become the base every
-        // later prediction runs from -- that is the free run this class was
-        // rewritten twice to remove -- so the offset is swept across the bar
-        // rather than tested at the one value that takes the early branch.
-        for (int tenths = 3; tenths <= 8; tenths++) {
-            double where = tenths / 10.0;
-            double[] lengths = {BAR * 0.95, BAR * 1.08};
-            List<Double> truth = new ArrayList<>();
-            List<Double> beats = new ArrayList<>();
-            double at = 0;
-            for (int bar = 0; bar < 24; bar++) {
-                truth.add(at);
-                double length = lengths[bar % lengths.length];
-                for (int beat = 0; beat < 4; beat++) {
-                    beats.add(at + beat * length / 4);
-                }
-                if (bar == 9) {
-                    for (int beat = 0; beat < 4; beat++) {
-                        beats.add(at + length * where + beat * length / 17);
-                    }
-                }
-                at += length;
-            }
-            Collections.sort(beats);
-            // The offsets above can coincide with a real beat; the grid
-            // refuses repeated times and the sweep is about the downbeat.
-            List<Double> distinct = new ArrayList<>(beats.size());
-            for (double beat : beats) {
-                if (distinct.isEmpty() || beat - distinct.get(distinct.size() - 1) > 1e-6) {
-                    distinct.add(beat);
-                }
-            }
-            beats = distinct;
-            Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), at)
-                    .withBeatGrid(BeatGrid.ofTimes(beats, TimeSignature.FOUR_FOUR,
-                            Confidence.of(0.9)));
-            BarAxis axis = BarAxis.of(score, 0.0, BAR, QUARTER);
-
-            // Well downstream of the bad downbeat, and against the recording
-            // rather than against the axis's own earlier answers. One bar of
-            // slack: the wrong line costs its own bar and the one it takes to
-            // notice, and nothing after that.
-            for (int bar = 14; bar <= 22; bar++) {
+    @DisplayName("a tracker that lost the beat anywhere is not followed anywhere")
+    void aFaultyGridFallsBackToTheConstantRate() {
+        // Both faults are ordinary: a downbeat the tracker missed, and a
+        // backbeat it read as one. Earlier versions repaired them and each
+        // repair was a feedback loop that could walk away from the recording
+        // and stay away -- measured worse than the constant rate on grids the
+        // constant rate handled exactly. So a sequence is used whole or not
+        // at all, and not at all means precisely the chart there was before.
+        for (String fault : List.of("missing", "invented")) {
+            BarAxis axis = BarAxis.of(faulty(fault), 0.0, BAR, QUARTER);
+            for (int bar = 0; bar <= 22; bar++) {
                 assertThat(axis.secondsAt(bar * 4.0))
-                        .as("spurious downbeat %.1f into its bar, chart bar %d", where, bar)
-                        .isCloseTo(truth.get(bar), within(BAR));
+                        .as("%s downbeat, bar %d", fault, bar)
+                        .isCloseTo(bar * BAR, within(1e-9));
             }
         }
     }
