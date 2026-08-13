@@ -22,10 +22,9 @@ Regenerate a package with:
 tools/music-teacher/generate.sh synthetic_samples/<name>.spec.txt
 ```
 
-Only the MIDI is byte-reproducible; regenerating re-renders the audio through
-the local FluidSynth and ffmpeg, so the MP3 can differ between machines and
-the harness baseline can move with it — regenerate the baseline in the same
-PR, as with any intended movement.
+Regenerating re-renders the audio through the local FluidSynth and ffmpeg, so
+the MP3 can differ between machines and the harness baseline can move with
+it — regenerate the baseline in the same PR, as with any intended movement.
 
 Each package has a GitHub issue labelled `synthetic-sample` recording what MW
 currently reads against the grid; open means MW still gets it wrong somewhere,

@@ -35,10 +35,9 @@ import java.util.Map;
  * {@code bars:} line, then the chord grid in the {@code samples/list.txt}
  * shorthand — one token per bar, {@code X-Y} a bar holding both chords,
  * whitespace and line breaks free. {@code #} starts a comment only at the
- * start of a line or after whitespace: {@code C#m} is a chord, and a rule
- * that cut every line at the first {@code #} silently dropped the rest of
- * any grid line with a sharp in it. {@code tools/score-synthetic.py} parses
- * this same format and must apply the same rule.
+ * start of a line or after whitespace — {@code C#m} is a chord.
+ * {@code tools/score-synthetic.py} parses this same format and must apply
+ * the same rule.
  *
  * <p>Headers: {@code title}, {@code style}, {@code tempo}, {@code key} and
  * {@code seed} are required; {@code genre}, {@code meter} (default 4/4) and
