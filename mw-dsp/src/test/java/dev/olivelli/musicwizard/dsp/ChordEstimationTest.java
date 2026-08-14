@@ -474,11 +474,10 @@ class ChordEstimationTest {
         /**
          * #446: a seventh a minority of the root's beats carry is withdrawn.
          *
-         * <p>These hold the per-run evidence fixed and vary only how much of the
-         * recording agrees with it, which is the axis the rule reads: the
-         * seventh-bearing run is the same vector in every one of them, and the
-         * even-split case shows that vector is read {@code Cm7} on its own
-         * evidence.
+         * <p>The first three hold the per-run evidence fixed and vary only how
+         * much of the recording agrees with it, which is the axis the rule reads;
+         * the even-split case shows that shared vector is read {@code Cm7} on its
+         * own evidence. The fourth needs a vector of its own and says why.
          */
         @Test
         @DisplayName("withdraws a seventh most of the root's beats do not carry")
@@ -509,9 +508,8 @@ class ChordEstimationTest {
             // The dominant seventh shares its root, fifth and flat seventh with
             // the minor one, so a fallback that only drops the minor seventh
             // answers with the dominant -- a major third arrived at by
-            // withdrawing a minor one. Measured on the corpus, that reading gave
-            // fm7-vamp-110.mp3's own chord as F7 and put a major third on a B
-            // minor blues.
+            // withdrawing a minor one. Measured on the corpus, that reading put a
+            // major third on three runs of a B minor blues.
             //
             // Separating the two needs a run this vocabulary can express both
             // ways: a flat seventh loud enough that C7 outscores Cm among the
@@ -534,12 +532,12 @@ class ChordEstimationTest {
          * <p>The C runs are separated because {@code sameChord} groups adjacent
          * beats on one root into a single run: with nothing between them the whole
          * of C would be one run and there would be nothing to count. The first run
-         * is the seventh-bearing one in both tests, so it is the same evidence
-         * read against different amounts of agreement.
+         * is the seventh-bearing one, so it is the same evidence read against
+         * different amounts of agreement.
          */
         private static List<String> alternating(int sevenths, int plain) {
             // A minor triad whose flat seventh clears 2/sqrt(3) - 1 of the triad's
-            // mass, which is all these three cases need of it.
+            // mass, which is all its callers need of it.
             return alternating(sevenths, plain,
                     chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13));
         }

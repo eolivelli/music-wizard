@@ -507,9 +507,10 @@ public final class ChordEstimator {
      * placed the minor seventh ranks it against the dominant one, which shares
      * its root, fifth and flat seventh, so leaving that candidate in turns "the
      * recording does not hold this seventh" into a flip of the third: measured
-     * with it left in, runs of {@code samples/fm7-vamp-110.mp3}'s own chord came
-     * back {@code F7} and a B minor blues was given a major third, which is the
-     * failure {@link #qualityScore}'s correction exists to stop.
+     * with it left in, three runs of {@code samples/bm-blues-slow.mp3} — a B
+     * minor blues — were given a major third, which is the failure {@link
+     * #qualityScore}'s correction exists to stop, and restricting the fallback
+     * is worth seven bars of that recording.
      *
      * <p>Where no triad beats a flat chroma either, the run has nothing to say
      * about its own quality and <b>the decoder's answer stands — which may be a
@@ -566,12 +567,13 @@ public final class ChordEstimator {
      * The best-scoring candidate on {@code root} that also beats a flat chroma,
      * or -1 if none does.
      *
-     * @param triadsOnly whether to leave every chord of more than three notes out
-     *     of the argmax. Counted rather than asked of {@link
+     * @param triadsOnly whether to leave out of the argmax any quality that is
+     *     not a three-note one. Counted rather than asked of {@link
      *     ChordQuality#hasSeventh()}, which is declared per constant and is false
      *     for the sixths — four-note chords that would otherwise slip into a
      *     fallback whose whole point is to drop back to three, on the day #287
-     *     puts one in the vocabulary.
+     *     puts one in the vocabulary. Counting also holds without the
+     *     {@code NONE} clause above it, which has no intervals at all.
      */
     private static int bestQuality(double[] summed, List<Template> templates, int root,
                                    boolean triadsOnly) {
