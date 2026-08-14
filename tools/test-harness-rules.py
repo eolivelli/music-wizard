@@ -11,6 +11,7 @@ onset for the lyric one. Run it directly:
 
 import contextlib
 import io
+import os
 import re
 import subprocess
 import sys
@@ -742,6 +743,28 @@ class Keying(unittest.TestCase):
                          lyrics.score_line("sere-doltremare.mp3", *self.ARGS))
 
 
+@contextlib.contextmanager
+def scratch_repo():
+    """A throwaway git repo, and a runner for git inside it.
+
+    The user's own config is shut out rather than inherited: `commit.gpgsign`
+    would make every commit here fail, and `diff.renames = false` would let the
+    rename test below pass against a premerge.sh with the flag it exists to pin
+    deleted. CI has no global config, so both are local-only failures, which is
+    where this file is most often run.
+    """
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
+           "GIT_CONFIG_SYSTEM": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    with tempfile.TemporaryDirectory() as tmp:
+        def git(*args):
+            return subprocess.run(("git", "-C", tmp) + args, check=True,
+                                  capture_output=True, text=True, env=env)
+        git("init", "-q")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+        yield git, Path(tmp)
+
+
 class BaselineDrift(unittest.TestCase):
     """premerge.sh prompts when main regenerated a baseline during this
     branch's life. What it must get right is the kind of change: a column
@@ -788,9 +811,9 @@ class BaselineDrift(unittest.TestCase):
     def test_premerge_answers_every_status_the_classifier_can_return(self):
         """A status with no arm of its own lands in the loud default: safe, but
         saying the wrong thing, which is this class's own defect one level up.
-        Only the loud status is left to that default. The kinds are read off
-        describe's own docstring, so a kind added without a case here fails
-        rather than going unchecked."""
+        Only the loud status is left to that default. describe's docstring is
+        taken as its contract: the case table below must match it exactly, so a
+        kind cannot be documented without being answered here."""
         documented = set(re.findall(r'"(\w*)"', drift.describe.__doc__))
         self.assertEqual(documented, set(self.cases()))
         quiet = {self.status(*self.cases()[k]) for k in documented} - {1}
@@ -818,31 +841,46 @@ class BaselineDrift(unittest.TestCase):
         inside it moved. Run with the flags premerge.sh actually passes, over a
         real rename, so the option and the rule cannot drift apart."""
         script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
-        flags = re.search(r"git diff ((?:--[\w-]+ )*)--name-only", script).group(1)
-        with tempfile.TemporaryDirectory() as tmp:
-            def git(*args):
-                subprocess.run(("git", "-C", tmp) + args, check=True,
-                               capture_output=True)
-            git("init", "-q")
-            git("config", "user.email", "t@example.com")
-            git("config", "user.name", "t")
-            baselines = Path(tmp) / "tools/baselines"
+        invocation = re.search(r"git diff (.*?) -- tools/baselines/", script)
+        self.assertIsNotNone(invocation, "premerge.sh's git diff line moved")
+        flags = [t for t in invocation.group(1).split() if t.startswith("--")]
+        with scratch_repo() as (git, tree):
+            baselines = tree / "tools/baselines"
             baselines.mkdir(parents=True)
-            body = self.CHART
-            (baselines / "score-chart.txt").write_text(body)
+            (baselines / "score-chart.txt").write_text(self.CHART)
             git("add", "-A")
             git("commit", "-qm", "base")
             (baselines / "score-chart.txt").unlink()
             (baselines / "score-charts.txt").write_text(
-                body.replace("93.0/113 (82.3%)", "71.0/113 (62.8%)"))
+                self.CHART.replace("93.0/113 (82.3%)", "71.0/113 (62.8%)"))
             git("add", "-A")
             git("commit", "-qm", "rename and re-measure")
-            named = subprocess.run(
-                ("git", "-C", tmp, "diff", *flags.split(), "--name-only",
-                 "HEAD~1", "HEAD", "--", "tools/baselines/"),
-                capture_output=True, text=True, check=True).stdout.split()
+            named = git("diff", *flags, "HEAD~1", "HEAD",
+                        "--", "tools/baselines/").stdout.split()
         self.assertEqual(["tools/baselines/score-chart.txt",
                           "tools/baselines/score-charts.txt"], sorted(named))
+
+    def test_absence_is_read_off_the_tree_and_not_off_a_failed_read(self):
+        """A blobless clone whose remote is unreachable lists the older blob
+        and cannot read it. Calling that absence puts a re-measured baseline in
+        the quiet arm, so `show` asks the tree; here the object is removed to
+        make the read fail while the tree still names it."""
+        with scratch_repo() as (git, tree):
+            (tree / "b.txt").write_text(self.CHART)
+            git("add", "-A")
+            git("commit", "-qm", "one")
+            blob = git("rev-parse", "HEAD:b.txt").stdout.strip()
+            cwd = os.getcwd()
+            try:
+                os.chdir(tree)
+                self.assertEqual(self.CHART, drift.show("HEAD", "b.txt"))
+                self.assertIsNone(drift.show("HEAD", "gone.txt"))
+                self.assertIs(drift.FAILED, drift.show("nosuchrev", "b.txt"))
+                (tree / ".git/objects" / blob[:2] / blob[2:]).unlink()
+                self.assertIn("b.txt", git("ls-tree", "HEAD", "--", "b.txt").stdout)
+                self.assertIs(drift.FAILED, drift.show("HEAD", "b.txt"))
+            finally:
+                os.chdir(cwd)
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")

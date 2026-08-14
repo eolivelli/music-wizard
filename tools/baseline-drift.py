@@ -119,15 +119,22 @@ path. Absence is a quiet arm now, so the two must not be one value."""
 
 def show(rev: str, path: str):
     """The file at that commit, None where that commit does not carry it, or
-    FAILED where git could not answer at all -- an unresolvable rev included,
-    which is the way this reads nothing and would otherwise call it absent."""
+    FAILED where git could not answer.
+
+    Absence is decided by the tree, never by a read that came back empty-handed:
+    in a blobless clone whose remote is unreachable -- a state premerge.sh
+    supports and names -- the older commit's blob does not read while the tree
+    lists it plainly, and the quiet arm trusts absence.
+    """
+    listed = subprocess.run(["git", "ls-tree", rev, "--", path],
+                            capture_output=True, text=True)
+    if listed.returncode:            # the rev does not resolve, or git is unwell
+        return FAILED
+    if not listed.stdout.strip():
+        return None
     p = subprocess.run(["git", "show", f"{rev}:{path}"],
                        capture_output=True, text=True)
-    if not p.returncode:
-        return p.stdout
-    resolved = subprocess.run(["git", "cat-file", "-e", f"{rev}^{{commit}}"],
-                              capture_output=True)
-    return None if not resolved.returncode else FAILED
+    return p.stdout if not p.returncode else FAILED
 
 
 def main(argv: list) -> int:
