@@ -10,9 +10,9 @@ people to skip the prompt -- hence the kinds below.
     python3 tools/baseline-drift.py <base> <tip> <path>...
 
 Exits 1 if anything could have been re-measured, 3 if the files were only
-reshaped, 0 if no row in them changed. Not 2: python exits 2 of its own accord
-when it cannot open this file, and the caller's quiet arms must not be
-reachable by a classifier that never ran.
+reshaped, 4 if they only gained rows, 0 if no row in them changed. Not 2:
+python exits 2 of its own accord when it cannot open this file, and the
+caller's quiet arms must not be reachable by a classifier that never ran.
 """
 
 import re
@@ -50,7 +50,7 @@ def shapes(fields: list) -> dict:
 
 
 def describe(old_text: str, new_text: str) -> tuple:
-    """(summary, detail lines, "moved" | "reshaped" | "")."""
+    """(summary, detail lines, "moved" | "reshaped" | "added" | "")."""
     old, new = rows(old_text), rows(new_text)
     if not old and not new:
         # The file changed and nothing in it parsed as a row. Reporting that as
@@ -79,11 +79,16 @@ def describe(old_text: str, new_text: str) -> tuple:
                 or any("#" not in k for k, _ in lost):
             figures.append(r)
     bits, detail = [], []
-    kind = "moved" if figures else "reshaped" if reshaped else ""
-    if set(old) != set(new):
-        kind = "moved"
-        bits.append(f"{len(set(new) - set(old))} rows added, "
-                    f"{len(set(old) - set(new))} removed")
+    came_rows, gone_rows = set(new) - set(old), set(old) - set(new)
+    # A row that only appeared cannot have been quoted before it existed, so on
+    # its own it is reported rather than warned about (#478). A row that
+    # vanished stays loud -- a figure quoted from it is gone, and a renamed
+    # benchmark shows up here as one -- and so does a gain alongside a figure
+    # that moved, which the `figures` arm already carries.
+    kind = ("moved" if figures or gone_rows
+            else "reshaped" if reshaped else "added" if came_rows else "")
+    if came_rows or gone_rows:
+        bits.append(f"{len(came_rows)} rows added, {len(gone_rows)} removed")
     if figures:
         bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
         # Naming them is the actionable half: a reader who quoted one of these
@@ -116,7 +121,11 @@ def main(argv: list) -> int:
         old, new = show(base, path), show(tip, path)
         name = path.rsplit("/", 1)[-1]
         if old is None or new is None:
-            kinds.add("moved")
+            # A whole baseline that appeared is the row-gain case at file
+            # scale: nothing quoted earlier was measured against it. One that
+            # vanished is loud, which is also what a rename reads as, since
+            # its other half is a removal on the old path.
+            kinds.add("added" if old is None else "moved")
             print(f"  {name}: {'added' if old is None else 'removed'} on main")
             continue
         summary, detail, kind = describe(old, new)
@@ -124,10 +133,13 @@ def main(argv: list) -> int:
         print(f"  {name}: {summary}")
         if detail:
             print("\n".join(detail))
-    # Three states, because the caller says three different things: a figure
-    # that may be stale, a column that cannot make one stale, and a file whose
-    # rows did not change at all.
-    return 1 if "moved" in kinds else 3 if "reshaped" in kinds else 0
+    # Four states, because the caller says four different things: a figure that
+    # may be stale, a column that cannot make one stale, rows that did not
+    # exist to be quoted, and a file whose rows did not change at all. Reshaped
+    # outranks added: its "check what you quoted from these columns" still
+    # applies when a file both gained rows and changed columns.
+    return (1 if "moved" in kinds else 3 if "reshaped" in kinds
+            else 4 if "added" in kinds else 0)
 
 
 if __name__ == "__main__":

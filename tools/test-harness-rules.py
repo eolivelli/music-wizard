@@ -213,6 +213,17 @@ class BarPhase(unittest.TestCase):
     def test_a_grid_with_no_phase_says_so_rather_than_scoring_one(self):
         self.assertIn("no bar phase to read", phase_line(doc([], beats=7), "C"))
 
+    def test_an_unreadable_confidence_is_not_reported_as_an_unreadable_phase(self):
+        """#477: the grid records the product, so beats with no confidence
+        leave nothing to divide by. The phase itself is there and regular --
+        `bar_phase` reads it -- and the row must not say otherwise."""
+        d = doc([], beat_confidence=0.0)
+        self.assertEqual((0, 4), samples.bar_phase(d))
+        self.assertIsNone(samples.phase_confidence(d))
+        line = phase_line(d, "C")
+        self.assertIn("no phase confidence to read", line)
+        self.assertNotIn("no bar phase", line)
+
     def test_the_floor_is_the_estimator_s_own(self):
         """PHASE_FLOOR is a copy of DownbeatEstimator.BASE_CONFIDENCE, printed
         in the block's header as the value a phase nothing supports reports. A
@@ -739,7 +750,7 @@ class BaselineDrift(unittest.TestCase):
              "  blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)\n"
              "  bossa-cm.mp3: bars=98  chords/bar 1.23  root 23.5/98 (24.0%)\n")
 
-    def status(self, old: str, new: str) -> int:
+    def status(self, old: str | None, new: str | None) -> int:
         """main()'s exit status for one file, with git and stdout stubbed."""
         show, out = drift.show, io.StringIO()
         drift.show = lambda rev, _path: old if rev == "base" else new
@@ -758,7 +769,30 @@ class BaselineDrift(unittest.TestCase):
                                                          "2.0/2 (100.0%)")))
         self.assertEqual(3, self.status(row, row.replace("(50.0%)\n",
                                                          "(50.0%)  n 7\n")))
+        self.assertEqual(4, self.status(row, row + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"))
         self.assertEqual(0, self.status(row, row.replace("h:", "header:")))
+
+    def test_premerge_answers_every_status_the_classifier_can_return(self):
+        """A status with no arm of its own lands in the loud default: safe,
+        but saying the wrong thing, which is this class's own defect one level
+        up. Only the loud status is left to that default."""
+        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+        quiet = {self.status(row, row.replace("(50.0%)\n", "(50.0%)  n 7\n")),
+                 self.status(row, row + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"),
+                 self.status(row, row.replace("h:", "header:"))}
+        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
+        block = script.split("python3 tools/baseline-drift.py")[1].split("esac")[0]
+        arms = set(re.findall(r"^\s*(\d+)\)", block, re.M))
+        self.assertIn("*)", block, "the loud arm is the default")
+        self.assertEqual(set(), {str(s) for s in quiet} - arms)
+
+    def test_a_baseline_that_appeared_on_main_is_the_same_case_at_file_scale(self):
+        """Nothing quoted earlier was measured against a file that did not
+        exist. One that vanished stays loud, which is also how a rename reads:
+        its other half is a removal on the old path."""
+        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+        self.assertEqual(4, self.status(None, row))
+        self.assertEqual(1, self.status(row, None))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
@@ -820,11 +854,36 @@ class BaselineDrift(unittest.TestCase):
                       "the columns that changed are named, since a field whose "
                       "own shape changed cannot be compared with its old self")
 
-    def test_a_row_that_appeared_counts_as_re_measured(self):
-        summary, _, kind = drift.describe(
-            self.CHART, self.CHART + "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n")
-        self.assertEqual("moved", kind)
+    ADDED = "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n"
+
+    def test_a_row_that_only_appeared_is_reported_rather_than_warned_about(self):
+        """#478: a benchmark added to the corpus rewrites a baseline without
+        re-measuring anything, and a figure quoted earlier cannot have come
+        from a row that did not exist. It is still said out loud, quietly."""
+        summary, _, kind = drift.describe(self.CHART, self.CHART + self.ADDED)
+        self.assertEqual("added", kind)
         self.assertEqual("1 rows added, 0 removed", summary)
+
+    def test_a_row_that_vanished_is_loud(self):
+        """A figure quoted from a row that is gone is stale by definition, and
+        a renamed benchmark presents as a removal beside a gain."""
+        _, _, kind = drift.describe(self.CHART + self.ADDED, self.CHART)
+        self.assertEqual("moved", kind)
+
+    def test_rows_added_beside_a_figure_that_moved_stay_loud(self):
+        """The gain is what makes the summary read innocently; the figure that
+        moved in a row both files share is what makes it stale."""
+        moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
+        summary, _, kind = drift.describe(self.CHART, moved + self.ADDED)
+        self.assertEqual("moved", kind)
+        self.assertIn("figures moved in 1 of 2 rows", summary)
+
+    def test_rows_added_beside_a_column_that_changed_keep_the_column_warning(self):
+        """Reshaped outranks added: 'check what you quoted from these columns'
+        still applies to the rows that were already there."""
+        reshaped = self.CHART.replace("(24.0%)\n", "(24.0%)  n 7\n")
+        _, _, kind = drift.describe(self.CHART, reshaped + self.ADDED)
+        self.assertEqual("reshaped", kind)
 
     def test_a_header_is_not_a_row(self):
         """Header lines are flush left and hold a colon of their own. Reading

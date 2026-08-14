@@ -370,9 +370,16 @@ def phase_roots(doc: dict, truth: str, per_bar: int) -> list[float]:
 def score_phase(mp3: Path, doc: dict, truth: str) -> None:
     """The bar phase this file's row above rests on, and what it cost."""
     grid = bar_phase(doc)
-    confidence = phase_confidence(doc)
-    if grid is None or confidence is None:
+    if grid is None:
         print(f"  phase {mp3.name}: no bar phase to read")
+        return
+    confidence = phase_confidence(doc)
+    if confidence is None:
+        # A readable phase whose own confidence cannot be recovered: the grid
+        # records the product, so a beat confidence of zero leaves nothing to
+        # divide by. Saying "no bar phase" here would report a phase that is
+        # there and regular as one that is not (#477).
+        print(f"  phase {mp3.name}: no phase confidence to read")
         return
     phase, per_bar = grid
     scores = phase_roots(doc, truth, per_bar)
