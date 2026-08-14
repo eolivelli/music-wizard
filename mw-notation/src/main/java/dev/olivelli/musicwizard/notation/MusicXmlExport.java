@@ -241,7 +241,7 @@ public final class MusicXmlExport {
             ScorePartwise.Part part = factory.createScorePartwisePart();
             part.setId(scorePart);
             StaffLayout.write(score, track, tuplets,
-                    new MusicXmlStaffWriter(factory, part, score.estimatedTempo()));
+                    new MusicXmlStaffWriter(factory, part, TempoMark.headline(score, 0)));
             partwise.getPart().add(part);
         }
         return marshal(partwise);

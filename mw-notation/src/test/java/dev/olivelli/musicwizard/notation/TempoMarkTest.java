@@ -44,18 +44,18 @@ class TempoMarkTest {
     @Test
     @DisplayName("counts the beat the meter is counted in, not the stored quarter")
     void countsTheCountedBeat() {
-        assertThat(TempoMark.of(at(120, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR))
+        assertThat(TempoMark.of(at(120, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR, 0))
                 .contains(new TempoMark(new NoteValue(4, false), 120));
         // 180 quarter notes a minute is 120 dotted quarters. Both halves of the
         // mark change: the unit gains a dot and the figure drops by a third.
-        assertThat(TempoMark.of(at(180, TimeSignature.SIX_EIGHT), TimeSignature.SIX_EIGHT))
+        assertThat(TempoMark.of(at(180, TimeSignature.SIX_EIGHT), TimeSignature.SIX_EIGHT, 0))
                 .contains(new TempoMark(new NoteValue(4, true), 120));
     }
 
     @Test
     @DisplayName("rounds to a whole count, because a metronome has no fractions")
     void roundsTheCount() {
-        assertThat(TempoMark.of(at(119.6, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR)
+        assertThat(TempoMark.of(at(119.6, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR, 0)
                 .orElseThrow().perMinute()).isEqualTo(120);
     }
 
@@ -65,7 +65,7 @@ class TempoMarkTest {
         // Half a beat a minute rounds to a count of zero, and "4 = 0" is not a
         // tempo. Nothing the pipeline builds is this slow; the guard is here
         // because a score is a public type and a hand-built one can be.
-        assertThat(TempoMark.of(at(0.5, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR))
+        assertThat(TempoMark.of(at(0.5, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR, 0))
                 .isEmpty();
     }
 
