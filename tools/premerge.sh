@@ -26,7 +26,7 @@ REPO_ARGS="${MAVEN_ARGS:-}"
 fail=0
 full=0
 skipped=0
-drift=0
+drift=""
 
 usage() {
   cat <<'EOF'
@@ -56,22 +56,34 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # that could have happened. It never sets fail, and it says nothing at all
 # whenever git cannot answer.
 baseline_drift() {
-  local tip base first moved guard= origin=fetched
+  local tip base cut moved n guard= origin=fetched
   git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || return 0
   # Read origin/main rather than a memory of it: a tracking ref last updated at
-  # the branch point reports exactly the zero drift this exists to catch. Being
-  # offline is not an error -- the local ref is used and said to be old.
-  command -v timeout >/dev/null && guard="timeout 30"
-  $guard git fetch --quiet origin main 2>/dev/null || origin="local ref, origin unreachable"
+  # the branch point reports exactly the zero drift this exists to catch. Not
+  # reaching it is not an error -- the local ref is used and said to be old.
+  # An unbounded fetch would hang a script that has printed nothing yet, so it
+  # runs only under a timeout, and never asks for a credential it cannot be
+  # given. The explicit refspec is what makes "(fetched)" true: with
+  # remote.origin.fetch unset, a plain fetch succeeds and moves no ref.
+  for t in timeout gtimeout; do
+    command -v "$t" >/dev/null && { guard="$t 30"; break; }
+  done
+  if [ -z "$guard" ]; then
+    origin="local ref, no timeout command to bound a fetch"
+  elif ! $guard env GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -oBatchMode=yes' \
+       git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null; then
+    origin="local ref, origin unreachable"
+  fi
   tip=$(git rev-parse --verify --quiet refs/remotes/origin/main) || return 0
   # The branch point is where this branch STARTED, not merge-base(HEAD, main).
   # Once the branch has merged current main -- which is how this script is
   # meant to be run -- that merge-base is main itself and the answer is always
-  # zero. The oldest commit on HEAD and not on main pins the start instead; a
-  # feature branch merged in makes that window wider, never narrower.
-  first=$(git rev-list --topo-order --reverse HEAD --not "$tip" 2>/dev/null | head -1)
-  [ -n "$first" ] || return 0   # detached at main, or on main, or behind it
-  base=$(git merge-base "$first" "$tip" 2>/dev/null)
+  # zero. What pins the start is where the commits that are HEAD's alone hang
+  # off: their boundary. Taking the earliest of those means a feature branch
+  # merged in widens the window rather than hiding the part before it.
+  cut=$(git rev-list --boundary HEAD --not "$tip" 2>/dev/null | sed -n 's/^-//p')
+  [ -n "$cut" ] || return 0     # detached at main, or on main, or behind it
+  base=$(git merge-base --octopus $cut "$tip" 2>/dev/null)
   [ -n "$base" ] || return 0    # shallow clone, or no common history
   moved=$(git diff --name-only "$base" "$tip" -- tools/baselines/ 2>/dev/null)
 
@@ -84,18 +96,22 @@ baseline_drift() {
     echo "no file under tools/baselines/ changed on main since then."
     return 0
   fi
-  drift=$(grep -c . <<<"$moved")
+  n=$(grep -c . <<<"$moved")
   # The classification lives in tools/baseline-drift.py, where CI's harness-rule
   # tests can reach it: a rule about not crying wolf is worth a test.
   python3 tools/baseline-drift.py "$base" "$tip" $moved
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
-  # about a column added to every row is how a prompt teaches people to skip it.
+  # about a column added to every row is how a prompt teaches people to skip it
+  # -- so the verdict line, which is what gets pasted into a PR, says which of
+  # the two it was rather than counting files.
   if [ "$?" -eq 0 ]; then
     echo "No figure the rows still share moved. Check anything you quoted from a"
     echo "column listed above."
+    drift="$n baseline file(s) reshaped on main since the branch point, no figure moved"
   else
     echo "A figure this branch quoted earlier may have been measured against the"
     echo "older baseline. Re-take it, or do not quote it."
+    drift="$n baseline file(s) moved on main since the branch point"
   fi
   return 0
 }
@@ -192,6 +208,6 @@ step "verdict"
 # The verdict is the line that gets pasted into a PR, so the drift prompt is
 # named here too -- a reader of the pasted line is exactly who needs to know
 # that a figure in the body around it may predate a baseline main regenerated.
-[ "$drift" -gt 0 ] && scope="$scope; $drift baseline file(s) moved on main since the branch point"
+[ -n "$drift" ] && scope="$scope; $drift"
 [ "$fail" -eq 0 ] && echo "PREMERGE: PASS ($scope)" || echo "PREMERGE: FAIL ($scope)"
 exit "$fail"

@@ -633,6 +633,16 @@ class BaselineDrift(unittest.TestCase):
         self.assertEqual("figures moved in 1 of 2 rows", summary)
         self.assertEqual(["      bossa-cm.mp3"], detail)
 
+    def test_a_measurement_that_reads_as_a_word_is_a_figure_that_moved(self):
+        """Half of score-samples' rows are key rows, whose verdict is a word.
+        Masking numbers alone would file OK -> WRONG as a changed column and
+        take the quiet branch for a re-measurement anyone might have quoted."""
+        old = "samples:\n  key a.mp3: G major at 40%  want G major  OK\n"
+        new = "samples:\n  key a.mp3: E minor at 40%  want G major  WRONG\n"
+        summary, _, remeasured = drift.describe(old, new)
+        self.assertTrue(remeasured)
+        self.assertEqual("figures moved in 1 of 1 rows", summary)
+
     def test_a_column_added_to_every_row_moves_no_figure(self):
         """#361 added a column to the lyric baselines, rewriting every row
         without re-measuring anything."""
@@ -666,6 +676,31 @@ class BaselineDrift(unittest.TestCase):
         packages. Keying on '.mp3:' would make those invisible."""
         rows = drift.rows("  key blues-a.wav: C major at 16%  want C major  OK\n")
         self.assertEqual(["key blues-a.wav"], list(rows))
+
+    def test_two_columns_of_the_same_shape_stay_two_columns(self):
+        """Two fields that mask to the same text are two fields. Folding them
+        into one would make a column added beside them read as a moved
+        figure -- the cry-wolf the keying exists to prevent."""
+        old = "h:\n  a.mp3: bars 4  bars 9\n"
+        new = "h:\n  a.mp3: bars 4  bars 9  bars 7\n"
+        summary, _, remeasured = drift.describe(old, new)
+        self.assertFalse(remeasured)
+        self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
+                         summary)
+
+    def test_a_file_whose_rows_do_not_parse_is_loud(self):
+        """An all-clear that rests on having understood nothing is the failure
+        this prompt exists to prevent."""
+        summary, _, remeasured = drift.describe("flat 1\n", "flat 2\n")
+        self.assertTrue(remeasured)
+        self.assertIn("no row in it parsed", summary)
+
+    def test_two_sections_may_print_the_same_row_name(self):
+        """Overwriting would hide whichever section came first."""
+        text = "h:\n  a.mp3: bars 4\nkeys:\n  a.mp3: C major  OK\n"
+        self.assertEqual(2, len(drift.rows(text)))
+        _, _, remeasured = drift.describe(text, text.replace("C major", "E minor"))
+        self.assertTrue(remeasured)
 
 
 if __name__ == "__main__":

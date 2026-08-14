@@ -18,56 +18,79 @@ import sys
 
 
 def rows(text: str) -> dict:
-    """Baseline rows as name -> {field shape: field}.
-
-    A field is keyed by its shape -- itself with every number masked -- so a
-    column added or renamed is a key that appeared, and a measurement that
-    moved is a key whose value changed.
-    """
-    out = {}
+    """Baseline rows as name -> the fields printed on it, in order."""
+    out: dict = {}
     for line in text.splitlines():
         # Rows are indented and named; anything flush left is a header.
         if not line[:1].isspace() or ":" not in line:
             continue
         name, _, body = line.partition(":")
-        fields = {}
-        for f in re.split(r"\s{2,}", body.strip()):
-            k = re.sub(r"\d+(?:\.\d+)?", "#", f)
-            fields[k] = fields.get(k, "") + f
-        out[name.strip()] = fields
+        name = name.strip()
+        # Two sections may print the same name -- score-samples' key section
+        # prefixes it today, but overwriting would hide one section's movement.
+        while name in out:
+            name += "'"
+        out[name] = re.split(r"\s{2,}", body.strip())
     return out
 
 
-def describe(old: str, new: str) -> tuple:
+def shapes(fields: list) -> dict:
+    """Fields keyed by shape -- the field with every number masked -- and by
+    which occurrence of that shape they are, so two fields that mask to the
+    same text stay two fields rather than one concatenation."""
+    out, seen = {}, {}
+    for f in fields:
+        k = re.sub(r"\d+(?:\.\d+)?", "#", f)
+        seen[k] = seen.get(k, 0) + 1
+        out[(k, seen[k])] = f
+    return out
+
+
+def describe(old_text: str, new_text: str) -> tuple:
     """(summary, detail lines, could anything have been re-measured)."""
-    old, new = rows(old), rows(new)
+    old, new = rows(old_text), rows(new_text)
+    if not old and not new:
+        # The file changed and nothing in it parsed as a row. Reporting that as
+        # "rows unchanged" would be the all-clear off an empty comparison.
+        return "changed, and no row in it parsed -- read the diff", [], True
     common = sorted(set(old) & set(new))
-    figures = [r for r in common
-               if any(k in new[r] and old[r][k] != new[r][k] for k in old[r])]
-    shape = [r for r in common if set(old[r]) != set(new[r])]
-    bits, detail, remeasured = [], [], False
+    figures, reshaped, gone, came = [], [], set(), set()
+    for r in common:
+        o, n = old[r], new[r]
+        if len(o) == len(n):
+            # Same columns, so compare them where they stand. A measurement
+            # that reads as a word moves this way and no other: a key row goes
+            # from OK to WRONG without a digit changing anywhere.
+            if o != n:
+                figures.append(r)
+            continue
+        reshaped.append(r)
+        so, sn = shapes(o), shapes(n)
+        gone |= so.keys() - sn.keys()
+        came |= sn.keys() - so.keys()
+        if any(so[k] != sn[k] for k in so.keys() & sn.keys()):
+            figures.append(r)
+    bits, detail = [], []
+    remeasured = bool(figures)
     if set(old) != set(new):
         remeasured = True
         bits.append(f"{len(set(new) - set(old))} rows added, "
                     f"{len(set(old) - set(new))} removed")
     if figures:
-        remeasured = True
         bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
         # Naming them is the actionable half: a reader who quoted one of these
         # benchmarks knows to re-take that figure, and one who did not is done.
         detail.append("      " + ", ".join(figures[:5])
                       + (f" and {len(figures) - 5} more"
                          if len(figures) > 5 else ""))
-    if shape:
-        bits.append(f"columns changed in {len(shape)} of {len(common)} rows"
+    if reshaped:
+        bits.append(f"columns changed in {len(reshaped)} of {len(common)} rows"
                     + ("" if figures else ", no shared figure moved"))
         # A field whose own shape changed cannot be compared with its old self,
         # so show what appeared and vanished and let the reader judge rather
         # than claim nothing there was re-measured.
-        detail += [f"      - {k}" for k in
-                   sorted({k for r in shape for k in set(old[r]) - set(new[r])})]
-        detail += [f"      + {k}" for k in
-                   sorted({k for r in shape for k in set(new[r]) - set(old[r])})]
+        detail += [f"      - {k}" for k, _ in sorted(set(gone))]
+        detail += [f"      + {k}" for k, _ in sorted(set(came))]
     return "; ".join(bits) if bits else "rows unchanged", detail, remeasured
 
 
