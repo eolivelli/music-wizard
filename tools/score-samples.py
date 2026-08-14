@@ -117,10 +117,13 @@ BENCHMARKS = {
 # which is the least reliable thing on a recording. Expect the estimator to say
 # so in its confidence rather than to get both.
 #
-# That is the shape of every row the committed baseline reads WRONG: each names
-# the relative of the key wanted and reports a low confidence for it. The
+# That is the shape of most rows the committed baseline reads WRONG: they name
+# the relative of the key wanted and report a low confidence for it, so the
 # signature is right and which of the pair is home is not, which is #277 rather
-# than a defect in the table.
+# than a defect in the table. It is not the shape of all of them. bossa-cm reads
+# F minor against C minor -- four flats against three, so the signature itself
+# is wrong, and its signature confidence says so where its tonic confidence does
+# not. A row that reads WRONG has to be looked at before it is filed under #277.
 KEYS = {
     "blues-a-90bpm.mp3": "A major",
     "blues-shuffle-a-106bpm.mp3": "A major",

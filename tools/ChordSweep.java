@@ -245,7 +245,7 @@ public final class ChordSweep {
     /** The estimator run exactly as {@code AudioTranscriber} runs it. */
     static ChordProgression estimate(Cached c) {
         return ChordEstimator.estimate(new Chroma(c.combined(), 0),
-                new Chroma(c.treble(), 0), c.beats());
+                new Chroma(c.treble(), 0), new Chroma(c.bass(), 0), c.beats());
     }
 
     // ---------------------------------------------------------------- scoring

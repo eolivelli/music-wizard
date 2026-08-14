@@ -91,8 +91,8 @@ import java.util.stream.IntStream;
  *
  * @param treble                chroma from the notes in the chordal register
  * @param bass                  chroma from the notes below it, which is where a
- *                              root would be if this register could be trusted
- *                              to place one; see {@link #bass()}
+ *                              root is played; see {@link #bass()} for what it
+ *                              is trusted with and what it is not
  * @param tuningOffsetSemitones the tuning the analysis was run at, in the sense
  *                              of {@link Chroma#estimateTuning}
  */
@@ -279,12 +279,13 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
     /**
      * Chroma from the bass register, which is where the root of a chord is.
      *
-     * <p>Not used for chord labelling, and on the one real recording with known
-     * changes it should not be: see {@link #combined()} for the measurement.
-     * It is computed and exposed here because it falls out of the transcription
-     * for free, because the alternative — computing it later from a
-     * transcription that has been thrown away — is not free at all, and because
-     * naming a bass note is what slash chords and inversions will need (#194).
+     * <p>Not what a chord is labelled <em>from</em> — {@link #combined()} has
+     * the measurement saying so, and this register alone is much worse. What it
+     * is used for is the one question the fold cannot answer, which of a chord's
+     * own notes is its root, where it is a prior over roots rather than another
+     * template to match — {@code ChordEstimator.BASS_ROOT_WEIGHT} carries what
+     * that is worth. Naming a bass note outright is what slash chords and
+     * inversions will need (#194).
      */
     @Override
     public Chroma bass() {
