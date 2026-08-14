@@ -428,8 +428,6 @@ final class AnalyzeCommand implements Callable<Integer> {
             AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
             List<LyricLine> parsed = lyrics.lines();
             List<LyricLine> aligned = new ArrayList<>(parsed.size());
-            // The aligner's own confidences, kept apart from the parser's -- see
-            // where they are reported below.
             List<Confidence> measured = new ArrayList<>();
             double previousEnd = 0;
             int kept = 0;
@@ -485,9 +483,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             // Two scales, never compared (#386). Whoever produced the words
             // rated them -- LrcLyrics by how each time was come by, or the
             // transcriber by what it heard -- and the aligner rates only the
-            // path it chose through the audio. The file keeps the words' number,
-            // because alignment does not touch the words; the aligner's is
-            // printed beside it rather than folded in.
+            // path it chose through the audio. The file keeps the words'
+            // number; the aligner's is printed beside it rather than folded in.
             Confidence weakest = measured.stream()
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(null);

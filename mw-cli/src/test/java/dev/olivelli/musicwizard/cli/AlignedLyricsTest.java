@@ -51,6 +51,9 @@ class AlignedLyricsTest {
         return analysed(alignmentProvider, lyrics, language, "song");
     }
 
+    /** The analyze output of the last {@link #analysed} run. */
+    private String lastAnalyze = "";
+
     private Path analysed(String alignmentProvider, String lyrics, String language,
                           String name) throws IOException {
         Path source = directory.resolve(name + ".wav");
@@ -68,6 +71,7 @@ class AlignedLyricsTest {
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--lyrics", lrc.toString(), "--lyrics-language", language);
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        lastAnalyze = analyze.all();
         return root;
     }
 
@@ -271,9 +275,11 @@ class AlignedLyricsTest {
         Path aligned = analysed("fake-cli-alignment", LRC, "en", "aligned");
         Score score = Workspace.open(aligned).readScore().orElseThrow();
 
-        // The aligner ran, and its scale is present on the words. Without this
-        // the equality below is satisfied by two failures as easily as by two
-        // successes, and the test becomes a duplicate of the absent-aligner one.
+        // The aligner ran, on every line, and its scale is present on the
+        // words. Without this the equality below is satisfied by two failures as
+        // easily as by two successes; without the count, one line left at parsed
+        // times would satisfy the old aggregation too.
+        assertThat(lastAnalyze).contains("aligned 2 lyric lines");
         assertThat(score.lyrics().lines().get(0).words().get(0).confidence())
                 .isEqualTo(FakeAlignmentProvider.ALIGNED);
         assertThat(score.lyrics().confidence())
