@@ -281,20 +281,21 @@ public final class ChordEstimator {
      * <pre>
      *   beats either side       none     0     1     2     3     4
      *   eb7-vamp root+quality    102    80   141   160   158   155
-     *   fm7-vamp root+quality     92    94     0   117   102    77
+     *   fm7-vamp root+quality    133   127     0   132   136   134
      *   bm-blues root+quality     78    68    68    88    91    96
      * </pre>
      *
-     * <p>At zero and one the prior helps one recording and wrecks another; two
-     * and three both clear the no-prior column on every row, and two is where
-     * the two vamps read highest. So the window is part of the mechanism rather
-     * than a smoothing detail. The fm7 cell at one is split runs meeting {@link
+     * <p>At zero and one the prior helps one recording and wrecks another, which
+     * is what makes the window part of the mechanism rather than a smoothing
+     * detail. The fm7 cell at one is split runs meeting {@link
      * #decideSeventhsPerRoot}: once a root is fragmented into short runs, a
      * minority of its beats carry the seventh and every one of them then loses
-     * it. Widening past two trades the fm7 row away a good deal faster than the
-     * bm-blues row gains — fifteen bars against three at a window of three, and
-     * forty against eight at four — so the vamp whose bass is a figure is the
-     * row to watch when moving this.
+     * it.
+     *
+     * <p>From two upwards the three rows no longer agree on a best window — eb7
+     * reads highest at two, fm7 at three, and bm-blues goes on rising past both.
+     * Two is what ships and what every figure in {@code tools/baselines/} was
+     * measured through; #488 carries whether the corpus now wants three.
      */
     private static final int BASS_ROOT_BEATS = 2;
 
@@ -623,9 +624,8 @@ public final class ChordEstimator {
      * the melody sounds a D over the triad, two on partial bleed — while the same
      * chord elsewhere reads plain. The second is #479, where a vamp repeating one
      * voicing loses the seventh in scattered bars: each beat is normalised before
-     * a run is summed, so a bar whose melody is loud off the beat has a quieter
-     * seventh in the sum than the bar beside it, and the ratio the seventh has to
-     * clear is the same either way.
+     * a run is summed, so one voicing does not give one sum, and the ratio a
+     * four-note template has to clear is the same either way.
      *
      * <p><b>The prior is that a chord recurs and its seventh is a property of the
      * chord, not of the bar.</b> So the seventh is believed on a root where most
