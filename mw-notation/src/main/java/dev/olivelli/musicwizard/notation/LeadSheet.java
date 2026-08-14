@@ -38,9 +38,11 @@ import java.util.Optional;
  * out from a score whose chords carry no beat positions, so {@link ChartLayout}
  * bars them on the tracked downbeats; a staff has to be barred by the tempo
  * map, because that is the axis its notes were quantized onto, so the same
- * layout takes its other route here. The two agree wherever the grid is good
- * and diverge where it is not — which is exactly the melody-only recording this
- * output exists for.
+ * layout takes its other route here. The two coincide only when the tracked
+ * downbeat happens to fall on a bar line of the tempo map — and nothing puts it
+ * there, because the map carries no bar phase at all (#84). Where it does not,
+ * this page's bar lines are displaced against the music by however far the
+ * phase is out, with or without a chart to compare it to.
  *
  * <p>The two blocks are aligned by musical time and not by counting bars. Each
  * writes its own bar checks, and LilyPond places both against the same clock,

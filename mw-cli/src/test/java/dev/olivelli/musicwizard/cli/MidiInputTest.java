@@ -633,11 +633,15 @@ class MidiInputTest {
             assertThat(analyze.err())
                     .contains("--melody has no effect on a MIDI workspace")
                     .contains("#500");
-            // Not listed among the overrides the file supersedes: that list's
-            // reason is that the file declares its own tempo and meter, which
-            // says nothing about a melody.
-            assertThat(analyze.err()).doesNotContain("--melody, --tempo");
-            assertThat(analyze.out())
+            // Its own sentence rather than an entry in the list of overrides
+            // the file supersedes: that list's reason is that the file declares
+            // its own tempo and meter, which says nothing about a melody.
+            assertThat(analyze.err()).doesNotContain("no effect on a MIDI workspace; the file");
+            // Anchored on a row the summary does print, so the absence below is
+            // an absence in a block that was printed rather than in one that
+            // was not -- which is the trap this class's summaryBlock exists for.
+            assertThat(summaryBlock(analyze.out()))
+                    .contains("Chords  ")
                     .as("no melody row, because no melody role is ever assigned here")
                     .doesNotContain("Melody  ");
         }

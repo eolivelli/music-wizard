@@ -229,30 +229,38 @@ class LeadSheetTest {
     }
 
     @Test
-    @DisplayName("shortens the chord the pickup begins inside")
-    void cutsThroughAChordThatWasAlreadySounding() {
+    @DisplayName("drops a lead-in cell that lies wholly before the pickup")
+    void dropsACellEntirelyOutsideThePickup() {
         TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
         NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
                 note(map, 3, 1, "G4"),
                 note(map, 4, 4, "C5"),
                 note(map, 8, 4, "E5")), Confidence.CERTAIN);
-        // One chord across the whole first bar, so the pickup begins in the
-        // middle of it rather than on a boundary between two cells.
+        // The harmony starts a beat into the bar, so the chart's first bar holds
+        // two cells: a lead-in rest and the chord. With a one-beat pickup the
+        // rest lies wholly outside it and the chord straddles its edge, which is
+        // the pair of branches -- drop, and shorten -- that cutting a bar down
+        // to a pickup has.
         Score score = Score.empty(map, 12 / (QUARTER_BPM / 60))
                 .withTrack(voice)
                 .withChords(new ChordProgression(List.of(
-                        chord(map, "C4", ChordQuality.MAJOR, 0, 4),
+                        chord(map, "C4", ChordQuality.MAJOR, 1, 4),
                         chord(map, "F4", ChordQuality.MAJOR, 4, 8),
                         chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12)),
                         Confidence.of(0.9)));
         QuantizedScore quantized = Quantizer.quantize(score);
+
+        assertThat(barsOf(context(ChordChart.toLilyPond(quantized.score()), "\\new ChordNames")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .as("the chart prints the lead-in as a rest, which is the cell being dropped")
+                .isEqualTo("r4 c2.");
 
         String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
 
         assertThat(context(source, "\\new Staff")).contains("\\partial 4");
         assertThat(barsOf(context(source, "\\new ChordNames")))
                 .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-                .as("the chord keeps its name and loses the beats outside the pickup")
+                .as("the rest is gone entirely and the chord keeps only the pickup")
                 .isEqualTo("c4");
     }
 
