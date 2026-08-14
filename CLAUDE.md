@@ -16,6 +16,12 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 mvn -pl mw-core test       # the module that matters most
 ```
 
+`docs/local-setup.md` is what a machine needs beyond that — the global config
+keys, the sherpa native, the alignment models — written around what each one
+degrades in silence. A stage that cannot reach its model says so in one line
+and carries on, so a harness row can measure something other than it appears
+to, in either direction.
+
 `./mw` is a developer wrapper that rebuilds when sources change; the real
 artifact is the shaded `mw-cli/target/mw.jar`. It is ~88 MB, almost entirely
 ONNX Runtime, FFmpeg natives and the Anthropic SDK.
@@ -350,8 +356,12 @@ them are in `docs/history.md`. The short version:
 - **One git worktree per task, one local Maven repository per worktree**
   (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
   build downloads the dependency closure; that is the price of the isolation.
-  Never `git checkout` in the shared clone. The incidents behind each half are
-  in `docs/history.md`.
+  Never `git checkout` in the shared clone, and never move `refs/heads/main`
+  from a worktree: git refuses most of the ways but not all of them, and one
+  that goes through moves the ref for the clone too — whose files then read as
+  deletions against a HEAD that moved without them. A worktree that must build
+  from `main` detaches. The incidents behind each half are in
+  `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
