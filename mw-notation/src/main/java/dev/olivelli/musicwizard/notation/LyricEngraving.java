@@ -162,6 +162,10 @@ final class LyricEngraving {
         out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
         out.append("    \\override VerticalAxisGroup"
                 + ".nonstaff-nonstaff-spacing.basic-distance = #3\n");
+        // Chord names are left-aligned on their moment and lyric syllables are
+        // centred on theirs, so without this a syllable sits half its width to
+        // the left of the chord it belongs to.
+        out.append("    \\override LyricText.self-alignment-X = #LEFT\n");
         // LilyPond drops a hyphen it cannot fit, and syllables of a sung word
         // sit close together -- so "go -- te" came out as "go te" on a real
         // page, reading as two words rather than one split in two. This is the

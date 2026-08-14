@@ -439,20 +439,7 @@ public final class ChordChart {
         if (parallel) {
             out.append("  >>\n");
         }
-        // Everything standing for one moment begins at the same place on the
-        // page: the chord names have no self-alignment of their own and so
-        // start at their column's origin, and both Lyrics lanes are put there
-        // too. Declared once, for the context, because the page breaks when two
-        // lanes disagree rather than at any particular value -- and a lane that
-        // simply forgot the override would inherit CENTER and be the disagreeing
-        // one (#455). In the score's own layout, not a top-level one, which
-        // does not reach these grobs.
-        out.append("  \\layout {\n");
-        out.append("    \\context {\n");
-        out.append("      \\Lyrics\n");
-        out.append("      \\override LyricText.self-alignment-X = #LEFT\n");
-        out.append("    }\n");
-        out.append("  }\n");
+        out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
     }
