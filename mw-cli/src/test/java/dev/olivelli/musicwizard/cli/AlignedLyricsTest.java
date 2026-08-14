@@ -43,22 +43,27 @@ class AlignedLyricsTest {
             """;
 
     private Path analysed(String alignmentProvider) throws IOException {
-        return analysed(alignmentProvider, LRC, "en");
+        return analysed(alignmentProvider, LRC, "en", "song");
     }
 
     private Path analysed(String alignmentProvider, String lyrics, String language)
             throws IOException {
-        Path source = directory.resolve("song.wav");
+        return analysed(alignmentProvider, lyrics, language, "song");
+    }
+
+    private Path analysed(String alignmentProvider, String lyrics, String language,
+                          String name) throws IOException {
+        Path source = directory.resolve(name + ".wav");
         SignalFactory.writeWav(source, SignalFactory.chord(
                 SignalFactory.majorTriad(60), 6.0, SignalFactory.DEFAULT_SAMPLE_RATE),
                 SignalFactory.DEFAULT_SAMPLE_RATE);
-        Path root = directory.resolve("song.mwz");
+        Path root = directory.resolve(name + ".mwz");
         assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
                 .exitCode()).isZero();
         Path descriptor = root.resolve("workspace.yaml");
         Files.writeString(descriptor, Files.readString(descriptor)
                 + "\nconfig:\n  ml:\n    alignmentProvider: " + alignmentProvider + "\n");
-        Path lrc = directory.resolve("words.lrc");
+        Path lrc = directory.resolve(name + ".lrc");
         Files.writeString(lrc, lyrics);
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--lyrics", lrc.toString(), "--lyrics-language", language);
@@ -255,6 +260,24 @@ class AlignedLyricsTest {
         assertThat(words.get(0).startSeconds()).isEqualTo(1.0);
         assertThat(words.stream().map(w -> w.text()).toList())
                 .containsExactly("la", "sol", "mi");
+    }
+
+    @Test
+    @DisplayName("aligning leaves the file's own confidence on the parser's scale")
+    void theFileKeepsTheParsersScale() throws IOException {
+        // #386. The parser's number says how the words and their times were come
+        // by; the aligner's is a per-frame posterior along the path it chose,
+        // and on sung audio it sits an order of magnitude lower. A single
+        // minimum over both is always the aligned lines', so one aligned line
+        // used to decide the number for a whole file -- and a measured time
+        // ranked below a guess. The two are never compared now, and this holds
+        // it: the same lyrics, aligned and not, report the same file confidence.
+        Path unaligned = analysed("no-such-aligner", LRC, "en", "plain");
+        Path aligned = analysed("fake-cli-alignment", LRC, "en", "aligned");
+
+        assertThat(Workspace.open(aligned).readScore().orElseThrow().lyrics().confidence())
+                .isEqualTo(Workspace.open(unaligned).readScore().orElseThrow()
+                        .lyrics().confidence());
     }
 
     @Test
