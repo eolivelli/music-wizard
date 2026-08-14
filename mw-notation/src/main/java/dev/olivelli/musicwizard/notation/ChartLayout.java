@@ -1509,8 +1509,7 @@ final class ChartLayout {
     }
 
     /**
-     * When the chart's harmony starts, which is the moment every reader of the
-     * chart's one tempo reads it at.
+     * When the chart's harmony starts.
      *
      * <p>Where the bar lines go is decided from this and so is how fast they
      * are spaced, so the axis and its rate cannot be built from two different

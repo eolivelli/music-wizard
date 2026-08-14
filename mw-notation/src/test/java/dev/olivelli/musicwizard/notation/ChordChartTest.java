@@ -623,6 +623,11 @@ class ChordChartTest {
                 .isLessThan(ChartLayout.harmonyStarts(score));
         assertThat(ChordChart.toText(score))
                 .contains("Tempo  120 BPM at the start, changed 1 time later");
+        // The engraved mark reads the same moment through a second call site,
+        // and every other fixture that reaches the engraving starts its harmony
+        // where the chart opens -- so the two moments coincide there and only
+        // this one can tell them apart.
+        assertThat(ChordChart.toLilyPond(score)).contains("4 = 120");
     }
 
     @Test

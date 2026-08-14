@@ -58,9 +58,10 @@ public record MusicWizardConfig(
              * tracked beat, which then begins a bar in the saved beat grid and
              * the first bar line of the chart drawn from it (#83). The tempo
              * map's own bar numbering is deliberately left alone, so that this
-             * and a tempo override cannot interact. Later chart bar lines are
-             * the grid's own downbeats where every one of them is a plausible
-             * bar, and one constant bar length from here where they are not. */
+             * and a tempo override cannot interact. Later chart bar lines follow
+             * the grid's own downbeats, or step from here at one constant bar
+             * length where the chart cannot follow them; ChartLayout.BarLines
+             * decides which and says why. */
             Double firstDownbeatSecondsOverride,
             /* Skip stem separation and analyse the mix directly. */
             Boolean skipSeparation) {
