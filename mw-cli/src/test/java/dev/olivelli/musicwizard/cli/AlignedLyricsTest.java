@@ -265,17 +265,18 @@ class AlignedLyricsTest {
     @Test
     @DisplayName("aligning leaves the file's own confidence on the parser's scale")
     void theFileKeepsTheParsersScale() throws IOException {
-        // #386. The parser's number says how the words and their times were come
-        // by; the aligner's is a per-frame posterior along the path it chose,
-        // and on sung audio it sits an order of magnitude lower. A single
-        // minimum over both is always the aligned lines', so one aligned line
-        // used to decide the number for a whole file -- and a measured time
-        // ranked below a guess. The two are never compared now, and this holds
-        // it: the same lyrics, aligned and not, report the same file confidence.
+        // The same lyrics, aligned and not, report the same file confidence:
+        // the aligner rates its own path and the file keeps the words' number.
         Path unaligned = analysed("no-such-aligner", LRC, "en", "plain");
         Path aligned = analysed("fake-cli-alignment", LRC, "en", "aligned");
+        Score score = Workspace.open(aligned).readScore().orElseThrow();
 
-        assertThat(Workspace.open(aligned).readScore().orElseThrow().lyrics().confidence())
+        // The aligner ran, and its scale is present on the words. Without this
+        // the equality below is satisfied by two failures as easily as by two
+        // successes, and the test becomes a duplicate of the absent-aligner one.
+        assertThat(score.lyrics().lines().get(0).words().get(0).confidence())
+                .isEqualTo(FakeAlignmentProvider.ALIGNED);
+        assertThat(score.lyrics().confidence())
                 .isEqualTo(Workspace.open(unaligned).readScore().orElseThrow()
                         .lyrics().confidence());
     }

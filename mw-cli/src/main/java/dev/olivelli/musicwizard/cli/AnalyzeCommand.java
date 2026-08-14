@@ -482,29 +482,20 @@ final class AnalyzeCommand implements Callable<Integer> {
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
             }
-            // The file keeps the parser's number, and the aligner's is reported
-            // beside it rather than folded into it (#386). They are two scales
-            // measuring two things: the parser's says how the words and their
-            // times were come by -- a word tag is 0.9, an even division 0.5 --
-            // and the aligner's is the mean per-frame posterior along the path
-            // it chose, which on sung audio through a speech model sits an order
-            // of magnitude lower. A single minimum over both is therefore always
-            // the aligned lines', so one aligned line collapsed the number for a
-            // whole file of parsed ones, and a measured time ranked below a
-            // guess. Nothing branches on it today and this is what keeps that
-            // safe to rely on: the two are never compared.
-            //
-            // The parser's is the one kept because it is a claim about the words
-            // -- which alignment does not touch -- while the aligner's is a claim
-            // about placement, and it is placement that has no ground truth to
-            // calibrate against yet (#361).
+            // Two scales, never compared (#386). Whoever produced the words
+            // rated them -- LrcLyrics by how each time was come by, or the
+            // transcriber by what it heard -- and the aligner rates only the
+            // path it chose through the audio. The file keeps the words' number,
+            // because alignment does not touch the words; the aligner's is
+            // printed beside it rather than folded in.
             Confidence weakest = measured.stream()
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(null);
             System.out.println("  aligned " + counted(aligned.size() - kept,
                     "lyric line") + " with " + provider.get().id()
                     + (weakest != null
-                            ? String.format(", weakest word %.2f on the aligner's own scale",
+                            ? String.format(java.util.Locale.ROOT,
+                                    ", weakest word %.2f on the aligner's own scale",
                                     weakest.value())
                             : "")
                     + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
