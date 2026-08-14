@@ -428,6 +428,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             AudioBuffer audio = AudioDecoder.decode(workspace.sourceFile());
             List<LyricLine> parsed = lyrics.lines();
             List<LyricLine> aligned = new ArrayList<>(parsed.size());
+            List<Confidence> measured = new ArrayList<>();
             double previousEnd = 0;
             int kept = 0;
             for (int i = 0; i < parsed.size(); i++) {
@@ -468,6 +469,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                 }
                 if (result == line) {
                     kept++;
+                } else {
+                    measured.add(result.confidence());
                 }
                 // Belt and braces at the one assembly point: the sequential
                 // window head and the tail bound above make this a no-op on
@@ -477,14 +480,24 @@ final class AnalyzeCommand implements Callable<Integer> {
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
             }
-            Confidence overall = aligned.stream()
-                    .map(LyricLine::confidence)
+            // Two scales, never compared (#386). Whoever produced the words
+            // rated them -- LrcLyrics by how each time was come by, or the
+            // transcriber by what it heard -- and the aligner rates only the
+            // path it chose through the audio. The file keeps the words'
+            // number; the aligner's is printed beside it rather than folded in.
+            Confidence weakest = measured.stream()
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
-                    .orElse(lyrics.confidence());
+                    .orElse(null);
             System.out.println("  aligned " + counted(aligned.size() - kept,
                     "lyric line") + " with " + provider.get().id()
+                    + (weakest != null
+                            ? String.format(java.util.Locale.ROOT,
+                                    ", weakest word %.2f on the aligner's own scale",
+                                    weakest.value())
+                            : "")
                     + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
-            return score.withLyrics(new Lyrics(aligned, lyrics.language(), overall));
+            return score.withLyrics(
+                    new Lyrics(aligned, lyrics.language(), lyrics.confidence()));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics stay at their parsed times: "
                     + e.getMessage());
