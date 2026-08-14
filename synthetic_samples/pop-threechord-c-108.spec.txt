@@ -1,0 +1,19 @@
+title: Three-chord pop-rock in C, I-IV-V only
+genre: pop
+style: pop-rock
+tempo: 108
+key: C major
+seed: 5
+melody: flute
+bars:
+# Intro: I-IV-V-I
+C F G C
+# Verse: I-IV-I-V twice, half cadence at each phrase end
+C F C G
+C F C G
+# Chorus: IV-V-I twice, authentic cadence
+F G C C
+F G C C
+# Last verse phrase, then the chorus cadence closes on the tonic
+C F C G
+F G C C

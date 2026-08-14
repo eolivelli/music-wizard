@@ -1,0 +1,25 @@
+title: Axis-progression pop-rock in G with doo-wop bridge
+genre: pop
+style: pop-rock
+tempo: 116
+key: G major
+seed: 7
+melody: flute
+bars:
+# Intro: one pass of the axis loop, I-V-vi-IV
+G D Em C
+# Verse 1: axis loop twice
+G D Em C
+G D Em C
+# Chorus 1: axis loop twice
+G D Em C
+G D Em C
+# Verse 2: axis loop twice
+G D Em C
+G D Em C
+# Bridge: doo-wop I-vi-IV-V twice, ending on V (half cadence into the chorus)
+G Em C D
+G Em C D
+# Final chorus: one axis pass, then IV-V-I authentic cadence and tonic close
+G D Em C
+C D G G
