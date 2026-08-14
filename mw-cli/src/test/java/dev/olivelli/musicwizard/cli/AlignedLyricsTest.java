@@ -43,6 +43,11 @@ class AlignedLyricsTest {
             """;
 
     private Path analysed(String alignmentProvider) throws IOException {
+        return analysed(alignmentProvider, LRC, "en");
+    }
+
+    private Path analysed(String alignmentProvider, String lyrics, String language)
+            throws IOException {
         Path source = directory.resolve("song.wav");
         SignalFactory.writeWav(source, SignalFactory.chord(
                 SignalFactory.majorTriad(60), 6.0, SignalFactory.DEFAULT_SAMPLE_RATE),
@@ -54,9 +59,9 @@ class AlignedLyricsTest {
         Files.writeString(descriptor, Files.readString(descriptor)
                 + "\nconfig:\n  ml:\n    alignmentProvider: " + alignmentProvider + "\n");
         Path lrc = directory.resolve("words.lrc");
-        Files.writeString(lrc, LRC);
+        Files.writeString(lrc, lyrics);
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
-                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+                "--lyrics", lrc.toString(), "--lyrics-language", language);
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
         return root;
     }
@@ -104,6 +109,32 @@ class AlignedLyricsTest {
         assertThat(words.get(0).startSeconds()).isEqualTo(0.5 + 0.111);
         assertThat(words.get(1).startSeconds()).isEqualTo(0.5 + 0.222);
         assertThat(words.get(0).confidence().value()).isEqualTo(0.97);
+    }
+
+    @Test
+    @DisplayName("a word is aligned syllable by syllable where the language splits it")
+    void syllablesAreMeasuredRatherThanDivided() throws IOException {
+        // Invented syllables; what is under test is the granularity and the
+        // hyphen chain. "lalala" is three the hyphenator chose and joins;
+        // "sol-mi" is one the writer chose, so the piece that already carries a
+        // hyphen must not claim another -- a second one engraves well--known.
+        Path root = analysed("fake-cli-alignment", "[00:01.00]lalala sol-mi\n", "it");
+
+        List<LyricWord> words = Workspace.open(root).readScore().orElseThrow()
+                .lyrics().lines().get(0).words();
+
+        assertThat(words).extracting(LyricWord::text)
+                .containsExactly("la", "la", "la", "sol-", "mi");
+        // The flag says a piece continues into the next, so a compound's own
+        // break is a join like any other: everything downstream that rejoins a
+        // word -- the text sheet, the harness, the engraver's all-or-nothing --
+        // reads the chain and would otherwise see two words. Whether a hyphen
+        // is drawn between them is the engraver's, from the text.
+        assertThat(words).extracting(LyricWord::hyphenatedToNext)
+                .containsExactly(true, true, false, true, false);
+        // Each syllable carries its own measurement rather than a share of its
+        // word's: the fake gives every token it is handed a different time.
+        assertThat(words).extracting(LyricWord::startSeconds).doesNotHaveDuplicates();
     }
 
     @Test

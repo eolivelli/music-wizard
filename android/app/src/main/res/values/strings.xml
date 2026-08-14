@@ -44,5 +44,9 @@
     <string name="import_cancelled">Cancelled.</string>
     <string name="import_busy">Another import is still running.</string>
     <string name="import_retry">Try again</string>
+    <string name="import_log_label">What happened, with anything identifying
+        removed. Copy it into a bug report.</string>
+    <string name="import_copy_log">Copy the log</string>
+    <string name="import_log_copied">Log copied.</string>
     <string name="imported_marker">imported</string>
 </resources>

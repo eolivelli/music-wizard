@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import java.nio.file.Path;
@@ -70,6 +71,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  * ours.
  */
 class ChordChartEngravingIT {
+
+    /** With the repeat tags asked for, which is not the default (#417). */
+    private static final ChartOptions TAGGED = new ChartOptions(false, true);
 
     @TempDir
     Path tempDirectory;
@@ -297,7 +301,7 @@ class ChordChartEngravingIT {
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve(name + "/chart.ly"),
-                        ChordChart.toLilyPond(score));
+                        ChordChart.toLilyPond(score, TAGGED));
 
         // The narrow question first, so a failure says which defect came back
         // rather than merely that LilyPond said something.
@@ -352,7 +356,7 @@ class ChordChartEngravingIT {
 
     /** The chart's own source with the probe in place of its {@code \layout}. */
     private static String probed(Score score) {
-        String source = ChordChart.toLilyPond(score);
+        String source = ChordChart.toLilyPond(score, TAGGED);
         assertThat(source).as("the emitter still writes the block the probe replaces")
                 .contains("  \\layout { }\n");
         return source.replace("  \\layout { }\n", LAYOUT_PROBE);
@@ -465,7 +469,7 @@ class ChordChartEngravingIT {
         // says nothing about ours (#92, round 4). No bar check is inserted here,
         // which is the whole difference from before #160 -- the chart brings its
         // own.
-        String clean = ChordChart.toLilyPond(fourBarsIn(TimeSignature.THREE_FOUR, 1.5, 120));
+        String clean = ChordChart.toLilyPond(fourBarsIn(TimeSignature.THREE_FOUR, 1.5, 120), TAGGED);
         assertThat(clean).as("the emitter no longer writes a 3/4 bar this way, so the "
                         + "damage below would be a no-op and this test would pass for nothing")
                 .contains("c2. |");
@@ -491,11 +495,11 @@ class ChordChartEngravingIT {
         // covering nothing. The same trap #212's 7/8 fixture fell into.
         Score score = repeatedLines();
 
-        assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[A]")))
+        assertThat(ChordChart.toText(score, TAGGED).lines().filter(line -> line.endsWith("[A]")))
                 .hasSize(2);
-        assertThat(ChordChart.toText(score).lines().filter(line -> line.endsWith("[B]")))
+        assertThat(ChordChart.toText(score, TAGGED).lines().filter(line -> line.endsWith("[B]")))
                 .hasSize(2);
-        String source = ChordChart.toLilyPond(score);
+        String source = ChordChart.toLilyPond(score, TAGGED);
         assertThat(source.split("\\\\startTextSpan", -1)).hasSize(5);
         // And that the first bar of a line still holds two chords, which is the
         // other half of what this fixture is for: a bracket opening on a cell
@@ -565,7 +569,7 @@ class ChordChartEngravingIT {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
 
-        String source = ChordChart.toLilyPond(repeatedLines());
+        String source = ChordChart.toLilyPond(repeatedLines(), TAGGED);
         int opened = source.split("\\\\startTextSpan", -1).length - 1;
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond).renderSource(
                 tempDirectory.resolve("broken/chart.ly"),

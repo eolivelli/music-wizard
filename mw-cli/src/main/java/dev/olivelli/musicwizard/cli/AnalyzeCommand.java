@@ -683,6 +683,49 @@ final class AnalyzeCommand implements Callable<Integer> {
                 word.confidence());
     }
 
+    /**
+     * A line's words split into the syllables they are sung on, each keeping
+     * its word's parsed span so a failure downstream falls back to what the
+     * caller had.
+     *
+     * <p>Every piece but the last joins the next, and the last carries whatever
+     * the word itself said. The flag says the piece continues into the one
+     * after it and nothing else — which is what makes the chain readable as one
+     * word by everything downstream that rejoins it, the text sheet and the
+     * engraver's all-or-nothing among them. Whether a hyphen is <em>drawn</em>
+     * between two pieces is not this decision and is not encoded here: a piece
+     * that already ends at a break of its own draws none, and the engraver asks
+     * {@link Hyphenator#endsAtItsOwnBreak} where it draws.
+     *
+     * <p>A language with no patterns, or a word the patterns leave in one
+     * piece, comes back unchanged: this can only ever split a word further,
+     * never merge two, so the aligner's contract of one result per token
+     * holds either way.
+     */
+    private static List<LyricWord> syllablesOf(LyricLine line, String language) {
+        var hyphenator = Hyphenator.forLanguage(language);
+        if (hyphenator.isEmpty()) {
+            return line.words();
+        }
+        List<LyricWord> out = new ArrayList<>(line.words().size());
+        for (LyricWord word : line.words()) {
+            List<Hyphenator.Syllable> parts = hyphenator.get().syllables(word.text());
+            if (parts.size() < 2) {
+                out.add(word);
+                continue;
+            }
+            for (int i = 0; i < parts.size(); i++) {
+                boolean last = i == parts.size() - 1;
+                out.add(new LyricWord(parts.get(i).text(),
+                        word.startSeconds(), word.endSeconds(),
+                        java.util.Optional.empty(), java.util.Optional.empty(),
+                        last ? word.hyphenatedToNext() : true,
+                        word.melisma(), word.confidence()));
+            }
+        }
+        return List.copyOf(out);
+    }
+
     /** Whether this line shares its parsed start with either neighbour. */
     private static boolean sharesAMoment(List<LyricLine> lines, int i) {
         double start = lines.get(i).startSeconds();
@@ -742,10 +785,18 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         float[] window = new float[end - start];
         System.arraycopy(audio.samples(), start, window, 0, window.length);
-        List<String> texts = line.words().stream().map(LyricWord::text).toList();
+        // Syllables, not words, where the language has patterns for them
+        // (#414). The engraved sheet prints a syllable per note, and dividing
+        // a word's measured span evenly between its syllables is wrong in a
+        // way a reader sees: sung Italian holds the stressed one, so a
+        // downbeat inside a long first syllable printed on the second. The
+        // aligner is placing tokens either way, and a syllable is a token it
+        // can place -- so the measurement is taken where it is used.
+        List<LyricWord> tokens = syllablesOf(line, language);
+        List<String> texts = tokens.stream().map(LyricWord::text).toList();
         List<LyricWord> placed = aligner.align(window, audio.sampleRate(),
                 language, texts);
-        if (placed.size() != line.words().size()) {
+        if (placed.size() != tokens.size()) {
             return line;
         }
         boolean anyExpressed = placed.stream()
@@ -781,15 +832,23 @@ final class AnalyzeCommand implements Callable<Integer> {
             // structure overriding it. The parsed guess wins all three.
             return line;
         }
-        List<LyricWord> out = new ArrayList<>(line.words().size());
+        List<LyricWord> out = new ArrayList<>(tokens.size());
+        double joinedAfter = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < placed.size(); i++) {
-            LyricWord original = line.words().get(i);
+            LyricWord original = tokens.get(i);
             LyricWord timed = placed.get(i);
             // The aligner's clock starts at the window; the line's starts at
             // the recording. Keep the original text and engraving flags -- the
             // aligner only ever decides when.
             double wordStart = lineStart
                     + (from + timed.startSeconds() - lineStart) * scale;
+            // Syllables of one word are kept in order, and only they. The SPI
+            // promises nothing about the times being monotone, and LyricLine
+            // sorts its words by start -- so two syllables returned the wrong
+            // way round would come back as a misspelt word rather than as two
+            // words out of order. Words are left alone: their order is a
+            // measurement, and overriding it here would hide a real fault.
+            wordStart = Math.max(wordStart, joinedAfter);
             double wordEnd = lineStart
                     + (from + timed.endSeconds() - lineStart) * scale;
             out.add(new LyricWord(original.text(), wordStart,
@@ -797,6 +856,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     java.util.Optional.empty(), java.util.Optional.empty(),
                     original.hyphenatedToNext(), original.melisma(),
                     timed.confidence()));
+            joinedAfter = original.hyphenatedToNext()
+                    ? wordStart : Double.NEGATIVE_INFINITY;
         }
         return new LyricLine(out, weakestOf(out));
     }
