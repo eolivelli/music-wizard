@@ -1,0 +1,24 @@
+title: Rock and roll 12-bar in A, straight and quick-change choruses
+genre: rocknroll
+style: rocknroll-shuffle
+tempo: 168
+key: A major
+seed: 11
+melody: tenor-sax
+bars:
+# Chorus 1: standard 12-bar, dominant sevenths throughout, V turnaround
+A7 A7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
+# Chorus 2: quick-change (IV in bar 2), V turnaround
+A7 D7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
+# Chorus 3: standard again
+A7 A7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 E7
+# Chorus 4: quick-change, ending on the tonic (no turnaround)
+A7 D7 A7 A7
+D7 D7 A7 A7
+E7 D7 A7 A7

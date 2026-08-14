@@ -66,6 +66,7 @@ mw-notation     Score to LilyPond, MusicXML, MIDI, PDF
 mw-llm          Claude advisor layer
 mw-cli          picocli entry point
 mw-testkit      MIDI fixtures, synthesis, evaluation metrics
+mw-teacher      spec to ground-truth MIDI for synthetic_samples; nothing links it
 mw-it           slow integration tests
 ```
 

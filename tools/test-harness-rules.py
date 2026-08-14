@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 samples = import_module("score-samples")
+synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 vtt = import_module("vtt-to-lrc")
@@ -130,6 +131,39 @@ def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] 
     return (lyrics.word_error(pairs := lyrics.align(tokens, words), tokens, words),
             lyrics.onset_error(pairs, anchors, starts),
             word_level)
+
+
+class SyntheticAlignment(unittest.TestCase):
+    """The synthetic harness scores in sequence: rotation earns nothing.
+
+    Its credit rules are score-samples', imported, so BarCredit above already
+    covers them; what is this harness's own is the refusal to rotate."""
+
+    def test_a_rotated_reading_scores_zero_where_the_cycle_scorer_forgives(self):
+        want = [[C], [G], [C], [G]]
+        rotated = [{G: 1.0}, {C: 1.0}, {G: 1.0}, {C: 1.0}]
+        self.assertEqual(synthetic.sequence_accuracy(rotated, want), (0.0, 0.0))
+        self.assertEqual(samples.accuracy(rotated, want), (4.0, 4.0))
+
+    def test_a_split_bar_accepts_either_chord(self):
+        grid = [[C, G]]
+        self.assertEqual(synthetic.sequence_accuracy([{C: 1.0}], grid), (1.0, 1.0))
+        self.assertEqual(synthetic.sequence_accuracy([{G: 1.0}], grid), (1.0, 1.0))
+        self.assertEqual(synthetic.sequence_accuracy([{F: 1.0}], grid), (0.0, 0.0))
+
+    def test_extra_estimated_bars_earn_nothing(self):
+        want = [[C]]
+        self.assertEqual(synthetic.sequence_accuracy([{C: 1.0}, {C: 1.0}], want),
+                         (1.0, 1.0))
+
+    def test_a_sharp_is_a_chord_not_a_comment_start(self):
+        # SpecParser.java applies the same rule; a fix to one parser that
+        # misses the other corrupts the grid on exactly one side.
+        spec = synthetic.parse_spec_text(
+            "title: sharps\nbars:\nE C#m F#m B  # trailing comment\n")
+        self.assertEqual([len(bar) for bar in spec["bars"]], [1, 1, 1, 1])
+        self.assertEqual(spec["bars"][1], [(1, "MINOR")])
+        self.assertEqual(spec["bars"][3], [(11, "MAJOR")])
 
 
 class Normalisation(unittest.TestCase):
