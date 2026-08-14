@@ -285,12 +285,14 @@ public final class ChordEstimator {
      *   bm-blues root+quality     78    68    68    88    91    96
      * </pre>
      *
-     * <p>At zero and one the prior helps one recording and wrecks another, which
-     * is what makes the window part of the mechanism rather than a smoothing
-     * detail. The fm7 cell at one is split runs meeting {@link
-     * #decideSeventhsPerRoot}: once a root is fragmented into short runs, a
-     * minority of its beats carry the seventh and every one of them then loses
-     * it.
+     * <p>At zero every row reads below the no-prior column, which is the
+     * beat-by-beat splitting above. At one the prior helps one recording and
+     * wrecks another, and the wreck is {@link #decideSeventhsPerRoot} reading a
+     * root whose beats carry the seventh just under half the time: the count
+     * falls the wrong side of the half and every run on that root loses it —
+     * which {@code ChordSweep score} shows as every root-correct bar of that
+     * recording reading a plain triad. That is what makes the window part of the
+     * mechanism rather than a smoothing detail.
      *
      * <p>From two upwards the three rows no longer agree on a best window — eb7
      * reads highest at two, fm7 at three, and bm-blues goes on rising past both.
