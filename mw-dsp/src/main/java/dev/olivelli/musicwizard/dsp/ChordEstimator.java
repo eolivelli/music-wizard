@@ -448,21 +448,8 @@ public final class ChordEstimator {
                 j++;
             }
             if (start.quality() != ChordQuality.NONE) {
-                double[] summed = sum(qualityChroma, i, j);
-                int chosen = -1;
-                double best = 0;
-                for (int t = 0; t < templates.size(); t++) {
-                    Template candidate = templates.get(t);
-                    if (candidate.quality() == ChordQuality.NONE
-                            || candidate.rootPitchClass() != start.rootPitchClass()) {
-                        continue;
-                    }
-                    double score = qualityScore(summed, candidate);
-                    if (score > best && score > flatScore(candidate)) {
-                        best = score;
-                        chosen = t;
-                    }
-                }
+                int chosen = bestQuality(sum(qualityChroma, i, j), templates,
+                        start.rootPitchClass(), false);
                 // Nothing explained the run better than a flat chroma would, so
                 // there is nothing here to overrule the decoder with.
                 if (chosen >= 0) {
@@ -473,7 +460,118 @@ public final class ChordEstimator {
             }
             i = j;
         }
+        withdrawMinoritySevenths(path, out, templates, qualityChroma);
         return out;
+    }
+
+    /**
+     * Share of a root's beats that must carry a minor seventh for any of them to
+     * keep it. Only {@link #withdrawMinoritySevenths} reads it.
+     *
+     * <p>A half, meaning "a minority of the root's beats", which is a definition
+     * rather than a fitted constant — and the corpus pins it only loosely. Below
+     * 0.42 nothing is withdrawn on {@code synthetic_samples/pop-axis-g-116.mp3},
+     * whose E runs carry the seventh on 15 beats of 36; above about 0.65 {@code
+     * samples/fm7-vamp-110.mp3} starts losing the sevenths it is made of. Any
+     * value between behaves as this one does on both.
+     */
+    private static final double SEVENTH_MUST_HOLD_FOR = 0.5;
+
+    /**
+     * Withdraws a minor seventh from every run on a root where the recording as a
+     * whole does not support it, in place.
+     *
+     * <p>{@link #chooseQualities} weighs each run against its own chroma alone,
+     * so a run whose flat seventh clears the level by a hair keeps it however the
+     * rest of the recording reads. That is what #446 measures: on a package whose
+     * grid is known exactly, four of ten {@code Em} bars come back {@code Em7} —
+     * two because the melody sounds a D over the triad, two on partial bleed —
+     * while the same chord elsewhere reads plain.
+     *
+     * <p><b>The prior is that a chord recurs and its seventh is a property of the
+     * chord, not of the bar.</b> So the seventh is believed on a root where most
+     * of that root's beats carry it, and withdrawn where a minority do. This is
+     * orthogonal to how strong the evidence has to be, which is what #274's sweep
+     * is about and what this deliberately leaves alone: every threshold there was
+     * measured to strip {@code samples/fm7-vamp-110.mp3} of its sevenths before it
+     * stripped #446's package of its false ones, because on this corpus the false
+     * minor sevenths are the stronger per-run evidence. Counting across runs is
+     * the axis on which the two separate.
+     *
+     * <p>What it costs is a seventh sounded once in a piece that otherwise states
+     * the triad — the passing {@code Am7} is read {@code Am}. The corpus prices
+     * that at a bar of {@code samples/cm-blues-68-95.mp3} against gains on four
+     * other recordings; {@code tools/baselines/score-samples.txt} carries both
+     * sides.
+     *
+     * <p>Runs are re-read from {@code path}, the decoder's own grouping, so this
+     * sees the same runs {@link #chooseQualities} did — {@code out} has had
+     * qualities replaced and grouping it would merge neighbouring runs the
+     * decoder kept apart.
+     */
+    private static void withdrawMinoritySevenths(int[] path, int[] out,
+                                                 List<Template> templates,
+                                                 Chroma qualityChroma) {
+        int[] sevenths = new int[12];
+        int[] beats = new int[12];
+        for (int state : out) {
+            Template template = templates.get(state);
+            if (template.quality() == ChordQuality.NONE) {
+                continue;
+            }
+            beats[template.rootPitchClass()]++;
+            if (template.quality() == ChordQuality.MINOR_SEVENTH) {
+                sevenths[template.rootPitchClass()]++;
+            }
+        }
+
+        int i = 0;
+        while (i < path.length) {
+            Template start = templates.get(path[i]);
+            int j = i;
+            while (j < path.length && sameChord(templates.get(path[j]), start)) {
+                j++;
+            }
+            int root = templates.get(out[i]).rootPitchClass();
+            if (templates.get(out[i]).quality() == ChordQuality.MINOR_SEVENTH
+                    && sevenths[root] < SEVENTH_MUST_HOLD_FOR * beats[root]) {
+                int fallback = bestQuality(sum(qualityChroma, i, j), templates, root, true);
+                // The seventh was the only candidate that beat a flat chroma, so
+                // there is still nothing to overrule the decoder with.
+                if (fallback >= 0) {
+                    for (int frame = i; frame < j; frame++) {
+                        out[frame] = fallback;
+                    }
+                }
+            }
+            i = j;
+        }
+    }
+
+    /**
+     * The best-scoring candidate on {@code root} that also beats a flat chroma,
+     * or -1 if none does.
+     *
+     * @param withoutSeventh whether to leave the minor seventh out of the argmax
+     */
+    private static int bestQuality(double[] summed, List<Template> templates, int root,
+                                   boolean withoutSeventh) {
+        int chosen = -1;
+        double best = 0;
+        for (int t = 0; t < templates.size(); t++) {
+            Template candidate = templates.get(t);
+            if (candidate.quality() == ChordQuality.NONE
+                    || candidate.rootPitchClass() != root
+                    || (withoutSeventh && candidate.quality() == ChordQuality.MINOR_SEVENTH)) {
+                continue;
+            }
+            double score = qualityScore(summed, candidate);
+            if (score > best && score > flatScore(candidate)) {
+                best = score;
+                chosen = t;
+            }
+        }
+        return chosen;
     }
 
     /**

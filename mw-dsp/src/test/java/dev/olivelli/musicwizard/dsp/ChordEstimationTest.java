@@ -470,5 +470,65 @@ class ChordEstimationTest {
 
             assertThat(reported(barelyMinor, barelyMinor)).isEqualTo("Cm");
         }
+
+        /**
+         * #446: a seventh a minority of the root's beats carry is withdrawn.
+         *
+         * <p>Both tests hold the per-run evidence fixed and vary only how much of
+         * the recording agrees with it, which is the axis the rule reads. The
+         * seventh-bearing run is the same vector in each, and on its own — as
+         * {@link #reportsAMinorSeventh} shows — it is read {@code Cm7}.
+         */
+        @Test
+        @DisplayName("withdraws a seventh most of the root's beats do not carry")
+        void aSeventhTheRecordingDoesNotHoldIsWithdrawn() {
+            assertThat(alternating(1, 2)).containsExactly("Cm", "D", "Cm", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("keeps a seventh most of the root's beats do carry")
+        void aSeventhTheRecordingHoldsIsKept() {
+            // A guard, not a fail-before test: it holds on origin/main too. It
+            // fails if the withdrawal is ever applied without counting, which
+            // would cost every recording the vocabulary was widened for.
+            assertThat(alternating(2, 1)).containsExactly("Cm7", "D", "Cm7", "D", "Cm");
+        }
+
+        /**
+         * Runs on C separated by D major, the first {@code sevenths} of them
+         * carrying a flat seventh above the level and the next {@code plain} not,
+         * reported in the order the estimator returns them.
+         *
+         * <p>The C runs are separated because {@code sameChord} groups adjacent
+         * beats on one root into a single run: with nothing between them the whole
+         * of C would be one run and there would be nothing to count. The first run
+         * is the seventh-bearing one in both tests, so it is the same evidence
+         * read against different amounts of agreement.
+         */
+        private static List<String> alternating(int sevenths, int plain) {
+            // Both C vectors are minor triads whose flat seventh sits either side
+            // of 2/sqrt(3) - 1 of the triad's mass.
+            double[] withSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13);
+            double[] withoutSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.02);
+            double[] away = chroma(2, 0.25, 6, 0.22, 9, 0.24);
+
+            List<double[]> runs = new java.util.ArrayList<>();
+            for (int i = 0; i < sevenths + plain; i++) {
+                if (i > 0) {
+                    runs.add(away);
+                }
+                runs.add(i < sevenths ? withSeventh : withoutSeventh);
+            }
+
+            List<double[]> vectors = new java.util.ArrayList<>();
+            for (double[] run : runs) {
+                for (int beat = 0; beat < 4; beat++) {
+                    vectors.add(run);
+                }
+            }
+            Chroma chroma = beats(vectors.toArray(double[][]::new));
+            return ChordEstimator.estimate(chroma, chroma, beatTimes(vectors.size()))
+                    .chords().stream().map(Chord::symbol).toList();
+        }
     }
 }
