@@ -469,11 +469,12 @@ public final class ChordEstimator {
      * keep it. Only {@link #withdrawMinoritySevenths} reads it.
      *
      * <p>A half, meaning "a minority of the root's beats", which is a definition
-     * rather than a fitted constant — and the corpus pins it only loosely. Below
-     * 0.42 nothing is withdrawn on {@code synthetic_samples/pop-axis-g-116.mp3},
-     * whose E runs carry the seventh on 15 beats of 36; above about 0.65 {@code
-     * samples/fm7-vamp-110.mp3} starts losing the sevenths it is made of. Any
-     * value between behaves as this one does on both.
+     * rather than a fitted constant — and the corpus pins it only loosely.
+     * {@code synthetic_samples/pop-axis-g-116.mp3} sets the floor: its E runs
+     * carry the seventh on 15 beats of 36, so at or below that share nothing is
+     * withdrawn there. {@code samples/fm7-vamp-110.mp3} sets the ceiling: it
+     * keeps its sevenths at 0.65 and loses all of them at 0.70. No scored
+     * benchmark moves anywhere between.
      */
     private static final double SEVENTH_MUST_HOLD_FOR = 0.5;
 
