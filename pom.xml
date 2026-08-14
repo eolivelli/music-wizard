@@ -65,6 +65,7 @@
     <module>mw-llm</module>
     <module>mw-cli</module>
     <module>mw-testkit</module>
+    <module>mw-teacher</module>
     <module>mw-it</module>
   </modules>
 
@@ -117,6 +118,7 @@
     <jar.plugin.version>3.5.1</jar.plugin.version>
     <shade.plugin.version>3.6.2</shade.plugin.version>
     <build.helper.plugin.version>3.6.0</build.helper.plugin.version>
+    <exec.plugin.version>3.5.0</exec.plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -284,6 +286,11 @@
           <groupId>org.codehaus.mojo</groupId>
           <artifactId>build-helper-maven-plugin</artifactId>
           <version>${build.helper.plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>${exec.plugin.version}</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>

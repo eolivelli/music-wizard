@@ -132,3 +132,11 @@ PDF engraving is performed by invoking LilyPond (GPL-3.0) as a separate
 process. LilyPond is not linked, bundled or redistributed with this software,
 and the program functions without it (emitting LilyPond, MusicXML and MIDI
 sources instead).
+
+The audio files in synthetic_samples/ are this project's own generated
+material, rendered by invoking FluidSynth (LGPL-2.1) as a separate process
+with the GeneralUser GS soundbank by S. Christian Collins
+(https://github.com/mrbumpy409/GeneralUser-GS), whose licence permits
+unrestricted use of rendered audio. Neither FluidSynth nor the soundbank is
+linked, bundled or redistributed; tools/music-teacher/fetch-soundfont.sh
+downloads the soundbank to a local cache with its checksum and provenance.
