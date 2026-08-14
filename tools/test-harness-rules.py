@@ -11,11 +11,15 @@ onset for the lyric one. Run it directly:
 
 import contextlib
 import io
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from importlib import import_module
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 samples = import_module("score-samples")
@@ -212,6 +216,17 @@ class BarPhase(unittest.TestCase):
 
     def test_a_grid_with_no_phase_says_so_rather_than_scoring_one(self):
         self.assertIn("no bar phase to read", phase_line(doc([], beats=7), "C"))
+
+    def test_an_unreadable_confidence_is_not_reported_as_an_unreadable_phase(self):
+        """#477: the grid records the product, so beats with no confidence
+        leave nothing to divide by. The phase itself is there and regular --
+        `bar_phase` reads it -- and the row must not say otherwise."""
+        d = doc([], beat_confidence=0.0)
+        self.assertEqual((0, 4), samples.bar_phase(d))
+        self.assertIsNone(samples.phase_confidence(d))
+        line = phase_line(d, "C")
+        self.assertIn("no phase confidence to read", line)
+        self.assertNotIn("no bar phase", line)
 
     def test_the_floor_is_the_estimator_s_own(self):
         """PHASE_FLOOR is a copy of DownbeatEstimator.BASE_CONFIDENCE, printed
@@ -729,6 +744,41 @@ class Keying(unittest.TestCase):
                          lyrics.score_line("sere-doltremare.mp3", *self.ARGS))
 
 
+@contextlib.contextmanager
+def scratch_repo():
+    """A throwaway git repo, and a runner for git inside it.
+
+    The ambient git environment is dropped rather than added to: `GIT_DIR`
+    would put these commits in whatever repository the caller was standing in,
+    and `GIT_CONFIG_COUNT` carries config past the three variables that shut
+    the config files out. Naming the ones that bite leaves the next one to
+    find; anything a repo of our own needs, we set here.
+
+    The process environment is what is scrubbed, not one command's copy of it:
+    the code under test spawns git of its own, and a shield the subject does
+    not stand behind leaves it reading the ambient repository while the
+    fixture reads this one.
+
+    What it buys: `commit.gpgsign` on a machine with no key makes every commit
+    here fail, and `diff.renames = false` lets the rename test below pass
+    against a premerge.sh with the flag it exists to pin deleted -- a test that
+    green-lights removing its own subject. CI has no such config, so both are
+    local-only, which is where this file is most often run.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env |= {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1"}
+    with tempfile.TemporaryDirectory() as tmp, \
+            mock.patch.dict(os.environ, env, clear=True):
+        def git(*args):
+            return subprocess.run(("git", "-C", tmp) + args, check=True,
+                                  capture_output=True, text=True)
+        git("init", "-q")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+        yield git, Path(tmp)
+
+
 class BaselineDrift(unittest.TestCase):
     """premerge.sh prompts when main regenerated a baseline during this
     branch's life. What it must get right is the kind of change: a column
@@ -739,7 +789,7 @@ class BaselineDrift(unittest.TestCase):
              "  blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)\n"
              "  bossa-cm.mp3: bars=98  chords/bar 1.23  root 23.5/98 (24.0%)\n")
 
-    def status(self, old: str, new: str) -> int:
+    def status(self, old: str | None, new: str | None) -> int:
         """main()'s exit status for one file, with git and stdout stubbed."""
         show, out = drift.show, io.StringIO()
         drift.show = lambda rev, _path: old if rev == "base" else new
@@ -750,15 +800,143 @@ class BaselineDrift(unittest.TestCase):
             drift.show = show
 
     def test_the_quiet_statuses_are_ones_python_cannot_produce_by_accident(self):
-        """premerge.sh keys its two quiet arms on these numbers, and python
-        exits 2 of its own accord when it cannot open the script it was given.
-        A classifier that never ran must not read as one that found nothing."""
+        """premerge.sh keys its quiet arms on these numbers, and python exits 2
+        of its own accord when it cannot open the script it was given. A
+        classifier that never ran must not read as one that found nothing."""
         row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
         self.assertEqual(1, self.status(row, row.replace("1.0/2 (50.0%)",
                                                          "2.0/2 (100.0%)")))
         self.assertEqual(3, self.status(row, row.replace("(50.0%)\n",
                                                          "(50.0%)  n 7\n")))
+        self.assertEqual(4, self.status(row, row + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"))
         self.assertEqual(0, self.status(row, row.replace("h:", "header:")))
+
+    ROW = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+
+    def cases(self) -> dict:
+        """One pair of files per kind describe() says it can return."""
+        return {
+            "moved": (self.ROW, self.ROW.replace("1.0/2 (50.0%)", "2.0/2 (100.0%)")),
+            "reshaped": (self.ROW, self.ROW.replace("(50.0%)\n", "(50.0%)  n 7\n")),
+            "added": (self.ROW, self.ROW + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"),
+            "": (self.ROW, self.ROW.replace("h:", "header:")),
+        }
+
+    def test_premerge_answers_every_status_the_classifier_can_return(self):
+        """A status with no arm of its own lands in the loud default: safe, but
+        saying the wrong thing, which is this class's own defect one level up.
+        Only the loud status is left to that default. describe's docstring is
+        taken as its contract: the case table below must match it exactly, so a
+        kind cannot be documented without being answered here."""
+        documented = set(re.findall(r'"(\w*)"', drift.describe.__doc__))
+        self.assertEqual(documented, set(self.cases()))
+        quiet = {self.status(*self.cases()[k]) for k in documented} - {1}
+        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
+        block = script.split("python3 tools/baseline-drift.py")[1].split("esac")[0]
+        arms = set(re.findall(r"^\s*(\d+)\)", block, re.M))
+        self.assertIn("*)", block, "the loud arm is the default")
+        self.assertEqual(set(), {str(s) for s in quiet} - arms)
+
+    def test_a_baseline_that_appeared_on_main_is_the_same_case_at_file_scale(self):
+        """Nothing quoted earlier was measured against a file that did not
+        exist. One that vanished stays loud."""
+        self.assertEqual(4, self.status(None, self.ROW))
+        self.assertEqual(1, self.status(self.ROW, None))
+
+    def test_a_rev_git_could_not_read_is_not_a_file_that_did_not_exist(self):
+        """Absence is quiet now, so `show` returning nothing has to mean the
+        commit does not carry the path and nothing else."""
+        self.assertEqual(1, self.status(drift.FAILED, self.ROW))
+        self.assertEqual(1, self.status(self.ROW, drift.FAILED))
+
+    def test_the_paths_premerge_hands_over_keep_a_rename_in_two_halves(self):
+        """git names only a rename's destination, and the classifier would read
+        that as a path with no older self -- its quiet arm -- while the figures
+        inside it moved. Run with the flags premerge.sh actually passes, over a
+        real rename, so the option and the rule cannot drift apart."""
+        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
+        invocation = re.search(r"git diff (.*?) -- tools/baselines/", script)
+        self.assertIsNotNone(invocation, "premerge.sh's git diff line moved")
+        flags = [t for t in invocation.group(1).split() if t.startswith("--")]
+        with scratch_repo() as (git, tree):
+            baselines = tree / "tools/baselines"
+            baselines.mkdir(parents=True)
+            (baselines / "score-chart.txt").write_text(self.CHART)
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            (baselines / "score-chart.txt").unlink()
+            (baselines / "score-charts.txt").write_text(
+                self.CHART.replace("93.0/113 (82.3%)", "71.0/113 (62.8%)"))
+            git("add", "-A")
+            git("commit", "-qm", "rename and re-measure")
+            named = git("diff", *flags, "HEAD~1", "HEAD",
+                        "--", "tools/baselines/").stdout.split()
+        self.assertEqual(["tools/baselines/score-chart.txt",
+                          "tools/baselines/score-charts.txt"], sorted(named))
+
+    def test_absence_is_read_off_the_tree_and_not_off_a_failed_read(self):
+        """A clone that holds the history but not every blob lists the older
+        file and cannot read it. Calling that absence puts a re-measured
+        baseline in the quiet arm, so `show` asks the tree; here the object is
+        removed to make the read fail while the tree still names it."""
+        with scratch_repo() as (git, tree):
+            (tree / "b.txt").write_text(self.CHART)
+            git("add", "-A")
+            git("commit", "-qm", "one")
+            blob = git("rev-parse", "HEAD:b.txt").stdout.strip()
+            cwd = os.getcwd()
+            try:
+                os.chdir(tree)
+                self.assertEqual(self.CHART, drift.show("HEAD", "b.txt"))
+                self.assertIsNone(drift.show("HEAD", "gone.txt"))
+                self.assertIs(drift.FAILED, drift.show("nosuchrev", "b.txt"))
+                # The paths are repository-relative both sides of the tree
+                # question, so where the run happens cannot decide the answer.
+                (tree / "sub").mkdir()
+                os.chdir(tree / "sub")
+                self.assertEqual(self.CHART, drift.show("HEAD", "b.txt"))
+                os.chdir(tree)
+                (tree / ".git/objects" / blob[:2] / blob[2:]).unlink()
+                self.assertIn("b.txt", git("ls-tree", "HEAD", "--", "b.txt").stdout)
+                self.assertIs(drift.FAILED, drift.show("HEAD", "b.txt"))
+            finally:
+                os.chdir(cwd)
+
+    def test_the_scratch_repo_stands_in_no_other_repository(self):
+        """GIT_DIR would put these commits in whatever repository the caller
+        was standing in, and GIT_CONFIG_COUNT carries config in past the
+        variables that shut the config files out. Both are dropped, and from
+        the process environment, so the code under test stands behind the
+        shield too rather than reading the ambient repository through git of
+        its own."""
+        with tempfile.TemporaryDirectory() as ambient:
+            hostile = {"GIT_DIR": ambient, "GIT_CONFIG_COUNT": "1",
+                       "GIT_CONFIG_KEY_0": "diff.renames",
+                       "GIT_CONFIG_VALUE_0": "false"}
+            cwd = os.getcwd()
+            with mock.patch.dict(os.environ, hostile):
+                try:
+                    with scratch_repo() as (git, tree):
+                        self.assertTrue((tree / ".git").exists())
+                        (tree / "a.txt").write_text(self.CHART)
+                        git("add", "-A")
+                        git("commit", "-qm", "one")
+                        os.chdir(tree)
+                        self.assertEqual(self.CHART, drift.show("HEAD", "a.txt"))
+                        os.chdir(cwd)
+                        git("mv", "a.txt", "b.txt")
+                        git("commit", "-qam", "rename")
+                        # No flag, so git's own default decides: detection on,
+                        # and only the destination named. Both paths here would
+                        # mean the ambient diff.renames got in -- which is what
+                        # would let the rename test above pass over a
+                        # premerge.sh with --no-renames deleted.
+                        named = git("diff", "--name-only",
+                                    "HEAD~1", "HEAD").stdout.split()
+                        self.assertEqual(["b.txt"], named)
+                finally:
+                    os.chdir(cwd)
+            self.assertEqual([], sorted(os.listdir(ambient)))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
@@ -820,11 +998,44 @@ class BaselineDrift(unittest.TestCase):
                       "the columns that changed are named, since a field whose "
                       "own shape changed cannot be compared with its old self")
 
-    def test_a_row_that_appeared_counts_as_re_measured(self):
-        summary, _, kind = drift.describe(
-            self.CHART, self.CHART + "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n")
-        self.assertEqual("moved", kind)
+    ADDED = "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n"
+
+    def test_a_row_that_only_appeared_is_reported_rather_than_warned_about(self):
+        """#478: a benchmark added to the corpus rewrites a baseline without
+        re-measuring anything, and a figure quoted earlier cannot have come
+        from a row that did not exist. It is still said out loud, quietly."""
+        summary, _, kind = drift.describe(self.CHART, self.CHART + self.ADDED)
+        self.assertEqual("added", kind)
         self.assertEqual("1 rows added, 0 removed", summary)
+
+    def test_an_older_file_that_did_not_parse_is_loud_though_rows_only_appeared(self):
+        """The gain arm is quiet because the rows it names did not exist. Where
+        the older file simply did not parse, every row reads as gained and any
+        figure in it may have moved -- so the quiet arm must not be reachable
+        off a comparison with nothing on one side of it."""
+        _, _, kind = drift.describe("h:\n  flat\n", self.CHART)
+        self.assertEqual("moved", kind)
+
+    def test_a_row_that_vanished_is_loud(self):
+        """A figure quoted from a row that is gone is stale by definition, and
+        a renamed benchmark presents as a removal beside a gain."""
+        _, _, kind = drift.describe(self.CHART + self.ADDED, self.CHART)
+        self.assertEqual("moved", kind)
+
+    def test_rows_added_beside_a_figure_that_moved_stay_loud(self):
+        """The gain is what makes the summary read innocently; the figure that
+        moved in a row both files share is what makes it stale."""
+        moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
+        summary, _, kind = drift.describe(self.CHART, moved + self.ADDED)
+        self.assertEqual("moved", kind)
+        self.assertIn("figures moved in 1 of 2 rows", summary)
+
+    def test_rows_added_beside_a_column_that_changed_keep_the_column_warning(self):
+        """Reshaped outranks added: 'check what you quoted from these columns'
+        still applies to the rows that were already there."""
+        reshaped = self.CHART.replace("(24.0%)\n", "(24.0%)  n 7\n")
+        _, _, kind = drift.describe(self.CHART, reshaped + self.ADDED)
+        self.assertEqual("reshaped", kind)
 
     def test_a_header_is_not_a_row(self):
         """Header lines are flush left and hold a colon of their own. Reading

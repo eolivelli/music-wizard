@@ -10,9 +10,9 @@ people to skip the prompt -- hence the kinds below.
     python3 tools/baseline-drift.py <base> <tip> <path>...
 
 Exits 1 if anything could have been re-measured, 3 if the files were only
-reshaped, 0 if no row in them changed. Not 2: python exits 2 of its own accord
-when it cannot open this file, and the caller's quiet arms must not be
-reachable by a classifier that never ran.
+reshaped, 4 if they only gained rows, 0 if no row in them changed. Not 2:
+python exits 2 of its own accord when it cannot open this file, and the
+caller's quiet arms must not be reachable by a classifier that never ran.
 """
 
 import re
@@ -50,12 +50,17 @@ def shapes(fields: list) -> dict:
 
 
 def describe(old_text: str, new_text: str) -> tuple:
-    """(summary, detail lines, "moved" | "reshaped" | "")."""
+    """(summary, detail lines, "moved" | "reshaped" | "added" | "")."""
     old, new = rows(old_text), rows(new_text)
     if not old and not new:
         # The file changed and nothing in it parsed as a row. Reporting that as
         # "rows unchanged" would be the all-clear off an empty comparison.
         return "changed, and no row in it parsed -- read the diff", [], "moved"
+    if not old:
+        # Every row reads as gained, but only because none of the older file's
+        # parsed: any figure in it could have moved. The quiet arm below must
+        # not be reachable off a comparison with nothing on one side of it.
+        return "no row in the older file parsed -- read the diff", [], "moved"
     common = sorted(set(old) & set(new))
     figures, reshaped, gone, came = [], [], set(), set()
     for r in common:
@@ -79,11 +84,16 @@ def describe(old_text: str, new_text: str) -> tuple:
                 or any("#" not in k for k, _ in lost):
             figures.append(r)
     bits, detail = [], []
-    kind = "moved" if figures else "reshaped" if reshaped else ""
-    if set(old) != set(new):
-        kind = "moved"
-        bits.append(f"{len(set(new) - set(old))} rows added, "
-                    f"{len(set(old) - set(new))} removed")
+    came_rows, gone_rows = set(new) - set(old), set(old) - set(new)
+    # A row that only appeared cannot have been quoted before it existed, so on
+    # its own it is reported rather than warned about (#478). A row that
+    # vanished stays loud -- a figure quoted from it is gone, and a renamed
+    # benchmark shows up here as one -- and so does a gain alongside a figure
+    # that moved, which the `figures` arm already carries.
+    kind = ("moved" if figures or gone_rows
+            else "reshaped" if reshaped else "added" if came_rows else "")
+    if came_rows or gone_rows:
+        bits.append(f"{len(came_rows)} rows added, {len(gone_rows)} removed")
     if figures:
         bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
         # Naming them is the actionable half: a reader who quoted one of these
@@ -102,11 +112,33 @@ def describe(old_text: str, new_text: str) -> tuple:
     return "; ".join(bits) if bits else "rows unchanged", detail, kind
 
 
+FAILED = object()
+"""git could not answer, as distinct from a commit that does not carry the
+path. Absence is a quiet arm now, so the two must not be one value."""
+
+
 def show(rev: str, path: str):
-    """The file at that commit, or None where it did not exist."""
+    """The file at that commit, None where that commit does not carry it, or
+    FAILED where git could not answer.
+
+    Absence is decided by the tree, never by a read that came back
+    empty-handed: where a clone holds the history but not every blob, the older
+    commit's file does not read while the tree lists it plainly, and the quiet
+    arm trusts absence.
+
+    --full-tree because the paths are repository-relative, as `git show
+    <rev>:<path>` reads them; without it `ls-tree` resolves them against the
+    current directory and reports a file that is there as absent.
+    """
+    listed = subprocess.run(["git", "ls-tree", "--full-tree", rev, "--", path],
+                            capture_output=True, text=True)
+    if listed.returncode:            # the rev does not resolve, or git is unwell
+        return FAILED
+    if not listed.stdout.strip():
+        return None
     p = subprocess.run(["git", "show", f"{rev}:{path}"],
                        capture_output=True, text=True)
-    return None if p.returncode else p.stdout
+    return p.stdout if not p.returncode else FAILED
 
 
 def main(argv: list) -> int:
@@ -115,8 +147,17 @@ def main(argv: list) -> int:
     for path in paths:
         old, new = show(base, path), show(tip, path)
         name = path.rsplit("/", 1)[-1]
-        if old is None or new is None:
+        if old is FAILED or new is FAILED:
             kinds.add("moved")
+            print(f"  {name}: git could not read it at "
+                  f"{base if old is FAILED else tip}")
+            continue
+        if old is None or new is None:
+            # A whole baseline that appeared is the row-gain case at file
+            # scale: nothing quoted earlier was measured against it. One that
+            # vanished is loud. A rename reaches here as both, which is why
+            # premerge.sh asks git not to pair the two paths.
+            kinds.add("added" if old is None else "moved")
             print(f"  {name}: {'added' if old is None else 'removed'} on main")
             continue
         summary, detail, kind = describe(old, new)
@@ -124,10 +165,13 @@ def main(argv: list) -> int:
         print(f"  {name}: {summary}")
         if detail:
             print("\n".join(detail))
-    # Three states, because the caller says three different things: a figure
-    # that may be stale, a column that cannot make one stale, and a file whose
-    # rows did not change at all.
-    return 1 if "moved" in kinds else 3 if "reshaped" in kinds else 0
+    # Four states, because the caller says four different things: a figure that
+    # may be stale, a column that cannot make one stale, rows that did not
+    # exist to be quoted, and a file whose rows did not change at all. Reshaped
+    # outranks added: its "check what you quoted from these columns" still
+    # applies when a file both gained rows and changed columns.
+    return (1 if "moved" in kinds else 3 if "reshaped" in kinds
+            else 4 if "added" in kinds else 0)
 
 
 if __name__ == "__main__":
