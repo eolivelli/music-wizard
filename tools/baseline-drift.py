@@ -9,7 +9,8 @@ people to skip the prompt -- hence the two kinds.
 
     python3 tools/baseline-drift.py <base> <tip> <path>...
 
-Exits 1 if anything could have been re-measured, 0 if not.
+Exits 1 if anything could have been re-measured, 2 if the files were only
+reshaped, 0 if no row in them changed.
 """
 
 import re
@@ -47,33 +48,38 @@ def shapes(fields: list) -> dict:
 
 
 def describe(old_text: str, new_text: str) -> tuple:
-    """(summary, detail lines, could anything have been re-measured)."""
+    """(summary, detail lines, "moved" | "reshaped" | "")."""
     old, new = rows(old_text), rows(new_text)
     if not old and not new:
         # The file changed and nothing in it parsed as a row. Reporting that as
         # "rows unchanged" would be the all-clear off an empty comparison.
-        return "changed, and no row in it parsed -- read the diff", [], True
+        return "changed, and no row in it parsed -- read the diff", [], "moved"
     common = sorted(set(old) & set(new))
     figures, reshaped, gone, came = [], [], set(), set()
     for r in common:
         o, n = old[r], new[r]
         if len(o) == len(n):
-            # Same columns, so compare them where they stand. A measurement
-            # that reads as a word moves this way and no other: a key row goes
-            # from OK to WRONG without a digit changing anywhere.
+            # Same columns, so compare them where they stand: a measurement
+            # moves whether it reads as a number or as a word.
             if o != n:
                 figures.append(r)
             continue
         reshaped.append(r)
         so, sn = shapes(o), shapes(n)
-        gone |= so.keys() - sn.keys()
-        came |= sn.keys() - so.keys()
-        if any(so[k] != sn[k] for k in so.keys() & sn.keys()):
+        lost, found = so.keys() - sn.keys(), sn.keys() - so.keys()
+        gone |= lost
+        came |= found
+        # Where the columns moved, a field can only be matched to its old self
+        # by shape -- except a field with no number in it, which IS the
+        # measurement: a key row's OK. One of those vanishing is a
+        # re-measurement, where one merely appearing is a new column.
+        if any(so[k] != sn[k] for k in so.keys() & sn.keys()) \
+                or any("#" not in k for k, _ in lost):
             figures.append(r)
     bits, detail = [], []
-    remeasured = bool(figures)
+    kind = "moved" if figures else "reshaped" if reshaped else ""
     if set(old) != set(new):
-        remeasured = True
+        kind = "moved"
         bits.append(f"{len(set(new) - set(old))} rows added, "
                     f"{len(set(old) - set(new))} removed")
     if figures:
@@ -89,9 +95,9 @@ def describe(old_text: str, new_text: str) -> tuple:
         # A field whose own shape changed cannot be compared with its old self,
         # so show what appeared and vanished and let the reader judge rather
         # than claim nothing there was re-measured.
-        detail += [f"      - {k}" for k, _ in sorted(set(gone))]
-        detail += [f"      + {k}" for k, _ in sorted(set(came))]
-    return "; ".join(bits) if bits else "rows unchanged", detail, remeasured
+        detail += [f"      - {k}" for k in sorted({k for k, _ in gone})]
+        detail += [f"      + {k}" for k in sorted({k for k, _ in came})]
+    return "; ".join(bits) if bits else "rows unchanged", detail, kind
 
 
 def show(rev: str, path: str):
@@ -103,20 +109,23 @@ def show(rev: str, path: str):
 
 def main(argv: list) -> int:
     base, tip, paths = argv[1], argv[2], argv[3:]
-    remeasured = False
+    kinds = set()
     for path in paths:
         old, new = show(base, path), show(tip, path)
         name = path.rsplit("/", 1)[-1]
         if old is None or new is None:
-            remeasured = True
+            kinds.add("moved")
             print(f"  {name}: {'added' if old is None else 'removed'} on main")
             continue
-        summary, detail, moved = describe(old, new)
-        remeasured = remeasured or moved
+        summary, detail, kind = describe(old, new)
+        kinds.add(kind)
         print(f"  {name}: {summary}")
         if detail:
             print("\n".join(detail))
-    return 1 if remeasured else 0
+    # Three states, because the caller says three different things: a figure
+    # that may be stale, a column that cannot make one stale, and a file whose
+    # rows did not change at all.
+    return 1 if "moved" in kinds else 2 if "reshaped" in kinds else 0
 
 
 if __name__ == "__main__":

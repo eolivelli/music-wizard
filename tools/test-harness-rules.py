@@ -628,8 +628,8 @@ class BaselineDrift(unittest.TestCase):
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
-        summary, detail, remeasured = drift.describe(self.CHART, moved)
-        self.assertTrue(remeasured)
+        summary, detail, kind = drift.describe(self.CHART, moved)
+        self.assertEqual("moved", kind)
         self.assertEqual("figures moved in 1 of 2 rows", summary)
         self.assertEqual(["      bossa-cm.mp3"], detail)
 
@@ -639,9 +639,36 @@ class BaselineDrift(unittest.TestCase):
         take the quiet branch for a re-measurement anyone might have quoted."""
         old = "samples:\n  key a.mp3: G major at 40%  want G major  OK\n"
         new = "samples:\n  key a.mp3: E minor at 40%  want G major  WRONG\n"
-        summary, _, remeasured = drift.describe(old, new)
-        self.assertTrue(remeasured)
+        summary, _, kind = drift.describe(old, new)
+        self.assertEqual("moved", kind)
         self.assertEqual("figures moved in 1 of 1 rows", summary)
+
+    def test_a_word_that_moved_counts_even_where_a_column_was_added(self):
+        """A key-estimator change regenerates the key rows and may add a
+        column in the same commit. Matching by shape alone files the flipped
+        verdict as a column that vanished, and the pasted verdict then says no
+        figure moved over an inverted key."""
+        old = "samples:\n  key a.mp3: G major at 40%  want G major  OK\n"
+        new = ("samples:\n"
+               "  key a.mp3: E minor at 40%  want G major  WRONG  weighed 12\n")
+        _, _, kind = drift.describe(old, new)
+        self.assertEqual("moved", kind)
+
+    def test_a_word_valued_column_merely_added_is_still_a_column(self):
+        """The converse, and why the rule is about a field vanishing rather
+        than about digits: a new label-valued column moves nothing."""
+        old = "lyrics:\n  a.mp3: words 289  wer 0.0%\n"
+        new = "lyrics:\n  a.mp3: words 289  wer 0.0%  source lrc\n"
+        _, _, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind)
+
+    def test_a_file_whose_rows_did_not_change_claims_nothing(self):
+        """A header edit is neither a moved figure nor a reshaped row, and the
+        verdict clause pasted into a PR must not claim either."""
+        old = "charts emitted for samples:\n  a.mp3: bars=10  root 5.0/10 (50.0%)\n"
+        summary, detail, kind = drift.describe(old, old.replace("emitted", "written"))
+        self.assertEqual("", kind)
+        self.assertEqual(("rows unchanged", []), (summary, detail))
 
     def test_a_column_added_to_every_row_moves_no_figure(self):
         """#361 added a column to the lyric baselines, rewriting every row
@@ -651,8 +678,8 @@ class BaselineDrift(unittest.TestCase):
         new = ("lyric words MW carries:\n"
                "  sere.mp3: words 289  onset median 0.000s  line end max 4.780s"
                "  anchors 59/59 line-level, ends 57/57\n")
-        summary, detail, remeasured = drift.describe(old, new)
-        self.assertFalse(remeasured, "no measurement moved, so no figure is stale")
+        summary, detail, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind, "no measurement moved, so no figure is stale")
         self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
                          summary)
         self.assertIn("      + line end max #s", detail,
@@ -660,9 +687,9 @@ class BaselineDrift(unittest.TestCase):
                       "own shape changed cannot be compared with its old self")
 
     def test_a_row_that_appeared_counts_as_re_measured(self):
-        summary, _, remeasured = drift.describe(
+        summary, _, kind = drift.describe(
             self.CHART, self.CHART + "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n")
-        self.assertTrue(remeasured)
+        self.assertEqual("moved", kind)
         self.assertEqual("1 rows added, 0 removed", summary)
 
     def test_a_header_is_not_a_row(self):
@@ -683,24 +710,24 @@ class BaselineDrift(unittest.TestCase):
         figure -- the cry-wolf the keying exists to prevent."""
         old = "h:\n  a.mp3: bars 4  bars 9\n"
         new = "h:\n  a.mp3: bars 4  bars 9  bars 7\n"
-        summary, _, remeasured = drift.describe(old, new)
-        self.assertFalse(remeasured)
+        summary, _, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind)
         self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
                          summary)
 
     def test_a_file_whose_rows_do_not_parse_is_loud(self):
         """An all-clear that rests on having understood nothing is the failure
         this prompt exists to prevent."""
-        summary, _, remeasured = drift.describe("flat 1\n", "flat 2\n")
-        self.assertTrue(remeasured)
+        summary, _, kind = drift.describe("flat 1\n", "flat 2\n")
+        self.assertEqual("moved", kind)
         self.assertIn("no row in it parsed", summary)
 
     def test_two_sections_may_print_the_same_row_name(self):
         """Overwriting would hide whichever section came first."""
         text = "h:\n  a.mp3: bars 4\nkeys:\n  a.mp3: C major  OK\n"
         self.assertEqual(2, len(drift.rows(text)))
-        _, _, remeasured = drift.describe(text, text.replace("C major", "E minor"))
-        self.assertTrue(remeasured)
+        _, _, kind = drift.describe(text, text.replace("bars 4", "bars 9"))
+        self.assertEqual("moved", kind, "the first section's row must not be hidden")
 
 
 if __name__ == "__main__":

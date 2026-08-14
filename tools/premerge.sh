@@ -56,7 +56,7 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # that could have happened. It never sets fail, and it says nothing at all
 # whenever git cannot answer.
 baseline_drift() {
-  local tip base cut moved n guard= origin=fetched
+  local tip base cut moved n t guard= origin=fetched
   git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || return 0
   # Read origin/main rather than a memory of it: a tracking ref last updated at
   # the branch point reports exactly the zero drift this exists to catch. Not
@@ -103,16 +103,18 @@ baseline_drift() {
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
   # about a column added to every row is how a prompt teaches people to skip it
   # -- so the verdict line, which is what gets pasted into a PR, says which of
-  # the two it was rather than counting files.
-  if [ "$?" -eq 0 ]; then
-    echo "No figure the rows still share moved. Check anything you quoted from a"
-    echo "column listed above."
-    drift="$n baseline file(s) reshaped on main since the branch point, no figure moved"
-  else
-    echo "A figure this branch quoted earlier may have been measured against the"
-    echo "older baseline. Re-take it, or do not quote it."
-    drift="$n baseline file(s) moved on main since the branch point"
-  fi
+  # the three it was rather than counting files. An exit status that is none of
+  # these is the harness itself failing, and takes the cautious branch.
+  case "$?" in
+    0) echo "No row in them changed."
+       drift="$n baseline file(s) touched on main since the branch point, no row changed" ;;
+    2) echo "No figure the rows still share moved. Check anything you quoted from"
+       echo "a column listed above."
+       drift="$n baseline file(s) reshaped on main since the branch point, no figure moved" ;;
+    *) echo "A figure this branch quoted earlier may have been measured against the"
+       echo "older baseline. Re-take it, or do not quote it."
+       drift="$n baseline file(s) moved on main since the branch point" ;;
+  esac
   return 0
 }
 baseline_drift
