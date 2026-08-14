@@ -507,11 +507,23 @@ class ChordEstimationTest {
         @DisplayName("withdrawing a seventh does not flip the third")
         void withdrawalFallsBackToATriadNotAnotherSeventh() {
             // The dominant seventh shares its root, fifth and flat seventh with
-            // the minor one, so an unrestricted fallback answers C7 here -- a
-            // major third arrived at by withdrawing a minor seventh. Measured on
-            // the corpus that reading gave fm7-vamp-110.mp3's own chord as F7 and
-            // put a major third on a B minor blues.
-            assertThat(alternating(1, 2)).doesNotContain("C7");
+            // the minor one, so a fallback that only drops the minor seventh
+            // answers with the dominant -- a major third arrived at by
+            // withdrawing a minor one. Measured on the corpus, that reading gave
+            // fm7-vamp-110.mp3's own chord as F7 and put a major third on a B
+            // minor blues.
+            //
+            // Separating the two needs a run this vocabulary can express both
+            // ways: a flat seventh loud enough that C7 outscores Cm among the
+            // triads-and-dominant candidates, and a major third under the share
+            // the root's own fifth partial explains, so the minorish correction
+            // is zero and Cm7 still wins the full argmax. The default vector
+            // cannot do it -- C7 loses to Cm there whether or not it is excluded,
+            // which is why this needs its own.
+            double[] loudSeventh = chroma(0, 0.25, 3, 0.10, 4, 0.06, 7, 0.25, 10, 0.22);
+
+            assertThat(alternating(1, 2, loudSeventh))
+                    .containsExactly("Cm", "D", "Cm", "D", "Cm");
         }
 
         /**
@@ -526,9 +538,15 @@ class ChordEstimationTest {
          * read against different amounts of agreement.
          */
         private static List<String> alternating(int sevenths, int plain) {
-            // Both C vectors are minor triads whose flat seventh sits either side
-            // of 2/sqrt(3) - 1 of the triad's mass.
-            double[] withSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13);
+            // A minor triad whose flat seventh clears 2/sqrt(3) - 1 of the triad's
+            // mass, which is all these three cases need of it.
+            return alternating(sevenths, plain,
+                    chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13));
+        }
+
+        /** As {@link #alternating(int, int)}, with the seventh-bearing run given. */
+        private static List<String> alternating(int sevenths, int plain,
+                                                double[] withSeventh) {
             double[] withoutSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.02);
             double[] away = chroma(2, 0.25, 6, 0.22, 9, 0.24);
 

@@ -503,19 +503,24 @@ public final class ChordEstimator {
      * the triad — the passing {@code Am7} is read {@code Am}. {@code
      * tools/baselines/score-samples.txt} carries both sides of that.
      *
-     * <p><b>The withdrawn run falls back to a triad, never to another seventh.</b>
-     * The argmax that placed the minor seventh ranks it against the dominant one,
-     * which shares its root, fifth and flat seventh, so letting the fallback keep
-     * that candidate turns "the recording does not hold this seventh" into a flip
-     * of the third: measured with the fallback unrestricted, runs of {@code
-     * samples/fm7-vamp-110.mp3}'s own chord came back {@code F7} and a B minor
-     * blues was given a major third, which is the failure {@link #qualityScore}'s
-     * correction exists to stop.
+     * <p><b>The argmax it falls back to is over triads only.</b> The one that
+     * placed the minor seventh ranks it against the dominant one, which shares
+     * its root, fifth and flat seventh, so leaving that candidate in turns "the
+     * recording does not hold this seventh" into a flip of the third: measured
+     * with it left in, runs of {@code samples/fm7-vamp-110.mp3}'s own chord came
+     * back {@code F7} and a B minor blues was given a major third, which is the
+     * failure {@link #qualityScore}'s correction exists to stop.
      *
-     * <p>{@code path} is needed for the case where no triad beats a flat chroma
-     * either: what stands then is the decoder's answer, which {@code out} no
-     * longer holds. Grouping either array gives the same runs, since
-     * {@link #sameChord} reads only the root and nothing here changes one.
+     * <p>Where no triad beats a flat chroma either, the run has nothing to say
+     * about its own quality and <b>the decoder's answer stands — which may be a
+     * dominant seventh</b>, so a withdrawal can still end on one. That is the
+     * decoder's reading of the run rather than this pass's, and it is the same
+     * deference {@link #chooseQualities} shows when nothing clears the floor; on
+     * the scored corpus it is what most of those runs are. {@code path} is the
+     * only array still holding it, {@code out} having been overwritten.
+     *
+     * <p>Grouping either array gives the same runs, since {@link #sameChord}
+     * reads only the root and nothing here changes one.
      */
     private static void withdrawMinoritySevenths(int[] path, int[] out,
                                                  List<Template> templates,
@@ -544,12 +549,11 @@ public final class ChordEstimator {
             if (templates.get(out[i]).quality() == ChordQuality.MINOR_SEVENTH
                     && sevenths[root] < SEVENTH_MUST_HOLD_FOR * beats[root]) {
                 int fallback = bestQuality(sum(qualityChroma, i, j), templates, root, true);
-                // No triad beat a flat chroma either, so this run has nothing to
-                // say about its own quality and the decoder's answer stands --
-                // the same rule chooseQualities applies, and the reason it has to
-                // be applied again here is that the answer being withdrawn is the
-                // quality pass's, not the decoder's. The decoder cannot propose a
-                // minor seventh at all; QUALITY_ONLY is where that lives.
+                // No triad beat a flat chroma, so the decoder's answer stands.
+                // Restated here rather than left to chooseQualities because the
+                // answer being withdrawn is the quality pass's own, which has
+                // already overwritten out; the decoder cannot propose a minor
+                // seventh at all, since QUALITY_ONLY is where that lives.
                 for (int frame = i; frame < j; frame++) {
                     out[frame] = fallback >= 0 ? fallback : path[frame];
                 }
@@ -562,7 +566,12 @@ public final class ChordEstimator {
      * The best-scoring candidate on {@code root} that also beats a flat chroma,
      * or -1 if none does.
      *
-     * @param triadsOnly whether to leave every seventh out of the argmax
+     * @param triadsOnly whether to leave every chord of more than three notes out
+     *     of the argmax. Counted rather than asked of {@link
+     *     ChordQuality#hasSeventh()}, which is declared per constant and is false
+     *     for the sixths — four-note chords that would otherwise slip into a
+     *     fallback whose whole point is to drop back to three, on the day #287
+     *     puts one in the vocabulary.
      */
     private static int bestQuality(double[] summed, List<Template> templates, int root,
                                    boolean triadsOnly) {
@@ -572,7 +581,7 @@ public final class ChordEstimator {
             Template candidate = templates.get(t);
             if (candidate.quality() == ChordQuality.NONE
                     || candidate.rootPitchClass() != root
-                    || (triadsOnly && candidate.quality().hasSeventh())) {
+                    || (triadsOnly && candidate.quality().intervals().length != 3)) {
                 continue;
             }
             double score = qualityScore(summed, candidate);
