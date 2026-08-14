@@ -1,0 +1,29 @@
+title: Boom-bap minor-seventh vamp in Bb minor
+genre: hiphop
+style: hiphop-boom-bap
+tempo: 90
+key: Bb minor
+seed: 13
+melody: vibraphone
+bars:
+# Intro: one pass of the i7-iv7 vamp
+Bbm7 Ebm7 Bbm7 Ebm7
+# Verse 1: the vamp twice
+Bbm7 Ebm7 Bbm7 Ebm7
+Bbm7 Ebm7 Bbm7 Ebm7
+# Chorus 1: minor loop i-VI-III-VII twice; each turn back to i is a VII-i cadence
+Bbm7 Gb Db Ab
+Bbm7 Gb Db Ab
+# Verse 2: the vamp twice
+Bbm7 Ebm7 Bbm7 Ebm7
+Bbm7 Ebm7 Bbm7 Ebm7
+# Chorus 2
+Bbm7 Gb Db Ab
+Bbm7 Gb Db Ab
+# Bridge: leaves the loop. Same three-bar approach twice, resolved two ways:
+# plagal iv7-i, then a half-bar VI-VII lift that leaves it open
+Db Ab Ebm7 Bbm7
+Db Ab Ebm7 Gb-Ab
+# Final chorus: the loop once, then VII-i closing on the tonic
+Bbm7 Gb Db Ab
+Bbm7 Gb Ab Bbm7
