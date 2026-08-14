@@ -27,6 +27,29 @@
 # has still to settle. That gate is about the audio, which promotion would
 # commit, and is unaffected by the paragraph above.
 
+vocadito/
+
+Forty clips of solo singing, 7 languages, singers of varying training, recorded
+on various devices — with frame-level f0, lyrics, and note annotations from two
+independent trained musicians. CC BY 4.0, so unlike its neighbours here this one
+could be committed; it is kept local because it is 69 MB of audio the repository
+does not need to carry. Fetch:
+  mkdir -p uncommitted/vocadito && cd uncommitted/vocadito \
+    && curl -L -o vocadito.zip \
+      "https://zenodo.org/records/5557945/files/vocadito.zip?download=1" \
+    && unzip -q vocadito.zip
+  Rodriguez-Serrano, Bittner et al., "vocadito: A dataset of solo vocals with
+  f0, note, and lyric annotations", ISMIR 2021 LBD. DOI 10.5281/zenodo.5557945.
+
+This is the melody stage's real-audio ground truth: `tools/score-melody.py
+--source vocadito` scores MW's notes against annotator A1 and prints, beside
+them, annotator A2 scored against A1 by the same rule. That second figure is
+the point of the corpus. Where a sung note begins is genuinely ambiguous, the
+two annotators differ on the corpus's note count by about a fifth, and their
+agreement is the ceiling any melody stage is measured against — a number well
+under 100%, which no synthetic package could ever have shown.
+
+
 hanno-ucciso-luomo-ragno-karaoke.mp3
 
 "Hanno ucciso l'uomo ragno" (883), karaoke version, 4:31. Pop, simplified

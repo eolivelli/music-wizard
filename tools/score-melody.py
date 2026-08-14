@@ -30,11 +30,29 @@ Columns, per package:
   voiced      the share of the reference's sounding time the estimate also
               calls sounding. Dropped notes show up here and nowhere else.
 
+With `--source vocadito` the same columns are scored against a corpus of real
+singing instead: 40 clips of solo voice, annotated note by note by trained
+musicians, CC BY 4.0 and fetched into `uncommitted/` (see uncommitted/list.txt).
+Two things about that corpus decide how its rows are read.
+
+**It carries its own ceiling.** Both annotators' notes are published, so the
+row `annotators` is one musician scored against the other by this harness's own
+rule. It sits far below 100%, because where a sung note begins is genuinely
+ambiguous — the two disagree on the number of notes in the corpus by about a
+fifth. A melody stage approaching that row has reached the end of what this
+metric can ask for, and a stage far above it is measuring an annotator's habits
+rather than the singing.
+
+**Nothing here is separated.** The clips are solo voice already, so these rows
+measure segmentation and nothing else; a mix would be measuring Spleeter too.
+
 Usage:  python3 tools/score-melody.py [--jar mw-cli/target/mw.jar]
+                                      [--source synthetic|vocadito]
 """
 
 import argparse
 import json
+import math
 import struct
 import subprocess
 import sys
@@ -43,6 +61,15 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CORPUS = REPO / "synthetic_samples"
+
+#: Real singing, note-annotated. Absent from a fresh clone by design; the fetch
+#: command is in uncommitted/list.txt, as it is for every other local-only file.
+VOCADITO = REPO / "uncommitted" / "vocadito"
+
+#: How many clips it holds. The loop runs over all of them whatever is on disk,
+#: so a half-unpacked corpus reports the clips it is missing by name rather than
+#: quietly scoring the ones it has.
+VOCADITO_CLIPS = 40
 
 MELODY_TRACK = "Melody"
 
@@ -201,7 +228,15 @@ def note_f1(estimate: list, reference: list, tolerance: float) -> float:
 
 
 def sounding_at(notes: list, when: float) -> int | None:
-    """The pitch sounding at a moment, or None. Notes do not overlap here."""
+    """The pitch sounding at a moment, or None.
+
+    Where two reference notes do overlap, the one that started earlier answers.
+    That is a convention rather than a fact about the music: a synthetic
+    package's melody track never overlaps itself, and vocadito's annotators
+    leave a handful of overlapping pairs across the whole corpus — few enough
+    not to move a column, and worth naming so that the tie-break is read as a
+    decision rather than as an accident of iteration order.
+    """
     for onset, end, pitch in notes:
         if onset <= when < end:
             return pitch
@@ -233,6 +268,58 @@ def framewise(estimate: list, reference: list) -> tuple[float, float]:
     return right / voiced, sounding / voiced
 
 
+# ------------------------------------------------------------------- vocadito
+
+def vocadito_notes(csv_file: Path) -> list[tuple[float, float, int]]:
+    """One annotator's notes as (onset, offset, pitch), pitch rounded to a semitone.
+
+    The file is `onset seconds, pitch hertz, duration seconds`. Rounded here
+    because that is the resolution this harness compares at, and rounding once
+    at the edge keeps the comparison rule identical to the synthetic side's.
+    """
+    notes = []
+    for line in csv_file.read_text().splitlines():
+        if not line.strip():
+            continue
+        onset, hertz, duration = (float(field) for field in line.split(","))
+        pitch = round(69 + 12 * math.log2(hertz / 440.0))
+        notes.append((onset, onset + duration, pitch))
+    return sorted(notes)
+
+
+def missing_clip_line(clip: int) -> str:
+    """The row for a clip this machine cannot measure.
+
+    Its wording is what premerge.sh turns into a SKIP rather than a failure, so
+    it is written once here and held to that script by a test — the lyric
+    harness's own skip marker is pinned the same way, for the same reason.
+    """
+    return (f"  vocadito_{clip}: not present (local-only;"
+            f" see uncommitted/list.txt to fetch)")
+
+
+def score_clip(jar: Path, clip: int) -> str:
+    audio = VOCADITO / "Audio" / f"vocadito_{clip}.wav"
+    first = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA1.csv"
+    second = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA2.csv"
+    if not audio.exists() or not first.exists() or not second.exists():
+        return missing_clip_line(clip)
+    reference = vocadito_notes(first)
+    estimate = estimated_notes(analyze(jar, audio))
+    other = vocadito_notes(second)
+    if not estimate:
+        return (f"  vocadito_{clip}: notes=0/{len(reference)}  F1@50ms 0.0%"
+                f"  F1@100ms 0.0%  pitch 0.0%  voiced 0.0%"
+                f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%")
+    pitch, voiced = framewise(estimate, reference)
+    return (f"  vocadito_{clip}: notes={len(estimate)}/{len(reference)}"
+            f"  F1@50ms {100 * note_f1(estimate, reference, TOLERANCES[0]):.1f}%"
+            f"  F1@100ms {100 * note_f1(estimate, reference, TOLERANCES[1]):.1f}%"
+            f"  pitch {100 * pitch:.1f}%"
+            f"  voiced {100 * voiced:.1f}%"
+            f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%")
+
+
 def score_package(jar: Path, spec_file: Path) -> str:
     name = spec_file.name.removesuffix(".spec.txt")
     mp3 = spec_file.with_name(name + ".mp3")
@@ -260,10 +347,19 @@ def score_package(jar: Path, spec_file: Path) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
+    parser.add_argument("--source", choices=("synthetic", "vocadito"), default="synthetic")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
         sys.exit(f"jar not found: {jar} (build with: mvn -DskipTests package)")
+
+    if args.source == "vocadito":
+        print("Melody, note by note against vocadito's annotations (real solo singing)")
+        print("(the annotators column is one musician scored against the other by this")
+        print(" same rule: it is the ceiling, not a target to pass)")
+        for clip in range(1, VOCADITO_CLIPS + 1):
+            print(score_clip(jar, clip))
+        return
 
     specs = sorted(CORPUS.glob("*.spec.txt"))
     if not specs:

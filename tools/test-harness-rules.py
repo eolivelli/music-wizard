@@ -26,6 +26,7 @@ samples = import_module("score-samples")
 synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
+melody = import_module("score-melody")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
@@ -648,9 +649,11 @@ class VttConversion(unittest.TestCase):
 
 
 class Keying(unittest.TestCase):
-    """premerge.sh keys each line on the text before its first colon and reads
-    only lines holding '.mp3:'. Both halves of that are executed here rather
-    than asserted in a comment."""
+    """premerge.sh keys each line on the text before its first colon, and reads
+    a line as a row when it carries '.mp3:' or is an indented '  name: '. Both
+    halves of that are executed here rather than asserted in a comment; the
+    second shape is what the melody harness prints, and PremergeComparison
+    below runs the shipped comparison over one."""
 
     ARGS = (lyrics.Truth(["uno"], {0: 1.0}, {0: 2.0}, False),
             lyrics.Heard(["uno"], [1.0], [2.0]))
@@ -1073,6 +1076,114 @@ class BaselineDrift(unittest.TestCase):
         self.assertEqual(2, len(drift.rows(text)))
         _, _, kind = drift.describe(text, text.replace("bars 4", "bars 9"))
         self.assertEqual("moved", kind, "the first section's row must not be hidden")
+
+
+class PremergeComparison(unittest.TestCase):
+    """The comparison premerge.sh embeds, executed rather than described.
+
+    It is extracted from the script instead of copied here, because a copy is
+    what let the defect this class exists for survive: the melody harness names
+    its benchmarks after packages and clips, which carry no file extension, so
+    every one of its rows was keyed by nothing, absent from both sides of the
+    diff, and the step reported PASS however far the numbers had moved. It was
+    blind from the first run of #494 and only CI's own plain diff was holding
+    the baseline.
+    """
+
+    @staticmethod
+    def compare(baseline_text: str, current_text: str) -> str:
+        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
+        marker = 'diffs=$(python3 - "$baseline" <<\'PY\' "$out"\n'
+        self_test = script.split(marker, 1)
+        if len(self_test) != 2:
+            raise AssertionError("premerge.sh no longer embeds the comparison this way")
+        body = self_test[1].split("\nPY\n", 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            baseline = Path(tmp) / "baseline.txt"
+            baseline.write_text(baseline_text)
+            program = Path(tmp) / "compare.py"
+            program.write_text(body)
+            done = subprocess.run([sys.executable, str(program), str(baseline), current_text],
+                                  capture_output=True, text=True)
+            if done.returncode != 0:
+                raise AssertionError(done.stderr)
+            return done.stdout
+
+    MELODY_ROW = "  melody-level1-c-96: notes=96/96  F1@50ms 88.5%  pitch 96.0%\n"
+    CHORD_ROW = "  gmajorblues.mp3: bars=136  root 96.3%\n"
+
+    def test_a_melody_row_is_compared(self):
+        moved = self.MELODY_ROW.replace("88.5%", "12.3%")
+        self.assertIn("DIFF", self.compare(self.MELODY_ROW, moved))
+
+    def test_an_unmoved_melody_row_is_quiet(self):
+        self.assertNotIn("DIFF", self.compare(self.MELODY_ROW, self.MELODY_ROW))
+
+    def test_a_chord_row_is_still_compared(self):
+        moved = self.CHORD_ROW.replace("96.3%", "12.3%")
+        self.assertIn("DIFF", self.compare(self.CHORD_ROW, moved))
+
+    def test_a_row_naming_a_file_inside_a_column_is_still_compared(self):
+        """score-samples prints 'phase <file>.mp3: ...' rows, which are keyed on
+        the whole prefix. Widening the row test must not drop them."""
+        row = "  phase blues-a-90bpm.mp3: beat 0 of 4 at 0.3633  root 85.8%\n"
+        self.assertIn("DIFF", self.compare(row, row.replace("85.8%", "12.3%")))
+
+    def test_a_preamble_is_not_a_row(self):
+        """The melody harness's own headers, verbatim: a line of prose that
+        became a row would be compared as if it were a benchmark."""
+        for preamble in ("Melody, note by note against each package's own MIDI melody track\n",
+                         "(seconds throughout: the beat grid is scored by the chart harnesses)\n",
+                         " the tracker is monophonic and reads the loudest periodic line)\n"):
+            self.assertEqual("", self.compare(preamble, preamble).strip(),
+                             f"prose became a row: {preamble!r}")
+
+    def test_a_local_only_melody_row_skips_rather_than_failing(self):
+        """A machine without the 69 MB of vocadito audio must report every clip
+        skipped, in the marker premerge turns into a SKIP, exactly as an absent
+        recording does for the lyric harness."""
+        row = melody.missing_clip_line(1)
+        self.assertIn("vocadito_1", row.split(":")[0])
+        skipped = self.compare(row + "\n", row + "\n")
+        self.assertIn("SKIP", skipped)
+
+
+class MelodyRules(unittest.TestCase):
+    """What the melody harness counts as a hit, and how it reads vocadito."""
+
+    def test_a_note_annotation_is_read_as_onset_offset_and_semitone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "notes.csv"
+            # 440 Hz is A4, MIDI 69; 261.626 is middle C, MIDI 60.
+            path.write_text("0.5,440.0,0.25\n1.0,261.626,0.5\n")
+            self.assertEqual([(0.5, 0.75, 69), (1.0, 1.5, 60)], melody.vocadito_notes(path))
+
+    def test_a_pitch_between_semitones_is_rounded_once_at_the_edge(self):
+        """Either side of the half-semitone boundary, because a sung pitch sits
+        between semitones far more often than on one, and the rounding is what
+        decides whether a hit is a hit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "notes.csv"
+            path.write_text("0.0,452.0,0.1\n0.5,453.0,0.1\n")   # 47 and 50 cents sharp
+            self.assertEqual([69, 70], [note[2] for note in melody.vocadito_notes(path)])
+
+    def test_a_perfect_transcription_scores_one(self):
+        notes = [(0.0, 0.5, 60), (0.5, 1.0, 62)]
+        self.assertAlmostEqual(1.0, melody.note_f1(notes, notes, 0.05))
+
+    def test_an_onset_outside_the_tolerance_is_not_a_hit(self):
+        reference = [(0.0, 0.5, 60)]
+        self.assertEqual(0.0, melody.note_f1([(0.2, 0.7, 60)], reference, 0.05))
+        self.assertAlmostEqual(1.0, melody.note_f1([(0.04, 0.5, 60)], reference, 0.05))
+
+    def test_the_right_time_at_the_wrong_pitch_is_not_a_hit(self):
+        self.assertEqual(0.0, melody.note_f1([(0.0, 0.5, 61)], [(0.0, 0.5, 60)], 0.05))
+
+    def test_one_estimate_cannot_answer_two_reference_notes(self):
+        """Matched one to one, so a stage returning a single long note where
+        two were sung scores recall of a half rather than of one."""
+        reference = [(0.0, 0.5, 60), (0.02, 0.5, 60)]
+        self.assertAlmostEqual(2 / 3, melody.note_f1([(0.0, 0.5, 60)], reference, 0.05))
 
 
 if __name__ == "__main__":

@@ -406,7 +406,34 @@ itself (#314, Qwen3-ASR through a sherpa-onnx source submodule, built by
 transcriber knows words but not their times — sherpa's Qwen3 emits none — so
 words are spread across their sung stretch and the aligner measures onsets
 where it speaks the language, which today is English only.
-**Melody is read now (#494), and only from a signal that holds nothing else.**
+**What the melody stage is worth is known now, on real singing.** `vocadito`
+— 40 clips of solo voice annotated note by note by two trained musicians, CC BY
+4.0, fetched into `uncommitted/` — is scored by `tools/score-melody.py --source
+vocadito`, and it carries its own ceiling: each row prints one annotator scored
+against the other by the same rule. That ceiling is nowhere near 100%, because
+where a sung note begins is genuinely ambiguous, and the two disagree about the
+corpus's note count by about a fifth. MW sits close under it. Read the baseline
+rather than a figure quoted here.
+
+Three things that measurement overturned, all of which had been believed on the
+strength of how a page looked:
+
+- **Real sung notes are short.** The annotators' median note is a fifth of a
+  second and most are under a quarter. A melody stage returning notes that
+  length is not fragmenting; a rule that absorbed short notes would destroy
+  real music. #502 asserted the opposite twice before the corpus answered.
+- **Separation, not segmentation, is the dominant loss on a song.** Mixing
+  those same annotated voices with a band and putting the mix through Spleeter
+  costs a large share of the note F1 and of the pitch accuracy, with the ground
+  truth held fixed — `tools/measure-separation-cost.py` is the measurement and
+  #503 the finding. How large depends on the bed more than on anything else,
+  and a synthesised band costs more than a real one because it is not what the
+  separator was trained on, so the bed is quoted with the figure or the figure
+  is not quoted.
+- **On a clean voice the segmenter is close to the ceiling**, so the headroom
+  that looked enormous on a lead sheet is mostly not there.
+
+**Melody is read from a signal that holds nothing else (#494).**
 pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
 staff, chord symbols, lyrics. The stage is off unless `analyze --melody` asks
 for it, and that is the whole shape of the thing: a monophonic tracker does not

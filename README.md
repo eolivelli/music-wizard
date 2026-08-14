@@ -40,7 +40,10 @@ pipeline unaided.
   from a separated vocal stem: `analyze --melody` reads the sung line and
   `render --parts lead` engraves a lead sheet — melody, chord symbols, words.
   Off unless asked for, because the tracker is monophonic: on a full mix it
-  does not fail, it confidently returns the loudest periodic line.
+  does not fail, it confidently returns the loudest periodic line. On clean
+  solo singing it reads notes nearly as well as two annotating musicians agree
+  with each other; through source separation it reads them markedly worse, and
+  that gap is separation's ([#503][i503]).
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart, the chords-and-lyrics sheet, the lead sheet and the melody
   staff. `--transpose` moves the
@@ -243,4 +246,5 @@ read — see [CONTRIBUTING.md](CONTRIBUTING.md) for the policy.
 [sherpa-fork]: https://github.com/eolivelli/sherpa-onnx/tree/qwen3-asr-stft-center-alignment
 [sherpa-pr]: https://github.com/k2-fsa/sherpa-onnx/pull/3873
 [i383]: https://github.com/eolivelli/music-wizard/issues/383
+[i503]: https://github.com/eolivelli/music-wizard/issues/503
 [i144]: https://github.com/eolivelli/music-wizard/issues/144
