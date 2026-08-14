@@ -21,6 +21,7 @@ import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -30,9 +31,11 @@ import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
+import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
+import dev.olivelli.musicwizard.dsp.PitchTracker;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -120,11 +123,22 @@ public final class AudioTranscriber {
      *                            better evidence than harmonic novelty and
      *                            averaging the two would let a confident wrong
      *                            estimate outvote them.
+     * @param trackMelody         whether to read a melody out of the audio.
+     *                            Off by default, and that is not timidity: the
+     *                            tracker is monophonic, so on a full mix it
+     *                            returns a confident line that is whatever was
+     *                            loudest and most periodic — usually the bass —
+     *                            rather than failing. Writing that into every
+     *                            score by default would put a wrong melody in
+     *                            front of every user who wanted a chord chart.
+     *                            Turn it on for a melody-only recording or a
+     *                            separated vocal stem.
      */
     public record Options(
             Double tempoOverride,
             TimeSignature timeSignature,
-            Double firstDownbeatSeconds) {
+            Double firstDownbeatSeconds,
+            boolean trackMelody) {
 
         public Options {
             // Checked here rather than where they are used, so that a mistyped
@@ -144,8 +158,25 @@ public final class AudioTranscriber {
             }
         }
 
+        /**
+         * The three corrections, with the melody stage left off.
+         *
+         * <p>Off is what every caller that predates the stage meant, and the
+         * only thing a caller can mean without having chosen a signal the stage
+         * can read — so it is a default rather than an omission.
+         */
+        public Options(Double tempoOverride, TimeSignature timeSignature,
+                       Double firstDownbeatSeconds) {
+            this(tempoOverride, timeSignature, firstDownbeatSeconds, false);
+        }
+
         public static Options defaults() {
-            return new Options(null, TimeSignature.FOUR_FOUR, null);
+            return new Options(null, TimeSignature.FOUR_FOUR, null, false);
+        }
+
+        /** The same options with the melody stage turned on. */
+        public Options withMelody() {
+            return new Options(tempoOverride, timeSignature, firstDownbeatSeconds, true);
         }
 
         public TimeSignature timeSignatureOrDefault() {
@@ -423,10 +454,29 @@ public final class AudioTranscriber {
                         100 * estimate.tonicConfidence().value())),
                 () -> progress.accept("no chord sounds, so no key was estimated"));
 
-        return Score.empty(tempoMap, audio.durationSeconds())
+        Score score = Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
                 .withChords(chords)
                 .withKeys(key.map(estimate -> List.of(estimate.key())).orElse(List.of()));
+
+        // Last, and from the full mix rather than from a stem, because there is
+        // no separation in this module: the caller decides what signal is a
+        // melody by choosing what to hand in. The stage is off unless asked for
+        // -- see Options.trackMelody -- so nothing here runs on a recording
+        // whose melody cannot be read this way.
+        if (settings.trackMelody()) {
+            progress.accept("tracking the melody");
+            NoteTrack melody = MelodyEstimator.estimate(PitchTracker.track(audio));
+            if (melody.isEmpty()) {
+                progress.accept("no melody was found");
+            } else {
+                progress.accept(String.format(Locale.ROOT, "found %d melody notes over %s",
+                        melody.size(),
+                        melody.pitchRange().map(Object::toString).orElse("no range")));
+                score = score.withTrack(melody);
+            }
+        }
+        return score;
     }
 
     /**

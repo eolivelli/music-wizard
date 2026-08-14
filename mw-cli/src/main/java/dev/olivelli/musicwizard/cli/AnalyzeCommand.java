@@ -146,6 +146,15 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "renumber the tempo map's bars. Audio only.")
     Double firstDownbeat;
 
+    @Option(names = "--melody",
+            description = "Read the melody out of the recording and write it into the "
+                    + "score, so that 'render --parts lead' can engrave a lead sheet. "
+                    + "The tracker is monophonic: give it a recording whose melody is "
+                    + "the only thing sounding, or a separated vocal stem. On a full "
+                    + "mix it returns the loudest periodic line, usually the bass, "
+                    + "rather than failing. Audio only.")
+    boolean melody;
+
     @Option(names = "--skip-separation",
             description = "Analyse the mix directly instead of separating stems. Today "
                     + "this only makes lyric transcription hear the full mix; chords "
@@ -1027,6 +1036,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             key.with("tempo", options.tempoOverride())
                     .with("meter", options.timeSignatureOrDefault())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
+                    .with("melody", options.trackMelody())
                     .with("skipSeparation", skipSeparation);
         }
         return key;
@@ -1390,17 +1400,21 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>Null rather than defaults, so that a caller which reads them on the MIDI
      * path fails visibly rather than silently acting on 4/4.
      */
-    private static AudioTranscriber.Options audioOptions(
+    private AudioTranscriber.Options audioOptions(
             SourceKind kind, MusicWizardConfig config) {
         if (kind != SourceKind.AUDIO) {
             return null;
         }
         var analysis = config.analysis();
         TimeSignature meter = parseMeter(analysis != null ? analysis.timeSignatureOverride() : null);
+        // The melody flag alone comes from the command line rather than from the
+        // config: the other three are corrections a workspace keeps, and this one
+        // is a statement about the recording handed in on the day.
         return new AudioTranscriber.Options(
                 analysis != null ? analysis.tempoOverride() : null,
                 meter,
-                analysis != null ? analysis.firstDownbeatSecondsOverride() : null);
+                analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
+                melody);
     }
 
     private static TimeSignature parseMeter(String text) {

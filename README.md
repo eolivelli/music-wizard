@@ -36,8 +36,14 @@ pipeline unaided.
 - **Lyrics**, two ways: place a supplied [LRC][lrc] file under the chords —
   any language — or transcribe the singing from the recording itself;
   transcription and syllable splitting cover Italian and English.
+- **Melody**, from a recording whose melody is the only thing sounding, or
+  from a separated vocal stem: `analyze --melody` reads the sung line and
+  `render --parts lead` engraves a lead sheet — melody, chord symbols, words.
+  Off unless asked for, because the tracker is monophonic: on a full mix it
+  does not fail, it confidently returns the loudest periodic line.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
-  the chord chart and the chords-and-lyrics sheet. `--transpose` moves the
+  the chord chart, the chords-and-lyrics sheet, the lead sheet and the melody
+  staff. `--transpose` moves the
   chords, the key and the spelling together; `--beat-marks` numbers the tracked
   beats under the chords so placement inside a bar can be read off the page,
   and `--repeat-tags` labels the lines the chart prints more than once.
@@ -148,9 +154,11 @@ mw render song.mwz                                   # engrave what can be engra
 mw info song.mwz                                     # what has been computed
 ```
 
-`render` defaults to the parts that are implemented — the chord chart and the
-chords-and-lyrics sheet. Ask for one that is not (`--parts voice`) and it says
-so and why, rather than listing it and writing nothing.
+`render` defaults to the parts that are implemented — the chord chart, the
+chords-and-lyrics sheet, and, when the score was analysed with `--melody`, the
+lead sheet and the melody staff. Ask for one that is not (`--parts piano`), or
+for a melody the score does not hold, and it says so and why, rather than
+listing it and writing nothing.
 
 A **workspace** is a directory holding the recording and everything derived
 from it:
@@ -196,9 +204,9 @@ of them.
 
 Where this is going, in rough order of pull:
 
-- **Melody detection, and the piano sheet** — the sung line as a voice part,
-  and a playable two-hand reduction built from everything MW knows about the
-  song.
+- **Melody out of a mix, and the piano sheet** — the sung line read through
+  separation rather than from a bare melody, and a playable two-hand reduction
+  built from everything MW knows about the song.
 - **Drums detection, and drum sheets** — the kit written the way drummers
   read.
 - **Sharper lyric hearing** — better sung-speech transcription and word
@@ -214,9 +222,11 @@ Where this is going, in rough order of pull:
 
 ## Not built yet
 
-Named so nothing has to be discovered by trying it: the **voice**, **bass**
-and **piano** parts (`render` refuses them by name and says why), **drums**,
-**MusicXML and MIDI export**, and a **web UI**. The CLI is the product today.
+Named so nothing has to be discovered by trying it: the **bass** and **piano**
+parts (`render` refuses them by name and says why), **drums**, **MusicXML and
+MIDI export**, and a **web UI**. The melody is read only from a signal that
+holds nothing else, so a lead sheet of a full mix is not there yet either. The
+CLI is the product today.
 
 ## Licence
 

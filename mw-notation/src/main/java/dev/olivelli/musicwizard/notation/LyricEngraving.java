@@ -126,6 +126,12 @@ final class LyricEngraving {
      *             deriving a second time from the tempo map
      */
     static Optional<String> block(Score score, List<ChartLayout.Bar> bars) {
+        return block(score, bars, Attachment.BELOW_CHORDS);
+    }
+
+    /** The same, leaning towards whatever it is written under. */
+    static Optional<String> block(Score score, List<ChartLayout.Bar> bars,
+                                  Attachment attachment) {
         if (score.lyrics().isEmpty() || bars.isEmpty()) {
             return Optional.empty();
         }
@@ -137,9 +143,39 @@ final class LyricEngraving {
 
         StringBuilder out = new StringBuilder();
         for (List<Syllable> syllables : lanes) {
-            lane(out, syllables, bars, barStart);
+            lane(out, syllables, bars, barStart, attachment);
         }
         return Optional.of(out.toString());
+    }
+
+    /**
+     * Which way a lyric lane leans, which is decided by what is above it.
+     *
+     * <p>Not a preference. A {@code Lyrics} context attaches to a neighbouring
+     * staff, and reading top to bottom the staff affinities must not increase —
+     * so the answer is forced by the context above, and getting it wrong makes
+     * LilyPond complain on every run, into output this tool parses to decide
+     * whether engraving went well.
+     */
+    enum Attachment {
+        /**
+         * Under the chord names of a chart, which point down because they have
+         * no staff of their own. Equal affinities do not increase, which is what
+         * makes any number of lanes legal under them.
+         */
+        BELOW_CHORDS("#DOWN"),
+        /** Under the melody staff of a lead sheet, which is a staff and is above. */
+        BELOW_STAFF("#UP");
+
+        private final String affinity;
+
+        Attachment(String affinity) {
+            this.affinity = affinity;
+        }
+
+        String affinity() {
+            return affinity;
+        }
     }
 
     /**
@@ -150,16 +186,12 @@ final class LyricEngraving {
      * whatever falls in them.
      */
     private static void lane(StringBuilder out, List<Syllable> syllables,
-                             List<ChartLayout.Bar> bars, long[] barStart) {
+                             List<ChartLayout.Bar> bars, long[] barStart,
+                             Attachment attachment) {
         out.append("  \\new Lyrics \\with {\n");
-        // DOWN, not the context's own default of UP. Read top to bottom the
-        // affinities must not increase, and ChordNames is already DOWN, so a
-        // Lyrics below it pointing up is the one arrangement LilyPond complains
-        // about -- on every run, into output this tool parses to decide whether
-        // engraving went well. The repeat-bracket lane above is DOWN for the
-        // same reason, and equal affinities do not increase, which is what makes
-        // any number of these lanes legal under the chords.
-        out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
+        // Which way is not this lane's choice; see Attachment.
+        out.append("    \\override VerticalAxisGroup.staff-affinity = ")
+                .append(attachment.affinity()).append('\n');
         out.append("    \\override VerticalAxisGroup"
                 + ".nonstaff-nonstaff-spacing.basic-distance = #3\n");
         // Chord names are left-aligned on their moment and lyric syllables are

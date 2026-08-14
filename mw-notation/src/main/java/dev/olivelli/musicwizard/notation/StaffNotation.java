@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.stream.Collectors;
 
 /**
@@ -135,9 +136,36 @@ public final class StaffNotation {
 
     /** The same, with the quantizer's per-bar grid honoured. */
     static String staffBlock(QuantizedScore quantized, NoteTrack track) {
+        return staff(quantized, track).lilyPond();
+    }
+
+    /**
+     * A staff block and the pickup it opens with.
+     *
+     * @param lilyPond       the {@code \new Staff} expression, indented two spaces
+     * @param pickupQuarters how much shorter than a full bar the first bar is,
+     *                       or empty when the music starts on beat one
+     */
+    record Staff(String lilyPond, OptionalDouble pickupQuarters) {
+    }
+
+    /**
+     * The staff block, together with what it did to the score's first bar.
+     *
+     * <p>Reported rather than re-derived, because a pickup is a claim about the
+     * bar lines of the whole {@code \score} and not about this staff: {@link
+     * StaffLayout} decides it, LilyPond applies it to the shared timing, and any
+     * other context in the same score is then a bar of the wrong length unless
+     * it is told. {@link LeadSheet} is that other context. Asking StaffLayout a
+     * second time would be a second derivation of one fact, which is the failure
+     * {@link StaffWriter}'s own javadoc is about.
+     */
+    static Staff staff(QuantizedScore quantized, NoteTrack track) {
         Objects.requireNonNull(quantized, "quantized");
         Objects.requireNonNull(track, "track");
-        return staffBlock(quantized.score(), track, TupletPlan.of(quantized));
+        LilyPondStaffWriter writer = new LilyPondStaffWriter();
+        StaffLayout.write(quantized.score(), track, TupletPlan.of(quantized), writer);
+        return new Staff(writer.toString(), writer.pickupQuarters());
     }
 
     private static String staffBlock(Score score, NoteTrack track, TupletPlan tuplets) {
@@ -156,6 +184,8 @@ public final class StaffNotation {
     private static final class LilyPondStaffWriter implements StaffWriter {
 
         private final StringBuilder out = new StringBuilder();
+
+        private OptionalDouble pickupQuarters = OptionalDouble.empty();
 
         /** The current bar's tokens, joined and flushed by {@link #endBar}. */
         private final List<String> tokens = new ArrayList<>();
@@ -205,9 +235,18 @@ public final class StaffNotation {
 
         @Override
         public void pickup(long wholeNotesNumerator, long wholeNotesDenominator) {
+            // Four quarters to a whole note, and kept as the fraction it came in
+            // as until the division, because a pickup entering inside a triplet
+            // is two thirds of a quarter.
+            pickupQuarters = OptionalDouble.of(
+                    4.0 * wholeNotesNumerator / wholeNotesDenominator);
             out.append("    \\partial ")
                     .append(LilyPondDuration.scaled(wholeNotesNumerator, wholeNotesDenominator))
                     .append('\n');
+        }
+
+        OptionalDouble pickupQuarters() {
+            return pickupQuarters;
         }
 
         @Override
