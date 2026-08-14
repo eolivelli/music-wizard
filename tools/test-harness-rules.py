@@ -747,14 +747,21 @@ class Keying(unittest.TestCase):
 def scratch_repo():
     """A throwaway git repo, and a runner for git inside it.
 
-    The user's own config is shut out rather than inherited: `commit.gpgsign`
-    would make every commit here fail, and `diff.renames = false` would let the
-    rename test below pass against a premerge.sh with the flag it exists to pin
-    deleted. CI has no global config, so both are local-only failures, which is
-    where this file is most often run.
+    The ambient git environment is dropped rather than added to: `GIT_DIR`
+    would put these commits in whatever repository the caller was standing in,
+    and `GIT_CONFIG_COUNT` carries config past the three variables that shut
+    the config files out. Naming the ones that bite leaves the next one to
+    find; anything a repo of our own needs, we set here.
+
+    What it buys: `commit.gpgsign` on a machine with no key makes every commit
+    here fail, and `diff.renames = false` lets the rename test below pass
+    against a premerge.sh with the flag it exists to pin deleted -- a test that
+    green-lights removing its own subject. CI has no such config, so both are
+    local-only, which is where this file is most often run.
     """
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
-           "GIT_CONFIG_SYSTEM": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env |= {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1"}
     with tempfile.TemporaryDirectory() as tmp:
         def git(*args):
             return subprocess.run(("git", "-C", tmp) + args, check=True,
@@ -861,10 +868,10 @@ class BaselineDrift(unittest.TestCase):
                           "tools/baselines/score-charts.txt"], sorted(named))
 
     def test_absence_is_read_off_the_tree_and_not_off_a_failed_read(self):
-        """A blobless clone whose remote is unreachable lists the older blob
-        and cannot read it. Calling that absence puts a re-measured baseline in
-        the quiet arm, so `show` asks the tree; here the object is removed to
-        make the read fail while the tree still names it."""
+        """A clone that holds the history but not every blob lists the older
+        file and cannot read it. Calling that absence puts a re-measured
+        baseline in the quiet arm, so `show` asks the tree; here the object is
+        removed to make the read fail while the tree still names it."""
         with scratch_repo() as (git, tree):
             (tree / "b.txt").write_text(self.CHART)
             git("add", "-A")
@@ -876,11 +883,48 @@ class BaselineDrift(unittest.TestCase):
                 self.assertEqual(self.CHART, drift.show("HEAD", "b.txt"))
                 self.assertIsNone(drift.show("HEAD", "gone.txt"))
                 self.assertIs(drift.FAILED, drift.show("nosuchrev", "b.txt"))
+                # The paths are repository-relative both sides of the tree
+                # question, so where the run happens cannot decide the answer.
+                (tree / "sub").mkdir()
+                os.chdir(tree / "sub")
+                self.assertEqual(self.CHART, drift.show("HEAD", "b.txt"))
+                os.chdir(tree)
                 (tree / ".git/objects" / blob[:2] / blob[2:]).unlink()
                 self.assertIn("b.txt", git("ls-tree", "HEAD", "--", "b.txt").stdout)
                 self.assertIs(drift.FAILED, drift.show("HEAD", "b.txt"))
             finally:
                 os.chdir(cwd)
+
+    def test_the_scratch_repo_stands_in_no_other_repository(self):
+        """GIT_DIR would put these commits in whatever repository the caller
+        was standing in, and GIT_CONFIG_COUNT carries config in past the
+        variables that shut the config files out. Both are dropped, so neither
+        an ambient repo nor an ambient setting reaches the fixtures."""
+        with tempfile.TemporaryDirectory() as ambient:
+            hostile = {"GIT_DIR": ambient, "GIT_CONFIG_COUNT": "1",
+                       "GIT_CONFIG_KEY_0": "diff.renames",
+                       "GIT_CONFIG_VALUE_0": "false"}
+            saved = {k: os.environ.get(k) for k in hostile}
+            os.environ.update(hostile)
+            try:
+                with scratch_repo() as (git, tree):
+                    self.assertTrue((tree / ".git").exists())
+                    (tree / "a.txt").write_text("one\n")
+                    git("add", "-A")
+                    git("commit", "-qm", "one")
+                    git("mv", "a.txt", "b.txt")
+                    git("commit", "-qam", "rename")
+                    # No flag, so git's own default decides: detection on, and
+                    # only the destination named. Both paths here would mean
+                    # the ambient diff.renames got in -- which is what would
+                    # let the rename test above pass over a premerge.sh with
+                    # --no-renames deleted.
+                    named = git("diff", "--name-only", "HEAD~1", "HEAD").stdout.split()
+                    self.assertEqual(["b.txt"], named)
+            finally:
+                for k, v in saved.items():
+                    os.environ.pop(k) if v is None else os.environ.update({k: v})
+            self.assertEqual([], sorted(os.listdir(ambient)))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")

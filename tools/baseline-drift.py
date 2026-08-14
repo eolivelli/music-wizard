@@ -121,12 +121,16 @@ def show(rev: str, path: str):
     """The file at that commit, None where that commit does not carry it, or
     FAILED where git could not answer.
 
-    Absence is decided by the tree, never by a read that came back empty-handed:
-    in a blobless clone whose remote is unreachable -- a state premerge.sh
-    supports and names -- the older commit's blob does not read while the tree
-    lists it plainly, and the quiet arm trusts absence.
+    Absence is decided by the tree, never by a read that came back
+    empty-handed: where a clone holds the history but not every blob, the older
+    commit's file does not read while the tree lists it plainly, and the quiet
+    arm trusts absence.
+
+    --full-tree because the paths are repository-relative, as `git show
+    <rev>:<path>` reads them; without it `ls-tree` resolves them against the
+    current directory and reports a file that is there as absent.
     """
-    listed = subprocess.run(["git", "ls-tree", rev, "--", path],
+    listed = subprocess.run(["git", "ls-tree", "--full-tree", rev, "--", path],
                             capture_output=True, text=True)
     if listed.returncode:            # the rev does not resolve, or git is unwell
         return FAILED
