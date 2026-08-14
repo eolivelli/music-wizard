@@ -141,13 +141,7 @@ final class BeatMarks {
         out.append("    \\override VerticalAxisGroup"
                 + ".nonstaff-nonstaff-spacing.basic-distance = #2\n");
         // LEFT, as the chord names and the syllables are, so that everything
-        // standing for one moment begins at the same place on the page. Centred
-        // is defensible on its own -- a mark stands for a moment, and a moment
-        // is where its middle is -- and that is how it was written; but nothing
-        // on this page is read on its own. A reader compares a syllable to the
-        // beat under it, and two anchors put them half a glyph apart at the
-        // very same instant, which reads as the misplacement this lane exists
-        // to reveal (#455).
+        // standing for one moment begins at the same place on the page (#455).
         out.append("    \\override LyricText.self-alignment-X = #LEFT\n");
         // Small and grey: this is an annotation over the chart, and at the size
         // and weight of a chord name a page of them reads as the content.

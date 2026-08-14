@@ -269,11 +269,6 @@ class BeatMarksTest {
     @Test
     @DisplayName("every lane anchors its text the same way, and every lane says so")
     void oneAnchorForEverythingOnOneMoment() {
-        // #455. Both lanes are placed on one grid by ChartGrid, so a syllable
-        // and a mark on the same moment already share an x -- they were hung on
-        // it differently, and came out apart at the very same instant, which
-        // reads as the misplacement the marks exist to reveal.
-        //
         // Counted against the lanes, not merely deduplicated. A lane that omits
         // the override does not disagree with anything written down: it inherits
         // LilyPond's own CENTER and is the one that is wrong, while the
