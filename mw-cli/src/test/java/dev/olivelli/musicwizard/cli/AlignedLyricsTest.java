@@ -43,26 +43,35 @@ class AlignedLyricsTest {
             """;
 
     private Path analysed(String alignmentProvider) throws IOException {
-        return analysed(alignmentProvider, LRC, "en");
+        return analysed(alignmentProvider, LRC, "en", "song");
     }
 
     private Path analysed(String alignmentProvider, String lyrics, String language)
             throws IOException {
-        Path source = directory.resolve("song.wav");
+        return analysed(alignmentProvider, lyrics, language, "song");
+    }
+
+    /** The analyze output of the last {@link #analysed} run. */
+    private String lastAnalyze = "";
+
+    private Path analysed(String alignmentProvider, String lyrics, String language,
+                          String name) throws IOException {
+        Path source = directory.resolve(name + ".wav");
         SignalFactory.writeWav(source, SignalFactory.chord(
                 SignalFactory.majorTriad(60), 6.0, SignalFactory.DEFAULT_SAMPLE_RATE),
                 SignalFactory.DEFAULT_SAMPLE_RATE);
-        Path root = directory.resolve("song.mwz");
+        Path root = directory.resolve(name + ".mwz");
         assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
                 .exitCode()).isZero();
         Path descriptor = root.resolve("workspace.yaml");
         Files.writeString(descriptor, Files.readString(descriptor)
                 + "\nconfig:\n  ml:\n    alignmentProvider: " + alignmentProvider + "\n");
-        Path lrc = directory.resolve("words.lrc");
+        Path lrc = directory.resolve(name + ".lrc");
         Files.writeString(lrc, lyrics);
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--lyrics", lrc.toString(), "--lyrics-language", language);
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        lastAnalyze = analyze.all();
         return root;
     }
 
@@ -255,6 +264,27 @@ class AlignedLyricsTest {
         assertThat(words.get(0).startSeconds()).isEqualTo(1.0);
         assertThat(words.stream().map(w -> w.text()).toList())
                 .containsExactly("la", "sol", "mi");
+    }
+
+    @Test
+    @DisplayName("aligning leaves the file's own confidence on the parser's scale")
+    void theFileKeepsTheParsersScale() throws IOException {
+        // The same lyrics, aligned and not, report the same file confidence:
+        // the aligner rates its own path and the file keeps the words' number.
+        Path unaligned = analysed("no-such-aligner", LRC, "en", "plain");
+        Path aligned = analysed("fake-cli-alignment", LRC, "en", "aligned");
+        Score score = Workspace.open(aligned).readScore().orElseThrow();
+
+        // The aligner ran, on every line, and its scale is present on the
+        // words. Without this the equality below is satisfied by two failures as
+        // easily as by two successes; without the count, one line left at parsed
+        // times would satisfy the old aggregation too.
+        assertThat(lastAnalyze).contains("aligned 2 lyric lines");
+        assertThat(score.lyrics().lines().get(0).words().get(0).confidence())
+                .isEqualTo(FakeAlignmentProvider.ALIGNED);
+        assertThat(score.lyrics().confidence())
+                .isEqualTo(Workspace.open(unaligned).readScore().orElseThrow()
+                        .lyrics().confidence());
     }
 
     @Test
