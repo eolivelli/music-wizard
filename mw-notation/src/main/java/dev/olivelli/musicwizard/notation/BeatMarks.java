@@ -140,10 +140,9 @@ final class BeatMarks {
         out.append("    \\override VerticalAxisGroup.staff-affinity = #DOWN\n");
         out.append("    \\override VerticalAxisGroup"
                 + ".nonstaff-nonstaff-spacing.basic-distance = #2\n");
-        // Centred, unlike the syllables above, which are left-aligned to sit
-        // under the chord name they belong to. A mark stands for a moment and
-        // nothing else, and a moment is where its middle is.
-        out.append("    \\override LyricText.self-alignment-X = #CENTER\n");
+        // LEFT, as the chord names and the syllables are, so that everything
+        // standing for one moment begins at the same place on the page (#455).
+        out.append("    \\override LyricText.self-alignment-X = #LEFT\n");
         // Small and grey: this is an annotation over the chart, and at the size
         // and weight of a chord name a page of them reads as the content.
         out.append("    \\override LyricText.font-size = #-4\n");
