@@ -146,8 +146,8 @@ A number belongs in prose only if a test asserts it or a committed harness
 reproduces it; otherwise write the qualitative fact. `premerge.sh` also prints,
 as a prompt and never a gate, whether any baseline moved on `main` since this
 branch started: the harness diff cannot see a figure quoted in a PR body or a
-comment earlier in the branch's life against a baseline that has since been
-regenerated (#428). The incidents behind these rules are collected in
+comment earlier in the branch's life and measured against a baseline that has
+since been regenerated (#428). The incidents behind these rules are collected in
 `docs/history.md`.
 
 ## Issue tracking
