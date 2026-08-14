@@ -11,9 +11,12 @@ a line that is easy to read past.
 
 ## The global config
 
-`~/.config/music-wizard/config.yaml`. Two keys are read from this layer *only*
-(#383) — `ml.alignmentModelDirectory` and `ml.asrModelDirectory` — and `analyze`
-warns when a workspace tries to set either. The rest of `ml` merges normally.
+`~/.config/music-wizard/config.yaml`. Providers configure themselves from this
+layer (#383), so `ml.modelCacheDirectory`, `ml.offline` and the two model
+directories — `ml.alignmentModelDirectory`, `ml.asrModelDirectory` — take effect
+here and nowhere else. `analyze` warns when a workspace sets one of the two
+model directories, and says nothing about the other two (#493). Provider ids and
+`ml.sherpaNativePath` do reach the provider from a workspace layer.
 
 ```yaml
 ml:
@@ -37,9 +40,8 @@ points at the provider rather than at a key, so the engraved sheet ends up
 showing placement nothing measured (#482).
 
 **`mw doctor` answers this in a second** and is the first thing to run on a new
-machine: it lists each provider with the languages it can actually offer, so a
-model that is present but unreachable shows as an absence rather than as a
-puzzle.
+machine: it prints the alignment provider's languages, so a model that is
+present but unreachable shows as a missing language rather than as a puzzle.
 
 ## The sherpa-onnx native
 
@@ -101,24 +103,26 @@ empty directory first**, or the link lands *inside* it, the profile still does
 not activate, and nothing says so:
 
 ```sh
-rm -rf third_party/sherpa-onnx
+rmdir third_party/sherpa-onnx
 ln -s ~/dev/music-wizard/third_party/sherpa-onnx third_party/sherpa-onnx
 ```
+
+`rmdir` rather than `rm -rf`: run one directory up by mistake, it refuses
+instead of destroying a populated submodule and a native build.
 
 That shows as a type change in `git status`; restore it with `git checkout --
 third_party/sherpa-onnx` before committing. Local-only samples can be linked
 the same way and do not show, being gitignored by name.
 
-**Nothing outside the clone may move `refs/heads/main`.** Git guards the
-ordinary ways by itself: it refuses to check `main` out in a second worktree,
-and refuses to check it out in the clone while a worktree holds it. What it
-does not guard is the forcing forms — `checkout -B`, `branch -f`, `update-ref`
-— and one of those in a worktree moves the ref for the clone too, whose files
-then read as a hundred deletions against a HEAD that moved without them.
+**Nothing outside the clone may move `refs/heads/main`.** Git refuses most of
+the ways — checking `main` out in a second worktree, or in the clone while a
+worktree holds it — but its refusals are not complete: `checkout -B` and
+`update-ref` go through. So a `git checkout main || git checkout -B main
+origin/main` fallback is how this actually happened; the first half was
+refused, the second was not. The clone's files then read as a hundred deletions
+against a HEAD that moved without them.
 
-A `git checkout main || git checkout -B main origin/main` fallback is how this
-actually happened: the first half is refused, the second half is not. If a
-worktree needs to build from `main`, detach instead:
+If a worktree needs to build from `main`, detach instead:
 
 ```sh
 git -C <worktree> checkout --detach origin/main

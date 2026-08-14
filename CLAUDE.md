@@ -356,12 +356,12 @@ them are in `docs/history.md`. The short version:
 - **One git worktree per task, one local Maven repository per worktree**
   (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
   build downloads the dependency closure; that is the price of the isolation.
-  Never `git checkout` in the shared clone, and never force `refs/heads/main`
-  from a worktree: git refuses the ordinary ways by itself, but `checkout -B`,
-  `branch -f` and `update-ref` are not refused, and one of those moves the ref
-  for the clone too — whose files then read as deletions against a HEAD that
-  moved without them. A worktree that must build from `main` detaches. The
-  incidents behind each half are in `docs/history.md`.
+  Never `git checkout` in the shared clone, and never move `refs/heads/main`
+  from a worktree: git refuses most of the ways but not all of them, and one
+  that goes through moves the ref for the clone too — whose files then read as
+  deletions against a HEAD that moved without them. A worktree that must build
+  from `main` detaches. The incidents behind each half are in
+  `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
