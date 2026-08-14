@@ -94,6 +94,12 @@ import java.util.Objects;
  * vocabularies, {@link #DECODED} and {@link #QUALITY_ONLY}, because a template
  * that competes across roots is a different risk from one that cannot move a
  * root at all.
+ *
+ * <p>Both registers added is still a fold, though, and a fold cannot say which
+ * of a chord's own notes is its root — which is the whole of the difference
+ * between a chord and its relative minor. So the decoder is given the bass
+ * register as well, as a prior over roots rather than as another template to
+ * match: {@link #BASS_ROOT_WEIGHT}.
  */
 public final class ChordEstimator {
 
@@ -221,6 +227,73 @@ public final class ChordEstimator {
      * only meant to catch genuine silence, not quiet passages.
      */
     private static final double SILENCE_THRESHOLD = 1e-6;
+
+    /**
+     * Log-likelihood a bass register that names a single root outright is worth.
+     *
+     * <p>The decoder scores templates against {@link NnlsChroma#combined()}, the
+     * two registers added, and a fold to pitch classes cannot say which of a
+     * chord's notes is its root. That is not a corner case: a chord and its
+     * relative minor share two notes, and adding a sixth to the one gives
+     * exactly the other's four — {@code A6} and {@code F#m7} are the same set.
+     * A boogie shuffle plays root-and-sixth for half of every bar, and there the
+     * F# minor triad outscores the A triad beat by beat <em>and</em> summed over
+     * the whole bar, so aggregating that chroma for longer does not separate
+     * them (#448). The bass register does, because that is where a root is
+     * played.
+     *
+     * <p>Added to the emission score, so it is read against {@link
+     * #EMISSION_SHARPNESS}: 20 against 50 lets a bass on one pitch class
+     * overturn a cosine ratio of up to exp(20/50), and a bass naming nothing
+     * spreads its share evenly and so decides nothing.
+     *
+     * <p>{@code tools/ChordSweep.java score}, with the window of {@link
+     * #BASS_ROOT_BEATS} fixed — {@code eb7-vamp-130.mp3} is where the gain is,
+     * {@code fm7-vamp-110.mp3} where the ceiling is:
+     *
+     * <pre>
+     *   weight                    0    10    15    20    25    40
+     *   eb7-vamp root+quality   102   148   157   160   160   156
+     *   fm7-vamp root           133   136   135   132   127   122
+     * </pre>
+     *
+     * <p>The two move against each other, and 20 is the last weight at which the
+     * second has given up only a bar. Past it the prior starts overruling the
+     * template where the bass states something other than the root, which is
+     * most of what a bass does on that recording — a Latin-jazz vamp whose bass
+     * is a figure and not a pedal. Roots are the column the rest of the chart
+     * hangs on, so that is the one to watch when moving this.
+     */
+    private static final double BASS_ROOT_WEIGHT = 20;
+
+    /**
+     * Beats either side of the current one that the bass root is read over.
+     *
+     * <p>Two, so five beats: about a bar. A bass line is not a pedal, and the
+     * beat a walking bass spends on the third or the sixth is not a chord
+     * change. Read beat by beat the prior asserts one at every passing note, and
+     * the run it splits is then a chord whose quality {@link #chooseQualities}
+     * decides twice from half the evidence each time.
+     *
+     * <p>{@code tools/ChordSweep.java score} over the window, at the weight
+     * shipped:
+     *
+     * <pre>
+     *   beats either side       none     0     1     2     3     4
+     *   eb7-vamp root+quality    102    82   141   160   158   155
+     *   fm7-vamp root+quality     92    94     0   117   102    77
+     *   bm-blues root+quality     78    68    68    88    91    96
+     * </pre>
+     *
+     * <p>At zero and one the prior helps one recording and wrecks another; from
+     * two on, every row is above the column that has no prior at all. So the
+     * window is part of the mechanism rather than a smoothing detail. The fm7
+     * cell at one is split runs meeting {@link #withdrawMinoritySevenths}: once
+     * a root is fragmented into short runs, a minority of its beats carry the
+     * seventh and every one of them then loses it. Two and three differ only in
+     * which recording takes the last few bars.
+     */
+    private static final int BASS_ROOT_BEATS = 2;
 
     /**
      * The qualities the Viterbi decoder chooses between, one state per root.
@@ -377,6 +450,36 @@ public final class ChordEstimator {
      */
     public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
                                             List<Double> beatTimes) {
+        return decode(chroma, qualityChroma, null, beatTimes);
+    }
+
+    /**
+     * Estimates chords with the bass register available as a root prior.
+     *
+     * <p>What the pipeline uses. The root and the quality are decided as
+     * {@link #estimate(Chroma, Chroma, List)} describes; this adds the one thing
+     * neither chroma can say, which is which of a chord's own notes is its root.
+     * See {@link #BASS_ROOT_WEIGHT}.
+     *
+     * @param chroma        beat-synchronous chroma the root and the chord
+     *                      boundaries are decoded from
+     * @param qualityChroma beat-synchronous chroma, over the same beats, the
+     *                      quality is decided from
+     * @param bassChroma    beat-synchronous chroma, over the same beats, of the
+     *                      bass register alone — {@link NnlsChroma#bass()}
+     * @param beatTimes     the beat instants those spans lie between
+     * @throws IllegalArgumentException if the three chromas do not describe the
+     *     same frames
+     */
+    public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
+                                            Chroma bassChroma, List<Double> beatTimes) {
+        return decode(chroma, qualityChroma,
+                Objects.requireNonNull(bassChroma, "bassChroma"), beatTimes);
+    }
+
+    /** The body of both, with {@code bassChroma} null where there is no bass register. */
+    private static ChordProgression decode(Chroma chroma, Chroma qualityChroma,
+                                           Chroma bassChroma, List<Double> beatTimes) {
         Objects.requireNonNull(chroma, "chroma");
         Objects.requireNonNull(qualityChroma, "qualityChroma");
         Objects.requireNonNull(beatTimes, "beatTimes");
@@ -385,17 +488,30 @@ public final class ChordEstimator {
                     + " frames and qualityChroma has " + qualityChroma.frameCount()
                     + "; the two describe the same beats");
         }
+        if (bassChroma != null && chroma.frameCount() != bassChroma.frameCount()) {
+            throw new IllegalArgumentException("chroma has " + chroma.frameCount()
+                    + " frames and bassChroma has " + bassChroma.frameCount()
+                    + "; the two describe the same beats");
+        }
         if (chroma.frameCount() == 0 || beatTimes.size() < 2) {
             return ChordProgression.empty();
         }
 
         List<Template> templates = buildTemplates();
         double[][] similarity = similarities(chroma, templates);
+        double[][] bassShare = bassRootShare(bassChroma, similarity.length);
         double[][] logLikelihood = new double[similarity.length][templates.size()];
         for (int frame = 0; frame < similarity.length; frame++) {
             for (int t = 0; t < templates.size(); t++) {
+                Template template = templates.get(t);
                 logLikelihood[frame][t] = EMISSION_SHARPNESS
                         * Math.log(Math.max(1e-9, similarity[frame][t]));
+                // No-chord has no root, so it is left where it is and every
+                // chord state is measured against it as before.
+                if (bassShare != null && template.quality() != ChordQuality.NONE) {
+                    logLikelihood[frame][t] +=
+                            BASS_ROOT_WEIGHT * bassShare[frame][template.rootPitchClass()];
+                }
             }
         }
         int[] path = viterbi(logLikelihood, DECODED_STATES);
@@ -686,6 +802,38 @@ public final class ChordEstimator {
         double[] flat = new double[12];
         java.util.Arrays.fill(flat, 1.0 / 12);
         return qualityScore(flat, template);
+    }
+
+    /**
+     * Each beat's bass energy by pitch class, as a share of the bass energy over
+     * the {@link #BASS_ROOT_BEATS} window around it, or null if there is no bass
+     * register to read.
+     *
+     * <p>A share rather than a level, so a loud passage does not assert its root
+     * harder than a quiet one asserts its own; a silent window leaves every
+     * share at zero and asserts nothing.
+     */
+    private static double[][] bassRootShare(Chroma bass, int frames) {
+        if (bass == null) {
+            return null;
+        }
+        double[][] out = new double[frames][12];
+        for (int frame = 0; frame < frames; frame++) {
+            double total = 0;
+            for (int f = Math.max(0, frame - BASS_ROOT_BEATS);
+                    f <= Math.min(frames - 1, frame + BASS_ROOT_BEATS); f++) {
+                for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                    out[frame][pitchClass] += bass.vectors()[f][pitchClass];
+                    total += bass.vectors()[f][pitchClass];
+                }
+            }
+            if (total > 0) {
+                for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                    out[frame][pitchClass] /= total;
+                }
+            }
+        }
+        return out;
     }
 
     /** Chroma summed over the beats {@code [from, to)}. */

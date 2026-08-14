@@ -378,6 +378,11 @@ public final class AudioTranscriber {
         // it answers is what share of the *chordal* register each pitch class
         // holds, and normalising the sum would put the bass back into it.
         Chroma treble = registers.treble().beatSynchronous(beatTimes);
+        // And the bass alone, for the root half: which of a chord's own notes is
+        // its root is the one thing the fold above cannot say, and the register
+        // where the root is played is the one that can. Beat-synchronised on its
+        // own for the same reason the treble is.
+        Chroma bass = registers.bass().beatSynchronous(beatTimes);
 
         // Pulses per bar, not the numerator: DownbeatEstimator asks for "the
         // assumed bar length in beats", and the beats it means are the tracked
@@ -397,7 +402,7 @@ public final class AudioTranscriber {
                 : tracked;
 
         progress.accept("estimating chords");
-        ChordProgression chords = ChordEstimator.estimate(chroma, treble, beatTimes);
+        ChordProgression chords = ChordEstimator.estimate(chroma, treble, bass, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
         // Over the whole recording rather than over the chords' own extent: a key

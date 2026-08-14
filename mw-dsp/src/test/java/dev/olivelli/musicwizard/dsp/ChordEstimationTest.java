@@ -567,4 +567,79 @@ class ChordEstimationTest {
                     .chords().stream().map(Chord::symbol).toList();
         }
     }
+
+    /**
+     * #448: which of a chord's own notes is its root, which only the bass says.
+     *
+     * <p>The shape is a boogie bar of A7 — the comping plays root-and-sixth for
+     * half of it, so A, C#, E and F# all sound and the F# is louder than the E.
+     * Folded to pitch classes that is F#m7's set, and the F# minor triad wins.
+     * The bass plays A throughout.
+     */
+    @Nested
+    @DisplayName("the bass register as a root prior (#448)")
+    class BassRoot {
+
+        /** A chroma vector from {@code pitchClass, share} pairs, the rest spread evenly. */
+        private static double[] chroma(double... pairs) {
+            double[] out = new double[12];
+            double named = 0;
+            for (int i = 0; i < pairs.length; i += 2) {
+                out[(int) pairs[i]] = pairs[i + 1];
+                named += pairs[i + 1];
+            }
+            double rest = (1 - named) / (12 - pairs.length / 2);
+            for (int i = 0; i < 12; i++) {
+                if (out[i] == 0) {
+                    out[i] = rest;
+                }
+            }
+            return out;
+        }
+
+        private static Chroma four(double[] vector) {
+            return beats(vector, vector, vector, vector);
+        }
+
+        /** A=9, C#=1, E=4, F#=6. The sixth outweighs the fifth, as it is played. */
+        private static final double[] BOOGIE = chroma(9, 0.30, 1, 0.25, 6, 0.20, 4, 0.10);
+
+        @Test
+        @DisplayName("the sixth alone moves the root to the relative minor")
+        void withoutTheBassTheSixthDecidesTheRoot() {
+            assertThat(ChordEstimator.estimate(four(BOOGIE), four(BOOGIE), beatTimes(4))
+                    .chords()).extracting(Chord::symbol).containsExactly("F#m");
+        }
+
+        @Test
+        @DisplayName("a bass on the root keeps the root")
+        void theBassDecidesWhichSharedNoteIsTheRoot() {
+            double[] bass = chroma(9, 0.60, 1, 0.10, 4, 0.10, 6, 0.10);
+
+            assertThat(ChordEstimator
+                    .estimate(four(BOOGIE), four(BOOGIE), four(bass), beatTimes(4))
+                    .chords()).extracting(Chord::symbol).containsExactly("A");
+        }
+
+        @Test
+        @DisplayName("a bass on the sixth leaves the relative minor where it was")
+        void thePriorReadsTheBassRatherThanPreferringOneRoot() {
+            // The same chroma under a bass that really is playing F#: the prior
+            // agrees with the templates instead of overruling them, which is
+            // what keeps it from being a thumb on the scale for the lower root.
+            double[] bass = chroma(6, 0.60, 9, 0.10, 1, 0.10, 4, 0.10);
+
+            assertThat(ChordEstimator
+                    .estimate(four(BOOGIE), four(BOOGIE), four(bass), beatTimes(4))
+                    .chords()).extracting(Chord::symbol).containsExactly("F#m");
+        }
+
+        @Test
+        @DisplayName("refuses a bass chroma that does not describe the same beats")
+        void rejectsAMismatchedBass() {
+            assertThatIllegalArgumentException().isThrownBy(() -> ChordEstimator.estimate(
+                            four(BOOGIE), four(BOOGIE), beats(BOOGIE, BOOGIE), beatTimes(4)))
+                    .withMessageContaining("the same beats");
+        }
+    }
 }

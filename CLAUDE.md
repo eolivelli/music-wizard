@@ -104,6 +104,21 @@ root right on the uploader's stated grid. It is what decided the size of that
 correction, and before it nothing in the scored set could tell a quality that is
 found from one that is reported because nothing said not to (#273).
 
+**The decoder reads the bass register too, as a prior over roots** (#448). Both
+registers added is still a fold to pitch classes, and a fold cannot say which of
+a chord's own notes is its root — which is the whole difference between a chord
+and its relative minor, since a sixth added to the one gives exactly the other's
+four notes. So a boogie shuffle's root-and-sixth comping reads as the relative
+minor, and does so summed over the bar as well as beat by beat; nothing about
+the window it is decided over fixes that. The bass says it instead. It has to be
+read over about a bar rather than beat by beat, because a walking bass passes
+through the third and the sixth and asserting a root at every passing note
+splits a chord's run in two — and a run split in two has its quality decided
+twice from half the evidence each time, which is a different defect wearing the
+same clothes. `ChordEstimator` carries both constants and the sweeps;
+`tools/baselines/` carries what it was worth, which was most of the corpus and
+not only the shuffle.
+
 Judge a change by what it does to a real recording. If that cannot be measured,
 say so rather than quoting the synthetic figure.
 
