@@ -124,7 +124,7 @@ for path in paths:
     figures = [r for r in common
                if any(k in new[r] and old[r][k] != new[r][k] for k in old[r])]
     shape = [r for r in common if set(old[r]) != set(new[r])]
-    bits = []
+    bits, detail = [], []
     if set(old) != set(new):
         remeasured = True
         bits.append(f"{len(set(new) - set(old))} rows added, "
@@ -132,17 +132,31 @@ for path in paths:
     if figures:
         remeasured = True
         bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
+        # Naming them is the actionable half: a reader who quoted one of these
+        # benchmarks knows to re-take that figure, and one who did not is done.
+        detail += ["      " + ", ".join(figures[:5])
+                   + (f" and {len(figures) - 5} more" if len(figures) > 5 else "")]
     if shape:
         bits.append(f"columns changed in {len(shape)} of {len(common)} rows"
                     + ("" if figures else ", no shared figure moved"))
+        # A field whose own shape changed cannot be compared with its old self,
+        # so the prompt shows what appeared and vanished and lets the reader
+        # judge rather than claiming nothing there was re-measured.
+        detail += [f"      - {k}" for k in
+                   sorted({k for r in shape for k in set(old[r]) - set(new[r])})]
+        detail += [f"      + {k}" for k in
+                   sorted({k for r in shape for k in set(new[r]) - set(old[r])})]
     print(f"  {name}: " + ("; ".join(bits) if bits else "rows unchanged"))
+    if detail:
+        print("\n".join(detail))
 
 sys.exit(1 if remeasured else 0)
 PY
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
   # about a column added to every row is how a prompt teaches people to skip it.
   if [ "$?" -eq 0 ]; then
-    echo "No figure moved there -- the rows were rewritten, not re-measured."
+    echo "No figure the rows still share moved. Check anything you quoted from a"
+    echo "column listed above."
   else
     echo "A figure this branch quoted earlier may have been measured against the"
     echo "older baseline. Re-take it, or do not quote it."
