@@ -9,7 +9,7 @@ samples with known ground truth:
   waltz-am-e7-160.mp3: bars=208  root 106.0/208 (51.0%)  root+quality 106.0/208 (51.0%)  split 0  N.C. 0.4% of 319s
   f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.5/111 (12.2%)  split 8  N.C. 1.8% of 316s
   jazz-251-c-140.mp3: bars=175  root 35.5/175 (20.3%)  root+quality 27.5/175 (15.7%)  split 8  N.C. 0.4% of 304s
-  fm7-vamp-110.mp3: bars=143  root 132.0/143 (92.3%)  root+quality 117.0/143 (81.8%)  split 0  N.C. 0.5% of 328s
+  fm7-vamp-110.mp3: bars=143  root 132.0/143 (92.3%)  root+quality 132.0/143 (92.3%)  split 0  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 160.0/165 (97.0%)  split 0  N.C. 0.5% of 309s
   bossa-cm.mp3: bars=98  root 24.0/98 (24.5%)  root+quality 6.0/98 (6.1%)  split 0  N.C. 0.0% of 315s
   pop-c-g-am-f-120.mp3: bars=57  root 57.0/57 (100.0%)  root+quality 56.0/57 (98.2%)  split 0  N.C. 0.0% of 114s
