@@ -26,6 +26,7 @@ REPO_ARGS="${MAVEN_ARGS:-}"
 fail=0
 full=0
 skipped=0
+drift=""
 
 usage() {
   cat <<'EOF'
@@ -47,6 +48,80 @@ for arg in "$@"; do
 done
 
 step() { printf '\n=== %s ===\n' "$1"; }
+
+# A prompt, never a gate (#428). The harness diff below compares this tree
+# against the committed baselines, so it cannot see a figure quoted in a PR
+# body, an issue comment or a javadoc earlier in this branch's life and
+# measured against a baseline main has regenerated since. This says whether
+# that could have happened. It never sets fail, and it says nothing at all
+# whenever git cannot answer.
+baseline_drift() {
+  local tip base cut moved n t guard= origin=fetched
+  local since="baseline file(s) changed on main since the branch point"
+  git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || return 0
+  # Read origin/main rather than a memory of it: a tracking ref last updated at
+  # the branch point reports exactly the zero drift this exists to catch. Not
+  # reaching it is not an error -- the local ref is used and said to be old.
+  # An unbounded fetch would hang a script that has printed nothing yet, so it
+  # runs only under a timeout, and never asks for a credential it cannot be
+  # given. The explicit refspec is what makes "(fetched)" true: with
+  # remote.origin.fetch unset, a plain fetch succeeds and moves no ref.
+  for t in timeout gtimeout; do
+    command -v "$t" >/dev/null && { guard="$t 30"; break; }
+  done
+  if [ -z "$guard" ]; then
+    origin="local ref, no timeout command to bound a fetch"
+  elif ! $guard env GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -oBatchMode=yes' \
+       git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null; then
+    origin="local ref, origin unreachable"
+  fi
+  tip=$(git rev-parse --verify --quiet refs/remotes/origin/main) || return 0
+  # The branch point is where this branch STARTED, not merge-base(HEAD, main).
+  # Once the branch has merged current main -- which is how this script is
+  # meant to be run -- that merge-base is main itself and the answer is always
+  # zero. What pins the start is where the commits that are HEAD's alone hang
+  # off: their boundary. Taking the earliest of those means a feature branch
+  # merged in widens the window rather than hiding the part before it.
+  cut=$(git rev-list --boundary HEAD --not "$tip" 2>/dev/null | sed -n 's/^-//p')
+  [ -n "$cut" ] || return 0     # detached at main, or on main, or behind it
+  base=$(git merge-base --octopus $cut "$tip" 2>/dev/null)
+  [ -n "$base" ] || return 0    # shallow clone, or no common history
+  moved=$(git diff --name-only "$base" "$tip" -- tools/baselines/ 2>/dev/null)
+
+  step "baseline drift since the branch point (prompt, not a gate)"
+  printf 'branch point %s; origin/main since then: +%s commits, %s not merged here (%s).\n' \
+    "$(git rev-parse --short "$base")" \
+    "$(git rev-list --count "$base..$tip" 2>/dev/null)" \
+    "$(git rev-list --count "HEAD..$tip" 2>/dev/null)" "$origin"
+  if [ -z "$moved" ]; then
+    echo "no file under tools/baselines/ changed on main since then."
+    return 0
+  fi
+  n=$(grep -c . <<<"$moved")
+  # The classification lives in tools/baseline-drift.py, where CI's harness-rule
+  # tests can reach it: a rule about not crying wolf is worth a test.
+  python3 tools/baseline-drift.py "$base" "$tip" $moved
+  # Only a figure that moved can invalidate a quoted one. Saying the same thing
+  # about a column added to every row is how a prompt teaches people to skip it
+  # -- so the verdict line, which is what gets pasted into a PR, carries the
+  # kind as well as the count. Both quiet arms are keyed on a status python
+  # cannot produce by accident -- it exits 2 itself when it cannot open the
+  # script -- so a classifier that never ran reads as one that found movement,
+  # never as a clean one. Nothing may come between the call and the case: any
+  # command, a `local` included, replaces the status being read.
+  case "$?" in
+    0) echo "No row in them changed."
+       drift="$n $since, no row changed" ;;
+    3) echo "No figure the rows still share moved. Check anything you quoted from"
+       echo "a column listed above."
+       drift="$n $since, no figure moved" ;;
+    *) echo "A figure this branch quoted earlier may have been measured against the"
+       echo "older baseline. Re-take it, or do not quote it."
+       drift="$n $since, a figure may be stale" ;;
+  esac
+  return 0
+}
+baseline_drift
 
 # One Maven invocation either way. -Pintegration only adds failsafe
 # executions, so it runs everything plain `verify` runs and the ITs as well;
@@ -136,5 +211,9 @@ step "verdict"
 # suites that were never run here.
 [ "$full" -eq 1 ] && scope="build + suites + harnesses" || scope="build + harnesses"
 [ "$skipped" -gt 0 ] && scope="$scope; $skipped harness rows skipped"
+# The verdict is the line that gets pasted into a PR, so the drift prompt is
+# named here too -- a reader of the pasted line is exactly who needs to know
+# that a figure in the body around it may predate a baseline main regenerated.
+[ -n "$drift" ] && scope="$scope; $drift"
 [ "$fail" -eq 0 ] && echo "PREMERGE: PASS ($scope)" || echo "PREMERGE: FAIL ($scope)"
 exit "$fail"
