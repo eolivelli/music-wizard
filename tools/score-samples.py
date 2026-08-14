@@ -10,12 +10,9 @@ It then reports the bar phase each of those rows rests on. The bars above begin
 where the estimator decided they begin, and on real material that decision is
 routinely made at the floor of its own confidence (#303) -- so a row can move
 because the chords moved or because the phase flipped, and the columns above
-cannot tell the two apart. Each phase row carries the estimator's confidence in
-the phase, and the best the same chords and the same beats score with the bar
-lines begun on any other beat -- a reading of the chord estimate that the phase
-choice cannot move. That best is an oracle -- the known
-cycle picks it -- so it is not a figure the tool could have produced, and it is
-there to explain a row that moved, never to be quoted as accuracy.
+cannot tell the two apart. The best phase a row names is an oracle -- the known
+cycle picks it -- so it explains a row that moved and is never a figure the tool
+could have produced.
 
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
