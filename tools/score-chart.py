@@ -7,10 +7,10 @@ asks the question a reader of the page asks: how many chords are printed in a
 bar, and is the one a reader takes away from that bar the right one.
 
 The two differ in a way worth keeping visible, and it is not the way it looks.
-On the audio path the chart's bar lines are its own -- the offset the grid's
-downbeats agree on for phase and `Score.estimatedTempo()` for rate -- so
-wherever those two disagree with the grid they walk away from the recording's
-downbeats (#187, #200, #233).
+On the audio path the chart's bar lines *are* the grid's downbeats wherever
+every one of them is a plausible bar (#187), and one bar length hung on the
+offset they agree on wherever they are not (#233) -- so what they are wrong by
+is what the grid is wrong by, or what a constant bar length is wrong by.
 That holds of the seconds route only; a progression carrying beats is laid out
 on the beat axis instead, and `short_changes` below refuses to measure one.
 
@@ -27,9 +27,9 @@ twelve minutes than the tracker's accumulated phase did.
 on four of those five, because the tracker's phase was the better of the two and
 the constant bar length was what was left drifting -- it was spaced at the median
 tracked interval where the grid ran at a rate half a percent from it. #200 has
-since replaced that statistic with a rate and #233 the chart's phase, which
-closed most of the gap again without closing it entirely, since what remains of
-it is the recording's own unevenness (#187). Both readings had the same
+since replaced that statistic with a rate, #233 the chart's phase and #187 its
+spacing, so on the recordings whose downbeats the chart can follow the two
+axes are now the same one. Both readings had the same
 cause under them, seen from opposite sides, which is the reason to state the
 mechanism here rather than a rule of thumb about which column wins. A maintainer
 who runs both chord harnesses and finds them disagreeing is looking at the bar
@@ -81,18 +81,16 @@ Both columns are reported per benchmark:
                  tracked   against the beat grid the estimator itself used.
                            Zero by construction -- `ChordEstimator` takes both
                            boundaries of every span from the tracked beat times.
-                 chart     against the steady tracked rate, which is what
-                           `Score.estimatedTempo()` spaces the chart's bars at.
-                           Not zero, because one constant bar length drifts
-                           against a recording that does not hold one (#187).
-                           So this column is not a fact about how fast the
-                           harmony moves; it is the share of gaps that drift has
-                           pushed under one counted beat. Which is a tally, not
-                           a scale: the gaps are whole multiples of the tracked
-                           interval, so the threshold sits on a mode, and a cell
-                           moves by a whole cohort or not at all rather than in
-                           proportion to the drift. See
-                           `ChartLayout.atHarmonicRhythm`.
+                 chart     against the steady tracked rate, which is the beat
+                           the chart counts at. Not zero, because the tracked
+                           interval varies around that one rate. So this column
+                           is not a fact about how fast the harmony moves; it is
+                           the share of gaps that variation has pushed under one
+                           counted beat. Which is a tally, not a scale: the gaps
+                           are whole multiples of the tracked interval, so the
+                           threshold sits on a mode, and a cell moves by a whole
+                           cohort or not at all rather than in proportion to it.
+                           See `ChartLayout.atHarmonicRhythm`.
 
 Usage:  python3 tools/score-chart.py [--jar mw-cli/target/mw.jar]
 """

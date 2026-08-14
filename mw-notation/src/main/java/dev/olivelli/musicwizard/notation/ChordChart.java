@@ -108,10 +108,50 @@ public final class ChordChart {
             out.append('\n');
         }
         TimeSignature meter = countedIn(score, bars);
-        out.append(tempoLine(score, meter));
-        out.append("Meter  ").append(meter).append('\n');
+        out.append(tempoLine(score, meter, bars));
+        out.append("Meter  ").append(meter).append(more(meterChanges(bars))).append('\n');
         score.primaryKey().ifPresent(key -> out.append(keyLine(key)));
         return out.toString();
+    }
+
+    /**
+     * How many times the chart's own bars change meter.
+     *
+     * <p>Read off the bars rather than off the piece's {@code meterChanges}: a
+     * chart beginning after a change, or ending before one, must not report it.
+     * That is the same rule {@link #countedIn} applies to
+     * the meter it names, and it is #191 -- the header stated one meter where
+     * the engraving of the same score restates {@code \time} wherever a change
+     * falls, so the two disagreed with no cue in the text that anything had
+     * changed.
+     */
+    private static int meterChanges(List<ChartLayout.Bar> bars) {
+        int changes = 0;
+        for (int i = 1; i < bars.size(); i++) {
+            changes += bars.get(i).meterChanged() ? 1 : 0;
+        }
+        return changes;
+    }
+
+    /**
+     * What a header row adds when the value it names does not hold throughout.
+     *
+     * <p>Worded as {@code AnalyzeCommand}'s declared block words it, deliberately
+     * and by hand: {@code mw-notation} cannot depend on {@code mw-cli}, and a
+     * reader holding the chart beside the analysis summary should not find one
+     * piece of news reported in two idioms.
+     *
+     * <p>A count rather than a list of the changes and where they fall. The list
+     * is what a reader would rather have and it grows without bound on a piece
+     * that changes often, which is why #191 offered it as one option of three;
+     * the page already carries every meter change at the bar it falls on, so
+     * what the text chart owes the reader is that there is more to know.
+     */
+    private static String more(int changes) {
+        return changes == 0
+                ? ""
+                : " at the start, changed " + changes + (changes == 1 ? " time" : " times")
+                        + " later";
     }
 
     /**
@@ -125,8 +165,8 @@ public final class ChordChart {
      * review found that on the text chart; it is answered here rather than
      * there because the engraving now needs the same answer, and a second copy
      * of the rule is a second chance for the two charts of one score to be
-     * counted differently. The header still names one meter where a chart can
-     * hold several, which is #191.
+     * counted differently. A chart holding several meters says so beside this
+     * one; see {@link #meterChanges}.
      */
     private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
         return bars.isEmpty()
@@ -141,9 +181,45 @@ public final class ChordChart {
      * {@code Meter 6/8} line that makes it look authoritative, that is a
      * metronome marking 50% fast, because a 6/8 bar is counted in dotted
      * quarters. Identical in every x/4 meter, where the two coincide.
+     *
+     * <p><b>A piece that states more than one tempo is headed with the one the
+     * chart opens on, and told if it changes within the chart.</b> That is #66,
+     * and which figure that is belongs to {@link TempoMark#headline} rather than
+     * here: the engraved chart carries the same number as a metronome mark, and
+     * the two lines a reader takes off the text file are the ones the page has
+     * to agree with. Both ask at {@link #opensAt}, and the count runs from there
+     * to the last bar's end, exactly as {@link #meterChanges} runs over the
+     * chart's own bars: a chart that ends before a change does not hold it any
+     * more than one beginning after it does. The seconds route's spacing asks
+     * one moment earlier and cannot ask this one; {@link
+     * ChartLayout#quarterNoteSeconds} says why the two agree wherever it
+     * matters.
      */
-    private static String tempoLine(Score score, TimeSignature meter) {
-        double quarterBpm = score.estimatedTempo();
+    private static String tempoLine(Score score, TimeSignature meter,
+                                    List<ChartLayout.Bar> bars) {
+        double opensAt = opensAt(bars);
+        double endsAt = bars.isEmpty() ? 0 : bars.get(bars.size() - 1).endSeconds();
+        return "Tempo  " + tempo(TempoMark.headline(score, opensAt), meter)
+                + more(TempoMark.statedChangesIn(score, opensAt, endsAt)) + "\n";
+    }
+
+    /**
+     * Where the chart's first bar line falls, in seconds, or the start of the
+     * piece when it has no bars.
+     *
+     * <p>Both ends of what the tempo row describes are the page's own -- this
+     * and the last bar's end -- for the same reason {@link #meterChanges} reads
+     * the chart's bars: a row in this header is a claim about the bars under it.
+     * A chart whose first bar holds a tempo change has to say so, and taking the
+     * left edge from the harmony instead lost exactly that, since the first bar
+     * can open a bar before the first chord does.
+     */
+    private static double opensAt(List<ChartLayout.Bar> bars) {
+        return bars.isEmpty() ? 0 : bars.get(0).startSeconds();
+    }
+
+    /** One tempo, in the beat {@code meter} is counted in. */
+    private static String tempo(double quarterBpm, TimeSignature meter) {
         // Locale.ROOT, because this number is meant to be typed back in via
         // --tempo and picocli parses it with Double.valueOf. What a default
         // locale changes here is the digits and not the separator: %.0f prints
@@ -154,9 +230,9 @@ public final class ChordChart {
         // the sentence had been carried across to a formatter that cannot
         // reach it.
         if (meter.beatUnitQuarters() == 1.0) {
-            return String.format(Locale.ROOT, "Tempo  %.0f BPM\n", quarterBpm);
+            return String.format(Locale.ROOT, "%.0f BPM", quarterBpm);
         }
-        return String.format(Locale.ROOT, "Tempo  %.0f BPM (%.0f quarter notes/min)\n",
+        return String.format(Locale.ROOT, "%.0f BPM (%.0f quarter notes/min)",
                 meter.countedTempo(quarterBpm), quarterBpm);
     }
 
@@ -323,7 +399,7 @@ public final class ChordChart {
         // Outside \chordmode, which is where a mark belongs that is not a chord:
         // inside it, every line of the block is a bar whose durations have to
         // sum to the meter, and this one has no duration at all.
-        TempoMark.of(score, countedIn(score, bars))
+        TempoMark.of(score, countedIn(score, bars), opensAt(bars))
                 .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 

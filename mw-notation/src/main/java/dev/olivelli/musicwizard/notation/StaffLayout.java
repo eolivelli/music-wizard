@@ -685,12 +685,12 @@ final class StaffLayout {
      * dotted quarters — the same trap {@link ChordChart} documents, and the
      * reason the unit is carried rather than assumed to be a quarter.
      *
-     * <p><b>One mark for the whole staff, from {@link Score#estimatedTempo()}.</b>
-     * A score whose tempo changes gets neither tempo printed: 120 for four beats
-     * and then 60 comes out as a single mark of 80, which is played nowhere in
-     * the piece. {@link MidiExport} writes every segment at its own tick, so the
-     * two exports of such a score disagree — which is #154, and is deliberately
-     * not fixed here because the answer needs a rule for how many marks a
+     * <p><b>One mark for the whole staff.</b> A score whose tempo changes gets
+     * only the one it opens on: 120 for four beats and then 60 is marked 120,
+     * and the 60 is printed nowhere. {@link MidiExport} writes every segment at
+     * its own tick, so the two exports of such a score still disagree about
+     * everything after the change — which is #154, and is deliberately not
+     * fixed here because the answer needs a rule for how many marks a
      * beat-tracked map should produce, not just a loop.
      *
      * <p>Which unit and which figure is {@link TempoMark}'s answer rather than
@@ -698,7 +698,7 @@ final class StaffLayout {
      * be able to count the same score differently.
      */
     private static void writeTempo(StaffWriter writer, Score score, TimeSignature meter) {
-        TempoMark.of(score, meter)
+        TempoMark.of(score, meter, 0)
                 .ifPresent(mark -> writer.tempo(mark.unit(), mark.perMinute()));
     }
 
