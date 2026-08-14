@@ -423,8 +423,8 @@ class LineEndColumn(unittest.TestCase):
         self.assertEqual({}, parsed.ends)
 
     def test_a_line_that_follows_a_tag_only_entry_still_states_its_own_end(self):
-        """The closing is per line: the entry that ends one states nothing, and
-        the next line's own clear is unaffected."""
+        """A tag-only entry is never credited with an end of its own, so it
+        cannot overwrite the one the clear before it already stated."""
         parsed = lyrics.truth_tokens(
             "[00:10.00]uno\n[00:12.00]\n[00:13.00]<00:13.50>\n[00:14.00]\n"
             "[00:40.00]due\n[00:44.00]\n")
