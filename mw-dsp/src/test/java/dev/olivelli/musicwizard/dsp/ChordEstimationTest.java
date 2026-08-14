@@ -470,5 +470,101 @@ class ChordEstimationTest {
 
             assertThat(reported(barelyMinor, barelyMinor)).isEqualTo("Cm");
         }
+
+        /**
+         * #446: a seventh a minority of the root's beats carry is withdrawn.
+         *
+         * <p>The first three hold the per-run evidence fixed and vary only how
+         * much of the recording agrees with it, which is the axis the rule reads;
+         * the even-split case shows that shared vector is read {@code Cm7} on its
+         * own evidence. The fourth needs a vector of its own and says why.
+         */
+        @Test
+        @DisplayName("withdraws a seventh most of the root's beats do not carry")
+        void aSeventhTheRecordingDoesNotHoldIsWithdrawn() {
+            assertThat(alternating(1, 2)).containsExactly("Cm", "D", "Cm", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("keeps a seventh most of the root's beats do carry")
+        void aSeventhTheRecordingHoldsIsKept() {
+            // A guard, not a fail-before test: it holds on origin/main too. It
+            // fails if the withdrawal is ever applied without counting, which
+            // would cost every recording the vocabulary was widened for.
+            assertThat(alternating(2, 1)).containsExactly("Cm7", "D", "Cm7", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("an even split is not a minority, so the seventh stands")
+        void anEvenSplitKeepsTheSeventh() {
+            // The boundary the constant's "a minority" wording implies, pinned
+            // because nothing else does: at exactly half the rule must not fire.
+            assertThat(alternating(1, 1)).containsExactly("Cm7", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("withdrawing a seventh does not flip the third")
+        void withdrawalFallsBackToATriadNotAnotherSeventh() {
+            // The dominant seventh shares its root, fifth and flat seventh with
+            // the minor one, so a fallback that only drops the minor seventh
+            // answers with the dominant -- a major third arrived at by
+            // withdrawing a minor one. Measured on the corpus, that reading put a
+            // major third on three runs of a B minor blues.
+            //
+            // Separating the two needs a run this vocabulary can express both
+            // ways: a flat seventh loud enough that C7 outscores Cm among the
+            // triads-and-dominant candidates, and a major third under the share
+            // the root's own fifth partial explains, so the minorish correction
+            // is zero and Cm7 still wins the full argmax. The default vector
+            // cannot do it -- C7 loses to Cm there whether or not it is excluded,
+            // which is why this needs its own.
+            double[] loudSeventh = chroma(0, 0.25, 3, 0.10, 4, 0.06, 7, 0.25, 10, 0.22);
+
+            assertThat(alternating(1, 2, loudSeventh))
+                    .containsExactly("Cm", "D", "Cm", "D", "Cm");
+        }
+
+        /**
+         * Runs on C separated by D major, the first {@code sevenths} of them
+         * carrying a flat seventh above the level and the next {@code plain} not,
+         * reported in the order the estimator returns them.
+         *
+         * <p>The C runs are separated because {@code sameChord} groups adjacent
+         * beats on one root into a single run: with nothing between them the whole
+         * of C would be one run and there would be nothing to count. The first run
+         * is the seventh-bearing one, so it is the same evidence read against
+         * different amounts of agreement.
+         */
+        private static List<String> alternating(int sevenths, int plain) {
+            // A minor triad whose flat seventh clears 2/sqrt(3) - 1 of the triad's
+            // mass, which is all its callers need of it.
+            return alternating(sevenths, plain,
+                    chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13));
+        }
+
+        /** As {@link #alternating(int, int)}, with the seventh-bearing run given. */
+        private static List<String> alternating(int sevenths, int plain,
+                                                double[] withSeventh) {
+            double[] withoutSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.02);
+            double[] away = chroma(2, 0.25, 6, 0.22, 9, 0.24);
+
+            List<double[]> runs = new java.util.ArrayList<>();
+            for (int i = 0; i < sevenths + plain; i++) {
+                if (i > 0) {
+                    runs.add(away);
+                }
+                runs.add(i < sevenths ? withSeventh : withoutSeventh);
+            }
+
+            List<double[]> vectors = new java.util.ArrayList<>();
+            for (double[] run : runs) {
+                for (int beat = 0; beat < 4; beat++) {
+                    vectors.add(run);
+                }
+            }
+            Chroma chroma = beats(vectors.toArray(double[][]::new));
+            return ChordEstimator.estimate(chroma, chroma, beatTimes(vectors.size()))
+                    .chords().stream().map(Chord::symbol).toList();
+        }
     }
 }
