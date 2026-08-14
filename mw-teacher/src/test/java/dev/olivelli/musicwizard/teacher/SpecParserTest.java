@@ -17,9 +17,11 @@
 package dev.olivelli.musicwizard.teacher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.olivelli.musicwizard.core.model.Mode;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class SpecParserTest {
@@ -112,5 +114,23 @@ class SpecParserTest {
         assertThatThrownBy(() -> SpecParser.parse(SPEC.replace("tempo: 96", "")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tempo");
+    }
+
+    @Test
+    @DisplayName("refuses a spec that would generate silence")
+    void refusesSilence() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SpecParser.parse("""
+                        title: Nothing at all
+                        style: pop-ballad
+                        tempo: 100
+                        key: C major
+                        seed: 1
+                        melody: none
+                        accompaniment: none
+                        bars:
+                        C F G C
+                        """))
+                .withMessageContaining("silence");
     }
 }

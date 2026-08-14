@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.teacher;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -40,7 +41,66 @@ public record SampleSpec(
         Mode mode,
         long seed,
         Integer melodyProgram,
+        Integer melodyLevel,
+        Accompaniment accompaniment,
         List<Bar> bars) {
+
+    /** The difficulty levels a spec may ask its melody for. */
+    public static final int MIN_MELODY_LEVEL = 1;
+
+    /** See {@link #MIN_MELODY_LEVEL}. */
+    public static final int MAX_MELODY_LEVEL = 4;
+
+    public SampleSpec {
+        Objects.requireNonNull(accompaniment, "accompaniment");
+        if (melodyLevel != null
+                && (melodyLevel < MIN_MELODY_LEVEL || melodyLevel > MAX_MELODY_LEVEL)) {
+            throw new IllegalArgumentException("melody level out of range: " + melodyLevel);
+        }
+        if (melodyLevel != null && melodyProgram == null) {
+            throw new IllegalArgumentException("melody level given but melody is 'none'");
+        }
+        // A package with neither is silence with a grid attached, and it is
+        // silence that reports itself as normal: the generator prints its bar
+        // count and duration, the chord harness skips it for having no
+        // accompaniment and the melody harness skips it for having no melody,
+        // so it is measured by nothing, twice, without either saying so.
+        if (melodyProgram == null && accompaniment == Accompaniment.NONE) {
+            throw new IllegalArgumentException(
+                    "melody 'none' with accompaniment 'none' would generate silence");
+        }
+    }
+
+    /**
+     * What sounds under the melody.
+     *
+     * <p>{@link #FULL} is the band. The other two exist so that a melody stage
+     * can be measured on a signal it is actually able to read: a monophonic
+     * pitch tracker pointed at a full mix is measuring the separation that did
+     * not happen in front of it, and its score says nothing about the tracker.
+     * {@link #PAD} keeps the harmony audible for the chord stages;
+     * {@link #NONE} leaves the melody alone, and a package generated that way
+     * carries no evidence for its own chord grid — {@code tools/score-*.py}
+     * must not score chords on it.
+     */
+    public enum Accompaniment {
+        FULL,
+        PAD,
+        NONE;
+
+        public String id() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+
+        public static Accompaniment byId(String id) {
+            for (Accompaniment value : values()) {
+                if (value.id().equals(id)) {
+                    return value;
+                }
+            }
+            throw new IllegalArgumentException("unknown accompaniment: '" + id + "'");
+        }
+    }
 
     /** One bar of the grid: a whole-bar chord, or two half-bar chords. */
     public record Bar(ChordSymbol first, ChordSymbol second) {

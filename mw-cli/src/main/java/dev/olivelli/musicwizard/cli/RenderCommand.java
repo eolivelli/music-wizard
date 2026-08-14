@@ -17,16 +17,23 @@
 package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.arrange.ChordSpeller;
+import dev.olivelli.musicwizard.arrange.PitchSpeller;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.arrange.Transposer;
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
+import dev.olivelli.musicwizard.notation.LeadSheet;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import dev.olivelli.musicwizard.notation.LyricSheet;
+import dev.olivelli.musicwizard.notation.StaffNotation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -37,6 +44,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.function.BiFunction;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -56,11 +64,17 @@ import picocli.CommandLine.Spec;
  * <p>The same posture governs the parts themselves, which is what #82 was
  * about. This command used to announce {@code voice, piano, bass, chords} and
  * then write only the chord files, with exit status 0 — so a user could not tell
- * whether three parts had failed, been skipped, or never existed. Melody, bass
- * and piano are M2 and M4 work; a part that cannot be produced is now named
- * along with the reason, exactly as a missing engraver is. The default is
- * therefore what is actually implemented, and naming an unimplemented part
- * explicitly is answered rather than ignored.
+ * whether three parts had failed, been skipped, or never existed. Bass and piano
+ * are still M2 and M4 work; a part that cannot be produced is named along with
+ * the reason, exactly as a missing engraver is. The default is therefore what is
+ * actually implemented, and naming an unimplemented part explicitly is answered
+ * rather than ignored.
+ *
+ * <p>The two melody parts are implemented and can still be unavailable, which
+ * is the distinction the reason strings carry: {@code lead} and {@code voice}
+ * have code to run, and nothing to run it on unless the score was analysed with
+ * {@code --melody}. That is a property of the score rather than of this build,
+ * and it is answered from the score like every other reason here.
  *
  * <p>Non-zero exit is reserved for producing <em>nothing at all</em>. Writing
  * three parts of four is a partial success and the command says which three; a
@@ -102,7 +116,8 @@ final class RenderCommand implements Callable<Integer> {
     private enum Part {
         CHORDS("chords", null, RenderCommand::writeChordChart),
         LYRICS("lyrics", null, RenderCommand::writeLyricSheet),
-        VOICE("voice", "melody transcription is not implemented yet (#8)", null),
+        LEAD("lead", null, RenderCommand::writeLeadSheet),
+        VOICE("voice", null, RenderCommand::writeVoicePart),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
 
@@ -186,6 +201,20 @@ final class RenderCommand implements Callable<Integer> {
                         + " LRC file, or with --lyrics-language alone to ask for"
                         + " transcription";
             }
+            // Both melody parts, gated on the same absence and worded the same
+            // way: a score analysed without --melody carries no note track, and
+            // a user who asked for either output wants the same instruction back.
+            //
+            // Naming no source kind, for the reason the harmony case names none:
+            // this method may only read the score. The pointer is to the option
+            // and stops there -- promising that --melody "is what writes one"
+            // was advice this command cannot keep, since on a MIDI workspace the
+            // flag does nothing and no melody role is ever assigned (#500).
+            // analyze says so where the source kind is known.
+            if ((this == LEAD || this == VOICE)
+                    && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
+                return "this score holds no melody part; see --melody on analyze";
+            }
             return null;
         }
 
@@ -238,10 +267,11 @@ final class RenderCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
-            description = "Which parts to render: chords, lyrics, voice, bass, piano. "
-                    + "Only chords and lyrics can be produced today; naming any of the "
-                    + "others reports why it cannot. Defaults to every part that is "
-                    + "implemented.")
+            description = "Which parts to render: chords, lyrics, lead, voice, bass, "
+                    + "piano. The lead sheet and the voice staff need a score analysed "
+                    + "with --melody; bass and piano cannot be produced at all yet, and "
+                    + "naming any part reports why it cannot be produced. Defaults to "
+                    + "every part that is implemented.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
@@ -489,6 +519,54 @@ final class RenderCommand implements Callable<Integer> {
 
             Path ly = out.resolve("chords-lyrics.ly");
             Files.writeString(ly, LyricSheet.toLilyPond(score, options));
+            written.add(ly);
+
+            Emitted engraved = engrave(lilypond, ly);
+            written.addAll(engraved.files());
+            warnings.addAll(engraved.warnings());
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write output", e);
+        }
+        return new Emitted(written, warnings);
+    }
+
+    /**
+     * Writes the lead sheet — melody, chords and words on one page.
+     *
+     * <p>Quantized here rather than at analysis time, and spelled here too, for
+     * the reason the transposition above is: both decisions depend on the key
+     * the piece is being <em>written</em> in, which this command may have moved.
+     */
+    private static Emitted writeLeadSheet(
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
+        return writeStaffOutput(workspace, score, lilypond, "lead",
+                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+    }
+
+    /** Writes the melody on a staff of its own, with no chords and no words. */
+    private static Emitted writeVoicePart(
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
+        return writeStaffOutput(workspace, score, lilypond, "voice",
+                (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody));
+    }
+
+    /** What the two melody outputs share: quantize, spell, write, engrave. */
+    private static Emitted writeStaffOutput(Workspace workspace, Score score,
+            Optional<Path> lilypond, String name,
+            BiFunction<QuantizedScore, NoteTrack, String> engraving) {
+        Path out = workspace.outputDirectory();
+        List<Path> written = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        try {
+            Files.createDirectories(out);
+            Score spelled = PitchSpeller.spell(score);
+            QuantizedScore quantized = Quantizer.quantize(spelled);
+            NoteTrack melody = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow(
+                    () -> new IllegalStateException(
+                            "the melody vanished between the availability check and here"));
+
+            Path ly = out.resolve(name + ".ly");
+            Files.writeString(ly, engraving.apply(quantized, melody));
             written.add(ly);
 
             Emitted engraved = engrave(lilypond, ly);

@@ -45,6 +45,8 @@ tempo: 72
 key: Eb major              # <tonic> major|minor
 seed: 3                    # vary it; same seed + same spec = same MIDI bytes
 melody: flute              # optional; 'none' for comping-only packages
+melody-level: 2            # optional; 1-4 difficulty ramp, else the style's own rhythms
+accompaniment: full        # optional; full (default) | pad | none
 bars:
 Eb Cm Ab Bb                # one token per bar, X-Y a split bar
 ...
@@ -52,6 +54,19 @@ Eb Cm Ab Bb                # one token per bar, X-Y a split bar
 
 A `#` opens a comment only at line start or after whitespace — `C#m` is a
 chord, not a comment.
+
+`melody-level` and `accompaniment` exist together, for packages that teach the
+melody stage rather than the harmony stages:
+
+- **1** a chord tone on every beat, one octave, no rests; **2** adds eighths
+  and rests; **3** adds notes held across the bar line; **4** adds syncopation
+  and leaps over a wider range. The ramp is what lets a bad melody score be
+  asked *on what* — a reading that holds at level one and fails at two is
+  failing on rhythm, not on pitch.
+- `accompaniment: none` leaves the melody alone, `pad` puts one sustained
+  voicing per chord under it. A melody-only package **carries no evidence for
+  its own chord grid**, so the chord harnesses skip it; do not read its silence
+  on the chord columns as a failure.
 
 Rules that keep a package worth committing:
 

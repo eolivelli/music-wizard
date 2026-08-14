@@ -126,6 +126,13 @@ jobs:
           mkdir -p target
           python3 tools/score-synthetic.py | tee target/score-synthetic.txt
           diff -u tools/baselines/score-synthetic.txt target/score-synthetic.txt
+      # The melody stage's own gate (#494), on the same corpus and in the same
+      # job: it needs the same jar and the same packages, and a second job
+      # would build the jar twice to score the same files.
+      - name: Score the melody stage and diff the baseline
+        run: |
+          python3 tools/score-melody.py | tee target/score-melody.txt
+          diff -u tools/baselines/score-melody.txt target/score-melody.txt
 
   # Analyzes every committed sample and publishes the corpus status to the
   # run's summary page: tempo, meter and span count per file, plus the scored

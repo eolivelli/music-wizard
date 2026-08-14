@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.text.Hyphenator;
@@ -145,6 +146,15 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "saved beat grid and the chart's first bar line. Does not "
                     + "renumber the tempo map's bars. Audio only.")
     Double firstDownbeat;
+
+    @Option(names = "--melody",
+            description = "Read the melody out of the recording and write it into the "
+                    + "score, so that 'render --parts lead' can engrave a lead sheet. "
+                    + "The tracker is monophonic: give it a recording whose melody is "
+                    + "the only thing sounding, or a separated vocal stem. On a full "
+                    + "mix it returns the loudest periodic line, usually the bass, "
+                    + "rather than failing. Audio only.")
+    boolean melody;
 
     @Option(names = "--skip-separation",
             description = "Analyse the mix directly instead of separating stems. Today "
@@ -1027,6 +1037,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             key.with("tempo", options.tempoOverride())
                     .with("meter", options.timeSignatureOrDefault())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
+                    .with("melody", options.trackMelody())
                     .with("skipSeparation", skipSeparation);
         }
         return key;
@@ -1065,6 +1076,12 @@ final class AnalyzeCommand implements Callable<Integer> {
                 "Key     %s (%.0f%% confidence)", key.displayName(),
                 100 * key.confidence().value())));
         lines.add("Chords  " + score.chords().size() + " spans");
+        // Absent when there is no melody, which covers both the stage not being
+        // asked for and its having heard nothing: the transcriber adds no empty
+        // track, so this row cannot read zero. The run that heard nothing has
+        // already said so in its progress line.
+        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack ->
+                lines.add("Melody  " + melodyTrack.size() + " notes"));
         return List.copyOf(lines);
     }
 
@@ -1357,6 +1374,20 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " no effect on a MIDI workspace; the file declares its own tempo"
                         + " and meter");
             }
+            // Its own line rather than the list above, because that list's
+            // reason -- the file declares these itself -- is not this one's. A
+            // MIDI import does carry its parts, and none of them is ever read as
+            // the melody role, so the flag is not merely redundant here: what it
+            // points at cannot be reached from this path at all (#500). render
+            // offers the flag without naming a source kind, because it cannot
+            // know one; this command can, and following that advice here must
+            // not be answered with silence.
+            if (melody) {
+                System.err.println("warning: --melody has no effect on a MIDI workspace;"
+                        + " the parts are read from the file, and none of them is read as"
+                        + " the melody role, so no lead sheet can be rendered from one"
+                        + " (#500)");
+            }
         }
         if (skipSeparationRequested(config)
                 && !(kind == SourceKind.AUDIO && transcriptionRequested())) {
@@ -1390,17 +1421,21 @@ final class AnalyzeCommand implements Callable<Integer> {
      * <p>Null rather than defaults, so that a caller which reads them on the MIDI
      * path fails visibly rather than silently acting on 4/4.
      */
-    private static AudioTranscriber.Options audioOptions(
+    private AudioTranscriber.Options audioOptions(
             SourceKind kind, MusicWizardConfig config) {
         if (kind != SourceKind.AUDIO) {
             return null;
         }
         var analysis = config.analysis();
         TimeSignature meter = parseMeter(analysis != null ? analysis.timeSignatureOverride() : null);
+        // The melody flag alone comes from the command line rather than from the
+        // config: the other three are corrections a workspace keeps, and this one
+        // is a statement about the recording handed in on the day.
         return new AudioTranscriber.Options(
                 analysis != null ? analysis.tempoOverride() : null,
                 meter,
-                analysis != null ? analysis.firstDownbeatSecondsOverride() : null);
+                analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
+                melody);
     }
 
     private static TimeSignature parseMeter(String text) {

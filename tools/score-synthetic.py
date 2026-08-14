@@ -97,6 +97,14 @@ def score_package(jar: Path, spec_file: Path) -> str:
     if not mp3.exists():
         return f"  {name}.mp3: missing — regenerate with tools/music-teacher/generate.sh"
     spec = parse_spec(spec_file)
+    # A package with nothing playing the grid carries no evidence for it: the
+    # melody was generated over those chords, but a melody states a chord the
+    # way a single voice states a fugue. Scoring it would put four rows of
+    # noise in the baseline that premerge and CI then defend. See
+    # synthetic_samples/README.md and tools/score-melody.py, which is what
+    # those packages are measured by.
+    if spec["headers"].get("accompaniment") == "none":
+        return f"  {name}.mp3: melody only; chords not scored"
     doc = samples.analyze(jar, mp3)
 
     spans = doc.get("chords", {}).get("chords", [])

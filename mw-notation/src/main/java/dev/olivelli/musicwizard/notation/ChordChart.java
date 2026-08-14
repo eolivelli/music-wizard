@@ -363,6 +363,59 @@ public final class ChordChart {
         if (tagged) {
             repeatBrackets(out, bars, tags);
         }
+        out.append(chordNamesBlock(score, bars, true));
+        // After the chord names, not before: read top to bottom the staff
+        // affinities must not increase, and every lane here points DOWN as the
+        // chord names do. Equal affinities do not increase, which is what makes
+        // any number of these legal under the chords.
+        //
+        // The marks before the words, which is the order a reader compares them
+        // in: the chords, then where the beats fell, then what was sung.
+        beats.ifPresent(out::append);
+        lyrics.ifPresent(out::append);
+        if (parallel) {
+            out.append("  >>\n");
+        }
+        out.append("  \\layout { }\n");
+        out.append("}\n");
+        return out.toString();
+    }
+
+    /**
+     * The {@code \new ChordNames} expression alone, indented two spaces.
+     *
+     * <p>Shared with {@link LeadSheet}, which places the same chord names over a
+     * melody staff. The bars come in rather than being taken here, so that the
+     * two engravings of one score cannot come to disagree about where a bar is
+     * — which is the failure {@link ChartLayout}'s own javadoc is about.
+     *
+     * @param carriesMarks whether this context also carries the tempo mark and
+     *     the closing bar line. True on a chart, where the chord names are the
+     *     only context there is; false on a lead sheet, where the staff carries
+     *     both and a second copy would engrave the tempo twice.
+     */
+    static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
+                                  boolean carriesMarks) {
+        return chordNamesBlock(score, bars, carriesMarks, Optional.empty());
+    }
+
+    /**
+     * The same, in a score whose first bar has been shortened to a pickup.
+     *
+     * <p>A {@code \partial} is a claim about the score's shared timing, not
+     * about the staff that wrote it, so a chord context that still opened with a
+     * full bar would be exactly one pickup ahead of the music from bar one
+     * onwards — and LilyPond reports that as a failed bar check on the chord
+     * names, which reads as a defect in the chart rather than a disagreement
+     * between two layouts. The chart's own convention is the opposite one: it
+     * writes bar zero full and leads in with a rest. Both are right for a page
+     * that holds only one of them, and on a lead sheet the staff's convention is
+     * the one the reader counts by, so the chord names give theirs up here.
+     */
+    static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
+                                  boolean carriesMarks,
+                                  Optional<StaffNotation.Pickup> pickup) {
+        StringBuilder out = new StringBuilder();
         // chordChanges, so a chord held across a bar line has its name printed
         // once. The bar checks below require every bar to be written out, and
         // without this the page would say "C C C" where the text chart says
@@ -399,17 +452,23 @@ public final class ChordChart {
         // Outside \chordmode, which is where a mark belongs that is not a chord:
         // inside it, every line of the block is a bar whose durations have to
         // sum to the meter, and this one has no duration at all.
-        TempoMark.of(score, countedIn(score, bars), opensAt(bars))
-                .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
+        if (carriesMarks) {
+            TempoMark.of(score, countedIn(score, bars), opensAt(bars))
+                    .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
+        }
         out.append("    \\chordmode {\n");
 
-        for (ChartLayout.Bar bar : bars) {
+        for (int index = 0; index < bars.size(); index++) {
+            ChartLayout.Bar bar = bars.get(index);
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }
             out.append("      ");
-            for (ChartLayout.Cell cell : bar.cells()) {
-                out.append(chordMode(cell)).append(' ');
+            List<String> written = index == 0 && pickup.isPresent()
+                    ? intoPickup(bar, pickup.get())
+                    : bar.cells().stream().map(ChordChart::chordMode).toList();
+            for (String token : written) {
+                out.append(token).append(' ');
             }
             // One bar to a line, so that when LilyPond does complain the line
             // number it prints names the bar that does not add up.
@@ -423,25 +482,67 @@ public final class ChordChart {
         // handed both should not have to wonder whether the chart's last page
         // is the last page. Skipped when there are no bars, because a final bar
         // line after no bars marks the end of nothing.
-        if (!bars.isEmpty()) {
+        if (carriesMarks && !bars.isEmpty()) {
             out.append("    \\bar \"|.\"\n");
         }
         out.append("  }\n");
-        // After the chord names, not before: read top to bottom the staff
-        // affinities must not increase, and every lane here points DOWN as the
-        // chord names do. Equal affinities do not increase, which is what makes
-        // any number of these legal under the chords.
-        //
-        // The marks before the words, which is the order a reader compares them
-        // in: the chords, then where the beats fell, then what was sung.
-        beats.ifPresent(out::append);
-        lyrics.ifPresent(out::append);
-        if (parallel) {
-            out.append("  >>\n");
-        }
-        out.append("  \\layout { }\n");
-        out.append("}\n");
         return out.toString();
+    }
+
+    /**
+     * The last of a bar's chords, filling exactly the staff's pickup.
+     *
+     * <p>Taken from the end rather than by dropping the chart's lead-in rest,
+     * because the two quantities are not the same one: the chart leads in to its
+     * first <em>chord</em> and the staff's pickup runs to its first
+     * <em>note</em>, and a melody entering before the harmony makes the rest
+     * longer than the pickup needs. Cutting from the end gives a first bar of
+     * the right length either way, and a chord that was already sounding keeps
+     * its name — shortened, which is what a chord partly outside the printed
+     * music is.
+     *
+     * <p>Counted in exact subdivisions of a whole note rather than in beats,
+     * and this is the whole reason the pickup travels as a fraction. A pickup
+     * entering inside a triplet is a sixth of a whole note; subtract that as a
+     * double and every remaining chord is a length no duration can write, which
+     * {@link LilyPondDuration} refuses by throwing — so {@code render} exited
+     * non-zero on the packages whose melody happens to enter inside a bracket.
+     */
+    private static List<String> intoPickup(ChartLayout.Bar bar, StaffNotation.Pickup pickup) {
+        long units = leastCommonMultiple(LilyPondDuration.SHORTEST_DENOMINATOR,
+                pickup.wholeNoteDenominator());
+        long barUnits = Math.round(bar.meter().quarterBeatsPerBar() * units / QUARTERS_PER_WHOLE);
+        // Clamped, for the case where the chart's first bar is shorter than the
+        // staff's pickup: the chart's origin is then past the staff's and there
+        // is no chord to print for the difference. Keeping every cell leaves a
+        // first bar that does not fill the pickup, which LilyPond reports as a
+        // failed bar check and the command reports as a warning — the posture
+        // this project takes over writing nothing. No path reaches it today; it
+        // needs a meter change and a chart beginning after it.
+        long dropped = Math.max(0, barUnits
+                - pickup.wholeNoteNumerator() * (units / pickup.wholeNoteDenominator()));
+        List<String> written = new ArrayList<>();
+        long at = 0;
+        for (ChartLayout.Cell cell : bar.cells()) {
+            long end = at + Math.round(cell.lengthQuarters() * units / QUARTERS_PER_WHOLE);
+            if (end > dropped) {
+                written.add(chordMode(cell.chord(),
+                        LilyPondDuration.scaled(end - Math.max(at, dropped), units)));
+            }
+            at = end;
+        }
+        return written;
+    }
+
+    /** Quarter notes to a whole note, as the subdivision arithmetic needs it. */
+    private static final double QUARTERS_PER_WHOLE = 4;
+
+    private static long leastCommonMultiple(long a, long b) {
+        return a / greatestCommonDivisor(a, b) * b;
+    }
+
+    private static long greatestCommonDivisor(long a, long b) {
+        return b == 0 ? a : greatestCommonDivisor(b, a % b);
     }
 
     /**
@@ -537,11 +638,15 @@ public final class ChordChart {
      * inversion, which is a different instruction to a bass player.
      */
     private static String chordMode(ChartLayout.Cell cell) {
-        String duration = LilyPondDuration.scaled(cell.lengthQuarters());
-        if (cell.chord().isEmpty()) {
+        return chordMode(cell.chord(), LilyPondDuration.scaled(cell.lengthQuarters()));
+    }
+
+    /** The same, for a length already spelled — see {@link #intoPickup}. */
+    private static String chordMode(Optional<Chord> named, String duration) {
+        if (named.isEmpty()) {
             return "r" + duration;
         }
-        Chord chord = cell.chord().get();
+        Chord chord = named.get();
         if (chord.isNoChord()) {
             return "r" + duration;
         }

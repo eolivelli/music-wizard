@@ -1,0 +1,22 @@
+title: Melody ramp level 2 - unaccompanied flute over a folk-pop form in G
+genre: folk-pop
+style: pop-ballad
+tempo: 84
+key: G major
+seed: 12
+melody: flute
+melody-level: 2
+accompaniment: none
+bars:
+# Verse: I-IV-I-V twice, each phrase leaving off on V (half cadence)
+G C G D
+G C G D
+# Pre-chorus: ii-V-I, then the same turned aside onto vi (deceptive cadence)
+Am D G G
+Am D Em Em
+# Chorus: I-V-vi-IV twice
+G D Em C
+G D Em C
+# Tag: IV-V-I, then IV-I and the tonic held (plagal close)
+C D G G
+C G G G

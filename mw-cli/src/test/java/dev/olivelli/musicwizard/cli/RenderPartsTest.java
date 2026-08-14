@@ -296,11 +296,17 @@ class RenderPartsTest {
             Path workspace = audioWorkspace("song", fourChords());
 
             CliRunner.Result render = CliRunner.run("render", workspace.toString(),
-                    "--parts", "chords,voice,bass,piano", "--no-pdf");
+                    "--parts", "chords,lead,voice,bass,piano", "--no-pdf");
 
+            // Two reasons of different kinds, which is the distinction worth
+            // holding: bass and piano have no code behind them, while lead and
+            // voice have code and no melody in this score to run it on.
             assertThat(render.out())
                     .contains("Not written:")
-                    .contains("voice    melody transcription is not implemented yet (#8)")
+                    .contains("lead     this score holds no melody part;"
+                            + " see --melody on analyze")
+                    .contains("voice    this score holds no melody part;"
+                            + " see --melody on analyze")
                     .contains("bass     bass transcription is not implemented yet (#8)")
                     .contains("piano    the piano reduction is not implemented yet (#10)");
             // Chords were produced, so this run is a partial success.
