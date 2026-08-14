@@ -262,3 +262,48 @@ listened to nothing:
   - that the intro, the two middle stretches and the outro really are
     instrumental;
   - that it is Italian throughout, which is the gate a dialect entry fails.
+
+--------------------------------------------------------------------------
+
+Three CC BY tracks fetched for word-level lyric ground truth (#359). They are
+here rather than in samples/ because none has been heard yet: #347 wants an
+ear on every entry before promotion, and their attribution has not been
+written into NOTICE. All three are Attribution-only, so samples/ is where they
+should end up once someone has listened.
+
+Why these three, and not more: the two Jamendo tracks carry **hand-annotated
+word-level onsets** from JamendoLyrics (Durand, Stoller & Ewert, ICASSP 2023).
+Every other lyric file in this directory is line-level, which is why the onset
+column has never measured word placement — see #361. The annotations are not
+fetched yet; the audio is.
+
+  rxbyn-bad-side.mp3                    CC BY, jamendo.com/track/1556580
+    curl -Lo uncommitted/rxbyn-bad-side.mp3 \
+      https://prod-1.storage.jamendo.com/download/track/1556580/mp32/
+    3:36. Licence checked in #348 by rendering the page: Attribution only,
+    Ja'Cory Lavine sole writer, vocalist and composer, so the words are clear
+    too. #359 names this one as the one to take first.
+
+  cortez-feel-stripped.mp3              CC BY, jamendo.com/track/1481500
+    curl -Lo uncommitted/cortez-feel-stripped.mp3 \
+      https://prod-1.storage.jamendo.com/download/track/1481500/mp32/
+    4:00. Same clearance and the same writer. A sparser arrangement, so
+    friendlier to chroma as well as to alignment.
+
+  josh-woodward-california-lullabye.mp3        CC BY 3.0
+  josh-woodward-california-lullabye-novox.mp3  CC BY 3.0
+    curl -Lo uncommitted/josh-woodward-california-lullabye.mp3 \
+      'https://archive.org/download/jamendo-120747/01-1026956-Josh%20Woodward-California%20Lullabye.mp3'
+    curl -Lo uncommitted/josh-woodward-california-lullabye-novox.mp3 \
+      'https://archive.org/download/jamendo-120747/02-1026955-Josh%20Woodward-California%20Lullabye%20_Instrumental%20Version_.mp3'
+    4:13 each. No word-level annotation -- this one is here for a different
+    reason: the second file is the artist's own instrumental mix of the same
+    take, sample-aligned with the first. That is a vocal-activity reference
+    that needs no separator, so it can judge separation instead of depending
+    on it. He states key and tempo per song, as claims rather than
+    measurements, and licenses everything CC BY 4.0 on his own site (this
+    release is 3.0 via Jamendo).
+
+To confirm by ear before any of them is promoted: that the words sung are the
+words the annotation carries, that the changes are what MW says they are, and
+for the Woodward pair, that the two mixes really are the same take.
