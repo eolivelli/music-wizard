@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.text.Hyphenator;
@@ -1075,6 +1076,12 @@ final class AnalyzeCommand implements Callable<Integer> {
                 "Key     %s (%.0f%% confidence)", key.displayName(),
                 100 * key.confidence().value())));
         lines.add("Chords  " + score.chords().size() + " spans");
+        // Only when the stage ran. An absent row says the melody was not asked
+        // for; a row reading zero says it was asked for and nothing was heard,
+        // and render answers those two differently -- so the summary must not
+        // spell them the same way.
+        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack ->
+                lines.add("Melody  " + melodyTrack.size() + " notes"));
         return List.copyOf(lines);
     }
 
@@ -1366,6 +1373,20 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + (ignored.size() == 1 ? " has" : " have")
                         + " no effect on a MIDI workspace; the file declares its own tempo"
                         + " and meter");
+            }
+            // Its own line rather than the list above, because that list's
+            // reason -- the file declares these itself -- is not this one's. A
+            // MIDI import does carry its parts, and none of them is ever read as
+            // the melody role, so the flag is not merely redundant here: what it
+            // points at cannot be reached from this path at all (#500). render
+            // offers the flag without naming a source kind, because it cannot
+            // know one; this command can, and following that advice here must
+            // not be answered with silence.
+            if (melody) {
+                System.err.println("warning: --melody has no effect on a MIDI workspace;"
+                        + " the parts are read from the file, and none of them is read as"
+                        + " the melody role, so no lead sheet can be rendered from one"
+                        + " (#500)");
             }
         }
         if (skipSeparationRequested(config)

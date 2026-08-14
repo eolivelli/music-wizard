@@ -177,13 +177,38 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("drops a span too short to be a note")
+        @DisplayName("drops a run's opening span when it is too short to be a note")
         void dropsSpansShorterThanANote() {
-            // Four frames is 46 ms, under the floor; the run is otherwise one
-            // note, so nothing else can absorb it and the count must not grow.
-            NoteTrack melody = MelodyEstimator.estimate(track(60.0, 40, 72.0, 4));
+            // Only a run's *first* span can be short — every later one starts
+            // where a departure was confirmed and so spans at least that long —
+            // which makes this the one shape that reaches the filter. A single
+            // frame at 60 before forty at 72: the note is the 72, and it starts
+            // at the run's beginning rather than a frame later.
+            PitchTrack pitches = track(60.0, 1, 72.0, 40);
+            NoteTrack melody = MelodyEstimator.estimate(pitches);
+
+            assertThat(pitches(melody)).containsExactly(72);
+            // The dropped frame's time is lost rather than given away: a note
+            // reaches forward to the next note's onset and never backwards, so
+            // the surviving note starts where its own span does.
+            assertThat(melody.notes().get(0).onsetSeconds())
+                    .isCloseTo(pitches.timeOf(1), within(1e-9));
+        }
+
+        @Test
+        @DisplayName("keeps a run that is itself barely long enough")
+        void keepsARunAtTheFloor() {
+            NoteTrack melody = MelodyEstimator.estimate(track(60.0, 6));
 
             assertThat(pitches(melody)).containsExactly(60);
+        }
+
+        @Test
+        @DisplayName("drops a run shorter than a note entirely")
+        void dropsARunUnderTheFloor() {
+            NoteTrack melody = MelodyEstimator.estimate(track(60.0, 5));
+
+            assertThat(melody.isEmpty()).isTrue();
         }
     }
 }

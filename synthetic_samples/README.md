@@ -25,6 +25,12 @@ price is that a package with no accompaniment carries no evidence for its own
 chord grid — `tools/score-synthetic.py` skips it, and its silence on the chord
 columns is not a failure to fix.
 
+A package with a `pad` is scored on chords like any other, and reads far worse
+than the full-band packages do. That is not the pad's harmony being unclear: a
+package with no drums gives the beat tracker nothing percussive to lock to, so
+the bar count it scores against is wrong before a chord is named (#499). Read
+that row as a measurement of the grid, not of the harmony.
+
 Regenerate a package with:
 
 ```sh

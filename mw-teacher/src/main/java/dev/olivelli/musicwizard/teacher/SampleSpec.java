@@ -60,6 +60,15 @@ public record SampleSpec(
         if (melodyLevel != null && melodyProgram == null) {
             throw new IllegalArgumentException("melody level given but melody is 'none'");
         }
+        // A package with neither is silence with a grid attached, and it is
+        // silence that reports itself as normal: the generator prints its bar
+        // count and duration, the chord harness skips it for having no
+        // accompaniment and the melody harness skips it for having no melody,
+        // so it is measured by nothing, twice, without either saying so.
+        if (melodyProgram == null && accompaniment == Accompaniment.NONE) {
+            throw new IllegalArgumentException(
+                    "melody 'none' with accompaniment 'none' would generate silence");
+        }
     }
 
     /**

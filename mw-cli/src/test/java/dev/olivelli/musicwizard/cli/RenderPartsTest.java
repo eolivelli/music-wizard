@@ -304,9 +304,9 @@ class RenderPartsTest {
             assertThat(render.out())
                     .contains("Not written:")
                     .contains("lead     this score holds no melody part;"
-                            + " --melody at analysis time is what writes one")
+                            + " see --melody on analyze")
                     .contains("voice    this score holds no melody part;"
-                            + " --melody at analysis time is what writes one")
+                            + " see --melody on analyze")
                     .contains("bass     bass transcription is not implemented yet (#8)")
                     .contains("piano    the piano reduction is not implemented yet (#10)");
             // Chords were produced, so this run is a partial success.

@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.function.BiFunction;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -205,15 +206,14 @@ final class RenderCommand implements Callable<Integer> {
             // a user who asked for either output wants the same instruction back.
             //
             // Naming no source kind, for the reason the harmony case names none:
-            // this method may only read the score, and what would have filled
-            // this part differs by path -- a stage that was not asked to run on
-            // one, a file that did not carry the part on the other. What --melody
-            // does with an audio source belongs in that command's own help, where
-            // the source is known.
+            // this method may only read the score. The pointer is to the option
+            // and stops there -- promising that --melody "is what writes one"
+            // was advice this command cannot keep, since on a MIDI workspace the
+            // flag does nothing and no melody role is ever assigned (#500).
+            // analyze says so where the source kind is known.
             if ((this == LEAD || this == VOICE)
                     && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
-                return "this score holds no melody part; --melody at analysis time"
-                        + " is what writes one";
+                return "this score holds no melody part; see --melody on analyze";
             }
             return null;
         }
@@ -553,7 +553,7 @@ final class RenderCommand implements Callable<Integer> {
     /** What the two melody outputs share: quantize, spell, write, engrave. */
     private static Emitted writeStaffOutput(Workspace workspace, Score score,
             Optional<Path> lilypond, String name,
-            java.util.function.BiFunction<QuantizedScore, NoteTrack, String> engraving) {
+            BiFunction<QuantizedScore, NoteTrack, String> engraving) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
         List<String> warnings = new ArrayList<>();

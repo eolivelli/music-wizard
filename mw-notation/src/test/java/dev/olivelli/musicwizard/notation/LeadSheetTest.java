@@ -18,8 +18,11 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
@@ -128,6 +131,42 @@ class LeadSheetTest {
         return Quantizer.quantize(score);
     }
 
+    /** A position or length of {@code steps} triplet eighths, in quarter beats. */
+    private static double thirds(double steps) {
+        return steps / 3.0;
+    }
+
+    /**
+     * A score whose melody enters inside a triplet, so the pickup is a sixth of
+     * a whole note — a length no number of 64ths can write.
+     *
+     * <p>The grids are stated rather than quantized, so that this says what the
+     * emitter does with a triplet bar rather than what the quantizer decides
+     * this week; {@code StaffNotationTest} states its own the same way.
+     */
+    private static QuantizedScore withTripletPickup() {
+        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(map, 3 + thirds(1), thirds(1), "G4"),
+                note(map, 3 + thirds(2), thirds(1), "A4"),
+                note(map, 4, 4, "C5"),
+                note(map, 8, 4, "E5")), Confidence.CERTAIN);
+        Score score = Score.empty(map, 12 / (QUARTER_BPM / 60))
+                .withTrack(voice)
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 4),
+                        chord(map, "F4", ChordQuality.MAJOR, 4, 8),
+                        chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12)),
+                        Confidence.of(0.9)));
+        GridResolution[] perBar = {
+            GridResolution.THIRD_BEAT, GridResolution.BEAT, GridResolution.BEAT};
+        List<BarGrid> grids = new ArrayList<>();
+        for (int bar = 0; bar < perBar.length; bar++) {
+            grids.add(new BarGrid(bar, bar * 4.0, perBar[bar], TimeSignature.FOUR_FOUR));
+        }
+        return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
     private static NoteTrack melodyOf(QuantizedScore quantized) {
         return quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
     }
@@ -169,6 +208,25 @@ class LeadSheetTest {
                 .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
                 .as("the chord names' first bar must fill the pickup and no more")
                 .isEqualTo("c4");
+    }
+
+    @Test
+    @DisplayName("cuts the chord names to a pickup no number of 64ths can write")
+    void chordNamesFollowATripletPickup() {
+        QuantizedScore quantized = withTripletPickup();
+
+        // Two triplet eighths is a sixth of a whole note. Carried to the chord
+        // names as a double and subtracted from the bar, every remaining chord
+        // became a length LilyPond has no duration for -- and LilyPondDuration
+        // throws rather than writing one, so `render` exited non-zero having
+        // written nothing at all, the chart included, on three of the nine
+        // committed packages.
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Staff")).contains("\\partial 1*1/6");
+        assertThat(barsOf(context(source, "\\new ChordNames")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .isEqualTo("c1*1/6");
     }
 
     @Test

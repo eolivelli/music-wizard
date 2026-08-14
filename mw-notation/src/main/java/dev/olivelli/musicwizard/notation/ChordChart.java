@@ -396,7 +396,7 @@ public final class ChordChart {
      */
     static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
                                   boolean carriesMarks) {
-        return chordNamesBlock(score, bars, carriesMarks, java.util.OptionalDouble.empty());
+        return chordNamesBlock(score, bars, carriesMarks, Optional.empty());
     }
 
     /**
@@ -414,7 +414,7 @@ public final class ChordChart {
      */
     static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
                                   boolean carriesMarks,
-                                  java.util.OptionalDouble pickupQuarters) {
+                                  Optional<StaffNotation.Pickup> pickup) {
         StringBuilder out = new StringBuilder();
         // chordChanges, so a chord held across a bar line has its name printed
         // once. The bar checks below require every bar to be written out, and
@@ -464,11 +464,11 @@ public final class ChordChart {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
             }
             out.append("      ");
-            List<ChartLayout.Cell> cells = index == 0 && pickupQuarters.isPresent()
-                    ? intoPickup(bar, pickupQuarters.getAsDouble())
-                    : bar.cells();
-            for (ChartLayout.Cell cell : cells) {
-                out.append(chordMode(cell)).append(' ');
+            List<String> written = index == 0 && pickup.isPresent()
+                    ? intoPickup(bar, pickup.get())
+                    : bar.cells().stream().map(ChordChart::chordMode).toList();
+            for (String token : written) {
+                out.append(token).append(' ');
             }
             // One bar to a line, so that when LilyPond does complain the line
             // number it prints names the bar that does not add up.
@@ -490,35 +490,54 @@ public final class ChordChart {
     }
 
     /**
-     * The last {@code pickupQuarters} of a bar, as cells that fill exactly that.
+     * The last of a bar's chords, filling exactly the staff's pickup.
      *
      * <p>Taken from the end rather than by dropping the chart's lead-in rest,
      * because the two quantities are not the same one: the chart leads in to its
      * first <em>chord</em> and the staff's pickup runs to its first
-     * <em>note</em>, and a melody that enters before the harmony does makes the
-     * rest longer than the pickup needs. Cutting from the end gives a first bar
-     * of the right length either way, and a chord that was sounding when the
-     * melody came in keeps its name — shortened, which is what a chord partly
-     * outside the printed music is.
+     * <em>note</em>, and a melody entering before the harmony makes the rest
+     * longer than the pickup needs. Cutting from the end gives a first bar of
+     * the right length either way, and a chord that was already sounding keeps
+     * its name — shortened, which is what a chord partly outside the printed
+     * music is.
+     *
+     * <p>Counted in exact subdivisions of a whole note rather than in beats,
+     * and this is the whole reason the pickup travels as a fraction. A pickup
+     * entering inside a triplet is a sixth of a whole note; subtract that as a
+     * double and every remaining chord is a length no duration can write, which
+     * {@link LilyPondDuration} refuses by throwing — so {@code render} exited
+     * non-zero and wrote nothing at all, chart included, on the packages whose
+     * melody happens to enter inside a bracket.
      */
-    private static List<ChartLayout.Cell> intoPickup(ChartLayout.Bar bar,
-                                                     double pickupQuarters) {
-        double dropped = bar.meter().quarterBeatsPerBar() - pickupQuarters;
-        List<ChartLayout.Cell> kept = new ArrayList<>();
-        double at = 0;
+    private static List<String> intoPickup(ChartLayout.Bar bar, StaffNotation.Pickup pickup) {
+        long units = leastCommonMultiple(LilyPondDuration.SHORTEST_DENOMINATOR,
+                pickup.wholeNoteDenominator());
+        long barUnits = Math.round(bar.meter().quarterBeatsPerBar() * units / QUARTERS_PER_WHOLE);
+        long dropped = barUnits
+                - pickup.wholeNoteNumerator() * (units / pickup.wholeNoteDenominator());
+        List<String> written = new ArrayList<>();
+        long at = 0;
         for (ChartLayout.Cell cell : bar.cells()) {
-            double end = at + cell.lengthQuarters();
-            if (end > dropped + CELL_EPSILON) {
-                kept.add(new ChartLayout.Cell(cell.chord(), end - Math.max(at, dropped),
-                        cell.named()));
+            long end = at + Math.round(cell.lengthQuarters() * units / QUARTERS_PER_WHOLE);
+            if (end > dropped) {
+                written.add(chordMode(cell.chord(),
+                        LilyPondDuration.scaled(end - Math.max(at, dropped), units)));
             }
             at = end;
         }
-        return kept;
+        return written;
     }
 
-    /** Beats, below which two positions in a bar are the same position. */
-    private static final double CELL_EPSILON = 1e-9;
+    /** Quarter notes to a whole note, as the subdivision arithmetic needs it. */
+    private static final double QUARTERS_PER_WHOLE = 4;
+
+    private static long leastCommonMultiple(long a, long b) {
+        return a / greatestCommonDivisor(a, b) * b;
+    }
+
+    private static long greatestCommonDivisor(long a, long b) {
+        return b == 0 ? a : greatestCommonDivisor(b, a % b);
+    }
 
     /**
      * A bracket over each line the chart prints more than once, labelled with
@@ -613,11 +632,15 @@ public final class ChordChart {
      * inversion, which is a different instruction to a bass player.
      */
     private static String chordMode(ChartLayout.Cell cell) {
-        String duration = LilyPondDuration.scaled(cell.lengthQuarters());
-        if (cell.chord().isEmpty()) {
+        return chordMode(cell.chord(), LilyPondDuration.scaled(cell.lengthQuarters()));
+    }
+
+    /** The same, for a length already spelled — see {@link #intoPickup}. */
+    private static String chordMode(Optional<Chord> named, String duration) {
+        if (named.isEmpty()) {
             return "r" + duration;
         }
-        Chord chord = cell.chord().get();
+        Chord chord = named.get();
         if (chord.isNoChord()) {
             return "r" + duration;
         }

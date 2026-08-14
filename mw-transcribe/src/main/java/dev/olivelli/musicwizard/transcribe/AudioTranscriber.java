@@ -174,11 +174,6 @@ public final class AudioTranscriber {
             return new Options(null, TimeSignature.FOUR_FOUR, null, false);
         }
 
-        /** The same options with the melody stage turned on. */
-        public Options withMelody() {
-            return new Options(tempoOverride, timeSignature, firstDownbeatSeconds, true);
-        }
-
         public TimeSignature timeSignatureOrDefault() {
             return timeSignature != null ? timeSignature : TimeSignature.FOUR_FOUR;
         }

@@ -82,10 +82,10 @@ public record PitchTrack(
     /**
      * The time at the centre of a frame.
      *
-     * <p>The centre rather than the start, as {@code Spectrogram.timeOf} has it,
-     * and for a stronger reason here: a fundamental estimated by comparing a
-     * window against a shifted copy of itself is a property of the whole window
-     * and cannot be attributed to either end of it. It also bounds what a note
+     * <p>The centre, as {@code Spectrogram.timeOf} also answers: a fundamental
+     * estimated by comparing a window against a shifted copy of itself is a
+     * property of the whole window and cannot be attributed to either end of
+     * it. It also bounds what a note
      * onset taken from this track can be worth — a pitch change inside a window
      * is only visible once it dominates the window, so an onset read from the
      * frame it first appears in is late, by up to half a window.

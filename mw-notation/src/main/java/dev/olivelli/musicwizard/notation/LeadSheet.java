@@ -79,7 +79,7 @@ public final class LeadSheet {
         // The chord names give up the tempo mark and the closing bar line here:
         // the staff below carries both already, and a lead sheet that printed
         // the tempo twice would be reporting one estimate as two.
-        out.append(ChordChart.chordNamesBlock(score, bars, false, staff.pickupQuarters()));
+        out.append(ChordChart.chordNamesBlock(score, bars, false, staff.pickup()));
         out.append(staff.lilyPond());
         // Under the staff rather than under the chords, so the words sit where a
         // singer reads them; that is also what decides which way the lane leans.

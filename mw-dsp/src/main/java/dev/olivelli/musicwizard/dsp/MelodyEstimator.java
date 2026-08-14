@@ -21,6 +21,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -221,7 +222,7 @@ public final class MelodyEstimator {
         for (int frame = span[0]; frame < span[1]; frame++) {
             sorted[frame - span[0]] = pitches.midiPitchAt(frame);
         }
-        java.util.Arrays.sort(sorted);
+        Arrays.sort(sorted);
         int middle = sorted.length / 2;
         double median = sorted.length % 2 == 1
                 ? sorted[middle]

@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalDouble;
 import java.util.stream.Collectors;
 
 /**
@@ -140,13 +139,28 @@ public final class StaffNotation {
     }
 
     /**
+     * How much shorter than a full bar a pickup bar is, as an exact fraction of
+     * a whole note.
+     *
+     * <p>A fraction and never a double, for the reason {@link
+     * LilyPondDuration#scaled(long, long)} gives: a pickup entering inside a
+     * triplet is {@code 1*1/6} of a whole note and is nothing else, and a third
+     * of a beat is not a number a double holds. Divided into a double here and
+     * subtracted from a bar there, it made every remaining chord an
+     * unwritable duration and took {@code render} down with an exception on
+     * three of the nine committed packages.
+     */
+    record Pickup(long wholeNoteNumerator, long wholeNoteDenominator) {
+    }
+
+    /**
      * A staff block and the pickup it opens with.
      *
-     * @param lilyPond       the {@code \new Staff} expression, indented two spaces
-     * @param pickupQuarters how much shorter than a full bar the first bar is,
-     *                       or empty when the music starts on beat one
+     * @param lilyPond the {@code \new Staff} expression, indented two spaces
+     * @param pickup   the shortened first bar, or empty when the music starts
+     *                 on beat one
      */
-    record Staff(String lilyPond, OptionalDouble pickupQuarters) {
+    record Staff(String lilyPond, Optional<Pickup> pickup) {
     }
 
     /**
@@ -165,7 +179,7 @@ public final class StaffNotation {
         Objects.requireNonNull(track, "track");
         LilyPondStaffWriter writer = new LilyPondStaffWriter();
         StaffLayout.write(quantized.score(), track, TupletPlan.of(quantized), writer);
-        return new Staff(writer.toString(), writer.pickupQuarters());
+        return new Staff(writer.toString(), writer.pickup());
     }
 
     private static String staffBlock(Score score, NoteTrack track, TupletPlan tuplets) {
@@ -185,7 +199,7 @@ public final class StaffNotation {
 
         private final StringBuilder out = new StringBuilder();
 
-        private OptionalDouble pickupQuarters = OptionalDouble.empty();
+        private Optional<Pickup> pickup = Optional.empty();
 
         /** The current bar's tokens, joined and flushed by {@link #endBar}. */
         private final List<String> tokens = new ArrayList<>();
@@ -235,18 +249,14 @@ public final class StaffNotation {
 
         @Override
         public void pickup(long wholeNotesNumerator, long wholeNotesDenominator) {
-            // Four quarters to a whole note, and kept as the fraction it came in
-            // as until the division, because a pickup entering inside a triplet
-            // is two thirds of a quarter.
-            pickupQuarters = OptionalDouble.of(
-                    4.0 * wholeNotesNumerator / wholeNotesDenominator);
+            pickup = Optional.of(new Pickup(wholeNotesNumerator, wholeNotesDenominator));
             out.append("    \\partial ")
                     .append(LilyPondDuration.scaled(wholeNotesNumerator, wholeNotesDenominator))
                     .append('\n');
         }
 
-        OptionalDouble pickupQuarters() {
-            return pickupQuarters;
+        Optional<Pickup> pickup() {
+            return pickup;
         }
 
         @Override
