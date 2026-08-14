@@ -99,6 +99,23 @@ class BeatMarksTest {
         return lanes;
     }
 
+    /**
+     * Each {@code Lyrics} lane's own text anchor, one entry per lane, taken from
+     * the lane's {@code \with} block rather than from the source at large: an
+     * anchor set on some other context would satisfy a count over the whole file
+     * while leaving a lane inheriting a different one.
+     */
+    private static List<String> laneAnchors(String lilyPond) {
+        List<String> anchors = new ArrayList<>();
+        String[] lanes = lilyPond.split("\\\\new Lyrics");
+        for (int i = 1; i < lanes.length; i++) {
+            String with = lanes[i].substring(0, lanes[i].indexOf("\\lyricmode {"));
+            with.lines().filter(line -> line.contains("self-alignment-X"))
+                    .map(String::strip).forEach(anchors::add);
+        }
+        return anchors;
+    }
+
     /** The marks on one bar line, each with its offset from the bar's start. */
     private static List<Mark> marksIn(String barLine) {
         List<Mark> marks = new ArrayList<>();
@@ -247,6 +264,28 @@ class BeatMarksTest {
             }
             assertThat(total).as("%s", bar).isCloseTo(4.0, within(1e-9));
         });
+    }
+
+    @Test
+    @DisplayName("every lane anchors its text the same way, and every lane says so")
+    void oneAnchorForEverythingOnOneMoment() {
+        // Counted against the lanes, not merely deduplicated. A lane that omits
+        // the override does not disagree with anything written down: it inherits
+        // LilyPond's own CENTER and is the one that is wrong, while the
+        // overrides that remain are still all alike. So the count is what
+        // catches it, and the distinctness is what catches a lane setting a
+        // different value.
+        Score score = tracked(4, 0.5);
+        Score sung = score.withLyrics(LrcLyrics.parse("""
+                [00:00.00]<00:00.00>la <00:01.00>sol <00:02.00>mi <00:03.00>do
+                """, score.durationSeconds()));
+
+        String lilyPond = LyricSheet.toLilyPond(sung, MARKED);
+        List<String> anchors = laneAnchors(lilyPond);
+
+        assertThat(lanes(lilyPond)).hasSize(2);
+        assertThat(anchors).hasSize(lanes(lilyPond).size());
+        assertThat(anchors).containsOnly(anchors.get(0));
     }
 
     @Test

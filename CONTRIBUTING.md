@@ -143,8 +143,12 @@ runs against the PR's merge preview, and a PR merges only when the reviewer
 has approved and every CI check is green on the approved head.
 
 A number belongs in prose only if a test asserts it or a committed harness
-reproduces it; otherwise write the qualitative fact. The incidents behind
-these rules are collected in `docs/history.md`.
+reproduces it; otherwise write the qualitative fact. `premerge.sh` also prints,
+as a prompt and never a gate, whether any baseline moved on `main` since this
+branch started: the harness diff cannot see a figure quoted in a PR body or a
+comment earlier in the branch's life and measured against a baseline that has
+since been regenerated (#428). The incidents behind these rules are collected in
+`docs/history.md`.
 
 ## Issue tracking
 

@@ -9,6 +9,8 @@ onset for the lyric one. Run it directly:
     python3 tools/test-harness-rules.py
 """
 
+import contextlib
+import io
 import sys
 import unittest
 from importlib import import_module
@@ -20,6 +22,7 @@ synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 vtt = import_module("vtt-to-lrc")
+drift = import_module("baseline-drift")
 
 C = (0, "MAJOR")
 G = (7, "MAJOR")
@@ -613,6 +616,141 @@ class Keying(unittest.TestCase):
         cannot arise, and this holds it that way."""
         self.assertNotIn(self.MARKER,
                          lyrics.score_line("sere-doltremare.mp3", *self.ARGS))
+
+
+class BaselineDrift(unittest.TestCase):
+    """premerge.sh prompts when main regenerated a baseline during this
+    branch's life. What it must get right is the kind of change: a column
+    added to every row rewrites the file without moving a measurement, and a
+    prompt that calls that a moved figure is one people learn to skip."""
+
+    CHART = ("charts emitted for samples with known ground truth:\n"
+             "  blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)\n"
+             "  bossa-cm.mp3: bars=98  chords/bar 1.23  root 23.5/98 (24.0%)\n")
+
+    def status(self, old: str, new: str) -> int:
+        """main()'s exit status for one file, with git and stdout stubbed."""
+        show, out = drift.show, io.StringIO()
+        drift.show = lambda rev, _path: old if rev == "base" else new
+        try:
+            with contextlib.redirect_stdout(out):
+                return drift.main(["x", "base", "tip", "tools/baselines/a.txt"])
+        finally:
+            drift.show = show
+
+    def test_the_quiet_statuses_are_ones_python_cannot_produce_by_accident(self):
+        """premerge.sh keys its two quiet arms on these numbers, and python
+        exits 2 of its own accord when it cannot open the script it was given.
+        A classifier that never ran must not read as one that found nothing."""
+        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+        self.assertEqual(1, self.status(row, row.replace("1.0/2 (50.0%)",
+                                                         "2.0/2 (100.0%)")))
+        self.assertEqual(3, self.status(row, row.replace("(50.0%)\n",
+                                                         "(50.0%)  n 7\n")))
+        self.assertEqual(0, self.status(row, row.replace("h:", "header:")))
+
+    def test_a_figure_that_moved_is_named_by_its_row(self):
+        moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
+        summary, detail, kind = drift.describe(self.CHART, moved)
+        self.assertEqual("moved", kind)
+        self.assertEqual("figures moved in 1 of 2 rows", summary)
+        self.assertEqual(["      bossa-cm.mp3"], detail)
+
+    def test_a_measurement_that_reads_as_a_word_is_a_figure_that_moved(self):
+        """Half of score-samples' rows are key rows, whose verdict is a word.
+        Masking numbers alone would file OK -> WRONG as a changed column and
+        take the quiet branch for a re-measurement anyone might have quoted."""
+        old = "samples:\n  key a.mp3: G major at 40%  want G major  OK\n"
+        new = "samples:\n  key a.mp3: E minor at 40%  want G major  WRONG\n"
+        summary, _, kind = drift.describe(old, new)
+        self.assertEqual("moved", kind)
+        self.assertEqual("figures moved in 1 of 1 rows", summary)
+
+    def test_a_word_that_moved_counts_even_where_a_column_was_added(self):
+        """A key-estimator change regenerates the key rows and may add a
+        column in the same commit. Matching by shape alone files the flipped
+        verdict as a column that vanished, and the pasted verdict then says no
+        figure moved over an inverted key."""
+        old = "samples:\n  key a.mp3: G major at 40%  want G major  OK\n"
+        new = ("samples:\n"
+               "  key a.mp3: E minor at 40%  want G major  WRONG  weighed 12\n")
+        _, _, kind = drift.describe(old, new)
+        self.assertEqual("moved", kind)
+
+    def test_a_word_valued_column_merely_added_is_still_a_column(self):
+        """The converse, and why the rule is about a field vanishing rather
+        than about digits: a new label-valued column moves nothing."""
+        old = "lyrics:\n  a.mp3: words 289  wer 0.0%\n"
+        new = "lyrics:\n  a.mp3: words 289  wer 0.0%  source lrc\n"
+        _, _, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind)
+
+    def test_a_file_whose_rows_did_not_change_claims_nothing(self):
+        """A header edit is neither a moved figure nor a reshaped row, and the
+        verdict clause pasted into a PR must not claim either."""
+        old = "charts emitted for samples:\n  a.mp3: bars=10  root 5.0/10 (50.0%)\n"
+        summary, detail, kind = drift.describe(old, old.replace("emitted", "written"))
+        self.assertEqual("", kind)
+        self.assertEqual(("rows unchanged", []), (summary, detail))
+
+    def test_a_column_added_to_every_row_moves_no_figure(self):
+        """#361 added a column to the lyric baselines, rewriting every row
+        without re-measuring anything."""
+        old = ("lyric words MW carries:\n"
+               "  sere.mp3: words 289  onset median 0.000s  anchors 59/59 line-level\n")
+        new = ("lyric words MW carries:\n"
+               "  sere.mp3: words 289  onset median 0.000s  line end max 4.780s"
+               "  anchors 59/59 line-level, ends 57/57\n")
+        summary, detail, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind, "no measurement moved, so no figure is stale")
+        self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
+                         summary)
+        self.assertIn("      + line end max #s", detail,
+                      "the columns that changed are named, since a field whose "
+                      "own shape changed cannot be compared with its old self")
+
+    def test_a_row_that_appeared_counts_as_re_measured(self):
+        summary, _, kind = drift.describe(
+            self.CHART, self.CHART + "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n")
+        self.assertEqual("moved", kind)
+        self.assertEqual("1 rows added, 0 removed", summary)
+
+    def test_a_header_is_not_a_row(self):
+        """Header lines are flush left and hold a colon of their own. Reading
+        one as a row would key the whole corpus on a sentence."""
+        self.assertEqual(["blues-a-90bpm.mp3", "bossa-cm.mp3"],
+                         sorted(drift.rows(self.CHART)))
+
+    def test_a_row_is_not_required_to_name_an_mp3(self):
+        """The chart harness prints key rows too, and score-synthetic names
+        packages. Keying on '.mp3:' would make those invisible."""
+        rows = drift.rows("  key blues-a.wav: C major at 16%  want C major  OK\n")
+        self.assertEqual(["key blues-a.wav"], list(rows))
+
+    def test_two_columns_of_the_same_shape_stay_two_columns(self):
+        """Two fields that mask to the same text are two fields. Folding them
+        into one would make a column added beside them read as a moved
+        figure -- the cry-wolf the keying exists to prevent."""
+        old = "h:\n  a.mp3: bars 4  bars 9\n"
+        new = "h:\n  a.mp3: bars 4  bars 9  bars 7\n"
+        summary, _, kind = drift.describe(old, new)
+        self.assertEqual("reshaped", kind)
+        self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
+                         summary)
+
+    def test_a_file_whose_rows_do_not_parse_is_loud(self):
+        """An all-clear that rests on having understood nothing is the failure
+        this prompt exists to prevent."""
+        summary, _, kind = drift.describe("flat 1\n", "flat 2\n")
+        self.assertEqual("moved", kind)
+        self.assertIn("no row in it parsed", summary)
+
+    def test_two_sections_may_print_the_same_row_name(self):
+        """Overwriting would hide whichever section came first."""
+        text = "h:\n  a.mp3: bars 4\nkeys:\n  a.mp3: C major  OK\n"
+        self.assertEqual(2, len(drift.rows(text)))
+        _, _, kind = drift.describe(text, text.replace("bars 4", "bars 9"))
+        self.assertEqual("moved", kind, "the first section's row must not be hidden")
 
 
 if __name__ == "__main__":
