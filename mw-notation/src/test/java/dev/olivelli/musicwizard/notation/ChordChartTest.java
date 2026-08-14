@@ -624,9 +624,8 @@ class ChordChartTest {
         assertThat(ChordChart.toText(score))
                 .contains("Tempo  120 BPM at the start, changed 1 time later");
         // The engraved mark reads the same moment through a second call site,
-        // and every other fixture that reaches the engraving starts its harmony
-        // where the chart opens -- so the two moments coincide there and only
-        // this one can tell them apart.
+        // and the two moments coincide unless the harmony starts after the
+        // chart opens, as it does here.
         assertThat(ChordChart.toLilyPond(score)).contains("4 = 120");
     }
 
@@ -664,6 +663,11 @@ class ChordChartTest {
         // One chord to a bar, which is what the two agreeing buys the reader.
         assertThat(ChordChart.barLines(score))
                 .containsExactly("| C           | G           | A           | F           |");
+        // And the engraving, which reads the moment through a call site of its
+        // own: this chart opens well after the piece does, so it separates the
+        // chart's first bar line from the start of the piece, which is the other
+        // answer this figure has been read at.
+        assertThat(ChordChart.toLilyPond(score)).contains("4 = 60");
     }
 
     @Test
