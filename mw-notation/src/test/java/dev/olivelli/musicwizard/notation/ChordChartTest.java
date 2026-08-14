@@ -453,7 +453,8 @@ class ChordChartTest {
         // Score.estimatedTempo() answers a map like this with a duration-weighted
         // average, which is neither of the two tempos the file states and is
         // played nowhere in it -- and the header printed that over a bar grid
-        // honouring both.
+        // honouring both. (No figure for the average here: it is a property of
+        // the fixture's lengths and not of anything being tested.)
         assertThat(statingTwoTemposAndTwoMeters().estimatedTempo())
                 .isNotEqualTo(120.0).isNotEqualTo(60.0);
 
@@ -558,9 +559,9 @@ class ChordChartTest {
         // The seconds route has one bar length for the whole chart, so the
         // header names a tempo the bars are actually at or it names nothing.
         // Read off estimatedTempo() the bars came out at the duration-weighted
-        // average -- a chart headed 120 BPM whose bar lines are 3.2s apart,
-        // which is 75. Not reachable from the CLI, since the estimator that
-        // reads a stated tempo also quantizes; a hand-built score is.
+        // average instead, wider than the header's own tempo asks for. Not
+        // reachable from the CLI, since the estimator that reads a stated tempo
+        // also quantizes; a hand-built score is.
         TempoMap map = new TempoMap(
                 List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
                         new TempoMap.TempoSegment(8, 4, 60, Provenance.DECLARED)),
@@ -583,6 +584,42 @@ class ChordChartTest {
                     .as("a bar of the chart the header says is at 120")
                     .isEqualTo(2.0, within(1e-9));
         }
+    }
+
+    @Test
+    @DisplayName("heads a chart lying wholly after a stated change with the tempo it is drawn at")
+    void aChartAfterAStatedChangeIsSpacedAtTheTempoItNames() {
+        // The header reads the tempo where the harmony starts and so does the
+        // spacing, or the chart contradicts itself the other way round: read at
+        // the start of the piece the bars came out 2.0s wide under a header
+        // saying 60 BPM, which in 4/4 wants 4.0s -- each chord printed over two
+        // bars, and no "changed" qualifier either, since the change is before
+        // the chart rather than in it.
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(8, 4, 60, Provenance.DECLARED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A, NoteLetter.F};
+        List<Chord> chords = new ArrayList<>();
+        for (int bar = 0; bar < 4; bar++) {
+            chords.add(Chord.ofSeconds(root(roots[bar]), ChordQuality.MAJOR,
+                    9.0 + bar * 4.0, 13.0 + bar * 4.0, Confidence.of(0.9)));
+        }
+        Score score = Score.empty(map, 26.0)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+        assertThat(score.chords().isQuantized()).isFalse();
+
+        assertThat(ChordChart.toText(score))
+                .contains("Tempo  60 BPM\n")
+                .doesNotContain("changed");
+        for (ChartLayout.Bar bar : ChartLayout.unreduced(score)) {
+            assertThat(bar.endSeconds() - bar.startSeconds())
+                    .as("a bar of the chart the header says is at 60")
+                    .isEqualTo(4.0, within(1e-9));
+        }
+        // One chord to a bar, which is what the two agreeing buys the reader.
+        assertThat(ChordChart.barLines(score))
+                .containsExactly("| C           | G           | A           | F           |");
     }
 
     @Test
@@ -1295,10 +1332,13 @@ class ChordChartTest {
      * downbeat and four beats to a bar, at a nominal 120 BPM.
      *
      * <p>The bar's own length falls in the interval that closes it, so the
-     * three inner beats keep the 0.5s pulse and the steady rate stays 120
-     * whatever the bars do -- which is what puts these grids on the followed
-     * path in the first place, so that the veto is the only thing that can
-     * refuse them.
+     * three inner beats keep the 0.5s pulse. That keeps the steady rate at 120
+     * -- and so keeps the grid on the followed path, where the veto is the only
+     * thing that can refuse it -- only while that closing interval stays
+     * outside {@code BeatGrid.STEADY_BAND}, which wants a bar under 1.9s or
+     * over 2.1s. A bar within about a twentieth of nominal reaches the rate
+     * instead, moves it off 120, and is refused before the veto is asked: use
+     * something else to write a fixture for the jitter case (#429).
      */
     private static Score aGridWithBars(double... lengths) {
         List<BeatGrid.Beat> beats = new ArrayList<>();
@@ -1336,11 +1376,12 @@ class ChordChartTest {
     void aSequenceWithNoRateOfItsOwnIsRefused() {
         // The clause the veto's argument rests on and the one #421's sweep is
         // about: a sequence that states no rate states no bars. Every gap here
-        // is inside what the stated tempo admits -- 1.75s and 2.5s against a
-        // 2.0s bar, so neither the short nor the long band refuses it -- and
-        // they do not agree with each other, the long ones being more than a
-        // quarter longer than the sequence's own rate.
-        Score score = aGridWithBars(1.75, 1.75, 1.75, 2.5, 1.75, 1.75, 2.5, 1.75);
+        // is strictly inside what the stated tempo admits -- 1.75s and 2.375s
+        // against a 2.0s bar, so neither the short nor the long band refuses it,
+        // and neither sits on a boundary where one comparison's strictness
+        // would decide -- and they do not agree with each other, the long ones
+        // being more than a quarter longer than the sequence's own rate.
+        Score score = aGridWithBars(1.75, 1.75, 1.75, 2.375, 1.75, 1.75, 1.75, 1.75);
 
         assertThat(drawnBarLines(score).get(1) - drawnBarLines(score).get(0))
                 .as("the constant rate carries the chart")

@@ -259,7 +259,7 @@ final class ChartLayout {
         }
         return score.chords().isQuantized()
                 ? fromBeats(score, chords)
-                : fromSeconds(score, quarterNoteSeconds(score));
+                : fromSeconds(score, quarterNoteSeconds(score, harmonyStarts(score)));
     }
 
     /**
@@ -332,8 +332,7 @@ final class ChartLayout {
         // the next bar, in the text as well as on the page.
         BarLines unopened = BarLines.of(score, meter, quarterSeconds);
         double grid = chartGrid(chords, unopened, meter);
-        BarLines axis = unopened.opening(chords.stream()
-                .mapToDouble(Chord::startSeconds).min().orElse(0.0), grid);
+        BarLines axis = unopened.opening(harmonyStarts(score), grid);
 
         double[] starts = new double[chords.size()];
         double lastEnd = 0;
@@ -1080,8 +1079,9 @@ final class ChartLayout {
          * The bar lines, in seconds and ascending, or empty for an axis that is
          * uniform in seconds too.
          *
-         * <p>Strictly increasing, which {@link BeatGrid} guarantees of the
-         * downbeats and {@link #SHORTEST_BAR} of the extensions.
+         * <p>Strictly increasing: {@link BeatGrid} guarantees it of the
+         * downbeats, and the extensions step by a bar length the caller has
+         * already checked is positive.
          */
         private final double[] lines;
 
@@ -1486,21 +1486,14 @@ final class ChartLayout {
     /**
      * How long a quarter note lasts, for a progression that has no beat axis.
      *
-     * <p>{@link TempoMark#headline}, which is what the chart's header prints, so
-     * the two cannot disagree about how fast the chart goes. They used to: the
-     * header read the tempo map while this measured the tracked beats, and
-     * {@code --tempo} moves only the map, so a chart could be headed 60 BPM
-     * above bars a musician would count at 120.
-     *
-     * <p>Read at the start of the piece rather than at the chart's own opening,
-     * which is what the header row reads. The two differ only for a score
-     * stating a tempo change before its first chord and not carrying a beat
-     * axis, which nothing the pipeline builds produces -- the estimator that
-     * reads a stated tempo also quantizes, and the audio path states none. On
-     * such a score the header names the tempo where the chart opens and these
-     * bars are spaced at the one the piece opens on, and a hand-built score can
-     * be that. It is a narrower claim than "cannot disagree" and it is the
-     * claim that is true.
+     * <p>{@link TempoMark#headline}, read at {@link #harmonyStarts}, which is
+     * where the chart's header reads it too -- so the two cannot disagree about
+     * how fast the chart goes. They used to: the header read the tempo map
+     * while this measured the tracked beats, and {@code --tempo} moves only the
+     * map, so a chart could be headed 60 BPM above bars a musician would count
+     * at 120. And reading it at the start of the piece instead put that back for
+     * a chart whose bars all fall after a stated change: headed with the tempo
+     * there and spaced at the one the piece opened on.
      *
      * <p>{@code headline} keeps the reason this preferred the grid in the first
      * place, since it defers to {@link Score#estimatedTempo()} wherever nothing
@@ -1508,8 +1501,26 @@ final class ChartLayout {
      * tempo when the first tracked beat is a fraction of a beat in, and a
      * drifting bar grid shows up immediately as chords landing in the wrong bar.
      */
-    private static double quarterNoteSeconds(Score score) {
-        return 60.0 / TempoMark.headline(score, 0);
+    private static double quarterNoteSeconds(Score score, double harmonyStarts) {
+        return 60.0 / TempoMark.headline(score, harmonyStarts);
+    }
+
+    /**
+     * When the chart's harmony starts, which is the moment every reader of the
+     * chart's one tempo reads it at.
+     *
+     * <p>The chart's first bar line would be the better moment and cannot be
+     * used: it is not known until the axis is built and the axis needs the
+     * tempo. This is, and it is within a bar of it. What matters is that one
+     * moment is chosen once -- the spacing here and the two header rows in
+     * {@link ChordChart} all ask at the same one, so no arithmetic stands
+     * between them.
+     */
+    static double harmonyStarts(Score score) {
+        return score.chords().chords().stream()
+                .mapToDouble(Chord::startSeconds)
+                .min()
+                .orElse(0.0);
     }
 
     /**
