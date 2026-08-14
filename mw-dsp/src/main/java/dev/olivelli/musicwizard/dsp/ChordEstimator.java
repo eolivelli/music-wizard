@@ -500,15 +500,22 @@ public final class ChordEstimator {
      * the axis on which the two separate.
      *
      * <p>What it costs is a seventh sounded once in a piece that otherwise states
-     * the triad — the passing {@code Am7} is read {@code Am}. The corpus prices
-     * that at a bar of {@code samples/cm-blues-68-95.mp3} against gains on four
-     * other recordings; {@code tools/baselines/score-samples.txt} carries both
-     * sides.
+     * the triad — the passing {@code Am7} is read {@code Am}. {@code
+     * tools/baselines/score-samples.txt} carries both sides of that.
      *
-     * <p>Runs are re-read from {@code path}, the decoder's own grouping, so this
-     * sees the same runs {@link #chooseQualities} did — {@code out} has had
-     * qualities replaced and grouping it would merge neighbouring runs the
-     * decoder kept apart.
+     * <p><b>The withdrawn run falls back to a triad, never to another seventh.</b>
+     * The argmax that placed the minor seventh ranks it against the dominant one,
+     * which shares its root, fifth and flat seventh, so letting the fallback keep
+     * that candidate turns "the recording does not hold this seventh" into a flip
+     * of the third: measured with the fallback unrestricted, runs of {@code
+     * samples/fm7-vamp-110.mp3}'s own chord came back {@code F7} and a B minor
+     * blues was given a major third, which is the failure {@link #qualityScore}'s
+     * correction exists to stop.
+     *
+     * <p>{@code path} is needed for the case where no triad beats a flat chroma
+     * either: what stands then is the decoder's answer, which {@code out} no
+     * longer holds. Grouping either array gives the same runs, since
+     * {@link #sameChord} reads only the root and nothing here changes one.
      */
     private static void withdrawMinoritySevenths(int[] path, int[] out,
                                                  List<Template> templates,
@@ -537,12 +544,14 @@ public final class ChordEstimator {
             if (templates.get(out[i]).quality() == ChordQuality.MINOR_SEVENTH
                     && sevenths[root] < SEVENTH_MUST_HOLD_FOR * beats[root]) {
                 int fallback = bestQuality(sum(qualityChroma, i, j), templates, root, true);
-                // The seventh was the only candidate that beat a flat chroma, so
-                // there is still nothing to overrule the decoder with.
-                if (fallback >= 0) {
-                    for (int frame = i; frame < j; frame++) {
-                        out[frame] = fallback;
-                    }
+                // No triad beat a flat chroma either, so this run has nothing to
+                // say about its own quality and the decoder's answer stands --
+                // the same rule chooseQualities applies, and the reason it has to
+                // be applied again here is that the answer being withdrawn is the
+                // quality pass's, not the decoder's. The decoder cannot propose a
+                // minor seventh at all; QUALITY_ONLY is where that lives.
+                for (int frame = i; frame < j; frame++) {
+                    out[frame] = fallback >= 0 ? fallback : path[frame];
                 }
             }
             i = j;
@@ -553,17 +562,17 @@ public final class ChordEstimator {
      * The best-scoring candidate on {@code root} that also beats a flat chroma,
      * or -1 if none does.
      *
-     * @param withoutSeventh whether to leave the minor seventh out of the argmax
+     * @param triadsOnly whether to leave every seventh out of the argmax
      */
     private static int bestQuality(double[] summed, List<Template> templates, int root,
-                                   boolean withoutSeventh) {
+                                   boolean triadsOnly) {
         int chosen = -1;
         double best = 0;
         for (int t = 0; t < templates.size(); t++) {
             Template candidate = templates.get(t);
             if (candidate.quality() == ChordQuality.NONE
                     || candidate.rootPitchClass() != root
-                    || (withoutSeventh && candidate.quality() == ChordQuality.MINOR_SEVENTH)) {
+                    || (triadsOnly && candidate.quality().hasSeventh())) {
                 continue;
             }
             double score = qualityScore(summed, candidate);

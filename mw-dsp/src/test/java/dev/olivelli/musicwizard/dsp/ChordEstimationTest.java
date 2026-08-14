@@ -474,10 +474,11 @@ class ChordEstimationTest {
         /**
          * #446: a seventh a minority of the root's beats carry is withdrawn.
          *
-         * <p>Both tests hold the per-run evidence fixed and vary only how much of
-         * the recording agrees with it, which is the axis the rule reads. The
-         * seventh-bearing run is the same vector in each, and on its own — as
-         * {@link #reportsAMinorSeventh} shows — it is read {@code Cm7}.
+         * <p>These hold the per-run evidence fixed and vary only how much of the
+         * recording agrees with it, which is the axis the rule reads: the
+         * seventh-bearing run is the same vector in every one of them, and the
+         * even-split case shows that vector is read {@code Cm7} on its own
+         * evidence.
          */
         @Test
         @DisplayName("withdraws a seventh most of the root's beats do not carry")
@@ -492,6 +493,25 @@ class ChordEstimationTest {
             // fails if the withdrawal is ever applied without counting, which
             // would cost every recording the vocabulary was widened for.
             assertThat(alternating(2, 1)).containsExactly("Cm7", "D", "Cm7", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("an even split is not a minority, so the seventh stands")
+        void anEvenSplitKeepsTheSeventh() {
+            // The boundary the constant's "a minority" wording implies, pinned
+            // because nothing else does: at exactly half the rule must not fire.
+            assertThat(alternating(1, 1)).containsExactly("Cm7", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("withdrawing a seventh does not flip the third")
+        void withdrawalFallsBackToATriadNotAnotherSeventh() {
+            // The dominant seventh shares its root, fifth and flat seventh with
+            // the minor one, so an unrestricted fallback answers C7 here -- a
+            // major third arrived at by withdrawing a minor seventh. Measured on
+            // the corpus that reading gave fm7-vamp-110.mp3's own chord as F7 and
+            // put a major third on a B minor blues.
+            assertThat(alternating(1, 2)).doesNotContain("C7");
         }
 
         /**
