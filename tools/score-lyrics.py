@@ -248,8 +248,14 @@ def truth_tokens(text: str) -> Truth:
     tokens: list[str] = []
     anchors: dict[int, float] = {}
     ends: dict[int, float] = {}
-    open_line = False
+    # The line a clear would end: its last token, and the moment it began.
+    # Both, because LrcLyrics ends a line at the next entry whose start is
+    # strictly greater -- an entry on the line's own moment does not end it,
+    # for the same reason a second voice does not -- and because an entry that
+    # produces no tokens is not a line at all, so nothing can end it.
+    open_line: tuple[int, float] | None = None
     for start, body in timed:
+        line_start = max(0.0, start - offset)
         if jblank(body):
             # A timestamp with no text clears the display. It is not a line; it
             # ends the one before it, which is why it carries no token -- and
@@ -258,12 +264,11 @@ def truth_tokens(text: str) -> Truth:
             # word alignment exactly as an onset is and a lost line cannot
             # shift every end after it. Only the first clear after a line
             # counts: a second states the end of nothing.
-            if open_line and tokens:
-                ends[len(tokens) - 1] = max(0.0, start - offset)
-                open_line = False
+            if open_line is not None and line_start > open_line[1]:
+                ends[open_line[0]] = line_start
+                open_line = None
             continue
-        open_line = True
-        line_start = max(0.0, start - offset)
+        before = len(tokens)
         # Runs, exactly as wordsOf cuts them: the leading run is anchored by the
         # line, each <tag> opens another. Anchors are the *stated* values, left
         # unclamped -- LrcLyrics clamps a tag into its line's span, and this is
@@ -280,6 +285,12 @@ def truth_tokens(text: str) -> Truth:
         tail = body[cursor:]
         if not jblank(tail):
             open_run(tail, at, tokens, anchors)
+        # Only where this entry actually produced a line. A body of nothing but
+        # word tags is not blank and is not a line either: wordsOf finds no run
+        # in it, so Java builds no LyricLine, and a clear after it ends whatever
+        # line came before rather than replacing that line's own stated end.
+        if len(tokens) > before:
+            open_line = (len(tokens) - 1, line_start)
 
     return Truth(tokens, anchors, ends, word_level)
 
@@ -429,14 +440,6 @@ def onset_error(pairs, anchors: dict[int, float], starts: list[float]):
 def end_error(pairs, ends: dict[int, float], line_ends: list[float]):
     """(median, max, matched, total) over the line ends the file states, or
     None for the first two when nothing matched.
-
-    A third column rather than a widening of the onset one, because it fails
-    for a different reason (#361). Every onset this harness scores is a value
-    the file states and MW copies, so the rules deciding where a line *stops* --
-    the break, the typical length, the recording bound -- moved nothing in
-    either existing column, and the benchmark was chosen for its long intro and
-    outro precisely to exercise them. A line stretched over the instrumental
-    after it now shows here.
 
     MW's line end rather than the matched word's own, because that is what the
     stated clear is the counterpart of: a line's last word need not be the one

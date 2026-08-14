@@ -121,18 +121,15 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
-def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] | None = None,
-           line_ends: list[float] | None = None):
-    """The lyric harness's three columns over an LRC and the words, onsets and
-    line ends MW came back with. All defaulted to the truth's own is the
-    loop-closure case."""
+def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] | None = None):
+    """The lyric harness's word and onset columns over an LRC and the words and
+    onsets MW came back with. Both defaulted to the truth's own is the
+    loop-closure case. The line-end column has its own helper below."""
     parsed = lyrics.truth_tokens(truth)
     tokens = parsed.tokens
     words = tokens if hypothesis is None else [lyrics.normalize(w) for w in hypothesis]
     if starts is None:
         starts = [0.0] * len(words)
-    if line_ends is None:
-        line_ends = [0.0] * len(words)
     pairs = lyrics.align(tokens, words)
     return (lyrics.word_error(pairs, tokens, words),
             lyrics.onset_error(pairs, parsed.anchors, starts),
@@ -371,9 +368,11 @@ class WordAndOnsetColumns(unittest.TestCase):
 
 
 class LineEndColumn(unittest.TestCase):
-    """The third column (#361), which is the only one that can see where a line
-    stops. The two before it are functions of the onsets the file states, so
-    every rule deciding a line's *end* moved neither of them."""
+    """The third column (#361), and what it takes from the file as a stated end.
+
+    Which entries end a line is LrcLyrics' rule, not this harness's, and these
+    hold the two sides together: the harness reports MW as wrong wherever it
+    disagrees."""
 
     ONE_LINE = "[00:10.00]uno due tre\n[00:14.00]\n"
 
@@ -393,6 +392,34 @@ class LineEndColumn(unittest.TestCase):
 
         self.assertEqual((0.0, 0.0, 1, 1), exact)
         self.assertEqual((4.0, 4.0, 1, 1), stretched)
+
+    def test_a_clear_on_the_line_own_moment_does_not_end_it(self):
+        """LrcLyrics ends a line at the next entry whose start is strictly
+        greater -- one on the line's own moment does not end it, for the same
+        reason a second voice does not. Reading it as an end invents an error
+        the size of the whole line, and consumes the clear that really states
+        one."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno due tre\n[00:10.00]\n[00:14.00]\n[00:20.00]quattro\n")
+        self.assertEqual({2: 14.0}, parsed.ends)
+
+    def test_an_offset_that_collapses_two_starts_collapses_them_here_too(self):
+        """The same rule reached without writing a duplicate tag: an offset
+        larger than a line's own time clamps several starts to zero, which Java
+        calls out as making them one moment. Third-party files carry such
+        offsets."""
+        parsed = lyrics.truth_tokens(
+            "[offset:20000]\n[00:10.00]uno\n[00:14.00]\n[01:00.00]due\n")
+        self.assertEqual({}, parsed.ends)
+
+    def test_an_entry_of_only_word_tags_is_not_a_line_to_end(self):
+        """It is not blank, so it is not a clear; it produces no run, so Java
+        builds no line from it. Treating it as one moves the clear that follows
+        onto the previous line and overwrites the end that line really stated."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno\n[00:12.00]\n[00:13.00]<00:13.50>\n[00:14.00]\n"
+            "[00:40.00]due\n[00:44.00]\n")
+        self.assertEqual({0: 12.0, 1: 44.0}, parsed.ends)
 
     def test_a_second_clear_ends_nothing(self):
         """Two clears in a row: the first states this line's end and the second
