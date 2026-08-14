@@ -412,10 +412,19 @@ class LineEndColumn(unittest.TestCase):
             "[offset:20000]\n[00:10.00]uno\n[00:14.00]\n[01:00.00]due\n")
         self.assertEqual({}, parsed.ends)
 
-    def test_an_entry_of_only_word_tags_is_not_a_line_to_end(self):
+    def test_an_entry_of_only_word_tags_closes_a_line_but_states_no_end(self):
         """It is not blank, so it is not a clear; it produces no run, so Java
-        builds no line from it. Treating it as one moves the clear that follows
-        onto the previous line and overwrites the end that line really stated."""
+        builds no line from it. But nextMeasuring reads only the times, so it
+        ends the line before it all the same, and the clear that follows states
+        the end of nothing. Crediting the line with that clear's time reports an
+        error against a loop that closed exactly."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno due\n[00:20.00]<00:20.50>\n[00:30.00]\n")
+        self.assertEqual({}, parsed.ends)
+
+    def test_a_line_that_follows_a_tag_only_entry_still_states_its_own_end(self):
+        """The closing is per line: the entry that ends one states nothing, and
+        the next line's own clear is unaffected."""
         parsed = lyrics.truth_tokens(
             "[00:10.00]uno\n[00:12.00]\n[00:13.00]<00:13.50>\n[00:14.00]\n"
             "[00:40.00]due\n[00:44.00]\n")

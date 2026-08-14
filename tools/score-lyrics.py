@@ -248,25 +248,30 @@ def truth_tokens(text: str) -> Truth:
     tokens: list[str] = []
     anchors: dict[int, float] = {}
     ends: dict[int, float] = {}
-    # The line a clear would end: its last token, and the moment it began.
-    # Both, because LrcLyrics ends a line at the next entry whose start is
-    # strictly greater -- an entry on the line's own moment does not end it,
-    # for the same reason a second voice does not -- and because an entry that
-    # produces no tokens is not a line at all, so nothing can end it.
+    # The line an end would be recorded against: its last token, and the moment
+    # it began. LrcLyrics ends a line at the first entry whose start is strictly
+    # greater, and nextMeasuring reads nothing but the times -- so *any* such
+    # entry closes it, whether or not that entry is itself a line. An entry on
+    # the line's own moment closes nothing, for the same reason a second voice
+    # does not end one.
+    #
+    # Only a closing entry with no text states an end. A timestamp with no text
+    # clears the display, which is the one place a lyric file says where a line
+    # stops; a closing entry that carries words ends the line just as surely but
+    # states nothing about it, and crediting the line with a later clear's time
+    # would report an error against a loop that closed exactly.
+    #
+    # An end is anchored on its line's last token, so it pairs through the same
+    # word alignment an onset does and a lost line cannot shift every end after
+    # it.
     open_line: tuple[int, float] | None = None
     for start, body in timed:
         line_start = max(0.0, start - offset)
-        if jblank(body):
-            # A timestamp with no text clears the display. It is not a line; it
-            # ends the one before it, which is why it carries no token -- and
-            # why it is the one place a lyric file states where a line stops.
-            # Anchored on that line's last token, so it is paired through the
-            # word alignment exactly as an onset is and a lost line cannot
-            # shift every end after it. Only the first clear after a line
-            # counts: a second states the end of nothing.
-            if open_line is not None and line_start > open_line[1]:
+        if open_line is not None and line_start > open_line[1]:
+            if jblank(body):
                 ends[open_line[0]] = line_start
-                open_line = None
+            open_line = None
+        if jblank(body):
             continue
         before = len(tokens)
         # Runs, exactly as wordsOf cuts them: the leading run is anchored by the
@@ -286,9 +291,9 @@ def truth_tokens(text: str) -> Truth:
         if not jblank(tail):
             open_run(tail, at, tokens, anchors)
         # Only where this entry actually produced a line. A body of nothing but
-        # word tags is not blank and is not a line either: wordsOf finds no run
-        # in it, so Java builds no LyricLine, and a clear after it ends whatever
-        # line came before rather than replacing that line's own stated end.
+        # word tags is not blank and is not a line either -- wordsOf finds no
+        # run in it, so Java builds no LyricLine -- but it has already closed
+        # the line before it above, which is the half that matters.
         if len(tokens) > before:
             open_line = (len(tokens) - 1, line_start)
 
