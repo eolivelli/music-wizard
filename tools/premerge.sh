@@ -57,6 +57,7 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # whenever git cannot answer.
 baseline_drift() {
   local tip base cut moved n t guard= origin=fetched
+  local since="baseline file(s) changed on main since the branch point"
   git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || return 0
   # Read origin/main rather than a memory of it: a tracking ref last updated at
   # the branch point reports exactly the zero drift this exists to catch. Not
@@ -102,18 +103,22 @@ baseline_drift() {
   python3 tools/baseline-drift.py "$base" "$tip" $moved
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
   # about a column added to every row is how a prompt teaches people to skip it
-  # -- so the verdict line, which is what gets pasted into a PR, says which of
-  # the three it was rather than counting files. An exit status that is none of
-  # these is the harness itself failing, and takes the cautious branch.
+  # -- so the verdict line, which is what gets pasted into a PR, carries the
+  # kind as well as the count. The kind describes the set: the count is of
+  # files that changed, and what follows it holds of all of them. An exit
+  # status that is none of these is the harness itself failing, and takes the
+  # cautious branch, where "may be stale" is true whether or not it knows.
+  # Nothing may come between the call and the case: any command, a `local`
+  # included, replaces the status being read.
   case "$?" in
     0) echo "No row in them changed."
-       drift="$n baseline file(s) touched on main since the branch point, no row changed" ;;
+       drift="$n $since, no row changed" ;;
     2) echo "No figure the rows still share moved. Check anything you quoted from"
        echo "a column listed above."
-       drift="$n baseline file(s) reshaped on main since the branch point, no figure moved" ;;
+       drift="$n $since, no figure moved" ;;
     *) echo "A figure this branch quoted earlier may have been measured against the"
        echo "older baseline. Re-take it, or do not quote it."
-       drift="$n baseline file(s) moved on main since the branch point" ;;
+       drift="$n $since, a figure may be stale" ;;
   esac
   return 0
 }

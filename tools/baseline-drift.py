@@ -5,7 +5,7 @@
 life was measured against a baseline `main` has regenerated since (#428). A
 column added to every row rewrites the whole file without moving a single
 measurement, so reporting that the way a changed number is reported would teach
-people to skip the prompt -- hence the two kinds.
+people to skip the prompt -- hence the kinds below.
 
     python3 tools/baseline-drift.py <base> <tip> <path>...
 
