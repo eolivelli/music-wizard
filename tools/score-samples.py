@@ -6,6 +6,17 @@ the instructions in samples/list.txt), this runs the shaded CLI, segments the
 estimated chords into bars on the recording's own tracked beats, aligns the
 known cycle at the best rotation, and reports per-bar accuracy.
 
+It then reports the bar phase each of those rows rests on. The bars above begin
+where the estimator decided they begin, and on real material that decision is
+routinely made at the floor of its own confidence (#303) -- so a row can move
+because the chords moved or because the phase flipped, and the columns above
+cannot tell the two apart. Each phase row carries the estimator's confidence in
+the phase and what the same chords and the same beats score with the bar lines
+begun on each other beat, so the best of those is a reading of the chord
+estimate that the phase choice cannot move. That best is an oracle -- the known
+cycle picks it -- so it is not a figure the tool could have produced, and it is
+there to explain a row that moved, never to be quoted as accuracy.
+
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
 for every row. That table covers every file the chord table does, and the ones
@@ -132,6 +143,13 @@ KEYS = {
     "pop-c-g-am-f-120.mp3": "C major",
     "pop-am-f-c-g-144.mp3": "A minor",
 }
+
+# DownbeatEstimator.BASE_CONFIDENCE: what it reports for a phase nothing at all
+# supports. Printed once in the phase block's header rather than tested against
+# per row -- which rows sit at it is the whole of what that column is for, and a
+# tolerance for "near it" would be one more constant deciding that.
+# tools/test-harness-rules.py holds this copy to the Java one.
+PHASE_FLOOR = 0.35
 
 LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 ACCIDENTAL = {"NONE": 0, "SHARP": 1, "FLAT": -1, "DOUBLE_SHARP": 2, "DOUBLE_FLAT": -2}
@@ -287,6 +305,85 @@ def score(mp3: Path, doc: dict, truth: list[str]) -> None:
           f"  N.C. {100 * nc_time / duration:.1f}% of {duration:.0f}s")
 
 
+def bar_phase(doc: dict) -> tuple[int, int] | None:
+    """Which beat of the bar the grid begins bars on, and how many it counts.
+
+    None where the phase is not a fact about this grid at all: no bar positions
+    recorded, a meter of one beat, too few beats to lay two bars at every phase,
+    or positions that are not the regular ones `BeatTracker.toBeatGrid` writes.
+    The per-phase scores below shift the bar lines by index, so an irregular
+    grid would have them measuring something other than the phase.
+    """
+    beats = doc.get("beatGrid", {}).get("beats", [])
+    positions = [b.get("positionInBar") for b in beats]
+    if not positions or any(p is None for p in positions):
+        return None
+    per_bar = max(positions) + 1
+    if per_bar < 2 or len(beats) < 2 * per_bar:
+        return None
+    phase = (per_bar - positions[0]) % per_bar
+    if any(p != (i - phase) % per_bar for i, p in enumerate(positions)):
+        return None
+    return phase, per_bar
+
+
+def phase_confidence(doc: dict) -> float | None:
+    """What the estimator reported for the phase alone.
+
+    `BeatTracker.toBeatGrid` records the product of the phase's confidence and
+    the beats' -- a phase is only as good as the beats it phases -- so the
+    phase's own is the ratio. Reading the product instead would report the beat
+    tracker's doubt as the downbeat estimator's, and the floor this column
+    exists to show would then appear at a different number on every recording.
+    """
+    grid = doc.get("beatGrid", {})
+    beat = grid.get("beatConfidence", {}).get("value")
+    downbeat = grid.get("downbeatConfidence", {}).get("value")
+    if not beat or downbeat is None:
+        return None
+    return downbeat / beat
+
+
+def phase_roots(doc: dict, truth: str, per_bar: int) -> list[float]:
+    """Bars correct on root, as a percentage, with bars begun on each beat.
+
+    The same chords and the same beats every time; only which of them starts a
+    bar moves. So the spread over this list is what the phase decision is worth
+    on this row, and its best entry reads the chord estimate with the phase
+    choice taken out of it.
+
+    Every phase has at least one bar, since `bar_phase` returns nothing for a
+    grid shorter than two bars.
+    """
+    spans = doc.get("chords", {}).get("chords", [])
+    beats = [b["seconds"] for b in doc.get("beatGrid", {}).get("beats", [])]
+    want = parse_truth(truth)
+    scores = []
+    for phase in range(per_bar):
+        lines = beats[phase::per_bar]
+        shares = [bar_shares(spans, a, b) for a, b in zip(lines, lines[1:])]
+        root_ok, _ = accuracy(shares, want)
+        scores.append(100 * root_ok / len(shares))
+    return scores
+
+
+def score_phase(mp3: Path, doc: dict, truth: str) -> None:
+    """The bar phase this file's row above rests on, and what it cost."""
+    grid = bar_phase(doc)
+    confidence = phase_confidence(doc)
+    if grid is None or confidence is None:
+        print(f"  phase {mp3.name}: no bar phase to read")
+        return
+    phase, per_bar = grid
+    scores = phase_roots(doc, truth, per_bar)
+    # Ties go to the phase the estimator chose, so that a row where no other
+    # phase does better says so by naming that phase rather than an equal one.
+    best = max(range(per_bar), key=lambda p: (scores[p], p == phase))
+    print(f"  phase {mp3.name}: beat {phase} of {per_bar} at {confidence:.3f}"
+          f"  root {scores[phase]:.1f}%"
+          f"  best beat {best} at {scores[best]:.1f}%")
+
+
 def score_key(mp3: Path, doc: dict, want: str) -> None:
     """The key the run named, against the one expected for the file."""
     keys = doc.get("keys", [])
@@ -338,6 +435,18 @@ def main() -> None:
             score(REPO / "samples" / name, doc, truth)
     for name in missing:
         print(missing_line(name))
+
+    print("bar phase the rows above rest on, at the estimator's own confidence"
+          f" in it (a phase nothing supports reports {PHASE_FLOOR:.3f}):")
+    missing = []
+    for name, truth in BENCHMARKS.items():
+        doc = doc_for(name)
+        if doc is None:
+            missing.append(name)
+        else:
+            score_phase(REPO / "samples" / name, doc, truth)
+    for name in missing:
+        print(missing_line(f"phase {name}"))
 
     print("keys, against the expected key for each file:")
     missing = []
