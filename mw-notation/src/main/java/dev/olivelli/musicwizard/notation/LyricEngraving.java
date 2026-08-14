@@ -257,28 +257,75 @@ final class LyricEngraving {
         long chartEnd = barStart[bars.size()];
         for (LyricLine line : score.lyrics().lines()) {
             Lane lane = lanes.get(laneFor(line.startSeconds(), lanes));
-            for (LyricWord word : line.words()) {
-                List<Hyphenator.Syllable> parts = hyphenator
-                        .map(h -> h.syllables(word.text()))
-                        .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)));
-                // All of a word or none of it -- see fitted. The unsplit word is
-                // tried when the syllables will not fit, and only then is the
-                // word dropped.
-                List<Syllable> placed =
-                        fitted(parts, word, bars, barStart, chartEnd, lane.lastUnit);
-                if (placed.isEmpty() && parts.size() > 1) {
-                    placed = fitted(List.of(new Hyphenator.Syllable(word.text(), false)),
-                            word, bars, barStart, chartEnd, lane.lastUnit);
+            List<LyricWord> words = line.words();
+            int at = 0;
+            while (at < words.size()) {
+                // The list is not always one word to a word: an aligner that
+                // measures syllables hands each of them over separately, and a
+                // compound is written as one word and joined as several. A run
+                // of joined words is one word on the page, so fitted's rule
+                // holds over the run rather than over each of them.
+                int end = at;
+                while (end + 1 < words.size() && words.get(end).hyphenatedToNext()) {
+                    end++;
                 }
-                if (!placed.isEmpty()) {
-                    lane.add(placed, syllableSeconds(word, placed.size() - 1, placed.size()));
+                List<LyricWord> run = words.subList(at, end + 1);
+                // The unsplit run is tried when the syllables will not fit, and
+                // only then is it dropped.
+                Placed placed = fittedRun(run, hyphenator, true, bars, barStart,
+                        chartEnd, lane.lastUnit);
+                if (placed == null) {
+                    placed = fittedRun(run, hyphenator, false, bars, barStart,
+                            chartEnd, lane.lastUnit);
                 }
+                if (placed != null) {
+                    lane.add(placed.syllables(), placed.sungThrough());
+                }
+                at = end + 1;
             }
         }
         // A lane nothing reached is not engraved: lyrics whose lines follow one
         // another come out the one block they always did.
         return lanes.stream().filter(lane -> !lane.syllables.isEmpty())
                 .map(lane -> lane.syllables).toList();
+    }
+
+    /** A run that fitted: its syllables, and when the last of them is sung. */
+    private record Placed(List<Syllable> syllables, double sungThrough) {
+    }
+
+    /**
+     * One run of hyphen-joined words on the grid, or {@code null} when any part
+     * of it does not fit.
+     *
+     * <p>{@code split} chooses between the hyphenator's syllables and the words
+     * as written, which is what makes the retry above a weaker attempt at the
+     * same run rather than a different one.
+     */
+    private static Placed fittedRun(List<LyricWord> run, Optional<Hyphenator> hyphenator,
+                                    boolean split, List<ChartLayout.Bar> bars,
+                                    long[] barStart, long chartEnd, long previous) {
+        List<Syllable> all = new ArrayList<>();
+        long cursor = previous;
+        double sungThrough = Double.NEGATIVE_INFINITY;
+        for (LyricWord word : run) {
+            List<Hyphenator.Syllable> parts = split
+                    ? hyphenator.map(h -> h.syllables(word.text()))
+                            .orElseGet(() -> List.of(new Hyphenator.Syllable(word.text(), false)))
+                    : List.of(new Hyphenator.Syllable(word.text(), false));
+            List<Syllable> placed = fitted(parts, word, bars, barStart, chartEnd, cursor,
+                    hyphenator);
+            if (placed.isEmpty()) {
+                return null;
+            }
+            all.addAll(placed);
+            cursor = placed.get(placed.size() - 1).unit();
+            // The greatest, as Lane.add takes: a held piece can still be
+            // sounding when the one written after it is sung.
+            sungThrough = Math.max(sungThrough,
+                    syllableSeconds(word, placed.size() - 1, placed.size()));
+        }
+        return new Placed(List.copyOf(all), sungThrough);
     }
 
     /**
@@ -329,7 +376,8 @@ final class LyricEngraving {
      */
     private static List<Syllable> fitted(List<Hyphenator.Syllable> parts, LyricWord word,
                                          List<ChartLayout.Bar> bars, long[] barStart,
-                                         long chartEnd, long previous) {
+                                         long chartEnd, long previous,
+                                         Optional<Hyphenator> hyphenator) {
         List<Syllable> placed = new ArrayList<>(parts.size());
         long cursor = previous;
         for (int i = 0; i < parts.size(); i++) {
@@ -338,12 +386,17 @@ final class LyricEngraving {
             if (unit >= chartEnd) {
                 return List.of();
             }
-            // Only a break the hyphenator chose is drawn: a compound already
-            // carries the hyphen it was written with, and a second one gives
-            // well--known. The last syllable takes whatever the word itself said.
-            boolean joins = i + 1 < parts.size()
-                    ? parts.get(i).hyphenToNext() : word.hyphenatedToNext();
-            placed.add(new Syllable(unit, parts.get(i).text(), joins));
+            // Whether this syllable continues into the next, and whether a
+            // hyphen is drawn between them, are two questions. A compound
+            // already carries the hyphen it was written with, so drawing one
+            // after it gives well--known -- and a syllable can reach here from
+            // an aligner rather than from the hyphenator, carrying only the
+            // first answer. So the second is derived from the text, in the one
+            // place that defines what a separator is.
+            String text = parts.get(i).text();
+            boolean joins = (i + 1 < parts.size() || word.hyphenatedToNext())
+                    && hyphenator.map(h -> !h.endsAtItsOwnBreak(text)).orElse(true);
+            placed.add(new Syllable(unit, text, joins));
             cursor = unit;
         }
         return placed;
