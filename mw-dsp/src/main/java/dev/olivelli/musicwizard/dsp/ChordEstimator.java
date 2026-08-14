@@ -837,17 +837,19 @@ public final class ChordEstimator {
      * every term is zero.
      *
      * <p><b>The other half of that, which the paragraph above does not say and
-     * which is the cost of taking the largest share rather than the mean.</b>
-     * Subtracting the best root is the same thing as scoring no-chord as though
-     * it held whichever root the bass names, so a chord on any <em>other</em>
-     * root is pushed toward silence by up to {@link #BASS_ROOT_WEIGHT}. That is
-     * a real trade and not a free one: a chroma the templates back weakly, under
-     * a bass naming a different root, can go to no-chord where it used to be
-     * named. It is deliberately the safe direction — #185's defect was a chord
-     * over everything, and #446's was chords over digital silence — and on the
-     * scored corpus it costs a bar of root on two rows of {@code
-     * tools/baselines/score-chart.txt} and leaves no-chord under two percent
-     * everywhere. Where the line between the two really belongs is #195.
+     * which is the cost of subtracting the largest share.</b> Doing so is the
+     * same thing as scoring no-chord as though it held whichever root the bass
+     * names, so a chord on any <em>other</em> root is pushed toward silence by
+     * up to {@link #BASS_ROOT_WEIGHT}. That is a real trade and not a free one:
+     * a chroma the templates back weakly, under a bass naming a different root,
+     * can go to no-chord where it used to be named. Neither direction is the
+     * safe one to err in, and this file records both — #185 is no-chord
+     * swallowing a whole recording, which is why {@link #NO_CHORD_SIMILARITY}
+     * exists at all, and #446 is chords named over digital silence. So the size
+     * of the trade is the thing, and on the scored corpus it is a bar of root on
+     * two rows of {@code tools/baselines/score-chart.txt} and about a point of
+     * no-chord on two rows of {@code tools/baselines/score-samples.txt}. Where
+     * the line between the two really belongs is #195.
      */
     private static double[][] bassRootPrior(Chroma bass, int frames) {
         if (bass == null) {
