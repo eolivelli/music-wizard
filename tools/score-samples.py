@@ -11,9 +11,9 @@ where the estimator decided they begin, and on real material that decision is
 routinely made at the floor of its own confidence (#303) -- so a row can move
 because the chords moved or because the phase flipped, and the columns above
 cannot tell the two apart. Each phase row carries the estimator's confidence in
-the phase and what the same chords and the same beats score with the bar lines
-begun on each other beat, so the best of those is a reading of the chord
-estimate that the phase choice cannot move. That best is an oracle -- the known
+the phase, and the best the same chords and the same beats score with the bar
+lines begun on any other beat -- a reading of the chord estimate that the phase
+choice cannot move. That best is an oracle -- the known
 cycle picks it -- so it is not a figure the tool could have produced, and it is
 there to explain a row that moved, never to be quoted as accuracy.
 
@@ -348,13 +348,9 @@ def phase_roots(doc: dict, truth: str, per_bar: int) -> list[float]:
     """Bars correct on root, as a percentage, with bars begun on each beat.
 
     The same chords and the same beats every time; only which of them starts a
-    bar moves. So the spread over this list is what the phase decision is worth
-    on this row, and its best entry reads the chord estimate with the phase
-    choice taken out of it.
+    bar moves.
 
-    Root only, so a phase stays one number: a bar can hold the right root and
-    the wrong quality but never the reverse, since root+quality credit is a
-    subset of root credit, so the root column is where a mis-phased bar shows.
+    Root only, so a phase stays one number.
 
     Every phase has at least one bar, since `bar_phase` returns nothing for a
     grid shorter than two bars.
