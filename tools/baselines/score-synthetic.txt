@@ -1,5 +1,5 @@
 Synthetic corpus, bar-by-bar against each package's own spec
 (sequence-aligned: no rotation credit; see the module docstring)
-  pop-axis-g-116.mp3: bars=44/44  root 44.0/44 (100.0%)  root+quality 40.0/44 (90.9%)  split 0  key OK
+  pop-axis-g-116.mp3: bars=44/44  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
   pop-threechord-c-108.mp3: bars=28/28  root 28.0/28 (100.0%)  root+quality 28.0/28 (100.0%)  split 0  key OK
   rocknroll-12bar-a-168.mp3: bars=47/48  root 34.0/48 (70.8%)  root+quality 10.5/48 (21.9%)  split 12  key OK

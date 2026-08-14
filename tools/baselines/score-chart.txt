@@ -4,8 +4,8 @@ charts emitted for samples with known ground truth:
   blues-e-90bpm.mp3: bars=113  chords/bar 1.02  root 111.0/113 (98.2%)  root+quality 93.0/113 (82.3%)  split 0  short: tracked 0.0%, chart 0.0%
   slow-68-40.mp3: bars=182  chords/bar 1.08  root 103.0/182 (56.6%)  root+quality 80.5/182 (44.2%)  split 13  short: tracked 0.0%, chart 12.1%
   g-blues-shuffle-cc.mp3: bars=137  chords/bar 1.01  root 120.5/137 (88.0%)  root+quality 87.5/137 (63.9%)  split 1  short: tracked 0.0%, chart 13.5%
-  bm-blues-slow.mp3: bars=188  chords/bar 1.11  root 101.5/188 (54.0%)  root+quality 68.0/188 (36.2%)  split 20  short: tracked 0.0%, chart 20.7%
-  cm-blues-68-95.mp3: bars=92  chords/bar 1.22  root 28.0/92 (30.4%)  root+quality 17.5/92 (19.0%)  split 20  short: tracked 0.0%, chart 32.5%
+  bm-blues-slow.mp3: bars=188  chords/bar 1.11  root 101.5/188 (54.0%)  root+quality 80.0/188 (42.6%)  split 20  short: tracked 0.0%, chart 20.7%
+  cm-blues-68-95.mp3: bars=92  chords/bar 1.22  root 28.0/92 (30.4%)  root+quality 19.5/92 (21.2%)  split 20  short: tracked 0.0%, chart 32.5%
   waltz-am-e7-160.mp3: bars=209  chords/bar 1.00  root 106.0/209 (50.7%)  root+quality 106.0/209 (50.7%)  split 0  short: tracked 0.0%, chart 0.0%
   f-blues-swing-170.mp3: bars=111  chords/bar 1.12  root 25.0/111 (22.5%)  root+quality 14.0/111 (12.6%)  split 13  short: tracked 0.0%, chart 28.7%
   jazz-251-c-140.mp3: bars=177  chords/bar 1.13  root 27.5/177 (15.5%)  root+quality 21.0/177 (11.9%)  split 22  short: tracked 0.0%, chart 15.4%
