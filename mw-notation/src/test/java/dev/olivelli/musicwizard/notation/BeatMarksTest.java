@@ -250,6 +250,27 @@ class BeatMarksTest {
     }
 
     @Test
+    @DisplayName("the marks and the syllables are anchored the same way")
+    void oneAnchorForEverythingOnOneMoment() {
+        // #455. Both lanes are placed on one grid by ChartGrid, so a syllable
+        // and a mark on the same moment share an x -- but only if they are hung
+        // on that x the same way. Two anchors put them half a glyph apart at the
+        // very same instant, which reads as the misplacement the marks exist to
+        // reveal. Asserted as "the same", not as "LEFT", because what breaks the
+        // page is the two disagreeing rather than either value.
+        Score score = tracked(4, 0.5);
+        Score sung = score.withLyrics(LrcLyrics.parse("""
+                [00:00.00]<00:00.00>la <00:01.00>sol <00:02.00>mi <00:03.00>do
+                """, score.durationSeconds()));
+
+        List<String> anchors = LyricSheet.toLilyPond(sung, MARKED).lines()
+                .filter(line -> line.contains("self-alignment-X"))
+                .map(String::strip).distinct().toList();
+
+        assertThat(anchors).hasSize(1);
+    }
+
+    @Test
     @DisplayName("on the lyric sheet the marks sit between the chords and the words")
     void betweenTheChordsAndTheWords() {
         Score score = tracked(4, 0.5);
