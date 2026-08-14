@@ -73,7 +73,11 @@ public final class PitchTracker {
     /** C2. Below the bottom of a bass singer, and far below any melody. */
     public static final double MIN_HZ = 65.406;
 
-    /** D sharp 6: above any melody, and low enough to keep the bin count down. */
+    /**
+     * D sharp 6. Not a ceiling on singing — a soprano goes well above it — but
+     * on what this decoder pays for: every semitone of range is
+     * {@link #BINS_PER_SEMITONE} more states in every frame's Viterbi step.
+     */
     public static final double MAX_HZ = 1244.5;
 
     /**

@@ -179,9 +179,11 @@ class MelodyEstimationTest {
         @Test
         @DisplayName("drops a run's opening span when it is too short to be a note")
         void dropsSpansShorterThanANote() {
-            // Only a run's *first* span can be short — every later one starts
-            // where a departure was confirmed and so spans at least that long —
-            // which makes this the one shape that reaches the filter. A single
+            // Only a run's *first* span can be short. A later one opens where a
+            // departure began, and the departure after it cannot begin before
+            // the frame that confirmed this one, so it spans at least as long
+            // as a note must — which makes this the one shape that reaches the
+            // filter. A single
             // frame at 60 before forty at 72: the note is the 72, and it starts
             // at the run's beginning rather than a frame later.
             PitchTrack pitches = track(60.0, 1, 72.0, 40);

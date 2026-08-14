@@ -31,9 +31,16 @@ import java.util.Optional;
  * own block, the staff is {@link StaffNotation}'s, and the words are {@link
  * LyricEngraving}'s — this class places the three in one {@code \score} and
  * settles what each of them stops carrying when it is no longer alone on the
- * page. That division is the point: a lead sheet whose chord names were emitted
- * a second way here would be a second chart, free to disagree with
- * {@code chords.pdf} about where a bar is.
+ * page.
+ *
+ * <p><b>This page and {@code chords.pdf} can still put a chord in a different
+ * bar, and it is not a second emitter that does it (#501).</b> A chart is laid
+ * out from a score whose chords carry no beat positions, so {@link ChartLayout}
+ * bars them on the tracked downbeats; a staff has to be barred by the tempo
+ * map, because that is the axis its notes were quantized onto, so the same
+ * layout takes its other route here. The two agree wherever the grid is good
+ * and diverge where it is not — which is exactly the melody-only recording this
+ * output exists for.
  *
  * <p>The two blocks are aligned by musical time and not by counting bars. Each
  * writes its own bar checks, and LilyPond places both against the same clock,

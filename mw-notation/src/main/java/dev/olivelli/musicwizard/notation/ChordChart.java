@@ -506,15 +506,21 @@ public final class ChordChart {
      * entering inside a triplet is a sixth of a whole note; subtract that as a
      * double and every remaining chord is a length no duration can write, which
      * {@link LilyPondDuration} refuses by throwing — so {@code render} exited
-     * non-zero and wrote nothing at all, chart included, on the packages whose
-     * melody happens to enter inside a bracket.
+     * non-zero on the packages whose melody happens to enter inside a bracket.
      */
     private static List<String> intoPickup(ChartLayout.Bar bar, StaffNotation.Pickup pickup) {
         long units = leastCommonMultiple(LilyPondDuration.SHORTEST_DENOMINATOR,
                 pickup.wholeNoteDenominator());
         long barUnits = Math.round(bar.meter().quarterBeatsPerBar() * units / QUARTERS_PER_WHOLE);
-        long dropped = barUnits
-                - pickup.wholeNoteNumerator() * (units / pickup.wholeNoteDenominator());
+        // Clamped, for the case where the chart's first bar is shorter than the
+        // staff's pickup: the chart's origin is then past the staff's and there
+        // is no chord to print for the difference. Keeping every cell leaves a
+        // first bar that does not fill the pickup, which LilyPond reports as a
+        // failed bar check and the command reports as a warning — the posture
+        // this project takes over writing nothing. No path reaches it today; it
+        // needs a meter change and a chart beginning after it.
+        long dropped = Math.max(0, barUnits
+                - pickup.wholeNoteNumerator() * (units / pickup.wholeNoteDenominator()));
         List<String> written = new ArrayList<>();
         long at = 0;
         for (ChartLayout.Cell cell : bar.cells()) {

@@ -616,6 +616,33 @@ class MidiInputTest {
         }
 
         @Test
+        @DisplayName("--melody is answered, because render advises it blind too")
+        void melodyRequestIsAnswered() {
+            // Same shape as the transcription request above and the same reason:
+            // render offers --melody without naming a source kind, because it
+            // cannot know one. Here the advice is not merely redundant — a MIDI
+            // import assigns no melody role at all (#500) — so following it in
+            // silence would leave the user waiting for a part that can never
+            // arrive.
+            Path workspace = imported(MidiFixtures.fourChordSong(), "four");
+
+            CliRunner.Result analyze = CliRunner.run(
+                    "analyze", workspace.toString(), "--melody");
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.err())
+                    .contains("--melody has no effect on a MIDI workspace")
+                    .contains("#500");
+            // Not listed among the overrides the file supersedes: that list's
+            // reason is that the file declares its own tempo and meter, which
+            // says nothing about a melody.
+            assertThat(analyze.err()).doesNotContain("--melody, --tempo");
+            assertThat(analyze.out())
+                    .as("no melody row, because no melody role is ever assigned here")
+                    .doesNotContain("Melody  ");
+        }
+
+        @Test
         @DisplayName("--skip-separation is answered for what it is: doing nothing in this run")
         void skipSeparationIsNotAMidiSpecificExclusion() {
             // Round 3 found it described as an audio option, ignored in silence

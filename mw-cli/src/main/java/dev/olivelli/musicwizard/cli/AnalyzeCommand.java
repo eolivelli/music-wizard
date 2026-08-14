@@ -1076,10 +1076,10 @@ final class AnalyzeCommand implements Callable<Integer> {
                 "Key     %s (%.0f%% confidence)", key.displayName(),
                 100 * key.confidence().value())));
         lines.add("Chords  " + score.chords().size() + " spans");
-        // Only when the stage ran. An absent row says the melody was not asked
-        // for; a row reading zero says it was asked for and nothing was heard,
-        // and render answers those two differently -- so the summary must not
-        // spell them the same way.
+        // Absent when there is no melody, which covers both the stage not being
+        // asked for and its having heard nothing: the transcriber adds no empty
+        // track, so this row cannot read zero. The run that heard nothing has
+        // already said so in its progress line.
         score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack ->
                 lines.add("Melody  " + melodyTrack.size() + " notes"));
         return List.copyOf(lines);

@@ -218,15 +218,42 @@ class LeadSheetTest {
         // Two triplet eighths is a sixth of a whole note. Carried to the chord
         // names as a double and subtracted from the bar, every remaining chord
         // became a length LilyPond has no duration for -- and LilyPondDuration
-        // throws rather than writing one, so `render` exited non-zero having
-        // written nothing at all, the chart included, on three of the nine
-        // committed packages.
+        // throws rather than writing one, so `render` exited non-zero on three
+        // of the nine committed packages.
         String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
 
         assertThat(context(source, "\\new Staff")).contains("\\partial 1*1/6");
         assertThat(barsOf(context(source, "\\new ChordNames")))
                 .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
                 .isEqualTo("c1*1/6");
+    }
+
+    @Test
+    @DisplayName("shortens the chord the pickup begins inside")
+    void cutsThroughAChordThatWasAlreadySounding() {
+        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(map, 3, 1, "G4"),
+                note(map, 4, 4, "C5"),
+                note(map, 8, 4, "E5")), Confidence.CERTAIN);
+        // One chord across the whole first bar, so the pickup begins in the
+        // middle of it rather than on a boundary between two cells.
+        Score score = Score.empty(map, 12 / (QUARTER_BPM / 60))
+                .withTrack(voice)
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 4),
+                        chord(map, "F4", ChordQuality.MAJOR, 4, 8),
+                        chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12)),
+                        Confidence.of(0.9)));
+        QuantizedScore quantized = Quantizer.quantize(score);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Staff")).contains("\\partial 4");
+        assertThat(barsOf(context(source, "\\new ChordNames")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .as("the chord keeps its name and loses the beats outside the pickup")
+                .isEqualTo("c4");
     }
 
     @Test
