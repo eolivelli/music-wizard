@@ -11,6 +11,7 @@ onset for the lyric one. Run it directly:
 
 import contextlib
 import io
+import re
 import sys
 import unittest
 from importlib import import_module
@@ -122,6 +123,115 @@ class ModelBars(unittest.TestCase):
 
     def test_a_bar_no_span_reaches_earns_nothing(self):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
+
+
+def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
+        beat_confidence: float = 0.5, phase_confidence: float = 0.35) -> dict:
+    """A score.json as far as the phase block reads it: one beat a second, bar
+    positions as BeatTracker.toBeatGrid writes them, and the two confidences it
+    records as a product."""
+    return {
+        "chords": {"chords": spans},
+        "beatGrid": {
+            "beats": [{"seconds": float(i),
+                       "downbeat": (i - phase) % per_bar == 0,
+                       "positionInBar": (i - phase) % per_bar}
+                      for i in range(beats)],
+            "beatConfidence": {"value": beat_confidence},
+            "downbeatConfidence": {"value": beat_confidence * phase_confidence},
+        },
+    }
+
+
+# Four beats of C then four of G, twice: one chord to the bar at phase 0.
+ALTERNATING = [span("C", 0.0, 4.0), span("G", 4.0, 8.0),
+               span("C", 8.0, 12.0), span("G", 12.0, 16.0)]
+
+
+class BarPhase(unittest.TestCase):
+    """#303: a cell scored on a bar axis the estimator could not vouch for.
+
+    The columns here are what tells a reader of a moved baseline row whether
+    the chords moved or only the phase did."""
+
+    def test_the_phase_is_read_off_the_bar_positions(self):
+        self.assertEqual((3, 4), samples.bar_phase(doc([], phase=3)))
+
+    def test_an_irregular_grid_has_no_phase_to_read(self):
+        """The per-phase scores shift bar lines by index, so on a grid whose
+        positions are not the regular ones they would measure something else."""
+        irregular = doc([])
+        irregular["beatGrid"]["beats"][5]["positionInBar"] = 2
+        self.assertIsNone(samples.bar_phase(irregular))
+
+    def test_a_grid_of_under_two_bars_has_no_phase_to_read(self):
+        self.assertIsNone(samples.bar_phase(doc([], beats=7)))
+
+    def test_one_beat_to_the_bar_has_no_phase_to_read(self):
+        self.assertIsNone(samples.bar_phase(doc([], per_bar=1)))
+
+    def test_the_phase_confidence_divides_the_beats_back_out(self):
+        """The grid records the product of the two, and it is the phase's own
+        half that says whether the estimator vouched for the axis."""
+        self.assertAlmostEqual(
+            0.35, samples.phase_confidence(doc([], beat_confidence=0.4)))
+
+    def test_the_chosen_phase_scores_what_the_row_above_says(self):
+        """The chord table bars on the flagged downbeats and this bars by
+        index; they are the same bars, and a phase column that disagreed with
+        the row it qualifies would be worse than none."""
+        d = doc(ALTERNATING, phase=2)
+        downbeats = [b["seconds"] for b in d["beatGrid"]["beats"] if b["downbeat"]]
+        shares = [samples.bar_shares(ALTERNATING, a, b)
+                  for a, b in zip(downbeats, downbeats[1:])]
+        root, _ = samples.accuracy(shares, samples.parse_truth("C G"))
+        self.assertEqual(100 * root / len(shares),
+                         samples.phase_roots(d, "C G", 4)[2])
+
+    def test_a_phase_that_halves_every_bar_scores_below_the_right_one(self):
+        """Two beats of each chord in every bar, so no chord dominates and each
+        bar counts as the half it got right. This is the spread the chosen
+        phase is picked out of, and on these fixtures it is 50 points."""
+        scores = samples.phase_roots(doc(ALTERNATING, phase=2), "C G", 4)
+        self.assertEqual(100.0, scores[0])
+        self.assertEqual(50.0, scores[2])
+
+    def test_the_best_phase_is_the_chosen_one_where_nothing_beats_it(self):
+        """One chord throughout scores the same at every phase. Naming the
+        chosen phase then says no other does better; naming the lowest index
+        would read as a phase the estimator passed over."""
+        line = phase_line(doc([span("C", 0.0, 16.0)], phase=2), "C")
+        self.assertIn("beat 2 of 4", line)
+        self.assertIn("best beat 2 at 100.0%", line)
+
+    def test_a_row_names_the_phase_it_scored_and_the_best_available(self):
+        line = phase_line(doc(ALTERNATING, phase=2), "C G")
+        self.assertIn("beat 2 of 4 at 0.3500", line)
+        self.assertIn("root 50.0%", line)
+        self.assertIn("best beat 0 at 100.0%", line)
+
+    def test_a_grid_with_no_phase_says_so_rather_than_scoring_one(self):
+        self.assertIn("no bar phase to read", phase_line(doc([], beats=7), "C"))
+
+    def test_the_floor_is_the_estimator_s_own(self):
+        """PHASE_FLOOR is a copy of DownbeatEstimator.BASE_CONFIDENCE, printed
+        in the block's header as the value a phase nothing supports reports. A
+        silent copy is how the header comes to name a number the estimator no
+        longer uses."""
+        source = (Path(__file__).resolve().parent.parent
+                  / "mw-dsp/src/main/java/dev/olivelli/musicwizard/dsp"
+                  / "DownbeatEstimator.java").read_text(encoding="utf-8")
+        match = re.search(r"BASE_CONFIDENCE\s*=\s*([0-9.]+)\s*;", source)
+        self.assertIsNotNone(match, "BASE_CONFIDENCE not found in DownbeatEstimator")
+        self.assertEqual(float(match.group(1)), samples.PHASE_FLOOR)
+
+
+def phase_line(document: dict, truth: str) -> str:
+    """The one line score_phase prints for a file."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        samples.score_phase(Path("x.mp3"), document, truth)
+    return out.getvalue().strip()
 
 
 def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] | None = None):
@@ -605,6 +715,7 @@ class Keying(unittest.TestCase):
                       (Path(__file__).resolve().parent / "premerge.sh").read_text())
         for line in (samples.missing_line("x.mp3"),
                      samples.missing_line("key x.mp3"),
+                     samples.missing_line("phase x.mp3"),
                      chart.missing_line("x.mp3"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)
