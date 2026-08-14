@@ -26,6 +26,7 @@ REPO_ARGS="${MAVEN_ARGS:-}"
 fail=0
 full=0
 skipped=0
+drift=0
 
 usage() {
   cat <<'EOF'
@@ -47,6 +48,108 @@ for arg in "$@"; do
 done
 
 step() { printf '\n=== %s ===\n' "$1"; }
+
+# A prompt, never a gate (#428). The harness diff below compares this tree
+# against the committed baselines, so it cannot see a figure quoted in a PR
+# body, an issue comment or a javadoc earlier in this branch's life and
+# measured against a baseline main has regenerated since. This says whether
+# that could have happened. It never sets fail, and it says nothing at all
+# whenever git cannot answer.
+baseline_drift() {
+  local tip base first moved guard= origin=fetched
+  git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || return 0
+  # Read origin/main rather than a memory of it: a tracking ref last updated at
+  # the branch point reports exactly the zero drift this exists to catch. Being
+  # offline is not an error -- the local ref is used and said to be old.
+  command -v timeout >/dev/null && guard="timeout 30"
+  $guard git fetch --quiet origin main 2>/dev/null || origin="local ref, origin unreachable"
+  tip=$(git rev-parse --verify --quiet refs/remotes/origin/main) || return 0
+  # The branch point is where this branch STARTED, not merge-base(HEAD, main).
+  # Once the branch has merged current main -- which is how this script is
+  # meant to be run -- that merge-base is main itself and the answer is always
+  # zero. The oldest commit on HEAD and not on main pins the start instead; a
+  # feature branch merged in makes that window wider, never narrower.
+  first=$(git rev-list --topo-order --reverse HEAD --not "$tip" 2>/dev/null | head -1)
+  [ -n "$first" ] || return 0   # detached at main, or on main, or behind it
+  base=$(git merge-base "$first" "$tip" 2>/dev/null)
+  [ -n "$base" ] || return 0    # shallow clone, or no common history
+  moved=$(git diff --name-only "$base" "$tip" -- tools/baselines/ 2>/dev/null)
+
+  step "baseline drift since the branch point (prompt, not a gate)"
+  printf 'branch point %s; origin/main since then: +%s commits, %s not merged here (%s).\n' \
+    "$(git rev-parse --short "$base")" \
+    "$(git rev-list --count "$base..$tip" 2>/dev/null)" \
+    "$(git rev-list --count "HEAD..$tip" 2>/dev/null)" "$origin"
+  if [ -z "$moved" ]; then
+    echo "no file under tools/baselines/ changed on main since then."
+    return 0
+  fi
+  drift=$(grep -c . <<<"$moved")
+  python3 - "$base" "$tip" <<'PY' $moved
+import re, subprocess, sys
+
+base, tip, paths = sys.argv[1], sys.argv[2], sys.argv[3:]
+
+def rows(rev, path):
+    """Baseline rows as name -> {field shape: field}, or None if absent."""
+    p = subprocess.run(["git", "show", f"{rev}:{path}"],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        return None
+    out = {}
+    for line in p.stdout.splitlines():
+        if not line[:1].isspace() or ":" not in line:
+            continue                      # a header line, not a row
+        name, _, body = line.partition(":")
+        fields = {}
+        for f in re.split(r"\s{2,}", body.strip()):
+            # A field is keyed by its shape -- itself with every number masked
+            # -- so a column added or renamed reads as a shape change while a
+            # measurement that moved reads as a figure change. Without that,
+            # adding a column rewrites every row and the prompt cries wolf.
+            k = re.sub(r"\d+(?:\.\d+)?", "#", f)
+            fields[k] = fields.get(k, "") + f
+        out[name.strip()] = fields
+    return out
+
+remeasured = False
+for path in paths:
+    old, new = rows(base, path), rows(tip, path)
+    name = path.rsplit("/", 1)[-1]
+    if old is None or new is None:
+        remeasured = True
+        print(f"  {name}: {'added' if old is None else 'removed'} on main")
+        continue
+    common = sorted(set(old) & set(new))
+    figures = [r for r in common
+               if any(k in new[r] and old[r][k] != new[r][k] for k in old[r])]
+    shape = [r for r in common if set(old[r]) != set(new[r])]
+    bits = []
+    if set(old) != set(new):
+        remeasured = True
+        bits.append(f"{len(set(new) - set(old))} rows added, "
+                    f"{len(set(old) - set(new))} removed")
+    if figures:
+        remeasured = True
+        bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
+    if shape:
+        bits.append(f"columns changed in {len(shape)} of {len(common)} rows"
+                    + ("" if figures else ", no shared figure moved"))
+    print(f"  {name}: " + ("; ".join(bits) if bits else "rows unchanged"))
+
+sys.exit(1 if remeasured else 0)
+PY
+  # Only a figure that moved can invalidate a quoted one. Saying the same thing
+  # about a column added to every row is how a prompt teaches people to skip it.
+  if [ "$?" -eq 0 ]; then
+    echo "No figure moved there -- the rows were rewritten, not re-measured."
+  else
+    echo "A figure this branch quoted earlier may have been measured against the"
+    echo "older baseline. Re-take it, or do not quote it."
+  fi
+  return 0
+}
+baseline_drift
 
 # One Maven invocation either way. -Pintegration only adds failsafe
 # executions, so it runs everything plain `verify` runs and the ITs as well;
@@ -136,5 +239,9 @@ step "verdict"
 # suites that were never run here.
 [ "$full" -eq 1 ] && scope="build + suites + harnesses" || scope="build + harnesses"
 [ "$skipped" -gt 0 ] && scope="$scope; $skipped harness rows skipped"
+# The verdict is the line that gets pasted into a PR, so the drift prompt is
+# named here too -- a reader of the pasted line is exactly who needs to know
+# that a figure in the body around it may predate a baseline main regenerated.
+[ "$drift" -gt 0 ] && scope="$scope; $drift baseline file(s) moved on main since the branch point"
 [ "$fail" -eq 0 ] && echo "PREMERGE: PASS ($scope)" || echo "PREMERGE: FAIL ($scope)"
 exit "$fail"
