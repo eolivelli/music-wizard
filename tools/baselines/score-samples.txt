@@ -1,33 +1,33 @@
 samples with known ground truth:
   blues-a-90bpm.mp3: bars=113  root 97.0/113 (85.8%)  root+quality 96.0/113 (85.0%)  split 10  N.C. 0.0% of 304s
-  blues-shuffle-a-106bpm.mp3: bars=146  root 127.5/146 (87.3%)  root+quality 70.5/146 (48.3%)  split 1  N.C. 0.0% of 343s
+  blues-shuffle-a-106bpm.mp3: bars=146  root 131.0/146 (89.7%)  root+quality 80.0/146 (54.8%)  split 0  N.C. 0.2% of 343s
   blues-e-90bpm.mp3: bars=111  root 110.0/111 (99.1%)  root+quality 92.0/111 (82.9%)  split 0  N.C. 0.0% of 302s
-  slow-68-40.mp3: bars=181  root 101.5/181 (56.1%)  root+quality 80.5/181 (44.5%)  split 1  N.C. 0.0% of 372s
-  g-blues-shuffle-cc.mp3: bars=136  root 117.5/136 (86.4%)  root+quality 83.5/136 (61.4%)  split 1  N.C. 0.5% of 316s
-  bm-blues-slow.mp3: bars=187  root 99.0/187 (52.9%)  root+quality 78.0/187 (41.7%)  split 1  N.C. 0.1% of 336s
-  cm-blues-68-95.mp3: bars=91  root 22.0/91 (24.2%)  root+quality 10.0/91 (11.0%)  split 0  N.C. 0.5% of 347s
+  slow-68-40.mp3: bars=181  root 103.5/181 (57.2%)  root+quality 83.5/181 (46.1%)  split 1  N.C. 0.1% of 372s
+  g-blues-shuffle-cc.mp3: bars=136  root 131.0/136 (96.3%)  root+quality 100.0/136 (73.5%)  split 0  N.C. 0.5% of 316s
+  bm-blues-slow.mp3: bars=187  root 98.0/187 (52.4%)  root+quality 88.0/187 (47.1%)  split 1  N.C. 0.1% of 336s
+  cm-blues-68-95.mp3: bars=91  root 32.0/91 (35.2%)  root+quality 20.0/91 (22.0%)  split 0  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=208  root 106.0/208 (51.0%)  root+quality 106.0/208 (51.0%)  split 0  N.C. 0.4% of 319s
-  f-blues-swing-170.mp3: bars=111  root 24.5/111 (22.1%)  root+quality 14.0/111 (12.6%)  split 10  N.C. 0.7% of 316s
-  jazz-251-c-140.mp3: bars=175  root 35.0/175 (20.0%)  root+quality 30.0/175 (17.1%)  split 8  N.C. 0.3% of 304s
-  fm7-vamp-110.mp3: bars=143  root 134.5/143 (94.1%)  root+quality 93.5/143 (65.4%)  split 3  N.C. 0.5% of 328s
-  eb7-vamp-130.mp3: bars=165  root 154.0/165 (93.3%)  root+quality 102.0/165 (61.8%)  split 6  N.C. 0.5% of 309s
+  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.5/111 (12.2%)  split 8  N.C. 1.8% of 316s
+  jazz-251-c-140.mp3: bars=175  root 35.5/175 (20.3%)  root+quality 27.5/175 (15.7%)  split 8  N.C. 0.4% of 304s
+  fm7-vamp-110.mp3: bars=143  root 132.0/143 (92.3%)  root+quality 117.0/143 (81.8%)  split 0  N.C. 0.5% of 328s
+  eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 160.0/165 (97.0%)  split 0  N.C. 0.5% of 309s
   bossa-cm.mp3: bars=98  root 24.0/98 (24.5%)  root+quality 6.0/98 (6.1%)  split 0  N.C. 0.0% of 315s
   pop-c-g-am-f-120.mp3: bars=57  root 57.0/57 (100.0%)  root+quality 56.0/57 (98.2%)  split 0  N.C. 0.0% of 114s
 keys, against the expected key for each file:
-  key blues-a-90bpm.mp3: A major at 56%  want A major  OK
-  key blues-shuffle-a-106bpm.mp3: A major at 61%  want A major  OK
+  key blues-a-90bpm.mp3: A major at 64%  want A major  OK
+  key blues-shuffle-a-106bpm.mp3: A major at 63%  want A major  OK
   key blues-e-90bpm.mp3: E major at 53%  want E major  OK
   key slow-68-40.mp3: A major at 60%  want A major  OK
-  key g-blues-shuffle-cc.mp3: G major at 40%  want G major  OK
+  key g-blues-shuffle-cc.mp3: G major at 52%  want G major  OK
   key fm7-vamp-110.mp3: F minor at 98%  want F minor  OK
-  key eb7-vamp-130.mp3: Eb major at 41%  want Eb major  OK
-  key bossa-cm.mp3: C minor at 7%  want C minor  OK
-  key bm-blues-slow.mp3: B minor at 58%  want B minor  OK
-  key cm-blues-68-95.mp3: Eb major at 16%  want C minor  WRONG
-  key waltz-am-e7-160.mp3: A minor at 62%  want A minor  OK
+  key eb7-vamp-130.mp3: Eb major at 80%  want Eb major  OK
+  key bossa-cm.mp3: F minor at 7%  want C minor  WRONG
+  key bm-blues-slow.mp3: B minor at 80%  want B minor  OK
+  key cm-blues-68-95.mp3: C minor at 31%  want C minor  OK
+  key waltz-am-e7-160.mp3: A minor at 56%  want A minor  OK
   key f-blues-swing-170.mp3: F major at 8%  want F major  OK
-  key jazz-251-c-140.mp3: A minor at 22%  want C major  WRONG
-  key ballad-wine-roses-65.mp3: D minor at 9%  want F major  WRONG
-  key footprints-200.mp3: C minor at 16%  want C minor  OK
+  key jazz-251-c-140.mp3: A minor at 23%  want C major  WRONG
+  key ballad-wine-roses-65.mp3: D minor at 5%  want F major  WRONG
+  key footprints-200.mp3: C minor at 23%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
-  key pop-am-f-c-g-144.mp3: A minor at 9%  want A minor  OK
+  key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG
