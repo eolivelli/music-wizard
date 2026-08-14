@@ -122,15 +122,26 @@ class ModelBars(unittest.TestCase):
 
 
 def scored(truth: str, hypothesis: list[str] | None = None, starts: list[float] | None = None):
-    """The lyric harness's two columns over an LRC and the words and onsets MW
-    came back with. Both defaulted to the truth's own is the loop-closure case."""
-    tokens, anchors, word_level = lyrics.truth_tokens(truth)
+    """The lyric harness's word and onset columns over an LRC and the words and
+    onsets MW came back with. Both defaulted to the truth's own is the
+    loop-closure case. The line-end column has its own helper below."""
+    parsed = lyrics.truth_tokens(truth)
+    tokens = parsed.tokens
     words = tokens if hypothesis is None else [lyrics.normalize(w) for w in hypothesis]
     if starts is None:
         starts = [0.0] * len(words)
-    return (lyrics.word_error(pairs := lyrics.align(tokens, words), tokens, words),
-            lyrics.onset_error(pairs, anchors, starts),
-            word_level)
+    pairs = lyrics.align(tokens, words)
+    return (lyrics.word_error(pairs, tokens, words),
+            lyrics.onset_error(pairs, parsed.anchors, starts),
+            parsed.word_level)
+
+
+def end_scored(truth: str, line_ends: list[float]):
+    """The line-end column alone, over a hypothesis that matches the truth's
+    words exactly, so only the ends can move it."""
+    parsed = lyrics.truth_tokens(truth)
+    pairs = lyrics.align(parsed.tokens, parsed.tokens)
+    return lyrics.end_error(pairs, parsed.ends, line_ends)
 
 
 class SyntheticAlignment(unittest.TestCase):
@@ -180,7 +191,7 @@ class Normalisation(unittest.TestCase):
         """Italian elides constantly and LrcLyrics splits on whitespace, so
         splitting here would mint one insertion per c'e and hold the word column
         permanently above zero on every Italian entry."""
-        tokens, _, _ = lyrics.truth_tokens("[00:01.00]c'è l'amore")
+        tokens, _, _, _ = lyrics.truth_tokens("[00:01.00]c'è l'amore")
         self.assertEqual(["c'è", "l'amore"], tokens)
 
     def test_accents_are_not_folded(self):
@@ -191,7 +202,7 @@ class Normalisation(unittest.TestCase):
 
     def test_a_non_breaking_space_does_not_split_a_word(self):
         """Java's \\s is ASCII-only, so LrcLyrics keeps this as one token."""
-        tokens, _, _ = lyrics.truth_tokens("[00:01.00]a\u00a0b")
+        tokens, _, _, _ = lyrics.truth_tokens("[00:01.00]a\u00a0b")
         self.assertEqual(1, len(tokens))
 
     def test_a_non_breaking_space_is_not_stripped_either(self):
@@ -199,18 +210,18 @@ class Normalisation(unittest.TestCase):
         false for the three non-breaking spaces Python's str.strip() removes.
         Each of these is a divergence from str.strip()."""
         for space in ("\u00a0", "\u2007", "\u202f"):
-            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno due")
+            tokens, _, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno due")
             self.assertEqual([f"{space}uno", "due"], tokens, space)
-            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]uno due{space}")
+            tokens, _, _, _ = lyrics.truth_tokens(f"[00:01.00]uno due{space}")
             self.assertEqual(["uno", f"due{space}"], tokens, space)
         # Before the tag it is not blank either, so Java drops the whole line.
-        self.assertEqual(([], {}, False), lyrics.truth_tokens("\u00a0[00:01.00]uno"))
+        self.assertEqual(([], {}, {}, False), lyrics.truth_tokens("\u00a0[00:01.00]uno"))
 
     def test_a_breaking_unicode_space_is_stripped(self):
         """The other half of that rule: Character.isWhitespace is Unicode-aware,
         so U+1680 and U+2003 go where U+00A0 stays."""
         for space in ("\u1680", "\u2003"):
-            tokens, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno")
+            tokens, _, _, _ = lyrics.truth_tokens(f"[00:01.00]{space}uno")
             self.assertEqual(["uno"], tokens, space)
 
     def test_a_punctuation_only_token_keeps_its_place_and_its_anchor(self):
@@ -218,7 +229,7 @@ class Normalisation(unittest.TestCase):
         LrcLyrics gives it a share of the line, so dropping it here would leave
         the run's stated onset on the *next* word and report an onset error on a
         loop that closed correctly."""
-        tokens, anchors, _ = lyrics.truth_tokens("[00:01.00]\u2014 ciao amore")
+        tokens, anchors, _, _ = lyrics.truth_tokens("[00:01.00]\u2014 ciao amore")
         self.assertEqual(["", "ciao", "amore"], tokens)
         self.assertEqual({0: 1.0}, anchors)
 
@@ -226,40 +237,40 @@ class Normalisation(unittest.TestCase):
 class TruthTokens(unittest.TestCase):
 
     def test_a_plain_line_anchors_its_first_word_only(self):
-        tokens, anchors, word_level = lyrics.truth_tokens("[00:10.00]uno due tre")
+        tokens, anchors, _, word_level = lyrics.truth_tokens("[00:10.00]uno due tre")
         self.assertEqual(["uno", "due", "tre"], tokens)
         self.assertEqual({0: 10.0}, anchors)
         self.assertFalse(word_level)
 
     def test_a_partly_tagged_line_anchors_each_run(self):
-        tokens, anchors, word_level = lyrics.truth_tokens("[00:10.00]a <00:11.00>b c")
+        tokens, anchors, _, word_level = lyrics.truth_tokens("[00:10.00]a <00:11.00>b c")
         self.assertEqual(["a", "b", "c"], tokens)
         self.assertEqual({0: 10.0, 1: 11.0}, anchors)
         self.assertTrue(word_level)
 
     def test_two_leading_tags_write_the_line_out_twice(self):
         """How an LRC writes a repeated chorus without copying it."""
-        tokens, anchors, _ = lyrics.truth_tokens("[00:10.00] [00:20.00]ciao a tutti")
+        tokens, anchors, _, _ = lyrics.truth_tokens("[00:10.00] [00:20.00]ciao a tutti")
         self.assertEqual(["ciao", "a", "tutti"] * 2, tokens)
         self.assertEqual({0: 10.0, 3: 20.0}, anchors)
 
     def test_tokens_come_back_in_time_order(self):
-        tokens, anchors, _ = lyrics.truth_tokens("[00:20.00]dopo\n[00:10.00]prima")
+        tokens, anchors, _, _ = lyrics.truth_tokens("[00:20.00]dopo\n[00:10.00]prima")
         self.assertEqual(["prima", "dopo"], tokens)
         self.assertEqual({0: 10.0, 1: 20.0}, anchors)
 
     def test_a_positive_offset_moves_the_words_earlier(self):
         """The tag's sign is a genuinely ambiguous corner of the format, so it
         is tested rather than reasoned about: LrcLyrics subtracts it."""
-        _, anchors, _ = lyrics.truth_tokens("[offset:500]\n[00:10.00]ciao")
+        _, anchors, _, _ = lyrics.truth_tokens("[offset:500]\n[00:10.00]ciao")
         self.assertEqual({0: 9.5}, anchors)
-        _, anchors, _ = lyrics.truth_tokens("[offset:-500]\n[00:10.00]ciao")
+        _, anchors, _, _ = lyrics.truth_tokens("[offset:-500]\n[00:10.00]ciao")
         self.assertEqual({0: 10.5}, anchors)
 
     def test_an_unusable_offset_is_ignored_rather_than_carried(self):
         for bad in ("[offset:NaN]", "[offset:-Infinity]", "[offset:x]",
                     "[offset:1_0]"):
-            _, anchors, _ = lyrics.truth_tokens(f"{bad}\n[00:10.00]ciao")
+            _, anchors, _, _ = lyrics.truth_tokens(f"{bad}\n[00:10.00]ciao")
             self.assertEqual({0: 10.0}, anchors, bad)
 
     def test_the_offset_grammar_is_double_parse_doubles(self):
@@ -278,22 +289,22 @@ class TruthTokens(unittest.TestCase):
             self.assertIsNone(lyrics.java_double(refused), refused)
 
     def test_a_type_suffix_moves_every_anchor_in_the_file(self):
-        _, anchors, _ = lyrics.truth_tokens("[offset:100d]\n[00:10.00]ciao")
+        _, anchors, _, _ = lyrics.truth_tokens("[offset:100d]\n[00:10.00]ciao")
         self.assertEqual({0: 9.9}, anchors)
 
     def test_an_id_tag_and_an_empty_body_carry_no_word(self):
-        tokens, anchors, _ = lyrics.truth_tokens(
+        tokens, anchors, _, _ = lyrics.truth_tokens(
             "[ti:Sere]\n[ar:iiridio]\n[00:10.00]ciao\n[00:12.00]")
         self.assertEqual(["ciao"], tokens)
         self.assertEqual({0: 10.0}, anchors)
 
     def test_a_byte_order_mark_does_not_cost_the_first_line(self):
-        tokens, _, _ = lyrics.truth_tokens("\ufeff[00:10.00]ciao")
+        tokens, _, _, _ = lyrics.truth_tokens("\ufeff[00:10.00]ciao")
         self.assertEqual(["ciao"], tokens)
 
     def test_a_fraction_is_scaled_by_its_own_width(self):
         for tag in ("[00:01.5]", "[00:01.50]", "[00:01.500]", "[00:01:50]"):
-            _, anchors, _ = lyrics.truth_tokens(f"{tag}ciao")
+            _, anchors, _, _ = lyrics.truth_tokens(f"{tag}ciao")
             self.assertEqual({0: 1.5}, anchors, tag)
 
 
@@ -341,7 +352,7 @@ class WordAndOnsetColumns(unittest.TestCase):
 
     def test_max_catches_the_one_line_the_median_cannot(self):
         starts = [10.0, 10.0, 20.4, 20.4, 30.0, 30.0]
-        tokens, anchors, _ = lyrics.truth_tokens(self.LINES)
+        tokens, anchors, _, _ = lyrics.truth_tokens(self.LINES)
         pairs = lyrics.align(tokens, tokens)
         median, worst, matched, _ = lyrics.onset_error(pairs, anchors, starts)
         self.assertEqual(0.0, median)
@@ -350,9 +361,100 @@ class WordAndOnsetColumns(unittest.TestCase):
 
     def test_no_matched_anchor_prints_no_number(self):
         """A median over nothing must not print as a measured zero."""
-        line = lyrics.score_line("x.mp3", ["a"], ["b"], {}, [0.0], False)
+        line = lyrics.score_line("x.mp3", lyrics.Truth(["a"], {}, {}, False),
+                                 lyrics.Heard(["b"], [0.0], [0.0]))
         self.assertIn("onset no anchors matched", line)
         self.assertNotIn("0.000s", line)
+
+
+class LineEndColumn(unittest.TestCase):
+    """The third column (#361), and what it takes from the file as a stated end.
+
+    Which entries end a line is LrcLyrics' rule, not this harness's, and these
+    hold the two sides together: the harness reports MW as wrong wherever it
+    disagrees."""
+
+    ONE_LINE = "[00:10.00]uno due tre\n[00:14.00]\n"
+
+    def test_a_display_clear_states_the_line_it_ends(self):
+        parsed = lyrics.truth_tokens(self.ONE_LINE)
+        # Anchored on the line's last token, so it is paired through the word
+        # alignment exactly as an onset is.
+        self.assertEqual({2: 14.0}, parsed.ends)
+        self.assertEqual(["uno", "due", "tre"], parsed.tokens)
+
+    def test_the_column_moves_when_the_line_end_moves(self):
+        """The point of the column, and what #361 measured as broken: the
+        recording bound and the break rules move a line's end and moved
+        nothing. Same words, same onsets, ends four seconds apart."""
+        exact = end_scored(self.ONE_LINE, [14.0, 14.0, 14.0])
+        stretched = end_scored(self.ONE_LINE, [18.0, 18.0, 18.0])
+
+        self.assertEqual((0.0, 0.0, 1, 1), exact)
+        self.assertEqual((4.0, 4.0, 1, 1), stretched)
+
+    def test_a_clear_on_the_line_own_moment_does_not_end_it(self):
+        """LrcLyrics ends a line at the next entry whose start is strictly
+        greater -- one on the line's own moment does not end it, for the same
+        reason a second voice does not. Reading it as an end invents an error
+        the size of the whole line, and consumes the clear that really states
+        one."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno due tre\n[00:10.00]\n[00:14.00]\n[00:20.00]quattro\n")
+        self.assertEqual({2: 14.0}, parsed.ends)
+
+    def test_an_offset_that_collapses_two_starts_collapses_them_here_too(self):
+        """The same rule reached without writing a duplicate tag: an offset
+        larger than a line's own time clamps several starts to zero, which Java
+        calls out as making them one moment. Third-party files carry such
+        offsets."""
+        parsed = lyrics.truth_tokens(
+            "[offset:20000]\n[00:10.00]uno\n[00:14.00]\n[01:00.00]due\n")
+        self.assertEqual({}, parsed.ends)
+
+    def test_an_entry_of_only_word_tags_closes_a_line_but_states_no_end(self):
+        """It is not blank, so it is not a clear; it produces no run, so Java
+        builds no line from it. But nextMeasuring reads only the times, so it
+        ends the line before it all the same, and the clear that follows states
+        the end of nothing. Crediting the line with that clear's time reports an
+        error against a loop that closed exactly."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno due\n[00:20.00]<00:20.50>\n[00:30.00]\n")
+        self.assertEqual({}, parsed.ends)
+
+    def test_a_line_that_follows_a_tag_only_entry_still_states_its_own_end(self):
+        """A tag-only entry is never credited with an end of its own, so it
+        cannot overwrite the one the clear before it already stated."""
+        parsed = lyrics.truth_tokens(
+            "[00:10.00]uno\n[00:12.00]\n[00:13.00]<00:13.50>\n[00:14.00]\n"
+            "[00:40.00]due\n[00:44.00]\n")
+        self.assertEqual({0: 12.0, 1: 44.0}, parsed.ends)
+
+    def test_a_second_clear_ends_nothing(self):
+        """Two clears in a row: the first states this line's end and the second
+        states the end of no line, so it must not overwrite it."""
+        parsed = lyrics.truth_tokens("[00:10.00]uno\n[00:14.00]\n[00:15.00]\n")
+        self.assertEqual({0: 14.0}, parsed.ends)
+
+    def test_a_clear_before_any_line_ends_nothing(self):
+        parsed = lyrics.truth_tokens("[00:05.00]\n[00:10.00]uno\n")
+        self.assertEqual({}, parsed.ends)
+
+    def test_a_file_stating_no_ends_says_so_rather_than_printing_a_zero(self):
+        """An unmeasured column and a perfect one must not read alike."""
+        parsed = lyrics.truth_tokens("[00:10.00]uno due")
+        self.assertEqual({}, parsed.ends)
+        line = lyrics.score_line("x.mp3", parsed, lyrics.Heard(parsed.tokens, [10.0, 10.0],
+                                                               [12.0, 12.0]))
+        self.assertIn("line end none stated", line)
+        self.assertIn("ends 0/0", line)
+
+    def test_an_end_whose_word_was_lost_is_counted_unmatched(self):
+        """As an anchor is: reported beside the median it did not enter, rather
+        than quietly leaving the sample."""
+        parsed = lyrics.truth_tokens(self.ONE_LINE)
+        pairs = lyrics.align(parsed.tokens, ["uno", "due"])
+        self.assertEqual((None, None, 0, 1), lyrics.end_error(pairs, parsed.ends, [9.0, 9.0]))
 
 
 class VttConversion(unittest.TestCase):
@@ -422,7 +524,8 @@ class Keying(unittest.TestCase):
     only lines holding '.mp3:'. Both halves of that are executed here rather
     than asserted in a comment."""
 
-    ARGS = (["uno"], ["uno"], {0: 1.0}, [1.0], False)
+    ARGS = (lyrics.Truth(["uno"], {0: 1.0}, {0: 2.0}, False),
+            lyrics.Heard(["uno"], [1.0], [2.0]))
 
     def test_a_scored_row_is_gated(self):
         line = lyrics.score_line("sere-doltremare.mp3", *self.ARGS)
