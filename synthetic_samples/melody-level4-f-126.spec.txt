@@ -1,0 +1,21 @@
+title: Melody ramp level 4 - unaccompanied flute over a rock form in F
+genre: rock
+style: pop-rock
+tempo: 126
+key: F major
+seed: 14
+melody: flute
+melody-level: 4
+accompaniment: none
+bars:
+# Verse: I-IV-V rock, twice, the second phrase held on V
+F Bb C F
+F Bb C C
+F Bb C F
+F Bb C C
+# Chorus: vi-IV-I-V, the axis rotation, twice
+Dm Bb F C
+Dm Bb F C
+# Bridge and close: ii-V turned aside onto vi, then ii-V-I
+Gm C Dm Dm
+Gm C F F

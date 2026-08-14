@@ -16,6 +16,15 @@ One package is three files sharing a base name:
 - `<name>.mp3` — the MIDI rendered with FluidSynth and a cached GM soundbank
   (`tools/music-teacher/fetch-soundfont.sh`), loudness-normalized.
 
+Some packages are here for the melody stage rather than the harmony stages:
+their spec asks for a `melody-level` on a 1-to-4 difficulty ramp and for an
+`accompaniment` of `pad` or `none`. A monophonic pitch tracker pointed at a
+full mix measures the separation that did not happen in front of it, so those
+packages take the band away and let the tracker be measured on its own. The
+price is that a package with no accompaniment carries no evidence for its own
+chord grid — `tools/score-synthetic.py` skips it, and its silence on the chord
+columns is not a failure to fix.
+
 Regenerate a package with:
 
 ```sh

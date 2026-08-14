@@ -42,9 +42,11 @@ import java.util.Map;
  * <p>Headers: {@code title}, {@code style}, {@code tempo}, {@code key} and
  * {@code seed} are required; {@code genre}, {@code meter} (default 4/4) and
  * {@code melody} (an instrument name, or {@code none}; default is the style's
- * choice) are optional. Unknown headers are an error, not a warning — a typoed
- * header silently ignored would generate a package that quietly ignores its
- * spec.
+ * choice) are optional. So are {@code accompaniment} ({@code full}, the
+ * default, {@code pad} or {@code none}) and {@code melody-level} (1 to 4, a
+ * difficulty ramp; the default is the style's own rhythms). Unknown headers are
+ * an error, not a warning — a typoed header silently ignored would generate a
+ * package that quietly ignores its spec.
  */
 public final class SpecParser {
 
@@ -103,11 +105,15 @@ public final class SpecParser {
         String[] key = parseKey(require(remaining, "key"));
         long seed = Long.parseLong(require(remaining, "seed"));
         Integer melody = parseMelody(remaining.remove("melody"), style);
+        Integer melodyLevel = parseMelodyLevel(remaining.remove("melody-level"));
+        SampleSpec.Accompaniment accompaniment =
+                parseAccompaniment(remaining.remove("accompaniment"));
         if (!remaining.isEmpty()) {
             throw new IllegalArgumentException("unknown headers: " + remaining.keySet());
         }
         return new SampleSpec(title, genre == null ? "" : genre, style, tempo, meter,
-                key[0], key[1].equals("minor") ? Mode.MINOR : Mode.MAJOR, seed, melody, bars);
+                key[0], key[1].equals("minor") ? Mode.MINOR : Mode.MAJOR, seed, melody,
+                melodyLevel, accompaniment, bars);
     }
 
     private static String require(Map<String, String> headers, String name) {
@@ -153,6 +159,31 @@ public final class SpecParser {
                     + "' (known: " + SampleSpec.MELODY_INSTRUMENTS.keySet() + ", or none)");
         }
         return program;
+    }
+
+    private static Integer parseMelodyLevel(String value) {
+        if (value == null) {
+            return null;
+        }
+        int level;
+        try {
+            level = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("melody-level must be a number, got: '"
+                    + value + "'", e);
+        }
+        if (level < SampleSpec.MIN_MELODY_LEVEL || level > SampleSpec.MAX_MELODY_LEVEL) {
+            throw new IllegalArgumentException("melody-level must be "
+                    + SampleSpec.MIN_MELODY_LEVEL + " to " + SampleSpec.MAX_MELODY_LEVEL
+                    + ", got: " + level);
+        }
+        return level;
+    }
+
+    private static SampleSpec.Accompaniment parseAccompaniment(String value) {
+        return value == null
+                ? SampleSpec.Accompaniment.FULL
+                : SampleSpec.Accompaniment.byId(value);
     }
 
     private static SampleSpec.Bar parseBar(String token) {

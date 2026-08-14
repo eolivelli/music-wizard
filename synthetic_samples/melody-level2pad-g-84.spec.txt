@@ -1,0 +1,24 @@
+title: Melody ramp level 2 with a pad - the same folk-pop form in G under harmony
+genre: folk-pop
+style: pop-ballad
+tempo: 84
+key: G major
+seed: 12
+melody: flute
+melody-level: 2
+accompaniment: pad
+bars:
+# The grid of melody-level2-g-84 exactly, so what the pad costs a melody
+# stage can be read off against that package.
+# Verse: I-IV-I-V twice, each phrase leaving off on V (half cadence)
+G C G D
+G C G D
+# Pre-chorus: ii-V-I, then the same turned aside onto vi (deceptive cadence)
+Am D G G
+Am D Em Em
+# Chorus: I-V-vi-IV twice
+G D Em C
+G D Em C
+# Tag: IV-V-I, then IV-I and the tonic held (plagal close)
+C D G G
+C G G G

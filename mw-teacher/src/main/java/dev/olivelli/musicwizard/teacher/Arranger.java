@@ -23,8 +23,10 @@ import java.util.Random;
 import javax.sound.midi.Sequence;
 
 /**
- * Compiles a spec into a full-band MIDI arrangement: drums, bass, comping and
- * (unless the spec says {@code melody: none}) a generated melody.
+ * Compiles a spec into a MIDI arrangement: by default the full band — drums,
+ * bass, comping and (unless the spec says {@code melody: none}) a generated
+ * melody — and, where the spec asks for it, a sustained pad or nothing at all
+ * under the melody.
  *
  * <p>Deterministic by construction: one {@link Random} seeded from the spec is
  * consumed in a fixed order, so the same spec always compiles to the same
@@ -44,6 +46,11 @@ public final class Arranger {
     private static final int RIDE = 51;
 
     private static final double TICK = 1.0 / MidiFixtures.TICKS_PER_QUARTER;
+
+    /** GM "warm pad": slow attack, no transient of its own to be heard as an onset. */
+    private static final int PAD_PROGRAM = 89;
+
+    private static final int PAD_VELOCITY = 44;
 
     private final SampleSpec spec;
     private final Random rng;
@@ -83,31 +90,22 @@ public final class Arranger {
             melody = builder.part("Melody", 0).program(spec.melodyProgram());
             melodyGenerator = new MelodyGenerator(spec);
         }
-        comp = builder.part(compName(), 1).program(compProgram());
-        bass = builder.part("Bass", 2).program(33);
-        drums = builder.part("Drum Kit", MidiFixtures.DRUM_CHANNEL);
+        switch (spec.accompaniment()) {
+            case FULL -> {
+                comp = builder.part(compName(), 1).program(compProgram());
+                bass = builder.part("Bass", 2).program(33);
+                drums = builder.part("Drum Kit", MidiFixtures.DRUM_CHANNEL);
+            }
+            case PAD -> comp = builder.part("Pad", 1).program(PAD_PROGRAM);
+            case NONE -> {
+            }
+        }
 
         for (int bar = 0; bar < spec.bars().size(); bar++) {
-            switch (spec.style()) {
-                case POP_BALLAD -> {
-                    balladComp(bar);
-                    balladBass(bar);
-                    balladDrums(bar);
-                }
-                case POP_ROCK -> {
-                    popRockComp(bar);
-                    popRockBass(bar);
-                    popRockDrums(bar);
-                }
-                case HIPHOP_BOOM_BAP -> {
-                    boomBapComp(bar);
-                    boomBapBass(bar);
-                    boomBapDrums(bar);
-                }
-                case ROCKNROLL_SHUFFLE -> {
-                    shuffleComp(bar);
-                    shuffleBass(bar);
-                    shuffleDrums(bar);
+            switch (spec.accompaniment()) {
+                case FULL -> band(bar);
+                case PAD -> pad(bar);
+                case NONE -> {
                 }
             }
             if (melodyGenerator != null) {
@@ -115,6 +113,53 @@ public final class Arranger {
             }
         }
         return builder.build();
+    }
+
+    private void band(int bar) {
+        switch (spec.style()) {
+            case POP_BALLAD -> {
+                balladComp(bar);
+                balladBass(bar);
+                balladDrums(bar);
+            }
+            case POP_ROCK -> {
+                popRockComp(bar);
+                popRockBass(bar);
+                popRockDrums(bar);
+            }
+            case HIPHOP_BOOM_BAP -> {
+                boomBapComp(bar);
+                boomBapBass(bar);
+                boomBapDrums(bar);
+            }
+            case ROCKNROLL_SHUFFLE -> {
+                shuffleComp(bar);
+                shuffleBass(bar);
+                shuffleDrums(bar);
+            }
+        }
+    }
+
+    /**
+     * One sustained voicing per chord, well below the melody's velocity: enough
+     * for the harmony stages to have something to read, quiet and static enough
+     * that the loudest thing at any moment is the melody.
+     */
+    private void pad(int bar) {
+        double start = bar * 4.0;
+        double barBeats = spec.meter().quarterBeatsPerBar();
+        if (spec.bars().get(bar).second() != null) {
+            padChord(start, barBeats / 2, chordAt(bar, 0));
+            padChord(start + barBeats / 2, barBeats / 2, chordAt(bar, barBeats / 2));
+        } else {
+            padChord(start, barBeats, chordAt(bar, 0));
+        }
+    }
+
+    private void padChord(double beat, double duration, ChordSymbol chord) {
+        for (int pitch : voicing.of(chord)) {
+            comp.note(beat, duration, pitch, humanize(PAD_VELOCITY, 3));
+        }
     }
 
     private String compName() {

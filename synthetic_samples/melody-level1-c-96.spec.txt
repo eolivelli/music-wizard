@@ -1,0 +1,19 @@
+title: Melody ramp level 1 - unaccompanied flute over an axis loop in C
+genre: pop
+style: pop-ballad
+tempo: 96
+key: C major
+seed: 11
+melody: flute
+melody-level: 1
+accompaniment: none
+bars:
+# Verse: I-V-vi-IV, the axis loop, twice
+C G Am F
+C G Am F
+# Pre-chorus: I-vi-IV-V twice, each phrase resting on V (half cadence)
+C Am F G
+C Am F G
+# Chorus: one axis pass, then IV-V-I and the tonic held (authentic cadence)
+C G Am F
+F G C C
