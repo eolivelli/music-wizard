@@ -9,6 +9,8 @@ onset for the lyric one. Run it directly:
     python3 tools/test-harness-rules.py
 """
 
+import contextlib
+import io
 import sys
 import unittest
 from importlib import import_module
@@ -625,6 +627,27 @@ class BaselineDrift(unittest.TestCase):
     CHART = ("charts emitted for samples with known ground truth:\n"
              "  blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)\n"
              "  bossa-cm.mp3: bars=98  chords/bar 1.23  root 23.5/98 (24.0%)\n")
+
+    def status(self, old: str, new: str) -> int:
+        """main()'s exit status for one file, with git and stdout stubbed."""
+        show, out = drift.show, io.StringIO()
+        drift.show = lambda rev, _path: old if rev == "base" else new
+        try:
+            with contextlib.redirect_stdout(out):
+                return drift.main(["x", "base", "tip", "tools/baselines/a.txt"])
+        finally:
+            drift.show = show
+
+    def test_the_quiet_statuses_are_ones_python_cannot_produce_by_accident(self):
+        """premerge.sh keys its two quiet arms on these numbers, and python
+        exits 2 of its own accord when it cannot open the script it was given.
+        A classifier that never ran must not read as one that found nothing."""
+        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+        self.assertEqual(1, self.status(row, row.replace("1.0/2 (50.0%)",
+                                                         "2.0/2 (100.0%)")))
+        self.assertEqual(3, self.status(row, row.replace("(50.0%)\n",
+                                                         "(50.0%)  n 7\n")))
+        self.assertEqual(0, self.status(row, row.replace("h:", "header:")))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")

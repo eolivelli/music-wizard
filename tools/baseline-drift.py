@@ -9,8 +9,10 @@ people to skip the prompt -- hence the kinds below.
 
     python3 tools/baseline-drift.py <base> <tip> <path>...
 
-Exits 1 if anything could have been re-measured, 2 if the files were only
-reshaped, 0 if no row in them changed.
+Exits 1 if anything could have been re-measured, 3 if the files were only
+reshaped, 0 if no row in them changed. Not 2: python exits 2 of its own accord
+when it cannot open this file, and the caller's quiet arms must not be
+reachable by a classifier that never ran.
 """
 
 import re
@@ -125,7 +127,7 @@ def main(argv: list) -> int:
     # Three states, because the caller says three different things: a figure
     # that may be stale, a column that cannot make one stale, and a file whose
     # rows did not change at all.
-    return 1 if "moved" in kinds else 2 if "reshaped" in kinds else 0
+    return 1 if "moved" in kinds else 3 if "reshaped" in kinds else 0
 
 
 if __name__ == "__main__":

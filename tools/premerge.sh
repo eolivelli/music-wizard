@@ -104,16 +104,15 @@ baseline_drift() {
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
   # about a column added to every row is how a prompt teaches people to skip it
   # -- so the verdict line, which is what gets pasted into a PR, carries the
-  # kind as well as the count. The kind describes the set: the count is of
-  # files that changed, and what follows it holds of all of them. An exit
-  # status that is none of these is the harness itself failing, and takes the
-  # cautious branch, where "may be stale" is true whether or not it knows.
-  # Nothing may come between the call and the case: any command, a `local`
-  # included, replaces the status being read.
+  # kind as well as the count. Both quiet arms are keyed on a status python
+  # cannot produce by accident -- it exits 2 itself when it cannot open the
+  # script -- so a classifier that never ran reads as one that found movement,
+  # never as a clean one. Nothing may come between the call and the case: any
+  # command, a `local` included, replaces the status being read.
   case "$?" in
     0) echo "No row in them changed."
        drift="$n $since, no row changed" ;;
-    2) echo "No figure the rows still share moved. Check anything you quoted from"
+    3) echo "No figure the rows still share moved. Check anything you quoted from"
        echo "a column listed above."
        drift="$n $since, no figure moved" ;;
     *) echo "A figure this branch quoted earlier may have been measured against the"
