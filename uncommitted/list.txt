@@ -244,8 +244,10 @@ Eb major at 14% — a chart circling Eb-Gm-Cm7-Ab throughout. The lyric sheet is
 the shape #309 was checked against on generale, and here it holds: the 30 s
 intro, the two mid-song instrumental stretches and the 1 min outro all print as
 bare chord rows with no lyric line pulled under them. Scored by
-tools/score-lyrics.py, which is loop closure and reads zero on both columns by
-construction; the row exists so that it stops reading zero.
+tools/score-lyrics.py. The word and onset columns are loop closure and read
+zero by construction; the row exists so that they stop reading zero. The line
+end column is not closure -- MW decides an end rather than carrying one through
+-- and does not read zero.
 
 To confirm by ear, before this is promoted into samples/ with its NOTICE
 attribution — none of it can be inferred from the metadata, and the survey
