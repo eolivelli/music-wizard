@@ -237,10 +237,10 @@ public final class ChordEstimator {
      * relative minor share two notes, and adding a sixth to the one gives
      * exactly the other's four — {@code A6} and {@code F#m7} are the same set.
      * A boogie shuffle plays root-and-sixth for half of every bar, and there the
-     * F# minor triad outscores the A triad beat by beat <em>and</em> summed over
-     * the whole bar, so aggregating that chroma for longer does not separate
-     * them (#448). The bass register does, because that is where a root is
-     * played.
+     * F# minor triad outscores the A triad on that half — and goes on
+     * outscoring it summed over the whole bar, on most of the bars, so
+     * aggregating that chroma for longer does not separate them (#448). The bass
+     * register does, because that is where a root is played.
      *
      * <p>Added to the emission score, so it is read against {@link
      * #EMISSION_SHARPNESS}: 20 against 50 lets a bass on one pitch class
@@ -280,18 +280,21 @@ public final class ChordEstimator {
      *
      * <pre>
      *   beats either side       none     0     1     2     3     4
-     *   eb7-vamp root+quality    102    82   141   160   158   155
+     *   eb7-vamp root+quality    102    80   141   160   158   155
      *   fm7-vamp root+quality     92    94     0   117   102    77
      *   bm-blues root+quality     78    68    68    88    91    96
      * </pre>
      *
-     * <p>At zero and one the prior helps one recording and wrecks another; from
-     * two on, every row is above the column that has no prior at all. So the
-     * window is part of the mechanism rather than a smoothing detail. The fm7
-     * cell at one is split runs meeting {@link #withdrawMinoritySevenths}: once
-     * a root is fragmented into short runs, a minority of its beats carry the
-     * seventh and every one of them then loses it. Two and three differ only in
-     * which recording takes the last few bars.
+     * <p>At zero and one the prior helps one recording and wrecks another; two
+     * and three both clear the no-prior column on every row, and two is where
+     * the two vamps read highest. So the window is part of the mechanism rather
+     * than a smoothing detail. The fm7 cell at one is split runs meeting {@link
+     * #withdrawMinoritySevenths}: once a root is fragmented into short runs, a
+     * minority of its beats carry the seventh and every one of them then loses
+     * it. Widening past two trades the fm7 row away a good deal faster than the
+     * bm-blues row gains — fifteen bars against three at a window of three, and
+     * forty against eight at four — so the vamp whose bass is a figure is the
+     * row to watch when moving this.
      */
     private static final int BASS_ROOT_BEATS = 2;
 
@@ -440,6 +443,13 @@ public final class ChordEstimator {
      * {@code samples/eb7-vamp-130.mp3} is five minutes of one chord and moves on
      * the grouping, {@code samples/blues-e-90bpm.mp3} moves on the register.
      *
+     * <p><b>This form runs without the root prior of
+     * {@link #estimate(Chroma, Chroma, Chroma, List)}</b>, which is what the
+     * pipeline runs and what every figure in {@code tools/baselines/} was
+     * measured through. A caller with no separated bass register has no bass
+     * root to read, so there is nothing here to leave out; a caller that has one
+     * and passes this form is quietly asking a different question.
+     *
      * @param chroma        beat-synchronous chroma the root and the chord
      *                      boundaries are decoded from
      * @param qualityChroma beat-synchronous chroma, over the same beats, the
@@ -499,18 +509,18 @@ public final class ChordEstimator {
 
         List<Template> templates = buildTemplates();
         double[][] similarity = similarities(chroma, templates);
-        double[][] bassShare = bassRootShare(bassChroma, similarity.length);
+        double[][] prior = bassRootPrior(bassChroma, similarity.length);
         double[][] logLikelihood = new double[similarity.length][templates.size()];
         for (int frame = 0; frame < similarity.length; frame++) {
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
                 logLikelihood[frame][t] = EMISSION_SHARPNESS
                         * Math.log(Math.max(1e-9, similarity[frame][t]));
-                // No-chord has no root, so it is left where it is and every
-                // chord state is measured against it as before.
-                if (bassShare != null && template.quality() != ChordQuality.NONE) {
+                // No-chord carries no root and so takes no term. That is why the
+                // term below is at most zero: see bassRootPrior.
+                if (prior != null && template.quality() != ChordQuality.NONE) {
                     logLikelihood[frame][t] +=
-                            BASS_ROOT_WEIGHT * bassShare[frame][template.rootPitchClass()];
+                            BASS_ROOT_WEIGHT * prior[frame][template.rootPitchClass()];
                 }
             }
         }
@@ -805,15 +815,28 @@ public final class ChordEstimator {
     }
 
     /**
-     * Each beat's bass energy by pitch class, as a share of the bass energy over
-     * the {@link #BASS_ROOT_BEATS} window around it, or null if there is no bass
-     * register to read.
+     * The per-beat term each root's chord states take, or null if there is no
+     * bass register to read.
      *
-     * <p>A share rather than a level, so a loud passage does not assert its root
-     * harder than a quiet one asserts its own; a silent window leaves every
-     * share at zero and asserts nothing.
+     * <p>Each root's share of the bass energy over the {@link #BASS_ROOT_BEATS}
+     * window around the beat, <b>less the largest share any root holds
+     * there</b>. So the term is zero for the root the bass names and negative
+     * for every other root: it ranks roots against each other and never argues
+     * that a chord is sounding at all. That distinction is not pedantic. The
+     * no-chord state carries no root, so it takes no term, and a term that could
+     * be positive would be lowering {@link #NO_CHORD_SIMILARITY} by an amount
+     * that depends on how peaked the bass is — silently, and at any level of
+     * bass energy whatever, since {@link Chroma#beatSynchronous} has already
+     * scaled each beat to sum to one and a beat where the bass has dropped out
+     * votes its noise floor at full strength. Deciding when there is no chord is
+     * #195, not this.
+     *
+     * <p>Subtracting one number per beat from every chord state leaves the
+     * ranking among roots exactly as the shares had it, which is the whole of
+     * what this is for. Where the bass says nothing every share is 1/12 and
+     * every term is zero.
      */
-    private static double[][] bassRootShare(Chroma bass, int frames) {
+    private static double[][] bassRootPrior(Chroma bass, int frames) {
         if (bass == null) {
             return null;
         }
@@ -823,14 +846,24 @@ public final class ChordEstimator {
             for (int f = Math.max(0, frame - BASS_ROOT_BEATS);
                     f <= Math.min(frames - 1, frame + BASS_ROOT_BEATS); f++) {
                 for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
-                    out[frame][pitchClass] += bass.vectors()[f][pitchClass];
-                    total += bass.vectors()[f][pitchClass];
+                    // Clamped, so that a hand-built chroma carrying a negative
+                    // magnitude cannot make a share that is not one. Chroma
+                    // checks its values are finite and not that they are
+                    // positive, and everything below divides by this total.
+                    double value = Math.max(0, bass.vectors()[f][pitchClass]);
+                    out[frame][pitchClass] += value;
+                    total += value;
                 }
             }
-            if (total > 0) {
-                for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+            double best = 0;
+            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                if (total > 0) {
                     out[frame][pitchClass] /= total;
                 }
+                best = Math.max(best, out[frame][pitchClass]);
+            }
+            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                out[frame][pitchClass] -= best;
             }
         }
         return out;

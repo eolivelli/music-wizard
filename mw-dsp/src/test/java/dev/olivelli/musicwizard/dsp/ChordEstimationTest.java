@@ -622,16 +622,66 @@ class ChordEstimationTest {
         }
 
         @Test
-        @DisplayName("a bass on the sixth leaves the relative minor where it was")
+        @DisplayName("a bass on the sixth moves the root the other way")
         void thePriorReadsTheBassRatherThanPreferringOneRoot() {
-            // The same chroma under a bass that really is playing F#: the prior
-            // agrees with the templates instead of overruling them, which is
-            // what keeps it from being a thumb on the scale for the lower root.
+            // The mirror, so that the case above cannot be passing because the
+            // prior always prefers the lower root: the fifth outweighs the sixth
+            // here, so the templates answer A on their own, and a bass that
+            // really is playing F# takes the root the other way. The quality
+            // that comes back with it is F#m7, because A's fifth is F# minor's
+            // flat seventh -- the prior decides roots and nothing else.
+            double[] fifthOverSixth = chroma(9, 0.30, 1, 0.25, 4, 0.20, 6, 0.10);
             double[] bass = chroma(6, 0.60, 9, 0.10, 1, 0.10, 4, 0.10);
 
-            assertThat(ChordEstimator
-                    .estimate(four(BOOGIE), four(BOOGIE), four(bass), beatTimes(4))
-                    .chords()).extracting(Chord::symbol).containsExactly("F#m");
+            assertThat(ChordEstimator.estimate(four(fifthOverSixth), four(fifthOverSixth),
+                            beatTimes(4)).chords())
+                    .extracting(Chord::symbol).containsExactly("A");
+            assertThat(ChordEstimator.estimate(four(fifthOverSixth), four(fifthOverSixth),
+                            four(bass), beatTimes(4)).chords())
+                    .extracting(Chord::symbol).containsExactly("F#m7");
+        }
+
+        @Test
+        @DisplayName("a bass naming a root does not make a chord out of noise")
+        void thePriorNeverArguesThatSomethingIsSounding() {
+            // The prior is at most zero, so it cannot lower the level
+            // NO_CHORD_SIMILARITY sets. A chroma no template fits -- flat, where
+            // the best of them scores sqrt(4/12) against the no-chord state's
+            // 0.60 -- stays no-chord however loudly the bass names a root, and
+            // at any bass level at all, since beat-synchronising has already
+            // scaled every beat to sum to one.
+            double[] flat = new double[12];
+            java.util.Arrays.fill(flat, 1.0 / 12);
+            double[] loud = chroma(9, 0.99);
+            double[] whisper = new double[12];
+            whisper[9] = 1e-8;
+
+            assertThat(ChordEstimator.estimate(four(flat), four(flat), beatTimes(4))
+                    .chords()).extracting(Chord::symbol).containsExactly("N.C.");
+            for (double[] bass : List.of(loud, whisper)) {
+                assertThat(ChordEstimator
+                        .estimate(four(flat), four(flat), four(bass), beatTimes(4))
+                        .chords()).extracting(Chord::symbol).containsExactly("N.C.");
+            }
+        }
+
+        @Test
+        @DisplayName("one beat of bass on another note is a passing note, not a chord")
+        void aPassingBassNoteDoesNotSplitTheChord() {
+            // What the window is for, and the only thing that pins it: over two
+            // bars of the boogie the bass steps onto the sixth for a single
+            // beat. Read that beat alone the prior asserts a root there and the
+            // chord is split in two -- which is how the run whose quality is
+            // decided once comes to be decided twice.
+            double[] onA = chroma(9, 0.60, 1, 0.10, 4, 0.10, 6, 0.10);
+            double[] onSixth = chroma(6, 0.60, 9, 0.10, 1, 0.10, 4, 0.10);
+            double[][] bass = {onA, onA, onA, onSixth, onA, onA, onA, onA};
+            double[][] boogie = new double[8][];
+            java.util.Arrays.fill(boogie, BOOGIE);
+
+            assertThat(ChordEstimator.estimate(beats(boogie), beats(boogie), beats(bass),
+                            beatTimes(8)).chords())
+                    .extracting(Chord::symbol).containsExactly("A");
         }
 
         @Test
