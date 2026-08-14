@@ -472,12 +472,13 @@ class ChordEstimationTest {
         }
 
         /**
-         * #446: a seventh a minority of the root's beats carry is withdrawn.
+         * #446 and #479: the seventh is settled over all of a root's beats, in
+         * whichever direction they point.
          *
          * <p>The first three hold the per-run evidence fixed and vary only how
          * much of the recording agrees with it, which is the axis the rule reads;
          * the even-split case shows that shared vector is read {@code Cm7} on its
-         * own evidence. The fourth needs a vector of its own and says why.
+         * own evidence. The rest need a vector of their own and say why.
          */
         @Test
         @DisplayName("withdraws a seventh most of the root's beats do not carry")
@@ -486,20 +487,48 @@ class ChordEstimationTest {
         }
 
         @Test
-        @DisplayName("keeps a seventh most of the root's beats do carry")
-        void aSeventhTheRecordingHoldsIsKept() {
-            // A guard, not a fail-before test: it holds on origin/main too. It
-            // fails if the withdrawal is ever applied without counting, which
-            // would cost every recording the vocabulary was widened for.
-            assertThat(alternating(2, 1)).containsExactly("Cm7", "D", "Cm7", "D", "Cm");
+        @DisplayName("carries a seventh most of the root's beats do carry to the run that missed it")
+        void aSeventhTheRecordingHoldsIsCarriedToTheRunThatMissedIt() {
+            // #479: the same voicing repeated, and the last run's seventh does not
+            // clear the ratio a four-note template asks for. Its own chroma says
+            // triad and the root's other beats say seventh; the count decides.
+            assertThat(alternating(2, 1)).containsExactly("Cm7", "D", "Cm7", "D", "Cm7");
         }
 
         @Test
-        @DisplayName("an even split is not a minority, so the seventh stands")
-        void anEvenSplitKeepsTheSeventh() {
-            // The boundary the constant's "a minority" wording implies, pinned
-            // because nothing else does: at exactly half the rule must not fire.
+        @DisplayName("an even split settles nothing, so each run keeps its own reading")
+        void anEvenSplitLeavesEachRunAsItRead() {
+            // The boundary the constant's "a minority" and "most of them" wording
+            // implies, pinned because nothing else does: at exactly half neither
+            // direction may fire, so the two runs disagree and stay that way.
             assertThat(alternating(1, 1)).containsExactly("Cm7", "D", "Cm");
+        }
+
+        @Test
+        @DisplayName("carrying a seventh does not flip a third")
+        void promotionLeavesAMajorTriadAlone() {
+            // The mirror of the withdrawal's fallback rule. A count of sevenths
+            // is evidence about a seventh and none at all about a third, so a run
+            // read as a major triad on that root keeps its third -- naming it Cm7
+            // would flip one on the strength of the other runs' colour.
+            double[] majorTriad = chroma(0, 0.25, 4, 0.20, 7, 0.25);
+
+            assertThat(alternating(2, 1, withSeventh(), majorTriad))
+                    .containsExactly("Cm7", "D", "Cm7", "D", "C");
+        }
+
+        @Test
+        @DisplayName("a run nothing explained is not given a seventh by the count")
+        void promotionKeepsTheFloor() {
+            // The run's treble carries the melody and nothing of the chord, so no
+            // candidate beats a flat chroma there and the decoder's own answer
+            // stands -- the deference chooseQualities shows when it declines. The
+            // count must not overrule that: a seventh added here would be one no
+            // chroma anywhere in the run argued for.
+            double[] blankTreble = chroma(2, 0.30, 6, 0.30, 9, 0.30);
+
+            assertThat(alternatingTreble(2, 1, blankTreble))
+                    .containsExactly("Cm7", "D", "Cm7", "D", "Cm");
         }
 
         @Test
@@ -536,34 +565,64 @@ class ChordEstimationTest {
          * different amounts of agreement.
          */
         private static List<String> alternating(int sevenths, int plain) {
-            // A minor triad whose flat seventh clears 2/sqrt(3) - 1 of the triad's
-            // mass, which is all its callers need of it.
-            return alternating(sevenths, plain,
-                    chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13));
+            return alternating(sevenths, plain, withSeventh());
         }
 
         /** As {@link #alternating(int, int)}, with the seventh-bearing run given. */
         private static List<String> alternating(int sevenths, int plain,
                                                 double[] withSeventh) {
-            double[] withoutSeventh = chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.02);
+            return alternating(sevenths, plain, withSeventh, withoutSeventh());
+        }
+
+        /** As {@link #alternating(int, int)}, with both runs' chroma given. */
+        private static List<String> alternating(int sevenths, int plain,
+                                                double[] withSeventh, double[] plainRun) {
+            List<double[]> vectors = beatsOf(sevenths, plain, withSeventh, plainRun);
+            return symbols(vectors, vectors);
+        }
+
+        /**
+         * As {@link #alternating(int, int)} with the plain run's <em>treble</em>
+         * given: its combined chroma still says C minor, so the decoder places
+         * the run where it always did and only the quality decision reads the
+         * vector given.
+         */
+        private static List<String> alternatingTreble(int sevenths, int plain,
+                                                      double[] treble) {
+            return symbols(beatsOf(sevenths, plain, withSeventh(), withoutSeventh()),
+                    beatsOf(sevenths, plain, withSeventh(), treble));
+        }
+
+        /** A minor triad whose flat seventh clears 2/sqrt(3) - 1 of the triad's mass. */
+        private static double[] withSeventh() {
+            return chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.13);
+        }
+
+        /** The same triad with its flat seventh below the background level. */
+        private static double[] withoutSeventh() {
+            return chroma(0, 0.23, 3, 0.13, 7, 0.23, 10, 0.02);
+        }
+
+        /** Four beats per run, the C runs separated by four beats of D major. */
+        private static List<double[]> beatsOf(int sevenths, int plain,
+                                              double[] withSeventh, double[] plainRun) {
             double[] away = chroma(2, 0.25, 6, 0.22, 9, 0.24);
-
-            List<double[]> runs = new java.util.ArrayList<>();
-            for (int i = 0; i < sevenths + plain; i++) {
-                if (i > 0) {
-                    runs.add(away);
-                }
-                runs.add(i < sevenths ? withSeventh : withoutSeventh);
-            }
-
             List<double[]> vectors = new java.util.ArrayList<>();
-            for (double[] run : runs) {
+            for (int i = 0; i < sevenths + plain; i++) {
+                for (int beat = 0; i > 0 && beat < 4; beat++) {
+                    vectors.add(away);
+                }
                 for (int beat = 0; beat < 4; beat++) {
-                    vectors.add(run);
+                    vectors.add(i < sevenths ? withSeventh : plainRun);
                 }
             }
-            Chroma chroma = beats(vectors.toArray(double[][]::new));
-            return ChordEstimator.estimate(chroma, chroma, beatTimes(vectors.size()))
+            return vectors;
+        }
+
+        private static List<String> symbols(List<double[]> combined, List<double[]> treble) {
+            return ChordEstimator.estimate(beats(combined.toArray(double[][]::new)),
+                            beats(treble.toArray(double[][]::new)),
+                            beatTimes(combined.size()))
                     .chords().stream().map(Chord::symbol).toList();
         }
     }

@@ -281,20 +281,23 @@ public final class ChordEstimator {
      * <pre>
      *   beats either side       none     0     1     2     3     4
      *   eb7-vamp root+quality    102    80   141   160   158   155
-     *   fm7-vamp root+quality     92    94     0   117   102    77
+     *   fm7-vamp root+quality    133   127     0   132   136   134
      *   bm-blues root+quality     78    68    68    88    91    96
      * </pre>
      *
-     * <p>At zero and one the prior helps one recording and wrecks another; two
-     * and three both clear the no-prior column on every row, and two is where
-     * the two vamps read highest. So the window is part of the mechanism rather
-     * than a smoothing detail. The fm7 cell at one is split runs meeting {@link
-     * #withdrawMinoritySevenths}: once a root is fragmented into short runs, a
-     * minority of its beats carry the seventh and every one of them then loses
-     * it. Widening past two trades the fm7 row away a good deal faster than the
-     * bm-blues row gains — fifteen bars against three at a window of three, and
-     * forty against eight at four — so the vamp whose bass is a figure is the
-     * row to watch when moving this.
+     * <p>At zero every row reads below the no-prior column, which is the
+     * beat-by-beat splitting above. At one the prior helps one recording and
+     * wrecks another, and the wreck is {@link #decideSeventhsPerRoot} reading a
+     * root whose beats carry the seventh just under half the time: the count
+     * falls the wrong side of the half and every run on that root loses it —
+     * which {@code ChordSweep score} shows as every root-correct bar of that
+     * recording reading a plain triad. That is what makes the window part of the
+     * mechanism rather than a smoothing detail.
+     *
+     * <p>From two upwards the three rows no longer agree on a best window — eb7
+     * reads highest at two, fm7 at three, and bm-blues goes on rising past both.
+     * Two is what ships and what every figure in {@code tools/baselines/} was
+     * measured through; #488 carries whether the corpus now wants three.
      */
     private static final int BASS_ROOT_BEATS = 2;
 
@@ -586,48 +589,64 @@ public final class ChordEstimator {
             }
             i = j;
         }
-        withdrawMinoritySevenths(path, out, templates, qualityChroma);
+        decideSeventhsPerRoot(path, out, templates, qualityChroma);
         return out;
     }
 
     /**
-     * Share of a root's beats that must carry a minor seventh for any of them to
-     * keep it. Only {@link #withdrawMinoritySevenths} reads it.
+     * Share of a root's beats that decides the seventh for all of them. Only
+     * {@link #decideSeventhsPerRoot} reads it.
      *
-     * <p>A half, meaning "a minority of the root's beats", which is a definition
-     * rather than a fitted constant — and the corpus pins it only loosely.
-     * {@code synthetic_samples/pop-axis-g-116.mp3} sets the floor: its E runs
-     * carry the seventh on 15 beats of 36, so at or below that share nothing is
-     * withdrawn there. {@code samples/fm7-vamp-110.mp3} sets the ceiling: it
-     * keeps its sevenths at 0.65 and loses all of them at 0.70. No scored
-     * benchmark moves anywhere between.
+     * <p>A half, meaning "a minority of the root's beats" one way and "most of
+     * them" the other, which is a definition rather than a fitted constant. Read
+     * strictly on both sides, so a root split evenly is left as each run read it:
+     * at a half the recording says nothing about which way to settle it.
+     *
+     * <p>The synthetic corpus stands on either side of it, and {@code
+     * tools/score-synthetic.py} shows both edges. Lowered far enough, every E run
+     * of {@code synthetic_samples/pop-axis-g-116.mp3} — plain triads, and the
+     * package #446 was measured on — gains the seventh a minority of its beats
+     * carry. Raised far enough, every {@code Ebm7} run of {@code
+     * synthetic_samples/hiphop-m7vamp-bbm-90.mp3} loses the seventh most of its
+     * beats do carry. The two roots sit well apart, so the rule is not delicate
+     * between them.
      */
     private static final double SEVENTH_MUST_HOLD_FOR = 0.5;
 
     /**
-     * Withdraws a minor seventh from every run on a root where the recording as a
-     * whole does not support it, in place.
+     * Settles the minor seventh across every run on a root, in place: withdrawn
+     * from all of them where the recording as a whole does not support it, added
+     * to the minor triads among them where it does.
      *
      * <p>{@link #chooseQualities} weighs each run against its own chroma alone,
      * so a run whose flat seventh clears the level by a hair keeps it however the
-     * rest of the recording reads. That is what #446 measures: on a package whose
-     * grid is known exactly, four of ten {@code Em} bars come back {@code Em7} —
-     * two because the melody sounds a D over the triad, two on partial bleed —
-     * while the same chord elsewhere reads plain.
+     * rest of the recording reads, and a run that misses by a hair loses it the
+     * same way. The first is what #446 measures: on a package whose grid is known
+     * exactly, four of ten {@code Em} bars come back {@code Em7} — two because
+     * the melody sounds a D over the triad, two on partial bleed — while the same
+     * chord elsewhere reads plain. The second is #479, where a vamp repeating one
+     * voicing loses the seventh in scattered bars: each beat is normalised before
+     * a run is summed, so one voicing does not give one sum, and the ratio a
+     * four-note template has to clear is the same either way.
      *
      * <p><b>The prior is that a chord recurs and its seventh is a property of the
      * chord, not of the bar.</b> So the seventh is believed on a root where most
-     * of that root's beats carry it, and withdrawn where a minority do. This is
-     * orthogonal to how strong the evidence has to be, which is what #274's sweep
-     * is about and what this deliberately leaves alone: every threshold there was
-     * measured to strip {@code samples/fm7-vamp-110.mp3} of its sevenths before it
-     * stripped #446's package of its false ones, because on this corpus the false
-     * minor sevenths are the stronger per-run evidence. Counting across runs is
-     * the axis on which the two separate.
+     * of that root's beats carry it and withdrawn where a minority do — one count
+     * read in both directions, which is what makes the two halves the same rule
+     * rather than two thresholds that could drift apart. This is orthogonal to
+     * how strong the evidence has to be, which is what #274's sweep is about and
+     * what this deliberately leaves alone: every threshold there was measured to
+     * strip {@code samples/fm7-vamp-110.mp3} of its sevenths before it stripped
+     * #446's package of its false ones, because on this corpus the false minor
+     * sevenths are the stronger per-run evidence. Counting across runs is the
+     * axis on which the two separate — and it is the axis #479 needed too, where
+     * the window a run was read over does not separate the bars that keep the
+     * seventh from the bars that lose it.
      *
      * <p>What it costs is a seventh sounded once in a piece that otherwise states
-     * the triad — the passing {@code Am7} is read {@code Am}. {@code
-     * tools/baselines/score-samples.txt} carries both sides of that.
+     * the triad — the passing {@code Am7} is read {@code Am} — and, the other
+     * way, a triad sounded once in a piece that otherwise states the seventh.
+     * {@code tools/baselines/score-samples.txt} carries both sides of that.
      *
      * <p><b>The argmax it falls back to is over triads only.</b> The one that
      * placed the minor seventh ranks it against the dominant one, which shares
@@ -637,6 +656,13 @@ public final class ChordEstimator {
      * minor blues — were given a major third, which is the failure {@link
      * #qualityScore}'s correction exists to stop, and restricting the fallback
      * is worth seven bars of that recording.
+     *
+     * <p><b>Only a minor triad gains one</b>, for the same reason read the other
+     * way: a major triad or a dominant seventh on that root differs from the
+     * minor seventh in the third, and a count of sevenths is no evidence about a
+     * third. Adding one is held to {@link #bestQuality}'s floor as well, so a run
+     * no candidate explained — where the decoder's own answer stands — is not
+     * given a seventh by the count alone.
      *
      * <p>Where no triad beats a flat chroma either, the run has nothing to say
      * about its own quality and <b>the decoder's answer stands — which may be a
@@ -649,9 +675,9 @@ public final class ChordEstimator {
      * <p>Grouping either array gives the same runs, since {@link #sameChord}
      * reads only the root and nothing here changes one.
      */
-    private static void withdrawMinoritySevenths(int[] path, int[] out,
-                                                 List<Template> templates,
-                                                 Chroma qualityChroma) {
+    private static void decideSeventhsPerRoot(int[] path, int[] out,
+                                              List<Template> templates,
+                                              Chroma qualityChroma) {
         int[] sevenths = new int[12];
         int[] beats = new int[12];
         for (int state : out) {
@@ -673,7 +699,8 @@ public final class ChordEstimator {
                 j++;
             }
             int root = templates.get(out[i]).rootPitchClass();
-            if (templates.get(out[i]).quality() == ChordQuality.MINOR_SEVENTH
+            ChordQuality quality = templates.get(out[i]).quality();
+            if (quality == ChordQuality.MINOR_SEVENTH
                     && sevenths[root] < SEVENTH_MUST_HOLD_FOR * beats[root]) {
                 int fallback = bestQuality(sum(qualityChroma, i, j), templates, root, true);
                 // No triad beat a flat chroma, so the decoder's answer stands.
@@ -684,9 +711,32 @@ public final class ChordEstimator {
                 for (int frame = i; frame < j; frame++) {
                     out[frame] = fallback >= 0 ? fallback : path[frame];
                 }
+            } else if (quality == ChordQuality.MINOR
+                    && sevenths[root] > SEVENTH_MUST_HOLD_FOR * beats[root]) {
+                int seventh = indexOf(templates, root, ChordQuality.MINOR_SEVENTH);
+                // Held to the floor bestQuality applies: a run no candidate
+                // explained keeps the answer it has rather than being given a
+                // seventh the count alone argues for.
+                if (qualityScore(sum(qualityChroma, i, j), templates.get(seventh))
+                        > flatScore(templates.get(seventh))) {
+                    for (int frame = i; frame < j; frame++) {
+                        out[frame] = seventh;
+                    }
+                }
             }
             i = j;
         }
+    }
+
+    /** The template for {@code quality} on {@code root}. */
+    private static int indexOf(List<Template> templates, int root, ChordQuality quality) {
+        for (int t = 0; t < templates.size(); t++) {
+            if (templates.get(t).rootPitchClass() == root
+                    && templates.get(t).quality() == quality) {
+                return t;
+            }
+        }
+        throw new IllegalStateException("no template for " + quality + " on root " + root);
     }
 
     /**
