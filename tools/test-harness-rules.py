@@ -206,7 +206,7 @@ class BarPhase(unittest.TestCase):
 
     def test_a_row_names_the_phase_it_scored_and_the_best_available(self):
         line = phase_line(doc(ALTERNATING, phase=2), "C G")
-        self.assertIn("beat 2 of 4 at 0.350", line)
+        self.assertIn("beat 2 of 4 at 0.3500", line)
         self.assertIn("root 50.0%", line)
         self.assertIn("best beat 0 at 100.0%", line)
 

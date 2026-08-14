@@ -352,6 +352,10 @@ def phase_roots(doc: dict, truth: str, per_bar: int) -> list[float]:
     on this row, and its best entry reads the chord estimate with the phase
     choice taken out of it.
 
+    Root only, so a phase stays one number: a bar can hold the right root and
+    the wrong quality but never the reverse, since root+quality credit is a
+    subset of root credit, so the root column is where a mis-phased bar shows.
+
     Every phase has at least one bar, since `bar_phase` returns nothing for a
     grid shorter than two bars.
     """
@@ -379,7 +383,7 @@ def score_phase(mp3: Path, doc: dict, truth: str) -> None:
     # Ties go to the phase the estimator chose, so that a row where no other
     # phase does better says so by naming that phase rather than an equal one.
     best = max(range(per_bar), key=lambda p: (scores[p], p == phase))
-    print(f"  phase {mp3.name}: beat {phase} of {per_bar} at {confidence:.3f}"
+    print(f"  phase {mp3.name}: beat {phase} of {per_bar} at {confidence:.4f}"
           f"  root {scores[phase]:.1f}%"
           f"  best beat {best} at {scores[best]:.1f}%")
 
@@ -437,7 +441,7 @@ def main() -> None:
         print(missing_line(name))
 
     print("bar phase the rows above rest on, at the estimator's own confidence"
-          f" in it (a phase nothing supports reports {PHASE_FLOOR:.3f}):")
+          f" in it (a phase nothing supports reports {PHASE_FLOOR:.4f}):")
     missing = []
     for name, truth in BENCHMARKS.items():
         doc = doc_for(name)
