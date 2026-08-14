@@ -347,11 +347,18 @@ them are in `docs/history.md`. The short version:
     or the PR, once, not in the source. Fix the sentence and move on.
   - When a fact changes, grep for every statement of it before editing one. That
     is the cheapest way to stop the next round.
+- **`docs/local-setup.md`** is the machine setup: the global config keys, the
+  sherpa native, the alignment models, and what each one degrades silently
+  when it is missing. A stage that cannot reach its model says so in one line
+  and carries on, so the gate can pass having measured less than it looks.
 - **One git worktree per task, one local Maven repository per worktree**
   (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
   build downloads the dependency closure; that is the price of the isolation.
-  Never `git checkout` in the shared clone. The incidents behind each half are
-  in `docs/history.md`.
+  Never `git checkout` in the shared clone — and no worktree may hold `main`
+  either: it is one ref, so resetting it anywhere moves it for the clone too,
+  whose files then read as deletions against a HEAD that moved without them.
+  A worktree that must build from `main` takes a detached HEAD. The incidents
+  behind each half are in `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.

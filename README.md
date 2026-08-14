@@ -188,6 +188,10 @@ keys that reach nothing draw a warning rather than silence; `arrangement`
 reaches nothing *and* warns nothing — entirely inert until the piano work
 lands ([#144][i144]).
 
+[`docs/local-setup.md`](docs/local-setup.md) is what a machine needs for the
+stages that reach outside the repo, and what degrades in silence without each
+of them.
+
 ## Roadmap
 
 Where this is going, in rough order of pull:
