@@ -16,6 +16,12 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 mvn -pl mw-core test       # the module that matters most
 ```
 
+`docs/local-setup.md` is what a machine needs beyond that — the global config
+keys, the sherpa native, the alignment models — written around what each one
+degrades in silence. A stage that cannot reach its model says so in one line
+and carries on, so a harness row can measure something other than it appears
+to, in either direction.
+
 `./mw` is a developer wrapper that rebuilds when sources change; the real
 artifact is the shaded `mw-cli/target/mw.jar`. It is ~88 MB, almost entirely
 ONNX Runtime, FFmpeg natives and the Anthropic SDK.
@@ -347,18 +353,15 @@ them are in `docs/history.md`. The short version:
     or the PR, once, not in the source. Fix the sentence and move on.
   - When a fact changes, grep for every statement of it before editing one. That
     is the cheapest way to stop the next round.
-- **`docs/local-setup.md`** is the machine setup: the global config keys, the
-  sherpa native, the alignment models, and what each one degrades silently
-  when it is missing. A stage that cannot reach its model says so in one line
-  and carries on, so the gate can pass having measured less than it looks.
 - **One git worktree per task, one local Maven repository per worktree**
   (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
   build downloads the dependency closure; that is the price of the isolation.
-  Never `git checkout` in the shared clone — and no worktree may hold `main`
-  either: it is one ref, so resetting it anywhere moves it for the clone too,
-  whose files then read as deletions against a HEAD that moved without them.
-  A worktree that must build from `main` takes a detached HEAD. The incidents
-  behind each half are in `docs/history.md`.
+  Never `git checkout` in the shared clone, and never force `refs/heads/main`
+  from a worktree: git refuses the ordinary ways by itself, but `checkout -B`,
+  `branch -f` and `update-ref` are not refused, and one of those moves the ref
+  for the clone too — whose files then read as deletions against a HEAD that
+  moved without them. A worktree that must build from `main` detaches. The
+  incidents behind each half are in `docs/history.md`.
 - **No raw control characters in source files.** A test file once contained
   literal NUL bytes, so git treated it as binary — no diff, no blame,
   unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.

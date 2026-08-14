@@ -3,15 +3,21 @@
 
 `--source lrc` (the default) is the **loop-closure gate**: an LRC in,
 `analyze`, `render`, MW's words back out of `score/score.json`, scored against
-that same LRC. The word and onset columns are expected to read zero: MW carries
-those values through from the file. **The line-end column is not**, because MW
-does not carry a line's end through -- it decides one, from the gap to the next
-entry, the typical line length and the recording's own end. So that column is a
-measurement of the deciding, on a loop where everything else is a copy.
+that same LRC. **The word column is the closure**: MW carries the words through,
+so anything but zero is a dropped, duplicated or reordered line, or a word lost
+to a tokenizer disagreement.
 
-What the zeros catch is the day they stop: a dropped, duplicated or reordered
-line, a word lost to a tokenizer disagreement, a stated onset moved by the
-offset sign or the sort.
+The other two columns are not closure, because MW does not carry those values
+through -- it decides them. It decides a line's end from the gap to the next
+entry, the typical line length and the recording's own end. And where a forced
+alignment model is reachable for the language it decides the onsets too, from
+the audio, replacing the ones the file stated. Both columns are measurements of
+that deciding.
+
+**So the onset column reads zero on a machine that cannot align, and a real
+error on one that can, for the same recording and the same MW** (#482). Which
+of the two the committed baseline holds is a fact about the machine that wrote
+it, not only about this program; docs/local-setup.md says which.
 
 `--source asr` is the **transcription measurement** (#391): the same
 recordings, `analyze --lyrics-language` with no lyrics file, the words MW

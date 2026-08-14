@@ -11,9 +11,9 @@ a line that is easy to read past.
 
 ## The global config
 
-`~/.config/music-wizard/config.yaml`. Providers read their model settings from
-this layer *only* (#383) — a workspace's `workspace.yaml` cannot supply them,
-and `analyze` warns when one tries.
+`~/.config/music-wizard/config.yaml`. Two keys are read from this layer *only*
+(#383) — `ml.alignmentModelDirectory` and `ml.asrModelDirectory` — and `analyze`
+warns when a workspace tries to set either. The rest of `ml` merges normally.
 
 ```yaml
 ml:
@@ -24,15 +24,22 @@ ml:
   alignmentModelDirectory: /home/you/.cache/music-wizard/alignment
 ```
 
-**Without `sherpaNativePath`:** lyric transcription reports that it cannot load
-the native, and `tools/score-lyrics.py --source asr` skips its row.
+**Without `sherpaNativePath`:** `mw analyze --lyrics-language` reports that it
+cannot load the native, and transcription does not run. It does not affect
+`tools/score-lyrics.py --source asr`, which pins the repo's own build rather
+than reading the key — that row skips on the built file being absent.
 
 **Without `alignmentModelDirectory`:** only the languages with a *published*
 export align — today English alone. Italian lyrics keep the times the lyric
 file was parsed into, spread across each line by syllable count, and `analyze`
-prints `lyrics not aligned: onnx-wav2vec2 speaks [en]`. That sentence is true
-and points at the provider, so the missing key is easy to miss; the engraved
-sheet then shows placement nothing measured (#482).
+prints `lyrics not aligned: onnx-wav2vec2 speaks [en]…`. That is true, and it
+points at the provider rather than at a key, so the engraved sheet ends up
+showing placement nothing measured (#482).
+
+**`mw doctor` answers this in a second** and is the first thing to run on a new
+machine: it lists each provider with the languages it can actually offer, so a
+model that is present but unreachable shows as an absence rather than as a
+puzzle.
 
 ## The sherpa-onnx native
 
@@ -41,15 +48,14 @@ git submodule update --init --recursive third_party/sherpa-onnx
 tools/build-sherpa-native.sh
 ```
 
-Built from the source submodule with TTS off, because the default build
-statically links a GPL-3.0 espeak fork. `tools/check-sherpa-native.sh` asserts
-that, in CI too.
+Built from the source submodule with TTS off; `CLAUDE.md` says why, and
+`tools/check-sherpa-native.sh` holds it, in CI too.
 
 ## Alignment models
 
 English downloads itself. Italian is a local export because no trusted ONNX one
-is published — `docs/italian-alignment-model.md` is the recipe. Put the result
-at `<alignmentModelDirectory>/it/model.onnx`.
+is published: [`italian-alignment-model.md`](italian-alignment-model.md) is the
+recipe and the layout.
 
 ## LilyPond
 
@@ -87,27 +93,32 @@ skipping for want of the sherpa native, and the gate said `PASS` throughout
 
 The project uses one worktree per task. Two things there are not obvious.
 
-**A worktree does not check out submodules.** So `third_party/sherpa-onnx` is
-empty, the `sherpa` Maven profile does not activate, the ASR provider is absent
-from the build, and the transcription harness row skips. Symlinking the
-submodule and its build from the main clone is enough to run the gate in full:
+**A worktree does not check out submodules.** `third_party/sherpa-onnx` is left
+as an empty directory, so the `sherpa` Maven profile does not activate, the ASR
+provider is absent from the build, and the transcription harness row skips.
+Linking the clone's copy in is enough to run the gate in full — **remove the
+empty directory first**, or the link lands *inside* it, the profile still does
+not activate, and nothing says so:
 
 ```sh
+rm -rf third_party/sherpa-onnx
 ln -s ~/dev/music-wizard/third_party/sherpa-onnx third_party/sherpa-onnx
 ```
 
-Local-only samples can be linked the same way. Neither shows up in `git status`
-— `samples/` entries are gitignored by name and the submodule is a gitlink —
-but check before committing, since replacing the submodule directory with a
-symlink does show as a type change.
+That shows as a type change in `git status`; restore it with `git checkout --
+third_party/sherpa-onnx` before committing. Local-only samples can be linked
+the same way and do not show, being gitignored by name.
 
-**No worktree may share `main` with the clone.** `main` is one ref: checking it
-out in a worktree and resetting there moves it for every worktree at once,
-including the shared clone, whose files then read as a hundred deletions
-against a HEAD that moved without them. The rule written elsewhere is "never
-`git checkout` in the shared clone", and it is possible to obey that and still
-cause exactly what it prevents. If a worktree needs to build from `main`, give
-it a detached HEAD:
+**Nothing outside the clone may move `refs/heads/main`.** Git guards the
+ordinary ways by itself: it refuses to check `main` out in a second worktree,
+and refuses to check it out in the clone while a worktree holds it. What it
+does not guard is the forcing forms — `checkout -B`, `branch -f`, `update-ref`
+— and one of those in a worktree moves the ref for the clone too, whose files
+then read as a hundred deletions against a HEAD that moved without them.
+
+A `git checkout main || git checkout -B main origin/main` fallback is how this
+actually happened: the first half is refused, the second half is not. If a
+worktree needs to build from `main`, detach instead:
 
 ```sh
 git -C <worktree> checkout --detach origin/main
