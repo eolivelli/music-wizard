@@ -109,8 +109,8 @@ registers added is still a fold to pitch classes, and a fold cannot say which of
 a chord's own notes is its root — which is the whole difference between a chord
 and its relative minor, since a sixth added to the one gives exactly the other's
 four notes. So a boogie shuffle's root-and-sixth comping reads as the relative
-minor, and does so summed over the bar as well as beat by beat; nothing about
-the window it is decided over fixes that. The bass says it instead. It has to be
+minor, and goes on reading that way however wide the span it is decided over;
+nothing about the window fixes it. The bass says it instead. It has to be
 read over about a bar rather than beat by beat, because a walking bass passes
 through the third and the sixth and asserting a root at every passing note
 splits a chord's run in two — and a run split in two has its quality decided
