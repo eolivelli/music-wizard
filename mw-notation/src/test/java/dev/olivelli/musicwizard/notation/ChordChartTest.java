@@ -590,6 +590,42 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("reports a tempo change the chart's first bar holds, before the harmony starts")
+    void aTempoChangeInsideTheOpeningBarIsReported() {
+        // The chart opens on a bar line and the harmony starts inside that bar,
+        // so a tempo event between the two is on the page. An ordinary MIDI
+        // file: MidiTranscriber makes a DECLARED segment of every tempo event at
+        // whatever tick it sits on, and nothing says a file may not change tempo
+        // mid-bar before its first chord.
+        //
+        // Counted from the harmony the change fell outside the window and the
+        // row read "60 BPM" flat -- a chart whose first bar holds two tempos,
+        // saying there is nothing more to know.
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(2, 1.0, 60, Provenance.DECLARED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A};
+        List<Chord> chords = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            double from = 3 + i * 4.0;
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                            map.beatsToSeconds(from), map.beatsToSeconds(from + 4.0),
+                            Confidence.of(0.9))
+                    .quantizedTo(from, from + 4.0));
+        }
+        Score score = Score.empty(map, map.beatsToSeconds(16))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        List<ChartLayout.Bar> bars = ChartLayout.of(score);
+        assertThat(bars.get(0).startSeconds())
+                .as("the chart opens a bar before the harmony does")
+                .isLessThan(ChartLayout.harmonyStarts(score));
+        assertThat(ChordChart.toText(score))
+                .contains("Tempo  120 BPM at the start, changed 1 time later");
+    }
+
+    @Test
     @DisplayName("heads a chart lying wholly after a stated change with the tempo it is drawn at")
     void aChartAfterAStatedChangeIsSpacedAtTheTempoItNames() {
         // The header reads the tempo where the harmony starts and so does the
@@ -1382,8 +1418,8 @@ class ChordChartTest {
         // is strictly inside what the stated tempo admits -- 1.75s and 2.375s
         // against a 2.0s bar, so neither the short nor the long band refuses it,
         // and neither sits on a boundary where one comparison's strictness
-        // would decide -- and they do not agree with each other, the long ones
-        // being more than a quarter longer than the sequence's own rate.
+        // would decide -- and they do not agree with each other, the long one
+        // being a third longer than the rest.
         Score score = aGridWithBars(1.75, 1.75, 1.75, 2.375, 1.75, 1.75, 1.75, 1.75);
 
         assertThat(drawnBarLines(score).get(1) - drawnBarLines(score).get(0))

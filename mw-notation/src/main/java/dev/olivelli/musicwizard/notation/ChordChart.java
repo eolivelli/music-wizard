@@ -185,20 +185,37 @@ public final class ChordChart {
      * <p><b>A piece that states more than one tempo is headed with the one the
      * chart opens on, and told if it changes within the chart.</b> That is #66,
      * and which figure that is belongs to {@link TempoMark#headline} rather than
-     * here: the engraved chart carries the same number as a metronome mark, the
-     * bars are spaced at it on the seconds route, and the two lines a reader
-     * takes off the text file are the ones the page has to agree with. All of
-     * them ask at {@link ChartLayout#harmonyStarts}, which is the one moment
-     * every reader of this figure can know. The count runs from there to the
-     * last bar's end, like {@link #meterChanges}: a chart that ends before a
-     * change does not hold it any more than one beginning after it does.
+     * here: the engraved chart carries the same number as a metronome mark, and
+     * the two lines a reader takes off the text file are the ones the page has
+     * to agree with. Both ask at {@link #opensAt}, and the count runs from there
+     * to the last bar's end, exactly as {@link #meterChanges} runs over the
+     * chart's own bars: a chart that ends before a change does not hold it any
+     * more than one beginning after it does. The seconds route's spacing asks
+     * one moment earlier and cannot ask this one; {@link
+     * ChartLayout#quarterNoteSeconds} says why the two agree wherever it
+     * matters.
      */
     private static String tempoLine(Score score, TimeSignature meter,
                                     List<ChartLayout.Bar> bars) {
-        double startsAt = ChartLayout.harmonyStarts(score);
+        double opensAt = opensAt(bars);
         double endsAt = bars.isEmpty() ? 0 : bars.get(bars.size() - 1).endSeconds();
-        return "Tempo  " + tempo(TempoMark.headline(score, startsAt), meter)
-                + more(TempoMark.statedChangesIn(score, startsAt, endsAt)) + "\n";
+        return "Tempo  " + tempo(TempoMark.headline(score, opensAt), meter)
+                + more(TempoMark.statedChangesIn(score, opensAt, endsAt)) + "\n";
+    }
+
+    /**
+     * Where the chart's first bar line falls, in seconds, or the start of the
+     * piece when it has no bars.
+     *
+     * <p>Both ends of what the tempo row describes are the page's own -- this
+     * and the last bar's end -- for the same reason {@link #meterChanges} reads
+     * the chart's bars: a row in this header is a claim about the bars under it.
+     * A chart whose first bar holds a tempo change has to say so, and taking the
+     * left edge from the harmony instead lost exactly that, since the first bar
+     * can open a bar before the first chord does.
+     */
+    private static double opensAt(List<ChartLayout.Bar> bars) {
+        return bars.isEmpty() ? 0 : bars.get(0).startSeconds();
     }
 
     /** One tempo, in the beat {@code meter} is counted in. */
@@ -382,7 +399,7 @@ public final class ChordChart {
         // Outside \chordmode, which is where a mark belongs that is not a chord:
         // inside it, every line of the block is a bar whose durations have to
         // sum to the meter, and this one has no duration at all.
-        TempoMark.of(score, countedIn(score, bars), ChartLayout.harmonyStarts(score))
+        TempoMark.of(score, countedIn(score, bars), opensAt(bars))
                 .ifPresent(mark -> out.append("    ").append(mark.lilyPond()).append('\n'));
         out.append("    \\chordmode {\n");
 

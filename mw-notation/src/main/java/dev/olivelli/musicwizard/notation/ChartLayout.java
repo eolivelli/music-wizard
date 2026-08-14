@@ -1210,10 +1210,7 @@ final class ChartLayout {
         static BarLines of(Score score, TimeSignature meter, double quarterSeconds) {
             double barQuarters = meter.quarterBeatsPerBar();
             double barSeconds = barQuarters * quarterSeconds;
-            double firstChord = score.chords().chords().stream()
-                    .mapToDouble(Chord::startSeconds)
-                    .min()
-                    .orElse(0.0);
+            double firstChord = harmonyStarts(score);
             Optional<BeatGrid> grid = score.beatGrid();
             List<Double> downbeats = grid.map(BeatGrid::downbeatTimes).orElse(List.of());
             if (downbeats.isEmpty() || !(barSeconds > 0)) {
@@ -1486,14 +1483,20 @@ final class ChartLayout {
     /**
      * How long a quarter note lasts, for a progression that has no beat axis.
      *
-     * <p>{@link TempoMark#headline}, read at {@link #harmonyStarts}, which is
-     * where the chart's header reads it too -- so the two cannot disagree about
-     * how fast the chart goes. They used to: the header read the tempo map
-     * while this measured the tracked beats, and {@code --tempo} moves only the
-     * map, so a chart could be headed 60 BPM above bars a musician would count
-     * at 120. And reading it at the start of the piece instead put that back for
-     * a chart whose bars all fall after a stated change: headed with the tempo
-     * there and spaced at the one the piece opened on.
+     * <p>{@link TempoMark#headline}, read at {@link #harmonyStarts}. The header
+     * reads it at the chart's first bar line, which is the better moment and is
+     * not available here -- it is not known until the axis is built and the axis
+     * needs this. The two are the same tempo on every score the pipeline can
+     * build: they differ only for a stated tempo change falling inside the
+     * chart's first bar, and a score that states a tempo change is always
+     * quantized and so never reaches this method at all.
+     *
+     * <p>Both of the wrong answers here have been shipped. The header once read
+     * the tempo map while this measured the tracked beats, and {@code --tempo}
+     * moves only the map, so a chart could be headed 60 BPM above bars a
+     * musician would count at 120. Then this read the start of the piece, which
+     * put it back for a chart whose bars all fall after a stated change: headed
+     * with the tempo there and spaced at the one the piece opened on.
      *
      * <p>{@code headline} keeps the reason this preferred the grid in the first
      * place, since it defers to {@link Score#estimatedTempo()} wherever nothing
@@ -1509,12 +1512,10 @@ final class ChartLayout {
      * When the chart's harmony starts, which is the moment every reader of the
      * chart's one tempo reads it at.
      *
-     * <p>The chart's first bar line would be the better moment and cannot be
-     * used: it is not known until the axis is built and the axis needs the
-     * tempo. This is, and it is within a bar of it. What matters is that one
-     * moment is chosen once -- the spacing here and the two header rows in
-     * {@link ChordChart} all ask at the same one, so no arithmetic stands
-     * between them.
+     * <p>Where the bar lines go is decided from this and so is how fast they
+     * are spaced, so the axis and its rate cannot be built from two different
+     * answers. The header asks a bar line instead; see {@link
+     * #quarterNoteSeconds} for why the two agree.
      */
     static double harmonyStarts(Score score) {
         return score.chords().chords().stream()
