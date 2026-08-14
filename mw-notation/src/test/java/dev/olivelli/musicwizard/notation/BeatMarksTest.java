@@ -250,24 +250,31 @@ class BeatMarksTest {
     }
 
     @Test
-    @DisplayName("the marks and the syllables are anchored the same way")
+    @DisplayName("every lane is anchored by one declaration, not by each of them")
     void oneAnchorForEverythingOnOneMoment() {
         // #455. Both lanes are placed on one grid by ChartGrid, so a syllable
-        // and a mark on the same moment share an x -- but only if they are hung
-        // on that x the same way. Two anchors put them half a glyph apart at the
-        // very same instant, which reads as the misplacement the marks exist to
-        // reveal. Asserted as "the same", not as "LEFT", because what breaks the
-        // page is the two disagreeing rather than either value.
+        // and a mark on the same moment already share an x -- they were hung on
+        // it differently, and came out apart at the very same instant, which
+        // reads as the misplacement the marks exist to reveal.
+        //
+        // What is asserted is that the value is declared once, for the context.
+        // A per-lane override is a choice each lane makes, and a lane that
+        // simply omitted it would inherit LilyPond's own CENTER and be the one
+        // that disagrees -- which no assertion over the overrides present can
+        // catch, because there would still be only one of them.
         Score score = tracked(4, 0.5);
         Score sung = score.withLyrics(LrcLyrics.parse("""
                 [00:00.00]<00:00.00>la <00:01.00>sol <00:02.00>mi <00:03.00>do
                 """, score.durationSeconds()));
 
-        List<String> anchors = LyricSheet.toLilyPond(sung, MARKED).lines()
-                .filter(line -> line.contains("self-alignment-X"))
-                .map(String::strip).distinct().toList();
+        String lilyPond = LyricSheet.toLilyPond(sung, MARKED);
 
-        assertThat(anchors).hasSize(1);
+        assertThat(lanes(lilyPond)).as("both lanes are on the page").hasSize(2);
+        assertThat(lilyPond.lines().filter(line -> line.contains("self-alignment-X")))
+                .hasSize(1);
+        // After the last lane, so it is the context's and not one lane's.
+        assertThat(lilyPond.indexOf("self-alignment-X"))
+                .isGreaterThan(lilyPond.lastIndexOf("\\lyricmode {"));
     }
 
     @Test
