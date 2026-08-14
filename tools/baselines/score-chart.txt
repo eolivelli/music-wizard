@@ -1,6 +1,6 @@
 charts emitted for samples with known ground truth:
   blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)  root+quality 92.5/113 (81.9%)  split 36  short: tracked 0.0%, chart 0.0%
-  blues-shuffle-a-106bpm.mp3: bars=149  chords/bar 1.02  root 143.0/149 (96.0%)  root+quality 89.0/149 (59.7%)  split 1  short: tracked 0.0%, chart 12.6%
+  blues-shuffle-a-106bpm.mp3: bars=149  chords/bar 1.02  root 142.0/149 (95.3%)  root+quality 89.0/149 (59.7%)  split 1  short: tracked 0.0%, chart 12.6%
   blues-e-90bpm.mp3: bars=113  chords/bar 1.02  root 111.0/113 (98.2%)  root+quality 93.0/113 (82.3%)  split 0  short: tracked 0.0%, chart 0.0%
   slow-68-40.mp3: bars=183  chords/bar 1.07  root 104.5/183 (57.1%)  root+quality 84.0/183 (45.9%)  split 12  short: tracked 0.0%, chart 15.9%
   g-blues-shuffle-cc.mp3: bars=137  chords/bar 1.00  root 131.0/137 (95.6%)  root+quality 101.0/137 (73.7%)  split 0  short: tracked 0.0%, chart 5.9%
@@ -9,7 +9,7 @@ charts emitted for samples with known ground truth:
   waltz-am-e7-160.mp3: bars=209  chords/bar 1.00  root 106.0/209 (50.7%)  root+quality 106.0/209 (50.7%)  split 0  short: tracked 0.0%, chart 2.4%
   f-blues-swing-170.mp3: bars=111  chords/bar 1.07  root 24.0/111 (21.6%)  root+quality 15.0/111 (13.5%)  split 8  short: tracked 0.0%, chart 30.1%
   jazz-251-c-140.mp3: bars=177  chords/bar 1.16  root 31.5/177 (17.8%)  root+quality 22.0/177 (12.4%)  split 28  short: tracked 0.0%, chart 12.0%
-  fm7-vamp-110.mp3: bars=150  chords/bar 1.07  root 134.5/150 (89.7%)  root+quality 118.5/150 (79.0%)  split 10  short: tracked 0.0%, chart 2.6%
+  fm7-vamp-110.mp3: bars=150  chords/bar 1.07  root 134.5/150 (89.7%)  root+quality 134.5/150 (89.7%)  split 10  short: tracked 0.0%, chart 2.6%
   eb7-vamp-130.mp3: bars=166  chords/bar 1.01  root 161.5/166 (97.3%)  root+quality 161.0/166 (97.0%)  split 2  short: tracked 0.0%, chart 26.2%
   bossa-cm.mp3: bars=98  chords/bar 1.12  root 26.0/98 (26.5%)  root+quality 5.0/98 (5.1%)  split 12  short: tracked 0.0%, chart 18.9%
   pop-c-g-am-f-120.mp3: bars=57  chords/bar 1.00  root 57.0/57 (100.0%)  root+quality 56.0/57 (98.2%)  split 0  short: tracked 0.0%, chart 6.7%

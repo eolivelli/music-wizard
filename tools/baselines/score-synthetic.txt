@@ -1,6 +1,6 @@
 Synthetic corpus, bar-by-bar against each package's own spec
 (sequence-aligned: no rotation credit; see the module docstring)
-  hiphop-m7vamp-bbm-90.mp3: bars=52/52  root 51.5/52 (99.0%)  root+quality 45.5/52 (87.5%)  split 1  key OK
+  hiphop-m7vamp-bbm-90.mp3: bars=52/52  root 51.5/52 (99.0%)  root+quality 51.5/52 (99.0%)  split 1  key OK
   pop-axis-g-116.mp3: bars=44/44  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
   pop-threechord-c-108.mp3: bars=28/28  root 28.0/28 (100.0%)  root+quality 28.0/28 (100.0%)  split 0  key OK
   rocknroll-12bar-a-168.mp3: bars=47/48  root 43.5/48 (90.6%)  root+quality 19.0/48 (39.6%)  split 3  key OK
