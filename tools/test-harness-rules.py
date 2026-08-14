@@ -19,6 +19,7 @@ import tempfile
 import unittest
 from importlib import import_module
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 samples = import_module("score-samples")
@@ -753,6 +754,11 @@ def scratch_repo():
     the config files out. Naming the ones that bite leaves the next one to
     find; anything a repo of our own needs, we set here.
 
+    The process environment is what is scrubbed, not one command's copy of it:
+    the code under test spawns git of its own, and a shield the subject does
+    not stand behind leaves it reading the ambient repository while the
+    fixture reads this one.
+
     What it buys: `commit.gpgsign` on a machine with no key makes every commit
     here fail, and `diff.renames = false` lets the rename test below pass
     against a premerge.sh with the flag it exists to pin deleted -- a test that
@@ -762,10 +768,11 @@ def scratch_repo():
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env |= {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
             "GIT_CONFIG_NOSYSTEM": "1"}
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, \
+            mock.patch.dict(os.environ, env, clear=True):
         def git(*args):
             return subprocess.run(("git", "-C", tmp) + args, check=True,
-                                  capture_output=True, text=True, env=env)
+                                  capture_output=True, text=True)
         git("init", "-q")
         git("config", "user.email", "t@example.com")
         git("config", "user.name", "t")
@@ -898,32 +905,37 @@ class BaselineDrift(unittest.TestCase):
     def test_the_scratch_repo_stands_in_no_other_repository(self):
         """GIT_DIR would put these commits in whatever repository the caller
         was standing in, and GIT_CONFIG_COUNT carries config in past the
-        variables that shut the config files out. Both are dropped, so neither
-        an ambient repo nor an ambient setting reaches the fixtures."""
+        variables that shut the config files out. Both are dropped, and from
+        the process environment, so the code under test stands behind the
+        shield too rather than reading the ambient repository through git of
+        its own."""
         with tempfile.TemporaryDirectory() as ambient:
             hostile = {"GIT_DIR": ambient, "GIT_CONFIG_COUNT": "1",
                        "GIT_CONFIG_KEY_0": "diff.renames",
                        "GIT_CONFIG_VALUE_0": "false"}
-            saved = {k: os.environ.get(k) for k in hostile}
-            os.environ.update(hostile)
-            try:
-                with scratch_repo() as (git, tree):
-                    self.assertTrue((tree / ".git").exists())
-                    (tree / "a.txt").write_text("one\n")
-                    git("add", "-A")
-                    git("commit", "-qm", "one")
-                    git("mv", "a.txt", "b.txt")
-                    git("commit", "-qam", "rename")
-                    # No flag, so git's own default decides: detection on, and
-                    # only the destination named. Both paths here would mean
-                    # the ambient diff.renames got in -- which is what would
-                    # let the rename test above pass over a premerge.sh with
-                    # --no-renames deleted.
-                    named = git("diff", "--name-only", "HEAD~1", "HEAD").stdout.split()
-                    self.assertEqual(["b.txt"], named)
-            finally:
-                for k, v in saved.items():
-                    os.environ.pop(k) if v is None else os.environ.update({k: v})
+            cwd = os.getcwd()
+            with mock.patch.dict(os.environ, hostile):
+                try:
+                    with scratch_repo() as (git, tree):
+                        self.assertTrue((tree / ".git").exists())
+                        (tree / "a.txt").write_text(self.CHART)
+                        git("add", "-A")
+                        git("commit", "-qm", "one")
+                        os.chdir(tree)
+                        self.assertEqual(self.CHART, drift.show("HEAD", "a.txt"))
+                        os.chdir(cwd)
+                        git("mv", "a.txt", "b.txt")
+                        git("commit", "-qam", "rename")
+                        # No flag, so git's own default decides: detection on,
+                        # and only the destination named. Both paths here would
+                        # mean the ambient diff.renames got in -- which is what
+                        # would let the rename test above pass over a
+                        # premerge.sh with --no-renames deleted.
+                        named = git("diff", "--name-only",
+                                    "HEAD~1", "HEAD").stdout.split()
+                        self.assertEqual(["b.txt"], named)
+                finally:
+                    os.chdir(cwd)
             self.assertEqual([], sorted(os.listdir(ambient)))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
