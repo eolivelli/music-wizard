@@ -14,6 +14,12 @@ is what the grid is wrong by, or what a constant bar length is wrong by.
 That holds of the seconds route only; a progression carrying beats is laid out
 on the beat axis instead, and `short_changes` below refuses to measure one.
 
+Which beat of the bar either axis starts on is the grid's phase, so a cell here
+can move because the estimator re-phased rather than because the chart changed
+(#303). That is reported over these same recordings by `score-samples.py`'s
+phase block, and not repeated here: re-phasing this harness would mean
+rendering every chart once per phase.
+
 **Neither score bounds the other, because they are scored over different
 bars, and which of them is higher has already changed sign once.** An early
 version of this paragraph said a chart score can never beat a model score and
