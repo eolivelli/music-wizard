@@ -3,8 +3,13 @@
 
 `--source lrc` (the default) is the **loop-closure gate**: an LRC in,
 `analyze`, `render`, MW's words back out of `score/score.json`, scored against
-that same LRC. Both columns are expected to read zero. That is the point of it
--- what it catches is the day they stop: a dropped, duplicated or reordered
+that same LRC. The word and onset columns are expected to read zero: MW carries
+those values through from the file. **The line-end column is not**, because MW
+does not carry a line's end through -- it decides one, from the gap to the next
+entry, the typical line length and the recording's own end. So that column is a
+measurement of the deciding, on a loop where everything else is a copy.
+
+What the zeros catch is the day they stop: a dropped, duplicated or reordered
 line, a word lost to a tokenizer disagreement, a stated onset moved by the
 offset sign or the sort.
 
@@ -17,20 +22,31 @@ baseline. How each of analyze's reported outcomes is treated -- scored,
 skipped with the reason, or a red gate -- is the classification block's own
 story, told beside the code that implements it.
 
-**It sees where runs start, which on a line-level file is where lines start.**
-So the break heuristic and the plausible length are invisible to it -- neither
-can be below a line's own last word tag -- and a regression stretching a line
-over the instrumental after it (#323) would not move either column by a
-millisecond. #361 is the end-and-coverage column that would see it. A word tag
-outside its line's span is a different matter: it is clamped into that span, so
-on a word-tagged file whatever set the end reaches a run start and shows up as
-onset error.
+**The three columns fail for different reasons, which is why they are three.**
+Word error says the words are wrong; onset error says they start in the wrong
+place (#307); line-end error says they stop in the wrong place (#361). A single
+number hides which.
 
-**Word error and onset error are reported separately** (#307). They fail for
-different reasons -- one says the words are wrong, the other says they are in
-the wrong place -- and a single number hides which.
+The first two see where runs *start*, which on a line-level file is where lines
+start -- so the break heuristic, the plausible length and the recording bound
+were invisible to both, none of them being able to move a line's own first word
+tag, and a regression stretching a line over the instrumental after it (#323)
+moved neither by a millisecond. The end column is what sees that, and it is
+scored against the one place a lyric file states where a line stops: a
+timestamp with no text after it, which clears the display. `tools/vtt-to-lrc.py`
+writes one per cue.
 
-Only onsets the file *states* are scored. MW's within-line word onsets are
+**Still not seen: where a word falls inside its line.** On a line-level truth
+there is nothing to score it against, so a change to how a line's words are
+distributed across it moves no column here. The engraved page is the only
+instrument for that today.
+
+A word tag outside its line's span is a different matter: it is clamped into
+that span, so on a word-tagged file whatever set the end reaches a run start and
+shows up as onset error.
+
+Only times the file *states* are scored, onsets and ends alike. MW's
+within-line word onsets are
 apportioned by syllable count (`LrcLyrics.spread`), so re-deriving them here
 would either copy that arithmetic, which measures nothing, or diverge from it,
 which measures Python against Java. So an anchor is the first word of each run
@@ -63,6 +79,7 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -172,13 +189,32 @@ def normalize(token: str) -> str:
     return token.strip(EDGE_PUNCTUATION).casefold()
 
 
-def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
-    """The words the LRC states, their stated onsets, and whether it times words.
+class Truth(NamedTuple):
+    """What the lyric file states, in the units this harness scores."""
 
-    Returns (normalised tokens, {token index: onset seconds}, word_level). The
-    decomposition mirrors LrcLyrics.parse and LrcLyrics.wordsOf: the same BOM
-    strip, the same [offset:] sign, the same repeated-tag expansion, the same
-    sort, and one anchor per timed run.
+    tokens: list[str]
+    anchors: dict[int, float]
+    """{token index: stated onset}, one per timed run."""
+    ends: dict[int, float]
+    """{last token index of a line: the moment its display clears}."""
+    word_level: bool
+
+
+class Heard(NamedTuple):
+    """What MW carried, cut the same way."""
+
+    tokens: list[str]
+    starts: list[float]
+    line_ends: list[float]
+    """Parallel to tokens: the end of the line each word belongs to."""
+
+
+def truth_tokens(text: str) -> Truth:
+    """The words the LRC states, their stated times, and whether it times words.
+
+    The decomposition mirrors LrcLyrics.parse and LrcLyrics.wordsOf: the same
+    BOM strip, the same [offset:] sign, the same repeated-tag expansion, the
+    same sort, and one anchor per timed run.
     """
     text = text.removeprefix("\ufeff")
     offset = 0.0
@@ -211,11 +247,22 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
     word_level = False
     tokens: list[str] = []
     anchors: dict[int, float] = {}
+    ends: dict[int, float] = {}
+    open_line = False
     for start, body in timed:
         if jblank(body):
             # A timestamp with no text clears the display. It is not a line; it
-            # ends the one before it, which is why it carries no token.
+            # ends the one before it, which is why it carries no token -- and
+            # why it is the one place a lyric file states where a line stops.
+            # Anchored on that line's last token, so it is paired through the
+            # word alignment exactly as an onset is and a lost line cannot
+            # shift every end after it. Only the first clear after a line
+            # counts: a second states the end of nothing.
+            if open_line and tokens:
+                ends[len(tokens) - 1] = max(0.0, start - offset)
+                open_line = False
             continue
+        open_line = True
         line_start = max(0.0, start - offset)
         # Runs, exactly as wordsOf cuts them: the leading run is anchored by the
         # line, each <tag> opens another. Anchors are the *stated* values, left
@@ -234,7 +281,7 @@ def truth_tokens(text: str) -> tuple[list[str], dict[int, float], bool]:
         if not jblank(tail):
             open_run(tail, at, tokens, anchors)
 
-    return tokens, anchors, word_level
+    return Truth(tokens, anchors, ends, word_level)
 
 
 def open_run(chunk: str, at: float, tokens: list[str], anchors: dict[int, float]) -> None:
@@ -379,23 +426,59 @@ def onset_error(pairs, anchors: dict[int, float], starts: list[float]):
     return median, errors[-1], len(errors), len(anchors)
 
 
-def columns(truth, hypothesis, anchors, starts, word_level: bool) -> str:
-    """The two columns and what qualifies them, without the leading key."""
-    pairs = align(truth, hypothesis)
-    substitutions, deletions, insertions, percent = word_error(pairs, truth, hypothesis)
-    median, worst, matched, total = onset_error(pairs, anchors, starts)
+def end_error(pairs, ends: dict[int, float], line_ends: list[float]):
+    """(median, max, matched, total) over the line ends the file states, or
+    None for the first two when nothing matched.
+
+    A third column rather than a widening of the onset one, because it fails
+    for a different reason (#361). Every onset this harness scores is a value
+    the file states and MW copies, so the rules deciding where a line *stops* --
+    the break, the typical length, the recording bound -- moved nothing in
+    either existing column, and the benchmark was chosen for its long intro and
+    outro precisely to exercise them. A line stretched over the instrumental
+    after it now shows here.
+
+    MW's line end rather than the matched word's own, because that is what the
+    stated clear is the counterpart of: a line's last word need not be the one
+    that stops latest, and LyricLine.endSeconds is the maximum for that reason.
+    """
+    matched_to = {i: j for i, j in pairs if i is not None and j is not None}
+    errors = sorted(abs(line_ends[matched_to[i]] - at)
+                    for i, at in ends.items() if i in matched_to)
+    if not errors:
+        return None, None, 0, len(ends)
+    middle = len(errors) // 2
+    median = (errors[middle] if len(errors) % 2
+              else (errors[middle - 1] + errors[middle]) / 2.0)
+    return median, errors[-1], len(errors), len(ends)
+
+
+def columns(truth: Truth, heard: Heard) -> str:
+    """The three columns and what qualifies them, without the leading key."""
+    pairs = align(truth.tokens, heard.tokens)
+    substitutions, deletions, insertions, percent = word_error(
+        pairs, truth.tokens, heard.tokens)
+    median, worst, matched, total = onset_error(pairs, truth.anchors, heard.starts)
     onset = ("no anchors matched" if median is None
              else f"median {median:.3f}s, max {worst:.3f}s")
-    return (f"words {len(truth)}"
+    end_median, end_worst, end_matched, end_total = end_error(
+        pairs, truth.ends, heard.line_ends)
+    end = ("none stated" if end_total == 0
+           else "no ends matched" if end_median is None
+           else f"median {end_median:.3f}s, max {end_worst:.3f}s")
+    return (f"words {len(truth.tokens)}"
             f"  wer {percent:.1f}% (sub {substitutions}, del {deletions}, ins {insertions})"
             f"  onset {onset}"
-            f"  anchors {matched}/{total} {'word-level' if word_level else 'line-level'}"
+            f"  line end {end}"
+            f"  anchors {matched}/{total}"
+            f" {'word-level' if truth.word_level else 'line-level'}"
+            f", ends {end_matched}/{end_total}"
             f"  source {SOURCE}")
 
 
-def score_line(name: str, truth, hypothesis, anchors, starts, word_level: bool) -> str:
+def score_line(name: str, truth: Truth, heard: Heard) -> str:
     """A baselined row. Keyed `<name>.mp3:`, which is what premerge.sh gates on."""
-    return f"  {name}: {columns(truth, hypothesis, anchors, starts, word_level)}"
+    return f"  {name}: {columns(truth, heard)}"
 
 
 def missing_line(name: str, where: str) -> str:
@@ -427,12 +510,12 @@ def unavailable_line(name: str, reason: str) -> str:
     return f"  {name}: not present (local-only; {reason[:160]})"
 
 
-def adhoc_line(name: str, truth, hypothesis, anchors, starts, word_level: bool) -> str:
+def adhoc_line(name: str, truth: Truth, heard: Heard) -> str:
     """A row for a file that is not ground truth. Deliberately keyed so it holds
     no `.mp3:` -- premerge.sh filters on that substring, so this cannot drift
     into looking gated when nothing gates it."""
     return (f"  ad-hoc {name} (not ground truth, not baselined): "
-            f"{columns(truth, hypothesis, anchors, starts, word_level)}")
+            f"{columns(truth, heard)}")
 
 
 def run(jar: Path, mp3: Path, lrc: Path, language: str, workspace: Path) -> dict:
@@ -556,26 +639,37 @@ def rejoined(words: list[dict]) -> list[dict]:
     return out
 
 
-def words_of(document: dict, name: str, source: str) -> tuple[list[str], list[float]]:
-    """MW's words and their onsets, normalised the same way the truth is."""
+def words_of(document: dict, name: str, source: str) -> Heard:
+    """MW's words, their onsets, and their lines' ends, normalised the same way
+    the truth is."""
     lines = document.get("lyrics", {}).get("lines", [])
-    words = [word for line in lines for word in rejoined(line["words"])]
+    words: list[dict] = []
+    line_ends: list[float] = []
+    for line in lines:
+        joined = rejoined(line["words"])
+        if not joined:
+            continue
+        # The maximum, as LyricLine.endSeconds is, and carried per word so the
+        # end survives the word alignment that pairs the two sides.
+        end = max(word["endSeconds"] for word in joined)
+        words.extend(joined)
+        line_ends.extend([end] * len(joined))
     if not words and source == "lrc":
         # On the lrc loop the lyrics were an input, so nothing carried means
         # nothing was read. On the asr loop an empty transcription is a
         # result -- a full deletion -- and is scored as one.
         sys.exit(f"{name}: analysis carried no lyric words; the LRC was not read")
-    return ([normalize(word["text"]) for word in words],
-            [word["startSeconds"] for word in words])
+    return Heard([normalize(word["text"]) for word in words],
+                 [word["startSeconds"] for word in words], line_ends)
 
 
-def truth_of(lrc: Path, name: str) -> tuple[list[str], dict[int, float], bool]:
+def truth_of(lrc: Path, name: str) -> Truth:
     """The truth side, refusing a file that states no words rather than
     dividing by its zero and printing a clean-looking `wer 0.0%`."""
-    tokens, anchors, word_level = truth_tokens(lrc.read_text(encoding="utf-8"))
-    if not tokens:
+    truth = truth_tokens(lrc.read_text(encoding="utf-8"))
+    if not truth.tokens:
         sys.exit(f"{name}: {lrc} states no timed words, so there is nothing to score")
-    return tokens, anchors, word_level
+    return truth
 
 
 def measure(jar: Path, mp3: Path, lrc: Path, language: str,
@@ -612,13 +706,12 @@ def main() -> None:
         if not args.lrc:
             sys.exit("--file needs --lrc: there is nothing to score it against")
         mp3, lrc = Path(args.file), Path(args.lrc)
-        truth, anchors, word_level = truth_of(lrc, mp3.name)
+        truth = truth_of(lrc, mp3.name)
         document, reason = measure(jar, mp3, lrc, args.language, SOURCE)
         if document is None:
             print(adhoc_unavailable_line(mp3.name, reason))
             return
-        hypothesis, starts = words_of(document, mp3.name, SOURCE)
-        print(adhoc_line(mp3.name, truth, hypothesis, anchors, starts, word_level))
+        print(adhoc_line(mp3.name, truth, words_of(document, mp3.name, SOURCE)))
         return
 
     if SOURCE == "asr" and not (NATIVE_LIB / "libsherpa-onnx-jni.so").exists():
@@ -636,13 +729,12 @@ def main() -> None:
         if not mp3.exists() or not lrc.exists():
             missing.append((name, Path(audio).parent / "list.txt"))
             continue
-        truth, anchors, word_level = truth_of(lrc, name)
+        truth = truth_of(lrc, name)
         document, reason = measure(jar, mp3, lrc, language, SOURCE)
         if document is None:
             print(unavailable_line(name, reason))
             continue
-        hypothesis, starts = words_of(document, name, SOURCE)
-        print(score_line(name, truth, hypothesis, anchors, starts, word_level))
+        print(score_line(name, truth, words_of(document, name, SOURCE)))
     for name, where in missing:
         print(missing_line(name, where))
 
