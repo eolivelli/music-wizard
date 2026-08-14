@@ -85,73 +85,9 @@ baseline_drift() {
     return 0
   fi
   drift=$(grep -c . <<<"$moved")
-  python3 - "$base" "$tip" <<'PY' $moved
-import re, subprocess, sys
-
-base, tip, paths = sys.argv[1], sys.argv[2], sys.argv[3:]
-
-def rows(rev, path):
-    """Baseline rows as name -> {field shape: field}, or None if absent."""
-    p = subprocess.run(["git", "show", f"{rev}:{path}"],
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        return None
-    out = {}
-    for line in p.stdout.splitlines():
-        if not line[:1].isspace() or ":" not in line:
-            continue                      # a header line, not a row
-        name, _, body = line.partition(":")
-        fields = {}
-        for f in re.split(r"\s{2,}", body.strip()):
-            # A field is keyed by its shape -- itself with every number masked
-            # -- so a column added or renamed reads as a shape change while a
-            # measurement that moved reads as a figure change. Without that,
-            # adding a column rewrites every row and the prompt cries wolf.
-            k = re.sub(r"\d+(?:\.\d+)?", "#", f)
-            fields[k] = fields.get(k, "") + f
-        out[name.strip()] = fields
-    return out
-
-remeasured = False
-for path in paths:
-    old, new = rows(base, path), rows(tip, path)
-    name = path.rsplit("/", 1)[-1]
-    if old is None or new is None:
-        remeasured = True
-        print(f"  {name}: {'added' if old is None else 'removed'} on main")
-        continue
-    common = sorted(set(old) & set(new))
-    figures = [r for r in common
-               if any(k in new[r] and old[r][k] != new[r][k] for k in old[r])]
-    shape = [r for r in common if set(old[r]) != set(new[r])]
-    bits, detail = [], []
-    if set(old) != set(new):
-        remeasured = True
-        bits.append(f"{len(set(new) - set(old))} rows added, "
-                    f"{len(set(old) - set(new))} removed")
-    if figures:
-        remeasured = True
-        bits.append(f"figures moved in {len(figures)} of {len(common)} rows")
-        # Naming them is the actionable half: a reader who quoted one of these
-        # benchmarks knows to re-take that figure, and one who did not is done.
-        detail += ["      " + ", ".join(figures[:5])
-                   + (f" and {len(figures) - 5} more" if len(figures) > 5 else "")]
-    if shape:
-        bits.append(f"columns changed in {len(shape)} of {len(common)} rows"
-                    + ("" if figures else ", no shared figure moved"))
-        # A field whose own shape changed cannot be compared with its old self,
-        # so the prompt shows what appeared and vanished and lets the reader
-        # judge rather than claiming nothing there was re-measured.
-        detail += [f"      - {k}" for k in
-                   sorted({k for r in shape for k in set(old[r]) - set(new[r])})]
-        detail += [f"      + {k}" for k in
-                   sorted({k for r in shape for k in set(new[r]) - set(old[r])})]
-    print(f"  {name}: " + ("; ".join(bits) if bits else "rows unchanged"))
-    if detail:
-        print("\n".join(detail))
-
-sys.exit(1 if remeasured else 0)
-PY
+  # The classification lives in tools/baseline-drift.py, where CI's harness-rule
+  # tests can reach it: a rule about not crying wolf is worth a test.
+  python3 tools/baseline-drift.py "$base" "$tip" $moved
   # Only a figure that moved can invalidate a quoted one. Saying the same thing
   # about a column added to every row is how a prompt teaches people to skip it.
   if [ "$?" -eq 0 ]; then

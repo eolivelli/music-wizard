@@ -20,6 +20,7 @@ synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 vtt = import_module("vtt-to-lrc")
+drift = import_module("baseline-drift")
 
 C = (0, "MAJOR")
 G = (7, "MAJOR")
@@ -613,6 +614,58 @@ class Keying(unittest.TestCase):
         cannot arise, and this holds it that way."""
         self.assertNotIn(self.MARKER,
                          lyrics.score_line("sere-doltremare.mp3", *self.ARGS))
+
+
+class BaselineDrift(unittest.TestCase):
+    """premerge.sh prompts when main regenerated a baseline during this
+    branch's life. What it must get right is the kind of change: a column
+    added to every row rewrites the file without moving a measurement, and a
+    prompt that calls that a moved figure is one people learn to skip."""
+
+    CHART = ("charts emitted for samples with known ground truth:\n"
+             "  blues-a-90bpm.mp3: bars=113  chords/bar 1.32  root 93.0/113 (82.3%)\n"
+             "  bossa-cm.mp3: bars=98  chords/bar 1.23  root 23.5/98 (24.0%)\n")
+
+    def test_a_figure_that_moved_is_named_by_its_row(self):
+        moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")
+        summary, detail, remeasured = drift.describe(self.CHART, moved)
+        self.assertTrue(remeasured)
+        self.assertEqual("figures moved in 1 of 2 rows", summary)
+        self.assertEqual(["      bossa-cm.mp3"], detail)
+
+    def test_a_column_added_to_every_row_moves_no_figure(self):
+        """#361 added a column to the lyric baselines, rewriting every row
+        without re-measuring anything."""
+        old = ("lyric words MW carries:\n"
+               "  sere.mp3: words 289  onset median 0.000s  anchors 59/59 line-level\n")
+        new = ("lyric words MW carries:\n"
+               "  sere.mp3: words 289  onset median 0.000s  line end max 4.780s"
+               "  anchors 59/59 line-level, ends 57/57\n")
+        summary, detail, remeasured = drift.describe(old, new)
+        self.assertFalse(remeasured, "no measurement moved, so no figure is stale")
+        self.assertEqual("columns changed in 1 of 1 rows, no shared figure moved",
+                         summary)
+        self.assertIn("      + line end max #s", detail,
+                      "the columns that changed are named, since a field whose "
+                      "own shape changed cannot be compared with its old self")
+
+    def test_a_row_that_appeared_counts_as_re_measured(self):
+        summary, _, remeasured = drift.describe(
+            self.CHART, self.CHART + "  new-one.mp3: bars=10  root 5.0/10 (50.0%)\n")
+        self.assertTrue(remeasured)
+        self.assertEqual("1 rows added, 0 removed", summary)
+
+    def test_a_header_is_not_a_row(self):
+        """Header lines are flush left and hold a colon of their own. Reading
+        one as a row would key the whole corpus on a sentence."""
+        self.assertEqual(["blues-a-90bpm.mp3", "bossa-cm.mp3"],
+                         sorted(drift.rows(self.CHART)))
+
+    def test_a_row_is_not_required_to_name_an_mp3(self):
+        """The chart harness prints key rows too, and score-synthetic names
+        packages. Keying on '.mp3:' would make those invisible."""
+        rows = drift.rows("  key blues-a.wav: C major at 16%  want C major  OK\n")
+        self.assertEqual(["key blues-a.wav"], list(rows))
 
 
 if __name__ == "__main__":
