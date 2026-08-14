@@ -56,6 +56,11 @@ def describe(old_text: str, new_text: str) -> tuple:
         # The file changed and nothing in it parsed as a row. Reporting that as
         # "rows unchanged" would be the all-clear off an empty comparison.
         return "changed, and no row in it parsed -- read the diff", [], "moved"
+    if not old:
+        # Every row reads as gained, but only because none of the older file's
+        # parsed: any figure in it could have moved. The quiet arm below must
+        # not be reachable off a comparison with nothing on one side of it.
+        return "no row in the older file parsed -- read the diff", [], "moved"
     common = sorted(set(old) & set(new))
     figures, reshaped, gone, came = [], [], set(), set()
     for r in common:

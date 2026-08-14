@@ -864,6 +864,14 @@ class BaselineDrift(unittest.TestCase):
         self.assertEqual("added", kind)
         self.assertEqual("1 rows added, 0 removed", summary)
 
+    def test_an_older_file_that_did_not_parse_is_loud_though_rows_only_appeared(self):
+        """The gain arm is quiet because the rows it names did not exist. Where
+        the older file simply did not parse, every row reads as gained and any
+        figure in it may have moved -- so the quiet arm must not be reachable
+        off a comparison with nothing on one side of it."""
+        _, _, kind = drift.describe("h:\n  flat\n", self.CHART)
+        self.assertEqual("moved", kind)
+
     def test_a_row_that_vanished_is_loud(self):
         """A figure quoted from a row that is gone is stale by definition, and
         a renamed benchmark presents as a removal beside a gain."""
