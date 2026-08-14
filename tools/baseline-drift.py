@@ -112,11 +112,22 @@ def describe(old_text: str, new_text: str) -> tuple:
     return "; ".join(bits) if bits else "rows unchanged", detail, kind
 
 
+FAILED = object()
+"""git could not answer, as distinct from a commit that does not carry the
+path. Absence is a quiet arm now, so the two must not be one value."""
+
+
 def show(rev: str, path: str):
-    """The file at that commit, or None where it did not exist."""
+    """The file at that commit, None where that commit does not carry it, or
+    FAILED where git could not answer at all -- an unresolvable rev included,
+    which is the way this reads nothing and would otherwise call it absent."""
     p = subprocess.run(["git", "show", f"{rev}:{path}"],
                        capture_output=True, text=True)
-    return None if p.returncode else p.stdout
+    if not p.returncode:
+        return p.stdout
+    resolved = subprocess.run(["git", "cat-file", "-e", f"{rev}^{{commit}}"],
+                              capture_output=True)
+    return None if not resolved.returncode else FAILED
 
 
 def main(argv: list) -> int:
@@ -125,11 +136,16 @@ def main(argv: list) -> int:
     for path in paths:
         old, new = show(base, path), show(tip, path)
         name = path.rsplit("/", 1)[-1]
+        if old is FAILED or new is FAILED:
+            kinds.add("moved")
+            print(f"  {name}: git could not read it at "
+                  f"{base if old is FAILED else tip}")
+            continue
         if old is None or new is None:
             # A whole baseline that appeared is the row-gain case at file
             # scale: nothing quoted earlier was measured against it. One that
-            # vanished is loud, which is also what a rename reads as, since
-            # its other half is a removal on the old path.
+            # vanished is loud. A rename reaches here as both, which is why
+            # premerge.sh asks git not to pair the two paths.
             kinds.add("added" if old is None else "moved")
             print(f"  {name}: {'added' if old is None else 'removed'} on main")
             continue

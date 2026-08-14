@@ -375,10 +375,8 @@ def score_phase(mp3: Path, doc: dict, truth: str) -> None:
         return
     confidence = phase_confidence(doc)
     if confidence is None:
-        # A readable phase whose own confidence cannot be recovered: the grid
-        # records the product, so a beat confidence of zero leaves nothing to
-        # divide by. Saying "no bar phase" here would report a phase that is
-        # there and regular as one that is not (#477).
+        # Saying "no bar phase" here would report a phase that is there and
+        # regular as one that is not (#477).
         print(f"  phase {mp3.name}: no phase confidence to read")
         return
     phase, per_bar = grid

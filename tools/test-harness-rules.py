@@ -12,7 +12,9 @@ onset for the lyric one. Run it directly:
 import contextlib
 import io
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from importlib import import_module
 from pathlib import Path
@@ -761,9 +763,9 @@ class BaselineDrift(unittest.TestCase):
             drift.show = show
 
     def test_the_quiet_statuses_are_ones_python_cannot_produce_by_accident(self):
-        """premerge.sh keys its two quiet arms on these numbers, and python
-        exits 2 of its own accord when it cannot open the script it was given.
-        A classifier that never ran must not read as one that found nothing."""
+        """premerge.sh keys its quiet arms on these numbers, and python exits 2
+        of its own accord when it cannot open the script it was given. A
+        classifier that never ran must not read as one that found nothing."""
         row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
         self.assertEqual(1, self.status(row, row.replace("1.0/2 (50.0%)",
                                                          "2.0/2 (100.0%)")))
@@ -772,14 +774,26 @@ class BaselineDrift(unittest.TestCase):
         self.assertEqual(4, self.status(row, row + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"))
         self.assertEqual(0, self.status(row, row.replace("h:", "header:")))
 
+    ROW = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
+
+    def cases(self) -> dict:
+        """One pair of files per kind describe() says it can return."""
+        return {
+            "moved": (self.ROW, self.ROW.replace("1.0/2 (50.0%)", "2.0/2 (100.0%)")),
+            "reshaped": (self.ROW, self.ROW.replace("(50.0%)\n", "(50.0%)  n 7\n")),
+            "added": (self.ROW, self.ROW + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"),
+            "": (self.ROW, self.ROW.replace("h:", "header:")),
+        }
+
     def test_premerge_answers_every_status_the_classifier_can_return(self):
-        """A status with no arm of its own lands in the loud default: safe,
-        but saying the wrong thing, which is this class's own defect one level
-        up. Only the loud status is left to that default."""
-        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
-        quiet = {self.status(row, row.replace("(50.0%)\n", "(50.0%)  n 7\n")),
-                 self.status(row, row + "  b.mp3: bars 4  root 2.0/2 (100.0%)\n"),
-                 self.status(row, row.replace("h:", "header:"))}
+        """A status with no arm of its own lands in the loud default: safe, but
+        saying the wrong thing, which is this class's own defect one level up.
+        Only the loud status is left to that default. The kinds are read off
+        describe's own docstring, so a kind added without a case here fails
+        rather than going unchecked."""
+        documented = set(re.findall(r'"(\w*)"', drift.describe.__doc__))
+        self.assertEqual(documented, set(self.cases()))
+        quiet = {self.status(*self.cases()[k]) for k in documented} - {1}
         script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
         block = script.split("python3 tools/baseline-drift.py")[1].split("esac")[0]
         arms = set(re.findall(r"^\s*(\d+)\)", block, re.M))
@@ -788,11 +802,47 @@ class BaselineDrift(unittest.TestCase):
 
     def test_a_baseline_that_appeared_on_main_is_the_same_case_at_file_scale(self):
         """Nothing quoted earlier was measured against a file that did not
-        exist. One that vanished stays loud, which is also how a rename reads:
-        its other half is a removal on the old path."""
-        row = "h:\n  a.mp3: bars 4  root 1.0/2 (50.0%)\n"
-        self.assertEqual(4, self.status(None, row))
-        self.assertEqual(1, self.status(row, None))
+        exist. One that vanished stays loud."""
+        self.assertEqual(4, self.status(None, self.ROW))
+        self.assertEqual(1, self.status(self.ROW, None))
+
+    def test_a_rev_git_could_not_read_is_not_a_file_that_did_not_exist(self):
+        """Absence is quiet now, so `show` returning nothing has to mean the
+        commit does not carry the path and nothing else."""
+        self.assertEqual(1, self.status(drift.FAILED, self.ROW))
+        self.assertEqual(1, self.status(self.ROW, drift.FAILED))
+
+    def test_the_paths_premerge_hands_over_keep_a_rename_in_two_halves(self):
+        """git names only a rename's destination, and the classifier would read
+        that as a path with no older self -- its quiet arm -- while the figures
+        inside it moved. Run with the flags premerge.sh actually passes, over a
+        real rename, so the option and the rule cannot drift apart."""
+        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
+        flags = re.search(r"git diff ((?:--[\w-]+ )*)--name-only", script).group(1)
+        with tempfile.TemporaryDirectory() as tmp:
+            def git(*args):
+                subprocess.run(("git", "-C", tmp) + args, check=True,
+                               capture_output=True)
+            git("init", "-q")
+            git("config", "user.email", "t@example.com")
+            git("config", "user.name", "t")
+            baselines = Path(tmp) / "tools/baselines"
+            baselines.mkdir(parents=True)
+            body = self.CHART
+            (baselines / "score-chart.txt").write_text(body)
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            (baselines / "score-chart.txt").unlink()
+            (baselines / "score-charts.txt").write_text(
+                body.replace("93.0/113 (82.3%)", "71.0/113 (62.8%)"))
+            git("add", "-A")
+            git("commit", "-qm", "rename and re-measure")
+            named = subprocess.run(
+                ("git", "-C", tmp, "diff", *flags.split(), "--name-only",
+                 "HEAD~1", "HEAD", "--", "tools/baselines/"),
+                capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(["tools/baselines/score-chart.txt",
+                          "tools/baselines/score-charts.txt"], sorted(named))
 
     def test_a_figure_that_moved_is_named_by_its_row(self):
         moved = self.CHART.replace("23.5/98 (24.0%)", "25.5/98 (26.0%)")

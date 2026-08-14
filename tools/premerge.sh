@@ -86,7 +86,10 @@ baseline_drift() {
   [ -n "$cut" ] || return 0     # detached at main, or on main, or behind it
   base=$(git merge-base --octopus $cut "$tip" 2>/dev/null)
   [ -n "$base" ] || return 0    # shallow clone, or no common history
-  moved=$(git diff --name-only "$base" "$tip" -- tools/baselines/ 2>/dev/null)
+  # --no-renames, because rename detection names only the destination: a
+  # baseline renamed and re-measured in one commit would reach the classifier
+  # as a path that has no older self, which is its quiet arm.
+  moved=$(git diff --no-renames --name-only "$base" "$tip" -- tools/baselines/ 2>/dev/null)
 
   step "baseline drift since the branch point (prompt, not a gate)"
   printf 'branch point %s; origin/main since then: +%s commits, %s not merged here (%s).\n' \
