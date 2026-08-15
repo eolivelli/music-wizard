@@ -171,15 +171,31 @@ public final class KeyEstimator {
      * of the two to look at. {@code key.confidence()} is their product, since the
      * key is right only if both are.
      *
-     * @param key                   the key, spanning the whole requested range
-     * @param signatureConfidence   trust in the key signature
-     * @param tonicConfidence       trust in this tonic over its relative's
+     * <p>The components live on the {@link Key} itself since #512, so a
+     * workspace keeps what {@code analyze} prints; this record is a view over
+     * that one source, kept so a caller reads {@code signatureConfidence()}
+     * rather than unwrapping an Optional the estimator always fills.
+     *
+     * @param key the key, spanning the whole requested range and carrying both
+     *            component confidences
      */
-    public record Estimate(Key key, Confidence signatureConfidence, Confidence tonicConfidence) {
+    public record Estimate(Key key) {
         public Estimate {
             Objects.requireNonNull(key, "key");
-            Objects.requireNonNull(signatureConfidence, "signatureConfidence");
-            Objects.requireNonNull(tonicConfidence, "tonicConfidence");
+            if (key.signatureConfidence().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "an estimate's key must carry its component confidences");
+            }
+        }
+
+        /** Trust in the key signature, read off the key it qualifies. */
+        public Confidence signatureConfidence() {
+            return key.signatureConfidence().orElseThrow();
+        }
+
+        /** Trust in this tonic over its relative's, read off the key. */
+        public Confidence tonicConfidence() {
+            return key.tonicConfidence().orElseThrow();
         }
     }
 
@@ -262,10 +278,10 @@ public final class KeyEstimator {
         double weighed = Math.clamp(sounding / (endSeconds - startSeconds), 0, 1);
         Confidence signature = confidence(SIGNATURE_BASE, best - otherSignature, weighed);
         Confidence tonic = confidence(TONIC_BASE, best - relative, weighed);
-        Key key = Key.ofSeconds(
+        Key key = Key.estimated(
                 Key.tonicOf(signatureOf(bestTonic, bestMode), bestMode), bestMode,
-                startSeconds, endSeconds, signature.and(tonic));
-        return Optional.of(new Estimate(key, signature, tonic));
+                startSeconds, endSeconds, signature, tonic);
+        return Optional.of(new Estimate(key));
     }
 
     /** Duration-weighted score of one key, not yet divided by the sounding time. */

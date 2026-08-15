@@ -29,7 +29,12 @@ A package with a `pad` is scored on chords like any other, and reads far worse
 than the full-band packages do. That is not the pad's harmony being unclear: a
 package with no drums gives the beat tracker nothing percussive to lock to, so
 the bar count it scores against is wrong before a chord is named (#499). Read
-that row as a measurement of the grid, not of the harmony.
+that row as a measurement of the grid, not of the harmony. Its melody row pays
+for the pad too: the pad's chord changes are real articulations in the signal,
+and a monophonic melody stage has nothing with which to disown them, so some
+cut the held note above (#495). The package has now paid on both harnesses for
+its own nature — a further movement on one of its rows should be read against
+that before it is read as a new defect.
 
 `pop-deceptive-f-72` scores low the same way for a different reason: the beat
 is tracked at double the written tempo although the kick and side-stick mark
@@ -50,6 +55,15 @@ quality is in the estimator's vocabulary (#287), so those eight bars score
 zero on quality until the vocabulary changes — but the column as a whole also
 moves with the other twenty-four bars, for the usual reasons. The root column
 is what this package measures.
+
+`pop-maj7-sixth-c-92` is the same construction above a major third (#520): one
+note set stated as `C6` and as `Am7`, and `Cmaj7` beside the `Em` triad that
+holds three of its four notes. Eight of its bars — the four `C6` and the four
+`Cmaj7` — are out of reach of the `root+quality` column whatever MW does,
+neither quality being in the estimator's vocabulary (#287). What that column
+can show here is the rest of the grid: in particular the `Am7` bars, which
+carry the same four pitch classes as the `C6` ones and are nameable, and the
+plain `Em` triad.
 
 Regenerate a package with:
 

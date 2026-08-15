@@ -73,8 +73,8 @@ Rules that keep a package worth committing:
 - **24–64 bars.** Long enough for MW's beat tracker and chord decoder to have
   real material; use repetition with a purpose (verse/chorus contrast, a
   bridge that leaves the loop, a quick-change chorus).
-- Chord tokens only in the `samples/list.txt` shorthand: `7 m7 maj7 m6 m7b5
-  dim m` and plain-letter major. Prefer triads and sevenths.
+- Chord tokens only in the `samples/list.txt` shorthand: `7 m7 maj7 6 m6
+  m7b5 dim m` and plain-letter major. Prefer triads and sevenths.
 - File names like the corpus: `<genre>-<slug>-<key>-<bpm>`, lowercase
   (`pop-doowop-eb-72`). The spec file is `<name>.spec.txt`.
 - 4/4 only for now; the arranger refuses anything else.

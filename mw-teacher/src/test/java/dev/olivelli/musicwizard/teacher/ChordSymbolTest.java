@@ -32,6 +32,7 @@ class ChordSymbolTest {
             "G7,   7,  DOMINANT_SEVENTH",
             "F#m7, 6,  MINOR_SEVENTH",
             "Bbmaj7, 10, MAJOR_SEVENTH",
+            "C6,   0,  SIXTH",
             "Cm6,  0,  MINOR_SIXTH",
             "Bm7b5, 11, HALF_DIMINISHED",
             "Ebdim, 3, DIMINISHED",
@@ -46,10 +47,16 @@ class ChordSymbolTest {
     void pitchClassesStartAtTheRoot() {
         assertThat(ChordSymbol.parse("G7").pitchClasses()).containsExactly(7, 11, 2, 5);
         assertThat(ChordSymbol.parse("Am").pitchClasses()).containsExactly(9, 0, 4);
+        assertThat(ChordSymbol.parse("C6").pitchClasses()).containsExactly(0, 4, 7, 9);
     }
 
+    /**
+     * A quality the grid cannot spell must fail the token, not fall through to
+     * the pattern's empty alternative: a silent fall-through would compile a
+     * spec's stated quality into a plain major triad and call it ground truth.
+     */
     @ParameterizedTest
-    @CsvSource({"H", "Cx", "Cmin", "C/E", "c", "''"})
+    @CsvSource({"H", "Cx", "Cmin", "C/E", "c", "''", "C9", "Cadd4", "Cmaj9", "C69"})
     void refusesWhatTheShorthandCannotSpell(String token) {
         assertThatThrownBy(() -> ChordSymbol.parse(token))
                 .isInstanceOf(IllegalArgumentException.class);

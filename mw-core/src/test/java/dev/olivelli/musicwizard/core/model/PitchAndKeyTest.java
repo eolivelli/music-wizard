@@ -293,6 +293,59 @@ class PitchAndKeyTest {
     }
 
     @Nested
+    @DisplayName("key confidence components")
+    class KeyConfidenceComponents {
+
+        private final PitchSpelling f = new PitchSpelling(NoteLetter.F, Accidental.NATURAL, 4);
+
+        @Test
+        @DisplayName("an estimated key carries both decisions, summarized by their product")
+        void estimatedCarriesBothDecisions() {
+            Key key = Key.estimated(f, Mode.MAJOR, 0, 12,
+                    Confidence.of(0.8), Confidence.of(0.5));
+
+            assertThat(key.signatureConfidence()).contains(Confidence.of(0.8));
+            assertThat(key.tonicConfidence()).contains(Confidence.of(0.5));
+            // The literal rather than and()'s own answer, so this pins "the
+            // product" instead of whatever and() happens to compute.
+            assertThat(key.confidence()).isEqualTo(Confidence.of(0.4));
+        }
+
+        @Test
+        @DisplayName("a key cannot carry half of its component confidences")
+        void rejectsHalfCarriedComponents() {
+            assertThatThrownBy(() -> new Key(f, Mode.MAJOR, 0, 12,
+                    Optional.empty(), Optional.empty(), Confidence.of(0.4),
+                    Optional.of(Confidence.of(0.8)), Optional.empty()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("both component confidences");
+        }
+
+        @Test
+        @DisplayName("quantization carries the components, as it carries everything else")
+        void quantizationCarriesTheComponents() {
+            Key quantized = Key.estimated(f, Mode.MAJOR, 0, 12,
+                    Confidence.of(0.8), Confidence.of(0.5)).quantizedTo(0, 24);
+
+            assertThat(quantized.signatureConfidence()).contains(Confidence.of(0.8));
+            assertThat(quantized.tonicConfidence()).contains(Confidence.of(0.5));
+        }
+
+        @Test
+        @DisplayName("a key built without components carries neither, which is not a zero")
+        void absentComponentsAreNotAZero() {
+            // Confidence.UNKNOWN is a value of 0.0, so "not recorded" must be
+            // empty rather than UNKNOWN or an old file would read as measured.
+            // Absence means only that: MidiTranscriber records both components
+            // on a declared key, so presence does not mean estimated either.
+            Key bare = Key.ofSeconds(f, Mode.MAJOR, 0, 12, Confidence.CERTAIN);
+
+            assertThat(bare.signatureConfidence()).isEmpty();
+            assertThat(bare.tonicConfidence()).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("lyric words")
     class LyricWords {
 

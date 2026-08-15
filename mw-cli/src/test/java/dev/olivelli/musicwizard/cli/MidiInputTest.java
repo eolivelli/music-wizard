@@ -429,9 +429,9 @@ class MidiInputTest {
             // the seconds under the word "beat", which at this score's 120 BPM
             // is off by a factor of two against the axis it named.
             Score score = Score.empty(TempoMap.constant(120), 30.0)
-                    .withKeys(List.of(new Key(
+                    .withKeys(List.of(Key.ofSeconds(
                             new PitchSpelling(NoteLetter.E, Accidental.NATURAL, 4), Mode.MINOR,
-                            12.5, 30.0, Optional.empty(), Optional.empty(), Confidence.CERTAIN)));
+                            12.5, 30.0, Confidence.CERTAIN)));
 
             assertThat(AnalyzeCommand.summary(SourceKind.MIDI, score))
                     .contains("  Key     not declared at the start; E minor from 12.500s")
@@ -459,9 +459,8 @@ class MidiInputTest {
         }
 
         private Key eMinorAtOctave(int octave, double from, double to) {
-            return new Key(new PitchSpelling(NoteLetter.E, Accidental.NATURAL, octave),
-                    Mode.MINOR, from, to,
-                    Optional.of(from), Optional.of(to), Confidence.CERTAIN);
+            return Key.ofSeconds(new PitchSpelling(NoteLetter.E, Accidental.NATURAL, octave),
+                    Mode.MINOR, from, to, Confidence.CERTAIN).quantizedTo(from, to);
         }
 
         @Test
