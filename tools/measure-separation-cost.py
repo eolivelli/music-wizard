@@ -34,20 +34,21 @@ everything. The published figure was the average of two regimes and moved with
 nothing but which singers had been recorded quietly. The run prints the range
 it measured, so read that rather than a figure quoted here.
 
-**So ask for the curve, not the number.** `--ratio` takes several values and
-the useful output is what the melody stage does across them: where it falls off
-is a slope, and a single figure is one point on it chosen by accident. The
-clean and separator-only rows do not depend on the ratio and are measured once.
+**`--ratio` takes several values, and on the corpus and bed this ships with,
+almost none of them can be reported.** Everything below about +12 dB rails on
+the clips that were recorded loud — the only headroom available is whatever a
+clip happens to have left — so the run marks those rows and exits non-zero
+rather than averaging distortion with band. That is #518, and until it is fixed
+the sweep is one point rather than a curve. The clean and separator-only rows do
+not depend on the ratio and are measured once.
 
 **Read the voicing column beside the pitch column or not at all.** Voicing
 recall asks what share of the annotated singing the estimate also called
 sounding, and it does not ask whether what was tracked was the singer. Where
 the band is loud the tracker follows the band, which is voiced, so that column
-holds up while pitch accuracy collapses: measured on a clip at the quiet end of
-a sweep, about half the frames where the estimate sounded matched the bed's own
-lead line and a twentieth matched the singer. It is a measure of whether
-something was heard, not of whether the right thing was, and it is not
-monotonic in the ratio — do not read a rise in it as an improvement.
+holds up while pitch accuracy collapses, because the band is voiced. It is a
+measure of whether
+something was heard, not of whether the right thing was.
 
 The bed defaults to a committed synthetic package, so the measurement is
 reproducible from the repository by anyone who has fetched vocadito
@@ -133,6 +134,11 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
     return 20 * math.log10(math.sqrt(total / counted) / 32768.0)
 
 
+#: At or above this peak the mix has railed: a clamped sample reads as 0.0 and
+#: a positive rail as -0.0, so the test is a threshold rather than equality.
+CLIPPED_DBFS = -0.1
+
+
 #: How the bed is reduced to one channel, everywhere it is measured or mixed.
 #: Written out rather than left to the graph: amix negotiates a mono graph
 #: against a mono voice and inserts its own conversion, which in the float
@@ -181,7 +187,12 @@ def duration(path: Path) -> float:
 
 
 def peak(path: Path) -> float:
-    """The mix's peak, in dBFS. Zero means it railed."""
+    """The mix's peak, in dBFS.
+
+    A clamped sample forces this to zero, and a positive rail reports it as
+    -0.0, so callers compare against a small negative threshold rather than
+    against zero.
+    """
     done = subprocess.run(
         ["ffmpeg", "-hide_banner", "-i", str(path), "-af", "volumedetect",
          "-f", "null", "-"], capture_output=True, text=True)
@@ -280,6 +291,7 @@ def main() -> None:
             # for the mask to take the voice out along with.
             alone_rows[clip] = score(
                 jar, separate(jar, voice, Path(tmp) / f"ws_alone_{clip}"), reference)
+            shutil.rmtree(Path(tmp) / f"ws_alone_{clip}", ignore_errors=True)
 
         if not clean_rows:
             return
@@ -313,9 +325,9 @@ def main() -> None:
                 # if it were the band. Refused rather than fixed here: attenuating
                 # both sides preserves the ratio but changes the absolute level,
                 # and the separator is not level-invariant (#515).
-                railed = peak(mixed)
-                if railed >= -0.1:
-                    clipped.append((clip, ratio, railed))
+                mix_peak = peak(mixed)
+                if mix_peak >= CLIPPED_DBFS:
+                    clipped.append((clip, ratio, mix_peak))
                     railed_here += 1
                 stem = separate(jar, mixed, Path(tmp) / f"ws_{clip}_{ratio}")
                 scored = score(jar, stem, references[clip])
@@ -327,7 +339,7 @@ def main() -> None:
                       f"   note F1 {100 * scored[0]:5.1f}%"
                       f"   pitch {100 * scored[1]:5.1f}%"
                       f"   voicing {100 * scored[2]:5.1f}%"
-                      f"{'   CLIPPED' if railed >= -0.1 else ''}")
+                      f"{'   CLIPPED' if mix_peak >= CLIPPED_DBFS else ''}")
                 shutil.rmtree(Path(tmp) / f"ws_{clip}_{ratio}", ignore_errors=True)
                 mixed.unlink(missing_ok=True)
             # A mean over rows some of which railed is not a reading of this

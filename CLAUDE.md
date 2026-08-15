@@ -429,11 +429,12 @@ strength of how a page looked:
   band is there. What that gap is made of the tool cannot say, and the two
   candidates want opposite fixes: band the mask failed to remove, or voice the
   mask removed with it (#503). How far the voice sits above the band is the
-  variable that tool now states rather than inherits, and it can sweep it, so
-  ask it for the curve rather than a figure. Absolute level is a second axis and
-  is not controlled — the separator is not level-invariant even at a fixed ratio
-  (#515) — so its rows carry each clip's own level beside them. None of it is
-  baselined.
+  variable the tool now states rather than inherits — but it can only report the
+  ratios that do not rail, which on the corpus it ships with is a single point
+  rather than a curve (#518). Absolute level is a second axis and is not
+  controlled either, since the separator is not level-invariant even at a fixed
+  ratio (#515). None of it is baselined, and no figure from it has survived a
+  review round yet.
 
 **Melody is read from a signal that holds nothing else (#494).**
 pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
