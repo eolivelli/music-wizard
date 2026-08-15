@@ -18,7 +18,12 @@ package dev.olivelli.musicwizard.core.model;
 
 /** What musical role a note track plays, which decides how it is engraved. */
 public enum PartRole {
-    /** The sung melody. Treble clef. */
+    /**
+     * The sung melody. Treble clef; whether it is the octave-transposing one is
+     * decided in the notation layer from the part's own notes, because this
+     * role covers a soprano and a baritone and the right clef differs between
+     * them.
+     */
     LEAD_VOCAL,
     /** The bass line. Bass clef, sounding an octave below written. */
     BASS,
