@@ -224,7 +224,12 @@ public final class MelodyEstimator {
         int toFrame = envelope.frameOf(end - MIN_NOTE_SECONDS);
         for (int frame = fromFrame; frame <= toFrame; frame++) {
             double time = envelope.timeOf(frame);
-            if (time <= onset + MIN_NOTE_SECONDS || time >= end - MIN_NOTE_SECONDS) {
+            // The loop bound is a rounded frame index, so a peak can land a
+            // few milliseconds past the boundary it was computed from; the
+            // start side needs no twin, because the spacing guard below
+            // already holds every cut at least MIN_NOTE_SECONDS after the
+            // onset the list opens with.
+            if (time >= end - MIN_NOTE_SECONDS) {
                 continue;
             }
             if (isPeak(envelope, frame, REARTICULATION_FLOOR)
@@ -240,11 +245,14 @@ public final class MelodyEstimator {
      * against the note's own median, somewhere within {@link
      * #DIP_REACH_SECONDS} of the point asked about.
      *
-     * <p>The localisation is deliberately coarse. The pitch window smears any
-     * dip by its own 93 ms, so on both corpora a reach of this size and one
-     * spanning the whole note answer identically, while a single-frame reach
-     * loses real splits -- the reach exists to keep a long note's far end out
-     * of the question, not to place the restart precisely.
+     * <p>The localisation is deliberately coarse -- the pitch window smears
+     * any dip by its own 93 ms -- but it is not free to widen: on the real
+     * singing a reach of this size and one spanning the whole note answer
+     * identically, and on the accompanied package the note-wide reach admits
+     * more pad cuts, so the reach does real work exactly where accompaniment
+     * exists. A single-frame reach loses real splits on both corpora. It
+     * keeps a note's far end out of the question; it does not place the
+     * restart precisely.
      */
     private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double medianVoicedness,
                                            double time) {
