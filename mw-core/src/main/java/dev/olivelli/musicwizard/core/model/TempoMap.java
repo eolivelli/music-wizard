@@ -292,6 +292,78 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      */
     public static TempoMap fromBeatTimes(
             List<Double> beatSeconds, TimeSignature timeSignature, double pulseQuarters) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        // Phase unknown: one pulse to the "bar" makes the congruence vacuous,
+        // so the lead-in is exactly what the pulse-only rule always gave.
+        return buildFromBeatTimes(beatSeconds, timeSignature, pulseQuarters, 0, 1);
+    }
+
+    /**
+     * The same map, with the tracker's downbeat phase honoured: the lead-in is
+     * chosen so that the first downbeat lands on a bar line.
+     *
+     * <p>Without this the map has no bar phase at all (#84): bars are counted
+     * from beat 0, and beat 0 is anchored on the first <em>pulse</em>, so a bar
+     * line coincides with a tracked downbeat only by luck. A staff is barred by
+     * this map while a chart is barred on the tracked downbeats, which is how
+     * one score came to be printed under two disagreeing bar axes (#501).
+     *
+     * <p>The phase cannot be honoured when the first pulse falls at exactly
+     * second 0: there is no lead-in to lengthen, and the anchor outranks the
+     * phase. That corner keeps the phase-unaware behaviour rather than half of
+     * the promise.
+     *
+     * @param firstDownbeatPulse index into {@code beatSeconds} of a pulse that
+     *                           begins a bar; only its remainder modulo
+     *                           {@code pulsesPerBar} matters
+     * @param pulsesPerBar       tracked pulses in one bar — the caller's
+     *                           figure, not re-derived here, because it is
+     *                           corrected when a supplied tempo says the pulse
+     *                           is not the counted beat, and the phase is a
+     *                           remainder modulo exactly that correction
+     */
+    public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature,
+                                         double pulseQuarters, int firstDownbeatPulse,
+                                         int pulsesPerBar) {
+        requireBarPhase(timeSignature, pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+        return buildFromBeatTimes(beatSeconds, timeSignature, pulseQuarters,
+                Math.floorMod(firstDownbeatPulse, pulsesPerBar), pulsesPerBar);
+    }
+
+    /**
+     * Rejects a downbeat phase that cannot mean what its caller says it means.
+     *
+     * <p>One validator for every phase-aware map builder — the overload above
+     * and the transcriber's constant-tempo fallback — because the figures
+     * state one fact twice and each builder checking its own copy is how the
+     * two drift. The phase must be an index, and the count must be what the
+     * pulse length says a bar holds: a phase taken modulo anything else would
+     * re-anchor the lead-in to a bar line that does not exist.
+     */
+    public static void requireBarPhase(TimeSignature timeSignature, double pulseQuarters,
+                                       int firstDownbeatPulse, int pulsesPerBar) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        if (firstDownbeatPulse < 0) {
+            throw new IllegalArgumentException(
+                    "firstDownbeatPulse must be non-negative, got: " + firstDownbeatPulse);
+        }
+        if (pulsesPerBar < 1) {
+            throw new IllegalArgumentException(
+                    "pulsesPerBar must be at least 1, got: " + pulsesPerBar);
+        }
+        double barQuarters = pulsesPerBar * pulseQuarters;
+        if (Math.abs(barQuarters - timeSignature.quarterBeatsPerBar())
+                > 1e-9 * timeSignature.quarterBeatsPerBar()) {
+            throw new IllegalArgumentException(
+                    pulsesPerBar + " pulses of " + pulseQuarters + " quarter beats span "
+                            + barQuarters + " quarter beats, but a bar of " + timeSignature
+                            + " holds " + timeSignature.quarterBeatsPerBar());
+        }
+    }
+
+    private static TempoMap buildFromBeatTimes(
+            List<Double> beatSeconds, TimeSignature timeSignature, double pulseQuarters,
+            int firstDownbeatPulse, int pulsesPerBar) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
         Objects.requireNonNull(timeSignature, "timeSignature");
         // Bounded, not merely positive. A pulse of 1e-320 or Double.MAX_VALUE is
@@ -327,20 +399,16 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // pulses rather than of quarter beats, because a whole number of quarters
         // is not a whole number of dotted quarters, and rounding to the wrong one
         // puts the first tracked pulse a third of a beat off the grid in 6/8.
+        // When the downbeat phase is known, the count is furthermore chosen so
+        // the first downbeat lands on a bar line -- see leadInPulses.
         //
         // It must be at least one whenever the first beat is after t=0. The
         // alternative -- shifting the seconds axis so the first tracked beat
         // becomes the origin -- silently misaligns the entire map from the audio
         // by up to half a beat, which is worse than the problem it solves.
-        int leadInPulses = 0;
-        if (firstBeat > 0) {
-            double ratio = firstBeat / firstInterval;
-            // Guard the cast: a pathological interval (units confusion, say
-            // samples for seconds) would otherwise overflow silently into a
-            // nonsensical but structurally valid map.
-            long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
-            leadInPulses = (int) Math.max(1, rounded);
-        }
+        int leadInPulses = firstBeat > 0
+                ? leadInPulses(firstBeat, firstInterval, firstDownbeatPulse, pulsesPerBar)
+                : 0;
 
         // Written so that a quarter-note pulse multiplies by an exact 1.0 in the
         // same association order the pulse-agnostic version used, which leaves
@@ -367,6 +435,73 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
                     60.0 * pulseQuarters / interval, Provenance.MEASURED));
         }
         return new TempoMap(built, List.of(new MeterChange(0, timeSignature)));
+    }
+
+    /**
+     * The most pulses any consistent bar can hold: the widest legal bar, 256
+     * quarter beats, over the shortest legal pulse, 1/1024 of one.
+     */
+    private static final int MAX_PULSES_PER_BAR = 1 << 18;
+
+    /**
+     * The whole number of pulses to model the audio before the first tracked
+     * pulse as: the count nearest the measured stretch that also puts the
+     * first downbeat on a bar line, and at least one.
+     *
+     * <p>This is the one rule both map builders anchor with — {@code
+     * fromBeatTimes} here and the constant-tempo fallback in the transcriber —
+     * and it lives here so the two cannot drift. Pulse {@code i} sits {@code
+     * leadIn + i} pulses from the origin, and bars are counted from beat 0, so
+     * the downbeat pulse begins a bar exactly when {@code leadIn +
+     * firstDownbeatPulse} is a whole number of bars. Of the counts satisfying
+     * that, the one nearest the measured stretch is taken, so the lead-in's
+     * derived rate stays as close to the music's as the phase allows; a tie
+     * between the two congruent neighbours takes the shorter, which invents
+     * less music. With the phase unknown — {@code pulsesPerBar} of 1 — every
+     * count satisfies it, and the rule is the pulse-only rounding it always
+     * was, half-up ties included.
+     *
+     * @param firstBeatSeconds when the first tracked pulse falls, after 0
+     * @param pulseSeconds     the length of one pulse
+     * @param firstDownbeatPulse index of a pulse that begins a bar; only its
+     *                           remainder modulo {@code pulsesPerBar} matters
+     * @param pulsesPerBar     tracked pulses in one bar, or 1 when the phase
+     *                         is unknown
+     */
+    public static int leadInPulses(double firstBeatSeconds, double pulseSeconds,
+                                   int firstDownbeatPulse, int pulsesPerBar) {
+        // Bounded, not merely positive, for the reason the pulse bounds in
+        // buildFromBeatTimes are: the widest bar a TimeSignature can state is
+        // 256 quarter beats and the shortest pulse accepted there is 1/1024,
+        // so no consistent trio exceeds 2^18 pulses to the bar. A count past
+        // that is the mistake itself -- and far enough past, the congruence
+        // arithmetic below would overflow into a negative lead-in.
+        if (pulsesPerBar < 1 || pulsesPerBar > MAX_PULSES_PER_BAR) {
+            throw new IllegalArgumentException(
+                    "pulsesPerBar must be between 1 and " + MAX_PULSES_PER_BAR
+                            + ", got: " + pulsesPerBar);
+        }
+        if (firstDownbeatPulse < 0) {
+            throw new IllegalArgumentException(
+                    "firstDownbeatPulse must be non-negative, got: " + firstDownbeatPulse);
+        }
+        double ratio = firstBeatSeconds / pulseSeconds;
+        // Guard the cast: a pathological interval (units confusion, say
+        // samples for seconds) would otherwise overflow silently into a
+        // nonsensical but structurally valid map.
+        long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
+        int nearest = (int) Math.max(1, rounded);
+        // Reduced before the addition, so an index near Integer.MAX_VALUE
+        // cannot overflow the sum into a phase it never named; the count side
+        // cannot either, since both terms are bounded above.
+        int phase = Math.floorMod(firstDownbeatPulse, pulsesPerBar);
+        int excess = Math.floorMod(nearest + phase, pulsesPerBar);
+        if (excess == 0) {
+            return nearest;
+        }
+        int shorter = nearest - excess;
+        int longer = nearest + (pulsesPerBar - excess);
+        return shorter >= 1 && ratio - shorter <= longer - ratio ? shorter : longer;
     }
 
     /** Converts a musical position in quarter-note beats to wall-clock seconds. */
