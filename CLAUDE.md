@@ -428,9 +428,11 @@ strength of how a page looked:
   separator does not spoil a voice by itself; the whole loss appears once a
   band is there. What that gap is made of the tool cannot say, and the two
   candidates want opposite fixes: band the mask failed to remove, or voice the
-  mask removed with it (#503). It also depends on the vocal-to-band ratio,
-  which the tool does not control (#505) — so no figure from it is quoted
-  without saying which clips it covers, and none of them is baselined.
+  mask removed with it (#503). What it depends on most is how far the voice sits
+  above the band, which the tool now states rather than inherits and can sweep,
+  so ask it for the curve — a single figure from it is one point on a steep
+  slope, chosen by whatever level a singer happened to be recorded at. None of
+  it is baselined.
 
 **Melody is read from a signal that holds nothing else (#494).**
 pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody

@@ -9,14 +9,17 @@ onset for the lyric one. Run it directly:
     python3 tools/test-harness-rules.py
 """
 
+import array
 import contextlib
 import io
+import math
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import wave
 from importlib import import_module
 from pathlib import Path
 from unittest import mock
@@ -27,6 +30,7 @@ synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 melody = import_module("score-melody")
+separation = import_module("measure-separation-cost")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
@@ -1184,6 +1188,81 @@ class MelodyRules(unittest.TestCase):
         two were sung scores recall of a half rather than of one."""
         reference = [(0.0, 0.5, 60), (0.02, 0.5, 60)]
         self.assertAlmostEqual(2 / 3, melody.note_f1([(0.0, 0.5, 60)], reference, 0.05))
+
+
+class SeparationRatio(unittest.TestCase):
+    """The level arithmetic behind #505.
+
+    The tool it belongs to cannot run in CI — it needs a jar, Spleeter and a
+    corpus that is local-only — so what CI can hold is the arithmetic that
+    decides what it mixes, on fixtures written here. That arithmetic is the
+    whole of the issue: before it, a constant was applied to one side of a
+    comparison whose other side varied by 20 dB across the corpus.
+    """
+
+    @staticmethod
+    def tone(path, seconds, amplitude, rate=44100, loud=None):
+        """A wav of silence with a full-length or partial sine in it."""
+        samples = array.array("h", [0]) * int(seconds * rate)
+        first, last = loud if loud else (0, seconds)
+        for index in range(int(first * rate), int(last * rate)):
+            samples[index] = int(amplitude * 32767
+                                 * math.sin(2 * math.pi * 440 * index / rate))
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes(samples.tobytes())
+
+    def test_a_full_scale_sine_reads_three_decibels_under_full_scale(self):
+        """Pins the convention: dBFS of an RMS, so a full-scale sine is -3, not 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tone.wav"
+            self.tone(path, 1.0, 1.0)
+            level = separation.sung_rms_dbfs(path, [(0.0, 1.0, 69)])
+            self.assertAlmostEqual(-3.01, level, places=1)
+
+    def test_the_level_is_measured_where_the_singing_is(self):
+        """The point of measuring over the notes rather than over the clip: a
+        clip that is mostly silence is not thereby a quiet singer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sparse.wav"
+            self.tone(path, 4.0, 1.0, loud=(1.0, 2.0))
+            over_the_note = separation.sung_rms_dbfs(path, [(1.0, 2.0, 69)])
+            over_the_clip = separation.sung_rms_dbfs(path, [(0.0, 4.0, 69)])
+            self.assertAlmostEqual(-3.01, over_the_note, places=1)
+            # Three quarters silence is 6 dB of dilution, and it is exactly the
+            # error the old whole-clip reading made.
+            self.assertAlmostEqual(-9.03, over_the_clip, places=1)
+            self.assertGreater(over_the_note - over_the_clip, 5)
+
+    def test_a_clip_whose_annotation_covers_no_audio_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tone.wav"
+            self.tone(path, 1.0, 1.0)
+            with self.assertRaises(SystemExit):
+                separation.sung_rms_dbfs(path, [])
+
+    def test_the_gain_puts_the_voice_the_asked_for_distance_above_the_bed(self):
+        for voice, bedside, ratio in ((-20.0, -20.0, 0.0), (-6.0, -30.0, 6.0),
+                                      (-34.3, -18.0, -12.0)):
+            gain = separation.bed_gain(voice, bedside, ratio)
+            # The bed after the gain, in dBFS, and the distance from the voice.
+            achieved = voice - (bedside + 20 * math.log10(gain))
+            self.assertAlmostEqual(ratio, achieved, places=6,
+                                   msg=f"voice {voice} bed {bedside} ratio {ratio}")
+
+    def test_equal_levels_at_a_zero_ratio_leave_the_bed_alone(self):
+        self.assertAlmostEqual(1.0, separation.bed_gain(-20.0, -20.0, 0.0))
+
+    def test_a_quieter_singer_asks_for_a_quieter_bed(self):
+        """The defect #505 names, as an assertion: the bed follows the voice's
+        own level rather than a constant, so two clips 20 dB apart are mixed at
+        the same ratio rather than at the same bed gain."""
+        loud = separation.bed_gain(-16.8, -20.0, 0.0)
+        quiet = separation.bed_gain(-34.3, -20.0, 0.0)
+        self.assertGreater(loud, quiet)
+        self.assertAlmostEqual(20 * math.log10(loud / quiet), 17.5, places=1)
 
 
 if __name__ == "__main__":
