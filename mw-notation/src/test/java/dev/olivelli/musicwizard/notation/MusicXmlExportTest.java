@@ -428,7 +428,8 @@ class MusicXmlExportTest {
     @Test
     @DisplayName("a treble part on the staff has no octave change at all")
     void trebleClefHasNoOctaveChange() {
-        // C5, mid-staff: a vocal range this centred keeps the plain clef.
+        // C5 needs no ledger line where it sounds and two an octave up, so
+        // the plain clef wins the vote.
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
         Document document = parse(MusicXmlExport.toMusicXml(
                 score(TimeSignature.FOUR_FOUR, 120, voice), voice));

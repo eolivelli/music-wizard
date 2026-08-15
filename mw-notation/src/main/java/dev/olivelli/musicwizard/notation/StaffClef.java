@@ -75,8 +75,7 @@ record StaffClef(char sign, int line, int octaveChange) {
      * is what makes the decision robust: each note votes with the ledger lines
      * it would need, so a lone low blip — an octave error is the melody
      * tracker's documented failure mode, and a note too short to engrave never
-     * gets here at all — cannot outvote the body of the part the way it moves
-     * an extreme of {@code NoteTrack.pitchRange()}.
+     * gets here at all — cannot outvote the body of the part.
      */
     static StaffClef of(PartRole role, List<PitchSpelling> engraved) {
         if (role == PartRole.LEAD_VOCAL
