@@ -138,6 +138,11 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
 
 CLIPPED_DBFS = -0.1
 
+#: What a refused row is called, everywhere it is named. One word rather than
+#: three literals, because `railed` refuses more than it can prove clipped and
+#: "CLIPPED" said otherwise in two of the three places it was written out.
+REFUSED_LABEL = "REFUSED"
+
 
 def railed(mix_peak_dbfs: float) -> bool:
     """Whether a mix came close enough to full scale not to be trusted.
@@ -351,12 +356,12 @@ def main() -> None:
                       f"   note F1 {100 * scored[0]:5.1f}%"
                       f"   pitch {100 * scored[1]:5.1f}%"
                       f"   voicing {100 * scored[2]:5.1f}%"
-                      f"{'   CLIPPED' if railed(mix_peak) else ''}")
+                      f"{'   ' + REFUSED_LABEL if railed(mix_peak) else ''}")
                 shutil.rmtree(Path(tmp) / f"ws_{clip}_{ratio}", ignore_errors=True)
                 mixed.unlink(missing_ok=True)
             # A mean over rows some of which railed is not a reading of this
             # ratio, and printing it unmarked is how it gets quoted anyway.
-            spoiled = (f"   ** {railed_here} of {len(rows)} clips CLIPPED;"
+            spoiled = (f"   ** {railed_here} of {len(rows)} clips {REFUSED_LABEL};"
                        f" this row is not a reading of {ratio:+.1f} dB **"
                        if railed_here else "")
             print(f"   {ratio:+6.1f} dB mean note F1 {100 * statistics.mean(r[0] for r in rows):5.1f}%"
@@ -365,10 +370,12 @@ def main() -> None:
 
     if clipped:
         print()
-        print("  REFUSED: these mixes peaked at -0.1 dBFS or louder, which the")
-        print("  reading cannot separate from clamped; a row holding them may be")
-        print("  reporting distortion rather than band. Ask for a ratio that")
-        print("  fits, or give the bed less to do.")
+        print(f"  {REFUSED_LABEL}: these mixes read -0.1 dBFS or louder. At zero"
+              " the reading cannot")
+        print("  be told from clamped, and -0.1 is the margin around it — so a row")
+        print("  holding them may be reporting distortion rather than band, and")
+        print("  the peaks below say which. Ask for a ratio that fits, or give")
+        print("  the bed less to do.")
         for clip, ratio, mix_peak in clipped:
             print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {mix_peak:+.1f} dBFS")
         sys.exit(1)
