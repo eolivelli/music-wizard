@@ -1,0 +1,28 @@
+title: Minor pop-rock in G - one note set spelled as iv6 and as ii m7b5
+genre: pop
+style: pop-rock
+tempo: 100
+key: G minor
+seed: 23
+melody: none
+accompaniment: full
+bars:
+# C-Eb-G-A is Cm6 and Am7b5 alike: same four pitch classes, two roots, and
+# only the bass says which (#316). The two eight-bar sections are the same
+# grid apart from that spelling, so the comping states one note set both
+# times and the bass states C under the first and A under the second, two
+# bars each. Both are idiomatic: iv6 and ii m7b5 are the same predominant
+# into V. Neither quality is in the estimator's vocabulary (#287), so read
+# the root column here; #514 carries what MW names for each spelling.
+# A: i-VI-III-i, then iv6 for two bars, V, i
+Gm Eb Bb Gm
+Cm6 Cm6 D7 Gm
+# B: the same, with the predominant spelled from its own third below
+Gm Eb Bb Gm
+Am7b5 Am7b5 D7 Gm
+# A again
+Gm Eb Bb Gm
+Cm6 Cm6 D7 Gm
+# B again
+Gm Eb Bb Gm
+Am7b5 Am7b5 D7 Gm

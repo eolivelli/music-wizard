@@ -1,0 +1,27 @@
+title: Pop ballad in F - deceptive cadence answered by ii-V-I
+genre: pop
+style: pop-ballad
+tempo: 72
+key: F major
+seed: 17
+melody: none
+accompaniment: full
+bars:
+# Every chord is diatonic to F major and to D natural minor alike, and the
+# two tonic triads carry equal time (a split bar counting half to each of its
+# chords), so the chord evidence the key estimator reads ties exactly between
+# the pair. What makes F the key is that the piece resolves onto it and ends
+# there. See #509 for what MW reads, #277 for why the tie matters.
+# Intro: vi-IV-I-V
+Dm Bb F C
+# Verse: I-iii-IV-V, then vi-iii-ii-V, half cadence at the phrase end
+F Am Bb C
+Dm Am Gm C
+# Chorus 1: IV-V-vi, a deceptive cadence, and vi holds the last two bars
+Bb F Gm C
+Bb C Dm Dm
+# Chorus 2: the same approach, deceived again onto vi with a iv-i tag
+Bb F Gm C
+Gm C Dm Gm-Dm
+# Close: the ii-V-I the choruses withheld, with a plagal IV-I tag
+Gm C F Bb-F

@@ -7,5 +7,7 @@ Synthetic corpus, bar-by-bar against each package's own spec
   melody-level3-am-108.mp3: melody only; chords not scored
   melody-level4-f-126.mp3: melody only; chords not scored
   pop-axis-g-116.mp3: bars=44/44  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
+  pop-deceptive-f-72.mp3: bars=64/32  root 7.0/32 (21.9%)  root+quality 6.0/32 (18.8%)  split 0  key D minor WRONG
+  pop-m6-m7b5-gm-100.mp3: bars=32/32  root 32.0/32 (100.0%)  root+quality 24.0/32 (75.0%)  split 0  key OK
   pop-threechord-c-108.mp3: bars=28/28  root 28.0/28 (100.0%)  root+quality 28.0/28 (100.0%)  split 0  key OK
   rocknroll-12bar-a-168.mp3: bars=47/48  root 43.5/48 (90.6%)  root+quality 19.0/48 (39.6%)  split 3  key OK

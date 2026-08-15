@@ -31,6 +31,26 @@ package with no drums gives the beat tracker nothing percussive to lock to, so
 the bar count it scores against is wrong before a chord is named (#499). Read
 that row as a measurement of the grid, not of the harmony.
 
+`pop-deceptive-f-72` scores low the same way for a different reason: the beat
+is tracked at double the written tempo although the kick and side-stick mark
+every quarter — by every independent beat tracker tried too (#509), so the
+double is in the signal rather than in one tracker's prior — and the
+bar-aligned chord columns pay for it although the chords are right against
+the clock.
+
+Its key column is a tie read, not a verdict: the grid holds the two candidate
+keys in exact balance, so the name in that column comes from MW's own chord
+reading breaking the tie by about a bar of noise, and a change that flips it
+between WRONG and OK is neither a regression nor progress on #277 (#509).
+
+`pop-m6-m7b5-gm-100` states one note set twice, as `Cm6` and as `Am7b5`, which
+are the same four pitch classes on two roots (#316). Eight of its bars are out
+of reach of the `root+quality` column whatever MW does with them: neither
+quality is in the estimator's vocabulary (#287), so those eight bars score
+zero on quality until the vocabulary changes — but the column as a whole also
+moves with the other twenty-four bars, for the usual reasons. The root column
+is what this package measures.
+
 Regenerate a package with:
 
 ```sh
