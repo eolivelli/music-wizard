@@ -107,17 +107,14 @@ class MusicXmlExportTest {
     private static final String UPDATE_PROPERTY = "mw.golden.update";
 
     /**
-     * MusicXML goldens with no LilyPond twin, and why.
-     *
-     * <p>{@code two-parts} is a whole-score export, which MusicXML has and a
-     * LilyPond file in this project does not: {@link StaffNotation} writes one
-     * part per document. Its LilyPond side is the vocal part alone, so there is
-     * no single {@code .ly} that is the same music.
+     * MusicXML goldens with no LilyPond twin. None today: the whole-score
+     * export, which cannot have one — {@link StaffNotation} writes one part per
+     * document — currently has no golden at all (#511).
      *
      * <p>A list rather than a condition, so that a fixture whose golden simply
      * was not written fails the pairing check instead of skipping it.
      */
-    private static final List<String> UNPAIRED = List.of("two-parts");
+    private static final List<String> UNPAIRED = List.of();
 
     /** The MusicXML schema, inside the proxymusic jar. */
     private static final String MUSICXML_XSD = "META-INF/jaxb/xsd/musicxml.xsd";
@@ -429,15 +426,33 @@ class MusicXmlExportTest {
     }
 
     @Test
-    @DisplayName("a treble part has no octave change at all")
+    @DisplayName("a treble part on the staff has no octave change at all")
     void trebleClefHasNoOctaveChange() {
-        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        // C5 needs no ledger line where it sounds and two an octave up, so
+        // the plain clef wins the vote.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
         Document document = parse(MusicXmlExport.toMusicXml(
                 score(TimeSignature.FOUR_FOUR, 120, voice), voice));
 
         assertThat(text(first(document, "sign"))).isEqualTo("G");
         assertThat(text(first(document, "line"))).isEqualTo("2");
         assertThat(elements(document, "clef-octave-change")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a low vocal part gets the octave treble clef, still at sounding pitch")
+    void lowVocalClefCarriesTheOctave() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", unspelled(0, 4, 55));
+        Document document = parse(MusicXmlExport.toMusicXml(
+                score(TimeSignature.FOUR_FOUR, 120, voice), voice));
+
+        assertThat(text(first(document, "sign"))).isEqualTo("G");
+        assertThat(text(first(document, "line"))).isEqualTo("2");
+        assertThat(text(first(document, "clef-octave-change"))).isEqualTo("-1");
+        // MIDI 55 is G3, and it is written at sounding pitch: the clef moves it,
+        // exactly as the bass clef moves the bass.
+        assertThat(text(first(document, "step"))).isEqualTo("G");
+        assertThat(text(first(document, "octave"))).isEqualTo("3");
     }
 
     @Test

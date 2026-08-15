@@ -7,7 +7,7 @@
 
 \score {
   \new Staff \with { instrumentName = "Voice" } {
-    \clef "treble"
+    \clef "treble_8"
     \key c \major
     \time #'(1 1 1 1) 4/4
     \tempo \markup { \italic "ca." } 4 = 120
