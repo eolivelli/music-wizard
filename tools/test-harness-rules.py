@@ -1376,11 +1376,11 @@ class SeparationRatio(unittest.TestCase):
         """Pins the constant, which nothing else in this file reaches.
 
         `volumedetect` reports to a tenth of a decibel, so a clamped mix reads
-        -0.0 and so does one peaking a twentieth of a decibel short: the report
-        cannot separate them, and the threshold is the margin that decision
-        needs rather than a measurement of distortion. Asserted here so that
-        widening or dropping it is a test failure and not a silent change of
-        what the tool refuses.
+        zero at that resolution and so does one peaking a twentieth of a decibel
+        short: the report cannot separate them, and the threshold is the margin
+        that decision needs rather than a measurement of distortion. Asserted
+        here so that dropping the margin is a test failure rather than a silent
+        change of what the tool refuses.
         """
         self.assertTrue(separation.railed(-0.1))
         self.assertFalse(separation.railed(-0.5))

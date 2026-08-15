@@ -136,21 +136,18 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
     return 20 * math.log10(math.sqrt(total / counted) / 32768.0)
 
 
-#: At or above this peak the mix has railed: a clamped sample reads as 0.0 and
-#: a positive rail as -0.0, so the test is a threshold rather than equality.
 CLIPPED_DBFS = -0.1
 
 
 def railed(mix_peak_dbfs: float) -> bool:
     """Whether a mix came close enough to full scale not to be trusted.
 
-    `volumedetect` reports to a tenth of a decibel, so every clamped mix reads
-    -0.0 and that bin also holds mixes peaking a twentieth of a decibel short:
-    from the report alone, clamped and nearly-clamped are the same answer. The
-    threshold refuses that bin and one more, so it is a margin and not a
-    measurement of distortion — a row it marks may hold none. Refusing a clean
-    row costs a point on the curve; publishing a distorted one as a reading of
-    its ratio is how #505 happened.
+    `volumedetect` reports to a tenth of a decibel, so a clamped mix reads zero
+    at that resolution — and so does one peaking a twentieth of a decibel
+    short. From the report alone, clamped and nearly-clamped are the same
+    answer. The threshold refuses that bin and one more, so it is a margin and
+    not a measurement of distortion: a row it marks may hold none. Refusing a
+    clean row costs a point on the curve, which is the cheaper mistake.
     """
     return mix_peak_dbfs >= CLIPPED_DBFS
 
@@ -203,11 +200,10 @@ def duration(path: Path) -> float:
 
 
 def peak(path: Path) -> float:
-    """The mix's peak, in dBFS.
+    """The mix's peak, in dBFS, as ffmpeg's `volumedetect` reports it.
 
-    A clamped sample forces this to zero, and a positive rail reports it as
-    -0.0, so callers compare against a small negative threshold rather than
-    against zero.
+    Rounded to a tenth of a decibel by that report, which is what `railed`
+    has to work around.
     """
     done = subprocess.run(
         ["ffmpeg", "-hide_banner", "-i", str(path), "-af", "volumedetect",
@@ -337,7 +333,7 @@ def main() -> None:
                 mix(voice, bed, gain, mixed)
                 # Clipping is a second variable arriving with the ratio, and it
                 # arrives on the loud-voiced clips only — so a row that averaged
-                # railed clips with clean ones would be reporting distortion as
+                # these clips with clean ones could be reporting distortion as
                 # if it were the band. Refused rather than fixed here: attenuating
                 # both sides preserves the ratio but changes the absolute level,
                 # and the separator is not level-invariant (#515).
@@ -369,10 +365,10 @@ def main() -> None:
 
     if clipped:
         print()
-        print("  REFUSED: these mixes came within a tenth of a decibel of full")
-        print("  scale, which is as close as the peak can be read; a row holding")
-        print("  them may be reporting distortion rather than band. Ask for a")
-        print("  ratio that fits, or give the bed less to do.")
+        print("  REFUSED: these mixes peaked at -0.1 dBFS or louder, which the")
+        print("  reading cannot separate from clamped; a row holding them may be")
+        print("  reporting distortion rather than band. Ask for a ratio that")
+        print("  fits, or give the bed less to do.")
         for clip, ratio, mix_peak in clipped:
             print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {mix_peak:+.1f} dBFS")
         sys.exit(1)
