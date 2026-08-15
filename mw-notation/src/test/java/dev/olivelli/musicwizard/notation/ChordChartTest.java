@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
@@ -54,6 +55,42 @@ class ChordChartTest {
 
     private static PitchSpelling root(NoteLetter letter) {
         return new PitchSpelling(letter, Accidental.NATURAL, 4);
+    }
+
+    @Test
+    @DisplayName("the chart and the staff bar the same chords in the same bars")
+    void theTwoBarAxesAgree() {
+        // The two-axis divergence of #501 with no audio in it: a grid whose
+        // first downbeat is not the first tracked pulse. The raw chords carry
+        // no beat positions, so the chart bars them on the tracked downbeats;
+        // quantization gives the same chords beat positions, and the chart
+        // then bars them by the tempo map, which is the staff's axis. Same
+        // score, same chords: the two pages must agree bar for bar, which
+        // needs the map to carry the phase the tracker found (#84) -- built
+        // with the phase-unaware overload instead, this score's two charts
+        // read "| N.C. A | D |" and "| N.C. A D | % |".
+        List<Double> pulses = new ArrayList<>();
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            pulses.add(0.4 + i * 0.5);
+            int position = Math.floorMod(i - 2, 4);
+            beats.add(new BeatGrid.Beat(0.4 + i * 0.5, position == 0, position));
+        }
+        // Chord changes on the grid's downbeats, at 1.4s and 5.4s.
+        List<Chord> chords = List.of(
+                Chord.ofSeconds(root(NoteLetter.A), ChordQuality.MAJOR,
+                        0.4, 1.4, Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.D), ChordQuality.MAJOR,
+                        1.4, 5.4, Confidence.of(0.9)),
+                Chord.ofSeconds(root(NoteLetter.E), ChordQuality.MAJOR,
+                        5.4, 12.4, Confidence.of(0.9)));
+        Score score = Score.empty(
+                        TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0, 2, 4), 12.4)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)));
+
+        assertThat(ChordChart.toText(Quantizer.quantize(score).score()))
+                .isEqualTo(ChordChart.toText(score));
     }
 
     /**

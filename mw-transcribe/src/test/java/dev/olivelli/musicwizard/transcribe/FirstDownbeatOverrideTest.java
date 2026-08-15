@@ -23,7 +23,10 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.MusicalTime;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,24 +41,27 @@ import org.junit.jupiter.api.Test;
  * CLAUDE.md calls one of the two highest-value a user can make, persisted it,
  * and ignored it.
  *
- * <p>Eleven of these fifteen tests fail against that code, by asserting that a
- * requested downbeat <em>changes</em> the grid, which is precisely what the
- * ignored option could not do. Measured by restoring the bug -- taking every
- * read of {@code firstDownbeatSeconds} out of {@code transcribe} while leaving
- * {@code Options} validating it, since the option was validated and persisted
- * before this change and only its use was missing. Reverting the validation too
- * makes it twelve, for a reason that has nothing to do with #67.
+ * <p>Twelve of these fifteen tests fail against that code, by asserting that a
+ * requested downbeat <em>changes</em> the grid or, since #84, the tempo map,
+ * which is precisely what the ignored option could not do. Measured by
+ * restoring the bug -- taking every read of {@code firstDownbeatSeconds} out
+ * of {@code transcribe} while leaving {@code Options} validating it, since the
+ * option was validated and persisted before this change and only its use was
+ * missing. Reverting the validation too makes it thirteen, for a reason that
+ * has nothing to do with #67.
  *
- * <p>The four that pass are worth knowing apart, because a test that passes both
- * ways is not a regression test for the bug it sits beside:
+ * <p>The three that pass are worth knowing apart, because a test that passes
+ * both ways is not a regression test for the bug it sits beside:
  *
  * <ul>
- * <li>{@code doesNotDisturbTheTempoMap} guards against an interaction between
- *     the two overrides that this change could introduce, and
- *     {@code rejectsNonsenseDownbeats} against a consequence it introduces: a
- *     negative or non-finite downbeat was accepted and inert before, and now
- *     reaches {@link AudioTranscriber#nearestBeatIndex}, which has no opinion
- *     about it. Neither reproduces anything.</li>
+ * <li>{@code movesTheMapsBarLinesOntoTheChosenDownbeat} pins the one
+ *     interaction between the overrides that exists on purpose: since #84 the
+ *     chosen phase re-anchors the map's derived lead-in so the chosen pulse
+ *     is a bar line, and it may move nothing else. {@code
+ *     rejectsNonsenseDownbeats} guards a consequence of reading the option at
+ *     all: a negative or non-finite downbeat was accepted and inert before,
+ *     and now reaches {@link AudioTranscriber#nearestBeatIndex}, which has no
+ *     opinion about it.</li>
  * <li>{@code snapConfidenceBoundsAmbiguityInBothDirections} and
  *     {@code oneBeatToTheBarIsAlwaysCertain} are regression tests for defects
  *     found in review of the fix itself, both first raised in round 2 -- a
@@ -488,17 +494,35 @@ class FirstDownbeatOverrideTest {
     }
 
     @Test
-    @DisplayName("leaves the tempo map to the tempo")
-    void doesNotDisturbTheTempoMap() {
-        // The two overrides are about different things -- one the rate, one where
-        // the bar starts -- and the map is anchored on the first tracked pulse
-        // either way. A downbeat that silently moved the map would make --tempo
-        // and --first-downbeat interact, which neither of them documents.
+    @DisplayName("moves the map's bar lines onto the chosen downbeat, and nothing else")
+    void movesTheMapsBarLinesOntoTheChosenDownbeat() {
+        // The override says where the bar starts, and since #84 the map
+        // carries that phase: the lead-in is re-anchored so the chosen pulse
+        // lands on a bar line, which is the whole point of typing it -- a
+        // downbeat the grid marks and the map ignores puts the staff's bar
+        // lines somewhere the chart's are not (#501). What the override must
+        // NOT move is the tempo: the measured segments stay the measured
+        // segments, whichever pulse is chosen.
         Score plain = transcribe(null, TimeSignature.FOUR_FOUR);
         List<Double> pulses = plain.beatGrid().orElseThrow().beatTimes();
 
-        assertThat(transcribe(pulses.get(5), TimeSignature.FOUR_FOUR).tempoMap())
-                .isEqualTo(plain.tempoMap());
+        for (int chosen = 4; chosen < 8; chosen++) {
+            TempoMap map = transcribe(pulses.get(chosen), TimeSignature.FOUR_FOUR).tempoMap();
+            MusicalTime time = map.toMusicalTime(map.secondsToBeats(pulses.get(chosen)));
+            assertThat(time.beatInBar())
+                    .as("pulse %d was chosen to begin a bar and the map must agree", chosen)
+                    .isCloseTo(0.0, within(1e-9));
+            // The beat axis legitimately shifts with the lead-in, so what is
+            // compared is what the phase may not touch: when each measured
+            // stretch begins and how fast it runs.
+            assertThat(map.segments().stream()
+                    .filter(s -> s.provenance() == Provenance.MEASURED)
+                    .map(s -> List.of(s.startSeconds(), s.beatsPerMinute())).toList())
+                    .as("the phase may re-anchor only the derived lead-in")
+                    .isEqualTo(plain.tempoMap().segments().stream()
+                            .filter(s -> s.provenance() == Provenance.MEASURED)
+                            .map(s -> List.of(s.startSeconds(), s.beatsPerMinute())).toList());
+        }
     }
 
     @Test

@@ -33,16 +33,16 @@ import java.util.Optional;
  * settles what each of them stops carrying when it is no longer alone on the
  * page.
  *
- * <p><b>This page and {@code chords.pdf} can still put a chord in a different
- * bar, and it is not a second emitter that does it (#501).</b> A chart is laid
- * out from a score whose chords carry no beat positions, so {@link ChartLayout}
- * bars them on the tracked downbeats; a staff has to be barred by the tempo
- * map, because that is the axis its notes were quantized onto, so the same
- * layout takes its other route here. The two coincide only when the tracked
- * downbeat happens to fall on a bar line of the tempo map — and nothing puts it
- * there, because the map carries no bar phase at all (#84). Where it does not,
- * this page's bar lines are displaced against the music by however far the
- * phase is out, with or without a chart to compare it to.
+ * <p><b>This page and {@code chords.pdf} bar the same chords on two different
+ * axes (#501).</b> A chart is laid out from a score whose chords carry no beat
+ * positions, so {@link ChartLayout} bars them on the tracked downbeats; a
+ * staff has to be barred by the tempo map, because that is the axis its notes
+ * were quantized onto, so the same layout takes its other route here. The two
+ * agree because the map anchors its lead-in on the phase the tracker found,
+ * which makes the grid's downbeats bar lines of the map (#84) — except where
+ * the chart refuses the downbeat sequence and falls back to one constant bar
+ * length (#421), where the two axes start together and drift apart as far as
+ * the beats wander.
  *
  * <p>The two blocks are aligned by musical time and not by counting bars. Each
  * writes its own bar checks, and LilyPond places both against the same clock,
