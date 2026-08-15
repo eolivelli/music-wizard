@@ -75,6 +75,130 @@ class MelodyEstimationTest {
     }
 
     @Nested
+    @DisplayName("re-articulations")
+    class Rearticulations {
+
+        private static final double ENVELOPE_RATE = 172.0;
+
+        /** One voiced run at one pitch, with a voicedness dip where asked. */
+        private PitchTrack heldNote(int frames, int dipFrom, int dipTo) {
+            double[] hz = new double[frames];
+            boolean[] voiced = new boolean[frames];
+            double[] voicedness = new double[frames];
+            for (int i = 0; i < frames; i++) {
+                hz[i] = 440;
+                voiced[i] = true;
+                voicedness[i] = i >= dipFrom && i <= dipTo ? 0.3 : 0.9;
+            }
+            return new PitchTrack(hz, voiced, voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
+        /** An envelope that is silent except for peaks at (time, strength) pairs. */
+        private OnsetEnvelope peaksAt(double totalSeconds, double... timeStrengthPairs) {
+            double[] out = new double[(int) Math.ceil(totalSeconds * ENVELOPE_RATE)];
+            for (int i = 0; i < timeStrengthPairs.length; i += 2) {
+                out[(int) Math.round(timeStrengthPairs[i] * ENVELOPE_RATE)] =
+                        timeStrengthPairs[i + 1];
+            }
+            return new OnsetEnvelope(out, ENVELOPE_RATE);
+        }
+
+        private OnsetEnvelope peakAt(double seconds, double strength, double totalSeconds) {
+            return peaksAt(totalSeconds, seconds, strength);
+        }
+
+        @Test
+        @DisplayName("a strong peak where the voice restarts cuts the note in two")
+        void aStrongPeakWhereTheVoiceRestartsSplits() {
+            // The dip frames straddle the peak's time on the pitch axis.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 44, 52), peakAt(0.6, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(2);
+            assertThat(pitches(melody)).containsExactly(69, 69);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+            // The pieces cover the note with no gap: a re-articulation is a
+            // boundary, not a rest.
+            assertThat(melody.notes().get(0).offsetSeconds())
+                    .isEqualTo(melody.notes().get(1).onsetSeconds());
+        }
+
+        @Test
+        @DisplayName("an accompaniment peak under an undisturbed voice does not cut")
+        void anAccompanimentPeakDoesNotCut() {
+            // Same peak, no dip: the envelope says something was struck, and
+            // the voice says it was not the voice.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, -1, -1), peakAt(0.6, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak below the floor does not cut, dip or no dip")
+        void aWeakPeakDoesNotCut() {
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 44, 52), peakAt(0.6, 2.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak at the note's own attack does not cut")
+        void aPeakAtTheAttackDoesNotCut() {
+            // Within MIN_NOTE_SECONDS of the onset it is the note's own
+            // articulation, however strong, and whatever the voicedness there.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 0, 8), peakAt(0.09, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("without an envelope the two notes stay one, as they always did")
+        void withoutAnEnvelopeTheNoteStaysWhole() {
+            assertThat(MelodyEstimator.estimate(heldNote(100, 44, 52)).notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak near the note's end does not cut")
+        void aPeakNearTheNoteEndDoesNotCut() {
+            // Within MIN_NOTE_SECONDS of the end it is the next note's attack,
+            // and the piece it would leave -- a sub-60 ms duplicate right
+            // before a true onset -- is the worst place to invent one.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 92, 99), peakAt(1.18, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("two peaks closer than the shortest note cut once")
+        void twoPeaksCloserThanTheShortestNoteCutOnce() {
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 42, 58), peaksAt(1.3, 0.6, 5.0, 0.64, 5.0));
+
+            assertThat(melody.notes()).hasSize(2);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("the dip is sought on the pitch axis where the peak actually is")
+        void theDipIsSoughtWhereThePeakIs() {
+            // A two-frame dip placed just inside the reach only when the
+            // envelope's uncentred time is converted onto the pitch track's
+            // window-centred axis: dropping the centering, or flipping its
+            // sign, both put the search window past these frames and lose the
+            // split.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 43, 44), peakAt(0.6, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(2);
+        }
+    }
+
+    @Nested
     @DisplayName("a run of voiced frames")
     class VoicedRun {
 

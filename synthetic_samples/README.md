@@ -29,7 +29,12 @@ A package with a `pad` is scored on chords like any other, and reads far worse
 than the full-band packages do. That is not the pad's harmony being unclear: a
 package with no drums gives the beat tracker nothing percussive to lock to, so
 the bar count it scores against is wrong before a chord is named (#499). Read
-that row as a measurement of the grid, not of the harmony.
+that row as a measurement of the grid, not of the harmony. Its melody row pays
+for the pad too: the pad's chord changes are real articulations in the signal,
+and a monophonic melody stage has nothing with which to disown them, so some
+cut the held note above (#495). The package has now paid on both harnesses for
+its own nature — a further movement on one of its rows should be read against
+that before it is read as a new defect.
 
 `pop-deceptive-f-72` scores low the same way for a different reason: the beat
 is tracked at double the written tempo although the kick and side-stick mark

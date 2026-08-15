@@ -35,12 +35,21 @@ import java.util.Objects;
  * semitone. What is left absorbs the gap, so a note runs up to the start of the
  * next one and a boundary is placed once rather than twice.
  *
- * <p><strong>Two notes of the same pitch with no gap between them are one note
- * here.</strong> Nothing in a pitch track distinguishes them — the pitch does
- * not change, and a re-articulation is an amplitude event. Splitting them needs
- * the onset envelope, which this stage deliberately does not read yet: an onset
- * detector that can also cut a note that was merely accented is a second way to
- * be wrong, and the first version is better judged with one. See #495.
+ * <p><strong>The onset envelope splits the re-articulations; the pitch track
+ * decides everything else.</strong> Two notes of the same pitch with no gap
+ * are indistinguishable in a pitch track outright — a re-articulation is an
+ * amplitude event — so a strong envelope peak inside a note cuts it in two,
+ * but only where the voice itself restarts (#495). The constants carry what
+ * both melody corpora said about the floors.
+ *
+ * <p>What the envelope deliberately does <em>not</em> do here is move the
+ * boundaries themselves. Measured on the packages with exact MIDI truth, that
+ * closes their onset lateness completely — and on vocadito's real singing it
+ * moves the same boundaries away from the annotations, because the envelope
+ * marks the instrument's attack where a human marks the sung vowel, and the
+ * two differ by the very interval the correction spans. The gap #497 names is
+ * real against MIDI attacks and is not this stage's defect against sung
+ * truth; the measurements are with that issue.
  */
 public final class MelodyEstimator {
 
@@ -72,6 +81,41 @@ public final class MelodyEstimator {
      */
     private static final double SPLIT_SEMITONES = 0.6;
 
+    /**
+     * The least envelope strength, in its standard-deviation units, that may
+     * cut a note in two.
+     *
+     * <p>Inventing a boundary inside a held note is the
+     * accent-versus-articulation mistake this stage once avoided by not
+     * reading the envelope at all, so the floor sits just above the
+     * interior-peak population the synthetic renders produce -- their
+     * soundbank's vibrato runs to about 3.3 at the population's tail and
+     * nearly reaches the floor at its extreme -- and sung re-strikes still
+     * clear it. Below it the melody-only rows lose a few points each to false
+     * cuts and the accompanied row loses double digits; at the floor the only
+     * rows that move at all are the accompanied one and the real singing.
+     */
+    private static final double REARTICULATION_FLOOR = 4.0;
+
+    /**
+     * The share of a note's own median voicedness its dip must fall under for
+     * the voice to count as restarted.
+     *
+     * <p>Swept both ways on vocadito against the accompanied package:
+     * tightening it lost sung re-articulations without removing another false
+     * cut, and loosening it admits accompaniment. It is a second gate, not a
+     * cure -- accompaniment bleeding into the pitch window dips the measured
+     * voicedness too, which is why the accompanied row still pays a little.
+     */
+    private static final double REARTICULATION_DIP_SHARE = 0.9;
+
+    /**
+     * How far from a peak the voicedness dip may sit. Numerically the shortest
+     * note, but a search radius rather than a length -- see {@link
+     * #voiceRestartsAt} for why it is deliberately coarse.
+     */
+    private static final double DIP_REACH_SECONDS = 0.06;
+
     private MelodyEstimator() {
     }
 
@@ -83,6 +127,23 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
+        return segment(pitches, null);
+    }
+
+    /**
+     * The same, with same-pitch re-articulations split by the onset envelope.
+     *
+     * <p>This is the form the pipeline uses; the envelope-less overload exists
+     * for callers with nothing to offer it, and keeps two notes of one pitch
+     * with no gap as the one note a pitch track can see.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
+        Objects.requireNonNull(pitches, "pitches");
+        Objects.requireNonNull(envelope, "envelope");
+        return segment(pitches, envelope);
+    }
+
+    private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope) {
         List<Note> notes = new ArrayList<>();
         int frame = 0;
         while (frame < pitches.frameCount()) {
@@ -94,14 +155,15 @@ public final class MelodyEstimator {
             while (end < pitches.frameCount() && pitches.voiced()[end]) {
                 end++;
             }
-            notes.addAll(notesOfRun(pitches, frame, end));
+            notes.addAll(notesOfRun(pitches, envelope, frame, end));
             frame = end;
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
     }
 
     /** One unbroken voiced run, cut into notes. */
-    private static List<Note> notesOfRun(PitchTrack pitches, int from, int to) {
+    private static List<Note> notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
+                                         int from, int to) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
@@ -115,18 +177,122 @@ public final class MelodyEstimator {
 
         List<int[]> merged = mergeEqualPitches(pitches, kept);
 
+        double[] onsets = new double[merged.size()];
+        for (int i = 0; i < merged.size(); i++) {
+            onsets[i] = pitches.timeOf(merged.get(i)[0]);
+        }
         List<Note> notes = new ArrayList<>(merged.size());
         for (int i = 0; i < merged.size(); i++) {
             int[] span = merged.get(i);
             // Up to the next surviving note rather than to its own last frame,
             // so the frames dropped between them belong to the note being left
             // rather than to no note at all.
-            double onset = pitches.timeOf(span[0]);
-            double end = i + 1 < merged.size() ? pitches.timeOf(merged.get(i + 1)[0]) : runEnd;
-            notes.add(Note.ofSeconds(onset, end - onset, medianPitch(pitches, span),
-                    Confidence.clamped(meanVoicedness(pitches, span))));
+            double onset = onsets[i];
+            double end = i + 1 < merged.size() ? onsets[i + 1] : runEnd;
+            int pitch = medianPitch(pitches, span);
+            // The span's own statistics for every piece of it: a
+            // re-articulation is the same pitch by construction, and the
+            // envelope says where it was struck, not what it sounded like.
+            Confidence confidence = Confidence.clamped(meanVoicedness(pitches, span));
+            List<Double> starts = new ArrayList<>();
+            starts.add(onset);
+            if (envelope != null) {
+                rearticulations(envelope, pitches, span, onset, end, starts);
+            }
+            for (int piece = 0; piece < starts.size(); piece++) {
+                double pieceStart = starts.get(piece);
+                double pieceEnd = piece + 1 < starts.size() ? starts.get(piece + 1) : end;
+                notes.add(Note.ofSeconds(pieceStart, pieceEnd - pieceStart, pitch, confidence));
+            }
         }
         return notes;
+    }
+
+    /**
+     * Adds the boundaries of a note's re-articulations to {@code starts}.
+     *
+     * <p>A peak may cut only strictly inside the note, at least
+     * {@link #MIN_NOTE_SECONDS} from either end and from the previous cut:
+     * nearer the start it is the note's own attack, nearer the end it is the
+     * next note's, and either way the piece it would leave is shorter than
+     * anything this class calls a note.
+     */
+    private static void rearticulations(OnsetEnvelope envelope, PitchTrack pitches, int[] span,
+                                        double onset, double end, List<Double> starts) {
+        double medianVoicedness = medianVoicedness(pitches, span);
+        int fromFrame = envelope.frameOf(onset + MIN_NOTE_SECONDS);
+        int toFrame = envelope.frameOf(end - MIN_NOTE_SECONDS);
+        for (int frame = fromFrame; frame <= toFrame; frame++) {
+            double time = envelope.timeOf(frame);
+            // The loop bound is a rounded frame index, so a peak can land a
+            // few milliseconds past the boundary it was computed from; the
+            // start side needs no twin, because the spacing guard below
+            // already holds every cut at least MIN_NOTE_SECONDS after the
+            // onset the list opens with.
+            if (time >= end - MIN_NOTE_SECONDS) {
+                continue;
+            }
+            if (isPeak(envelope, frame, REARTICULATION_FLOOR)
+                    && voiceRestartsAt(pitches, span, medianVoicedness, time)
+                    && time >= starts.get(starts.size() - 1) + MIN_NOTE_SECONDS) {
+                starts.add(time);
+            }
+        }
+    }
+
+    /**
+     * True when the voice itself restarts around a time: its voicedness dips
+     * against the note's own median, somewhere within {@link
+     * #DIP_REACH_SECONDS} of the point asked about.
+     *
+     * <p>The localisation is deliberately coarse -- the pitch window smears
+     * any dip by its own 93 ms -- but it is not free to widen: on the real
+     * singing a reach of this size and one spanning the whole note answer
+     * identically, and on the accompanied package the note-wide reach admits
+     * more pad cuts. A single-frame reach loses real splits on both corpora.
+     * It keeps a note's far end out of the question; it does not place the
+     * restart precisely.
+     */
+    private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double medianVoicedness,
+                                           double time) {
+        // Inverts PitchTrack.timeOf: its frames are stamped at window centres,
+        // where the envelope's are not.
+        int centre = (int) Math.round(time * pitches.frameRate()
+                - (double) pitches.windowSize() / 2 / pitches.hopSize());
+        int reach = (int) Math.ceil(DIP_REACH_SECONDS * pitches.frameRate());
+        double dip = Double.POSITIVE_INFINITY;
+        for (int f = Math.max(span[0], centre - reach);
+                f <= Math.min(span[1] - 1, centre + reach); f++) {
+            dip = Math.min(dip, pitches.voicedness()[f]);
+        }
+        return dip < REARTICULATION_DIP_SHARE * medianVoicedness;
+    }
+
+    /**
+     * A span's median voicedness, both middles averaged on an even span for
+     * the reason {@link #medianPitch} averages them.
+     */
+    private static double medianVoicedness(PitchTrack pitches, int[] span) {
+        double[] sorted = new double[span[1] - span[0]];
+        for (int frame = span[0]; frame < span[1]; frame++) {
+            sorted[frame - span[0]] = pitches.voicedness()[frame];
+        }
+        Arrays.sort(sorted);
+        int middle = sorted.length / 2;
+        return sorted.length % 2 == 1
+                ? sorted[middle]
+                : (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    /** True when a frame is a local maximum of the envelope clearing the floor. */
+    private static boolean isPeak(OnsetEnvelope envelope, int frame, double floor) {
+        double[] strength = envelope.strength();
+        if (strength[frame] < floor) {
+            return false;
+        }
+        double before = frame > 0 ? strength[frame - 1] : Double.NEGATIVE_INFINITY;
+        double after = frame + 1 < strength.length ? strength[frame + 1] : Double.NEGATIVE_INFINITY;
+        return strength[frame] >= before && strength[frame] > after;
     }
 
     /**
