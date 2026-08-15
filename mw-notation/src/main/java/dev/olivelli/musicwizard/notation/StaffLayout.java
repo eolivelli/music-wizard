@@ -142,7 +142,7 @@ final class StaffLayout {
         List<Event> events = eventsOf(score, track, tuplets);
         Span music = musicSpan(score, track, events, tuplets);
 
-        writer.startStaff(track.name(), StaffClef.of(track.role()), score.primaryKey());
+        writer.startStaff(track.name(), StaffClef.of(track), score.primaryKey());
         writeBars(writer, score, track.name(), events, music, tuplets);
         writer.endStaff();
     }

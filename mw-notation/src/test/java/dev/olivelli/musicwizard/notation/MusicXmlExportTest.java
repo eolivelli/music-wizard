@@ -429,15 +429,32 @@ class MusicXmlExportTest {
     }
 
     @Test
-    @DisplayName("a treble part has no octave change at all")
+    @DisplayName("a treble part on the staff has no octave change at all")
     void trebleClefHasNoOctaveChange() {
-        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
+        // C5, mid-staff: a vocal range this centred keeps the plain clef.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
         Document document = parse(MusicXmlExport.toMusicXml(
                 score(TimeSignature.FOUR_FOUR, 120, voice), voice));
 
         assertThat(text(first(document, "sign"))).isEqualTo("G");
         assertThat(text(first(document, "line"))).isEqualTo("2");
         assertThat(elements(document, "clef-octave-change")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a low vocal part gets the octave treble clef, still at sounding pitch")
+    void lowVocalClefCarriesTheOctave() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", unspelled(0, 4, 55));
+        Document document = parse(MusicXmlExport.toMusicXml(
+                score(TimeSignature.FOUR_FOUR, 120, voice), voice));
+
+        assertThat(text(first(document, "sign"))).isEqualTo("G");
+        assertThat(text(first(document, "line"))).isEqualTo("2");
+        assertThat(text(first(document, "clef-octave-change"))).isEqualTo("-1");
+        // MIDI 55 is G3, and it is written at sounding pitch: the clef moves it,
+        // exactly as the bass clef moves the bass.
+        assertThat(text(first(document, "step"))).isEqualTo("G");
+        assertThat(text(first(document, "octave"))).isEqualTo("3");
     }
 
     @Test

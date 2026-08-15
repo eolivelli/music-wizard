@@ -321,6 +321,50 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("a low melody gets the octave treble clef, its pitches staying at sounding pitch")
+    void lowMelodyGetsTheOctaveTrebleClef() {
+        // G3 to E4, a baritone's phrase: at sounding pitch nearly all of it
+        // sits below the staff. The clef carries the octave, exactly as the
+        // bass clef does; the pitches on the page stay sounding.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 2, "G3"), note(2, 2, "C4"), note(4, 4, "E4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).contains("\\clef \"treble_8\"").contains("g2 c'2 |").contains("e'1 |");
+        assertBarsFillTheirMeter("low melody", source);
+    }
+
+    @Test
+    @DisplayName("the octave clef is taken only when it centres the part better, never on a tie")
+    void theOctaveClefIsNotTakenOnATie() {
+        // C4 to B flat 4 is the tie: written up an octave this range sits no
+        // nearer the middle line, so the plain clef wins. One semitone
+        // narrower and the octave clef does.
+        NoteTrack tie = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 2, "C4"), note(2, 2, "Bb4"));
+        NoteTrack below = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 2, "C4"), note(2, 2, "A4"));
+
+        assertThat(StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, tie), tie))
+                .contains("\\clef \"treble\"");
+        assertThat(StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, below), below))
+                .contains("\\clef \"treble_8\"");
+    }
+
+    @Test
+    @DisplayName("only a vocal part reads its clef from its range")
+    void instrumentalPartsKeepTheirRoleClef() {
+        // The same low phrase in an instrumental role keeps the plain clef: a
+        // piano's right hand is not a voice, and the grand staff already has a
+        // place for low notes.
+        NoteTrack piano = track(PartRole.PIANO_RIGHT_HAND, "Piano",
+                note(0, 2, "G3"), note(2, 2, "C4"), note(4, 4, "E4"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, piano), piano);
+
+        assertThat(source).contains("\\clef \"treble\"");
+    }
+
+    @Test
     @DisplayName("a track with no musical timing is refused rather than guessed at")
     void refusesUnquantizedTracks() {
         NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
