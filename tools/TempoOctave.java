@@ -67,8 +67,21 @@ public final class TempoOctave {
     private static final double PREFERRED_TEMPO = 120.0;
     private static final double PRIOR_WIDTH_OCTAVES = 1.4;
 
-    /** A benchmark and the tempo samples/list.txt states for it. */
-    private record Job(String file, double statedTempo, String note) {
+    /**
+     * A benchmark and the tempo stated for it.
+     *
+     * <p>{@code corpus} is the directory it lives in, because the two corpora
+     * state a tempo with different authority: a {@code samples/} tempo is
+     * either stated by an uploader or measured off the recording, and the
+     * corpus marks which — the two are not equally soft — while a
+     * {@code synthetic_samples/} spec compiled the MIDI the audio was rendered
+     * from. An octave error against the second is arithmetic.
+     */
+    private record Job(String corpus, String file, double statedTempo, String note) {
+
+        Job(String file, double statedTempo, String note) {
+            this("samples", file, statedTempo, note);
+        }
     }
 
     private static final List<Job> JOBS = List.of(
@@ -93,7 +106,14 @@ public final class TempoOctave {
             new Job("cm-blues-68-95.mp3", 95, "6/8, #4"),
             new Job("slow-68-40.mp3", 40, "6/8, #4"),
             // States no tempo; printed for its factors only.
-            new Job("bm-blues-slow.mp3", 0, "no stated tempo"));
+            new Job("bm-blues-slow.mp3", 0, "no stated tempo"),
+            // Synthetic, so the stated tempo is the one the MIDI was compiled
+            // at. The first is #509's target and reads its double; the second
+            // is a full-band package of the same generator that reads its
+            // written tempo, so a rule that moves it has moved something the
+            // corpus says is already right.
+            new Job("synthetic_samples", "pop-deceptive-f-72.mp3", 72, "target, #509"),
+            new Job("synthetic_samples", "pop-axis-g-116.mp3", 116, "control, synthetic"));
 
     /** The ceiling this file's reproduction uses; {@code TempoEstimator}'s by default. */
     private static double ceiling = 3.0;
@@ -103,9 +123,8 @@ public final class TempoOctave {
             ceiling = Double.parseDouble(args[0]);
         }
         System.out.printf("accent ceiling %.2f%n", ceiling);
-        Path samples = Path.of("samples");
         for (Job job : JOBS) {
-            Path file = samples.resolve(job.file());
+            Path file = Path.of(job.corpus()).resolve(job.file());
             if (!Files.isRegularFile(file)) {
                 System.out.printf("%-28s SKIPPED (not present)%n", job.file());
                 continue;
@@ -124,10 +143,23 @@ public final class TempoOctave {
         windows(job, envelope, rhythm);
     }
 
+    /**
+     * The factors over the whole clip.
+     *
+     * <p><b>Not the grid's rate</b> on anything longer than a window, which is
+     * every recording here: {@code BeatTracker} calls the estimator over the
+     * whole envelope only for a clip that fits in one window, and otherwise
+     * seeds each window separately and takes the median. So this line answers a
+     * question about the envelope, and {@code voter reference} below answers
+     * the question about the recording. Reading a ceiling sweep off this line
+     * gave a boundary two tenths away from the pipeline's on #509, and the two
+     * genuinely disagree in the band that matters.
+     */
     private static void whole(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         Scored scored = score(envelope, rhythm);
         TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelope, rhythm);
-        System.out.printf("whole clip: argmax %.2f  est %.2f%n",
+        System.out.printf("whole clip (not the grid's rate; see voter reference):"
+                        + " argmax %.2f  est %.2f%n",
                 scored.bestTempo, estimate.beatsPerMinute());
         printCandidates(job, scored, envelope, rhythm);
     }
