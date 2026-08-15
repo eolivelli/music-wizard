@@ -8,12 +8,19 @@ by note — vocadito's solo voices — scores them, then mixes those same voices
 with a band, puts the mix back through `mw separate`, and scores the separated
 stem against the same annotations.
 
-**Two things change between those rows, not one**, and the third row is what
-tells them apart: `spleeter only` puts the clean voice through the separator
-with no bed at all. Measured that way, the separator costs the melody stage
-almost nothing on a signal that is already a voice. Nearly all of the loss in
-the `separated` column is therefore band that separation did not remove, not
-damage it does to the singing — which is a different thing to go and fix.
+**Two things change between the outer rows, not one.** The middle row,
+`spleeter only`, puts the clean voice through the separator with no bed, and it
+costs almost nothing — but that is a null control: with no band present there
+is nothing for the mask to remove, so it says what the separator does to a
+voice *by itself* and nothing about what it does to a voice with a band on top
+of it.
+
+So the gap between the outer rows is not attributable by this tool. It holds
+band the mask failed to remove and voice the mask removed along with the band,
+in unknown proportion, and those are different defects with different fixes.
+Projecting the stems back onto the clean voice says the second is large at the
+ratios these clips present, so do not read this gap as leftover band. #503
+carries that measurement.
 
 **The vocal-to-band ratio is not controlled, and it dominates the result.**
 The bed is attenuated by a fixed gain and the voice is used at whatever level
@@ -27,23 +34,14 @@ The bed defaults to a committed synthetic package, so the measurement is
 reproducible from the repository by anyone who has fetched vocadito
 (`uncommitted/list.txt`), and `--bed` takes any other recording.
 
-**The default bed is the harder one, not the easier one, and that was the
-opposite of what this file first claimed.** A package rendered from MIDI sounds
-like a weaker interferer than a mastered record, and costs far more all the
-same — level-matched against a real accompaniment it still costs about half as
-much again. Why is not established: a synthesised band differs from a record in
-spectral density, in dynamics and in being outside what the separator was
-trained on, and one bed pair cannot say which of those it is. The effect is
-measured; the reason is not.
-
 So the number this prints is not "what separation costs", singular. It is what
 this path costs *this voice against this bed at this ratio*, and the spread is
 wider than most changes anyone would make to the melody stage. Quote the bed
 with the figure or do not quote the figure.
 
 Nothing here is baselined. It answers a question that is asked when a separator
-or a melody stage changes (#503), not on every premerge — and its cost is a
-Spleeter run per clip.
+or a melody stage changes (#503), not on every premerge — and its cost is two
+Spleeter runs per clip.
 
 Usage:  python3 tools/measure-separation-cost.py [--clips 10]
                                                  [--jar mw-cli/target/mw.jar]
@@ -63,11 +61,13 @@ melody = import_module("score-melody")
 REPO = Path(__file__).resolve().parent.parent
 
 #: The default interferer: a full-band package with drums, bass and comping.
-#: Committed, so the run reproduces from the repository; see the module
-#: docstring for why that convenience costs realism rather than buying it.
+#: Committed, so the run reproduces from the repository. Comparing it against
+#: another bed is not something this tool can do yet; see #505.
 DEFAULT_BED = REPO / "synthetic_samples" / "pop-axis-g-116.mp3"
 
-#: How far the bed sits under the voice, as a linear gain.
+#: What the bed is attenuated by. NOT a ratio against the voice: the voice is
+#: used at whatever level its clip was recorded at, so the ratio this produces
+#: varies by clip and is often the other way up (#505).
 BED_GAIN = 0.6
 
 #: Where in the bed to start, so every clip hears the same stretch of it and no
@@ -85,7 +85,7 @@ def duration(path: Path) -> float:
 
 
 def mix(voice: Path, bed: Path, into: Path) -> None:
-    """The voice at unity with the bed under it, trimmed to the voice's length."""
+    """The voice at its own level with the attenuated bed added, trimmed to it."""
     end = BED_OFFSET_SECONDS + duration(voice)
     # Refused rather than mixed against the silence past the bed's end: amix
     # would pad it, the tail of the clip would be a solo voice again, and the
@@ -131,7 +131,7 @@ def main() -> None:
     parser.add_argument("--clips", type=int, default=10,
                         help="how many vocadito clips to put through, from the first")
     parser.add_argument("--bed", default=str(DEFAULT_BED),
-                        help="what to mix under the voice; quote it with any figure")
+                        help="what to mix with the voice; quote it with any figure")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
@@ -157,10 +157,11 @@ def main() -> None:
             mix(voice, bed, mixed)
             stem = separate(jar, mixed, Path(tmp) / f"ws_{clip}")
 
-            # The control that separates the two variables: the same voice
-            # through the same separator with no band under it at all. What it
-            # loses is what separation does to singing; what the row beside it
-            # loses on top is band the separator did not remove.
+            # A null control: the same voice through the same separator with
+            # no band at all. It bounds what the separator does to a voice by
+            # itself, which is nearly nothing -- and it cannot apportion the
+            # column beside it, because with no band present there is nothing
+            # for the mask to take the voice out along with.
             alone_stem = separate(jar, voice, Path(tmp) / f"ws_alone_{clip}")
 
             clean = score(jar, voice, reference)
@@ -180,7 +181,7 @@ def main() -> None:
         separated = 100 * statistics.mean(row[index] for row in separated_rows)
         print(f"  mean {name:20s} clean {clean:5.1f}%   spleeter-only {alone:5.1f}%"
               f"   separated {separated:5.1f}%"
-              f"   (separator {alone - clean:+.1f}, band left in {separated - alone:+.1f})")
+              f"   (separator alone {alone - clean:+.1f}, with a band {separated - alone:+.1f})")
 
 
 if __name__ == "__main__":

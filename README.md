@@ -43,8 +43,7 @@ pipeline unaided.
   does not fail, it confidently returns the loudest periodic line. On clean
   solo singing it reads notes close under what two annotating musicians agree
   on with each other; on a mix it reads them markedly worse, and that gap is
-  the band left in by separation rather than the melody stage
-  ([#503][i503]).
+  separation's rather than the melody stage's ([#503][i503]).
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart, the chords-and-lyrics sheet, the lead sheet and the melody
   staff. `--transpose` moves the

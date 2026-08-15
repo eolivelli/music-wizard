@@ -38,9 +38,9 @@ Two things about that corpus decide how its rows are read.
 **It carries its own ceiling.** Both annotators' notes are published, so the
 row `annotators` is one musician scored against the other by this harness's own
 rule. It sits far below 100%, because where a sung note begins is genuinely
-ambiguous, and the two do not even agree how many notes a clip holds — compare
-the denominators of the `notes` column against each other. A melody stage
-approaching that row has reached the end of what this
+ambiguous: the count beside it is the second annotator's own number of notes,
+against the first annotator's in the `notes` denominator, and on this corpus no
+clip's two readings agree. A melody stage approaching that row has reached the end of what this
 metric can ask for, and a stage far above it is measuring an annotator's habits
 rather than the singing.
 
@@ -308,14 +308,16 @@ def score_clip(jar: Path, clip: int) -> str:
     if not estimate:
         return (f"  vocadito_{clip}: notes=0/{len(reference)}  F1@50ms 0.0%"
                 f"  F1@100ms 0.0%  pitch 0.0%  voiced 0.0%"
-                f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%")
+                f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%"
+                f" ({len(other)} notes)")
     pitch, voiced = framewise(estimate, reference)
     return (f"  vocadito_{clip}: notes={len(estimate)}/{len(reference)}"
             f"  F1@50ms {100 * note_f1(estimate, reference, TOLERANCES[0]):.1f}%"
             f"  F1@100ms {100 * note_f1(estimate, reference, TOLERANCES[1]):.1f}%"
             f"  pitch {100 * pitch:.1f}%"
             f"  voiced {100 * voiced:.1f}%"
-            f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%")
+            f"  annotators {100 * note_f1(other, reference, TOLERANCES[0]):.1f}%"
+            f" ({len(other)} notes)")
 
 
 def score_package(jar: Path, spec_file: Path) -> str:

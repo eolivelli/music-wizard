@@ -415,21 +415,22 @@ where a sung note begins is genuinely ambiguous — the two annotators do not
 even agree how many notes a clip holds. MW sits close under it. Read the
 baseline rather than a figure quoted here.
 
-Three things that measurement overturned, all of which had been believed on the
+Two things that measurement overturned, both of which had been believed on the
 strength of how a page looked:
 
-- **Real sung notes are short**, most of them well under a quarter of a
-  second — read the `notes` denominators and the clip lengths. A melody stage returning notes that
-  length is not fragmenting; a rule that absorbed short notes would destroy
-  real music.
-- **On a mix the melody is lost to band the separator leaves in, not to what
-  the separator does to the voice.** `tools/measure-separation-cost.py` scores
-  the same annotated voices three ways — clean, through the separator with no
-  band, and through it with a band mixed in — and the middle row costs almost
-  nothing. So the loss is residue, not damage (#503), which is a different
-  thing to fix. How much residue depends on the bed and on the vocal-to-band
-  ratio, which that tool does not yet control (#505), so its figures are quoted
-  with both or not quoted.
+- **Real sung notes are short**, most of them under a quarter of a second. A
+  melody stage returning notes that length is not fragmenting, and a rule that
+  absorbed short notes would destroy real music.
+- **On a mix the melody stage's accuracy is a statement about separation, not
+  about the melody stage.** `tools/measure-separation-cost.py` scores the same
+  annotated voices three ways — clean, through the separator with no band, and
+  through it with a band mixed in. The middle row costs almost nothing, so the
+  separator does not spoil a voice by itself; the whole loss appears once a
+  band is there. What that gap is made of the tool cannot say, and the two
+  candidates want opposite fixes: band the mask failed to remove, or voice the
+  mask removed with it (#503). It also depends on the vocal-to-band ratio,
+  which the tool does not control (#505) — so no figure from it is quoted
+  without saying which clips it covers, and none of them is baselined.
 
 **Melody is read from a signal that holds nothing else (#494).**
 pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
