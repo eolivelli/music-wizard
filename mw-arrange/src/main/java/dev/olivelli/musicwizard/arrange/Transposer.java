@@ -245,7 +245,7 @@ public final class Transposer {
                     key.keySignatureAccidentals() + FIFTHS_PER_SEMITONE * semitones);
             moved.add(new Key(Key.tonicOf(signature, key.mode()), key.mode(),
                     key.startSeconds(), key.endSeconds(), key.startBeat(), key.endBeat(),
-                    key.confidence()));
+                    key.confidence(), key.signatureConfidence(), key.tonicConfidence()));
         }
         return List.copyOf(moved);
     }

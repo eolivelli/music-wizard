@@ -75,7 +75,8 @@ class ScoreRoundTripTest {
                         .withMeterChange(2, TimeSignature.THREE_FOUR),
                 Optional.of(grid),
                 List.of(new Key(c4, Mode.MAJOR, 0.0, 3.0,
-                        Optional.of(0.0), Optional.of(6.0), Confidence.of(0.8))),
+                        Optional.of(0.0), Optional.of(6.0), Confidence.of(0.8),
+                        Optional.of(Confidence.of(0.9)), Optional.of(Confidence.of(0.6)))),
                 List.of(new Section(SectionKind.VERSE, "Verse 1", 0.0, 3.0,
                         Optional.of(0.0), Optional.of(6.0),
                         Optional.of("A"), Confidence.of(0.7))),
@@ -189,6 +190,26 @@ class ScoreRoundTripTest {
         }
 
         @Test
+        @DisplayName("still opens a score written before the key confidence components existed")
+        void readsAScoreBeforeKeyComponents() throws Exception {
+            // #512 added the two components as Optionals, so a file without
+            // them must load with both empty -- "not recorded", which is not a
+            // measured zero -- and keep the product it was written with. #22
+            // records what happens when a core change silently invalidates old
+            // files.
+            String json;
+            try (var in = getClass().getResourceAsStream("/score-before-key-components.json")) {
+                assertThat(in).as("fixture on the test classpath").isNotNull();
+                json = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+
+            Key key = ScoreJson.fromJson(json).keys().get(0);
+            assertThat(key.signatureConfidence()).isEmpty();
+            assertThat(key.tonicConfidence()).isEmpty();
+            assertThat(key.confidence()).isEqualTo(Confidence.of(0.41));
+        }
+
+        @Test
         @DisplayName("a score written by a newer build still opens")
         void toleratesUnknownFields() {
             String json = ScoreJson.toJson(Score.empty(TempoMap.constant(120), 5.0))
@@ -250,7 +271,8 @@ class ScoreRoundTripTest {
             PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
 
             assertThatThrownBy(() -> new Key(c, Mode.MAJOR, 0, 10,
-                    Optional.of(0.0), Optional.empty(), Confidence.CERTAIN))
+                    Optional.of(0.0), Optional.empty(), Confidence.CERTAIN,
+                    Optional.empty(), Optional.empty()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("both startBeat and endBeat");
         }

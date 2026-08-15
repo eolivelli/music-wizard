@@ -899,10 +899,14 @@ public final class MidiTranscriber {
             if (!(endSeconds > startSeconds)) {
                 continue;
             }
+            // Both components as certain as the product: the key signature
+            // meta event carries a major/minor flag, so which of the relative
+            // pair is home is read from the file here, never inferred.
             keys.add(new Key(Key.tonicOf(signature[0], mode), mode,
                     startSeconds, endSeconds,
                     Optional.of(startBeat), Optional.of(endBeat),
-                    Confidence.CERTAIN));
+                    Confidence.CERTAIN,
+                    Optional.of(Confidence.CERTAIN), Optional.of(Confidence.CERTAIN)));
         }
         if (!keys.isEmpty()) {
             progress.accept("read " + keys.size() + " key signature(s), opening in "
