@@ -20,6 +20,14 @@ Columns, per package:
   F1@50ms     note F1: a hit needs the right semitone and an onset within
               50 ms, matched one-to-one. The standard tolerance, and a hard
               one here — see PitchTracker, whose window is 93 ms wide.
+              The column carries one name over two definitions of "onset":
+              the synthetic rows score against MIDI note-ons, which sit on
+              the instrument's attack, while vocadito's annotators mark
+              where the sung vowel begins, and the two differ by the
+              consonant-to-vowel interval. Do not compare the column across
+              the sources, and do not tune onset placement against one of
+              them alone — #497 carries the measurement where doing so
+              perfected one corpus and damaged the other.
   F1@100ms    the same at 100 ms, which is what the analysis window can
               actually support. Both are printed because the gap between
               them is how much of a loss is placement rather than pitch.
