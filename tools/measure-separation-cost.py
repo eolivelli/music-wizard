@@ -139,8 +139,7 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
 CLIPPED_DBFS = -0.1
 
 #: What a refused row is called, everywhere it is named. One word rather than
-#: three literals, because `railed` refuses more than it can prove clipped and
-#: "CLIPPED" said otherwise in two of the three places it was written out.
+#: three literals, because `railed` refuses more than it can prove clipped.
 REFUSED_LABEL = "REFUSED"
 
 
@@ -373,9 +372,8 @@ def main() -> None:
         print(f"  {REFUSED_LABEL}: these mixes read -0.1 dBFS or louder. At zero"
               " the reading cannot")
         print("  be told from clamped, and -0.1 is the margin around it — so a row")
-        print("  holding them may be reporting distortion rather than band, and")
-        print("  the peaks below say which. Ask for a ratio that fits, or give")
-        print("  the bed less to do.")
+        print("  holding them may be reporting distortion rather than band. Ask")
+        print("  for a ratio that fits, or give the bed less to do.")
         for clip, ratio, mix_peak in clipped:
             print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {mix_peak:+.1f} dBFS")
         sys.exit(1)
