@@ -367,6 +367,21 @@ class StaffNotationTest {
     }
 
     @Test
+    @DisplayName("one stray high note does not stop a low melody flipping either")
+    void aStrayHighNoteDoesNotStopTheFlip() {
+        // The mirror of the stray-low case, and the shape of a real separated
+        // vocal stem: a baritone phrase carrying one octave error at the top.
+        // The body's ledger lines outvote the stray's.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 1, "G3"), note(1, 1, "A3"), note(2, 1, "B3"), note(3, 1, "C4"),
+                note(4, 1, "D4"), note(5, 1, "E4"), note(6, 1, "G3"), note(7, 1, "A3"),
+                note(8, 4, "D6"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).contains("\\clef \"treble_8\"");
+    }
+
+    @Test
     @DisplayName("a note too short to engrave does not vote on the clef")
     void aDroppedNoteDoesNotVoteOnTheClef() {
         // The E2 blip is dropped before anything is printed, so a clef chosen
