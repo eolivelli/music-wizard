@@ -9,8 +9,8 @@ accompaniment: full
 bars:
 # C-E-G-A is C6 and Am7 alike: same four pitch classes, two roots, and only
 # the bass says which (#448). Sections 2 and 3 are the same grid apart from
-# that spelling; the comping is note-for-note identical between them and the
-# bass differs only in its root pitch class on the ambiguous bars. Sections
+# that spelling; the comping is note-for-note identical between them, and the
+# bass plays C under one and A under the other. Sections
 # 1 and 4 do the major seventh: Cmaj7 is
 # C-E-G-B, three of whose notes are the Em triad that section 4 states on its
 # own root. Every section closes V7-I on plain triads. The sixth and the

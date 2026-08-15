@@ -14,8 +14,8 @@
 #
 # Chords are lead-sheet shorthand, spelled as the tool spells them: 7 dominant,
 # m7 minor seventh, maj7 major seventh, 6 major sixth, m6 minor sixth,
-# m7b5 half-diminished, dim diminished, a plain letter a major triad. One token is one bar, four bars
-# to a line; X-Y is one bar holding both chords.
+# m7b5 half-diminished, dim diminished, a plain letter a major triad. One
+# token is one bar, four bars to a line; X-Y is one bar holding both chords.
 #
 # Every grid below was confirmed against the recording by ear, and that is what
 # lets it be ground truth: tools/score-samples.py scores it, and
