@@ -335,20 +335,47 @@ class StaffNotationTest {
     }
 
     @Test
-    @DisplayName("the octave clef is taken only when it centres the part better, never on a tie")
+    @DisplayName("the octave clef is taken only when it strictly saves ledger lines")
     void theOctaveClefIsNotTakenOnATie() {
-        // C4 to B flat 4 is the tie: written up an octave this range sits no
-        // nearer the middle line, so the plain clef wins. One semitone
-        // narrower and the octave clef does.
+        // C4 and G4 cost one ledger line at pitch and none an octave up, so
+        // the octave clef wins. Widen the top to A4 and the saved line
+        // reappears above the staff -- A5 needs one -- so the tie keeps the
+        // plain clef.
+        NoteTrack low = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 2, "C4"), note(2, 2, "G4"));
         NoteTrack tie = track(PartRole.LEAD_VOCAL, "Voice",
-                note(0, 2, "C4"), note(2, 2, "Bb4"));
-        NoteTrack below = track(PartRole.LEAD_VOCAL, "Voice",
                 note(0, 2, "C4"), note(2, 2, "A4"));
 
+        assertThat(StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, low), low))
+                .contains("\\clef \"treble_8\"");
         assertThat(StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, tie), tie))
                 .contains("\\clef \"treble\"");
-        assertThat(StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, below), below))
-                .contains("\\clef \"treble_8\"");
+    }
+
+    @Test
+    @DisplayName("one stray low note does not flip a melody that sits on the staff")
+    void aStrayLowNoteDoesNotFlipTheClef() {
+        // A lone octave error is the melody tracker's documented failure mode.
+        // Judged by the extremes of pitchRange() this part reads as low; judged
+        // by the ink, the body of the melody outvotes the stray.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 1, "C3"), note(1, 1, "G4"), note(2, 1, "A4"),
+                note(3, 1, "C5"), note(4, 4, "E5"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).contains("\\clef \"treble\"");
+    }
+
+    @Test
+    @DisplayName("a note too short to engrave does not vote on the clef")
+    void aDroppedNoteDoesNotVoteOnTheClef() {
+        // The E2 blip is dropped before anything is printed, so a clef chosen
+        // for it would be chosen for a note that is not on the page.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0.0625, 0.001, "E2"), note(1, 3, "G4"), note(4, 4, "C5"));
+        String source = StaffNotation.toLilyPond(score(TimeSignature.FOUR_FOUR, 120, voice), voice);
+
+        assertThat(source).contains("\\clef \"treble\"").doesNotContain("e,");
     }
 
     @Test

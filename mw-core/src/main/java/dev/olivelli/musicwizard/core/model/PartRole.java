@@ -20,7 +20,7 @@ package dev.olivelli.musicwizard.core.model;
 public enum PartRole {
     /**
      * The sung melody. Treble clef; whether it is the octave-transposing one is
-     * decided in the notation layer from the part's own range, because this
+     * decided in the notation layer from the part's own notes, because this
      * role covers a soprano and a baritone and the right clef differs between
      * them.
      */
@@ -54,10 +54,6 @@ public enum PartRole {
      * octave out. The sign is chosen so that
      * {@code note.transposedBy(role.writtenTranspositionSemitones())} turns a
      * transcribed note into the note to print, and the inverse is a negation.
-     *
-     * <p>{@link #LEAD_VOCAL} returns zero even though a low voice is engraved
-     * in the octave treble clef: that choice depends on the part's own range,
-     * so the notation layer makes it per track rather than per role.
      */
     public int writtenTranspositionSemitones() {
         return this == BASS ? 12 : 0;

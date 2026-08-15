@@ -142,7 +142,12 @@ final class StaffLayout {
         List<Event> events = eventsOf(score, track, tuplets);
         Span music = musicSpan(score, track, events, tuplets);
 
-        writer.startStaff(track.name(), StaffClef.of(track), score.primaryKey());
+        // The clef is decided from the events rather than the track for the
+        // same reason the pickup is: only what reaches the page gets a vote.
+        List<PitchSpelling> engraved = events.stream()
+                .flatMap(event -> event.pitches().stream())
+                .toList();
+        writer.startStaff(track.name(), StaffClef.of(track.role(), engraved), score.primaryKey());
         writeBars(writer, score, track.name(), events, music, tuplets);
         writer.endStaff();
     }

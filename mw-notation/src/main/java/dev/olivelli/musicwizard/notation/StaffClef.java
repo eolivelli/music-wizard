@@ -16,9 +16,9 @@
 
 package dev.olivelli.musicwizard.notation;
 
-import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
-import dev.olivelli.musicwizard.core.model.PitchRange;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import java.util.List;
 
 /**
  * The clef a part is written in, carrying its octave transposition.
@@ -50,11 +50,17 @@ record StaffClef(char sign, int line, int octaveChange) {
     /** Bass clef, F on the fourth line. */
     static final StaffClef BASS = new StaffClef('F', 4, 0);
 
-    /** The middle line of the treble staff, B4, which a clef exists to aim at. */
-    private static final int TREBLE_CENTRE_MIDI = 71;
+    /** Bottom line of the treble staff, E4, on the diatonic ladder. */
+    private static final int TREBLE_BOTTOM_LINE = 30;
+
+    /** Top line of the treble staff, F5, on the diatonic ladder. */
+    private static final int TREBLE_TOP_LINE = 38;
+
+    /** The written shift of the octave treble clef, in diatonic steps. */
+    private static final int OCTAVE_STEPS = 7;
 
     /**
-     * The clef for a part.
+     * The clef for a part, given the pitches that will actually be engraved.
      *
      * <p>Almost always the role's clef alone. The exception is
      * {@link PartRole#LEAD_VOCAL}, whose right clef cannot be read off the role:
@@ -62,16 +68,23 @@ record StaffClef(char sign, int line, int octaveChange) {
      * baritone sits on ledger lines below the staff. Notation's settled answer
      * for a low voice is the octave treble clef — a treble clef with an 8 under
      * it, sounding an octave below written — so a vocal part is given it exactly
-     * when writing the part an octave up brings the middle of its range nearer
-     * the staff's middle line. A tie keeps sounding pitch, because a modifier
-     * the page does not need is one the reader still has to honour.
+     * when that costs strictly fewer ledger lines over the part's engraved
+     * notes; a tie keeps the plain clef.
+     *
+     * <p>Counted over what reaches the page, once per sounding note, and that
+     * is what makes the decision robust: each note votes with the ledger lines
+     * it would need, so a lone low blip — an octave error is the melody
+     * tracker's documented failure mode, and a note too short to engrave never
+     * gets here at all — cannot outvote the body of the part the way it moves
+     * an extreme of {@code NoteTrack.pitchRange()}.
      */
-    static StaffClef of(NoteTrack track) {
-        if (track.role() == PartRole.LEAD_VOCAL && track.pitchRange()
-                .filter(StaffClef::centresBetterAnOctaveUp).isPresent()) {
-            return new StaffClef(TREBLE.sign(), TREBLE.line(), -1);
+    static StaffClef of(PartRole role, List<PitchSpelling> engraved) {
+        if (role == PartRole.LEAD_VOCAL
+                && ledgerLines(engraved, OCTAVE_STEPS) < ledgerLines(engraved, 0)) {
+            StaffClef base = of(role);
+            return new StaffClef(base.sign(), base.line(), base.octaveChange() - 1);
         }
-        return of(track.role());
+        return of(role);
     }
 
     /**
@@ -81,7 +94,7 @@ record StaffClef(char sign, int line, int octaveChange) {
      * than a clef modifier. No role has one; if one appears, it is written at
      * sounding pitch under a plain clef rather than silently at the wrong one.
      */
-    static StaffClef of(PartRole role) {
+    private static StaffClef of(PartRole role) {
         StaffClef base = role.prefersBassClef() ? BASS : TREBLE;
         int semitones = role.writtenTranspositionSemitones();
         if (semitones % 12 != 0) {
@@ -91,17 +104,25 @@ record StaffClef(char sign, int line, int octaveChange) {
     }
 
     /**
-     * True when writing the range an octave up puts its midpoint strictly
-     * nearer the treble staff's middle line.
+     * Ledger lines the treble staff needs for these pitches, written
+     * {@code diatonicShift} steps above where they sound.
      *
-     * <p>Raising the part moves twice the midpoint up by 24, so it wins exactly
-     * when twice the midpoint sits more than 12 below twice the centre —
-     * integer arithmetic, because the midpoint itself can fall between two
-     * semitones. One octave is the only candidate: no vocal convention writes a
-     * voice two octaves off, however low the transcription claims it went.
+     * <p>Diatonic steps rather than semitones, because ledger lines are drawn
+     * on the staff ladder: C4 and C sharp 4 sit on the same line. A note one
+     * step off the staff hangs off it without a line; every two steps beyond
+     * that add one.
      */
-    private static boolean centresBetterAnOctaveUp(PitchRange range) {
-        return range.lowest() + range.highest() < 2 * TREBLE_CENTRE_MIDI - 12;
+    private static int ledgerLines(List<PitchSpelling> engraved, int diatonicShift) {
+        int lines = 0;
+        for (PitchSpelling pitch : engraved) {
+            int position = pitch.diatonicPosition() + diatonicShift;
+            if (position < TREBLE_BOTTOM_LINE) {
+                lines += (TREBLE_BOTTOM_LINE - position) / 2;
+            } else if (position > TREBLE_TOP_LINE) {
+                lines += (position - TREBLE_TOP_LINE) / 2;
+            }
+        }
+        return lines;
     }
 
     /**

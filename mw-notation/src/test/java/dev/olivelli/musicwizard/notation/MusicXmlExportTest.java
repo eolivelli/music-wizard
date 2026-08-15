@@ -107,17 +107,14 @@ class MusicXmlExportTest {
     private static final String UPDATE_PROPERTY = "mw.golden.update";
 
     /**
-     * MusicXML goldens with no LilyPond twin, and why.
-     *
-     * <p>{@code two-parts} is a whole-score export, which MusicXML has and a
-     * LilyPond file in this project does not: {@link StaffNotation} writes one
-     * part per document. Its LilyPond side is the vocal part alone, so there is
-     * no single {@code .ly} that is the same music.
+     * MusicXML goldens with no LilyPond twin. None today: the whole-score
+     * export, which cannot have one — {@link StaffNotation} writes one part per
+     * document — currently has no golden at all (#511).
      *
      * <p>A list rather than a condition, so that a fixture whose golden simply
      * was not written fails the pairing check instead of skipping it.
      */
-    private static final List<String> UNPAIRED = List.of("two-parts");
+    private static final List<String> UNPAIRED = List.of();
 
     /** The MusicXML schema, inside the proxymusic jar. */
     private static final String MUSICXML_XSD = "META-INF/jaxb/xsd/musicxml.xsd";
