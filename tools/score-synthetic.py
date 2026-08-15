@@ -15,6 +15,14 @@ one deliberate difference: bars are aligned as a sequence, first downbeat to
 first bar, with no best-rotation search. The spec says where bar one is; a
 reading that is right up to rotation is wrong here.
 
+Every scored row states the tempo as a ratio against the spec's own (#453). A
+melody-only package states none: it returns before a grid is read at all. The
+spec compiled the MIDI, so that tempo is exact, and a grid running at twice or
+half it is the one failure this corpus can see that samples/ cannot — where the
+truth is confirmed by ear, a doubled reading is an argument, and here it is
+arithmetic. It rides the same baseline diff as the bar columns, so a beat
+change that trades tempo for bars can no longer look like a clean win.
+
 Usage:  python3 tools/score-synthetic.py [--jar mw-cli/target/mw.jar]
 """
 
@@ -79,6 +87,52 @@ def sequence_accuracy(shares: list, want: list) -> tuple[float, float]:
     return root_ok, full_ok
 
 
+#: `analyze`'s tempo line, in either form `AnalyzeCommand.formatTempo` writes.
+#: In a meter counted in something other than a quarter it prints the counted
+#: tempo first and the quarter tempo in the parentheses, so the second group is
+#: preferred where it exists: the spec's `tempo:` is quarter beats per minute,
+#: which is what every value downstream of the beat grid is counted in.
+#:
+#: Anchored at both ends. The MIDI path prints a tempo through `statedTempo`,
+#: which for a file that changes tempo reads "140.0 BPM at the start, changed 3
+#: times later" -- an unanchored pattern takes the 140.0 off that and states it
+#: as though it were constant. No package is analysed from MIDI today, so the
+#: anchor is what makes that arrive as `tempo none` rather than as a number.
+TEMPO_LINE = re.compile(
+    r"^Tempo\s+([\d.]+) BPM(?: \(([\d.]+) quarter notes/min\))?$")
+
+
+def printed_tempo(printed: str) -> float | None:
+    """The tempo MW reported, in quarter beats per minute.
+
+    Read off `analyze`'s own output rather than derived again here.
+    `Score.estimatedTempo()` prefers a supplied correction, exempts a lead-in
+    and otherwise takes the grid's steady tempo; the beat grid is in
+    score.json, so a harness could reproduce all of that, and the reason not to
+    is that it would then hold a second definition of a number the engraved
+    chart already prints.
+    """
+    for line in printed.splitlines():
+        found = TEMPO_LINE.match(line.strip())
+        if found:
+            return float(found.group(2) or found.group(1))
+    return None
+
+
+def tempo_verdict(got: float | None, want: str | None) -> str:
+    """The tempo column: what was read, against what the spec compiled.
+
+    A tempo that moves alone, with no bar column beside it moving, can be a
+    rounding boundary crossed rather than a grid that changed; #533 has the
+    margins.
+    """
+    if want is None:
+        return "tempo unstated"
+    if got is None:
+        return f"tempo none/{want}"
+    return f"tempo {got:.1f}/{want} (x{got / float(want):.2f})"
+
+
 def named_key(doc: dict) -> str | None:
     """The key the run named, spelled as a spec header spells it."""
     keys = doc.get("keys", [])
@@ -105,13 +159,16 @@ def score_package(jar: Path, spec_file: Path) -> str:
     # those packages are measured by.
     if spec["headers"].get("accompaniment") == "none":
         return f"  {name}.mp3: melody only; chords not scored"
-    doc = samples.analyze(jar, mp3)
+    doc, printed = samples.analyze_with_output(jar, mp3)
+    tempo = tempo_verdict(printed_tempo(printed), spec["headers"].get("tempo"))
 
     spans = doc.get("chords", {}).get("chords", [])
     beats = doc.get("beatGrid", {}).get("beats", [])
     downbeats = [b["seconds"] for b in beats if b.get("downbeat")]
     if len(downbeats) < 4:
-        return f"  {name}.mp3: no usable beat grid"
+        # With the tempo, because a grid too short to score is often a grid
+        # that ran at the wrong multiple of the beat, and that says so.
+        return f"  {name}.mp3: no usable beat grid  {tempo}"
 
     bars = list(zip(downbeats, downbeats[1:]))
     shares = [samples.bar_shares(spans, a, b) for a, b in bars]
@@ -123,7 +180,7 @@ def score_package(jar: Path, spec_file: Path) -> str:
     want_key = spec["headers"].get("key")
     got_key = named_key(doc)
     key_verdict = "OK" if got_key == want_key else f"{got_key or 'none'} WRONG"
-    return (f"  {name}.mp3: bars={len(shares)}/{n}"
+    return (f"  {name}.mp3: bars={len(shares)}/{n}  {tempo}"
             f"  root {root_ok:.1f}/{n} ({100 * root_ok / n:.1f}%)"
             f"  root+quality {full_ok:.1f}/{n} ({100 * full_ok / n:.1f}%)"
             f"  split {split}"

@@ -1386,5 +1386,59 @@ class SeparationRatio(unittest.TestCase):
         self.assertFalse(separation.railed(-0.5))
 
 
+class SyntheticTempo(unittest.TestCase):
+    """The tempo column (#453): the parse and the ratio, on fixtures."""
+
+    def test_the_tempo_is_read_from_the_line_analyze_prints(self):
+        printed = "Key     G major\nTempo   116.0 BPM\nMeter   4/4\n"
+        self.assertEqual(116.0, synthetic.printed_tempo(printed))
+
+    def test_a_meter_counted_in_something_else_gives_up_its_quarter_tempo(self):
+        """`formatTempo` prints the counted tempo first in a compound meter and
+        the quarter tempo in the parentheses. The spec's tempo is in quarters --
+        everything downstream of the beat grid is -- so the parenthesised figure
+        wins where there is one. No package is in 6/8 yet; this is what stops
+        the first one being scored against the wrong number."""
+        printed = "Tempo   80.0 BPM (240.0 quarter notes/min)\n"
+        self.assertEqual(240.0, synthetic.printed_tempo(printed))
+
+    def test_a_tempo_that_changes_is_not_reported_as_a_constant_one(self):
+        """The MIDI path prints its tempo through `statedTempo`, which for a
+        file that changes tempo reads "140.0 BPM at the start, changed 3 times
+        later" -- the wording MidiInputTest asserts. An unanchored pattern
+        takes the 140.0 off that and states it as though the piece held it. No
+        package is analysed from MIDI today, so nothing but this assertion
+        holds the anchor in place."""
+        self.assertIsNone(synthetic.printed_tempo(
+            "Tempo   140.0 BPM at the start, changed 3 times later"))
+
+    def test_no_tempo_line_is_not_a_tempo_of_zero(self):
+        self.assertIsNone(synthetic.printed_tempo("Key     C major\n"))
+        self.assertEqual("tempo none/96", synthetic.tempo_verdict(None, "96"))
+
+    def test_a_doubled_grid_reads_as_a_doubling(self):
+        """The row this column exists for: pop-deceptive-f-72 is written at 72
+        and tracked at 144, and the ratio says so without the reader dividing."""
+        self.assertEqual("tempo 144.1/72 (x2.00)",
+                         synthetic.tempo_verdict(144.1, "72"))
+
+    def test_the_pair_is_what_shows_a_drift_the_ratio_rounds_away(self):
+        """108.1 against 108 is a ratio of 1.0009, which prints as x1.00 — so a
+        drift of up to half a percent does hide in the ratio, and the pair
+        beside it is what shows it. Both are printed for that reason."""
+        self.assertEqual("tempo 108.1/108 (x1.00)",
+                         synthetic.tempo_verdict(108.1, "108"))
+
+    def test_a_rate_that_is_no_musical_multiple_is_not_rounded_to_one(self):
+        """2.16 is neither a double nor a drift, and the column must not round
+        it toward either: melody-level2pad-g-84 reads this, and it is a
+        different defect from pop-deceptive-f-72's clean double."""
+        self.assertEqual("tempo 181.3/84 (x2.16)",
+                         synthetic.tempo_verdict(181.3, "84"))
+
+    def test_a_spec_with_no_tempo_says_so_rather_than_dividing_by_it(self):
+        self.assertEqual("tempo unstated", synthetic.tempo_verdict(120.0, None))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -27,8 +27,9 @@ models/
 # repository per worktree, and .claude/agents/ names it .m2 inside the
 # worktree — so it lands in the working tree, unignored, at the size of the
 # whole dependency closure. That is a `git add -A` away from being committed,
-# which this repository has been bitten by once already.
-.m2/
+# and has been. Globbed rather than named, so that no spelling of it is a
+# choice anyone has to get right.
+.m2*/
 
 # Logs
 *.log

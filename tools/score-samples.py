@@ -204,14 +204,28 @@ def chord_of(span) -> tuple[int, str] | None:
 
 
 def analyze(jar: Path, mp3: Path) -> dict:
+    return analyze_with_output(jar, mp3)[0]
+
+
+def analyze_with_output(jar: Path, mp3: Path) -> tuple[dict, str]:
+    """The score document, and what `analyze` printed while producing it.
+
+    Both from one run, so a caller wanting a figure MW derives rather than
+    stores can read MW's own answer instead of deriving it again here. The
+    tempo is the one: `Score.estimatedTempo()` is a method, and a harness that
+    reimplemented it would be a second definition of a number the engraved
+    chart already prints.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp) / "w.mwz"
+        printed = ""
         for args in (["init", str(mp3), "--workspace", str(ws)], ["analyze", str(ws)]):
             r = subprocess.run(["java", "-jar", str(jar), *args],
                                capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit(f"mw {args[0]} failed on {mp3.name}:\n{r.stdout}{r.stderr}")
-        return json.loads((ws / "score" / "score.json").read_text())
+            printed = r.stdout
+        return json.loads((ws / "score" / "score.json").read_text()), printed
 
 
 def bar_credit(covered: dict) -> dict:

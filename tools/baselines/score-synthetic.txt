@@ -1,14 +1,14 @@
 Synthetic corpus, bar-by-bar against each package's own spec
 (sequence-aligned: no rotation credit; see the module docstring)
-  hiphop-m7vamp-bbm-90.mp3: bars=52/52  root 51.5/52 (99.0%)  root+quality 51.5/52 (99.0%)  split 1  key OK
+  hiphop-m7vamp-bbm-90.mp3: bars=52/52  tempo 90.0/90 (x1.00)  root 51.5/52 (99.0%)  root+quality 51.5/52 (99.0%)  split 1  key OK
   melody-level1-c-96.mp3: melody only; chords not scored
   melody-level2-g-84.mp3: melody only; chords not scored
-  melody-level2pad-g-84.mp3: bars=69/32  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
+  melody-level2pad-g-84.mp3: bars=69/32  tempo 181.3/84 (x2.16)  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
   melody-level3-am-108.mp3: melody only; chords not scored
   melody-level4-f-126.mp3: melody only; chords not scored
-  pop-axis-g-116.mp3: bars=44/44  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
-  pop-deceptive-f-72.mp3: bars=64/32  root 7.0/32 (21.9%)  root+quality 6.0/32 (18.8%)  split 0  key D minor WRONG
-  pop-m6-m7b5-gm-100.mp3: bars=32/32  root 32.0/32 (100.0%)  root+quality 24.0/32 (75.0%)  split 0  key OK
-  pop-maj7-sixth-c-92.mp3: bars=31/32  root 31.0/32 (96.9%)  root+quality 19.0/32 (59.4%)  split 0  key OK
-  pop-threechord-c-108.mp3: bars=28/28  root 28.0/28 (100.0%)  root+quality 28.0/28 (100.0%)  split 0  key OK
-  rocknroll-12bar-a-168.mp3: bars=47/48  root 43.5/48 (90.6%)  root+quality 19.0/48 (39.6%)  split 3  key OK
+  pop-axis-g-116.mp3: bars=44/44  tempo 116.0/116 (x1.00)  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
+  pop-deceptive-f-72.mp3: bars=64/32  tempo 144.1/72 (x2.00)  root 7.0/32 (21.9%)  root+quality 6.0/32 (18.8%)  split 0  key D minor WRONG
+  pop-m6-m7b5-gm-100.mp3: bars=32/32  tempo 100.0/100 (x1.00)  root 32.0/32 (100.0%)  root+quality 24.0/32 (75.0%)  split 0  key OK
+  pop-maj7-sixth-c-92.mp3: bars=31/32  tempo 92.0/92 (x1.00)  root 31.0/32 (96.9%)  root+quality 19.0/32 (59.4%)  split 0  key OK
+  pop-threechord-c-108.mp3: bars=28/28  tempo 108.1/108 (x1.00)  root 28.0/28 (100.0%)  root+quality 28.0/28 (100.0%)  split 0  key OK
+  rocknroll-12bar-a-168.mp3: bars=47/48  tempo 168.1/168 (x1.00)  root 43.5/48 (90.6%)  root+quality 19.0/48 (39.6%)  split 3  key OK
