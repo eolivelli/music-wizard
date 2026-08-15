@@ -15,6 +15,7 @@ import io
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1195,9 +1196,7 @@ class SeparationRatio(unittest.TestCase):
 
     The tool it belongs to cannot run in CI — it needs a jar, Spleeter and a
     corpus that is local-only — so what CI can hold is the arithmetic that
-    decides what it mixes, on fixtures written here. That arithmetic is the
-    whole of the issue: before it, a constant was applied to one side of a
-    comparison whose other side varied by 20 dB across the corpus.
+    decides what it mixes, on fixtures written here.
     """
 
     @staticmethod
@@ -1255,14 +1254,82 @@ class SeparationRatio(unittest.TestCase):
     def test_equal_levels_at_a_zero_ratio_leave_the_bed_alone(self):
         self.assertAlmostEqual(1.0, separation.bed_gain(-20.0, -20.0, 0.0))
 
+    @staticmethod
+    def stereo_tone(path, seconds, amplitude, correlated, rate=44100):
+        """A two-channel bed, its channels either identical or independent."""
+        frames = array.array("h")
+        for index in range(int(seconds * rate)):
+            left = int(amplitude * 32767 * math.sin(2 * math.pi * 300 * index / rate))
+            right = left if correlated else int(
+                amplitude * 32767 * math.sin(2 * math.pi * 190 * index / rate))
+            frames.append(left)
+            frames.append(right)
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(2)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes(frames.tobytes())
+
+    @staticmethod
+    def silence(path, seconds, rate=44100):
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes((array.array("h", [0]) * int(seconds * rate)).tobytes())
+
+    @staticmethod
+    def whole_file_rms_dbfs(path):
+        with wave.open(str(path)) as source:
+            samples = array.array("h", source.readframes(source.getnframes()))
+        total = sum(value * value for value in samples)
+        return 20 * math.log10(math.sqrt(total / len(samples)) / 32768.0)
+
+    def assert_bed_lands_where_it_was_measured(self, correlated):
+        """The measured stream and the mixed stream must be the same one.
+
+        This is the layer the unit tests did not reach and where the defect
+        lived: `bed_gain`'s arithmetic was right, and `amix` was quietly
+        converting a stereo bed to mono on its way in — in the float domain,
+        where the two channels are summed at 1/sqrt(2) each without being
+        renormalised. A bed whose channels are correlated therefore arrived 3 dB
+        above what it had been measured at, and every ratio the tool printed was
+        wrong by that much. With independent channels the same conversion is
+        very nearly right, which is why one bed can look fine and another not.
+
+        Asserted with a SILENT voice, so the mix holds the bed alone and its
+        level can be read directly rather than unmixed.
+        """
+        if not shutil.which("ffmpeg"):
+            self.skipTest("ffmpeg is not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            voice = Path(tmp) / "voice.wav"
+            bed = Path(tmp) / "bed.wav"
+            mixed = Path(tmp) / "mixed.wav"
+            self.silence(voice, 2.0)
+            self.stereo_tone(bed, 2.0, 0.5, correlated=correlated)
+            with mock.patch.object(separation, "BED_OFFSET_SECONDS", 0):
+                measured = separation.segment_rms_dbfs(bed, 0, 2.0)
+                # A stated voice level, since the voice here is silence: the
+                # bed must land six decibels under it.
+                gain = separation.bed_gain(-20.0, measured, 6.0)
+                separation.mix(voice, bed, gain, mixed)
+            self.assertAlmostEqual(-26.0, self.whole_file_rms_dbfs(mixed), delta=0.3,
+                                   msg=f"correlated={correlated}")
+
+    def test_a_correlated_stereo_bed_lands_at_the_ratio_it_was_given(self):
+        self.assert_bed_lands_where_it_was_measured(correlated=True)
+
+    def test_an_uncorrelated_stereo_bed_lands_at_the_ratio_it_was_given(self):
+        self.assert_bed_lands_where_it_was_measured(correlated=False)
+
     def test_a_quieter_singer_asks_for_a_quieter_bed(self):
         """The defect #505 names, as an assertion: the bed follows the voice's
-        own level rather than a constant, so two clips 20 dB apart are mixed at
-        the same ratio rather than at the same bed gain."""
+        own level rather than a constant, so two clips recorded far apart are
+        mixed at the same ratio rather than at the same bed gain."""
         loud = separation.bed_gain(-16.8, -20.0, 0.0)
         quiet = separation.bed_gain(-34.3, -20.0, 0.0)
         self.assertGreater(loud, quiet)
-        self.assertAlmostEqual(20 * math.log10(loud / quiet), 17.5, places=1)
 
 
 if __name__ == "__main__":

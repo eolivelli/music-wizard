@@ -27,11 +27,12 @@ per clip so that the voice sits a named number of decibels above it, and the
 comparison is measured where the singing actually is: the voice's level is its
 RMS over the annotated sung spans, not over the clip, so a clip that opens with
 four seconds of room tone is not thereby called quiet. Before this the bed took
-a fixed gain and the voice whatever level its clip was recorded at — and
-vocadito spans some 20 dB of level, so "the bed under the voice" was in fact
-well above it on several clips, which were exactly the ones that lost
+a fixed gain and the voice whatever level its clip was recorded at, and the
+clips differ by tens of decibels — so "the bed under the voice" was in fact
+well above it on several of them, which were exactly the ones that lost
 everything. The published figure was the average of two regimes and moved with
-nothing but which singers had been recorded quietly.
+nothing but which singers had been recorded quietly. The run prints the range
+it measured, so read that rather than a figure quoted here.
 
 **So ask for the curve, not the number.** `--ratio` takes several values and
 the useful output is what the melody stage does across them: where it falls off
@@ -42,10 +43,11 @@ clean and separator-only rows do not depend on the ratio and are measured once.
 recall asks what share of the annotated singing the estimate also called
 sounding, and it does not ask whether what was tracked was the singer. Where
 the band is loud the tracker follows the band, which is voiced, so that column
-holds up while pitch accuracy collapses — and it can even fall as the voice
-gets *quieter still*, because at some point the tracker stops finding anything
-periodic at all. It is a measure of whether something was heard, not of whether
-the right thing was.
+holds up while pitch accuracy collapses: measured on a clip at the quiet end of
+a sweep, about half the frames where the estimate sounded matched the bed's own
+lead line and a twentieth matched the singer. It is a measure of whether
+something was heard, not of whether the right thing was, and it is not
+monotonic in the ratio — do not read a rise in it as an improvement.
 
 The bed defaults to a committed synthetic package, so the measurement is
 reproducible from the repository by anyone who has fetched vocadito
@@ -66,6 +68,7 @@ Usage:  python3 tools/measure-separation-cost.py [--clips 10]
 import argparse
 import array
 import math
+import shutil
 import statistics
 import subprocess
 import sys
@@ -79,9 +82,10 @@ melody = import_module("score-melody")
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: The default interferer: a full-band package with drums, bass and comping.
-#: Committed, so the run reproduces from the repository. Comparing it against
-#: another bed is not something this tool can do yet; see #505.
+#: The default interferer: a full-band package with drums, bass, comping — and
+#: a flute melody of its own, in the vocal register, which is the thing about it
+#: a reader most needs to know, because that is what the tracker locks onto when
+#: the band is loud. Committed, so the run reproduces from the repository.
 DEFAULT_BED = REPO / "synthetic_samples" / "pop-axis-g-116.mp3"
 
 #: How far the voice sits above the bed, in decibels, when nothing is asked for.
@@ -129,15 +133,29 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
     return 20 * math.log10(math.sqrt(total / counted) / 32768.0)
 
 
+#: How the bed is reduced to one channel, everywhere it is measured or mixed.
+#: Written out rather than left to the graph: amix negotiates a mono graph
+#: against a mono voice and inserts its own conversion, which in the float
+#: domain sums the two channels at 1/sqrt(2) each without renormalising — so a
+#: bed whose channels are correlated arrives 3 dB above what it was measured
+#: at, and the ratio this tool exists to state is wrong by that much. The error
+#: is bed-dependent, between nothing and 3 dB, which is worse than a constant:
+#: it lands exactly on the comparison between two beds. Measure the stream you
+#: mix.
+BED_TO_MONO = "pan=mono|c0=0.5*c0+0.5*c1"
+
+
 def segment_rms_dbfs(bed: Path, start: float, end: float) -> float:
     """The bed's RMS over the stretch that will be mixed in, in dBFS.
 
     ffmpeg rather than the standard library because a bed may be an mp3, and
-    `volumedetect`'s mean_volume is exactly this quantity.
+    `volumedetect`'s mean_volume is exactly this quantity. Downmixed first —
+    see BED_TO_MONO, without which this measures a different signal from the
+    one mix() adds.
     """
     done = subprocess.run(
         ["ffmpeg", "-hide_banner", "-ss", f"{start}", "-to", f"{end}",
-         "-i", str(bed), "-af", "volumedetect", "-f", "null", "-"],
+         "-i", str(bed), "-af", f"{BED_TO_MONO},volumedetect", "-f", "null", "-"],
         capture_output=True, text=True)
     for line in done.stderr.splitlines():
         if "mean_volume:" in line:
@@ -148,9 +166,7 @@ def segment_rms_dbfs(bed: Path, start: float, end: float) -> float:
 def bed_gain(voice_dbfs: float, bed_dbfs: float, ratio_db: float) -> float:
     """The linear gain that puts the voice `ratio_db` above the bed.
 
-    Its own function so the arithmetic can be asserted rather than read: this
-    is the whole of #505, and the version it replaces was a constant applied to
-    one side of a comparison whose other side varied by 20 dB.
+    Its own function so the arithmetic can be asserted rather than read.
     """
     return 10 ** ((voice_dbfs - ratio_db - bed_dbfs) / 20)
 
@@ -162,6 +178,17 @@ def duration(path: Path) -> float:
     if probe.returncode != 0:
         sys.exit(f"ffprobe failed on {path}:\n{probe.stderr}")
     return float(probe.stdout.strip())
+
+
+def peak(path: Path) -> float:
+    """The mix's peak, in dBFS. Zero means it railed."""
+    done = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(path), "-af", "volumedetect",
+         "-f", "null", "-"], capture_output=True, text=True)
+    for line in done.stderr.splitlines():
+        if "max_volume:" in line:
+            return float(line.split("max_volume:")[1].split("dB")[0])
+    sys.exit(f"could not measure the peak of {path.name}:\n{done.stderr}")
 
 
 def mix(voice: Path, bed: Path, gain: float, into: Path) -> None:
@@ -178,7 +205,8 @@ def mix(voice: Path, bed: Path, gain: float, into: Path) -> None:
         "ffmpeg", "-y", "-loglevel", "error", "-i", str(voice), "-i", str(bed),
         "-filter_complex",
         f"[1:a]atrim={BED_OFFSET_SECONDS}:{end},asetpts=PTS-STARTPTS,"
-        f"volume={gain}[bed];[0:a][bed]amix=inputs=2:duration=first:normalize=0[out]",
+        f"{BED_TO_MONO},volume={gain}[bed];"
+        f"[0:a][bed]amix=inputs=2:duration=first:normalize=0[out]",
         "-map", "[out]", "-ar", "44100", str(into)], capture_output=True, text=True)
     if done.returncode != 0:
         sys.exit(f"ffmpeg failed mixing {voice.name}:\n{done.stderr}")
@@ -233,6 +261,7 @@ def main() -> None:
     # means every point on the curve is compared against the same baseline
     # rather than against a re-run of it.
     clean_rows, alone_rows, levels, references = {}, {}, {}, {}
+    clipped = []
     with tempfile.TemporaryDirectory() as tmp:
         for clip in range(1, args.clips + 1):
             voice = melody.VOCADITO / "Audio" / f"vocadito_{clip}.wav"
@@ -267,6 +296,8 @@ def main() -> None:
 
         for ratio in ratios:
             rows = []
+            railed_here = 0
+            print(f"   {ratio:+.1f} dB, clip by clip:")
             for clip in sorted(clean_rows):
                 voice = melody.VOCADITO / "Audio" / f"vocadito_{clip}.wav"
                 # The bed is scaled per clip, because the voice's level is a
@@ -276,11 +307,45 @@ def main() -> None:
                 gain = bed_gain(levels[clip], segment_rms_dbfs(bed, *window), ratio)
                 mixed = Path(tmp) / f"mix_{clip}_{ratio}.wav"
                 mix(voice, bed, gain, mixed)
+                # Clipping is a second variable arriving with the ratio, and it
+                # arrives on the loud-voiced clips only — so a row that averaged
+                # railed clips with clean ones would be reporting distortion as
+                # if it were the band. Refused rather than fixed here: attenuating
+                # both sides preserves the ratio but changes the absolute level,
+                # and the separator is not level-invariant (#515).
+                railed = peak(mixed)
+                if railed >= -0.1:
+                    clipped.append((clip, ratio, railed))
+                    railed_here += 1
                 stem = separate(jar, mixed, Path(tmp) / f"ws_{clip}_{ratio}")
-                rows.append(score(jar, stem, references[clip]))
-            print(f"   {ratio:+6.1f} dB      note F1 {100 * statistics.mean(r[0] for r in rows):5.1f}%"
+                scored = score(jar, stem, references[clip])
+                rows.append(scored)
+                # Per clip, because splitting a mean by the clips' own levels is
+                # how #505 was found in the first place, and the mean alone
+                # cannot be split after the fact.
+                print(f"     vocadito_{clip:<3d} voice {levels[clip]:6.1f} dBFS"
+                      f"   note F1 {100 * scored[0]:5.1f}%"
+                      f"   pitch {100 * scored[1]:5.1f}%"
+                      f"   voicing {100 * scored[2]:5.1f}%"
+                      f"{'   CLIPPED' if railed >= -0.1 else ''}")
+                shutil.rmtree(Path(tmp) / f"ws_{clip}_{ratio}", ignore_errors=True)
+                mixed.unlink(missing_ok=True)
+            # A mean over rows some of which railed is not a reading of this
+            # ratio, and printing it unmarked is how it gets quoted anyway.
+            spoiled = (f"   ** {railed_here} of {len(rows)} clips CLIPPED;"
+                       f" this row is not a reading of {ratio:+.1f} dB **"
+                       if railed_here else "")
+            print(f"   {ratio:+6.1f} dB mean note F1 {100 * statistics.mean(r[0] for r in rows):5.1f}%"
                   f"   pitch {100 * statistics.mean(r[1] for r in rows):5.1f}%"
-                  f"   voicing {100 * statistics.mean(r[2] for r in rows):5.1f}%")
+                  f"   voicing {100 * statistics.mean(r[2] for r in rows):5.1f}%{spoiled}")
+
+    if clipped:
+        print()
+        print("  REFUSED: these mixes railed, so their rows hold distortion as well")
+        print("  as band. Ask for a ratio that fits, or give the bed less to do.")
+        for clip, ratio, railed in clipped:
+            print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {railed:+.1f} dBFS")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
