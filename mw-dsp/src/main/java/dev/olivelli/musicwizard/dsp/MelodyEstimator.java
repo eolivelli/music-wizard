@@ -87,11 +87,13 @@ public final class MelodyEstimator {
      *
      * <p>Inventing a boundary inside a held note is the
      * accent-versus-articulation mistake this stage once avoided by not
-     * reading the envelope at all, so the floor sits above the interior-peak
-     * population the synthetic renders produce -- their soundbank's vibrato
-     * reaches about 3.3 -- and sung re-strikes still clear it. Below 2.5 the
-     * corpus with exact truth loses double-digit F1 to false cuts; here the
-     * only rows that move at all are the accompanied one and the real singing.
+     * reading the envelope at all, so the floor sits just above the
+     * interior-peak population the synthetic renders produce -- their
+     * soundbank's vibrato runs to about 3.3 at the population's tail and
+     * nearly reaches the floor at its extreme -- and sung re-strikes still
+     * clear it. Below it the melody-only rows lose a few points each to false
+     * cuts and the accompanied row loses double digits; at the floor the only
+     * rows that move at all are the accompanied one and the real singing.
      */
     private static final double REARTICULATION_FLOOR = 4.0;
 
@@ -106,6 +108,13 @@ public final class MelodyEstimator {
      * voicedness too, which is why the accompanied row still pays a little.
      */
     private static final double REARTICULATION_DIP_SHARE = 0.9;
+
+    /**
+     * How far from a peak the voicedness dip may sit. Numerically the shortest
+     * note, but a search radius rather than a length -- see {@link
+     * #voiceRestartsAt} for why it is deliberately coarse.
+     */
+    private static final double DIP_REACH_SECONDS = 0.06;
 
     private MelodyEstimator() {
     }
@@ -210,6 +219,7 @@ public final class MelodyEstimator {
      */
     private static void rearticulations(OnsetEnvelope envelope, PitchTrack pitches, int[] span,
                                         double onset, double end, List<Double> starts) {
+        double medianVoicedness = medianVoicedness(pitches, span);
         int fromFrame = envelope.frameOf(onset + MIN_NOTE_SECONDS);
         int toFrame = envelope.frameOf(end - MIN_NOTE_SECONDS);
         for (int frame = fromFrame; frame <= toFrame; frame++) {
@@ -218,7 +228,7 @@ public final class MelodyEstimator {
                 continue;
             }
             if (isPeak(envelope, frame, REARTICULATION_FLOOR)
-                    && voiceRestartsAt(pitches, span, time)
+                    && voiceRestartsAt(pitches, span, medianVoicedness, time)
                     && time >= starts.get(starts.size() - 1) + MIN_NOTE_SECONDS) {
                 starts.add(time);
             }
@@ -227,31 +237,44 @@ public final class MelodyEstimator {
 
     /**
      * True when the voice itself restarts around a time: its voicedness dips
-     * against the note's own median. An accompaniment event under a held note
-     * is loud in the envelope and absent here -- the voice carries on
-     * undisturbed -- which is what keeps a pad change from cutting the melody
-     * above it.
+     * against the note's own median, somewhere within {@link
+     * #DIP_REACH_SECONDS} of the point asked about.
+     *
+     * <p>The localisation is deliberately coarse. The pitch window smears any
+     * dip by its own 93 ms, so on both corpora a reach of this size and one
+     * spanning the whole note answer identically, while a single-frame reach
+     * loses real splits -- the reach exists to keep a long note's far end out
+     * of the question, not to place the restart precisely.
      */
-    private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double time) {
-        double median = medianVoicedness(pitches, span);
+    private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double medianVoicedness,
+                                           double time) {
+        // Inverts PitchTrack.timeOf: its frames are stamped at window centres,
+        // where the envelope's are not.
         int centre = (int) Math.round(time * pitches.frameRate()
                 - (double) pitches.windowSize() / 2 / pitches.hopSize());
-        int reach = (int) Math.ceil(0.06 * pitches.frameRate());
+        int reach = (int) Math.ceil(DIP_REACH_SECONDS * pitches.frameRate());
         double dip = Double.POSITIVE_INFINITY;
         for (int f = Math.max(span[0], centre - reach);
                 f <= Math.min(span[1] - 1, centre + reach); f++) {
             dip = Math.min(dip, pitches.voicedness()[f]);
         }
-        return dip < REARTICULATION_DIP_SHARE * median;
+        return dip < REARTICULATION_DIP_SHARE * medianVoicedness;
     }
 
+    /**
+     * A span's median voicedness, both middles averaged on an even span for
+     * the reason {@link #medianPitch} averages them.
+     */
     private static double medianVoicedness(PitchTrack pitches, int[] span) {
         double[] sorted = new double[span[1] - span[0]];
         for (int frame = span[0]; frame < span[1]; frame++) {
             sorted[frame - span[0]] = pitches.voicedness()[frame];
         }
         Arrays.sort(sorted);
-        return sorted[sorted.length / 2];
+        int middle = sorted.length / 2;
+        return sorted.length % 2 == 1
+                ? sorted[middle]
+                : (sorted[middle - 1] + sorted[middle]) / 2;
     }
 
     /** True when a frame is a local maximum of the envelope clearing the floor. */

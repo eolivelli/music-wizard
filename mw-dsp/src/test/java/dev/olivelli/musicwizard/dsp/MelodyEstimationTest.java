@@ -94,11 +94,18 @@ class MelodyEstimationTest {
                     PitchTracker.WINDOW, PitchTracker.HOP);
         }
 
-        /** An envelope that is silent except for one peak. */
-        private OnsetEnvelope peakAt(double seconds, double strength, double totalSeconds) {
+        /** An envelope that is silent except for peaks at (time, strength) pairs. */
+        private OnsetEnvelope peaksAt(double totalSeconds, double... timeStrengthPairs) {
             double[] out = new double[(int) Math.ceil(totalSeconds * ENVELOPE_RATE)];
-            out[(int) Math.round(seconds * ENVELOPE_RATE)] = strength;
+            for (int i = 0; i < timeStrengthPairs.length; i += 2) {
+                out[(int) Math.round(timeStrengthPairs[i] * ENVELOPE_RATE)] =
+                        timeStrengthPairs[i + 1];
+            }
             return new OnsetEnvelope(out, ENVELOPE_RATE);
+        }
+
+        private OnsetEnvelope peakAt(double seconds, double strength, double totalSeconds) {
+            return peaksAt(totalSeconds, seconds, strength);
         }
 
         @Test
@@ -152,6 +159,42 @@ class MelodyEstimationTest {
         @DisplayName("without an envelope the two notes stay one, as they always did")
         void withoutAnEnvelopeTheNoteStaysWhole() {
             assertThat(MelodyEstimator.estimate(heldNote(100, 44, 52)).notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak near the note's end does not cut")
+        void aPeakNearTheNoteEndDoesNotCut() {
+            // Within MIN_NOTE_SECONDS of the end it is the next note's attack,
+            // and the piece it would leave -- a sub-60 ms duplicate right
+            // before a true onset -- is the worst place to invent one.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 92, 99), peakAt(1.18, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("two peaks closer than the shortest note cut once")
+        void twoPeaksCloserThanTheShortestNoteCutOnce() {
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 42, 58), peaksAt(1.3, 0.6, 5.0, 0.64, 5.0));
+
+            assertThat(melody.notes()).hasSize(2);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("the dip is sought on the pitch axis where the peak actually is")
+        void theDipIsSoughtWhereThePeakIs() {
+            // A two-frame dip placed just inside the reach only when the
+            // envelope's uncentred time is converted onto the pitch track's
+            // window-centred axis: dropping the centering, or flipping its
+            // sign, both put the search window past these frames and lose the
+            // split.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    heldNote(100, 43, 44), peakAt(0.6, 5.0, 1.3));
+
+            assertThat(melody.notes()).hasSize(2);
         }
     }
 
