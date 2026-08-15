@@ -42,6 +42,16 @@ import java.util.Optional;
  * @param startBeat    quantized start in quarter-note beats, once decided
  * @param endBeat      quantized end in quarter-note beats, once decided
  * @param confidence   how much the pipeline trusts this key
+ * @param signatureConfidence trust in the key signature alone, when the key
+ *                     was estimated: the estimator makes two decisions of very
+ *                     different reliability, and this is the safe half
+ * @param tonicConfidence trust in this tonic over its relative's, the half
+ *                     that fails. Both components are carried or neither is,
+ *                     optional for the reason {@link Note}'s musical timing is:
+ *                     empty means not recorded -- a declared key, or a file
+ *                     written before they were carried -- and must not be
+ *                     confusable with recorded-as-zero, which is what
+ *                     {@link Confidence#UNKNOWN}, a value of 0.0, would read as
  */
 public record Key(
         PitchSpelling tonic,
@@ -50,7 +60,9 @@ public record Key(
         double endSeconds,
         Optional<Double> startBeat,
         Optional<Double> endBeat,
-        Confidence confidence) {
+        Confidence confidence,
+        Optional<Confidence> signatureConfidence,
+        Optional<Confidence> tonicConfidence) {
 
     public Key {
         Objects.requireNonNull(tonic, "tonic");
@@ -58,6 +70,12 @@ public record Key(
         Objects.requireNonNull(startBeat, "startBeat");
         Objects.requireNonNull(endBeat, "endBeat");
         Objects.requireNonNull(confidence, "confidence");
+        Objects.requireNonNull(signatureConfidence, "signatureConfidence");
+        Objects.requireNonNull(tonicConfidence, "tonicConfidence");
+        if (signatureConfidence.isPresent() != tonicConfidence.isPresent()) {
+            throw new IllegalArgumentException(
+                    "a key must carry both component confidences or neither");
+        }
         if (!Double.isFinite(startSeconds) || startSeconds < 0) {
             throw new IllegalArgumentException("startSeconds must be finite and non-negative, got: " + startSeconds);
         }
@@ -89,7 +107,29 @@ public record Key(
     public static Key ofSeconds(PitchSpelling tonic, Mode mode,
                                 double startSeconds, double endSeconds, Confidence confidence) {
         return new Key(tonic, mode, startSeconds, endSeconds,
-                Optional.empty(), Optional.empty(), confidence);
+                Optional.empty(), Optional.empty(), confidence,
+                Optional.empty(), Optional.empty());
+    }
+
+    /**
+     * A key as the estimator reports it: both decisions carried, and the
+     * summary confidence their product.
+     *
+     * <p>This factory is the guarantee that the three agree. The constructor
+     * deliberately does not compare them: a hand-built key can state
+     * components and product that disagree, and a product recomputed at load
+     * time need not equal the stored double, so an exact check would reject
+     * files that are fine (#457 is that defect class).
+     */
+    public static Key estimated(PitchSpelling tonic, Mode mode,
+                                double startSeconds, double endSeconds,
+                                Confidence signatureConfidence, Confidence tonicConfidence) {
+        Objects.requireNonNull(signatureConfidence, "signatureConfidence");
+        Objects.requireNonNull(tonicConfidence, "tonicConfidence");
+        return new Key(tonic, mode, startSeconds, endSeconds,
+                Optional.empty(), Optional.empty(),
+                signatureConfidence.and(tonicConfidence),
+                Optional.of(signatureConfidence), Optional.of(tonicConfidence));
     }
 
     /** True once this key carries quantized musical timing. */
@@ -105,7 +145,8 @@ public record Key(
                     "endBeat must be after startBeat; got start=" + newStartBeat + " end=" + newEndBeat);
         }
         return new Key(tonic, mode, startSeconds, endSeconds,
-                Optional.of(newStartBeat), Optional.of(newEndBeat), confidence);
+                Optional.of(newStartBeat), Optional.of(newEndBeat), confidence,
+                signatureConfidence, tonicConfidence);
     }
 
     /**

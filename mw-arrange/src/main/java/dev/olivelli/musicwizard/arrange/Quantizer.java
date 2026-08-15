@@ -578,7 +578,8 @@ public final class Quantizer {
     private static Key inSecondsOnly(Key key) {
         return key.isQuantized()
                 ? new Key(key.tonic(), key.mode(), key.startSeconds(), key.endSeconds(),
-                        Optional.empty(), Optional.empty(), key.confidence())
+                        Optional.empty(), Optional.empty(), key.confidence(),
+                        key.signatureConfidence(), key.tonicConfidence())
                 : key;
     }
 
