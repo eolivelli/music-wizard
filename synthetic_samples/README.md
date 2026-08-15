@@ -46,9 +46,10 @@ between WRONG and OK is neither a regression nor progress on #277 (#509).
 `pop-m6-m7b5-gm-100` states one note set twice, as `Cm6` and as `Am7b5`, which
 are the same four pitch classes on two roots (#316). Eight of its bars are out
 of reach of the `root+quality` column whatever MW does with them: neither
-quality is in the estimator's vocabulary (#287), so that column can only fall
-short there and a change that moves it is a change to the vocabulary. The root
-column is what this package measures.
+quality is in the estimator's vocabulary (#287), so those eight bars score
+zero on quality until the vocabulary changes — but the column as a whole also
+moves with the other twenty-four bars, for the usual reasons. The root column
+is what this package measures.
 
 Regenerate a package with:
 

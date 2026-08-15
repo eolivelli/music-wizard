@@ -266,11 +266,13 @@ public final class ChordEstimator {
      *
      * <p>A package showing this prior changed nothing is not a case for removing
      * it: the bass reaches the root decision through this prior <em>and</em>
-     * through its own weight in the combined fold, and each channel alone
-     * suffices. On {@code pop-m6-m7b5-gm-100} (#514) — one pitch-class set,
-     * roots told apart only by the bass — nulling either channel leaves the
-     * reading unchanged and nulling both collapses it. The fold's channel is
-     * the one a real mix can lose, so this prior is the one left standing.
+     * through its own weight in the combined fold. On {@code pop-m6-m7b5-gm-100}
+     * (#514) — one pitch-class set, roots told apart only by the bass — each
+     * channel alone sufficed: nulling either left the reading unchanged, and
+     * nulling both collapsed the separation. That sufficiency is a property of
+     * that mix, not a rule: on {@code rocknroll-12bar-a-168.mp3} the fold alone
+     * does not suffice, and the relative-minor confusion above returns with the
+     * prior off. The fold's bass share is what a real mix can lose.
      */
     private static final double BASS_ROOT_WEIGHT = 20;
 
