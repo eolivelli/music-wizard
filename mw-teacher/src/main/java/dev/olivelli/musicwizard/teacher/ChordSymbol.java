@@ -22,8 +22,9 @@ import java.util.regex.Pattern;
 /**
  * One chord token in a spec's bar grid, in the {@code samples/list.txt}
  * shorthand: {@code 7} dominant, {@code m7} minor seventh, {@code maj7} major
- * seventh, {@code m6} minor sixth, {@code m7b5} half-diminished, {@code dim}
- * diminished, {@code m} minor, a plain letter a major triad.
+ * seventh, {@code 6} major sixth, {@code m6} minor sixth, {@code m7b5}
+ * half-diminished, {@code dim} diminished, {@code m} minor, a plain letter a
+ * major triad.
  *
  * <p>The shorthand is shared with the corpus list and the tool's own output on
  * purpose: a spec, its scoring and the chart MW prints all spell a quality the
@@ -38,6 +39,7 @@ public record ChordSymbol(String token, int rootPitchClass, Quality quality) {
         DOMINANT_SEVENTH("7", 0, 4, 7, 10),
         MINOR_SEVENTH("m7", 0, 3, 7, 10),
         MAJOR_SEVENTH("maj7", 0, 4, 7, 11),
+        SIXTH("6", 0, 4, 7, 9),
         MINOR_SIXTH("m6", 0, 3, 7, 9),
         HALF_DIMINISHED("m7b5", 0, 3, 6, 10),
         DIMINISHED("dim", 0, 3, 6);
@@ -59,9 +61,14 @@ public record ChordSymbol(String token, int rootPitchClass, Quality quality) {
         }
     }
 
-    // Longer suffixes first, so "maj7" is not read as "m" + garbage.
+    // The empty alternative spells a plain major triad, which is why parse()
+    // must match the whole token: on a partial match an unknown suffix would
+    // take that alternative, and a spec asking for a quality would compile
+    // silently to a major triad in the MIDI and in the ground truth alike.
+    // matches() is the whole safety here — alternation order is irrelevant to
+    // it. "6" is a prefix of nothing else in the list.
     private static final Pattern TOKEN =
-            Pattern.compile("([A-G])([#b]?)(maj7|m7b5|m7|m6|dim|m|7|)");
+            Pattern.compile("([A-G])([#b]?)(maj7|m7b5|m7|m6|dim|m|7|6|)");
 
     private static final int[] LETTER_PITCH_CLASS = {9, 11, 0, 2, 4, 5, 7}; // A..G
 
