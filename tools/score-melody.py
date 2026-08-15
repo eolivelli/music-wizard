@@ -38,8 +38,9 @@ Two things about that corpus decide how its rows are read.
 **It carries its own ceiling.** Both annotators' notes are published, so the
 row `annotators` is one musician scored against the other by this harness's own
 rule. It sits far below 100%, because where a sung note begins is genuinely
-ambiguous — the two disagree on the number of notes in the corpus by about a
-fifth. A melody stage approaching that row has reached the end of what this
+ambiguous, and the two do not even agree how many notes a clip holds — compare
+the denominators of the `notes` column against each other. A melody stage
+approaching that row has reached the end of what this
 metric can ask for, and a stage far above it is measuring an annotator's habits
 rather than the singing.
 
@@ -230,12 +231,9 @@ def note_f1(estimate: list, reference: list, tolerance: float) -> float:
 def sounding_at(notes: list, when: float) -> int | None:
     """The pitch sounding at a moment, or None.
 
-    Where two reference notes do overlap, the one that started earlier answers.
-    That is a convention rather than a fact about the music: a synthetic
-    package's melody track never overlaps itself, and vocadito's annotators
-    leave a handful of overlapping pairs across the whole corpus — few enough
-    not to move a column, and worth naming so that the tie-break is read as a
-    decision rather than as an accident of iteration order.
+    Where two reference notes overlap, the one that started earlier answers.
+    In this corpus that only ever arbitrates floating-point dust, tens of
+    microseconds wide, from adding a duration to an onset.
     """
     for onset, end, pitch in notes:
         if onset <= when < end:

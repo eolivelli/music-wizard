@@ -38,16 +38,21 @@ does not need to carry. Fetch:
     && curl -L -o vocadito.zip \
       "https://zenodo.org/records/5557945/files/vocadito.zip?download=1" \
     && unzip -q vocadito.zip
-  Rodriguez-Serrano, Bittner et al., "vocadito: A dataset of solo vocals with
-  f0, note, and lyric annotations", ISMIR 2021 LBD. DOI 10.5281/zenodo.5557945.
+  Bittner, Pasalo, Bosch, Meseguer-Brocal, Rubinstein, "vocadito: A dataset of
+  solo vocals with f0, note, and lyric annotations", ISMIR 2021 late-breaking.
+  DOI 10.5281/zenodo.5557945.
 
 This is the melody stage's real-audio ground truth: `tools/score-melody.py
 --source vocadito` scores MW's notes against annotator A1 and prints, beside
 them, annotator A2 scored against A1 by the same rule. That second figure is
 the point of the corpus. Where a sung note begins is genuinely ambiguous, the
-two annotators differ on the corpus's note count by about a fifth, and their
+two annotators do not even agree how many notes a clip holds, and their
 agreement is the ceiling any melody stage is measured against — a number well
 under 100%, which no synthetic package could ever have shown.
+
+Attribution is CC BY's one obligation, so the names above are the ones on the
+record and not a memory of them; an earlier version of this entry credited an
+author who is not on the paper.
 
 
 hanno-ucciso-luomo-ragno-karaoke.mp3

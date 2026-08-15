@@ -41,9 +41,10 @@ pipeline unaided.
   `render --parts lead` engraves a lead sheet — melody, chord symbols, words.
   Off unless asked for, because the tracker is monophonic: on a full mix it
   does not fail, it confidently returns the loudest periodic line. On clean
-  solo singing it reads notes nearly as well as two annotating musicians agree
-  with each other; through source separation it reads them markedly worse, and
-  that gap is separation's ([#503][i503]).
+  solo singing it reads notes close under what two annotating musicians agree
+  on with each other; on a mix it reads them markedly worse, and that gap is
+  the band left in by separation rather than the melody stage
+  ([#503][i503]).
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — for
   the chord chart, the chords-and-lyrics sheet, the lead sheet and the melody
   staff. `--transpose` moves the

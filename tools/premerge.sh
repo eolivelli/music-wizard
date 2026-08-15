@@ -235,9 +235,9 @@ compare score-melody.py tools/baselines/score-melody.txt || { echo "FAIL: score-
 
 # Real singing, annotated note by note (#502). Local-only: 69 MB of CC BY audio
 # the repository does not carry, so a machine without it reports every clip
-# skipped rather than failing. This is the only melody row that measures the
-# stage on a voice rather than on a rendered instrument, and it carries its own
-# ceiling -- see the harness docstring.
+# skipped rather than failing. It measures the stage on a voice rather than on
+# a rendered instrument, and carries its own ceiling -- see the harness
+# docstring.
 step "8/8 melody harness vs baseline, on real singing"
 compare score-melody.py tools/baselines/score-melody-vocadito.txt --source vocadito || { echo "FAIL: score-melody --source vocadito moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
