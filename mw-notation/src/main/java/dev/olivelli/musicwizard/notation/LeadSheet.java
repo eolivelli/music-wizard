@@ -38,11 +38,10 @@ import java.util.Optional;
  * positions, so {@link ChartLayout} bars them on the tracked downbeats; a
  * staff has to be barred by the tempo map, because that is the axis its notes
  * were quantized onto, so the same layout takes its other route here. The two
- * agree because the map anchors its lead-in on the phase the tracker found,
- * which makes the grid's downbeats bar lines of the map (#84) — except where
- * the chart refuses the downbeat sequence and falls back to one constant bar
- * length (#421), where the two axes start together and drift apart as far as
- * the beats wander.
+ * agree because the map anchors its lead-in on the phase the tracker found:
+ * where there is a lead-in to anchor (#519) and the chart is on the grid's own
+ * downbeats rather than its fallback axis, those downbeats are bar lines of
+ * the map (#84).
  *
  * <p>The two blocks are aligned by musical time and not by counting bars. Each
  * writes its own bar checks, and LilyPond places both against the same clock,

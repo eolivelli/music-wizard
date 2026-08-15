@@ -613,7 +613,7 @@ public final class AudioTranscriber {
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance) {
-        return constantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
                 meter.beatUnitQuarters(), 0, 1);
     }
 
@@ -621,12 +621,16 @@ public final class AudioTranscriber {
      * The same map, anchored on a tracked pulse of a stated length, with the
      * downbeat phase unknown.
      *
+     * <p>These two forms bypass {@link TempoMap#requireBarPhase}: their
+     * {@code pulsesPerBar} of 1 is "phase unknown", not a claim that a bar
+     * holds one pulse, and the tiling check would read it as the claim.
+     *
      * @param pulseQuarters quarter notes spanned by one tracked pulse
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance,
                                       double pulseQuarters) {
-        return constantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
                 pulseQuarters, 0, 1);
     }
 
@@ -634,18 +638,29 @@ public final class AudioTranscriber {
      * The same map, with the tracker's downbeat phase honoured: the lead-in is
      * chosen so the first downbeat lands on a bar line, exactly as {@link
      * TempoMap#fromBeatTimes(List, TimeSignature, double, int, int)} chooses
-     * its own — both anchor with {@link TempoMap#leadInPulses}, so a supplied
-     * tempo and a tracked one cannot bar the same grid differently (#84).
-     * With {@code pulsesPerBar} of 1 the congruence is vacuous and the lead-in
-     * is the pulse-only rounding it always was.
+     * its own — both anchor with {@link TempoMap#leadInPulses} and both
+     * validate with {@link TempoMap#requireBarPhase}, so a supplied tempo and
+     * a tracked one can neither bar the same grid differently nor take a
+     * miscounted bar silently (#84). This form receives the <em>derived</em>
+     * pair — a #139-corrected pulse and its count — which is exactly the pair
+     * that can be wrong, so it is the one place the check must not be skipped.
      *
      * @param firstDownbeatPulse index of a tracked pulse that begins a bar
-     * @param pulsesPerBar       tracked pulses in one bar, or 1 when unknown
+     * @param pulsesPerBar       tracked pulses in one bar
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance,
                                       double pulseQuarters, int firstDownbeatPulse,
                                       int pulsesPerBar) {
+        TempoMap.requireBarPhase(meter, pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+                pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+    }
+
+    private static TempoMap buildConstantPulseFrom(
+            double pulsesPerMinute, TimeSignature meter, double firstBeatSeconds,
+            Provenance provenance, double pulseQuarters, int firstDownbeatPulse,
+            int pulsesPerBar) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
         TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);

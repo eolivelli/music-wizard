@@ -54,14 +54,10 @@ import org.junit.jupiter.api.Test;
  * both ways is not a regression test for the bug it sits beside:
  *
  * <ul>
- * <li>{@code movesTheMapsBarLinesOntoTheChosenDownbeat} pins the one
- *     interaction between the overrides that exists on purpose: since #84 the
- *     chosen phase re-anchors the map's derived lead-in so the chosen pulse
- *     is a bar line, and it may move nothing else. {@code
- *     rejectsNonsenseDownbeats} guards a consequence of reading the option at
- *     all: a negative or non-finite downbeat was accepted and inert before,
- *     and now reaches {@link AudioTranscriber#nearestBeatIndex}, which has no
- *     opinion about it.</li>
+ * <li>{@code rejectsNonsenseDownbeats} guards a consequence of reading the
+ *     option at all: a negative or non-finite downbeat was accepted and inert
+ *     before, and now reaches {@link AudioTranscriber#nearestBeatIndex},
+ *     which has no opinion about it. It reproduces nothing.</li>
  * <li>{@code snapConfidenceBoundsAmbiguityInBothDirections} and
  *     {@code oneBeatToTheBarIsAlwaysCertain} are regression tests for defects
  *     found in review of the fix itself, both first raised in round 2 -- a
