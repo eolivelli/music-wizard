@@ -589,7 +589,7 @@ public final class AudioTranscriber {
      * otherwise (#139) a lead-in of whole counted beats can leave the first
      * tracked pulse part-way through a pulse, and the invariant above is exactly
      * what is lost. Making a grid downbeat a bar line as well takes the phase,
-     * which the fullest overload carries (#84); these forms leave it unknown.
+     * which the fullest overload carries (#84); this form leaves it unknown.
      *
      * <p>An anchor at the origin is not degenerate and is ordinary: hop
      * quantisation is what produces it, since any recording whose first beat
@@ -613,25 +613,11 @@ public final class AudioTranscriber {
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance) {
+        // Bypasses TempoMap.requireBarPhase: the pulsesPerBar of 1 here is
+        // "phase unknown", not a claim that a bar holds one pulse, and the
+        // tiling check would read it as the claim.
         return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
                 meter.beatUnitQuarters(), 0, 1);
-    }
-
-    /**
-     * The same map, anchored on a tracked pulse of a stated length, with the
-     * downbeat phase unknown.
-     *
-     * <p>These two forms bypass {@link TempoMap#requireBarPhase}: their
-     * {@code pulsesPerBar} of 1 is "phase unknown", not a claim that a bar
-     * holds one pulse, and the tiling check would read it as the claim.
-     *
-     * @param pulseQuarters quarter notes spanned by one tracked pulse
-     */
-    static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
-                                      double firstBeatSeconds, Provenance provenance,
-                                      double pulseQuarters) {
-        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
-                pulseQuarters, 0, 1);
     }
 
     /**

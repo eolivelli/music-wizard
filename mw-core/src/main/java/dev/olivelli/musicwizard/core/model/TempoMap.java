@@ -438,6 +438,12 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
+     * The most pulses any consistent bar can hold: the widest legal bar, 256
+     * quarter beats, over the shortest legal pulse, 1/1024 of one.
+     */
+    private static final int MAX_PULSES_PER_BAR = 1 << 18;
+
+    /**
      * The whole number of pulses to model the audio before the first tracked
      * pulse as: the count nearest the measured stretch that also puts the
      * first downbeat on a bar line, and at least one.
@@ -464,9 +470,16 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      */
     public static int leadInPulses(double firstBeatSeconds, double pulseSeconds,
                                    int firstDownbeatPulse, int pulsesPerBar) {
-        if (pulsesPerBar < 1) {
+        // Bounded, not merely positive, for the reason the pulse bounds in
+        // buildFromBeatTimes are: the widest bar a TimeSignature can state is
+        // 256 quarter beats and the shortest pulse accepted there is 1/1024,
+        // so no consistent trio exceeds 2^18 pulses to the bar. A count past
+        // that is the mistake itself -- and far enough past, the congruence
+        // arithmetic below would overflow into a negative lead-in.
+        if (pulsesPerBar < 1 || pulsesPerBar > MAX_PULSES_PER_BAR) {
             throw new IllegalArgumentException(
-                    "pulsesPerBar must be at least 1, got: " + pulsesPerBar);
+                    "pulsesPerBar must be between 1 and " + MAX_PULSES_PER_BAR
+                            + ", got: " + pulsesPerBar);
         }
         if (firstDownbeatPulse < 0) {
             throw new IllegalArgumentException(
@@ -479,7 +492,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
         int nearest = (int) Math.max(1, rounded);
         // Reduced before the addition, so an index near Integer.MAX_VALUE
-        // cannot overflow the sum into a phase it never named.
+        // cannot overflow the sum into a phase it never named; the count side
+        // cannot either, since both terms are bounded above.
         int phase = Math.floorMod(firstDownbeatPulse, pulsesPerBar);
         int excess = Math.floorMod(nearest + phase, pulsesPerBar);
         if (excess == 0) {
