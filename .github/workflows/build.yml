@@ -28,13 +28,10 @@ jobs:
       # local-only for licensing -- but the arithmetic they score a bar and a
       # word by can, on fixtures. Seconds, and no jar needed.
       #
-      # ffmpeg IS needed, by the two tests that mix a bed against a voice and
-      # assert where it lands. They skip without it, and a skipped test is the
-      # shape of defect they exist to catch: they were written because nothing
-      # reached the mixing layer, and on a runner with no ffmpeg nothing would
-      # reach it here either, greenly. The runner image does not carry one.
-      - name: Install ffmpeg for the mixing tests
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # A handful of them need ffmpeg and skip without it, which this job
+      # accepts rather than installing one: the invariant above is worth more
+      # than running them twice. The integration job runs the same script with
+      # MW_REQUIRE_FFMPEG set, where a skip is a failure instead.
       - name: Test the sample-harness scoring rules
         run: python3 tools/test-harness-rules.py
 
@@ -51,10 +48,18 @@ jobs:
       - name: Install LilyPond
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends lilypond
+          sudo apt-get install -y --no-install-recommends lilypond ffmpeg
           lilypond --version
       - name: Run integration tests
         run: mvn -B --no-transfer-progress verify -Pintegration
+      # The same script the default job runs, with the tests that need ffmpeg
+      # demanded rather than skipped. Their subject is a mixing defect that
+      # survived a whole PR because nothing reached the layer; a green skip is
+      # how it would survive another one.
+      - name: Test the harness rules that need ffmpeg
+        env:
+          MW_REQUIRE_FFMPEG: '1'
+        run: python3 tools/test-harness-rules.py
 
   # The sherpa-onnx ASR provider: built from the source submodule, which the
   # other jobs deliberately do not check out -- their builds must stay free of

@@ -34,21 +34,22 @@ everything. The published figure was the average of two regimes and moved with
 nothing but which singers had been recorded quietly. The run prints the range
 it measured, so read that rather than a figure quoted here.
 
-**`--ratio` takes several values, and on the corpus and bed this ships with,
-almost none of them can be reported.** Everything below about +12 dB rails on
-the clips that were recorded loud — the only headroom available is whatever a
-clip happens to have left — so the run marks those rows and exits non-zero
-rather than averaging distortion with band. That is #518, and until it is fixed
-the sweep is one point rather than a curve. The clean and separator-only rows do
-not depend on the ratio and are measured once.
+**`--ratio` takes several values, and the ones below about +10 dB cannot be
+reported.** The bed is added to a voice at the level its clip was recorded at,
+so the only headroom is whatever that clip has left, and the clips recorded
+loud have almost none: asking for a quiet bed is free, asking for a loud one
+rails them. The run marks those rows and exits non-zero rather than averaging
+distortion with band. The unreachable side is the interesting one — a voice
+buried under a band is where the loss this tool measures actually happens — so
+what #518 has to fix is the mixing, not the reporting. The clean and
+separator-only rows do not depend on the ratio and are measured once.
 
 **Read the voicing column beside the pitch column or not at all.** Voicing
 recall asks what share of the annotated singing the estimate also called
 sounding, and it does not ask whether what was tracked was the singer. Where
 the band is loud the tracker follows the band, which is voiced, so that column
 holds up while pitch accuracy collapses, because the band is voiced. It is a
-measure of whether
-something was heard, not of whether the right thing was.
+measure of whether something was heard, not of whether the right thing was.
 
 The bed defaults to a committed synthetic package, so the measurement is
 reproducible from the repository by anyone who has fetched vocadito
@@ -137,6 +138,17 @@ def sung_rms_dbfs(voice: Path, notes: list) -> float:
 #: At or above this peak the mix has railed: a clamped sample reads as 0.0 and
 #: a positive rail as -0.0, so the test is a threshold rather than equality.
 CLIPPED_DBFS = -0.1
+
+
+def railed(mix_peak_dbfs: float) -> bool:
+    """Whether a mix's peak means it clamped.
+
+    A tenth of a decibel of slack rather than equality with zero, and the
+    slack is load-bearing: on the corpus this ships with there is a mix that
+    clamps and reports -0.1, so an equality test would pass it to a reader as
+    a clean row.
+    """
+    return mix_peak_dbfs >= CLIPPED_DBFS
 
 
 #: How the bed is reduced to one channel, everywhere it is measured or mixed.
@@ -326,7 +338,7 @@ def main() -> None:
                 # both sides preserves the ratio but changes the absolute level,
                 # and the separator is not level-invariant (#515).
                 mix_peak = peak(mixed)
-                if mix_peak >= CLIPPED_DBFS:
+                if railed(mix_peak):
                     clipped.append((clip, ratio, mix_peak))
                     railed_here += 1
                 stem = separate(jar, mixed, Path(tmp) / f"ws_{clip}_{ratio}")
@@ -339,7 +351,7 @@ def main() -> None:
                       f"   note F1 {100 * scored[0]:5.1f}%"
                       f"   pitch {100 * scored[1]:5.1f}%"
                       f"   voicing {100 * scored[2]:5.1f}%"
-                      f"{'   CLIPPED' if mix_peak >= CLIPPED_DBFS else ''}")
+                      f"{'   CLIPPED' if railed(mix_peak) else ''}")
                 shutil.rmtree(Path(tmp) / f"ws_{clip}_{ratio}", ignore_errors=True)
                 mixed.unlink(missing_ok=True)
             # A mean over rows some of which railed is not a reading of this
@@ -355,8 +367,8 @@ def main() -> None:
         print()
         print("  REFUSED: these mixes railed, so their rows hold distortion as well")
         print("  as band. Ask for a ratio that fits, or give the bed less to do.")
-        for clip, ratio, railed in clipped:
-            print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {railed:+.1f} dBFS")
+        for clip, ratio, mix_peak in clipped:
+            print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {mix_peak:+.1f} dBFS")
         sys.exit(1)
 
 

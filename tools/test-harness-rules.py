@@ -1199,6 +1199,21 @@ class SeparationRatio(unittest.TestCase):
     decides what it mixes, on fixtures written here.
     """
 
+    def require_ffmpeg(self):
+        """Skip where ffmpeg is absent — unless someone has said it must not be.
+
+        These tests exist because nothing reached the mixing layer and a defect
+        lived there for a whole PR. A runner without ffmpeg skips them green,
+        which is that same silence wearing a different hat, so the job that is
+        supposed to exercise them sets MW_REQUIRE_FFMPEG and gets a failure
+        instead of a skip.
+        """
+        if shutil.which("ffmpeg"):
+            return
+        if os.environ.get("MW_REQUIRE_FFMPEG"):
+            self.fail("MW_REQUIRE_FFMPEG is set and ffmpeg is not on PATH")
+        self.skipTest("ffmpeg is not on PATH")
+
     @staticmethod
     def tone(path, seconds, amplitude, rate=44100, loud=None):
         """A wav of silence with a full-length or partial sine in it."""
@@ -1300,8 +1315,7 @@ class SeparationRatio(unittest.TestCase):
         Asserted with a SILENT voice, so the mix holds the bed alone and its
         level can be read directly rather than unmixed.
         """
-        if not shutil.which("ffmpeg"):
-            self.skipTest("ffmpeg is not on PATH")
+        self.require_ffmpeg()
         with tempfile.TemporaryDirectory() as tmp:
             voice = Path(tmp) / "voice.wav"
             bed = Path(tmp) / "bed.wav"
@@ -1330,6 +1344,38 @@ class SeparationRatio(unittest.TestCase):
         loud = separation.bed_gain(-16.8, -20.0, 0.0)
         quiet = separation.bed_gain(-34.3, -20.0, 0.0)
         self.assertGreater(loud, quiet)
+
+    def test_peak_reads_a_signal_that_has_headroom(self):
+        """`peak` is what the refusal is decided on, so it is asserted against
+        a level known by construction rather than trusted."""
+        self.require_ffmpeg()
+        with tempfile.TemporaryDirectory() as tmp:
+            half = Path(tmp) / "half.wav"
+            self.tone(half, 1.0, 0.5)
+            self.assertAlmostEqual(-6.0, separation.peak(half), delta=0.2)
+            self.assertFalse(separation.railed(separation.peak(half)))
+
+    def test_a_mix_that_clamps_is_railed(self):
+        """Two full-scale signals summed cannot fit, and the guard has to see
+        it in what ffmpeg reports rather than in the arithmetic that caused it:
+        `mix` writes 16-bit PCM, so the clamp is already done by the time the
+        peak is read."""
+        self.require_ffmpeg()
+        with tempfile.TemporaryDirectory() as tmp:
+            voice, bed, mixed = (Path(tmp) / n for n in ("v.wav", "b.wav", "m.wav"))
+            self.tone(voice, 2.0, 0.99)
+            self.stereo_tone(bed, 2.0, 0.99, correlated=True)
+            with mock.patch.object(separation, "BED_OFFSET_SECONDS", 0):
+                separation.mix(voice, bed, 1.0, mixed)
+            self.assertTrue(separation.railed(separation.peak(mixed)))
+
+    def test_the_rail_is_not_tested_against_zero(self):
+        """The slack in `CLIPPED_DBFS` is the whole guard on the clips that
+        rail hardest. A mix of the shipped bed with vocadito_5 at +9 dB clamps
+        and reports -0.1, so an equality test against zero — which the constant
+        replaced — would hand that row to a reader unmarked."""
+        self.assertTrue(separation.railed(-0.1))
+        self.assertFalse(separation.railed(-0.5))
 
 
 if __name__ == "__main__":
