@@ -133,11 +133,11 @@ baseline_drift
 # executions, so it runs everything plain `verify` runs and the ITs as well;
 # running both would run the unit suite twice for nothing.
 if [ "$full" -eq 1 ]; then
-  step "1/7 full suite (unit + integration)"
+  step "1/8 full suite (unit + integration)"
   mvn -B -q -T 1C $REPO_ARGS -Pintegration verify \
     || { echo "FAIL: mvn -Pintegration verify"; fail=1; }
 else
-  step "1/7 build (suites left to CI; --full runs them here)"
+  step "1/8 build (suites left to CI; --full runs them here)"
   mvn -B -q -T 1C $REPO_ARGS -DskipTests package \
     || { echo "FAIL: mvn package"; fail=1; }
 fi
@@ -155,11 +155,25 @@ compare() { # $1 harness  $2 baseline  $3... harness args
   fi
   local diffs
   diffs=$(python3 - "$baseline" <<'PY' "$out"
-import sys
-baseline = {l.split(":")[0].strip(): l.rstrip() for l in open(sys.argv[1])
-            if ".mp3:" in l}
-current  = {l.split(":")[0].strip(): l.rstrip() for l in sys.argv[2].splitlines()
-            if ".mp3:" in l}
+import re, sys
+# A row is a line naming one benchmark. Two shapes qualify: anything carrying
+# "<file>.mp3:", which is what the chord and lyric harnesses print, and an
+# indented "  <name>: ", which is what the melody harness prints -- its
+# benchmarks are packages and clips rather than files, so they carry no
+# extension and were keyed by nothing at all. That is not a cosmetic gap: with
+# no key, a harness's every row was absent from both sides of this diff, the
+# loop below had nothing to compare, and the step passed however far the
+# numbers had moved. It was added in #494 and blind from the first run; CI's
+# own plain diff of the same baseline is what was actually defending it.
+def rows(lines):
+    keyed = {}
+    for line in lines:
+        if ".mp3:" in line or re.match(r"^  \S+: ", line):
+            keyed[line.split(":")[0].strip()] = line.rstrip()
+    return keyed
+
+baseline = rows(open(sys.argv[1]))
+current  = rows(sys.argv[2].splitlines())
 for name, base in sorted(baseline.items()):
     if name not in current:
         # The harness ran to completion and still printed nothing for this
@@ -190,13 +204,13 @@ PY
   grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
 }
 
-step "2/7 model harness vs baseline"
+step "2/8 model harness vs baseline"
 compare score-samples.py tools/baselines/score-samples.txt || { echo "FAIL: score-samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "3/7 chart harness vs baseline"
+step "3/8 chart harness vs baseline"
 compare score-chart.py tools/baselines/score-chart.txt || { echo "FAIL: score-chart moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "4/7 lyric harness vs baseline"
+step "4/8 lyric harness vs baseline"
 compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-lyrics moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The transcription loop (#391): the same recordings through the ASR with no
@@ -204,20 +218,28 @@ compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-
 # which is why it runs unconditionally like its siblings; it needs the sherpa
 # native, and a machine without one reports every row skipped rather than
 # failing (the harness prints the build command per row).
-step "5/7 transcription harness vs baseline"
+step "5/8 transcription harness vs baseline"
 compare score-lyrics.py tools/baselines/score-asr.txt --source asr || { echo "FAIL: score-lyrics --source asr moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The synthetic corpus (#447): every package committed, so CI runs this same
 # diff on the pull request; here it costs one analysis per package.
-step "6/7 synthetic harness vs baseline"
+step "6/8 synthetic harness vs baseline"
 compare score-synthetic.py tools/baselines/score-synthetic.txt || { echo "FAIL: score-synthetic moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The melody stage (#494), scored against each package's own MIDI melody track
 # rather than against its grid, and in seconds rather than on the beat axis --
 # see the harness's docstring for why those are the same decision. Committed
 # corpus, so CI runs this diff too.
-step "7/7 melody harness vs baseline"
+step "7/8 melody harness vs baseline"
 compare score-melody.py tools/baselines/score-melody.txt || { echo "FAIL: score-melody moved — if intended, regenerate the baseline and commit it"; fail=1; }
+
+# Real singing, annotated note by note (#502). Local-only: 69 MB of CC BY audio
+# the repository does not carry, so a machine without it reports every clip
+# skipped rather than failing. It measures the stage on a voice rather than on
+# a rendered instrument, and carries its own ceiling -- see the harness
+# docstring.
+step "8/8 melody harness vs baseline, on real singing"
+compare score-melody.py tools/baselines/score-melody-vocadito.txt --source vocadito || { echo "FAIL: score-melody --source vocadito moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering
