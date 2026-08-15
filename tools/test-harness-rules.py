@@ -1210,7 +1210,8 @@ class SeparationRatio(unittest.TestCase):
         """
         if shutil.which("ffmpeg"):
             return
-        if os.environ.get("MW_REQUIRE_FFMPEG"):
+        # Not truthiness: MW_REQUIRE_FFMPEG=0 has to mean what it says.
+        if os.environ.get("MW_REQUIRE_FFMPEG", "") not in ("", "0"):
             self.fail("MW_REQUIRE_FFMPEG is set and ffmpeg is not on PATH")
         self.skipTest("ffmpeg is not on PATH")
 
@@ -1347,13 +1348,15 @@ class SeparationRatio(unittest.TestCase):
 
     def test_peak_reads_a_signal_that_has_headroom(self):
         """`peak` is what the refusal is decided on, so it is asserted against
-        a level known by construction rather than trusted."""
+        levels known by construction rather than trusted. Two of them, because
+        one is also what a `peak` that ignored its argument would return."""
         self.require_ffmpeg()
         with tempfile.TemporaryDirectory() as tmp:
-            half = Path(tmp) / "half.wav"
-            self.tone(half, 1.0, 0.5)
-            self.assertAlmostEqual(-6.0, separation.peak(half), delta=0.2)
-            self.assertFalse(separation.railed(separation.peak(half)))
+            for amplitude, expected in ((0.5, -6.0), (0.125, -18.1)):
+                path = Path(tmp) / f"tone_{amplitude}.wav"
+                self.tone(path, 1.0, amplitude)
+                self.assertAlmostEqual(expected, separation.peak(path), delta=0.2)
+                self.assertFalse(separation.railed(separation.peak(path)))
 
     def test_a_mix_that_clamps_is_railed(self):
         """Two full-scale signals summed cannot fit, and the guard has to see
@@ -1369,11 +1372,16 @@ class SeparationRatio(unittest.TestCase):
                 separation.mix(voice, bed, 1.0, mixed)
             self.assertTrue(separation.railed(separation.peak(mixed)))
 
-    def test_the_rail_is_not_tested_against_zero(self):
-        """The slack in `CLIPPED_DBFS` is the whole guard on the clips that
-        rail hardest. A mix of the shipped bed with vocadito_5 at +9 dB clamps
-        and reports -0.1, so an equality test against zero — which the constant
-        replaced — would hand that row to a reader unmarked."""
+    def test_the_rail_is_a_margin_rather_than_an_equality(self):
+        """Pins the constant, which nothing else in this file reaches.
+
+        `volumedetect` reports to a tenth of a decibel, so a clamped mix reads
+        -0.0 and so does one peaking a twentieth of a decibel short: the report
+        cannot separate them, and the threshold is the margin that decision
+        needs rather than a measurement of distortion. Asserted here so that
+        widening or dropping it is a test failure and not a silent change of
+        what the tool refuses.
+        """
         self.assertTrue(separation.railed(-0.1))
         self.assertFalse(separation.railed(-0.5))
 

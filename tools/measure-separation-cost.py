@@ -34,14 +34,15 @@ everything. The published figure was the average of two regimes and moved with
 nothing but which singers had been recorded quietly. The run prints the range
 it measured, so read that rather than a figure quoted here.
 
-**`--ratio` takes several values, and the ones below about +10 dB cannot be
-reported.** The bed is added to a voice at the level its clip was recorded at,
-so the only headroom is whatever that clip has left, and the clips recorded
-loud have almost none: asking for a quiet bed is free, asking for a loud one
-rails them. The run marks those rows and exits non-zero rather than averaging
-distortion with band. The unreachable side is the interesting one — a voice
-buried under a band is where the loss this tool measures actually happens — so
-what #518 has to fix is the mixing, not the reporting. The clean and
+**`--ratio` takes several values, and the ones that ask for a loud bed cannot
+be reported.** The bed is added to a voice at the level its clip was recorded
+at, so the only headroom is whatever that clip has left, and the clips recorded
+loud have almost none. The run marks those rows, names the clips with their
+peaks and exits non-zero rather than averaging a spoiled row with clean ones;
+where the boundary falls is a property of the clips and the bed, so read it off
+the run rather than from a figure here. It is the wrong side that is lost — a
+voice buried under a band is where the loss this tool measures actually happens
+— so what #518 has to fix is the mixing, not the reporting. The clean and
 separator-only rows do not depend on the ratio and are measured once.
 
 **Read the voicing column beside the pitch column or not at all.** Voicing
@@ -141,12 +142,15 @@ CLIPPED_DBFS = -0.1
 
 
 def railed(mix_peak_dbfs: float) -> bool:
-    """Whether a mix's peak means it clamped.
+    """Whether a mix came close enough to full scale not to be trusted.
 
-    A tenth of a decibel of slack rather than equality with zero, and the
-    slack is load-bearing: on the corpus this ships with there is a mix that
-    clamps and reports -0.1, so an equality test would pass it to a reader as
-    a clean row.
+    `volumedetect` reports to a tenth of a decibel, so every clamped mix reads
+    -0.0 and that bin also holds mixes peaking a twentieth of a decibel short:
+    from the report alone, clamped and nearly-clamped are the same answer. The
+    threshold refuses that bin and one more, so it is a margin and not a
+    measurement of distortion — a row it marks may hold none. Refusing a clean
+    row costs a point on the curve; publishing a distorted one as a reading of
+    its ratio is how #505 happened.
     """
     return mix_peak_dbfs >= CLIPPED_DBFS
 
@@ -365,8 +369,10 @@ def main() -> None:
 
     if clipped:
         print()
-        print("  REFUSED: these mixes railed, so their rows hold distortion as well")
-        print("  as band. Ask for a ratio that fits, or give the bed less to do.")
+        print("  REFUSED: these mixes came within a tenth of a decibel of full")
+        print("  scale, which is as close as the peak can be read; a row holding")
+        print("  them may be reporting distortion rather than band. Ask for a")
+        print("  ratio that fits, or give the bed less to do.")
         for clip, ratio, mix_peak in clipped:
             print(f"    vocadito_{clip} at {ratio:+.1f} dB peaked at {mix_peak:+.1f} dBFS")
         sys.exit(1)

@@ -431,9 +431,9 @@ strength of how a page looked:
   mask removed with it (#503). How far the voice sits above the band is the
   variable the tool now states rather than inherits — but the bed is added to a
   voice at its own recorded level, so a clip with no headroom left rails before
-  the band is anywhere near loud, and the ratios that cannot be reported are
-  exactly the ones where a voice is buried, which is the interesting side
-  (#518). Absolute level is a second axis and is not controlled either, since
+  the band is anywhere near loud, and what is lost is the side where the band
+  is loud, which is the side the loss lives on (#518). Absolute level is a
+  second axis and is not controlled either, since
   the separator is not level-invariant even at a fixed ratio (#515). None of it
   is baselined.
 

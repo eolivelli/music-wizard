@@ -55,8 +55,11 @@ jobs:
       # The same script the default job runs, with the tests that need ffmpeg
       # demanded rather than skipped. Their subject is a mixing defect that
       # survived a whole PR because nothing reached the layer; a green skip is
-      # how it would survive another one.
+      # how it would survive another one. `always()` because this is the only
+      # job that runs them at all, and a red integration suite for an unrelated
+      # reason would otherwise take the mixing guard out of CI while it lasts.
       - name: Test the harness rules that need ffmpeg
+        if: always()
         env:
           MW_REQUIRE_FFMPEG: '1'
         run: python3 tools/test-harness-rules.py
