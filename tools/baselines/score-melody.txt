@@ -10,5 +10,6 @@ Melody, note by note against each package's own MIDI melody track
   melody-level4-f-126: notes=94/95  F1@50ms 94.2%  F1@100ms 98.4%  pitch 95.8%  voiced 98.9%
   pop-axis-g-116: notes=143/135  F1@50ms 0.7%  F1@100ms 5.0%  pitch 6.2%  voiced 46.0%
   pop-deceptive-f-72: no melody track; not scored
+  pop-m6-m7b5-gm-100: no melody track; not scored
   pop-threechord-c-108: notes=90/88  F1@50ms 0.0%  F1@100ms 2.2%  pitch 1.9%  voiced 39.4%
   rocknroll-12bar-a-168: notes=23/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 8.4%

@@ -314,60 +314,17 @@ public final class AudioTranscriber {
                     pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
         }
 
-        // A tempo override replaces the tracked tempo but not the tracked beats:
-        // the beats are measured evidence, whereas the tempo is a summary of
-        // them, and a user correcting the tempo is usually correcting a
-        // half-or-double reading rather than claiming the beats are misplaced.
-        // So the override supplies the rate and the tracked pulses still supply
-        // the phase -- see constantPulseFrom, which is what stops the map and the
-        // grid in the same file from disagreeing about where beat one is.
-        //
-        // The override is read as counted beats per minute, which is what the
-        // user is looking at when they type it -- a metronome marking, or the
-        // rate this very run just reported. Passing it to TempoMap.constant
-        // instead would read it as quarter notes per minute, so in 6/8 the two
-        // branches below would describe bars 1.5x apart and correcting the tempo
-        // would silently move every bar line.
-        //
-        // Two tracked pulses are needed to infer a tempo and one is a legitimate
-        // result -- a clip of about a fifth of a second yields exactly one, where
-        // a tenth yields none. Falling back keeps that clip transcribable: a lone
-        // pulse carries no interval, so there is no tempo in it to find, but the
-        // pulse itself is still worth keeping and the chords over it are still
-        // worth estimating.
-        TempoMap tempoMap;
-        if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
-            tempoMap = TempoMap.fromBeatTimes(beatTimes, meter);
-        } else {
-            // Everything else is the fallback -- a typed tempo, or a clip with
-            // no interval to infer one from -- and both take the figure and its
-            // origin from the same place, so a tempo cannot arrive here wearing
-            // the other branch's label. ASSUMED rather than MEASURED for the
-            // lone pulse: one pulse carries no interval, so nothing here was
-            // measured, and labelling it MEASURED would let a later stage treat
-            // a hard-coded 120 as evidence.
-            //
-            // Same four outcomes as the three-way branch this replaces, case by
-            // case: a typed tempo wins whether one beat was tracked or many and
-            // says nothing on the way past, and only an untyped lone pulse
-            // announces the assumption.
-            FallbackTempo fallback = FallbackTempo.forOptions(settings);
-            if (settings.tempoOverride() == null) {
-                progress.accept("only one beat was tracked, which carries no tempo; assuming "
-                        + (int) fallback.pulsesPerMinute() + " beats/min");
-            }
-            tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
-                    beatTimes.get(0), fallback.provenance(),
-                    pulseQuarters.orElse(meter.beatUnitQuarters()));
-        }
-
-        // Beat-synchronised chroma before the beat grid, because the downbeat
-        // phase is chosen from harmonic change rather than from onset energy.
-        // The order stays acyclic: beat-synchronising needs the beats, the
-        // downbeat phase needs the synchronised chroma, and chord estimation
-        // needs neither the phase nor the grid. (The frames themselves were
-        // extracted before the tracker ran -- they need no beats, and since
-        // #231 the tracker needs them.)
+        // Beat-synchronised chroma before the beat grid, and the beat grid
+        // before the tempo map, because the downbeat phase is chosen from
+        // harmonic change rather than from onset energy and the map anchors
+        // its lead-in on that phase (#84) -- built the other way round, the
+        // map's bar lines and the grid's downbeats describe the same music and
+        // disagree, which is #501. The order stays acyclic: beat-synchronising
+        // needs the beats, the downbeat phase needs the synchronised chroma,
+        // the map needs the phase, and chord estimation needs neither the
+        // phase nor the grid. (The frames themselves were extracted before the
+        // tracker ran -- they need no beats, and since #231 the tracker needs
+        // them.)
         //
         // NNLS rather than the plain fold, because the plain fold does not work
         // on records. Measured over every frame of samples/gmajorblues.mp3 that
@@ -414,11 +371,10 @@ public final class AudioTranscriber {
         // assumed bar length in beats", and the beats it means are the tracked
         // ones it is phasing. 6/8 counts two of them to a bar rather than six,
         // and a corrected pulse counts its own.
-        BeatGrid tracked = BeatTracker.toBeatGrid(beats,
-                settings.firstDownbeatSeconds() != null
-                        ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar)
-                        : DownbeatEstimator.estimate(
-                                beatTimes, chroma, envelope, pulsesPerBar));
+        DownbeatEstimator.Estimate downbeat = settings.firstDownbeatSeconds() != null
+                ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar)
+                : DownbeatEstimator.estimate(beatTimes, chroma, envelope, pulsesPerBar);
+        BeatGrid tracked = BeatTracker.toBeatGrid(beats, downbeat);
         // Recorded on the grid rather than left to each reader, because the grid
         // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
         // pulse rate to quarter notes, and before this the only figure they could
@@ -426,6 +382,55 @@ public final class AudioTranscriber {
         BeatGrid grid = pulseQuarters.isPresent()
                 ? tracked.withPulseQuarters(pulseQuarters.getAsDouble())
                 : tracked;
+
+        // A tempo override replaces the tracked tempo but not the tracked beats:
+        // the beats are measured evidence, whereas the tempo is a summary of
+        // them, and a user correcting the tempo is usually correcting a
+        // half-or-double reading rather than claiming the beats are misplaced.
+        // So the override supplies the rate and the tracked pulses still supply
+        // the phase -- see constantPulseFrom, which is what stops the map and the
+        // grid in the same file from disagreeing about where beat one is.
+        //
+        // The override is read as counted beats per minute, which is what the
+        // user is looking at when they type it -- a metronome marking, or the
+        // rate this very run just reported. Passing it to TempoMap.constant
+        // instead would read it as quarter notes per minute, so in 6/8 the two
+        // branches below would describe bars 1.5x apart and correcting the tempo
+        // would silently move every bar line.
+        //
+        // Two tracked pulses are needed to infer a tempo and one is a legitimate
+        // result -- a clip of about a fifth of a second yields exactly one, where
+        // a tenth yields none. Falling back keeps that clip transcribable: a lone
+        // pulse carries no interval, so there is no tempo in it to find, but the
+        // pulse itself is still worth keeping and the chords over it are still
+        // worth estimating.
+        TempoMap tempoMap;
+        if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
+            tempoMap = TempoMap.fromBeatTimes(beatTimes, meter,
+                    meter.beatUnitQuarters(), downbeat.phase(), pulsesPerBar);
+        } else {
+            // Everything else is the fallback -- a typed tempo, or a clip with
+            // no interval to infer one from -- and both take the figure and its
+            // origin from the same place, so a tempo cannot arrive here wearing
+            // the other branch's label. ASSUMED rather than MEASURED for the
+            // lone pulse: one pulse carries no interval, so nothing here was
+            // measured, and labelling it MEASURED would let a later stage treat
+            // a hard-coded 120 as evidence.
+            //
+            // Same four outcomes as the three-way branch this replaces, case by
+            // case: a typed tempo wins whether one beat was tracked or many and
+            // says nothing on the way past, and only an untyped lone pulse
+            // announces the assumption.
+            FallbackTempo fallback = FallbackTempo.forOptions(settings);
+            if (settings.tempoOverride() == null) {
+                progress.accept("only one beat was tracked, which carries no tempo; assuming "
+                        + (int) fallback.pulsesPerMinute() + " beats/min");
+            }
+            tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
+                    beatTimes.get(0), fallback.provenance(),
+                    pulseQuarters.orElse(meter.beatUnitQuarters()),
+                    downbeat.phase(), pulsesPerBar);
+        }
 
         progress.accept("estimating chords");
         ChordProgression chords = ChordEstimator.estimate(chroma, treble, bass, beatTimes);
@@ -583,9 +588,8 @@ public final class AudioTranscriber {
      * only while the tracker landed on that beat; where the correction says
      * otherwise (#139) a lead-in of whole counted beats can leave the first
      * tracked pulse part-way through a pulse, and the invariant above is exactly
-     * what is lost. It does not make a grid downbeat a bar line -- nothing here
-     * knows the bar phase, which is #84 -- but it stops one from being unable to
-     * be.
+     * what is lost. Making a grid downbeat a bar line as well takes the phase,
+     * which the fullest overload carries (#84); this form leaves it unknown.
      *
      * <p>An anchor at the origin is not degenerate and is ordinary: hop
      * quantisation is what produces it, since any recording whose first beat
@@ -609,18 +613,40 @@ public final class AudioTranscriber {
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance) {
-        return constantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
-                meter.beatUnitQuarters());
+        // Bypasses TempoMap.requireBarPhase: the pulsesPerBar of 1 here is
+        // "phase unknown", not a claim that a bar holds one pulse, and the
+        // tiling check would read it as the claim.
+        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+                meter.beatUnitQuarters(), 0, 1);
     }
 
     /**
-     * The same map, anchored on a tracked pulse of a stated length.
+     * The same map, with the tracker's downbeat phase honoured: the lead-in is
+     * chosen so the first downbeat lands on a bar line, exactly as {@link
+     * TempoMap#fromBeatTimes(List, TimeSignature, double, int, int)} chooses
+     * its own — both anchor with {@link TempoMap#leadInPulses} and both
+     * validate with {@link TempoMap#requireBarPhase}, so a supplied tempo and
+     * a tracked one can neither bar the same grid differently nor take a
+     * miscounted bar silently (#84). This form receives the <em>derived</em>
+     * pair — a #139-corrected pulse and its count — which is exactly the pair
+     * that can be wrong, so it is the one place the check must not be skipped.
      *
-     * @param pulseQuarters quarter notes spanned by one tracked pulse
+     * @param firstDownbeatPulse index of a tracked pulse that begins a bar
+     * @param pulsesPerBar       tracked pulses in one bar
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance,
-                                      double pulseQuarters) {
+                                      double pulseQuarters, int firstDownbeatPulse,
+                                      int pulsesPerBar) {
+        TempoMap.requireBarPhase(meter, pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+        return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
+                pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+    }
+
+    private static TempoMap buildConstantPulseFrom(
+            double pulsesPerMinute, TimeSignature meter, double firstBeatSeconds,
+            Provenance provenance, double pulseQuarters, int firstDownbeatPulse,
+            int pulsesPerBar) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
         TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);
@@ -632,12 +658,8 @@ public final class AudioTranscriber {
         double quarterBpm = constant.initialTempo();
         double pulseSeconds = 60.0 * pulseQuarters / quarterBpm;
 
-        double ratio = firstBeatSeconds / pulseSeconds;
-        // Capped and floored exactly as fromBeatTimes caps and floors it: at
-        // least one pulse whenever the first beat is after t=0, since a lead-in
-        // of zero pulses over a non-zero stretch of audio is not a tempo.
-        long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
-        int leadInPulses = (int) Math.max(1, rounded);
+        int leadInPulses = TempoMap.leadInPulses(
+                firstBeatSeconds, pulseSeconds, firstDownbeatPulse, pulsesPerBar);
 
         double leadInTempo = 60.0 * leadInPulses * pulseQuarters / firstBeatSeconds;
         if (!Double.isFinite(leadInTempo) || leadInTempo <= 0) {
