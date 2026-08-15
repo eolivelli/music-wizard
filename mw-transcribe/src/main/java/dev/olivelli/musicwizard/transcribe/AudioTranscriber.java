@@ -466,7 +466,10 @@ public final class AudioTranscriber {
         // whose melody cannot be read this way.
         if (settings.trackMelody()) {
             progress.accept("tracking the melody");
-            NoteTrack melody = MelodyEstimator.estimate(PitchTracker.track(audio));
+            // The same envelope the beat tracker read: the melody is analysed
+            // on the same buffer, and its note boundaries are placed by
+            // articulation rather than by pitch change (#495, #497).
+            NoteTrack melody = MelodyEstimator.estimate(PitchTracker.track(audio), envelope);
             if (melody.isEmpty()) {
                 progress.accept("no melody was found");
             } else {
