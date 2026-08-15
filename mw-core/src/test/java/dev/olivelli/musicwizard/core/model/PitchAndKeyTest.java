@@ -306,7 +306,9 @@ class PitchAndKeyTest {
 
             assertThat(key.signatureConfidence()).contains(Confidence.of(0.8));
             assertThat(key.tonicConfidence()).contains(Confidence.of(0.5));
-            assertThat(key.confidence()).isEqualTo(Confidence.of(0.8).and(Confidence.of(0.5)));
+            // The literal rather than and()'s own answer, so this pins "the
+            // product" instead of whatever and() happens to compute.
+            assertThat(key.confidence()).isEqualTo(Confidence.of(0.4));
         }
 
         @Test
@@ -330,14 +332,16 @@ class PitchAndKeyTest {
         }
 
         @Test
-        @DisplayName("a declared or pre-#512 key carries neither, which is not a zero")
+        @DisplayName("a key built without components carries neither, which is not a zero")
         void absentComponentsAreNotAZero() {
             // Confidence.UNKNOWN is a value of 0.0, so "not recorded" must be
             // empty rather than UNKNOWN or an old file would read as measured.
-            Key declared = Key.ofSeconds(f, Mode.MAJOR, 0, 12, Confidence.CERTAIN);
+            // Absence means only that: MidiTranscriber records both components
+            // on a declared key, so presence does not mean estimated either.
+            Key bare = Key.ofSeconds(f, Mode.MAJOR, 0, 12, Confidence.CERTAIN);
 
-            assertThat(declared.signatureConfidence()).isEmpty();
-            assertThat(declared.tonicConfidence()).isEmpty();
+            assertThat(bare.signatureConfidence()).isEmpty();
+            assertThat(bare.tonicConfidence()).isEmpty();
         }
     }
 

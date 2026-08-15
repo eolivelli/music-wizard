@@ -42,16 +42,16 @@ import java.util.Optional;
  * @param startBeat    quantized start in quarter-note beats, once decided
  * @param endBeat      quantized end in quarter-note beats, once decided
  * @param confidence   how much the pipeline trusts this key
- * @param signatureConfidence trust in the key signature alone, when the key
- *                     was estimated: the estimator makes two decisions of very
- *                     different reliability, and this is the safe half
- * @param tonicConfidence trust in this tonic over its relative's, the half
- *                     that fails. Both components are carried or neither is,
- *                     optional for the reason {@link Note}'s musical timing is:
- *                     empty means not recorded -- a declared key, or a file
- *                     written before they were carried -- and must not be
- *                     confusable with recorded-as-zero, which is what
- *                     {@link Confidence#UNKNOWN}, a value of 0.0, would read as
+ * @param signatureConfidence trust in the key signature alone, when recorded
+ * @param tonicConfidence trust in this tonic over its relative's, when
+ *                     recorded. Both components are carried or neither is,
+ *                     optional for the reason {@link Note}'s musical timing
+ *                     is: empty means not recorded -- nothing more -- and must
+ *                     not be confusable with recorded-as-zero, which is what
+ *                     {@link Confidence#UNKNOWN}, a value of 0.0, would read
+ *                     as. What the two components measure is the estimator's
+ *                     decomposition to state, and a declared key records them
+ *                     too -- presence does not mean estimated
  */
 public record Key(
         PitchSpelling tonic,
