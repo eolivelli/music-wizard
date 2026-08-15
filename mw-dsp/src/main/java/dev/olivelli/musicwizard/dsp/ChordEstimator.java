@@ -263,6 +263,14 @@ public final class ChordEstimator {
      * most of what a bass does on that recording — a Latin-jazz vamp whose bass
      * is a figure and not a pedal. Roots are the column the rest of the chart
      * hangs on, so that is the one to watch when moving this.
+     *
+     * <p>A package showing this prior changed nothing is not a case for removing
+     * it: the bass reaches the root decision through this prior <em>and</em>
+     * through its own weight in the combined fold, and each channel alone
+     * suffices. On {@code pop-m6-m7b5-gm-100} (#514) — one pitch-class set,
+     * roots told apart only by the bass — nulling either channel leaves the
+     * reading unchanged and nulling both collapses it. The fold's channel is
+     * the one a real mix can lose, so this prior is the one left standing.
      */
     private static final double BASS_ROOT_WEIGHT = 20;
 
