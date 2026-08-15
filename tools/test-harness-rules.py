@@ -9,14 +9,18 @@ onset for the lyric one. Run it directly:
     python3 tools/test-harness-rules.py
 """
 
+import array
 import contextlib
 import io
+import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import wave
 from importlib import import_module
 from pathlib import Path
 from unittest import mock
@@ -27,6 +31,7 @@ synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 melody = import_module("score-melody")
+separation = import_module("measure-separation-cost")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
@@ -1184,6 +1189,201 @@ class MelodyRules(unittest.TestCase):
         two were sung scores recall of a half rather than of one."""
         reference = [(0.0, 0.5, 60), (0.02, 0.5, 60)]
         self.assertAlmostEqual(2 / 3, melody.note_f1([(0.0, 0.5, 60)], reference, 0.05))
+
+
+class SeparationRatio(unittest.TestCase):
+    """The level arithmetic behind #505.
+
+    The tool it belongs to cannot run in CI — it needs a jar, Spleeter and a
+    corpus that is local-only — so what CI can hold is the arithmetic that
+    decides what it mixes, on fixtures written here.
+    """
+
+    def require_ffmpeg(self):
+        """Skip where ffmpeg is absent — unless someone has said it must not be.
+
+        These tests exist because nothing reached the mixing layer and a defect
+        lived there for a whole PR. A runner without ffmpeg skips them green,
+        which is that same silence wearing a different hat, so the job that is
+        supposed to exercise them sets MW_REQUIRE_FFMPEG and gets a failure
+        instead of a skip.
+        """
+        if shutil.which("ffmpeg"):
+            return
+        # Not truthiness: MW_REQUIRE_FFMPEG=0 has to mean what it says.
+        if os.environ.get("MW_REQUIRE_FFMPEG", "") not in ("", "0"):
+            self.fail("MW_REQUIRE_FFMPEG is set and ffmpeg is not on PATH")
+        self.skipTest("ffmpeg is not on PATH")
+
+    @staticmethod
+    def tone(path, seconds, amplitude, rate=44100, loud=None):
+        """A wav of silence with a full-length or partial sine in it."""
+        samples = array.array("h", [0]) * int(seconds * rate)
+        first, last = loud if loud else (0, seconds)
+        for index in range(int(first * rate), int(last * rate)):
+            samples[index] = int(amplitude * 32767
+                                 * math.sin(2 * math.pi * 440 * index / rate))
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes(samples.tobytes())
+
+    def test_a_full_scale_sine_reads_three_decibels_under_full_scale(self):
+        """Pins the convention: dBFS of an RMS, so a full-scale sine is -3, not 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tone.wav"
+            self.tone(path, 1.0, 1.0)
+            level = separation.sung_rms_dbfs(path, [(0.0, 1.0, 69)])
+            self.assertAlmostEqual(-3.01, level, places=1)
+
+    def test_the_level_is_measured_where_the_singing_is(self):
+        """The point of measuring over the notes rather than over the clip: a
+        clip that is mostly silence is not thereby a quiet singer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sparse.wav"
+            self.tone(path, 4.0, 1.0, loud=(1.0, 2.0))
+            over_the_note = separation.sung_rms_dbfs(path, [(1.0, 2.0, 69)])
+            over_the_clip = separation.sung_rms_dbfs(path, [(0.0, 4.0, 69)])
+            self.assertAlmostEqual(-3.01, over_the_note, places=1)
+            # Three quarters silence is 6 dB of dilution, and it is exactly the
+            # error the old whole-clip reading made.
+            self.assertAlmostEqual(-9.03, over_the_clip, places=1)
+            self.assertGreater(over_the_note - over_the_clip, 5)
+
+    def test_a_clip_whose_annotation_covers_no_audio_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tone.wav"
+            self.tone(path, 1.0, 1.0)
+            with self.assertRaises(SystemExit):
+                separation.sung_rms_dbfs(path, [])
+
+    def test_the_gain_puts_the_voice_the_asked_for_distance_above_the_bed(self):
+        for voice, bedside, ratio in ((-20.0, -20.0, 0.0), (-6.0, -30.0, 6.0),
+                                      (-34.3, -18.0, -12.0)):
+            gain = separation.bed_gain(voice, bedside, ratio)
+            # The bed after the gain, in dBFS, and the distance from the voice.
+            achieved = voice - (bedside + 20 * math.log10(gain))
+            self.assertAlmostEqual(ratio, achieved, places=6,
+                                   msg=f"voice {voice} bed {bedside} ratio {ratio}")
+
+    def test_equal_levels_at_a_zero_ratio_leave_the_bed_alone(self):
+        self.assertAlmostEqual(1.0, separation.bed_gain(-20.0, -20.0, 0.0))
+
+    @staticmethod
+    def stereo_tone(path, seconds, amplitude, correlated, rate=44100):
+        """A two-channel bed, its channels either identical or independent."""
+        frames = array.array("h")
+        for index in range(int(seconds * rate)):
+            left = int(amplitude * 32767 * math.sin(2 * math.pi * 300 * index / rate))
+            right = left if correlated else int(
+                amplitude * 32767 * math.sin(2 * math.pi * 190 * index / rate))
+            frames.append(left)
+            frames.append(right)
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(2)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes(frames.tobytes())
+
+    @staticmethod
+    def silence(path, seconds, rate=44100):
+        with wave.open(str(path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            out.writeframes((array.array("h", [0]) * int(seconds * rate)).tobytes())
+
+    @staticmethod
+    def whole_file_rms_dbfs(path):
+        with wave.open(str(path)) as source:
+            samples = array.array("h", source.readframes(source.getnframes()))
+        total = sum(value * value for value in samples)
+        return 20 * math.log10(math.sqrt(total / len(samples)) / 32768.0)
+
+    def assert_bed_lands_where_it_was_measured(self, correlated):
+        """The measured stream and the mixed stream must be the same one.
+
+        This is the layer the unit tests did not reach and where the defect
+        lived: `bed_gain`'s arithmetic was right, and `amix` was quietly
+        converting a stereo bed to mono on its way in — in the float domain,
+        where the two channels are summed at 1/sqrt(2) each without being
+        renormalised. A bed whose channels are correlated therefore arrived 3 dB
+        above what it had been measured at, and every ratio the tool printed was
+        wrong by that much. With independent channels the same conversion is
+        very nearly right, which is why one bed can look fine and another not.
+
+        Asserted with a SILENT voice, so the mix holds the bed alone and its
+        level can be read directly rather than unmixed.
+        """
+        self.require_ffmpeg()
+        with tempfile.TemporaryDirectory() as tmp:
+            voice = Path(tmp) / "voice.wav"
+            bed = Path(tmp) / "bed.wav"
+            mixed = Path(tmp) / "mixed.wav"
+            self.silence(voice, 2.0)
+            self.stereo_tone(bed, 2.0, 0.5, correlated=correlated)
+            with mock.patch.object(separation, "BED_OFFSET_SECONDS", 0):
+                measured = separation.segment_rms_dbfs(bed, 0, 2.0)
+                # A stated voice level, since the voice here is silence: the
+                # bed must land six decibels under it.
+                gain = separation.bed_gain(-20.0, measured, 6.0)
+                separation.mix(voice, bed, gain, mixed)
+            self.assertAlmostEqual(-26.0, self.whole_file_rms_dbfs(mixed), delta=0.3,
+                                   msg=f"correlated={correlated}")
+
+    def test_a_correlated_stereo_bed_lands_at_the_ratio_it_was_given(self):
+        self.assert_bed_lands_where_it_was_measured(correlated=True)
+
+    def test_an_uncorrelated_stereo_bed_lands_at_the_ratio_it_was_given(self):
+        self.assert_bed_lands_where_it_was_measured(correlated=False)
+
+    def test_a_quieter_singer_asks_for_a_quieter_bed(self):
+        """The defect #505 names, as an assertion: the bed follows the voice's
+        own level rather than a constant, so two clips recorded far apart are
+        mixed at the same ratio rather than at the same bed gain."""
+        loud = separation.bed_gain(-16.8, -20.0, 0.0)
+        quiet = separation.bed_gain(-34.3, -20.0, 0.0)
+        self.assertGreater(loud, quiet)
+
+    def test_peak_reads_a_signal_that_has_headroom(self):
+        """`peak` is what the refusal is decided on, so it is asserted against
+        levels known by construction rather than trusted. Two of them, because
+        one is also what a `peak` that ignored its argument would return."""
+        self.require_ffmpeg()
+        with tempfile.TemporaryDirectory() as tmp:
+            for amplitude, expected in ((0.5, -6.0), (0.125, -18.1)):
+                path = Path(tmp) / f"tone_{amplitude}.wav"
+                self.tone(path, 1.0, amplitude)
+                self.assertAlmostEqual(expected, separation.peak(path), delta=0.2)
+                self.assertFalse(separation.railed(separation.peak(path)))
+
+    def test_a_mix_that_clamps_is_railed(self):
+        """Two full-scale signals summed cannot fit, and the guard has to see
+        it in what ffmpeg reports rather than in the arithmetic that caused it:
+        `mix` writes 16-bit PCM, so the clamp is already done by the time the
+        peak is read."""
+        self.require_ffmpeg()
+        with tempfile.TemporaryDirectory() as tmp:
+            voice, bed, mixed = (Path(tmp) / n for n in ("v.wav", "b.wav", "m.wav"))
+            self.tone(voice, 2.0, 0.99)
+            self.stereo_tone(bed, 2.0, 0.99, correlated=True)
+            with mock.patch.object(separation, "BED_OFFSET_SECONDS", 0):
+                separation.mix(voice, bed, 1.0, mixed)
+            self.assertTrue(separation.railed(separation.peak(mixed)))
+
+    def test_the_rail_is_a_margin_rather_than_an_equality(self):
+        """Pins the constant, which nothing else in this file reaches.
+
+        `volumedetect` reports to a tenth of a decibel, so a clamped mix reads
+        zero at that resolution and so does one peaking a twentieth of a decibel
+        short: the report cannot separate them, and the threshold is the margin
+        that decision needs rather than a measurement of distortion. Asserted
+        here so that dropping the margin is a test failure rather than a silent
+        change of what the tool refuses.
+        """
+        self.assertTrue(separation.railed(-0.1))
+        self.assertFalse(separation.railed(-0.5))
 
 
 if __name__ == "__main__":

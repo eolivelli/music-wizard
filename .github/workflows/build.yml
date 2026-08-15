@@ -27,6 +27,11 @@ jobs:
       # The sample harnesses cannot run here -- the benchmarks they need are
       # local-only for licensing -- but the arithmetic they score a bar and a
       # word by can, on fixtures. Seconds, and no jar needed.
+      #
+      # A handful of them need ffmpeg and skip without it, which this job
+      # accepts rather than installing one: the invariant above is worth more
+      # than running them twice. The integration job runs the same script with
+      # MW_REQUIRE_FFMPEG set, where a skip is a failure instead.
       - name: Test the sample-harness scoring rules
         run: python3 tools/test-harness-rules.py
 
@@ -43,10 +48,21 @@ jobs:
       - name: Install LilyPond
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends lilypond
+          sudo apt-get install -y --no-install-recommends lilypond ffmpeg
           lilypond --version
       - name: Run integration tests
         run: mvn -B --no-transfer-progress verify -Pintegration
+      # The same script the default job runs, with the tests that need ffmpeg
+      # demanded rather than skipped. Their subject is a mixing defect that
+      # survived a whole PR because nothing reached the layer; a green skip is
+      # how it would survive another one. `always()` because this is the only
+      # job that runs them at all, and a red integration suite for an unrelated
+      # reason would otherwise take the mixing guard out of CI while it lasts.
+      - name: Test the harness rules that need ffmpeg
+        if: always()
+        env:
+          MW_REQUIRE_FFMPEG: '1'
+        run: python3 tools/test-harness-rules.py
 
   # The sherpa-onnx ASR provider: built from the source submodule, which the
   # other jobs deliberately do not check out -- their builds must stay free of
