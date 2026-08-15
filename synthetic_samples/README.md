@@ -58,7 +58,7 @@ holds three of its four notes. Eight of its bars — the four `C6` and the four
 neither quality being in the estimator's vocabulary (#287). What that column
 can show here is the rest of the grid: in particular the `Am7` bars, which
 carry the same four pitch classes as the `C6` ones and are nameable, and the
-plain `Em` triad. The root column is what the pair itself measures.
+plain `Em` triad.
 
 Regenerate a package with:
 

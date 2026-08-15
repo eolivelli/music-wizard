@@ -61,12 +61,12 @@ public record ChordSymbol(String token, int rootPitchClass, Quality quality) {
         }
     }
 
-    // Longer suffixes first, so "maj7" is not read as "m" + garbage; "6" is a
-    // prefix of nothing here and sits beside the other bare digit. The empty
-    // alternative last is what spells a plain major triad, which is why parse()
+    // The empty alternative spells a plain major triad, which is why parse()
     // must match the whole token: on a partial match an unknown suffix would
     // take that alternative, and a spec asking for a quality would compile
     // silently to a major triad in the MIDI and in the ground truth alike.
+    // matches() is the whole safety here — alternation order is irrelevant to
+    // it. "6" is a prefix of nothing else in the list.
     private static final Pattern TOKEN =
             Pattern.compile("([A-G])([#b]?)(maj7|m7b5|m7|m6|dim|m|7|6|)");
 
