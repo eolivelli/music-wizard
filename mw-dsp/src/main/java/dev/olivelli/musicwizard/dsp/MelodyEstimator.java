@@ -249,9 +249,8 @@ public final class MelodyEstimator {
      * any dip by its own 93 ms -- but it is not free to widen: on the real
      * singing a reach of this size and one spanning the whole note answer
      * identically, and on the accompanied package the note-wide reach admits
-     * more pad cuts, so the reach does real work exactly where accompaniment
-     * exists. A single-frame reach loses real splits on both corpora. It
-     * keeps a note's far end out of the question; it does not place the
+     * more pad cuts. A single-frame reach loses real splits on both corpora.
+     * It keeps a note's far end out of the question; it does not place the
      * restart precisely.
      */
     private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double medianVoicedness,
