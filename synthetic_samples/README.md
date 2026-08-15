@@ -34,7 +34,10 @@ for the pad too: the pad's chord changes are real articulations in the signal,
 and a monophonic melody stage has nothing with which to disown them, so some
 cut the held note above (#495). The package has now paid on both harnesses for
 its own nature — a further movement on one of its rows should be read against
-that before it is read as a new defect.
+that before it is read as a new defect. Its row's `tempo` column carries the
+measurement the paragraph above describes: the grid runs at 2.16 times the
+written tempo, which is not a multiple of anything and so is a rate that is
+simply wrong rather than an octave error.
 
 `pop-deceptive-f-72` scores low the same way for a different reason: the beat
 is tracked at double the written tempo although the kick and side-stick mark
