@@ -406,7 +406,33 @@ itself (#314, Qwen3-ASR through a sherpa-onnx source submodule, built by
 transcriber knows words but not their times — sherpa's Qwen3 emits none — so
 words are spread across their sung stretch and the aligner measures onsets
 where it speaks the language, which today is English only.
-**Melody is read now (#494), and only from a signal that holds nothing else.**
+**What the melody stage is worth is known now, on real singing.** `vocadito`
+— 40 clips of solo voice annotated note by note by two trained musicians, CC BY
+4.0, fetched into `uncommitted/` — is scored by `tools/score-melody.py --source
+vocadito`, and it carries its own ceiling: each row prints one annotator scored
+against the other by the same rule. That ceiling is nowhere near 100%, because
+where a sung note begins is genuinely ambiguous — the two annotators do not
+even agree how many notes a clip holds. MW sits close under it. Read the
+baseline rather than a figure quoted here.
+
+Two things that measurement overturned, both of which had been believed on the
+strength of how a page looked:
+
+- **Real sung notes are short**, most of them under a quarter of a second. A
+  melody stage returning notes that length is not fragmenting, and a rule that
+  absorbed short notes would destroy real music.
+- **On a mix the melody stage's accuracy is a statement about separation, not
+  about the melody stage.** `tools/measure-separation-cost.py` scores the same
+  annotated voices three ways — clean, through the separator with no band, and
+  through it with a band mixed in. The middle row costs almost nothing, so the
+  separator does not spoil a voice by itself; the whole loss appears once a
+  band is there. What that gap is made of the tool cannot say, and the two
+  candidates want opposite fixes: band the mask failed to remove, or voice the
+  mask removed with it (#503). It also depends on the vocal-to-band ratio,
+  which the tool does not control (#505) — so no figure from it is quoted
+  without saying which clips it covers, and none of them is baselined.
+
+**Melody is read from a signal that holds nothing else (#494).**
 pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
 staff, chord symbols, lyrics. The stage is off unless `analyze --melody` asks
 for it, and that is the whole shape of the thing: a monophonic tracker does not
