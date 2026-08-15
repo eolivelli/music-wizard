@@ -39,10 +39,11 @@ REPO = Path(__file__).resolve().parent.parent
 # Ground truth from samples/list.txt, one token per bar, spelled exactly as
 # ChordQuality.symbol() spells it so that this file, samples/list.txt and the
 # tool's own output all say the same thing: '7' dominant, 'm7' minor seventh,
-# 'maj7' major seventh, 'm6' minor sixth, 'm7b5' half-diminished, 'dim'
-# diminished, plain letter a major triad. 'X-Y' is a bar holding both chords;
-# either counts. Scoring reports root match and root+quality separately, so a
-# plain triad on the right root earns the first and not the second.
+# 'maj7' major seventh, '6' major sixth, 'm6' minor sixth, 'm7b5'
+# half-diminished, 'dim' diminished, plain letter a major triad. 'X-Y' is a
+# bar holding both chords; either counts. Scoring reports root match and
+# root+quality separately, so a plain triad on the right root earns the first
+# and not the second.
 #
 # Every grid here is one repeating cycle a musician confirmed against the
 # recording. Two committed files are deliberately absent: ballad-wine-roses-65

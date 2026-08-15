@@ -1,0 +1,29 @@
+title: Soft pop in C - the sixth and the major seventh as block chords
+genre: pop
+style: pop-rock
+tempo: 92
+key: C major
+seed: 29
+melody: none
+accompaniment: full
+bars:
+# C-E-G-A is C6 and Am7 alike: same four pitch classes, two roots, and only
+# the bass says which (#448). Sections 2 and 3 are the same grid apart from
+# that spelling, and the comping voices the pair identically, so the bass is
+# the whole difference. Sections 1 and 4 do the major seventh: Cmaj7 is
+# C-E-G-B, three of whose notes are the Em triad that section 4 states on its
+# own root. Every section closes V7-I on plain triads. The sixth and the
+# major seventh are in neither of the estimator's vocabularies (#287), so
+# read the root column here; #520 carries what MW names for each.
+# 1: Imaj7
+Cmaj7 Cmaj7 F F
+Cmaj7 Cmaj7 G7 C
+# 2: I6, the added sixth over its own root
+C6 C6 F F
+C6 C6 G7 C
+# 3: the same four notes with the sixth in the bass - vi7
+Am7 Am7 F F
+Am7 Am7 G7 C
+# 4: the major seventh's upper triad on its own root - iii
+Em Em F F
+Em Em G7 C
