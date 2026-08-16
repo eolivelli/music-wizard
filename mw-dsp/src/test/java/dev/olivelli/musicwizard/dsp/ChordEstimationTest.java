@@ -877,11 +877,10 @@ class ChordEstimationTest {
             // meant to rule out.
             //
             // The run where that shows is one the major triad explains worse
-            // than a flat chroma would -- its two remaining notes carry less
-            // than a third of the register -- with the phantom third the
-            // loudest thing in it. The minor triad is the only candidate above
-            // its own floor, and the answer is the veto's: read the third at
-            // face value and the same run is A.
+            // than a flat chroma would, with the phantom third the loudest
+            // thing in it. The minor triad is the only candidate above its own
+            // floor, and the answer is the veto's: read the third at face
+            // value and the same run is A.
             double[] weak = chroma(9, 0.10, 0, 0.04, 4, 0.10, 1, 0.175, 7, 0.02);
 
             assertThat(ChordEstimator.estimate(four(COMBINED), four(weak), four(BASS),
