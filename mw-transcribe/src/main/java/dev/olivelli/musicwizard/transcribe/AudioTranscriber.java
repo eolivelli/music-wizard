@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.transcribe;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
@@ -33,6 +34,7 @@ import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.dsp.NnlsAblation;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import dev.olivelli.musicwizard.dsp.PitchTracker;
@@ -199,7 +201,12 @@ public final class AudioTranscriber {
         // read from frame-level chroma, which needs no beats. Beat-synchronous
         // chroma still needs them and is derived further down.
         progress.accept("extracting chroma");
-        NnlsChroma registers = NnlsChroma.extract(audio);
+        // The transform once, for both views of the same fit: the chroma folds
+        // the activations, the ablation refits without one pitch class at a
+        // time. Handed different transforms they would describe different fits.
+        Spectrogram transform = NnlsChroma.transform(audio);
+        double tuning = Chroma.estimateTuning(transform);
+        NnlsChroma registers = NnlsChroma.extract(transform, tuning);
         Chroma combinedFrames = registers.combined();
         HarmonicRhythm harmonicRhythm = HarmonicRhythm.of(combinedFrames);
 
@@ -283,6 +290,10 @@ public final class AudioTranscriber {
         // where the root is played is the one that can. Beat-synchronised on its
         // own for the same reason the treble is.
         Chroma bass = registers.bass().beatSynchronous(beatTimes);
+        // And the fit's own residual over those same spans, which is what says
+        // whether a third the chroma reports is a third the music holds (#537).
+        NnlsAblation ablation =
+                NnlsAblation.extract(transform, tuning).beatSynchronous(beatTimes);
 
         // Pulses per bar, not the numerator: DownbeatEstimator asks for "the
         // assumed bar length in beats", and the beats it means are the tracked
@@ -329,7 +340,8 @@ public final class AudioTranscriber {
         }
 
         progress.accept("estimating chords");
-        ChordProgression chords = ChordEstimator.estimate(chroma, treble, bass, beatTimes);
+        ChordProgression chords =
+                ChordEstimator.estimate(chroma, treble, bass, ablation, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
 
         // Over the whole recording rather than over the chords' own extent: a key

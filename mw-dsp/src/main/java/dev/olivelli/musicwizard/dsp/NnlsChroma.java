@@ -145,10 +145,22 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
      */
     public static NnlsChroma extract(AudioBuffer audio) {
         Objects.requireNonNull(audio, "audio");
-        int windowSize = windowSizeFor(audio.sampleRate());
-        Spectrogram spectrogram =
-                Spectrogram.compute(audio, windowSize, windowSize / HOPS_PER_WINDOW);
+        Spectrogram spectrogram = transform(audio);
         return extract(spectrogram, Chroma.estimateTuning(spectrogram));
+    }
+
+    /**
+     * The transform this front end runs on, at the resolution
+     * {@link #windowSizeFor(int)} asks for.
+     *
+     * <p>Exposed so that a caller wanting a second view of the same fit —
+     * {@link NnlsAblation}, which refits it — can be handed the transform
+     * rather than computing one that is nearly the same.
+     */
+    public static Spectrogram transform(AudioBuffer audio) {
+        Objects.requireNonNull(audio, "audio");
+        int windowSize = windowSizeFor(audio.sampleRate());
+        return Spectrogram.compute(audio, windowSize, windowSize / HOPS_PER_WINDOW);
     }
 
     /**
@@ -166,11 +178,8 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
                     + tuningOffsetSemitones);
         }
 
-        int binCount = (HIGHEST_GRID_MIDI - LOWEST_MIDI) * BINS_PER_SEMITONE + 1;
-        LogFrequencyAxis axis = new LogFrequencyAxis(
-                LOWEST_MIDI, BINS_PER_SEMITONE, binCount, tuningOffsetSemitones);
-        NoteDictionary dictionary = new NoteDictionary(axis, LOWEST_MIDI, HIGHEST_NOTE_MIDI,
-                spectrogram.sampleRate(), spectrogram.windowSize(), true);
+        LogFrequencyAxis axis = analysisAxis(tuningOffsetSemitones);
+        NoteDictionary dictionary = analysisDictionary(axis, spectrogram);
         NonNegativeLeastSquares solver = new NonNegativeLeastSquares(dictionary.design());
 
         double[][] whitened =
@@ -210,6 +219,24 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
         double frameRate = spectrogram.frameRate();
         return new NnlsChroma(new Chroma(treble, frameRate), new Chroma(bass, frameRate),
                 tuningOffsetSemitones);
+    }
+
+    /** The grid this front end fits on, at a stated tuning. */
+    static LogFrequencyAxis analysisAxis(double tuningOffsetSemitones) {
+        int binCount = (HIGHEST_GRID_MIDI - LOWEST_MIDI) * BINS_PER_SEMITONE + 1;
+        return new LogFrequencyAxis(
+                LOWEST_MIDI, BINS_PER_SEMITONE, binCount, tuningOffsetSemitones);
+    }
+
+    /**
+     * The dictionary this front end fits with. Shared with {@link NnlsAblation}
+     * rather than restated there: an ablation of a different model than the one
+     * the chroma came from would measure something else and say nothing about
+     * it.
+     */
+    static NoteDictionary analysisDictionary(LogFrequencyAxis axis, Spectrogram spectrogram) {
+        return new NoteDictionary(axis, LOWEST_MIDI, HIGHEST_NOTE_MIDI,
+                spectrogram.sampleRate(), spectrogram.windowSize(), true);
     }
 
     /**

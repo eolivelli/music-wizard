@@ -65,6 +65,17 @@ decisions that real recordings forced:
   root's own fifth partial *is* the major third, so a minor candidate is
   charged only for the major-third mass the root cannot account for.
   Subtract all of it and a blues third turns minor chords major.
+- **A third the fit does not need is not a third** (#537). The same partial
+  is why the fit will activate a note that is not playing to cover it, and a
+  chroma reports that note exactly as it reports a played one — which is a
+  minor tonic read major for most of a record (#527). So the quality decision
+  refits the chord's own span with the candidate third's pitch class deleted
+  and reads what the deletion costs (`NnlsAblation`): a major third that
+  removes less residual than the minor third over the same root, *and* only a
+  small share of what the root itself removes, is not counted — neither as a
+  major candidate's evidence nor against a minor one. Both conditions: the
+  ranking alone also fires on a blues third over a dominant, where both
+  thirds are played.
 - **The seventh is a property of the chord, not of the bar**: the minor
   seventh is settled per root across the whole recording — believed where
   most of that root's beats carry it, withdrawn where a minority do — so one

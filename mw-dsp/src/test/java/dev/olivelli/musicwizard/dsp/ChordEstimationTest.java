@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -749,6 +750,128 @@ class ChordEstimationTest {
             assertThatIllegalArgumentException().isThrownBy(() -> ChordEstimator.estimate(
                             four(BOOGIE), four(BOOGIE), beats(BOOGIE, BOOGIE), beatTimes(4)))
                     .withMessageContaining("the same beats");
+        }
+    }
+
+    /**
+     * #537: a strongly voiced root manufactures its own major third, because
+     * partial 5 of a note is the major third and the dictionary under-models
+     * it. The chroma cannot tell that third from a played one; deleting the
+     * pitch class and refitting can, so the quality decision asks.
+     *
+     * <p>Every significance vector below is a reading of a real span, taken
+     * with {@code tools/ThirdProbe.java}: the recording of #527 for the
+     * phantom, {@code samples/blues-a-90bpm.mp3} for the two thirds that are
+     * both played.
+     */
+    @Nested
+    @DisplayName("phantom major thirds (#537)")
+    class PhantomThird {
+
+        /** A=9, C=0, C#=1, E=4: the treble of an A run in the recording of #527. */
+        private static final double[] TREBLE = chroma(9, 0.21, 0, 0.036, 1, 0.164, 4, 0.23);
+
+        /** The same run in both registers added, which is what the root is decoded from. */
+        private static final double[] COMBINED = chroma(9, 0.342, 0, 0.091, 1, 0.059, 4, 0.18);
+
+        /** And the bass alone, which names A and nothing else. */
+        private static final double[] BASS = chroma(9, 0.523, 0, 0.074, 1, 0.008, 4, 0.109);
+
+        /** A chroma vector from {@code pitchClass, share} pairs, the rest spread evenly. */
+        private static double[] chroma(double... pairs) {
+            double[] out = new double[12];
+            double named = 0;
+            for (int i = 0; i < pairs.length; i += 2) {
+                out[(int) pairs[i]] = pairs[i + 1];
+                named += pairs[i + 1];
+            }
+            double rest = (1 - named) / (12 - pairs.length / 2);
+            for (int i = 0; i < 12; i++) {
+                if (out[i] == 0) {
+                    out[i] = rest;
+                }
+            }
+            return out;
+        }
+
+        private static Chroma four(double[] vector) {
+            return beats(vector, vector, vector, vector);
+        }
+
+        /** A significance vector holding the three values the decision reads. */
+        private static PitchClassAblation ablation(double minorThird, double majorThird,
+                                                   double root) {
+            double[] out = new double[12];
+            out[0] = minorThird;
+            out[1] = majorThird;
+            out[9] = root;
+            return (from, to) -> out;
+        }
+
+        private static String label(PitchClassAblation ablation) {
+            return ChordEstimator.estimate(four(COMBINED), four(TREBLE), four(BASS), ablation,
+                    beatTimes(4)).chords().get(0).symbol();
+        }
+
+        @Test
+        @DisplayName("a major third the fit does not need is not evidence of a major chord")
+        void thePhantomThirdDoesNotDecideTheQuality() {
+            // The treble puts four and a half times as much on the major third
+            // as on the minor one, and the recording holds no A major (#527).
+            // Deleting the pitch class says why: the minor third is carrying
+            // more of the spectrum than the major third is, and the major third
+            // is at the level the root's own partial accounts for.
+            assertThat(ChordEstimator.estimate(four(COMBINED), four(TREBLE), four(BASS),
+                    beatTimes(4)).chords()).extracting(Chord::symbol).containsExactly("A");
+
+            assertThat(label(ablation(0.072, 0.045, 0.819))).isEqualTo("Am");
+        }
+
+        @Test
+        @DisplayName("a major third the fit needs is left alone")
+        void aPlayedMajorThirdStillDecidesTheQuality() {
+            // The same chroma, and an A7 span of samples/blues-a-90bpm.mp3's
+            // residual: the major third removes nearly three times what the
+            // minor third does, so nothing is discounted and the treble decides
+            // as it did before.
+            assertThat(label(ablation(0.065, 0.175, 0.287))).isEqualTo("A");
+        }
+
+        @Test
+        @DisplayName("a blues third over a dominant does not turn the chord minor")
+        void aMinorThirdThatOutweighsTheMajorOneIsNotEnough() {
+            // What the level test is for. Later in the same recording both
+            // thirds are played and the minor one carries more -- and this is a
+            // dominant seventh chord, not a minor one, so ranking the two
+            // thirds against each other is not on its own a reason to drop the
+            // major one. It stays because it removes far more residual than the
+            // root's own partial would account for.
+            assertThat(label(ablation(0.121, 0.096, 0.330))).isEqualTo("A");
+        }
+
+        @Test
+        @DisplayName("the residual is read once per chord, over the chord's own beats")
+        void theAblationIsAskedOncePerRun() {
+            // Not per beat: thirteen solves a beat is a different price, and a
+            // third that sounds on some beats of a chord is the chord's third.
+            List<int[]> asked = new java.util.ArrayList<>();
+            PitchClassAblation recorder = (from, to) -> {
+                asked.add(new int[] {from, to});
+                return new double[12];
+            };
+            double[] onD = chroma(2, 0.35, 6, 0.20, 9, 0.25);
+            Chroma both = beats(COMBINED, COMBINED, COMBINED, COMBINED, onD, onD, onD, onD);
+
+            assertThat(ChordEstimator.estimate(both, both, both, recorder, beatTimes(8))
+                    .chords()).extracting(Chord::symbol).containsExactly("Am", "D");
+            assertThat(asked).extracting(a -> a[0] + "-" + a[1]).containsExactly("0-4", "4-8");
+        }
+
+        @Test
+        @DisplayName("refuses a null ablation rather than quietly deciding without it")
+        void rejectsANullAblation() {
+            assertThatNullPointerException().isThrownBy(() -> ChordEstimator.estimate(
+                    four(COMBINED), four(TREBLE), four(BASS), null, beatTimes(4)));
         }
     }
 }
