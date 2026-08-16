@@ -40,91 +40,37 @@ import java.util.function.Consumer;
  * Recognises chords from notes whose pitches, onsets and durations are already
  * exact.
  *
- * <p>The symbolic counterpart of {@code ChordEstimator}, and deliberately not a
- * reuse of it. That one matches chroma -- a twelve-bin summary of spectral
- * energy -- against binary templates and smooths the result with Viterbi,
- * because on the audio path a chroma bin is all there is. Here the input is a
- * set of notes, and three things are known that no chroma can carry:
+ * <p>The symbolic counterpart of {@code ChordEstimator}, and deliberately not
+ * a reuse of it: notes carry what no chroma can — exact sounding durations,
+ * exact pitches, and which part each note came from. Synthesising a chroma to
+ * reuse the audio matcher would discard all three and then run the result
+ * through constants calibrated against real chroma statistics.
  *
- * <ul>
- *   <li><em>How long each pitch sounds</em>, exactly. A histogram weighted by
- *       sounding duration says a half note matters four times as much as an
- *       eighth. Chroma weights by energy instead, which is dominated by attack
- *       transients and by whichever instrument is loudest.</li>
- *   <li><em>Which pitch it is</em>, rather than which bin it landed in. There is
- *       no tuning offset, no leakage into neighbouring bins, and no bass partial
- *       masquerading as an upper chord tone -- the defect NNLS chroma (#3)
- *       exists to attack on the audio side and which simply does not arise
- *       here.</li>
- *   <li><em>Which part it came from</em>. A note in a {@link PartRole#BASS}
- *       track is known to be bass rather than inferred to be, which is what
- *       makes a root reliable and a slash chord expressible.</li>
- * </ul>
+ * <p>One decision per counted beat (a 6/8 bar is two dotted-quarter spans),
+ * every position in quarter-note beats, seconds appearing once at the end
+ * through {@link TempoMap}. Each span gets a duration-weighted pitch-class
+ * histogram, each candidate a score, and the sequence a Viterbi pass whose
+ * only structure is that changing chord costs something, halved at a bar
+ * line.
  *
- * <p>Synthesising a chroma from the notes and feeding the audio estimator would
- * discard all three, and would then run the result through constants --
- * {@code EMISSION_SHARPNESS}, the 0.65-to-1 cosine rescale, the flat no-chord
- * template -- calibrated against the statistics of real chroma, which a
- * synthesised profile does not have. It would be a lossy re-encoding performed
- * so that a matcher could be reused.
- *
- * <h2>Method</h2>
- *
- * <p>One decision per counted beat, taken from {@link TimeSignature#beatsPerBar}
- * and {@link TimeSignature#beatUnitQuarters} so a 6/8 bar is two dotted-quarter
- * spans rather than six eighth-note ones. Every span is therefore beat-aligned
- * by construction, and every position in this class is in quarter-note beats;
- * seconds appear once, at the very end, through {@link TempoMap}.
- *
- * <p>Each span gets a duration-weighted pitch-class histogram, each candidate
- * chord a score, and the sequence a Viterbi pass whose only structure is that
- * changing chord costs something. That last part is not decoration: a per-span
- * argmax changes chord on every passing note and produces a chart nobody can
- * read. The cost is halved at a bar line, because that is where harmony
- * actually changes.
- *
- * <h2>What it declines to answer</h2>
- *
- * <p>No chord is a legitimate answer and this returns it: for silence, for a
- * drum-only file, and for any span whose winning chord never manages to sound
- * three of its own notes. A held drone falls into the last case, and so does a
- * line that keeps moving. When <em>every</em> span comes back that way the
- * result is {@link ChordProgression#empty()} rather than a page of {@code N.C.}
- *
- * <p>It is worth being exact about the one people expect and do not get. An
- * unaccompanied melody is <em>not</em> reliably discarded: measured over two
- * thousand random monophonic diatonic lines, 96% of them carry at least one
- * chord label. That is not a bug so much as the same judgement seen from the
- * other side -- an arpeggio is an unaccompanied melody too, and a line dwelling
- * on three tones of one chord is real evidence about the harmony, which is why
- * {@code anArpeggioIsStillAChord} expects a label. What separates the two is
- * only how much the line moves, and a tune that outlines its tonic triad looks
- * exactly like an accompaniment that does. The confidence is where that shows:
- * the repository's own 6/8 melody fixture comes back as {@code Cmaj7} at
- * <em>zero</em> confidence, because {@code Am7} explains it exactly as well and
- * nothing separates them.
+ * <p>No chord is a legitimate answer: silence, a drum-only file, and any span
+ * whose winning chord never sounds three of its own notes. When every span
+ * comes back that way the result is {@link ChordProgression#empty()} rather
+ * than a page of {@code N.C.} An unaccompanied melody is <em>not</em> reliably
+ * discarded — an arpeggio is an unaccompanied melody too, and a line dwelling
+ * on three tones of one chord is real evidence about the harmony; what shows
+ * the ambiguity is the confidence, not the label.
  */
 public final class SymbolicChordEstimator {
 
     /**
-     * What the chord's own notes actually sounding is worth, against explaining
-     * the span's weight at 1.
-     *
-     * <p>Coverage alone cannot tell C major from C minor over a span holding
-     * only a C: both explain all of it. Completeness breaks that tie towards the
-     * chord that has more of itself present, and is what keeps a lone pitch
-     * class from scoring as highly as a stated triad.
-     *
-     * <p>One constant rather than two, because only the ratio does anything --
-     * {@link #FIT_SCALE} divides the pair back out. Two would look like two
-     * degrees of freedom and be one, and a mutation of the numerator would then
-     * be indistinguishable from a mutation of this.
-     *
-     * <p>What the tests pin is that the term is <em>there</em>: removing it
-     * changes an answer. They do not pin the size, and it is worth saying so --
-     * halving this to 0.25 leaves every fixture's chords identical. It is
-     * calibrated only against {@link #NO_CHORD_FIT}, which is stated in terms
-     * of it.
+     * What the chord's own notes actually sounding is worth, against
+     * explaining the span's weight at 1. Coverage alone cannot tell C major
+     * from C minor over a span holding only a C; completeness breaks the tie
+     * towards the chord with more of itself present. One constant rather than
+     * two because only the ratio does anything — {@link #FIT_SCALE} divides
+     * the pair back out. Tests pin that the term exists, not its size; it is
+     * calibrated only against {@link #NO_CHORD_FIT}.
      */
     private static final double COMPLETENESS_WEIGHT = 0.5;
 
@@ -132,37 +78,19 @@ public final class SymbolicChordEstimator {
     private static final double FIT_SCALE = 1 + COMPLETENESS_WEIGHT;
 
     /**
-     * Share of a span's weight a chord tone must carry to count as sounding.
-     *
-     * <p>This is what stops a passing note from promoting a triad to a seventh:
-     * a B touched for half a beat under four beats of C-E-G is 3% of the span
-     * and does not make it a Cmaj7, while a B held alongside them is 25% and
-     * does.
+     * Share of a span's weight a chord tone must carry to count as sounding —
+     * what stops a briefly touched passing note from promoting a triad to a
+     * seventh while a held one still does.
      */
     private static final double MIN_TONE_SHARE = 0.05;
 
     /**
-     * The fit "no chord" is worth, on the same 0..1 scale as every other state.
-     *
-     * <p>Sits between the two shapes that have to be told apart. A span sounding
-     * one note of a triad scores {@code (1 + 0.5/3) / 1.5 = 0.78}; a span
-     * sounding nothing that triad contains scores 0. An arpeggio is the first
-     * shape every beat and accumulates into a chord; a passage where nothing
-     * fits is the second and comes back as no chord.
-     *
-     * <p>Worth being precise about what this does <em>not</em> decide, because
-     * measuring it was a surprise twice over. A line that keeps moving does not
-     * fail here: it chatters, taking every triad it passes through down to 0
-     * while the decoder pays the change penalty to follow it, one chord per
-     * note, and what discards those is {@link #MIN_CHORD_TONES} afterwards --
-     * a one-beat run holding one pitch class states nothing. This threshold is
-     * what keeps the same thing happening to an arpeggio.
-     *
-     * <p>And a line that does <em>not</em> keep moving is not discarded at all.
-     * Most melodies dwell: 96% of two thousand random monophonic diatonic lines
-     * came back with a chord on them. Neither this threshold nor
-     * {@link #MIN_CHORD_TONES} is a filter for "unaccompanied", and nothing here
-     * is -- see the class javadoc.
+     * The fit "no chord" is worth, on the same 0..1 scale as every other
+     * state. Sits between a span sounding one note of a triad — an arpeggio's
+     * shape, which accumulates into a chord — and one sounding nothing the
+     * triad contains. It does not discard a moving line (that chatters and is
+     * discarded by {@link #MIN_CHORD_TONES} afterwards), and neither is a
+     * filter for "unaccompanied" — see the class javadoc.
      */
     private static final double NO_CHORD_FIT = 0.47;
 
@@ -201,46 +129,22 @@ public final class SymbolicChordEstimator {
 
     /**
      * The most confidence a chord label from this vocabulary can be given.
-     *
-     * <p>Not 1.0. {@link Confidence#CERTAIN} is documented as a value read
-     * directly from the file, and a template match is inferred from one. Nor is
-     * a perfect fit even a guarantee of the right <em>label</em>: C6 and Am7 are
-     * the same four pitch classes and only one of them is offered (#122), so a
-     * span can state its chord exactly and still be given the other name.
-     *
-     * <p>A "no chord" over silence is exempt, because that one <em>is</em> read
-     * from the file: nothing sounds, and nothing sounding is not an inference.
-     *
-     * <p>A judgement rather than a measurement, and deliberately the smaller half
-     * of the story: how far the winner beat the runner-up is measured, and lives
-     * in {@link #DECISIVE_MARGIN}. This one covers what a margin cannot see,
-     * which is a rival that was never offered.
+     * Not full: a template match is inferred, and a perfect fit does not even
+     * guarantee the right label — C6 and Am7 are the same four pitch classes
+     * and only one is offered (#122). "No chord" over silence is exempt,
+     * being read from the file rather than inferred. This covers what
+     * {@link #DECISIVE_MARGIN}'s measured margin cannot see: a rival that was
+     * never offered.
      */
     private static final double VOCABULARY_CEILING = 0.9;
 
     /**
      * The margin over the runner-up at which a label stops being a guess.
-     *
-     * <p>Measured rather than chosen, over the aggregate of a whole run. The
-     * fixture is named for each row because the scores depend on the voicing and
-     * on whether a bass note doubles a pitch class, so rows from different
-     * fixtures are not one experiment:
-     *
-     * <pre>
-     *   every bar of fourChordSong    C     1.100 vs C7   0.917  margin 0.183
-     *   C-E-G-A over an A bass        Am7   1.000 vs Am   0.967  margin 0.033
-     *   C-E-G-A over a C bass         C     0.967 vs Am7  0.900  margin 0.067
-     *   C-E flat-G-B flat, keys alone Cm7   1.000 vs Cm   0.933  margin 0.067
-     * </pre>
-     *
-     * <p>The first is a chord nobody would argue about and the second is the
-     * C6-versus-Am7 ambiguity of #122, so 0.15 puts the first at full confidence
-     * and the second at a fifth of it. The two seventh rows sit between, which is
-     * right: whether to write Cm or Cm7 for a sustained C-E flat-G-B flat is a
-     * question charts genuinely disagree on.
-     *
-     * <p>Four points is enough to show the quantity discriminates and not enough
-     * to fix the threshold, which is part of what #124 is for.
+     * Measured over run aggregates: an unarguable chord clears it fully, the
+     * C6-versus-Am7 ambiguity of #122 reaches a fraction of it, and the
+     * Cm-versus-Cm7 rows sit between, which is right — charts genuinely
+     * disagree there. Not enough measurement to fix the threshold, which is
+     * part of what #124 is for.
      */
     private static final double DECISIVE_MARGIN = 0.15;
 
@@ -259,16 +163,11 @@ public final class SymbolicChordEstimator {
     private static final int MIN_CHORD_TONES = 3;
 
     /**
-     * The most spans this will decide over.
-     *
-     * <p>The Viterbi back-pointers are one byte per span per state, so 100,000
-     * spans is about 13 MB -- fine for anything with music in it, since a
-     * fifteen-minute piece is under 4,000. What the cap is really guarding
-     * against is a file whose last event carries an enormous delta time: the
-     * four-megabyte limit in {@link MidiTranscriber} bounds the note count but
-     * not the tick position, so a handful of notes can declare a span of days.
-     * Such a file still imports its notes; it just gets no chords, which is the
-     * honest answer for music that is almost entirely silence.
+     * The most spans this will decide over — far above any real piece. Guards
+     * against a file whose last event carries an enormous delta time:
+     * {@link MidiTranscriber}'s size limit bounds the note count but not the
+     * tick position, so a handful of notes can declare a span of days. Such a
+     * file still imports its notes; it just gets no chords.
      */
     private static final int MAX_SPANS = 100_000;
 
@@ -305,33 +204,22 @@ public final class SymbolicChordEstimator {
     private static final int NO_CHORD_STATE = TEMPLATES.size();
 
     /**
-     * The candidate chords: every quality in the vocabulary on every root.
+     * The candidate chords: every quality in the vocabulary on every root —
+     * wider than the audio estimator's, because exact pitches support the
+     * distinction and a chroma bin does not. Each quality carries a prior it
+     * has to overcome, or every four-note label would win by covering at
+     * least as much weight as the triad inside it.
      *
-     * <p>Wider than the audio estimator's major-and-minor vocabulary, because
-     * exact pitches support the distinction and a chroma bin does not: a seventh
-     * either sounds for a quarter of the bar or it does not. Each quality
-     * carries a prior it has to overcome, which is what stops the richer labels
-     * winning by default -- every four-note template covers at least as much
-     * weight as the triad inside it, so with no cost attached every major chord
-     * would be reported as a major seventh.
-     *
-     * <p>Three of {@link ChordQuality}'s constants are absent. Sixths, because
-     * C6 and Am7 are the same four pitch classes and differ only in which one is
-     * the root, so offering both would put two states in permanent competition
-     * to be settled by the bass alone. What a C6 voicing actually comes back as
-     * therefore depends on its bass: over a C it is {@code C}, the sixth simply
-     * unnamed, and over an A it is {@code Am7} -- neither wrong, both
-     * unidiomatic. See #122.
-     *
-     * <p>The minor-major seventh for a different reason: it is rare enough that
-     * the passing major seventh over a minor triad -- a suspension, or a line
-     * descending from the octave -- is a likelier explanation of the same four
-     * pitch classes than the chord is. C-E flat-G-B comes back as {@code Cm}.
+     * <p>Absent: sixths, because C6 and Am7 are the same four pitch classes
+     * and offering both puts two states in permanent competition settled by
+     * the bass alone (#122); and the minor-major seventh, rare enough that a
+     * passing major seventh over a minor triad is the likelier explanation of
+     * the same notes.
      */
     private static List<Template> buildTemplates() {
-        // Prior per quality, in fit units. Zero for the two qualities a chart is
-        // mostly made of; a tone's worth for anything adding a fourth note; a
-        // little for the triads that a couple of passing notes can counterfeit.
+        // Prior per quality, in fit units: zero for the two a chart is mostly
+        // made of, a tone's worth for a fourth note, a little for triads a
+        // couple of passing notes can counterfeit.
         Object[][] vocabulary = {
             {ChordQuality.MAJOR, 0.00},
             {ChordQuality.MINOR, 0.00},
@@ -488,35 +376,14 @@ public final class SymbolicChordEstimator {
     }
 
     /**
-     * Every pitched note in the score, in onset order.
-     *
-     * <p>All parts, not the one that looks like the accompaniment: the audio
-     * rule that chords come from the full mix rather than from a separated stem
-     * has the same force here, and a melody note is evidence about the harmony
-     * whether or not it is a chord tone.
-     *
-     * <p>Drums are the exception, and not by analogy with that rule but because
-     * a percussion note has no pitch to contribute. A General MIDI kit's note
-     * numbers are instrument selectors -- 36 is a bass drum, 38 a snare, 42 a
-     * closed hi-hat -- so reading them as pitches injects a C, a D and an F
-     * sharp in whatever proportion the groove happens to use them.
-     *
-     * <p>Which is a claim about {@link PartRole#DRUMS} and therefore, today,
-     * about channel 10 and nothing else: {@code MidiTranscriber.inferRole}
-     * assigns that role from the channel alone, because a part named
-     * "Percussion" is as likely to be a marimba as a conga and guessing wrong
-     * picks the clef and the staff as well as the harmony. So percussion routed
-     * elsewhere -- channel 11 in GS and XG, which is where a second kit goes --
-     * still reaches this histogram as a pitched part, and if its notes are held
-     * rather than clipped it changes the chart. #137 has the measurements and
-     * the candidate fixes; none of them is a one-liner, which is why this says
-     * what it does rather than claiming an exclusion it does not have.
-     *
-     * <p>Notes without musical time are skipped rather than converted, for the
-     * reason {@link NoteTrack#notesBetweenBeats} gives: they have no position on
-     * this axis and inventing one is what the optional fields exist to prevent.
-     * Nothing on the MIDI path produces such a note, but this class is not
-     * limited to that path.
+     * Every pitched note in the score, in onset order. All parts — the audio
+     * rule that chords come from the full mix has the same force here — except
+     * drums, whose note numbers are instrument selectors rather than pitches.
+     * That exclusion is a claim about {@link PartRole#DRUMS}, which today
+     * means channel 10 only, so percussion routed elsewhere still reaches
+     * this histogram as a pitched part (#137). Notes without musical time are
+     * skipped rather than converted — they have no position on this axis and
+     * inventing one is what the optional fields exist to prevent.
      */
     private static List<Voiced> pitchedNotes(List<NoteTrack> tracks) {
         List<Voiced> voiced = new ArrayList<>();
@@ -538,21 +405,13 @@ public final class SymbolicChordEstimator {
     }
 
     /**
-     * The duration-weighted pitch-class histogram of every span.
-     *
-     * <p>A sweep rather than a scan per span: a note is added when the sweep
-     * reaches it and dropped when it stops sounding, so the cost is the total
-     * note-span overlap rather than notes times spans. A whole-note pedal under
-     * a moving line is the case that makes the difference, and it is also the
-     * case this whole class has to get right.
-     *
-     * <p>Total overlap is not the same bound as linear, and on input that is
-     * adversarial rather than musical -- a hundred thousand sustained notes all
-     * sounding at once -- it degenerates back to notes times spans and takes
-     * minutes. {@link BassLine} answers the same shape in {@code O(n log n)} and
-     * the same treatment applies here; #135 records the measurements. Real
-     * arrangements are nowhere near it: a 256,000-note file whose notes are not
-     * all simultaneous goes through this in under a second.
+     * The duration-weighted pitch-class histogram of every span. A sweep
+     * rather than a scan per span, so the cost is total note-span overlap
+     * rather than notes times spans — the whole-note pedal under a moving
+     * line is the case that makes the difference. On adversarial input the
+     * overlap bound still degenerates; #135 records the measurements and the
+     * {@link BassLine}-style treatment that would fix it. Real arrangements
+     * are nowhere near it.
      */
     private static Histogram[] histograms(List<Span> spans, List<Voiced> notes,
                                           BassReader bass) {
@@ -603,16 +462,10 @@ public final class SymbolicChordEstimator {
 
     /**
      * The lowest sounding pitch across the whole piece, as a piecewise-constant
-     * function of position in quarter-note beats.
-     *
-     * <p>Built once and integrated per span, rather than worked out inside each
-     * span. It is a property of the music, not of a decision window, and
-     * treating it as the latter cost more than tidiness: rebuilding it per span
-     * re-read every note still sounding, which is quadratic in the notes
-     * sounding at once and is not a shape {@link #MAX_SPANS} bounds -- that
-     * bounds spans. Measured on a 256,000-note file well inside
-     * {@code MidiTranscriber}'s four-megabyte import cap, the per-span form took
-     * 39.6 seconds and this one takes under a second.
+     * function of position in quarter-note beats. Built once and integrated
+     * per span: it is a property of the music, not of a decision window, and
+     * rebuilding it per span was measured quadratic in the notes sounding at
+     * once — a shape {@link #MAX_SPANS} does not bound.
      *
      * <p>Which notes go into one is {@link BassReader}'s question, not this
      * class's: it builds one of these over the declared bass part and one over
@@ -751,22 +604,12 @@ public final class SymbolicChordEstimator {
     }
 
     /**
-     * Where the bass of a span comes from.
-     *
-     * <p>A declared {@link PartRole#BASS} part where it is sounding, and the
-     * bottom of the texture where it is not. Round 1 of the review on #115
-     * replaced that fallback with a single decision for the whole score, on the
-     * argument that switching definition bar by bar reads two different things
-     * and calls both the bass. Round 2 showed the cure was worse: with no
-     * fallback, a bass part resting for a break makes the bass <em>silent</em>,
-     * the root bonus vanishes with it, and an unchanged four-bar C over held keys
-     * splits into {@code C} then {@code Am7} at the bar the bassist stopped
-     * playing. Declaring a bass part was strictly worse than not declaring one.
-     *
-     * <p>So the fallback is back, and the reason the round-1 change was made --
-     * that rebuilding this per span was quadratic -- is answered by building both
-     * lines once instead. Two sweeps, and the choice per span is which of two
-     * answers to read.
+     * Where the bass of a span comes from: a declared {@link PartRole#BASS}
+     * part where it is sounding, and the bottom of the texture where it is
+     * not. The fallback is load-bearing — without it a bass part resting for
+     * a break silences the bass, the root bonus vanishes, and a held chord
+     * splits at the bar the bassist stopped playing. Both lines are built
+     * once; the choice per span is which of two answers to read.
      */
     static final class BassReader {
 
@@ -1016,10 +859,8 @@ public final class SymbolicChordEstimator {
             }
             Histogram aggregate = aggregate(histograms, run.fromSpan(), run.toSpan());
             int bass = runBassPitchClass(histograms, run);
-            // How far the winner beat whatever came second, which is a different
-            // question from how well it fitted. A perfectly stated triad clears
-            // its nearest rival by 0.18 on the fixtures; the C6-versus-Am7
-            // ambiguity clears its own by 0.03.
+            // How far the winner beat whatever came second — a different
+            // question from how well it fitted.
             double winner = run.state() == NO_CHORD_STATE
                     ? NO_CHORD_FIT
                     : scoreOver(TEMPLATES.get(run.state()), aggregate, bass);
@@ -1045,23 +886,10 @@ public final class SymbolicChordEstimator {
                                 Confidence.clamped(VOCABULARY_CEILING
                                         * fit(template, aggregate) * separation))
                         .quantizedTo(startBeat, endBeat);
-                // A slash only for a bass that is one of the chord's own notes,
-                // which is to say only for an inversion. Two reasons, and the
-                // second is the one that would bite:
-                //
-                // A bass on a note the chord does not contain is either a
-                // passing note the estimator should not enshrine, or a genuine
-                // C/D -- and nothing here can tell those apart, since both look
-                // like a held pitch under a triad.
-                //
-                // And a Chord's pitchClasses() are computed from root and
-                // quality and do not include the bass, so a C/D would carry a
-                // symbol promising a note the method does not report. Nothing
-                // reads pitchClasses() outside mw-core today -- mw-arrange has
-                // no sources yet and there is no MIDI writer -- so this is a
-                // gap waiting rather than a break happening, and the arranger
-                // (#10) is what will walk into it. Lifting this gate is a change
-                // to the model, not to this line; see #134.
+                // A slash only for an inversion: a bass outside the chord is
+                // either a passing note or a genuine C/D, indistinguishable
+                // here — and Chord.pitchClasses() omits the bass, so a C/D
+                // would promise a note the model does not report (#134).
                 if (bass >= 0 && bass != template.root() && isChordTone(template, bass)) {
                     chord = chord.withBass(spell(bass, flats));
                 }
