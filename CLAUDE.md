@@ -45,10 +45,10 @@ least like music, so it wins on a real mix whatever the chroma is.
 
 No single constant does it, though, and the first draft of this paragraph
 claimed one did — three changes reach 58.9% and the largest of them alone
-reaches 17.5%. `ChordEstimator` carries the decomposition and is the only place
-it is measured; do not restate it here, because this figure has already gone
-stale in four separate files. The lesson is not "a constant can fix it" but
-"the emission model was wrong in a way the front end could not compensate for".
+reaches 17.5%. `tools/ChordSweep.java` is what re-derives the decomposition;
+do not restate it anywhere, because this figure has already gone stale in four
+separate files. The lesson is not "a constant can fix it" but "the emission
+model was wrong in a way the front end could not compensate for".
 
 So: work that makes real audio work outranks work that polishes what already
 works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
@@ -121,7 +121,8 @@ read over about a bar rather than beat by beat, because a walking bass passes
 through the third and the sixth and asserting a root at every passing note
 splits a chord's run in two — and a run split in two has its quality decided
 twice from half the evidence each time, which is a different defect wearing the
-same clothes. `ChordEstimator` carries both constants and the sweeps;
+same clothes. `ChordEstimator` carries both constants, `tools/ChordSweep.java`
+re-derives the sweeps;
 `tools/baselines/` carries what it was worth, which was most of the corpus and
 not only the shuffle.
 
