@@ -37,345 +37,49 @@ import java.util.function.ToDoubleFunction;
  * bar, takes out any shuffle, and fills in the musical timing every note is
  * missing.
  *
- * <h2>What it is trying to do</h2>
+ * <p>The objective is plausibility, not reproduction — a more literal
+ * transcription is usually a worse lead sheet. Per bar, each candidate in
+ * {@link GridResolution} is scored as total onset deviation plus a complexity
+ * penalty charged per note; the per-bar scores are then decoded with a Viterbi
+ * pass charging {@link QuantizationSettings#gridChangePenalty()} for changing
+ * subdivision between bars, waived at a {@link Section} boundary. One grid per
+ * bar for the whole score, so the staves of a system agree about what a beam
+ * means.
  *
- * <p>Not to reproduce the recording. Even a transformer given ground-truth beats
- * reaches only about 83% note-value accuracy, and the ceiling is not the
- * interesting part -- the interesting part is that a <em>more</em> literal
- * transcription is usually a worse lead sheet. A triplet passage written as an
- * eighth followed by two sixteenths is arithmetically closer to what was played
- * and musically useless. So the objective is plausibility, and the mechanism is
- * a complexity penalty: a finer or more exotic grid has to buy enough accuracy
- * to be worth the reading cost.
+ * <p>Chords, sections and keys go onto the beat axis too — leaving them in
+ * seconds would leave two independently rounded answers to where beat three is
+ * — but not onto the note grid: a section or key change goes to the nearest
+ * bar line, where it is engraved, and a chord to the nearest counted beat, the
+ * unit both chord estimators already decide over. So the chord printed on a
+ * beat need not be the one sounding there (#158): a change heard in the second
+ * half of a beat is an anticipation and is written on the beat it approaches,
+ * within half a counted beat of where the harmony changes (plus at most the
+ * overlap {@code ChordProgression} tolerates, on the one clamp path;
+ * {@code theBoundHoldsWhereTheClampMovesABoundary} asserts the excess). The
+ * bound assumes boundaries stated in seconds — a progression re-read against a
+ * corrected tempo map keeps its carried beats, which is #171, a separate
+ * defect.
  *
- * <h2>How the grid is chosen</h2>
+ * <p>A span shorter than the unit it snaps to can collapse to nothing, and
+ * nothing is ever deleted (#157, reversing #147: a dropped chord makes the
+ * chart name a harmony nobody played, which no downstream fix can recover). A
+ * collapsed section or key keeps its seconds and gets no beats; a collapsed
+ * chord withdraws the whole progression from the beat axis, because
+ * {@code isQuantized()} is one verdict and every consumer gates on it. #173
+ * (per-chord placement) is the answer that is not a trade, and should land
+ * before this pass is wired into the pipeline.
  *
- * <p>Per bar, each candidate in {@link GridResolution} is scored as the total
- * absolute distance from every onset in the bar to its nearest grid position,
- * plus a complexity penalty charged per note. Because the binary grids are
- * nested, a finer one can only ever reduce the deviation, and on material that
- * really is on the coarse grid it reduces it only by the fraction of the
- * player's own noise it happens to absorb -- so the penalty decides, which is
- * what makes the choice stable. The triplet grids are not nested with the
- * binary ones and genuinely compete.
- *
- * <p>Those per-bar scores are then decoded with a Viterbi pass that charges
- * {@link QuantizationSettings#gridChangePenalty()} for changing subdivision
- * between adjacent bars, with the charge waived at a {@link Section} boundary.
- * This is not a refinement. A grid picked per bar with no prior changes
- * subdivision on nothing more than which way the noise fell, and the result is
- * unreadable. A bar holding no onsets scores zero everywhere and therefore
- * inherits its neighbours' grid rather than dragging the section back to whole
- * notes.
- *
- * <p>One grid is chosen per bar for the whole score rather than per track, so
- * that the staves of a system agree about what a beam means. The cost is that a
- * dense drum part can pull a bar finer than the melody needed; the benefit is
- * that the melody is then still exactly on the grid, because the binary grids
- * are nested.
- *
- * <h2>The spans: chords, sections and keys</h2>
- *
- * <p>These carry the same optional musical timing a {@link Note} does, and for
- * the same reason, so leaving them in seconds while the notes moved onto the
- * beat axis would leave two readers of one fact: everything that aligns harmony
- * or structure to a bar -- the chord chart, chord-over-lyric placement, a key
- * signature -- would be working from a second, independently rounded, answer to
- * where beat three is.
- *
- * <p>They do <em>not</em> go onto the note grid, and that is the one design
- * decision here worth arguing about.
- *
- * <ul>
- *   <li><b>A section boundary and a key change go to the nearest bar line.</b>
- *       Both are engraved there and nowhere else -- a rehearsal mark and a
- *       double bar, a key signature -- so any finer position is a position the
- *       notation stage would have to round away again, and rounding it twice is
- *       how the two answers diverge. This class already <em>assumed</em> as much:
- *       {@link #sectionStarts} has always waived the grid-change penalty at the
- *       bar a section falls in, and now waives it at the bar the section is
- *       published at, which is the same bar by construction rather than by
- *       coincidence.
- *   <li><b>A chord goes to the nearest counted beat</b> -- a quarter in 4/4, a
- *       dotted quarter in 6/8. Not the bar's note grid: a chart does not change
- *       harmony inside a subdivision, and a bar pulled onto a sextuplet grid by
- *       a busy drum part would otherwise let a chord symbol land a sixth of a
- *       beat in. The counted beat is also the unit both chord estimators already
- *       decide over -- {@code SymbolicChordEstimator} takes exactly one decision
- *       per counted beat, and the audio one is beat-synchronous -- so a chord
- *       that arrives already aligned is snapped to the position it already had
- *       rather than perturbed. And because every grid in
- *       {@link GridResolution} divides the counted beat, a chord position is
- *       always a position on the note grid too; the coarser axis is a sub-grid
- *       of the finer one rather than a rival to it.
- * </ul>
- *
- * <p><b>So the chord printed on a beat need not be the one sounding there</b>,
- * and that is #158. It is worth saying outright because it does not follow from
- * "each boundary goes to the nearest counted beat" without a moment's thought,
- * and a reader who has not had that moment will believe the chart. A change
- * heard in the second half of a beat is written on the beat it is approaching,
- * so the symbol appears before the harmony does.
- *
- * <p>It is bounded, and the bound is the whole of why it is acceptable: <b>for a
- * progression whose boundaries are stated in seconds</b>, a placed chord is
- * printed <b>within half a counted beat of where the harmony changes</b> -- half
- * the counted beat of the bar the change falls in, which is the unit it was
- * rounded against and not the score's longest. Plus, on the one path that
- * reaches the clamp, the start's distance below the rounding midpoint -- which
- * is strictly positive and <b>at most</b> the microsecond of overlap
- * {@code ChordProgression} tolerates, because the clamp is reachable only
- * through such an overlap. So the bound there is {@code unit/2 + overlap} and
- * the displacement is somewhere under it.
- *
- * <p>Two drafts of that sentence were wrong in opposite directions, which is
- * worth recording because both readings mislead a user about the same number.
- * One said the bound was "attained exactly and not exceeded", behind a
- * two-sided tolerance wide enough to hide that it is exceeded. The next said
- * the displacement is half a unit and the overlap "never less", making an upper
- * bound into a lower one -- measured, the excess runs from a fifth of the
- * injected overlap to all of it, depending on where the preceding end fell.
- * That is not a tolerated error but
- * the point of the exercise: a change heard 40 ms early against a downbeat
- * belongs <em>on</em> the downbeat, and an eighth-note anticipation of beat
- * three belongs on beat three. Preferring the chord actually sounding at the
- * snapped position, which is the other rule available here, would forbid
- * rounding a chord backwards at all and would print both of those a whole beat
- * late.
- *
- * <p>The qualifier is load-bearing and the bound is <em>false</em> without it.
- * {@link BarTable#beatOf} prefers a beat position a chord already carries over
- * the seconds beside it, so a progression this pass has already placed is
- * re-snapped from its old positions and never consults the clock again. Read a
- * progression placed at 120 against a corrected {@code --tempo 60} and every
- * chord keeps the beats it was given: the last of four is printed at beat 6
- * while sounding at beat 3, three counted beats out and six times this bound.
- * Nothing here detects that, because from inside this pass the positions are
- * self-consistent and in order. It is #171, and it is a defect of its own rather
- * than a corner of this one -- but the bound below must not be read as covering
- * it.
- *
- * <p>Measured rather than reasoned, because the bound does not follow from the
- * rounding rule alone: {@link #onGrid} places a start at
- * {@code max(snap(start), furthestEnd)}, so a boundary can be pushed past its
- * own nearest beat by a neighbour, and that path has no rounding argument to
- * appeal to. Two tests between them, and it takes two:
- * {@code aPlacedSymbolStaysWithinHalfACountedBeat} sweeps a thousand random
- * progressions over four meters and a map that changes meter underneath them,
- * and rounding down instead of to nearest puts a symbol 0.64 beats out and fails
- * it -- but that sweep never reaches the clamp, because a boundary perturbed by
- * 0.4 microseconds straddles a rounding midpoint only by accident, and the
- * {@code max} is an equality in all six thousand of its spans. So
- * {@code theBoundHoldsWhereTheClampMovesABoundary} constructs the case instead,
- * where the clamp does carry a start a whole unit past its own nearest beat. It
- * finds the displacement <em>exceeding</em> half a unit by exactly the start's
- * distance below the midpoint -- 8e-7 of a beat in that fixture, which is half
- * the overlap it injects, because it injects symmetrically about the midpoint --
- * and asserts that rather than tolerating it.
- *
- * <p>What #158 reported was the unbounded form of this, and it came from
- * somewhere else: a chord dropped for being too short left its position free,
- * the next chord snapped back onto it, and the chart named a harmony that had
- * not started. No chord is dropped any more, so no position is vacated for a
- * later one to take.
- *
- * <h2>When a span has nowhere to go</h2>
- *
- * <p>A span whose two boundaries snap to the same position has no length, and
- * {@link Chord}, {@link Section} and {@link Key} all refuse that. It happens
- * only when the span is shorter than the unit it is being snapped to, which
- * bounds what can be affected: <b>in a list whose spans do not overlap, a chord
- * as long as a counted beat, and a section or key as long as a bar, is always
- * placed</b>. Two points less than a unit apart can share a rounding cell; two
- * points a unit or more apart cannot.
- *
- * <p>Both qualifiers on that sentence are load-bearing and each was wrong in an
- * earlier draft of it.
- *
- * <ul>
- *   <li><b>The unit is the longest one the span touches</b>, not the one it
- *       starts on. Where a span crosses a meter change into a longer beat -- 7/8
- *       into 4/4, where the counted beat grows from an eighth to a quarter -- a
- *       chord of exactly one 7/8 beat has both ends inside the quarter-note cell
- *       that follows it, and goes.
- *   <li><b>The spans must not overlap.</b> {@link Score} and
- *       {@link dev.olivelli.musicwizard.core.model.ChordProgression} tolerate a
- *       microsecond of overlap, and {@link #onGrid} resolves such a boundary to
- *       the later of its two positions -- so a span handed in overlapping is
- *       effectively a shade shorter here than it declares itself to be, and one
- *       that is exactly a unit long and lands on a rounding midpoint is then
- *       lost. Not a corner that better arithmetic removes: the alternative is
- *       publishing two spans that overlap on the beat axis, which {@code Score}
- *       rejects outright. Measured rather than feared, and it is a measure-zero
- *       set rather than a rate: with an overlap injected into every one of 400
- *       unit-length spans across four meters,
- *       {@code theToleratedOverlapCostsOnlyTheMidpoints} loses the single offset
- *       per meter whose shared boundary lands on a rounding midpoint and finds
- *       every other span placed exactly where it is placed without the overlap.
- * </ul>
- *
- * <p>The pass does not reject the score over one -- that would throw away a
- * whole quantization for a blip -- and <b>nothing is ever deleted</b>. What it
- * does instead differs between the two kinds, for a reason rather than by
- * oversight:
- *
- * <ul>
- *   <li><b>A section or a key keeps its seconds and is given no beats.</b>
- *       Nothing reports a list of these as quantized or not in one verdict, so
- *       there is nothing to poison, and {@link Score} is built to hold the
- *       mixture -- {@code requireOrderedBeats} skips un-quantized spans by
- *       design. Deleting them instead would be the more expensive answer by far:
- *       a key of less than a bar is dropped and its music is then engraved under
- *       the <em>next</em> key's signature, which is a page of accidentals that
- *       were never played.
- *   <li><b>A chord keeps its seconds too, and so does every other chord in the
- *       progression</b>, which is the one place this pass is all-or-nothing.
- *       {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
- *       is one verdict for the whole progression and every consumer of the beat
- *       axis gates on it, so there is no per-chord fallback to take: a single
- *       unplaceable chord either costs the whole chart its beat axis or costs
- *       itself. Nothing further is published to say which happened: after this
- *       pass a non-empty progression whose {@code isQuantized()} is false is one
- *       that was withdrawn, so a caller with a user in front of it can say why
- *       the chart came out on the coarser route.
- * </ul>
- *
- * <p>That the chord case falls this way and not the other is #157, and it
- * reverses what #147 decided, so the ranking is worth stating rather than
- * assuming. Dropping costs <em>correctness</em>: at {@code --tempo 60} against
- * material heard at 120, every chord is half a counted beat, every other one
- * collapses, and a chart that played I-V-vi-IV is engraved as I-vi-I-vi with
- * nothing to mark it. The justification dropping had -- "a chord too short to be
- * given a beat of its own is one an engraver would not print" -- conflates a
- * chord that is short in the <em>music</em> with one that is short in the
- * <em>supplied pulse</em>, and one span carries no evidence about which it is.
- * So the pass declines to guess, and what it publishes is a progression that is
- * still the progression that was played.
- *
- * <p><b>What the fallback costs is not merely precision, and an earlier draft of
- * this paragraph said it was.</b> The claim was that the seconds route in
- * {@code ChordChart} still prints every chord in order. It does not: that route
- * rounds each chord's start to a bar and rounds the bar count separately, then
- * discards any chord landing past the count. Measured on the fixture above, the
- * chart prints four of the eight chords, all in one bar, while the engraving
- * emits eight whole notes for four seconds of music. That is #174, it is
- * reachable today with no quantizer involved at all -- two chords whose second
- * is under half a bar already lose the second -- and it is not this class's to
- * fix.
- *
- * <p>So the honest form of the ranking is narrower. The pass hands on a
- * progression that names what was played, in order, and every chord it was
- * given; what a chart then makes of it is #174's business, and today it makes
- * less of it than it should. The alternative hands on a progression that names
- * a harmony nobody played, which no downstream fix can recover, because the
- * evidence is gone.
- *
- * <p>Where this is reachable is worth stating precisely, because the obvious
- * answer is wrong. It is <em>not</em> compound time: the audio path builds its
- * map with {@link dev.olivelli.musicwizard.core.model.TempoMap#fromBeatTimes},
- * whose pulse is the meter's own counted beat, so a 6/8 chord span is already a
- * dotted quarter. What does reach it is a supplied tempo that disagrees with the
- * tracked pulse -- {@code --tempo 60} on a track heard at 120 leaves the chord
- * boundaries a half beat apart in a map counting whole ones -- and any producer
- * whose spans are finer than the meter's beat.
- *
- * <p><b>When the all-or-nothing is paid.</b> The guard is
- * {@code end <= max(snap(start), furthestEnd)}, which is
- * {@code end <= snap(start) || end <= furthestEnd}. So a span is left with no
- * length in one of exactly two ways: both its boundaries round to the same
- * counted beat, or the clamp resolves its start onto its own snapped end. That
- * much is provable from the guard rather than surveyed, and both are exercised
- * -- {@code aForcedTempoDoesNotRenameTheProgression} for the first,
- * {@code theToleratedOverlapIsTheOneExceptionToTheBound} for the second, whose
- * cost {@code theToleratedOverlapCostsOnlyTheMidpoints} measures.
- *
- * <p><b>Which producers reach it is a different question, and this javadoc has
- * answered it wrongly five times</b> -- "never isolated", "only a hand-built
- * score", "one-sided", a rate of {@code 1 - supplied/tracked}, and a mechanism
- * called exact that missed the clamp. Every one was refuted by running it,
- * within a round of being written. The pattern is not carelessness about any one
- * sentence: each was prose restating a measurement from a script that is not in
- * this repository, and a figure nobody can re-derive is a figure that will be
- * wrong again. So this names the paths and no frequencies.
- *
- * <ul>
- *   <li><b>Audio, no override: cannot reach it.</b> {@code ChordEstimator} takes
- *       every span boundary from the tracked beat times, and
- *       {@code TempoMap.fromBeatTimes} anchors tracked beat <i>i</i> at exactly
- *       that beat, so snapping is the identity there. Structural, not measured.
- *   <li><b>Audio with a supplied {@code --tempo}: reaches it.</b> The supplied
- *       map is constant and the tracked pulse is not -- {@code fromBeatTimes}
- *       fits a segment per beat interval -- so each span is compared with its
- *       own interval, and one supplied figure is above some and below others.
- *       {@code aSmallDownwardCorrectionCostsTheWholeBeatAxis} pins the downward
- *       half of that on an exactly constant pulse, where a one-BPM correction
- *       withdraws a two-hundred-chord chart; the same test asserts that upward
- *       corrections on that fixture are free, so it is evidence for the
- *       mechanism and not for how far it reaches. How often a drifting pulse
- *       reaches it in either direction is not measured in this repository, and
- *       three drafts of a figure for it were each refuted.
- *   <li><b>MIDI, no override at all: reaches it.</b> {@code --tempo} is ignored
- *       on this path. {@code SymbolicChordEstimator} truncates its final span to
- *       the sounding length, so a piece not ending on a counted beat emits one
- *       sub-beat final span; if the harmony changes onto it, it collapses.
- * </ul>
- *
- * <p>What generalises is the shape and not a rate: exposure grows with how many
- * one-beat spans a chart has, because any one of them withdraws all the others.
- * Which is the whole of the ordering argument -- <b>#173 should land before this
- * pass is wired into the pipeline</b>. Per-chord placement leaves the short
- * spans in seconds and the rest on the beat axis, the outcome neither answer
- * available here gives; and all of this is latent while nothing calls this pass,
- * which is exactly why there is time to do it in that order.
- *
- * <p>The fixture, at the layer a user reads. Four beat-aligned chords at 120 BPM
- * with one passing chord a tenth of a second long --
- * {@code C 0..1, G 1..1.1, A 1.1..2, F 2..3, C 3..4} -- charted through
- * {@code ChordChart}:
- *
- * <pre>
- * dropping (before)   | C A         | F C         |   the ornament G is gone
- * withdrawing (now)   | C           | G A F       |   the final C is gone
- * </pre>
- *
- * <p>So on that fixture the old answer is plainly <em>better</em>: it loses the
- * ornament, where the new one loses a full-beat chord that was perfectly
- * placeable and prints two more in a bar they do not sound in. That is not the
- * fallback's doing -- every one of those five chords is in the progression this
- * pass hands on, and #174 is what loses one of them again -- but a reader
- * comparing the two charts is entitled to say the change made it worse, and
- * today, at that layer, it did.
- *
- * <p>The reason to accept that is not that the new chart is better. It is that
- * the two are wrong in kinds that recover differently. The dropped chart is
- * internally consistent and states a harmony nobody played, and no later fix can
- * recover the chord because the pass deleted it. The withdrawn chart is missing
- * a chord that is still in the model, and #174 is a change to one method. And
- * #173 is the answer that is not a trade at all: per-chord quantization leaves
- * the ornament in seconds and the other four chords on the beat axis.
- *
- * <h2>What it does not touch</h2>
- *
- * <p>The seconds, on any of them. {@link Note} carries wall-clock and musical
- * timing separately precisely so that an un-quantized value cannot be mistaken
- * for a quantized one, and so that the approximation made here stays
- * recoverable.
- *
- * <p>The shuffle, on a span. {@link SwingFeel} describes where an onset sits
- * inside its beat, and a chord boundary has no such position to correct: it is
- * where the harmony changed, not where a finger landed. De-swinging one would
- * pull a change on the swung off-beat back towards the beat it is anticipating
- * and then round it to the wrong side of it.
+ * <p>Untouched: the seconds on everything, so the approximation stays
+ * recoverable; and the shuffle on spans — a chord boundary is where the
+ * harmony changed, not where a finger landed, so de-swinging it would round it
+ * to the wrong side of the beat it anticipates.
  */
 public final class Quantizer {
 
     /**
-     * Refuses to build a bar table longer than this.
-     *
-     * <p>Not a musical limit -- 400,000 bars is about a week of 4/4 at 120 BPM.
-     * It is a guard on the tempo map: a map built from a units mix-up can put
-     * the last note billions of bars in, and an array allocation is an unhelpful
-     * way to find that out.
+     * Refuses to build a bar table longer than this. Not a musical limit but a
+     * guard on the tempo map: a units mix-up can put the last note billions of
+     * bars in, and an array allocation is an unhelpful way to find that out.
      */
     private static final int MAX_BARS = 400_000;
 
@@ -389,11 +93,8 @@ public final class Quantizer {
 
     /**
      * Quantizes every note in every track of a score, and puts its chords,
-     * sections and keys on the beat axis.
-     *
-     * <p>A score with no notes at all is still worth running through here, and
-     * that is not a degenerate case: the audio path produces chords long before
-     * it produces a note track, so a chord chart is exactly such a score.
+     * sections and keys on the beat axis. A score with no notes is the
+     * ordinary audio-path case, not a degenerate one.
      *
      * @throws IllegalArgumentException if the score's tempo map places its last
      *         event past {@value #MAX_BARS} bars
@@ -440,19 +141,10 @@ public final class Quantizer {
                 List<Note> notes = new ArrayList<>(track.notes().size());
                 for (Note note : track.notes()) {
                     Note snapped = snap(note, bars, perBar, swing, settings);
-                    // Which bar a note prints in is decided by where it was
-                    // snapped to, not by where it was played. A downbeat rushed
-                    // by ten milliseconds sounds in the previous bar and is
-                    // printed in this one, and publishing by the played position
-                    // would announce a grid for a bar with nothing in it.
-                    //
-                    // Every bar the note sounds through, not only the one it
-                    // starts in. A note held across a bar that has no onset of
-                    // its own still has to be engraved there -- tied, and its
-                    // tail on that bar's grid, which the quantizer chose and
-                    // then used to snap this very note. Publishing only onsets
-                    // threw that decision away and left the tail with no
-                    // resolution to print it at.
+                    // Marked by where it was snapped to, not played — a rushed
+                    // downbeat prints in the next bar — and through every bar
+                    // it sounds in, because a tied tail still needs that bar's
+                    // grid to be printed at.
                     markSounding(sounds, bars, snapped);
                     notes.add(snapped);
                 }
@@ -477,40 +169,8 @@ public final class Quantizer {
 
     /**
      * What a span whose boundaries snapped to the same position comes back as.
-     *
-     * <p>Meant to be total, and {@link #onGrid} treats it as such: it adds
-     * whatever comes back, once per span, so it returns as many spans as it was
-     * handed. It used to permit {@code null} explicitly, and the one handler
-     * that returned it was the chord one, into a list that was discarded anyway
-     * -- with a comment justifying the {@code null} by a mechanism
-     * ({@code furthestEnd} advancing past an unpublished boundary) that
-     * {@code onGrid} does not have. A capability with no user and a false reason
-     * for existing is worse than no capability, so it went.
-     *
-     * <p>What that does <em>not</em> buy is a guarantee from the compiler, and
-     * two drafts of this paragraph have now overstated what it buys instead. A
-     * handler can still return {@code null}; nothing rejects it and
-     * {@code onGrid} adds it. What happens next differs by handler, and the
-     * difference is the whole of it:
-     *
-     * <ul>
-     *   <li>From {@link #inSecondsOnly(Section)} or {@link #inSecondsOnly(Key)}
-     *       it reaches {@link Score} and fails loudly, on a
-     *       {@code NullPointerException}:
-     *       {@code everyKindOfSpanSurvivesInItsOwnNumber} errors for either,
-     *       {@code anUnplaceableSectionIsNotDeleted} and
-     *       {@code aCollapsedSpanDoesNotKeepBeatsFromNowhere} for the section
-     *       handler, and {@code anUnplaceableKeyIsNotDeleted} for the key one.
-     *   <li>From the chord handler it is <b>unobservable</b>: that handler sets
-     *       the collapse flag before returning, so {@link #chordsOnGrid}
-     *       discards the list it went into. The whole suite passes. The previous
-     *       draft of this paragraph claimed those three tests caught it, which
-     *       is false for the one handler the paragraph is about.
-     * </ul>
-     *
-     * <p>So the invariant is kept by tests for two of the three, and by
-     * {@code chordsOnGrid} throwing the list away for the third. Not by the type
-     * system, in any of the three.
+     * Meant to be total: {@link #onGrid} adds whatever comes back, once per
+     * span, so it returns as many spans as it was handed.
      */
     @FunctionalInterface
     private interface Collapsed<T> {
@@ -519,21 +179,12 @@ public final class Quantizer {
     }
 
     /**
-     * Puts a progression on the beat axis, or leaves the whole of it in seconds.
-     *
-     * <p>The all-or-nothing is forced by
+     * Puts a progression on the beat axis, or leaves the whole of it in
+     * seconds. The all-or-nothing is forced by
      * {@link dev.olivelli.musicwizard.core.model.ChordProgression#isQuantized()}
-     * being one verdict, and the direction it falls in is #157: no chord is
-     * discarded, because a chart naming a progression that was never played is a
-     * worse answer than a chart placed by seconds, not a more approximate one.
-     * The class javadoc argues that ranking; this is where it is spent.
-     *
-     * <p>Which of the two happened needs nothing carried alongside to say. After
-     * this pass a progression is either wholly on the beat axis or wholly off
-     * it, so a non-empty one whose {@code isQuantized()} is false is one that was
-     * withdrawn. An earlier draft published a count of the collapses too; it had
-     * no reader, and three attempts to describe what the number meant were each
-     * refuted by execution.
+     * being one verdict, and the direction it falls is #157: no chord is
+     * discarded. After this pass a non-empty progression whose
+     * {@code isQuantized()} is false is one that was withdrawn.
      */
     private static List<Chord> chordsOnGrid(List<Chord> chords, BarTable bars) {
         boolean[] collapsed = {false};
@@ -543,29 +194,17 @@ public final class Quantizer {
                 Chord::quantizedTo, bars::snapToCountedBeat,
                 chord -> {
                     collapsed[0] = true;
-                    // Stripped rather than left carrying beats, so that the list
-                    // this builds is well-formed even though the branch below
-                    // discards it: every chord in it either sits on the grid or
-                    // has no beats. Nothing observes the choice today -- a
-                    // collapse here means the list is thrown away -- and an
-                    // earlier version returned null with a comment claiming it
-                    // stopped furthestEnd advancing, which onGrid never does on
-                    // this branch. Better a value that is right for a reason
-                    // than one that is unobservable for a wrong one.
+                    // Stripped rather than left carrying beats, so the list is
+                    // well-formed even though the branch below discards it.
                     return inSecondsOnly(chord);
                 });
         return collapsed[0] ? chords.stream().map(Quantizer::inSecondsOnly).toList() : placed;
     }
 
     /**
-     * Strips any musical timing a collapsed span was carrying.
-     *
-     * <p>Reachable only from a hand-assembled score whose beats were already off
-     * the grid, since anything this pass placed is a whole unit long and cannot
-     * collapse on a second run. It is here so that the postcondition is
-     * unconditional: after this pass, a span either sits on the grid or carries
-     * no beats at all. Leaving the old pair in place would publish a bar line
-     * that no bar has.
+     * Strips any musical timing a collapsed span was carrying, so the
+     * postcondition is unconditional: after this pass a span either sits on
+     * the grid or carries no beats at all.
      */
     private static Section inSecondsOnly(Section section) {
         return section.isQuantized()
@@ -584,22 +223,9 @@ public final class Quantizer {
     }
 
     /**
-     * The same for a chord, applied to a whole progression at once.
-     *
-     * <p>Reachable exactly as narrowly as the two above -- from a hand-assembled
-     * score whose carried beats were already off the grid -- and it is worth
-     * saying which way that was checked, because the wider claim is the one that
-     * suggests itself and it is false. Re-quantizing a placed progression
-     * against a <em>corrected</em> tempo map does not reach this: a carried beat
-     * position wins over the seconds beside it, so the old positions are snapped
-     * again rather than re-derived, and nothing collapses. That is #171, and it
-     * is a different defect from this one.
-     *
-     * <p>Here so that the postcondition is unconditional: after this pass a
-     * chord either sits on the grid or carries no beats at all. Leaving the old
-     * pair on a progression that has been withdrawn from the beat axis would be
-     * the worst of both -- {@code isQuantized()} false, so no consumer reads
-     * them, and stale positions waiting for the next reader who does.
+     * The same for a chord, applied to a whole progression at once — leaving
+     * stale beat positions on a withdrawn progression would wait for the next
+     * reader who ignores {@code isQuantized()}.
      */
     private static Chord inSecondsOnly(Chord chord) {
         return chord.isQuantized()
@@ -612,48 +238,16 @@ public final class Quantizer {
     /**
      * Puts a list of ordered, non-overlapping spans onto the beat axis.
      *
-     * <p>Two decisions here, and the first is the only guard.
-     *
-     * <p><b>A start never precedes the furthest end already placed.</b> Snapping
-     * is monotone, so for spans that genuinely do not overlap this can only ever
-     * be an equality -- but {@link Score} and
-     * {@link dev.olivelli.musicwizard.core.model.ChordProgression} both admit a
-     * microsecond of overlap in seconds, and a microsecond straddling a rounding
-     * midpoint snaps to two positions a whole unit apart. Without this the pass
-     * would emit exactly the beat-axis overlap that {@code Score} rejects and
-     * that #59 records as still unchecked on a progression.
-     *
-     * <p>Called the furthest end, and it is the last <em>placed</em> one: a span
-     * is placed only when its end exceeds this value, so it never goes
-     * backwards. That is worth saying rather than borrowing
-     * {@code Score.requireOrderedBeats}' reasoning, which this looks like and is
-     * not. That method carries the furthest end because an <em>un-quantized</em>
-     * span between two overlapping ones would otherwise break the chain and hide
-     * the overlap; nothing here is un-quantized, because this is where the
-     * quantizing happens.
-     *
-     * <p>Clamping here rather than on the raw position before snapping is not a
-     * choice between two behaviours. Snapping is monotone, so
-     * {@code max(snap(a), snap(b))} and {@code snap(max(a, b))} are the same
-     * function -- checked over two million pairs, zero disagreements -- and a
-     * rewrite to the second form was reverted for being a refactor wearing a
-     * fix's clothes. What the clamp costs is real and is stated on the class:
-     * for a span handed in overlapping, the boundary resolves to the later of
-     * the two positions, so a span that is exactly one unit long and lands on a
-     * midpoint can still be lost. That is inherent to admitting the overlap at
-     * all, not to where the clamp sits: refusing to clamp would publish two
-     * spans that overlap on the beat axis instead, which is the defect the guard
-     * is here for.
-     *
-     * <p><b>What happens to a span left with no length</b> is the caller's
-     * {@code Collapsed} decision, and every caller keeps it: this method returns
-     * exactly as many spans as it was handed, always. {@code furthestEnd} does
-     * not advance past one, and that is a
-     * decision rather than an accident: a collapsed span's snapped end can be a
-     * long way <em>ahead</em> of the value carried -- two sections with a gap
-     * between them, the second shorter than a bar, put it a whole bar ahead --
-     * so advancing would push the next span forward off a bar line it snapped to
-     * cleanly, on the strength of a boundary that was not published.
+     * <p>A start never precedes the furthest end already <em>placed</em>. The
+     * model admits a microsecond of overlap in seconds, and a microsecond
+     * straddling a rounding midpoint snaps to two positions a whole unit apart
+     * — without the clamp this pass would emit the beat-axis overlap
+     * {@link Score} rejects (#59). A span left with no length becomes the
+     * caller's {@code Collapsed} decision, and {@code furthestEnd} does not
+     * advance past it: a collapsed span's snapped end can be far ahead of the
+     * value carried, and advancing would push the next span off a bar line it
+     * snapped to cleanly, on the strength of a boundary that was not
+     * published.
      */
     private static <T> List<T> onGrid(List<T> spans, ToDoubleFunction<T> startBeat,
                                       ToDoubleFunction<T> endBeat, Placed<T> placed,
@@ -688,20 +282,12 @@ public final class Quantizer {
     }
 
     /**
-     * The cost of every grid in every bar.
-     *
-     * <p>A bar with no onsets accumulates nothing at all, so it costs zero on
-     * every grid and inherits its neighbours' rather than voting for whole notes
-     * and charging the section two grid changes to get back around it.
-     *
-     * <p>Every note votes in the bar it sounded in, including one played a hair
-     * early against a bar line, which will be printed in the next. Two attempts
-     * to charge such a note where it prints have now been withdrawn: deciding it
-     * per candidate makes the six costs in a bar sums over six different sets of
-     * notes, and deciding it from a provisional decode does not converge -- it
-     * oscillates with period two, and changes nothing any measurement could see.
-     * What such a note actually needed was its note value taken from the bar it
-     * reaches, and {@link #snap} does that directly.
+     * The cost of every grid in every bar. A bar with no onsets costs zero on
+     * every grid and inherits its neighbours' rather than voting for whole
+     * notes. Every note votes in the bar it sounded in, including one rushed
+     * onto the next bar line — charging it where it prints was tried twice and
+     * withdrawn; what such a note needs is its value taken from the bar it
+     * reaches, which {@link #snap} does directly.
      */
     private static double[][] costs(List<Note> notes, BarTable bars, SwingFeel swing,
                                     QuantizationSettings settings, GridResolution[] candidates) {
@@ -721,17 +307,10 @@ public final class Quantizer {
     }
 
     /**
-     * What a grid costs to read one note on, in quarter-note beats so that it is
-     * commensurable with the deviation it competes against.
-     *
-     * <p>Charged per note, not per bar, and that is the whole of why the choice
-     * is stable. Human timing spread is a fixed fraction of a beat, so a finer
-     * grid absorbs a fixed fraction of it <em>per note</em>: sixteen notes on a
-     * thirty-second grid fit sixteen times better than four do, and a per-bar
-     * penalty is outvoted the moment a bar gets busy. Charging per note puts
-     * both sides of the comparison on the same footing, and it makes the meter's
-     * bar length drop out -- a 12/8 bar is not pushed towards finer grids merely
-     * for holding three times the music.
+     * What a grid costs to read one note on, in quarter-note beats so it is
+     * commensurable with the deviation it competes against. Charged per note,
+     * not per bar — a per-bar penalty is outvoted the moment a bar gets busy,
+     * and per-note charging makes the bar length drop out of the comparison.
      */
     private static double complexity(GridResolution grid, TimeSignature meter,
                                      QuantizationSettings settings) {
@@ -740,15 +319,10 @@ public final class Quantizer {
     }
 
     /**
-     * Viterbi over the bars, where the only structure is a reluctance to change
-     * subdivision inside a section.
-     *
-     * <p>Ties go to staying on the current grid, and failing that to the
-     * simplest one, so that the result does not turn on the order comparisons
-     * happen to be made in. Not because a tie is expected: an exact one needs a
-     * bar with no notes, whose cost is zero on every grid, and such a bar is
-     * never published. Both halves of the rule are therefore unreachable from
-     * any score, and a mutation of either survives the suite.
+     * Viterbi over the bars, where the only structure is a reluctance to
+     * change subdivision inside a section. Ties go to staying on the current
+     * grid, then to the simplest one, so the result does not turn on
+     * comparison order.
      */
     private static GridResolution[] decode(double[][] cost, GridResolution[] candidates,
                                            boolean[] sectionStart, double changePenalty) {
@@ -795,29 +369,12 @@ public final class Quantizer {
     }
 
     /**
-     * The bars at which a section begins, where the grid may change for free.
-     *
-     * <p>A section boundary is the one place a reader expects the feel to
-     * change, so it is the one place the prior should not resist. Bar 0 is not
-     * marked: there is no previous bar to leave, and {@link #decode} never
-     * charges it.
-     *
-     * <p>Read from the sections <em>after</em> they have been placed, not from
-     * their seconds. The two differ whenever a boundary falls in the second half
-     * of a bar: the containing bar is the one it sounds in, the published bar is
-     * the one it is engraved at, and waiving the penalty at the first while
-     * printing the double bar at the second is the same fact answered twice.
-     *
-     * <p>A section too short to be placed marks nothing, because it has no bar
-     * to mark. Where sections abut -- which is the ordinary case, and the only
-     * one the seconds-based version handled differently -- the bar it would have
-     * marked is the bar its neighbour snapped to and marked instead. Where they
-     * do not, {@code Score} permits a gap and permits the last section to be the
-     * short one, and then the waiver is genuinely lost and the decode charges
-     * for a subdivision change at a boundary a reader can see. That is a
-     * sub-bar section in a score with gaps between its sections, and it is a
-     * worse outcome than not placing it would be only if the grid actually
-     * flips there.
+     * The bars at which a section begins, where the grid may change for free —
+     * the one place a reader expects the feel to change. Read from the
+     * sections <em>after</em> they have been placed, not from their seconds:
+     * waiving the penalty at the bar a boundary sounds in while printing the
+     * double bar at the one it is engraved at would answer the same fact
+     * twice. A section too short to be placed marks nothing.
      */
     private static boolean[] sectionStarts(List<Section> sections, BarTable bars) {
         boolean[] starts = new boolean[bars.barCount()];
@@ -849,10 +406,6 @@ public final class Quantizer {
         if (endBeat <= bars.startBeat(last)) {
             last--;
         }
-        // No upper bound on the loop beyond last: barOf clamps into the table,
-        // so last is already in range. A bound here would never fire, and if it
-        // ever did it would quietly drop the tail bars of a note rather than say
-        // so.
         for (int bar = bars.barOf(onsetBeat); bar <= last; bar++) {
             sounds[bar] = true;
         }
@@ -877,10 +430,8 @@ public final class Quantizer {
         double onsetStep = perBar[onsetBar].stepQuarters(onsetMeter);
         double onsetSteps = stepsWithin(bars.beatInBar(writtenOnset, onsetBar), onsetStep);
         // A note rushed onto the next bar's line is printed there, so it takes
-        // that bar's grid with it. Leaving it on the bar it sounded in gives it
-        // a note value from a bar it does not appear in -- a downbeat ten
-        // milliseconds early, printed among sextuplets, coming out as a whole
-        // quarter because the bar behind it was counted in beats.
+        // that bar's grid with it — left behind, it gets a note value from a
+        // bar it does not appear in.
         if (onsetSteps >= onsetMeter.quarterBeatsPerBar() / onsetStep
                 && onsetBar + 1 < bars.barCount()) {
             onsetBar++;
@@ -900,40 +451,21 @@ public final class Quantizer {
                 offsetStep);
         double offsetBeat = bars.startBeat(offsetBar) + offsetSteps * offsetStep;
 
-        // The onset may have been carried forward onto the next bar's line while
-        // the release stayed behind it -- a forty-millisecond blip fifty
-        // milliseconds before a bar line does exactly that. The note then has no
-        // length to measure, and measuring it anyway gave a whole bar: the step
-        // count walked from a later bar to an earlier one, reported uniformity
-        // because it had walked nothing, and subtracted zero from a full bar's
-        // worth of steps. It gets one step of the bar it prints in.
-        // This is also where a note too short to print ends up: a grace note or
-        // a staccato sixteenth on an eighth grid collapses onto its own onset.
-        // It is lengthened rather than dropped -- the pitch was played, and one
-        // step is the shortest thing this grid can say. Everything past this
-        // point has a strictly positive length, which is why no floor is applied
-        // to the duration below; one was, until a probe showed it could not
-        // fire.
+        // A carried onset can leave the release behind it, and a note too
+        // short to print collapses onto its own onset. Either way it is
+        // lengthened to one step of the bar it prints in rather than dropped —
+        // the pitch was played, and one step is the shortest thing the grid
+        // can say. Everything past this point has strictly positive length.
         if (offsetBeat <= onsetBeat) {
-            // One step of the bar it prints in, which is the onset's bar after
-            // the carry -- not the offset's, which is the bar it was played in
-            // and may be divided differently.
             return note.quantizedTo(onsetBeat, onsetStep);
         }
 
         // Counted in whole grid steps and multiplied once, rather than
-        // subtracting two snapped positions. On a triplet grid the step is not
-        // representable, so the difference of two positions built from it lands
-        // a few ulps off and one third comes out as several distinct doubles
-        // depending on which bar the note fell in. The notation layer has to
-        // match a duration against a note value, and "one third, nearly" is not
-        // a note value.
-        //
-        // Only available while every bar the note crosses is divided the same
-        // way, which is the ordinary case and includes every note that does not
-        // cross a bar line at all. Where the division changes underneath a note
-        // the difference of the two positions is all there is, and that note is
-        // going to be split at the bar line and tied anyway.
+        // subtracting two snapped positions: on a triplet grid the step is not
+        // representable, and the notation layer has to match the duration
+        // against a note value — "one third, nearly" is not one. Only
+        // available while every bar the note crosses is divided the same way;
+        // otherwise the note will be split at the bar line and tied anyway.
         java.util.OptionalInt uniform =
                 uniformSteps(bars, perBar, onsetBar, offsetBar, onsetStep);
         double duration = uniform.isPresent()
@@ -949,16 +481,10 @@ public final class Quantizer {
      * offset's, when every bar in between is divided into steps of the same
      * length; empty when one of them is not.
      *
-     * <p>The count is a whole number even across a meter change, because a
-     * bar's length is always a whole number of its own grid steps. That is what
-     * lets the duration be one multiplication rather than a subtraction.
-     *
      * <p>Never asked about an offset earlier than the onset, which
-     * {@link #snap} can produce by carrying a rushed onset onto the next bar
-     * line: both of this loop's guards are vacuous in that case and it would
-     * report a uniformity it never checked. {@code snap} returns before it gets
-     * here, and that is the only guard -- a second one here would mask it, and
-     * then neither could be shown to be doing anything.
+     * {@link #snap} can produce by carrying a rushed onset forward: both
+     * guards here are vacuous in that case and it would report a uniformity it
+     * never checked. {@code snap} returns before it gets here.
      */
     private static java.util.OptionalInt uniformSteps(BarTable bars, GridResolution[] perBar,
                                                       int onsetBar, int offsetBar, double step) {
@@ -978,36 +504,14 @@ public final class Quantizer {
 
     /**
      * A release position moved to where the note was probably written to end.
-     *
-     * <p>Players let go early, so a note snapped straight to the nearest grid
-     * position loses a step: a quarter released after 85% of it, on a sixteenth
-     * grid, prints as a dotted eighth and a rest. The allowance divides the
-     * played length by {@link QuantizationSettings#articulationRatio()} to undo
-     * that, bounded so it can carry a release to the next grid position and no
-     * further -- an unbounded proportional stretch grows with the note, and made
-     * a nine-beat note into a ten.
-     *
-     * <p>It fires only when the plain rounding cannot already explain the length.
-     * Bounding how far it reaches is not the same as knowing when to reach at
-     * all: applied unconditionally it also lengthens notes that were never
-     * shortened, and a half note held two milliseconds past its written end came
-     * out a sixteenth long. So a length already within
-     * {@link QuantizationSettings#overlapTolerance()} of a whole number of steps
-     * is left alone -- a player may hold slightly through a note, and that
-     * reading needs no help.
-     *
-     * <p>That suppression is a trade, not a free correction, and the numbers are
-     * in {@code ArticulationAllowanceTest} where they can be re-derived. Against
-     * applying the allowance to everything, the default tolerance recovers 105
-     * more durations from a mostly-legato player and 164 fewer from a detached
-     * one. It is kept because what the unconditional version does to the notes
-     * it gets wrong is qualitatively worse -- a whole extra grid step on a note
-     * nobody shortened -- not because it wins on count.
-     *
-     * <p>The tolerance is proportional, so past about twenty-five steps it
-     * covers the whole rounding cell and the allowance stops firing. That is
-     * moot rather than lucky: the one-step cap already bounds what it could
-     * recover on a note that long.
+     * Players let go early, so a note snapped straight to the nearest grid
+     * position loses a step; the allowance divides the played length by
+     * {@link QuantizationSettings#articulationRatio()} to undo that, bounded
+     * to one grid position because an unbounded stretch grows with the note.
+     * It fires only when plain rounding cannot already explain the length —
+     * within {@link QuantizationSettings#overlapTolerance()} of whole steps is
+     * left alone, or notes nobody shortened get lengthened; the trade is
+     * measured in {@code ArticulationAllowanceTest}.
      *
      * @param offsetInBar the released position within its bar, in quarter beats
      * @param playedBeats how long the note sounded, in quarter beats, measured
@@ -1017,10 +521,6 @@ public final class Quantizer {
                                       QuantizationSettings settings) {
         double lengthSteps = playedBeats / step;
         double plain = Math.rint(lengthSteps);
-        // Under half a step there is no whole-step reading for the tolerance to
-        // confirm. That needs no test of its own: the comparison becomes
-        // "length at or below zero", and at zero the other branch returns the
-        // same position anyway.
         if (lengthSteps <= plain * (1 + settings.overlapTolerance())) {
             return offsetInBar;
         }
@@ -1044,53 +544,19 @@ public final class Quantizer {
     /**
      * The same, left as a whole number of steps for the caller to scale once.
      *
-     * <p>No bounds of its own, at either end. {@link BarTable#beatInBar} has
-     * already put the position inside the bar and rounding is monotone, so
-     * neither bound could ever bind -- measured at zero over seven million
-     * calls. This is the sixth guard in this class found to be shadowing the one
-     * doing the work, and the fix for the fifth stopped one line short of it.
-     *
-     * <p>A position exactly halfway between two steps goes to the later one,
-     * and that is not the arbitrary half of an arbitrary choice. {@code rint},
-     * which this used to be, rounds a tie to the <em>even</em> step -- 0.5 down,
-     * 1.5 up, 2.5 down -- so the direction alternates with the step index.
-     *
-     * <p>On a chord boundary the tie is common rather than exotic, and going
-     * forward is the musically right direction rather than merely a consistent
-     * one. A change on the off-beat eighth before a downbeat sits exactly on the
-     * midpoint of its rounding cell, and it is an <em>anticipation</em> of the
-     * beat ahead: that is where a chart prints it. {@code rint} would send
-     * alternate ones backwards instead -- 2.5 down to beat 2, 6.5 down to beat 6
-     * -- so a progression of anticipations came out with half its symbols a beat
-     * early, the half decided by the parity of the beat index.
-     *
-     * <p>An earlier version of this paragraph took its evidence from a
-     * progression whose spans are exactly <em>half</em> a counted beat, which is
-     * what a {@code --tempo} disagreeing by a factor produces. That case no
-     * longer publishes any beats at all -- it is #157, and such a progression is
-     * now left in seconds rather than half-dropped -- so it can no longer be
-     * evidence for anything about rounding direction.
-     *
-     * <p>On a note it is rare rather than absent, and that distinction is worth
-     * stating because the rule is shared and the decision to share it rests on
-     * the size of the effect. Measured over 5,040 fixtures -- nine meters, five
-     * tempos, eight subdivisions, one tick-exact and one un-jittered rendering
-     * plus twelve seeded human performances of each -- the two rules disagree on
-     * <b>311 of 131,040</b> note positions, in 60 fixtures, and on <b>0 of
-     * 20,254</b> published {@link BarGrid} entries. Every one of the 60 is
-     * tick-exact or un-jittered, and they are concentrated in the meters whose
-     * bar is not a power-of-two multiple of the grid step: 7/8, 3/4, 9/8 and
-     * 5/4. So a human performance does not reach a tie, but a MIDI import does,
-     * by construction -- and the direction is right where it does: straight
-     * eighths pulled onto a triplet grid alternate 2,1,2,1 steps under this rule
-     * where {@code rint} gave 2,1,1,2.
+     * <p>A position exactly halfway between two steps goes to the later one —
+     * a tie is common on a chord boundary, where a change on the off-beat
+     * eighth before a downbeat is an <em>anticipation</em> and belongs on the
+     * beat ahead. {@code rint}, which this used to be, rounds a tie to the
+     * even step, so the direction alternated with the beat index and half a
+     * progression's anticipations printed a beat early. On notes only a
+     * tick-exact MIDI import reaches the tie, and the direction is right there
+     * too.
      */
     private static double stepsWithin(double beatInBar, double step) {
         // floor(x + 0.5) rather than Math.round, which would take a long and
-        // would need the position bounded; and rather than rint, whose tie rule
-        // is the defect above. Safe at the bottom because beatInBar is clamped
-        // non-negative, and at the top because the quotient here is at most the
-        // number of divisions in a bar.
+        // need the position bounded; and rather than rint, whose tie rule is
+        // the defect above.
         return Math.floor(beatInBar / step + 0.5);
     }
 
@@ -1120,16 +586,10 @@ public final class Quantizer {
 
         /**
          * A table long enough to hold everything in the score that has a
-         * position: every note's onset and stretched offset, and the end of
-         * every chord, section and key.
-         *
-         * <p>The spans are in it because they are quantized here too, and
-         * because they routinely outlast the notes -- a chord chart from the
-         * audio path has no note tracks at all, and a final chord ringing past
-         * the last transcribed note is ordinary. Sizing from the notes alone
-         * left such a score with a table too short to place its own harmony in,
-         * and {@link #barOf} would have clamped the whole tail into the last
-         * bar it did have.
+         * position — the spans too, which routinely outlast the notes. Sizing
+         * from the notes alone left an audio-path score with a table too short
+         * to place its own harmony, and {@link #barOf} clamped the tail into
+         * the last bar it had.
          */
         static BarTable spanning(TempoMap tempoMap, Score score, List<Note> notes) {
             double lastBeat = 0;
@@ -1147,13 +607,9 @@ public final class Quantizer {
             for (Key key : score.keys()) {
                 lastBeat = Math.max(lastBeat, beatOf(tempoMap, key.endBeat(), key.endSeconds()));
             }
-            // Bounded before converting, not after. TempoMap.toMusicalTime
-            // rejects anything past bar Integer.MAX_VALUE with a message about
-            // bar indices, which describes the arithmetic rather than the
-            // mistake -- and a map only slightly less absurd passes it and then
-            // asks for a gigabyte of bar table. The shortest bar the map itself
-            // declares bounds the bar index from above, so this is exact rather
-            // than conservative.
+            // Bounded before converting, not after: a map slightly less absurd
+            // than what toMusicalTime rejects still asks for a gigabyte of bar
+            // table. The shortest declared bar bounds the index exactly.
             double shortestBar = tempoMap.meterChanges().stream()
                     .mapToDouble(change -> change.timeSignature().quarterBeatsPerBar())
                     .min().orElseThrow();
@@ -1164,17 +620,9 @@ public final class Quantizer {
                                 + " wrong rather than the music that long");
             }
             int lastBar = tempoMap.toMusicalTime(lastBeat).bar();
-            // One spare bar past the last release. Nothing can index past it --
-            // every index in this class goes through barOf, which clamps -- but
-            // without it a note rushed onto the final bar line has nowhere to be
-            // published: snap declines to carry the onset forward when there is
-            // no bar to carry it into, so the note is printed on a downbeat that
-            // no BarGrid covers, and "one entry per bar that holds a note" stops
-            // being true at the one place a consumer cannot work around.
-            //
-            // This was deleted once on the strength of a mutation sweep that
-            // found nothing to tell the difference. Nothing could: the sweep had
-            // no test for it either.
+            // One spare bar past the last release, or a note rushed onto the
+            // final bar line has no bar to be carried into and prints on a
+            // downbeat no BarGrid covers.
             int count = lastBar + 2;
             double[] starts = new double[count];
             TimeSignature[] meters = new TimeSignature[count];
@@ -1188,12 +636,8 @@ public final class Quantizer {
         }
 
         private static double rawBeat(TempoMap tempoMap, double seconds) {
-            // Belt and braces rather than a live case: TempoMap requires its
-            // first segment to be anchored at beat 0 and second 0, and Note
-            // rejects a negative onset, so no reachable input converts to a
-            // negative beat today. It stays because toMusicalTime rejects one
-            // outright and this is the only place that would notice a future
-            // map whose anchoring rule had loosened.
+            // No reachable input converts negative today; this is the only
+            // place that would notice a future map whose anchoring loosened.
             return Math.max(0, tempoMap.secondsToBeats(seconds));
         }
 
@@ -1216,14 +660,9 @@ public final class Quantizer {
 
         /**
          * Where a span boundary already is on the beat axis: the position it
-         * carries if it carries one, and otherwise its wall-clock time
-         * converted.
-         *
-         * <p>Preferring the carried value is not an optimisation. A MIDI import
-         * states its rhythm exactly and has produced beat-aligned chords since
-         * #115; converting those to seconds and back would put a rounding step
-         * between a value and itself, and re-quantizing an already-quantized
-         * score is meant to be a no-op rather than a slow drift.
+         * carries if it carries one, otherwise its wall-clock time converted.
+         * Preferring the carried value keeps re-quantizing an
+         * already-quantized score a no-op rather than a slow drift (#115).
          */
         static double beatOf(TempoMap tempoMap, Optional<Double> carried, double seconds) {
             return carried.isPresent() ? carried.get() : rawBeat(tempoMap, seconds);
@@ -1234,14 +673,10 @@ public final class Quantizer {
         }
 
         /**
-         * The nearest counted beat, which is the finest position a chord symbol
-         * can take.
-         *
-         * <p>Measured inside the bar rather than from the origin, so the answer
-         * follows the meter: in 6/8 the counted beat is a dotted quarter and a
-         * bar holds two of them, not six. Building the position back up from the
-         * bar's own start keeps it bit-identical to the bar line the notation
-         * layer will draw, which subtracting from a global beat count would not.
+         * The nearest counted beat, the finest position a chord symbol can
+         * take. Measured inside the bar so the answer follows the meter, and
+         * built back up from the bar's own start so it stays bit-identical to
+         * the bar line the notation layer will draw.
          */
         double snapToCountedBeat(double beat) {
             int bar = barOf(beat);
@@ -1250,13 +685,9 @@ public final class Quantizer {
         }
 
         /**
-         * The nearest bar line, which is the only position a key change or a
-         * section boundary can take.
-         *
-         * <p>{@code beatsPerBar() * beatUnitQuarters()} equals
-         * {@code quarterBeatsPerBar()} to the last bit, so a boundary rounded up
-         * lands on exactly the double this table holds for the next bar rather
-         * than an ulp away from it.
+         * The nearest bar line, the only position a key change or a section
+         * boundary can take. A boundary rounded up lands on exactly the double
+         * this table holds for the next bar, not an ulp away from it.
          */
         double snapToBarLine(double beat) {
             int bar = barOf(beat);
@@ -1270,14 +701,10 @@ public final class Quantizer {
         }
 
         /**
-         * Where a position sits inside its bar, in quarter beats.
-         *
-         * <p>Clamped rather than asserted. The bar came from
-         * {@link TempoMap#toMusicalTime} and the start from this table, and the
-         * two agree exactly for every map this project builds -- but a caller
-         * can hand-build a meter change that disagrees with its own tempo
-         * segments, and a negative position would then snap into the previous
-         * bar rather than fail visibly.
+         * Where a position sits inside its bar, in quarter beats. Clamped: a
+         * hand-built meter change can disagree with its own tempo segments,
+         * and a negative position would snap into the previous bar rather
+         * than fail visibly.
          */
         double beatInBar(double beat, int bar) {
             return Math.clamp(beat - startBeat[bar], 0.0, meter[bar].quarterBeatsPerBar());
@@ -1289,11 +716,9 @@ public final class Quantizer {
         }
 
         /**
-         * Where a note's release was played, on the written timeline.
-         *
-         * <p>The articulation allowance is not applied here: it needs to know
-         * the grid step in order to be bounded by it, and the grid is chosen
-         * later. See {@link Quantizer#snap}.
+         * Where a note's release was played, on the written timeline. The
+         * articulation allowance is applied later, once the grid it is
+         * bounded by is known; see {@link Quantizer#snap}.
          */
         double writtenOffsetBeat(Note note, SwingFeel swing) {
             return deswing(rawBeat(note.offsetSeconds()), swing);
@@ -1312,14 +737,9 @@ public final class Quantizer {
                 return rawBeat;
             }
             int bar = barOf(rawBeat);
-            // Checked here and not only where the feel was measured. A score
-            // that swings its 4/4 verses and then goes to 6/8 gets one verdict
-            // for the whole piece, and applying it to the compound bars puts
-            // their plain eighths onto a duplet grid -- the very defect
-            // excluding compound bars from the measurement was meant to remove.
-            // The measurement and the correction are two readers of the same
-            // fact, and guarding only the one the bug was reported against is
-            // how a fix stops at the layer it was noticed on.
+            // Checked here as well as where the feel was measured: one verdict
+            // covers the whole piece, and de-swinging a compound bar puts its
+            // plain eighths onto a duplet grid.
             if (meter[bar].isCompound()) {
                 return rawBeat;
             }
@@ -1342,35 +762,20 @@ public final class Quantizer {
 
     /**
      * Finds a shuffle by looking at where onsets fall inside the counted beat.
+     * Straight playing puts its off-beats at the half; a shuffle puts them
+     * near two thirds and leaves the middle empty, so the test is bimodality:
+     * a cluster on the beat, a tight cluster late, nothing much between. The
+     * tightness requirement is what keeps sixteenths and genuine triplets
+     * from reading as swing.
      *
-     * <p>Straight playing puts its off-beats at 0.5; a shuffle puts them near
-     * 0.667 and leaves the middle of the beat empty. So the test is bimodality:
-     * a cluster on the beat, a second tight cluster late in the beat, and
-     * nothing much in between.
+     * <p>Compound bars are not looked at, and that is not a shortcut: a
+     * shuffle <em>is</em> compound time written in a simple meter, and the
+     * commonest 6/8 rhythm lands on the shuffle signature exactly — measured
+     * against a straight-time expectation it reads as swung, gets de-swung
+     * onto a duplet grid, and is engraved with a swing direction on top (#4).
      *
-     * <p>The tightness requirement is what keeps a run of sixteenths from being
-     * read as swing. Sixteenths put onsets at 0.25, 0.5 and 0.75, whose spread
-     * is several times a shuffle's, even though their mean sits above 0.5. The
-     * measured figures are on {@link SwingDetector#MAX_SPREAD}, and they are
-     * there only: a multiple stated in more than one place is a multiple that
-     * goes stale in all but one of them.
-     * It is also what keeps a genuine triplet passage out: onsets at 0.333 and
-     * 0.667 average to 0.5 and spread wide, so triplets read as straight -- and
-     * that is correct, because they are triplets, not a shuffle.
-     *
-     * <p>Compound bars are not looked at, and that is not a shortcut. A shuffle
-     * <em>is</em> compound time written in a simple meter, so in a meter that is
-     * already compound there is nothing to take out: the natural subdivision of
-     * a 6/8 beat sits at a third and two thirds, and the commonest rhythm in the
-     * meter -- a quarter and an eighth -- lands on the shuffle signature exactly,
-     * with a tighter cluster than any human shuffle. Measured against a
-     * straight-time expectation it reads as a 66% swing, and the bar is then
-     * de-swung onto a duplet grid and engraved with a swing direction on top.
-     * That is #4 arriving in the one place {@link GridResolution} does not
-     * reach.
-     *
-     * <p>One verdict for the whole piece. A track that swings its bridge and not
-     * its verses will have the majority feel applied throughout.
+     * <p>One verdict for the whole piece: a track that swings its bridge and
+     * not its verses has the majority feel applied throughout.
      */
     private static final class SwingDetector {
 
@@ -1378,12 +783,10 @@ public final class Quantizer {
         private static final double ON_BEAT_WINDOW = 0.12;
 
         /**
-         * The part of the beat an off-beat eighth can occupy.
-         *
-         * <p>The far edge is {@link SwingFeel#MAX_RATIO} rather than a number of
-         * its own, so that everything this window can see is something the
-         * correction map can straighten. The two drifting apart is what put
-         * sixty-four notes on thirty-three downbeats.
+         * The part of the beat an off-beat eighth can occupy. The far edge is
+         * {@link SwingFeel#MAX_RATIO} rather than a number of its own, so
+         * everything this window can see is something the correction map can
+         * straighten.
          */
         private static final double OFF_BEAT_LOW = 0.30;
         private static final double OFF_BEAT_HIGH = SwingFeel.MAX_RATIO;
@@ -1398,43 +801,10 @@ public final class Quantizer {
         private static final double SWING_THRESHOLD = 0.58;
 
         /**
-         * How tight that cluster has to be.
-         *
-         * <p>Measured against the window this detector actually uses, at the
-         * 25 ms spread this project's fixtures play at, and stated as the range
-         * each population covers rather than as a ratio between them -- a ratio
-         * moves with the fixture and was twice quoted from one draw of it.
-         *
-         * <p>Played sixteenths spread <b>0.117 to 0.169</b>, over every played
-         * sixteenth fixture in the suite: two hundred re-seedings of the
-         * detector's own eight-bar fixture at 120 BPM, and the calibration
-         * suite's four-bar one at 60, 90 and 120. Both endpoints are from that
-         * whole set, which is worth saying because an earlier version of this
-         * sentence took its ceiling from one population and its floor from
-         * another and overstated the floor by fifteen per cent -- in the number
-         * a reader consults before raising this constant, which at 0.12 already
-         * fails the build.
-         *
-         * <p>A played shuffle spreads <b>0.034 to 0.084</b>, over thirty
-         * re-seedings at every phase from 0.58 to 0.75. So the threshold sits
-         * between the two populations, with the shuffle side the tighter
-         * margin -- and what loses a genuine shuffle in practice is
-         * {@link #SWING_THRESHOLD} rather than this.
-         *
-         * <p>Neither figure takes evidence from a constructed cluster, and six
-         * of the suite's shuffle fixtures are constructed -- two play to the
-         * tick and spread zero, and four set their own spread either side of
-         * the shuffle point. A seventh is constructed past the window
-         * altogether, so its cluster is empty rather than tight and it is not
-         * one of the six. A constructed cluster is still evidence about the
-         * <em>threshold</em>, and the widest of them is what holds its lower
-         * end: 0.085, inside the gap between the populations and just under this
-         * value. The upper end is held by played sixteenths, not by anything
-         * constructed.
-         *
-         * <p>An earlier comment said sixteenths spread about 0.19, which is
-         * what they spread against a window starting at 0.25; the figure
-         * predated {@link #OFF_BEAT_LOW} being raised to 0.30.
+         * How tight that cluster has to be. Sits between the spread of played
+         * sixteenths (above it) and played shuffles (below it), both measured
+         * in {@code SwingDetectionTest}'s fixtures; what loses a genuine
+         * shuffle in practice is {@link #SWING_THRESHOLD} rather than this.
          */
         private static final double MAX_SPREAD = 0.09;
 
