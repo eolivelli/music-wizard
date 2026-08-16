@@ -54,33 +54,15 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 /**
- * Runs the analysis pipeline over a workspace.
+ * Runs the analysis pipeline over a workspace. The manual overrides here are
+ * the highest-value controls in the tool: beat and meter estimation is the
+ * least reliable stage and every later stage depends on it.
  *
- * <p>The manual overrides here are the highest-value controls in the tool. Beat
- * and meter estimation is the least reliable stage, and every later stage
- * depends on it, so one corrected number from a user who can count bars fixes
- * the entire output.
- *
- * <p>Which pipeline runs is decided by {@link SourceKind}, from the file's
- * header. The two report differently on purpose, and the difference is the point
- * rather than a cosmetic one:
- *
- * <ul>
- *   <li>The audio path <em>measures</em>. Its stage lines are verbs of discovery
- *       -- "tracking beats", "found 65 beats at 120.2 beats/min" -- because every
- *       figure in them is an estimate that could be wrong.
- *   <li>The MIDI path <em>reads</em>. A MIDI file declares its tempo and its
- *       meter, so those figures are quoted under a heading naming where they
- *       came from, and the word "found" does not appear.
- * </ul>
- *
- * <p>Printing the same line for both would make a fact look like a guess and, in
- * the direction that actually costs somebody something, make a guess look like a
- * fact. The one place the MIDI path is deliberately the <em>less</em> confident
- * of the two is a file whose tempo changes: there is then no single stated
- * tempo, so the opening one is quoted with the number of changes beside it,
- * rather than {@link Score#estimatedTempo()}'s duration-weighted average, which
- * is a derivation and would be printed under a heading claiming it was read.
+ * <p>Which pipeline runs is decided by {@link SourceKind}, and the two report
+ * differently on purpose: the audio path <em>measures</em> (verbs of
+ * discovery, every figure an estimate), the MIDI path <em>reads</em> (figures
+ * quoted under a heading naming where they came from). Printing the same line
+ * for both would make a guess look like a fact.
  */
 @Command(name = "analyze", description = "Analyse the recording in a workspace.")
 final class AnalyzeCommand implements Callable<Integer> {
@@ -89,36 +71,13 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static final String STAGE_PREFIX = "transcribe-";
 
     /**
-     * What the MIDI path's figures are, exactly.
-     *
-     * <p>Two sources, and the heading names both because the code cannot tell
-     * them apart. {@link MidiTranscriber} substitutes 120 BPM when a file carries
-     * no tempo event at tick 0, and 4/4 when it carries no time signature -- the
-     * values the MIDI specification says such a file is played at -- and the
-     * {@code TempoMap} that comes back records the substitution as though it were
-     * a declaration.
-     *
-     * <p>An earlier draft said "Read from the file, not estimated", which for
-     * such a file is untrue in the direction this whole change is about: it
-     * presents a default as a statement. The alternative -- asking the file
-     * whether it declared a tempo -- means a second reader of MIDI meta events in
-     * the CLI, and the rule it would have to reproduce ("at tick 0", not
-     * "anywhere") is precisely the kind of rule this project keeps teaching to
-     * one of two places. So the claim is narrowed to one that holds for every
-     * file.
-     *
-     * <p>#120 landed while this was in review and made half of that answerable:
-     * {@link TempoMap.TempoSegment} now carries a {@link Provenance}, and
-     * {@code MidiTranscriber} marks a defaulted opening tempo {@code ASSUMED}
-     * where a declared one is {@code DECLARED}. So the <em>tempo</em> row could
-     * be tightened today. The meter row could not -- {@code MeterChange} carries
-     * no provenance -- and a block whose rows made claims of different strengths
-     * without saying which was which would be worse than one honest heading. #119
-     * is where the other half goes, and tightening both rows together is the
-     * change to make after it.
-     *
-     * <p>What is <em>not</em> weakened is the distinction that matters: nothing
-     * under this heading was measured from audio.
+     * What the MIDI path's figures are, exactly. The heading names both
+     * sources because {@link MidiTranscriber} substitutes the MIDI defaults
+     * where a file declares nothing and the {@code TempoMap} records the
+     * substitution as a declaration. The tempo row could be tightened via
+     * {@link Provenance} (#120); the meter row cannot until #119, and rows of
+     * different strengths under one heading would be worse than one honest
+     * heading. What is not weakened: nothing under it was measured from audio.
      */
     private static final String DECLARED_HEADING =
             "From the file, or the MIDI default where it declares nothing:";
@@ -196,10 +155,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         SourceKind kind = SourceKind.detect(source);
 
         if (!workspace.sourceMatchesDigest()) {
-            // No longer "re-run with --force to recompute". The transcription
-            // cache this command added is keyed on the file's own digest, so a
-            // changed source misses it and recomputes without being asked. What
-            // is genuinely stale is anything already written from the old file.
+            // The cache is keyed on the file's digest, so a changed source
+            // recomputes unasked; what is stale is what was already rendered.
             System.err.println(
                     "warning: the source recording has changed since this workspace was"
                             + " created; this analysis is of the file as it is now, and"
@@ -209,11 +166,8 @@ final class AnalyzeCommand implements Callable<Integer> {
 
         System.out.println("Workspace  " + workspace.root());
         System.out.println("Source     " + source.getFileName() + " (" + kind.description() + ")");
-        // Qualified, because the layer does not exist yet: #11. Announcing it
-        // as simply "enabled" is the defect #82 was filed for, in the command
-        // next door -- and it matters slightly more now that the flag is a cache
-        // key component, since invalidating an entry is currently its only
-        // effect.
+        // Qualified because the layer does not exist yet (#11); announcing it
+        // as simply "enabled" is #82's defect.
         System.out.println("Advisor    " + (config.isLlmEnabled()
                 ? "enabled, but advises nothing yet (#11)" : "disabled"));
         System.out.println();
@@ -234,19 +188,12 @@ final class AnalyzeCommand implements Callable<Integer> {
             score = withTranscribedLyrics(workspace, score, config);
         }
 
-        // The score is persisted before the cache entry, and never after. The
-        // score is what the user asked for; the cache is an optimisation for the
-        // next run, and losing minutes of DSP because a cache write failed is a
-        // poor trade in either order -- but this order also means the failure
-        // cannot happen before the deliverable is safe.
+        // The score is persisted before the cache entry: the failure cannot
+        // then happen before the deliverable is safe.
         workspace.writeScore(score);
         if (!result.fromCache()) {
-            // The transcription, not the titled score. The key covers the
-            // recording and the options and says nothing about the metadata, so
-            // an entry carrying a title would be served to a workspace that
-            // names the piece differently -- and titled() runs on the way out of
-            // the cache as well as past it, so nothing is lost by leaving it
-            // out.
+            // The transcription, not the titled score — the key says nothing
+            // about metadata, and titled() runs on the way out of the cache.
             storeQuietly(workspace.cache(), result.key(), result.score());
         }
 
@@ -261,31 +208,12 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The score with the workspace's title and artist on it.
-     *
-     * <p>The workspace knows them and the score is what the engraver reads, so
-     * without this step {@code mw init --title} reached {@code workspace.yaml}
-     * and stopped there: every chart the audio path produced was headed
-     * "Untitled", with no artist, however carefully the workspace had been
-     * labelled. That is #216. The line this replaces wrote the workspace's own
-     * metadata back to the workspace, which was a no-op in every field.
-     *
-     * <p><b>The workspace outranks the transcription, field by field.</b> A
-     * title in {@code workspace.yaml} was typed by a person about this
-     * recording; the one {@link MidiTranscriber} finds is the first track name
-     * in a file, which is a title only by convention -- and where the workspace
-     * says nothing, that convention is still better than nothing, so the
-     * transcription's value is kept rather than cleared. Per field, because a
-     * workspace naming the artist and not the piece must not discard a title the
-     * file did carry.
-     *
-     * <p>Applied here rather than inside a transcriber because the workspace is
-     * the CLI's to know, and here rather than in {@code render} because a
-     * renderer that re-read the workspace would be the second reader of a fact
-     * -- {@code RenderCommand} answers from the score and nothing else, for
-     * reasons #120 records. The cost is that a workspace analysed before this
-     * change keeps its untitled score until {@code analyze} runs again, which
-     * costs nothing beyond a cache hit.
+     * The score with the workspace's title and artist on it (#216). The
+     * workspace outranks the transcription, field by field: a workspace title
+     * was typed by a person, a transcribed one is a track name by convention —
+     * and a workspace naming only the artist must not discard a title the file
+     * did carry. Applied here because the workspace is the CLI's to know, and
+     * not in {@code render}, which answers from the score alone (#120).
      */
     private static Score titled(Workspace workspace, Score score) {
         return score.withMetadata(
@@ -316,21 +244,11 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The lyrics already in this workspace's score, or none.
-     *
-     * <p>Guarded, and the guard is the point. {@code readScore} raises on a
-     * {@code score.json} that is truncated, half-written or not valid UTF-8 —
-     * and unguarded here that would abort {@code analyze} after the pipeline had
-     * run, before the new score could be written, leaving the corrupt file in
-     * place and the workspace unrecoverable through the tool: {@code render}
-     * fails the same way, and the one command that would overwrite the bad file
-     * is the one that will not run.
-     *
-     * <p>That is the failure this whole path is shaped to avoid, arriving by the
-     * other door: the previous score is a decoration on an analysis that has
-     * already succeeded, exactly as a lyric file is, so it gets the same
-     * treatment. Warn, carry nothing, and let the good score overwrite the bad
-     * one.
+     * The lyrics already in this workspace's score, or none. Guarded, and the
+     * guard is the point: a corrupt {@code score.json} raising here would
+     * abort {@code analyze} before the new score could overwrite it, leaving
+     * the workspace unrecoverable through the tool. Warn, carry nothing, and
+     * let the good score overwrite the bad one.
      */
     private static Score carriedForward(Workspace workspace, Score score) {
         try {
@@ -414,11 +332,9 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (provider.isEmpty()) {
             return score;
         }
-        // Providers read the global layer only (#383), so a model directory
-        // set in the workspace never reaches them -- and the failure it
-        // produces is a provider reporting it does not speak the language,
-        // which points at the wrong thing entirely. Same warning the ASR key
-        // carries, for the same reason.
+        // Providers read the global layer only (#383); a workspace-set model
+        // directory never reaches them, and the resulting failure points at
+        // the wrong thing entirely.
         warnIfLayerUnreachable("ml.alignmentModelDirectory",
                 ml == null ? null : ml.alignmentModelDirectory(),
                 global -> global == null ? null : global.alignmentModelDirectory());
@@ -443,12 +359,9 @@ final class AnalyzeCommand implements Callable<Integer> {
             int kept = 0;
             for (int i = 0; i < parsed.size(); i++) {
                 LyricLine line = parsed.get(i);
-                // Lines on one moment share a span by the model's own design
-                // (#340) -- a second voice, a two-line display. Aligning them
-                // would sequence what is sung together, and any spacing rule
-                // keyed on the predecessor's end would displace the twin by a
-                // whole line and cascade the drift to the end of the file.
-                // They keep their shared parsed span, untouched.
+                // Lines on one moment share a span by design (#340); aligning
+                // them would sequence what is sung together and cascade the
+                // drift. They keep their shared parsed span, untouched.
                 if (sharesAMoment(parsed, i)) {
                     kept++;
                     aligned.add(line);
@@ -457,23 +370,19 @@ final class AnalyzeCommand implements Callable<Integer> {
                 }
                 LyricLine result;
                 try {
-                    // The tail bound is the parser's own rule: a line ends no
-                    // later than the next distinct start. An aligned line
-                    // honouring it cannot take the next line's chords, which
-                    // was round 1's harm.
+                    // The parser's own rule: a line ends no later than the
+                    // next distinct start, so it cannot take that line's
+                    // chords.
                     double bound = i + 1 < parsed.size()
                             ? parsed.get(i + 1).startSeconds()
                             : audio.durationSeconds();
                     result = alignedLine(provider.get(), audio, language, line,
                             previousEnd, bound);
                 } catch (ModelUnavailableException e) {
-                    // The model itself cannot be had: no later line will fare
-                    // better, and retrying the fetch once per line would
-                    // re-download a checksum-failing model per line. Whole-run
-                    // degradation, with the reason.
+                    // No later line will fare better; whole-run degradation.
                     throw e;
                 } catch (RuntimeException e) {
-                    // One line's failure keeps that line's parsed times without
+                    // One line's failure keeps its parsed times without
                     // discarding the lines that aligned.
                     result = line;
                 }
@@ -482,19 +391,15 @@ final class AnalyzeCommand implements Callable<Integer> {
                 } else {
                     measured.add(result.confidence());
                 }
-                // Belt and braces at the one assembly point: the sequential
-                // window head and the tail bound above make this a no-op on
-                // every expected path, and a path nobody expected is exactly
-                // when the sheet's cursor must still find monotone lines.
+                // A no-op on every expected path; a path nobody expected is
+                // exactly when the sheet's cursor must still find monotone
+                // lines.
                 result = shiftedAfter(result, previousEnd);
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
             }
-            // Two scales, never compared (#386). Whoever produced the words
-            // rated them -- LrcLyrics by how each time was come by, or the
-            // transcriber by what it heard -- and the aligner rates only the
-            // path it chose through the audio. The file keeps the words'
-            // number; the aligner's is printed beside it rather than folded in.
+            // Two scales, never compared (#386): the words' own confidence
+            // stays on the file, the aligner's is printed beside it.
             Confidence weakest = measured.stream()
                     .min(java.util.Comparator.comparingDouble(Confidence::value))
                     .orElse(null);
@@ -551,10 +456,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             return score;
         }
         MusicWizardConfig.MlConfig ml = config.ml();
-        // The provider reads only the global config layer (#383). A model
-        // directory set in the workspace layer therefore never reaches it;
-        // said out loud, because the silent alternative is transcribing with
-        // the published model while the user believes their own is running.
+        // Same #383 warning as the alignment key, for the same reason.
         warnIfLayerUnreachable("ml.asrModelDirectory",
                 ml == null ? null : ml.asrModelDirectory(),
                 global -> global == null ? null : global.asrModelDirectory());
@@ -622,10 +524,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     "sung stretch", "sung stretches") + " with " + provider.get().id()
                     + (failed > 0 ? "; " + counted(failed, "stretch", "stretches")
                             + " failed" : ""));
-            // The recognizer knows the words but not their times -- each line's
-            // words are spread across its sung stretch. The aligner measures
-            // real onsets where it speaks the language, and only for lyrics
-            // transcribed in this run: carried-forward lyrics never re-align.
+            // The recognizer knows the words but not their times; the aligner
+            // measures onsets, and only for lyrics transcribed in this run.
             return withAlignedLyrics(workspace, score.withLyrics(lyrics));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics not transcribed: " + e.getMessage());
@@ -915,10 +815,9 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (!force) {
             Score cached = readCached(cache, key);
             if (cached != null) {
-                // Said every time, and deliberately not quietly. A cached result
-                // is the previous answer, and on a development build -- which
-                // reports no version, so the key cannot change when the code does
-                // -- it is the only warning that the pipeline did not run.
+                // Said every time: on a development build the key cannot
+                // change when the code does, and this is the only warning
+                // that the pipeline did not run.
                 System.out.println("  reusing the cached analysis of this file;"
                         + " --force recomputes it");
                 return new Transcription(cached, key, true);
@@ -948,15 +847,10 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * Stores a result for the next run, or says why it could not.
-     *
-     * <p>Symmetrical with {@link #readCached}, which was guarded from the start
-     * for a reason the write side needed just as much: a cache is an
-     * optimisation, and a {@code cache/} that is full, read-only, or occupied by
-     * something that is not a directory must not cost the user an analysis that
-     * has already succeeded. Unguarded, this raised out of {@code analyze} after
-     * the pipeline had run -- on the audio path, minutes of DSP thrown away over
-     * a failure to write a file nothing was waiting for.
+     * Stores a result for the next run, or says why it could not. Guarded
+     * like {@link #readCached}: a cache is an optimisation, and a full or
+     * read-only {@code cache/} must not cost an analysis that has already
+     * succeeded.
      */
     private static void storeQuietly(StageCache cache, StageCache.Key key, Score score) {
         try {
@@ -970,58 +864,23 @@ final class AnalyzeCommand implements Callable<Integer> {
     /**
      * The cache key for one transcription.
      *
-     * <p>The input kind is carried by the <em>stage name</em> rather than by a
-     * component, and that is a deliberate second attempt. Both paths read the
-     * same bytes, so the file's digest cannot separate them; the first version of
-     * this method added the kind as one component among several and a mutation
-     * run showed it was doing nothing -- deleting it left every test passing,
-     * because the audio branch's option components happened to differ from the
-     * MIDI branch's absence of them. The keys were distinct by accident, and an
-     * accident is not a separation.
+     * <p>The input kind is carried by the <em>stage name</em>, not a
+     * component: both paths read the same bytes, so the digest cannot
+     * separate them, and a kind component was once distinct only by accident.
+     * {@code StageCache} gives each stage its own directory, which cannot be
+     * accidental and makes a workspace diagnosable by eye.
      *
-     * <p>As a stage name it cannot be accidental: {@code StageCache} gives each
-     * stage its own directory, so {@code cache/transcribe-audio} and
-     * {@code cache/transcribe-midi} cannot serve one another's entries whatever
-     * the components beneath them turn out to be. It is also the honest
-     * modelling -- these are two different stages that happen to produce the same
-     * type -- and it makes a workspace diagnosable by eye. That matters here
-     * because before #114 the audio path really did read MIDI files, and it
-     * answered plausibly and wrongly.
-     *
-     * <p>The build is a component, and what it buys is narrower than it looks.
-     * The key can name every input but cannot name the code, and a score is the
-     * output of the whole DSP stack, so upgrading and re-running {@code analyze}
-     * would otherwise return the previous version's answer. What the component
-     * carries is the jar's {@code Implementation-Version} -- which no jar this
-     * project shipped actually had until the manifest entry was added alongside
-     * this, so the first version of this javadoc described a protection that did
-     * not exist at all.
-     *
-     * <p>It still only invalidates when the <em>version string</em> changes. A
-     * rebuild at the same version does not, which covers every SNAPSHOT build
-     * and every run from {@code target/classes}, where there is no manifest and
-     * the component reads "development". That is why the reuse is announced on
-     * every hit rather than being silent, and why {@code --force} exists.
-     *
-     * <p>The audio settings are components only on the audio path. On the MIDI
-     * path they change nothing, because nothing reads them, so keying on them
-     * would miss the cache for a reason that is not a reason.
-     *
-     * <p>{@code skipSeparation} and {@code advisorEnabled} are components even
-     * though <em>nothing reads either yet</em>, and that is the point:
-     * separation lands under #8 and the advisor under #11, and a setting that
-     * will change the analysis while the key does not change is how a corrected
-     * run gets served the answer it was correcting. This project has already
-     * paid for that shape once with {@code --tempo}. Keying on them now costs a
-     * recompute that would have produced the same score anyway; keying on them
-     * later costs a wrong one.
-     *
-     * <p>The advisor is keyed on <em>both</em> paths, unlike the audio settings.
-     * It is not an audio stage: #11 advises on meter, structure and spelling,
-     * every one of which a symbolic import produces too. Round 6 found it keyed
-     * nowhere while {@code skipSeparation} was keyed, with nothing in this
-     * javadoc saying whether that was a decision -- it was not, and the argument
-     * above applies to it word for word.
+     * <p>The build is a component so an upgrade does not serve the previous
+     * version's answer — but it only invalidates when the version string
+     * changes, which no SNAPSHOT or {@code target/classes} run does; that is
+     * why the reuse is announced on every hit and why {@code --force} exists.
+     * The audio settings are components only on the audio path, where they are
+     * read. {@code skipSeparation} and {@code advisorEnabled} are components
+     * even though nothing reads either yet (#8, #11): a setting that will
+     * change the analysis while the key does not is how a corrected run gets
+     * served the answer it was correcting, a shape already paid for once with
+     * {@code --tempo}. The advisor is keyed on both paths — it is not an audio
+     * stage.
      *
      * <p>Package-private so a test can compare two keys over the same file.
      */
@@ -1103,24 +962,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         lines.add("  Meter   " + statedMeter(score));
         lines.add("  Key     " + statedKey(score));
         lines.add("");
-        // Outside the block, because a part name is not a declaration in the way
-        // a tempo is. MidiTranscriber synthesises "Track 3" for an unnamed track,
-        // appends " ch 2" where one track carries two channels, and adds " (2)"
-        // to disambiguate a repeat -- so some of what is printed here was read
-        // and some was constructed, and the heading above must not cover both.
+        // Outside the block: part names are partly read and partly
+        // synthesised, and the heading must not cover both.
         lines.add("Parts   " + partsLine(score));
-        // Outside the declared block, and that placement is now doing more work
-        // than when it was written. Until #115 landed a MIDI import produced no
-        // chords at all; SymbolicChordEstimator now runs on this path, so a MIDI
-        // score has an estimated harmony over declared tempo and meter. Keeping
-        // chords out of the block is what stops the one being read as the other
-        // -- and it needed no change when the estimator arrived, which is the
-        // test of whether the split was drawn in the right place.
-        //
-        // The empty wording comes from MissingHarmony rather than being written
-        // here: this line used to name #115 unconditionally, which was false for
-        // a file holding no notes and contradicted what render said about the
-        // same score.
+        // Outside the block too: chords are estimated (#115) over declared
+        // tempo and meter, and the split is what stops the one being read as
+        // the other. The empty wording comes from MissingHarmony so it cannot
+        // contradict what render says about the same score.
         lines.add(score.chords().isEmpty()
                 ? "Chords  none, " + MissingHarmony.explain(score)
                 : "Chords  " + score.chords().size() + " spans");
@@ -1152,43 +1000,18 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The key the file declares, and from where.
-     *
-     * <p>Where matters here and does not in the two rows above it, which is the
-     * whole reason this one is longer. {@link TempoMap}'s constructor requires
-     * its first tempo segment and first meter change to sit at the origin, so
-     * {@code segments().get(0)} and {@code initialTimeSignature()} really are
-     * "at the start" by construction. Nothing imposes that on
-     * {@link Score#keys()}: {@code MidiTranscriber.readKeys} emits exactly the
-     * key-signature events the file contains, at whatever tick they carry, so the
-     * first of them may be four bars in.
-     *
-     * <p>Printing it unqualified said the piece opens in a key the file says
-     * nothing about, and with a second key present it read "E minor at the start,
-     * changed 1 time later" for a file whose first four bars are undeclared --
-     * the overstatement round 1 removed from the tempo and meter rows, surviving
-     * in the third row of the same block because that row's fixture, like every
-     * key fixture in the repo, declared at beat 0.
-     *
-     * <p>Judged on the beat axis when there is one and on seconds otherwise, and
-     * the position is <em>labelled with the axis it was read from</em>. A key
-     * imported from MIDI always carries both; one deserialized from a score some
-     * other producer wrote need not, and an earlier draft printed that fallback's
-     * seconds under the word "beat" -- at 120 BPM, off by a factor of two against
-     * the axis it named, in the one unit CLAUDE.md makes load-bearing everywhere
-     * downstream of the grid.
-     *
-     * <p>Changes are counted on {@link Key#displayName()}, which is what the user
-     * reads. Counting on the tonic instead compared a {@link PitchSpelling}
-     * whose {@code toString} carries an octave -- a field {@code Key} documents
-     * as ignored and never prints -- so two spans of one key differing only there
-     * were reported as a change, which is the exact defect {@link #countChanges}
-     * was introduced to remove.
-     *
-     * <p>What this row cannot fix is the importer's own line four above it, which
-     * still says "opening in E minor" about the same file (#127). Same shape as
-     * #118, same reason: it is emitted by {@code mw-transcribe}. A test asserts
-     * that contradiction still exists, so fixing #127 trips a reminder.
+     * The key the file declares, and from where. Where matters here and not in
+     * the rows above: {@link TempoMap} pins its first tempo and meter to the
+     * origin by construction, but {@link Score#keys()} holds the file's events
+     * at whatever tick they carry, so the first may be four bars in and
+     * printing it unqualified claims a key the file does not state. The
+     * position is labelled with the axis it was read from — a deserialized key
+     * need not carry beats, and printing seconds under the word "beat" is
+     * wrong in the one unit that is load-bearing. Changes are counted on
+     * {@link Key#displayName()}, what the user reads; counting on the tonic
+     * compared a {@link PitchSpelling} octave the key never prints. The
+     * importer's own line still contradicts this row (#127, same shape as
+     * #118); a test asserts that contradiction so fixing it trips a reminder.
      */
     private static String statedKey(Score score) {
         if (score.keys().isEmpty()) {
@@ -1217,42 +1040,21 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * How near the origin a position has to be to count as being at it.
-     *
-     * <p>A key imported from MIDI at tick 0 divides to exactly 0.0, so this is
-     * not doing any rounding for that path. It is here for a score read back from
-     * somebody else's JSON, where a position of 1e-15 means the origin and
-     * saying "from beat 0.000" about it would be true and useless.
+     * How near the origin a position has to be to count as being at it. MIDI
+     * tick 0 divides to exactly zero; this is for somebody else's JSON, where
+     * "from beat 0.000" would be true and useless.
      */
     private static final double ORIGIN_TOLERANCE = 1e-9;
 
     /**
-     * How many times a value actually changes along a list.
-     *
-     * <p>Transitions, not entries. Counting {@code size() - 1} counts the
-     * <em>events</em> the file happens to contain, and a sequencer export that
-     * restates the same tempo or the same key signature at every section
-     * boundary contains a great many that change nothing. Reporting those as
-     * changes is a claim about the music that the file does not make -- and it
-     * disagreed with the meter line in the same block, since
-     * {@code MidiTranscriber} already drops a restated meter and drops neither of
-     * the other two (#118).
-     *
-     * <p>What this fixes is the three rows of the block agreeing with each other.
-     * It does <em>not</em> reach the importer's own stage line a few lines above
-     * them, which still counts entries and still says "the tempo changes 1
-     * time(s) during the piece" about a file whose tempo never changes. That line
-     * is emitted by {@code mw-transcribe} and is the same defect at its source;
-     * #118 is where it gets fixed, and until then this command's output does
-     * contradict itself on screen. Saying so here rather than claiming the
-     * contradiction is gone, which an earlier draft of this paragraph did.
-     *
-     * <p>Compared with {@code equals}, which for the tempo means comparing two
-     * doubles exactly. That is right here rather than sloppy: a restated tempo is
-     * the same integer count of microseconds decoded by the same division, so it
-     * produces the identical double. Two tempi that differ in the last bit came
-     * from different microsecond counts and really are a change, however
-     * inaudible.
+     * How many times a value actually changes along a list — transitions, not
+     * entries: a sequencer export restates the same tempo at every section
+     * boundary, and reporting those as changes is a claim the file does not
+     * make. The importer's own stage line still counts entries (#118), so the
+     * output does contradict itself until that lands. Exact {@code equals} on
+     * the tempo doubles is right here: a restated tempo decodes to the
+     * identical double, and one differing in the last bit came from a
+     * different microsecond count and really is a change.
      */
     private static <T> int countChanges(
             List<T> values, java.util.function.Function<T, Object> valueOf) {
@@ -1282,22 +1084,10 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * Prints the tempo in the unit the user counts in.
-     *
-     * <p>The map stores quarter notes per minute, which is the same number in
-     * every x/4 meter and a different one in 6/8, where the counted beat is a
-     * dotted quarter. Printing the stored figure unqualified there would show a
-     * tempo the user cannot type back in via {@code --tempo}.
-     *
-     * <p>The tempo itself comes from {@link Score#estimatedTempo()} rather than
-     * straight off the map, so this and the engraved chart's header print the
-     * same number.
-     *
-     * <p>The audio summary's row, and only that one: the declared block reports
-     * a stated tempo and its changes through {@link #statedTempo}. The meter is
-     * the one the piece opens in, which is every bar of it, because nothing on
-     * the audio path estimates a meter change. A file that declares one arrives
-     * through {@code midiSummary} instead.
+     * The audio summary's tempo row, in the unit the user counts in — in 6/8
+     * the stored quarter rate is not a number the user can type back via
+     * {@code --tempo}. From {@link Score#estimatedTempo()}, so this and the
+     * engraved chart's header print the same number.
      */
     static String tempoLine(Score score) {
         return "Tempo   " + formatTempo(
@@ -1305,17 +1095,11 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * One tempo, in the beat its meter is counted in.
-     *
-     * <p>The single formatter both paths go through, because there are now two
-     * callers of it and the 6/8 qualification is exactly the kind of rule that
-     * gets taught to one of them and not the other.
-     *
-     * <p>One decimal place, and not more. A MIDI tempo event carries whole
-     * microseconds per quarter note, so a file asked for 140 BPM holds
-     * 140.00014; printing further digits would advertise a precision that is an
-     * artefact of the encoding rather than anything about the music. Nothing in
-     * this class compares two tempi for equality, for the same reason.
+     * One tempo, in the beat its meter is counted in — the single formatter
+     * both paths go through, so the 6/8 qualification cannot be taught to one
+     * and not the other. One decimal place: a MIDI tempo event carries whole
+     * microseconds per quarter, and further digits advertise a precision that
+     * is an artefact of the encoding.
      */
     private static String formatTempo(double quarterBpm, TimeSignature meter) {
         // Locale.ROOT, because the whole point is that the user can type this
@@ -1329,21 +1113,13 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * Says which typed options this run will not act on, and why.
-     *
-     * <p>Said rather than passed over. Ignoring an instruction the user typed is
-     * the failure this project keeps finding elsewhere, and it is the same defect
-     * #82 was filed for -- announcing something that does not happen -- one
-     * command over.
-     *
-     * <p>The tempo, meter and downbeat overrides are read from the <em>typed
-     * fields</em>: they correct stages a MIDI import does not run, so a config
-     * file carrying them is a preference that happens not to apply to this
-     * run, and saying so on every MIDI analysis would be noise.
-     * {@code --skip-separation} is read from the <em>effective config</em> and
-     * warned about whenever this particular run has no transcription for it to
-     * affect -- "happens not to apply here" and "does nothing in this run" are
-     * different claims and only the first is safe to leave unsaid.
+     * Says which typed options this run will not act on, and why — ignoring an
+     * instruction the user typed is #82's defect one command over. The tempo,
+     * meter and downbeat overrides are read from the typed fields: a config
+     * file carrying them is a preference that happens not to apply, and
+     * warning on every MIDI analysis would be noise. {@code --skip-separation}
+     * is read from the effective config — "does nothing in this run" is not
+     * safe to leave unsaid.
      */
     private void warnAboutOptionsThatDoNothing(SourceKind kind, MusicWizardConfig config) {
         if (transcriptionRequested() && kind != SourceKind.AUDIO) {
@@ -1374,14 +1150,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " no effect on a MIDI workspace; the file declares its own tempo"
                         + " and meter");
             }
-            // Its own line rather than the list above, because that list's
-            // reason -- the file declares these itself -- is not this one's. A
-            // MIDI import does carry its parts, and none of them is ever read as
-            // the melody role, so the flag is not merely redundant here: what it
-            // points at cannot be reached from this path at all (#500). render
-            // offers the flag without naming a source kind, because it cannot
-            // know one; this command can, and following that advice here must
-            // not be answered with silence.
+            // Its own line: the list above's reason (the file declares these)
+            // is not this one's — no MIDI part is ever read as the melody
+            // role, so what the flag points at is unreachable here (#500).
             if (melody) {
                 System.err.println("warning: --melody has no effect on a MIDI workspace;"
                         + " the parts are read from the file, and none of them is read as"
