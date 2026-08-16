@@ -166,12 +166,10 @@ public final class NnlsAblation implements PitchClassAblation {
                     + ") are not inside the " + spectra.length + " this covers");
         }
         double[] out = new double[12];
-        int from = fromSpan;
-        int to = toSpan;
         int bins = spectra[0].length;
         double[] mean = new double[bins];
         int counted = 0;
-        for (int span = from; span < to; span++) {
+        for (int span = fromSpan; span < toSpan; span++) {
             for (int bin = 0; bin < bins; bin++) {
                 mean[bin] += spectra[span][bin];
             }
