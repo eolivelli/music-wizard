@@ -566,19 +566,21 @@ public final class ChordEstimator {
      *
      * <p><b>Where the fit's own residual is available, it is asked first
      * whether the major third is there at all</b>, and where it is not the
-     * third counts for nothing — neither as a major candidate's evidence nor
-     * against a minor one. The subtraction above cannot reach that case: it
-     * only ever discounts, and a phantom third is routinely larger than the
-     * minor third it is competing with, so no share of the root leaves the
-     * minor candidate ahead (#527). The test is a comparison between the two
-     * thirds of the same run rather than a level, because how much residual a
-     * sounding note removes is a property of the production — a dense mix
-     * leaves its real thirds where a sparse one leaves its phantoms. It is
-     * one-sided for the same reason the subtraction is: partial 5 of the root
-     * is the major third and no partial of it is the minor third, so only one
-     * of the two can be manufactured. See {@link PitchClassAblation}, and #544
-     * for the register the residual is read over against the register this
-     * chroma is.
+     * third is no evidence — neither for a major candidate nor against a minor
+     * one. It stays in the chroma's norm, which every candidate on the run
+     * divides by alike. The subtraction above cannot reach that case: it only
+     * ever discounts, and a phantom third is routinely larger than the minor
+     * third it is competing with, so no share of the root leaves the minor
+     * candidate ahead (#527). Nothing here is an absolute level, because how
+     * much residual a sounding note removes is a property of the production —
+     * a dense mix leaves its real thirds where a sparse one leaves its
+     * phantoms; both halves of the test are comparisons within the run, one
+     * against the other third and one against the root
+     * ({@link #PHANTOM_THIRD_SHARE_OF_ROOT}). It is one-sided for the same
+     * reason the subtraction is: partial 5 of the root is the major third and
+     * no partial of it is the minor third, so only one of the two can be
+     * manufactured. See {@link PitchClassAblation}, and #544 for the register
+     * the residual is read over against the register this chroma is.
      */
     private static double qualityScore(double[] chroma, Template template,
                                        double[] significance) {
@@ -623,8 +625,9 @@ public final class ChordEstimator {
      * Letting it through makes the floor move with the audio, and in the wrong
      * direction — a vetoed major candidate's floor falls and a minor
      * candidate's rises, so the veto ends up admitting the chord it was meant
-     * to rule out. {@code ChordEstimationTest#thePhantomThirdDoesNotDecideTheQuality}
-     * covers the case it inverted.
+     * to rule out.
+     * {@code ChordEstimationTest#theFloorDoesNotMoveWithTheResidual} is the run
+     * that inverted, and the only test in that class which catches it.
      *
      * <p>Used as a floor, and <b>a floor rules out only candidates that fit
      * worse than noise — not a bad fit that is still better than noise</b>. So
