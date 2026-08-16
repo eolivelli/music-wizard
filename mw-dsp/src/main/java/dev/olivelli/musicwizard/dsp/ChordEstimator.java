@@ -627,7 +627,7 @@ public final class ChordEstimator {
      * candidate's rises, so the veto ends up admitting the chord it was meant
      * to rule out.
      * {@code ChordEstimationTest#theFloorDoesNotMoveWithTheResidual} is the run
-     * that inverted, and the only test in that class which catches it.
+     * where that shows, and the only test in that class which catches it.
      *
      * <p>Used as a floor, and <b>a floor rules out only candidates that fit
      * worse than noise — not a bad fit that is still better than noise</b>. So

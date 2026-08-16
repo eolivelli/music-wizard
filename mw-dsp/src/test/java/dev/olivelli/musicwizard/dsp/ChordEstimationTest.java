@@ -871,10 +871,10 @@ class ChordEstimationTest {
         void theFloorDoesNotMoveWithTheResidual() {
             // The floor is what a candidate scores against a chroma carrying no
             // information, and the residual test is a reading of this
-            // recording, so the floor must not see it. It did in an earlier
-            // draft, and the two families move opposite ways: a vetoed major
-            // candidate's floor falls and a minor candidate's rises, which
-            // admits the chord the veto was meant to rule out.
+            // recording, so the floor must not see it: the two families move
+            // opposite ways -- a vetoed major candidate's floor falls and a
+            // minor candidate's rises -- which admits the chord the veto was
+            // meant to rule out.
             //
             // The run where that shows is one the major triad explains worse
             // than a flat chroma would -- its two remaining notes carry less
