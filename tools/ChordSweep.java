@@ -181,6 +181,9 @@ public final class ChordSweep {
         Files.createDirectories(CACHE);
         if (!named.isEmpty()) {
             for (Path mp3 : named) {
+                if (!Files.isRegularFile(mp3)) {
+                    throw new IllegalArgumentException("no such recording: " + mp3);
+                }
                 cache(mp3);
                 System.out.println("  cached " + mp3);
             }
@@ -205,6 +208,11 @@ public final class ChordSweep {
      * second once the first has run.
      */
     static List<Bench> asBenches(List<Path> named) {
+        for (Path mp3 : named) {
+            if (!Files.isRegularFile(CACHE.resolve(mp3.getFileName() + ".bin"))) {
+                throw new IllegalArgumentException(mp3 + " is not cached; run cache first");
+            }
+        }
         return named.stream()
                 .map(p -> new Bench(p.getFileName().toString(), null)).toList();
     }
