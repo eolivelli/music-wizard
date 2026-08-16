@@ -247,9 +247,10 @@ So, by Enrico's decision and under his responsibility:
 ## Rendering
 
 LilyPond source is emitted **directly from the domain model**, not via
-`musicxml2ly`, which is lossy. MusicXML is a parallel export, not the route to
-PDF. PDF requires the LilyPond binary; without it the tool still writes `.ly`,
-`.musicxml` and `.midi` and says so rather than failing.
+`musicxml2ly`, which is lossy. MusicXML is a parallel export in the notation
+layer, not the route to PDF, and is not yet wired to the CLI. PDF requires
+the LilyPond binary; without it the tool still writes the `.ly` source and
+says so rather than failing.
 
 Discovery checks, in order: the `notation.lilypondPath` config key, `$PATH`,
 then — **on POSIX only** — Homebrew and `/usr/local` prefixes, because Homebrew
