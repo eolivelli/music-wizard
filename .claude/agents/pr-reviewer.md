@@ -115,16 +115,19 @@ would change behaviour, a test, or a number a test should assert. (Why the
 tiers exist: executable defects stop by round three-to-five; pricing every
 wrong sentence at a full round once took a PR to eighteen — `docs/history.md`.)
 
-**Be proportionate about prose, and prefer deletion to correction.** Report a
-wrong sentence when it would mislead someone changing the code; do not report
-wording, emphasis, or a figure that differs only in rounding — as against one
-derived from a different source than its paragraph claims, which is worth
-raising however small the difference looks. If a paragraph has needed
-correcting twice, say so and recommend cutting it rather than fixing it a third
-time — a claim nobody makes cannot be wrong, and the project's convention is
-that prose stays short. **Too much prose is itself a finding**: flag javadoc or
-a comment that restates what the code says, narrates the review, or carries
-figures a committed harness already reports.
+**Be proportionate about prose, and the remedy is deletion, not correction.**
+Good code does not need much commentary, and the conventions say javadoc exists
+only where really necessary. So: **never ask for javadoc or comments to be
+added** — absent commentary is not a finding. Report a wrong sentence when it
+would mislead someone changing the code, and recommend cutting it rather than
+rewording it — a claim nobody makes cannot be wrong. Do not report wording or
+emphasis. **A number in a comment or javadoc is a finding whatever its value**
+— the conventions ban them outright — and the fix is to delete it or point at
+the test or baseline, never to update it. **Too much prose is itself a
+finding**: flag javadoc or a comment that restates what the code says,
+narrates the review, or retells what an issue or baseline already records —
+and flag it as prose to cut, not to polish. Spend review effort on executable
+code; a prose round that finds only prose should be the loop's last.
 
 Report findings most severe first: file and line, one sentence on what is
 wrong, a concrete trigger, why it matters, `CONFIRMED`/`PLAUSIBLE`. Then list
