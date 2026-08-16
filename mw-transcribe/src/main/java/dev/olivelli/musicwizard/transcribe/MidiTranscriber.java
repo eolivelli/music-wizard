@@ -100,32 +100,12 @@ public final class MidiTranscriber {
     private static final TimeSignature DEFAULT_METER = TimeSignature.FOUR_FOUR;
 
     /**
-     * The largest file this will read.
-     *
-     * <p>The cap is on bytes because bytes are all that can be counted before
-     * parsing, but what it is really bounding is heap, and the two are not the
-     * same size. This figure is measured rather than modelled, because two
-     * successive attempts to model it were both wrong and both wrong low: a
-     * {@code MidiEvent} plus a {@code ShortMessage} per three input bytes gives
-     * 35x, and the JDK's {@code Track} keeps a {@code HashSet} of its events
-     * beside the {@code ArrayList}, which that count leaves out.
-     *
-     * <p>Measured on this JDK against the densest file the format allows --
-     * running-status note events, three bytes each -- by bisecting {@code -Xmx}
-     * over the whole {@code transcribe} path:
-     *
-     * <pre>
-     *   4 MB file, 699,040 notes: fails at 256m, succeeds at 288m
-     *   6 MB file, 1,048,565 notes: fails at 384m, succeeds at 512m
-     *   8 MB file, 1,398,096 notes: fails at 512m
-     * </pre>
-     *
-     * <p>So the real ratio is about 70x, not 35x. Four megabytes is the figure
-     * because a JVM with no {@code -Xmx} takes a quarter of the machine, and a
-     * 2 GB container therefore gets 512 MB -- which the row above clears with
-     * margin, where 8 MB does not clear it at all. It is still far above any
-     * real score: a full orchestral piece with every controller gesture intact
-     * is a couple of megabytes.
+     * The largest file this will read. The cap is on bytes because bytes are
+     * all that can be counted before parsing, but what it bounds is heap,
+     * which the JDK's parsed representation multiplies by far more than
+     * modelling suggests — the figure was measured by bisecting {@code -Xmx}
+     * so that a small default container heap clears the densest legal file.
+     * Still far above any real score.
      */
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
 
@@ -327,11 +307,8 @@ public final class MidiTranscriber {
             }
             tempi.put(tick, 60_000_000.0 / microsecondsPerQuarter);
         });
-        // Whether the opening tempo is the file's or ours is decided here and
-        // recorded on the segment, because it cannot be recovered afterwards:
-        // 120 substituted for a file that declares nothing is the same number as
-        // 120 the file declares. #117 had to hedge its output for exactly this,
-        // and #119 is the request to carry it.
+        // Recorded on the segment because it cannot be recovered afterwards:
+        // a substituted default is the same number as a declared one (#119).
         Provenance openingProvenance = Provenance.DECLARED;
         if (!tempi.containsKey(0L)) {
             tempi.put(0L, DEFAULT_TEMPO_BPM);
@@ -347,27 +324,11 @@ public final class MidiTranscriber {
             double beat = entry.getKey() / (double) ticksPerQuarter;
             double seconds = previousSeconds + (beat - previousBeat) * (60.0 / previousTempo);
             if (!(seconds > previousSeconds)) {
-                // Two tempo events so close together that the map cannot tell
-                // them apart. Keeping the later one would break the strict
-                // ordering the map requires -- on either axis, and the map is
-                // then unbuildable and the file unreadable rather than slightly
-                // wrong. The audible difference between dropping it and
-                // honouring it is nil.
-                //
-                // One condition, not three, because the two others worth
-                // worrying about both reduce to it. A beat collision -- two
-                // ticks that divide to the same double, which happens above
-                // 2^53 -- makes the increment below exactly zero, so the seconds
-                // do not advance either. And "not greater than" is already false
-                // for NaN, while the tick range and the tempo range together
-                // bound the sum far below overflow.
-                //
-                // Both inputs still have a test. Where seconds are computed
-                // from beats -- here, and in readKeys -- a condition on beats
-                // cannot decide anything a condition on seconds does not, and
-                // both sites now carry one condition rather than two. Two
-                // earlier drafts of this comment claimed otherwise, the second
-                // while purporting to correct the first.
+                // Two tempo events the map cannot tell apart: keeping the
+                // later one breaks the strict ordering the map requires and
+                // makes the file unreadable rather than slightly wrong. One
+                // condition — a beat collision leaves the seconds unmoved too,
+                // and "not greater than" already covers NaN.
                 progress.accept("ignoring a tempo event at tick " + entry.getKey()
                         + " that is indistinguishable in time from the previous one");
                 continue;
@@ -384,54 +345,24 @@ public final class MidiTranscriber {
     // ------------------------------------------------------------------- meter
 
     /**
-     * The meter changes the file's time-signature events describe.
+     * The meter changes the file's time-signature events describe. A MIDI
+     * event is at a tick and a {@link TempoMap.MeterChange} at a <em>bar</em>,
+     * so this walks the events in order, counting bars as it goes.
      *
-     * <p>The awkward part is that a MIDI event is at a tick and a
-     * {@link TempoMap.MeterChange} is at a <em>bar</em>, and the conversion needs
-     * the meter in force up to that point. So this walks the events in order,
-     * counting bars as it goes.
+     * <p>A change not on a bar line cannot be represented (#97) and is moved
+     * <em>forward</em> to the next one, so every bar before it still divides
+     * as the file said. Moving one forward can push it onto a bar a later
+     * change also claims, so moves are reported at the end and a change that
+     * does not survive has its report dropped with it — reporting as it went
+     * named bars the score does not contain. Each entry keeps its bar-line
+     * beat beside it so undoing a change restores the bar count too;
+     * otherwise a superseding change that restates the prior meter engraves a
+     * redundant mid-piece time signature.
      *
-     * <p>A change that does not land on a bar line cannot be represented (#97),
-     * and is moved forward to the next one. Forward rather than back
-     * deliberately: every bar before the change then still divides as the file
-     * said it did, and only the incomplete bar the event fell inside is
-     * affected.
-     *
-     * <p>Moving one forward can push it onto a bar a later change also claims,
-     * and then it never takes effect anywhere. That is only discoverable when
-     * the later change is read, so the move is <em>reported at the end</em>
-     * rather than when it happens: a change that turns out not to survive has
-     * its report dropped along with it. Reporting as it went produced a line
-     * naming a bar the score does not contain in that meter, followed some lines
-     * later by another retracting it, and a reader who acted on the first was
-     * acting on something untrue.
-     *
-     * <p>Undoing a change is what forces the bar line of each entry to be kept
-     * beside it rather than in a running variable. When a superseding change
-     * restates the meter that was in force before the one it displaces, the
-     * file's effective meter never changed at all, and the entry has to come
-     * out -- along with the bar count that was measured from it. An earlier
-     * draft carried the count separately and emitted a change from 4/4 to 4/4,
-     * which the model accepts, {@code timeSignatureAtBar} answers correctly, and
-     * the notation layer engraves as a redundant time signature mid-piece.
-     *
-     * <p>"On a bar line" is judged to within <em>half a tick</em>, and that is
-     * load-bearing rather than a detail. A tolerance denominated in bars -- what
-     * an earlier draft used -- grows with the bar, and once it exceeds a tick it
-     * makes an event one tick past the origin count as being <em>on</em> bar
-     * zero's line, which sends the walk into the branch that removes an entry.
-     * The entry at that point is the bar-0 one the map requires to exist, and
-     * removing it took the index below zero.
-     *
-     * <p>Half a tick cannot say that, and the reason is specifically about the
-     * origin rather than about bar lines in general: bar zero's line is at beat
-     * 0, the first event in this loop is at tick 1 or later, and one tick is
-     * twice the tolerance at every resolution. Later bar lines are <em>not</em>
-     * generally at whole ticks -- {@code 4 * ticksPerQuarter / denominator} need
-     * not be an integer, and at 120 ticks per quarter an x/64 bar line falls on
-     * a half tick -- so the tolerance does admit moving a change backwards
-     * there, by less than a tick. That is a rounding decision rather than the
-     * bar-sized move the paragraph above is about.
+     * <p>"On a bar line" is judged to within half a tick, which cannot reach
+     * bar zero's line — the first event in this loop is at tick 1 or later —
+     * where a tolerance denominated in bars grew past a tick and sent the
+     * walk into removing the bar-0 entry the map requires.
      */
     private List<TempoMap.MeterChange> readMeterChanges(Track[] tracks, int ticksPerQuarter) {
         TreeMap<Long, TimeSignature> meters = new TreeMap<>();
@@ -454,20 +385,15 @@ public final class MidiTranscriber {
 
         TimeSignature opening = meters.getOrDefault(0L, DEFAULT_METER);
         List<TempoMap.MeterChange> changes = new ArrayList<>();
-        // The beat each change's bar line falls on, one per entry in changes, so
-        // that removing an entry restores the bar count with it.
+        // The beat each change's bar line falls on, one per entry, so removing
+        // an entry restores the bar count with it.
         List<Double> barLineBeats = new ArrayList<>();
-        // Everything to tell the user, in the order it was discovered -- which
-        // is tick order, since the events are walked in tick order. Held rather
-        // than printed because one kind of line can stop being true: a report
-        // that a change moved to a bar line is false if that change is later
-        // displaced before the bar begins. Retracted by nulling the slot rather
-        // than removing it, so the surrounding lines keep their order.
+        // Held rather than printed: a "moved to a bar line" report stops being
+        // true if the change is later displaced. Retracted by nulling the
+        // slot, keeping the surrounding lines in order.
         List<String> log = new ArrayList<>();
-        // Where in the log each change's own "it moved" line sits, or -1. Only
-        // that line dies with its change: a line saying some *other* change
-        // never takes effect is a permanent fact, and parking it on an entry
-        // that was itself removed a moment later is how it went missing.
+        // Where each change's own "it moved" line sits, or -1 — only that line
+        // dies with its change.
         List<Integer> movedLine = new ArrayList<>();
         changes.add(new TempoMap.MeterChange(0, opening));
         barLineBeats.add(0.0);
@@ -495,18 +421,10 @@ public final class MidiTranscriber {
             long wholeBars = Math.max(0, (long) Math.ceil(barsAhead));
             if (wholeBars > 0 && barLength > halfTick && Math.abs(barLineBeats.get(last)
                     + (wholeBars - 1) * barLength - beat) <= halfTick) {
-                // The bar line just below is this event's own tick, so the
-                // ceiling overshot by one: the change is on that line, not after
-                // it. This is the whole of the tolerance -- everything else is
-                // exact arithmetic on whole ticks.
-                //
-                // Not applied where a whole bar is shorter than the tolerance,
-                // which needs a resolution of 8 ticks per quarter or less at
-                // 1/64. Several bar lines then sit inside half a tick, "the one
-                // just below" is not meaningfully nearer than the one the
-                // ceiling picked, and decrementing put an exactly-on-a-bar-line
-                // change one bar early -- silently, since the same tolerance
-                // then calls the result on a bar line too.
+                // The bar line just below is this event's own tick: the
+                // ceiling overshot by one. Not applied where a whole bar is
+                // shorter than the tolerance, where decrementing silently put
+                // an on-the-line change one bar early.
                 wholeBars--;
             }
             long bar = currentBar + wholeBars;
@@ -520,14 +438,9 @@ public final class MidiTranscriber {
 
             if (bar == currentBar) {
                 // The change already on this bar is superseded before the bar
-                // begins, so it takes effect nowhere. That is permanent, so it
-                // goes straight into the log; what does not survive is whatever
-                // that change had been told to say about itself.
-                //
-                // Never the entry at index 0: reaching here needs wholeBars to
-                // be zero, which at index 0 needs the event at or within half a
-                // tick of the origin, and tick 0 is not in this loop. So the
-                // bar-0 entry the map requires cannot be the one removed.
+                // begins, so it takes effect nowhere — permanent, so straight
+                // into the log; only its own "it moved" line dies with it.
+                // Never the bar-0 entry: tick 0 is not in this loop.
                 log.add(String.format(Locale.ROOT,
                         "the time signature %s never takes effect: bar %d is redeclared"
                                 + " as %s before it begins",
@@ -548,16 +461,9 @@ public final class MidiTranscriber {
             }
             int movedAt = -1;
             if (!onBarLine) {
-                // Reported in the superseding case too. An earlier draft left it
-                // out there, so a change that both displaced another and sat
-                // mid-bar was moved -- by up to a whole bar -- with nothing said.
-                // How far it moved, in quarter beats, rather than how far into
-                // a bar it fell. The latter is negative in the superseding case
-                // -- the change sits before a bar line an earlier change was
-                // already pushed to -- and a negative count of bars is not
-                // something a reader can act on. The distance moved is never
-                // negative, because the bar taken is the first at or after the
-                // event.
+                // Reported in the superseding case too, as the distance moved
+                // (never negative) rather than how far into a bar it fell
+                // (negative in the superseding case).
                 movedAt = log.size();
                 log.add(String.format(Locale.ROOT,
                         "the time signature %s at tick %d does not fall on a bar line;"
@@ -723,30 +629,13 @@ public final class MidiTranscriber {
 
     /**
      * Reconciles roles and names across the file, then builds the tracks.
-     *
-     * <p>{@link Score} permits at most one track in each named role and requires
-     * distinct names within {@link PartRole#OTHER}, so a file with two kits or
-     * two parts both called "Bass" would otherwise be rejected outright at the
-     * end of a successful import. A second part claiming a named role is
-     * therefore demoted to {@link PartRole#OTHER}, and it is reported, because a
-     * demoted part is engraved on a different staff than the file implies.
-     *
-     * <p>Percussion is the exception, and the exception matters more than the
-     * rule. Extra channel-10 parts are <em>merged</em> into the one kit rather
-     * than demoted, because in General MIDI they <em>are</em> one kit -- a file
-     * that splits drums from hand percussion onto two tracks, which every DAW
-     * exports, is describing two staves of a single instrument. Demoting the
-     * second to {@code OTHER} says the opposite: {@code OTHER} means an
-     * unclassified <em>pitched</em> part, and downstream stages act on that.
-     * {@code SymbolicChordEstimator} drops {@code DRUMS} and reads everything
-     * else as evidence about the harmony, so a demoted conga part put its note
-     * numbers into the chord histogram, and two kit tracks and nothing else came
-     * back charted as C major. Percussion note numbers are instrument selectors,
-     * so the pitches were a bass drum, an electric snare and a floor tom.
-     *
-     * <p>The role is where that has to be fixed. Every stage that asks "is this
-     * pitched?" asks {@link PartRole}, so an answer the model's uniqueness rule
-     * overwrites is an answer no amount of care downstream can recover.
+     * {@link Score} permits one track per named role, so a second claimant is
+     * demoted to {@link PartRole#OTHER} and reported — a demoted part is
+     * engraved on a different staff than the file implies. Percussion is the
+     * exception: extra channel-10 parts are <em>merged</em> into the one kit,
+     * because in General MIDI they are one kit — demoting one to {@code OTHER}
+     * marks it pitched, and its instrument-selector note numbers then feed the
+     * chord histogram.
      */
     private List<NoteTrack> toNoteTracks(List<ImportedPart> parts) {
         Set<PartRole> claimed = EnumSet.noneOf(PartRole.class);
@@ -856,46 +745,11 @@ public final class MidiTranscriber {
             double endBeat = to / (double) ticksPerQuarter;
             double startSeconds = tempoMap.beatsToSeconds(startBeat);
             double endSeconds = tempoMap.beatsToSeconds(endBeat);
-            // A key declared at the last tick of the piece is in force for no
-            // time at all, and a zero-length span is not a key: Key rejects one,
-            // so keeping it would fail the whole import at the very end with a
-            // message about the model rather than about the file.
-            //
-            // One condition, on seconds, because the beat axis cannot add
-            // anything. Ticks ascend, so endBeat is never below startBeat, and
-            // where the two are equal the seconds are equal too -- they come
-            // from the same pure function of the same argument. That is the
-            // whole proof, and measured over four million random spans against
-            // real tempo maps the beat condition decided in none of them.
-            //
-            // Explicitly *not* justified by beatsToSeconds being non-monotone
-            // across a segment boundary (#23), which an earlier draft of this
-            // comment claimed and which is wrong twice over. It cannot happen to
-            // a map built here: readTempoSegments accumulates each boundary's
-            // seconds with exactly the expression beatsToSeconds evaluates, so
-            // the map is continuous to the last bit rather than merely within
-            // the constructor's tolerance -- 300,000 maps built through this
-            // class, none non-monotone. And where non-monotonicity is present,
-            // dropping the beat condition is the *unsafe* direction, not the
-            // safe one: a span could then advance in seconds while going
-            // backwards in beats, and reach Key carrying the very argument this
-            // guard exists to keep out.
-            //
-            // A span really can advance in beats and not in seconds, but the
-            // mechanism is duller and is within a single segment: once the
-            // elapsed seconds pass about 2^52 ticks' worth, one tick is
-            // narrower than an ulp of them and the two ends convert to the same
-            // instant. Seconds-only rejects those spans, which is what a score
-            // wants.
-            //
-            // How far into a piece that is depends on the tempo and the
-            // resolution, and not by a little: half a million years at an
-            // ordinary tempo and 480 ticks per quarter, but six days at the
-            // fastest tempo a tempo event can name and the highest resolution a
-            // header can declare -- which fits in a MIDI file of 1470 bytes. An
-            // earlier draft of this sentence said "thousands of years" flatly,
-            // which is true only of ordinary tempi and understated the reachable
-            // case by five orders of magnitude, in the reassuring direction.
+            // A zero-length span is not a key — Key rejects one, which would
+            // fail the whole import at the very end. One condition, on
+            // seconds: ticks ascend, equal beats give equal seconds, and far
+            // enough into a piece a span can advance in beats while its two
+            // ends convert to the same instant, which seconds-only rejects.
             if (!(endSeconds > startSeconds)) {
                 continue;
             }
