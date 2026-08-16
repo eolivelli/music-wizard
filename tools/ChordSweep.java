@@ -293,19 +293,35 @@ public final class ChordSweep {
 
     /** How a recording is named in its own cache file. */
     static String source(Path mp3) {
-        return mp3.normalize().toString();
+        return real(mp3).toString();
     }
 
     /**
-     * Whether two names are the same recording. Resolved against the working
-     * directory rather than compared as text, because the same file named
-     * absolutely and relatively is one recording and rejecting the second
-     * spelling leaves no way out: the message can only tell the user to cache
-     * the path they already have.
+     * Where a recording actually is: symlinks followed where the file is there
+     * to follow them, and the path merely tidied where it is not.
+     *
+     * <p>Both halves are needed. Lexical tidying alone is not identity — {@code
+     * link/../samples/x.mp3} tidies to {@code samples/x.mp3} whatever {@code
+     * link} points at, so a recording somewhere else takes that name and the
+     * check passes. And {@link #load} is reachable for a recording whose cache
+     * is here and whose audio is not, so this cannot insist the file exist.
+     */
+    static Path real(Path mp3) {
+        try {
+            return mp3.toRealPath();
+        } catch (java.io.IOException absent) {
+            return mp3.toAbsolutePath().normalize();
+        }
+    }
+
+    /**
+     * Whether two names are the same recording. Resolved rather than compared
+     * as text, because one file named absolutely and relatively is one
+     * recording and rejecting the second spelling leaves no way out: the
+     * message can only tell the user to cache the path they already have.
      */
     static boolean sameRecording(String held, Path mp3) {
-        return Path.of(held).toAbsolutePath().normalize()
-                .equals(mp3.toAbsolutePath().normalize());
+        return real(Path.of(held)).equals(real(mp3));
     }
 
     static Cached load(Path mp3) throws Exception {
