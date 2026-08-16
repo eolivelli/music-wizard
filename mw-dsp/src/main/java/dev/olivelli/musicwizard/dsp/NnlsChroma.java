@@ -26,68 +26,24 @@ import java.util.stream.IntStream;
  * Chroma by way of approximate transcription: what notes, played together,
  * would produce the spectrum actually observed.
  *
- * <p>{@link Chroma} folds the spectrum onto twelve pitch classes directly, which
- * is correct for a synthesised triad and wrong for a record. #185 measured the
- * gap on a 3:43 commercial recording: taken frame by frame, the cosine of the
- * plain chroma against a flat profile beat its cosine against the best of all
- * twenty-four triads, so "no chord" was the maximum-likelihood answer for the
- * whole song and the estimator dutifully said so for 169 consecutive seconds.
- * The cause is not the estimator. A real mix has a bass whose partials spell out
- * a triad on their own, several instruments' worth of overtones, drums, and
- * reverb, and the sum of all that across twelve pitch classes is close to flat.
+ * <p>{@link Chroma} folds the spectrum onto twelve pitch classes directly,
+ * which is correct for a synthesised triad and wrong for a record: a real
+ * mix's bass partials, overtones, drums and reverb sum to nearly flat, which
+ * is how a whole song came back as one N.C. span (#185). This front end puts
+ * a transcription step in the way — the spectrum is resampled onto a
+ * pitch-linear grid, whitened, and explained as a non-negative combination of
+ * idealised note spectra, so a low C's fifth partial is attributed to the low
+ * C rather than counted as an E — and only the note activations are folded to
+ * chroma. On its own it is not the cure for #185: through the old emission
+ * model the answer does not change at all, and what each change is worth is
+ * on {@link ChordEstimator}, deliberately not restated here.
  *
- * <p>This front end puts a transcription step in the way. The spectrum is
- * resampled onto a pitch-linear grid, whitened, and then explained as a
- * non-negative combination of idealised note spectra — so a low C's fifth
- * partial is attributed to the low C rather than counted as an E. Only the
- * resulting note activations are folded to chroma. {@link ChordEstimator} still
- * matches templates and decodes with Viterbi and is handed a sharper chroma to
- * do it with.
- *
- * <p>It is not, on its own, the cure for #185, and the measurement is worth
- * stating here rather than only where it was taken. Handed this chroma but left
- * with the estimator it was written for — triads only, no-chord scored as a flat
- * template, the emission sharpness left at 20 — the answer does not change at
- * all: one N.C.
- * span covering 99.9% of {@code samples/gmajorblues.mp3}, which is bit for bit
- * what plain chroma gives. A flat profile scores
- * highest exactly when a frame looks least like music, and sharpening the frame
- * does not stop that. So this stage is worth a great deal and worth it only in
- * company.
- *
- * <p>How much, and how much belongs to which change, is on
- * {@link ChordEstimator} and deliberately not restated here. That figure has now
- * been corrected in three separate review rounds and each time a copy of it was
- * left standing somewhere else; this file linking to the one place it is
- * measured is cheaper than a fourth correction. {@link #combined()} breaks down
- * what this stage contributes by register, which is the part that belongs here.
- *
- * <h2>Why a separate type rather than a mode of {@code Chroma}</h2>
- *
- * <p>Three reasons, in increasing order of how much they would have cost.
- *
- * <p>{@code Chroma} is a value — twelve numbers per frame and a frame rate — and
- * every consumer of it, {@link ChordEstimator} and {@link DownbeatEstimator},
- * wants exactly that and does not care where it came from. A mode flag would put
- * a second, much larger algorithm behind a method whose contract is "fold the
- * spectrum", and give one method two quite different sets of failure modes to
- * document.
- *
- * <p>The two paths do not want the same transform. Plain chroma is happy at
- * 4096/1024; this needs a window about four times longer, because the whole
- * method rests on separating adjacent semitones in the bass and at 4096 samples
- * over 22.05 kHz the FFT bins are 5.4 Hz apart while a semitone at C2 is 3.9 Hz.
- * A mode flag on {@code extract(Spectrogram, double)} would take a spectrogram
- * at whatever resolution the caller had lying around and quietly do a worse job.
- *
- * <p>And this produces <em>two</em> chromas, treble and bass, which have to stay
- * in step. Returned separately they can be beat-synchronised against different
- * beat grids, or one of them forgotten; returned together, {@link
- * #beatSynchronous(List)} folds both or neither.
- *
- * <p>The plain path stays exactly as it was, apart from the #77 fix to its
- * tuning estimate that this depends on. It is the fallback when this one
- * underperforms, and the tier-0 tests depend on it.
+ * <p>A separate type rather than a mode of {@code Chroma}: consumers want a
+ * value and not a provenance; the two paths want different transforms (this
+ * one needs a window long enough to separate adjacent bass semitones); and
+ * this produces <em>two</em> chromas that must stay in step —
+ * {@link #beatSynchronous(List)} folds both or neither. The plain path stays
+ * as it was: it is the fallback, and the tier-0 tests depend on it.
  *
  * @param treble                chroma from the notes in the chordal register
  * @param bass                  chroma from the notes below it, which is where a
@@ -112,19 +68,11 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
     private static final double WINDOW_SECONDS = 0.37;
 
     /**
-     * Hop as a fraction of the window.
-     *
-     * <p>An eighth, so the hop inherits {@link #windowSizeFor}'s rounding to a
-     * power of two and is therefore <em>not</em> a constant number of
-     * milliseconds: 46 ms at 11.025, 22.05 and 44.1 kHz, 64 ms at 8, 16 and 32
-     * kHz, and 85 ms at 24, 48 and 96 kHz. An earlier revision of this comment
-     * said "about 46 ms at any rate", which is true at three rates of nine and
-     * was the same oversight as the band in {@link Chroma#beatSynchronous}: one
-     * reader of {@code windowSizeFor} corrected and the other, in this file, not.
-     *
-     * <p>The pipeline only ever analyses at 22.05 kHz, so 46 ms is what it
-     * actually runs at; the spread matters to a caller using
-     * {@link #extract(AudioBuffer)} on audio at its own rate.
+     * Hop as a fraction of the window. The hop inherits
+     * {@link #windowSizeFor}'s rounding to a power of two and is therefore
+     * not a constant number of milliseconds across sample rates — which
+     * matters only to a caller using {@link #extract(AudioBuffer)} on audio
+     * at its own rate.
      */
     private static final int HOPS_PER_WINDOW = 8;
 
@@ -293,83 +241,25 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
     }
 
     /**
-     * Both registers added together: one chroma over the whole note range.
+     * Both registers added together: one chroma over the whole note range,
+     * which is what chord labelling should use. The whole is far more than
+     * either part because the two registers fail on different chords —
+     * measured, the sum beats each register alone by tens of points of root
+     * accuracy, which is not a subtlety that could have been reasoned to; the
+     * per-change breakdown is on {@link ChordEstimator} (#232 tracks
+     * re-measuring, #193 the corpus evidence). The two weight functions are
+     * complementary ramps, so this is a plain unweighted fold over the
+     * chordal range; the top note is fitted and discarded, giving the
+     * partials below it somewhere to go.
      *
-     * <p>This is what chord labelling should use, and the measurement saying so
-     * was not the one expected. Scored per bar against the known twelve-bar
-     * cycle of {@code samples/gmajorblues.mp3} — 711 seconds, 26 repetitions of
-     * G7 G7 G7 G7 / C7 C7 G7 G7 / D7 C7 G7 D7 — the three folds give:
-     *
-     * <pre>
-     *                    bars whose      G        C        D
-     *                    root is right   recall   recall   recall
-     *   treble only          42.7%         24%      67%      72%
-     *   bass only            51.3%         80%       0%      26%
-     *   both                 86.6%         88%      96%      68%
-     *   plain chroma         58.9%         32%     100%      91%
-     * </pre>
-     *
-     * <p>The per-bar figures in this table were measured on the beat grid as
-     * it was before #196: chroma is averaged per tracked beat, so removing
-     * that grid's 1.9% rate error moves them. The comparison the table is
-     * for is not in doubt -- the differences down it are tens of points and
-     * the anchor moved by one -- but the cells read as current and are not.
-     * {@link ChordEstimator} carries the statement of this and #232 tracks
-     * re-measuring them.
-     *
-     * <p>The whole is a good deal more than either part, and the reason is
-     * visible in the columns: the two registers fail on different chords. The
-     * treble on this recording is mostly a lead line playing a blues scale, so
-     * it hears the passing notes rather than the accompaniment and finds the
-     * tonic in a quarter of the bars that hold it; the bass hears the
-     * accompaniment and never once finds the C7. Added together, most of both
-     * errors go — and the sum beats each part by more than thirty points, which
-     * is not a subtlety that could have been reasoned to.
-     *
-     * <p>The fourth row is there because leaving it out would flatter this one.
-     * Plain chroma through the same estimator scores 58.9%, so on this recording
-     * the transcription step is worth about twenty-eight points rather than the
-     * whole difference; the rest belongs to {@link ChordEstimator}'s own changes,
-     * whose breakdown is on that class. What the transcription buys is
-     * concentrated in the tonic, 32% against 88%, and it gives a little back on
-     * the D7 bars. That trade is favourable here, and there is exactly one
-     * recording's evidence that it is favourable anywhere (#193).
-     *
-     * <p>Because the two weight functions are complementary ramps, the sum is
-     * one everywhere from A0 to C6 and tapers to zero over the octave above,
-     * reaching zero exactly at C7 — so this is a plain unweighted fold of the
-     * note activations over the chordal range, and the register split exists for
-     * the benefit of callers that want it rather than as a stage of this one.
-     * The top note is therefore fitted and then discarded, which is deliberate:
-     * it gives the partials of everything below it somewhere to go at the top of
-     * the grid without contributing a pitch class of its own.
-     *
-     * <h4>Call this before {@link #beatSynchronous(List)}, not after</h4>
-     *
-     * <p>The two orderings are not the same computation and the difference is
-     * easy to miss, because both compile and both return a plausible chroma.
-     * {@link Chroma#beatSynchronous(List)} scales each span to sum to one. Fold
-     * the registers first and that normalisation is applied once, to the whole;
-     * beat-synchronise first and it is applied to each register separately, so
-     * adding them afterwards gives every beat exactly half treble and half bass
-     * — whatever the two actually held. A beat where the bass is silent then
-     * counts its noise floor as loudly as the chord above it.
-     *
-     * <p>Measured on {@code samples/gmajorblues.mp3} before #196 changed that
-     * recording's beat grid — see {@link ChordEstimator} and #232 — per-bar root
-     * accuracy is 86.6% folding first and 77.7% beat-synchronising first, and
-     * the per-chord recall shows why: 88/96/68 for G, C and D against 94/67/38. The wrong
-     * order does not fail, it just quietly over-weights whichever register had
-     * less to say — which on this recording means promoting a bass register that
-     * never once names the C7 to an equal vote in every beat.
-     *
-     * <p>So the wrong order is refused rather than documented. A comment could
-     * not have helped: both orders compile, both return a plausible chroma, and
-     * four of this change's own measurement harnesses took the wrong one before
-     * two of them disagreed loudly enough to be noticed. The two tests that pin
-     * it — {@code foldingBeforeAndAfterAreNotTheSame} and
-     * {@code refusesToFoldRegistersThatAreAlreadyBeatSynchronous} — record what
-     * the difference is and that it cannot be reached.
+     * <p><b>Call this before {@link #beatSynchronous(List)}, not after.</b>
+     * Beat-synchronising normalises each span to sum to one; applied per
+     * register, adding them afterwards gives every beat exactly half treble
+     * and half bass whatever the two held, so a silent bass votes its noise
+     * floor at full strength. Both orders compile and both return a plausible
+     * chroma, so the wrong one is refused rather than documented —
+     * {@code foldingBeforeAndAfterAreNotTheSame} and
+     * {@code refusesToFoldRegistersThatAreAlreadyBeatSynchronous} pin it.
      *
      * @throws IllegalStateException if the registers have already been
      *     beat-synchronised, since folding them then is almost certainly not
