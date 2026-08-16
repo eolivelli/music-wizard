@@ -50,11 +50,10 @@ final class TupletPlan {
      * <p>The largest end over <em>every</em> grid rather than the last one's,
      * and computed once rather than per lookup. {@link QuantizedScore} validates
      * that its grids are ordered by bar and says nothing about their
-     * {@code startBeat}s, so a hand-built one whose bar starts disagree with its
-     * own tempo map can put the furthest end anywhere in the list. Round 3 of
-     * review pointed out that trusting the last entry gives that malformed score
-     * a new blast radius — one bad entry at the end would gate the lookup for
-     * every bar — where before it only misplaced its own bar.
+     * {@code startBeat}s, so a hand-built one whose bar starts disagree with
+     * its own tempo map can put the furthest end anywhere in the list —
+     * trusting the last entry would let one bad entry gate the lookup for
+     * every bar.
      */
     private final double beyondTheLastGrid;
 
@@ -124,12 +123,9 @@ final class TupletPlan {
             return Optional.empty();
         }
         // Which bar a beat falls in is QuantizedScore's question, not this
-        // class's. It was asked here directly until round 3 of review found the
-        // two copies had already drifted -- the guard above reached this one and
-        // not the accessor -- which is the defect this whole change exists to
-        // stop, one level down. The bound belongs there too, next to the grids
-        // it is a fact about, and #138 moves it once there is a second caller
-        // to justify touching mw-arrange for it.
+        // class's — two copies of the answer had already drifted when it was
+        // asked here directly. The bound belongs there too; #138 moves it once
+        // a second caller justifies touching mw-arrange.
         return quantized.gridAtBeat(beat).flatMap(grid -> atBar(grid.bar()));
     }
 }

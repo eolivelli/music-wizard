@@ -121,8 +121,10 @@ validation. If it rejects your verdict, re-triage; do not argue.
 ## Step 2 — Implement
 
 - Branch `issue-<number>-<slug>`; never commit to `main`.
-- Follow `CONTRIBUTING.md`; match the surrounding code's idiom and comment
-  density.
+- Follow `CONTRIBUTING.md`; match the surrounding code's idiom. Comments stay
+  sparse: javadoc only where really necessary — a contract a caller could get
+  wrong, a why that guards a known defect — in one or two sentences. Good code
+  does not need much commentary.
 - Scope to the issue. Unrelated findings become issues, never riders or TODOs.
 - **The reactor compiles at `--release 21`**, so a 22+ language feature is a
   compile error rather than a convention (#246). It is pinned there because
@@ -142,14 +144,13 @@ unsure about. Two writing rules that keep review cheap:
   review is the most expensive thing here per unit of value; every extra
   sentence is a claim someone must check. This applies to javadoc, comments,
   commit messages, issue bodies and PR bodies alike.
-- **A number may appear in prose only if a test asserts it or a committed
-  harness reproduces it** — and prefer the qualitative fact even then. A figure
-  dates the moment anything moves and must be restated everywhere it appears.
+- **No numbers in comments or javadoc, ever** — a figure in source is stale
+  before it is read; point at the test or `tools/baselines/` instead. In
+  commit, issue and PR bodies a number may appear only if a test asserts it or
+  a committed harness reproduces it, and prefer the qualitative fact even then.
 - **No superlative that ranks the current corpus** (*worst*, *furthest*, *the
   only one*) — it dates the moment a benchmark is added; point at the committed
-  baseline. One that follows from a mechanism is fine and usually clearest. On
-  #200 four drafts of one paragraph each claimed a ranking the data did not
-  hold.
+  baseline. One that follows from a mechanism is fine and usually clearest.
 - **Do not narrate the review in the source.** "An earlier draft said", "round 3
   found" belongs in the commit message or the PR, once.
 - **When a reviewer corrects a fact, grep for every other statement of that

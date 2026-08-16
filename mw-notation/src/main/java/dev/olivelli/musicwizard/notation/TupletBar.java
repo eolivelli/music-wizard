@@ -196,14 +196,10 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
      * shorter than the bracket: one or two steps of a triplet, one of a duplet.
      * One step is the value itself and two are the value above it.
      *
-     * <p>The shortest step reaching here is a 64th exactly, and it comes from
-     * {@code SIXTH_BEAT} in a meter over sixteen — not from the denominator-64
-     * meters an earlier version of this paragraph cited, which produce a 256th
-     * and are refused by {@link #of} eight lines above. Round 10 of review
-     * caught that: a true conclusion resting on the arithmetic of cases that
-     * cannot get here. {@code TupletBarTest} checks the conclusion over every
-     * meter and grid, up to the whole bracket, which is why it survived a wrong
-     * justification.
+     * <p>The shortest step reaching here is a 64th exactly, from
+     * {@code SIXTH_BEAT} in a meter over sixteen — the denominator-64 meters
+     * that would produce a 256th are refused by {@link #of} above.
+     * {@code TupletBarTest} checks the conclusion over every meter and grid.
      */
     double writtenLength(int steps) {
         return steps * writtenStep;

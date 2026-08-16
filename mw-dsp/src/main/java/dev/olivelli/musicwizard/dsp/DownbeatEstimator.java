@@ -21,83 +21,30 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Picks which of the tracked beats begin bars.
+ * Picks which of the tracked beats begin bars. The beats say where the pulse
+ * is, not where the bar starts, and that phase is chosen from harmonic change
+ * — chords change preferentially at bar lines — measured as cosine distance
+ * between the beat-synchronous chroma either side of each beat, with no chord
+ * labels involved (scoring against decoded chords would make this depend on a
+ * stage that depends on the beats).
  *
- * <p>The beats say where the pulse is; they say nothing about where the bar
- * starts, and that phase has to be chosen from other evidence. Choosing it from
- * onset energy alone — bars tend to start with an accent — is weak in two
- * different ways. On a click track every beat carries an identical click, so the
- * choice is close to arbitrary; on real music a backbeat routinely carries
- * <em>more</em> energy than the downbeat, so the heuristic is not merely
- * uninformative but sometimes actively wrong.
+ * <p>Onset energy is kept as a bounded second term: it moves a phase's score
+ * by at most {@link #ONSET_WEIGHT} either way, so where harmony distinguishes
+ * the phases no accent can overturn it, and where it does not the accent
+ * decides. <b>The accent is asked nothing about confidence</b> — evidence
+ * that picks an answer cannot also certify it, and this envelope's loudest
+ * phase on ordinary drum material is the backbeat (#70), so an accent-chosen
+ * phase reports the floor. Confidence multiplies three separate questions of
+ * the harmony — did it decide, does it prefer, was there enough — so any one
+ * failing brings the number down; rely on its ordering, not its value, since
+ * the constants were calibrated on synthetic fixtures (#45).
  *
- * <p>Harmony is the stronger signal. Chords change preferentially at bar lines
- * in popular music, so the phase whose beats coincide with harmonic change is
- * the phase that starts the bars. That is measured here as the cosine distance
- * between the beat-synchronous chroma either side of each beat, which needs no
- * chord labels at all — only the chroma the chord stage is computed from anyway.
- * Deliberately so: scoring against decoded chords would make downbeat detection
- * depend on chord estimation, which already depends on the beats.
- *
- * <p>Onset energy is kept as a weak second term rather than discarded, because
- * there are signals where the accent genuinely does mark the bar and dropping it
- * would trade one blind spot for another. It is bounded rather than weighted:
- * the onset term moves a phase's score by at most {@code ONSET_WEIGHT} either
- * way, so a phase whose mean harmonic novelty leads by more than twice that
- * cannot be overturned by any accent, however loud. Below that margin the
- * harmony is not distinguishing the phases and the accent decides. On a
- * one-chord passage the harmonic differences are a thousandth of a cosine
- * distance and the accent always decides; on a chord change per bar they are
- * tenths and it never does.
- *
- * <p>Confidence asks three separate questions of the harmony rather than one:
- * did it decide the phase, does it prefer that phase over the alternatives, and
- * was there enough of it to mean anything. A margin alone is not enough —
- * material that changes chord often at no consistent phase produces a wide
- * margin by luck — so the three are multiplied and any one of them failing
- * brings the number down. The ceiling on the product is the reliability of what
- * harmony assumes rather than the weight of what it measured — see
- * {@link #HARMONIC_PHASE_CEILING}.
- *
- * <p><b>The accent is asked nothing.</b> It chooses the phase, in the score
- * above, and is then not asked to vouch for the phase it chose. It used to be,
- * and that was wrong twice over. It is the same observation counted a second
- * time — evidence that picks an answer cannot also certify it — and it certifies
- * the wrong answer, because {@link OnsetEnvelope} sums flux over forty mel
- * bands, so a broadband snare excites all of them and a sixty-hertz kick about
- * one, and the loudest phase it reports on ordinary drum material is the
- * backbeat (#70). A chord pushed one beat lands on beat 4, which is a backbeat,
- * so on exactly the material where the doubt below lives the accent sits on the
- * anticipation rather than on the bar. Measured, the pushed reading of a fixture
- * collected the bonus where the correct reading of the same fixture did not, and
- * the anticipation reported 0.600 against the bar line's 0.580 — the wrong
- * answer reading higher, which is worse than the flat 0.85 it replaced. So a
- * phase chosen by the accent alone reports the floor: it is a guess, rather than
- * a better guess than one chosen by nothing.
- *
- * <p>What to rely on in that number is its <em>ordering</em>, not its value.
- * The ordering is structural — a phase nothing supports lands on the floor, a
- * phase the accent alone chose lands there too, and only harmony lifts one off
- * it — but the constants that space it out were calibrated on synthetic
- * fixtures, and synthetic audio is
- * systematically easier than real audio. Two of the three factors are already
- * known not to measure quite what they claim on material with a chroma novelty
- * floor, which every real recording has: see #45.
- *
- * <p>The known limit of the approach is that it measures agreement with
- * harmonic change, not with bar lines, and the step from one to the other is an
- * assumption. Where a style consistently anticipates the chord — the pushed
- * change an eighth or a beat before the bar, ordinary in pop and near-universal
- * in some Latin idioms — the harmony moves a beat early and this agrees with the
- * anticipation, unanimously, because by its own measure it is right. Nothing in
- * the chroma separates the two readings: the same recording is a pushed bar and
- * a bar that starts a beat later, and no further harmonic evidence tells them
- * apart. So the phase is still the anticipation, and what changed for #48 is
- * that it is no longer reported as settled — see {@link #HARMONIC_PHASE_CEILING}.
- * Moving it needs evidence this stage does not have; the bass keeps landing on
- * the bar line when the upper voices are pushed, which is #42.
- *
- * <p>The meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
+ * <p>The known limit: this measures agreement with harmonic change, not with
+ * bar lines. A style that consistently anticipates the chord moves the
+ * harmony a beat early and this agrees with the anticipation, unanimously —
+ * nothing in the chroma separates the two readings (#48,
+ * {@link #HARMONIC_PHASE_CEILING}); the bass evidence that would is #42. The
+ * meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
  */
 public final class DownbeatEstimator {
 
@@ -180,44 +127,18 @@ public final class DownbeatEstimator {
     private static final double BASE_CONFIDENCE = 0.35;
 
     /**
-     * The most any phase {@link #estimate} chooses may report, whatever backs it.
-     *
-     * <p>The scoring measures agreement with harmonic change and takes a bar line
-     * to be where the harmony moves. That is a good assumption and a wrong one
-     * often enough to matter. A chord pushed ahead of the bar puts every change
-     * one beat early, and the scoring then agrees with the anticipation rather
-     * than with the bar — unanimously, because by its own measure it is right.
-     * The chroma cannot tell the two apart: the same audio is a pushed bar and a
-     * bar that starts a beat later, which is what #48 reported and what
-     * {@code anAnticipationLooksExactlyLikeAMidBarStart} pins.
-     *
-     * <p>So this ceiling is the reliability of that assumption, not the strength
-     * of the evidence for it, and nothing may pass it — which since the accent
-     * stopped contributing to the confidence is a property of the arithmetic
-     * rather than a clamp on it: it is exactly {@code BASE_CONFIDENCE} plus what
-     * unanimous harmonic agreement is worth. It was briefly a {@code Math.min}
-     * over a total the accent could also raise, and that was the wrong shape. A
-     * cap binds only where the harmony is already unanimous, real material sits
-     * below that, and below it the accent still lifted the anticipation above the
-     * bar line it was pushed off.
-     *
-     * <p>It is set the way {@link #BASE_CONFIDENCE} is — by counting what is left
-     * open. Unanimous harmonic agreement narrows the phase from every beat of the
-     * bar to two: the beat the harmony moves on, or the beat after it, since a
-     * push arrives early and never late. A one-in-two choice sits here for the
-     * same reason a one-in-four choice sits at {@code BASE_CONFIDENCE}.
-     *
-     * <p>That count is stated for the common meter and applied flat, exactly as
-     * {@code BASE_CONFIDENCE}'s "one phase in four" is: at 2/4 it narrows
-     * nothing, since two candidates are the whole bar, and this then reads
-     * generously. Making either of them depend on the meter is one change, and
-     * neither is calibrated well enough for that to be the improvement it looks
-     * like — the numbers want tier-2 audio (#12), not more arithmetic.
-     *
-     * <p>Deliberately in the band that reads as "probably, but check it". A
-     * confidently wrong phase costs a user more than an uncertain right one:
-     * correcting the first downbeat by hand is the highest-value action the tool
-     * asks of them, and a number that says not to bother is what stops them.
+     * The most any phase {@link #estimate} chooses may report, whatever backs
+     * it — the reliability of the bar-line assumption, not the strength of the
+     * evidence for it: a pushed chord agrees with the anticipation unanimously
+     * and the chroma cannot tell the two readings apart (#48,
+     * {@code anAnticipationLooksExactlyLikeAMidBarStart}). Set by counting
+     * what unanimous agreement leaves open — the harmony beat or the one
+     * after it, a one-in-two choice, stated for the common meter and applied
+     * flat like {@link #BASE_CONFIDENCE} (#12 for calibration). A property of
+     * the arithmetic rather than a clamp: exactly {@code BASE_CONFIDENCE}
+     * plus what unanimous harmony is worth. Deliberately in the band that
+     * reads "probably, but check it" — a number that says not to bother is
+     * what stops the highest-value hand correction.
      */
     private static final double HARMONIC_PHASE_CEILING = 0.6;
 
@@ -300,23 +221,11 @@ public final class DownbeatEstimator {
             return fromOnsets(beatTimes, envelope, beatsPerBar);
         }
         if (chroma.frameCount() == 0) {
-            // No chroma at all, which is a state the pipeline can genuinely
-            // reach rather than a caller's mistake: a recording shorter than one
-            // analysis window yields no frames, while the beat tracker still
-            // finds pulses in it. Since #3 that window is 8192 samples, twice
-            // what it was, so the band where the two disagree is real — roughly
-            // 0.3 to 0.4 seconds at the analysis rate.
-            //
-            // Same answer as too-few-beats above and for the same reason: there
-            // is no harmonic evidence, so the accent decides alone. Falling back
-            // rather than throwing, because "we could not hear any harmony" is
-            // not an error in the argument, it is a fact about the recording.
-            //
-            // This is deliberately narrower than tolerating any mismatch. A
-            // chroma that has frames but the wrong number of them is a caller
-            // error and still throws below, because scoring the wrong spans
-            // against the wrong beats lands on a plausible-looking but arbitrary
-            // phase, which is the failure this class exists to remove.
+            // A recording shorter than one analysis window yields no frames
+            // while the tracker still finds pulses; "we could not hear any
+            // harmony" is a fact about the recording, not an error in the
+            // argument. Narrower than tolerating any mismatch — a chroma with
+            // the wrong number of frames is a caller error and still throws.
             return fromOnsets(beatTimes, envelope, beatsPerBar);
         }
         // A chroma that does not line up with these beats would score the wrong
@@ -358,20 +267,12 @@ public final class DownbeatEstimator {
     }
 
     /**
-     * The answer for a one-beat bar, which is not an estimate at all.
-     *
-     * <p>Every beat begins a bar, so phase 0 is the only phase there is and it
-     * is right whatever the recording contains. Answered here, before any
-     * evidence is gathered, rather than derived from it: the whole scoring
-     * apparatus is about choosing between phases, and deriving "there is nothing
-     * to choose" through measures of how well the evidence discriminates makes
-     * the answer depend on how much harmonic change a recording with no choice
-     * to make happened to have.
-     *
-     * <p>{@link Confidence#CERTAIN} rather than the ceiling an estimated phase
-     * can reach, because this is not a claim that could be wrong, and reporting
-     * it below a 4/4 phase that could be would invert the only thing about these
-     * numbers a caller should rely on.
+     * The answer for a one-beat bar, which is not an estimate at all: phase 0
+     * is the only phase there is. Answered before any evidence is gathered —
+     * deriving "nothing to choose" from the evidence would make the answer
+     * depend on it — and {@link Confidence#CERTAIN}, because reporting a claim
+     * that cannot be wrong below one that can would invert the one thing
+     * these numbers guarantee.
      */
     private static Estimate everyBeatIsADownbeat() {
         return new Estimate(0, 1, Confidence.CERTAIN);
@@ -515,20 +416,12 @@ public final class DownbeatEstimator {
         double[][] spans = chroma.vectors();
         double[] novelty = new double[spans.length + 1];
         for (int beat = 1; beat < spans.length; beat++) {
-            // An empty span is silence, not a chord change. Cosine is undefined
-            // against a zero vector, and reading the undefined value as maximum
-            // novelty would make a silent passage the most persuasive evidence
-            // in the recording -- more persuasive than any real chord change,
-            // which never reaches a full cosine distance of 1.
-            // Floored at zero because a cosine can come back a hair above 1 for
-            // two numerically parallel spans, and the arithmetic downstream
-            // assumes novelty is non-negative in three places: a share of the
-            // total cannot exceed one, the best score among the other phases
-            // cannot be below zero, and a sum of squares is zero only when every
-            // term is. None of the three is observable on its own — each of them
-            // needs a negative to reach — which is exactly why the floor belongs
-            // here, at the one point where the sign is decided, rather than as
-            // three defensive checks that each look unnecessary.
+            // An empty span is silence, not a chord change: cosine is
+            // undefined against a zero vector, and reading that as maximum
+            // novelty would make silence the most persuasive evidence in the
+            // recording. Floored at zero here, the one point where the sign
+            // is decided, because downstream arithmetic assumes non-negative
+            // novelty in three places.
             double cosine = cosine(spans[beat - 1], spans[beat]);
             novelty[beat] = Double.isNaN(cosine) ? 0 : Math.max(0, 1 - cosine);
         }

@@ -632,45 +632,13 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
-     * Whole bars of {@code barLength} that fit in {@code remaining}, saturating
-     * at one more than a bar index can hold.
-     *
-     * <p>A division standing in for repeated subtraction usually needs guarding,
-     * because a quotient a hair under an integer rounds up to it and the floor
-     * is then one too many. Here it does not, and the reason is worth writing
-     * down rather than defending against, because a guard no input can reach is
-     * a branch nothing can test.
-     *
-     * <p>A bar length is a numerator times four over a power of two no greater
-     * than 64, so it is a whole number of sixteenths, and a bar index caps the
-     * count below 2^31 -- every product below is therefore exact.
-     *
-     * <p>The floor can only be wrong just under a bar line, since nowhere else
-     * is the quotient near an integer. So take {@code r} one step under a bar
-     * line {@code k*L}. The exact quotient is {@code k - g/L}, where {@code g}
-     * is the gap below {@code k*L}, and the question is whether that shortfall
-     * clears half the step below {@code k}: anything less rounds back up to
-     * {@code k} and the floor is one too many.
-     *
-     * <p>Write {@code L = 2^f*s} and {@code k = 2^m*t}, with {@code s} and
-     * {@code t} in {@code [1,2)}. A gap below a value is one ULP of that
-     * value's binade, halved exactly when the value is itself a power of two.
-     * Where {@code k} is not a power of two, the shortfall {@code g/L} is at
-     * least {@code 2^(m-52)/s} against a half-step of {@code 2^(m-53)}. Where
-     * {@code k} is a power of two the half-step halves as well, while the
-     * shortfall halves only if {@code L} is a power of two too. Either way the
-     * shortfall clears the half-step by a factor of {@code 2/s}, which exceeds
-     * one because {@code s} is below two -- narrowly, at the extreme: the
-     * tightest legal case is a 63/64 bar, which wins by 1.6%. So the quotient
-     * rounds strictly below {@code k} and never up to it. On a bar line the
-     * quotient is exactly {@code k}, and above one it exceeds {@code k}, so the
-     * floor cannot fall short either.
-     *
-     * <p>Checked as well as argued, since an argument in a comment is the thing
-     * this file has learned not to trust: 274 million boundary values across
-     * every legal signature, and independently 10.8 million exact-rational
-     * comparisons in review, with no disagreement, and a build carrying the
-     * corrections alongside confirming they never fire.
+     * Whole bars of {@code barLength} that fit in {@code remaining},
+     * saturating at one more than a bar index can hold. The floor needs no
+     * off-by-one guard here, which is unusual enough to say: a bar length is
+     * a whole number of sixteenths and a bar index caps the count, so a
+     * quotient just under a bar line always falls strictly below it rather
+     * than rounding up — argued from the binades and checked exhaustively
+     * over every legal signature's boundary values.
      */
     private static long wholeBarsIn(double remaining, double barLength) {
         double quotient = Math.floor(remaining / barLength);
@@ -814,15 +782,9 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             totalSeconds += elapsed;
             totalBeats += elapsed / segments.get(i).secondsPerBeat();
         }
-        // A mean over one value is that value, and saying so returns the stored
-        // double rather than a round trip through beats and back. The division
-        // is not exact: a MIDI file declaring 140 stores 140.00014000014, and
-        // averaging that over its own span answers 140.00014000013996 -- a
-        // number the file does not contain, reported as the number it does.
-        // Nothing downstream prints enough digits to see it, but "the tempo the
-        // file declared" is the one thing a DECLARED segment is for. The
-        // no-argument averageTempo() has always special-cased a single-segment
-        // map; this makes it hold for any window landing inside one segment.
+        // A mean over one value is that value: returning the stored double
+        // rather than a round trip through beats keeps a DECLARED segment
+        // answering with the tempo the file declared, to the last bit.
         if (contributing == 1) {
             return onlyTempo;
         }

@@ -110,85 +110,39 @@ public final class LilyPondRenderer {
      * Runs LilyPond with its diagnostics in one language, whatever the machine
      * is set to — and changes nothing else about the process.
      *
-     * <p>LilyPond translates its own messages through gettext, and it translates
-     * the <em>prefix</em> while leaving the payload alone: under {@code
-     * LANGUAGE=it} a failed bar check is {@code attenzione: bar check failed}
-     * and a layout complaint is {@code errore di programmazione: ...}. Anything
-     * reading that output for the word "warning" therefore stops reading it at
-     * all on an Italian machine, and stops silently — which is the worst way for
-     * a check to fail, because the build stays green and the thing it was
-     * watching for goes unreported. Round 4 of review found exactly that: under
-     * {@code LANGUAGE=it} a bar that did not fill its meter produced no
-     * complaint anywhere in the integration suite.
+     * <p>LilyPond translates its message <em>prefixes</em> through gettext, so
+     * anything reading its output for the word "warning" stops reading it at
+     * all on a non-English machine — silently, with the build green and a
+     * failed bar check unreported. The environment is pinned rather than the
+     * parsing widened, which would mean carrying LilyPond's message catalogue
+     * in every language.
      *
-     * <p>So the environment is pinned rather than the parsing widened. Widening
-     * would mean carrying LilyPond's message catalogue in this repository and
-     * keeping it current, in every language, for a string this project only
-     * reads in order to know whether something went wrong.
+     * <p><b>One variable removed and twelve written, and it took four
+     * attempts; the three wrong answers are recorded because each is the
+     * obvious next simplification.</b> Setting {@code LC_ALL=C} (with
+     * {@code LANG} and {@code LC_MESSAGES}) breaks engraving outright for a
+     * file whose name is not ASCII, since those variables also set the
+     * character type and LilyPond cannot decode a non-ASCII {@code argv}
+     * filename under a {@code C} ctype. Setting {@code LC_MESSAGES=C} alone
+     * reopens the original bug for the commonest way of setting a locale,
+     * because POSIX has {@code LC_ALL} override every category. And moving
+     * {@code LC_ALL} into {@code LC_CTYPE} alone is one category short:
+     * removing {@code LC_ALL} un-masks whatever the eleven individual
+     * variables say, and glibc's locale selection is all-or-nothing — one
+     * category naming an uninstalled locale collapses the child's whole
+     * locale to {@code C}, ctype included. So each masked category is given
+     * {@code LC_ALL}'s own value — unconditionally, since an already-set
+     * category was already being overridden — and {@code LC_MESSAGES} is set
+     * last. {@code LANGUAGE} is left alone: gettext ignores it once the
+     * messages locale is {@code C}, and a line that cannot change the answer
+     * is a line nothing can test.
      *
-     * <p><b>One variable removed and twelve written, and every one of them is
-     * here because a previous version got it wrong.</b> It took four attempts,
-     * and the three wrong answers are worth keeping because they are successive
-     * corrections of the same misreading: each fixed the layer the failure was
-     * noticed at rather than the one it lived at.
-     *
-     * <p>Round 4 set {@code LC_ALL}, {@code LANG} and {@code LC_MESSAGES} to
-     * {@code C}. Round 5 found that this broke engraving outright for a file
-     * whose name is not ASCII: those variables also set the <em>character
-     * type</em>, and LilyPond cannot decode a non-ASCII {@code argv} filename
-     * under a {@code C} ctype. {@code canción.ly}, {@code Präludium.ly} and
-     * {@code 夜曲.ly} all engraved before that change and all failed after it
-     * with {@code fatal error: failed files: "canci??n.ly"}. A fix for a test
-     * that had silently stopped checking had become a fix that silently stopped
-     * engraving, which is worse by a distance.
-     *
-     * <p>Round 5 therefore narrowed it to {@code LC_MESSAGES} alone — and round
-     * 6 found that this reopens the original bug for the commonest way of all to
-     * set a locale, because POSIX has {@code LC_ALL} <em>override</em> every
-     * individual category. A user with {@code LC_ALL=it_IT.UTF-8} got
-     * {@code attenzione: bar check failed} again, and the integration suite went
-     * silent again with it.
-     *
-     * <p>Round 6 then moved {@code LC_ALL} into {@code LC_CTYPE} — and round 7
-     * found that one category short, which is the paragraph below.
-     *
-     * <p>So {@code LC_ALL} has to go — and everything it was covering has to be
-     * written out in its place, which is the part round 6 got wrong and round 7
-     * caught. {@code LC_ALL} does not merely set the character type; it
-     * <em>masks every category</em>, and removing it un-masks whatever the
-     * eleven individual variables happen to say. That matters because glibc's
-     * locale selection is all-or-nothing: one category naming a locale that is
-     * not installed collapses the child's whole locale to {@code C}, ctype
-     * included. An ambient {@code LC_ALL=it_IT.UTF-8 LC_TIME=de_DE.UTF-8} — the
-     * second harmless until the first is removed — brought round 4's broken
-     * filename straight back.
-     *
-     * <p>Each category is therefore given {@code LC_ALL}'s own value, which is
-     * what was in force before. Unconditionally rather than only where unset,
-     * because a category that was already set was already being overridden, and
-     * preserving it would change the child's behaviour rather than leave it
-     * alone.
-     *
-     * <p>Measured rather than assumed: the same score engraved under a full
-     * {@code it_IT.UTF-8} and under this shape produces PDFs that differ in 73
-     * bytes, all of them the embedded timestamp.
-     *
-     * <p>{@code LANGUAGE} is left alone. gettext consults it first but ignores
-     * it entirely once the messages locale is {@code C}, so clearing it changes
-     * nothing — measured too: {@code LC_MESSAGES=C LANGUAGE=it} still says
-     * {@code programming error}. A line that cannot change the answer is a line
-     * nothing can test.
-     *
-     * <p>The cost is that a non-English user sees LilyPond's own complaints in
-     * English. That is the trade: this project embeds those lines in its own
-     * English messages anyway, and a tool whose behaviour depends on the
-     * machine's locale is the same defect {@link TempoMark}'s
-     * {@code Locale.ROOT} exists to prevent, one process out.
-     *
-     * <p>Package-private so it can be tested against a {@link ProcessBuilder}
-     * whose environment has been poisoned first. Testing it through the ambient
-     * environment proved nothing: round 5 found that deleting the body left the
-     * suite green, because no build machine here sets any of this.
+     * <p>The cost is that a non-English user sees LilyPond's complaints in
+     * English — the same trade {@link TempoMark}'s {@code Locale.ROOT} makes,
+     * one process out. Package-private so it can be tested against a
+     * {@link ProcessBuilder} whose environment has been poisoned first;
+     * testing through the ambient environment proved nothing, because no
+     * build machine here sets any of this.
      */
     static void speakEnglish(ProcessBuilder builder) {
         Map<String, String> environment = builder.environment();

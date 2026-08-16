@@ -76,64 +76,15 @@ public record LogFrequencySpectrum(double[][] bins, LogFrequencyAxis axis, doubl
      * narrow relative to the spectral envelope it removes, or it stops following
      * it.
      *
-     * <p>Inside that bracket the measurement is decisive, which it was not
-     * always. Swept at the shipped {@link NoteDictionary#PARTIAL_ROLL_OFF} over
-     * the combined fold the pipeline uses — the frame-level margin of #185 on
-     * {@code samples/gmajorblues.mp3} and on a second full mix, and per-bar
-     * accuracy on the first against its known cycle:
-     *
-     * <pre>
-     *   half-width   blues     second-mix   blues     blues
-     *   (semitones)  margin    margin       root      root+quality
-     *        3        +0.027     +0.153     86.9%       86.0%
-     *        6        +0.038     +0.172     86.6%       86.3%
-     *        9        +0.042     +0.169     76.8%       76.8%
-     *       12        +0.050     +0.167     71.3%       71.3%
-     *       24        +0.066     +0.166     67.2%       66.6%
-     *       36        +0.065     +0.168     65.9%       65.6%
-     * </pre>
-     *
-     * <p>The per-bar figures in this table were measured on the beat grid as
-     * it was before #196: chroma is averaged per tracked beat, so removing
-     * that grid's 1.9% rate error moves them. The comparison the table is
-     * for is not in doubt -- the differences down it are tens of points and
-     * the anchor moved by one -- but the cells read as current and are not.
-     * {@link ChordEstimator} carries the statement of this and #232 tracks
-     * re-measuring them.
-     *
-     * <p>What that table does and does not settle. It settles the upper end
-     * decisively: everything from nine upward gives away ten to twenty points of
-     * accuracy, so the octave-wide window is not an arbitrary pick among
-     * plausible ones. It does not settle three against six — 86.3% and 86.0% of
-     * 314 bars is a difference of one bar, and on the root column three is ahead
-     * by the same one bar. Six is taken because it leads on the second
-     * recording's margin and on the first's root-plus-quality, but a
-     * one-bar-in-314 lead is not a result and is not claimed as one. What can
-     * be said is that three and six are indistinguishable here and nine is not.
-     *
-     * <p>The mechanism for the collapse above six is legible. A note's partials
-     * are 12, 7, 5 and 4 semitones apart, so a window wider than that normalises
-     * them against each other and flattens the geometric roll-off
-     * {@link NoteDictionary} models — and once the observed roll-off no longer
-     * matches the modelled one, NNLS spends the residual on notes that are not
-     * there, which is the failure {@code PARTIAL_ROLL_OFF} exists to prevent.
-     *
-     * <p>Worth recording, because it is the reason this javadoc was rewritten:
-     * the table that stood here previously was measured at a partial roll-off of
-     * 0.70 and read the other way round — wider was better on synthetic
-     * fixtures and slightly worse on a recording, and six was described as
-     * "giving up 5% of the best margin measured". None of that survives the
-     * roll-off change. It was a table in one file made stale by a constant in
-     * another, which is this project's recurring failure and was caught here by
-     * review rather than by anything mechanical.
-     *
-     * <p>The margin columns are means over frames that carry any energy. That
-     * convention is worth stating because it is not free: {@code islanda.mp3}
-     * has 136 silent frames at its head and tail, and counting them lowers every
-     * cell by about 0.005 while leaving the ranking untouched. A silent frame
-     * scores zero against every template, so it is not evidence either way.
-     *
-     * <p>Two recordings is still not a corpus (#193).
+     * <p>Inside that bracket the sweep is decisive at the upper end — wider
+     * windows give away tens of points of accuracy — and indistinguishable at
+     * the lower, where this sits. The mechanism for the collapse is legible:
+     * a note's partials are 12, 7, 5 and 4 semitones apart, so a wider window
+     * normalises them against each other and flattens the geometric roll-off
+     * {@link NoteDictionary} models, after which NNLS spends the residual on
+     * notes that are not there. The sweep is re-derivable through
+     * {@code tools/ChordSweep.java}; two recordings is still not a corpus
+     * (#193).
      */
     private static final int WHITENING_HALF_WIDTH_SEMITONES = 6;
 

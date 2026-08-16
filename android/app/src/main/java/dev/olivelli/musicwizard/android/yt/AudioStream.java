@@ -104,14 +104,12 @@ public final class AudioStream {
      * The format to fetch, or null when none can be.
      *
      * <p>itag 140 is preferred, and not because AAC is better than Opus — at
-     * these bitrates it is not. It is preferred because it arrives at 44100 Hz,
-     * and {@code Resampler}'s javadoc records that 44100 to 22050 is
-     * bit-identical, the step being exactly 2, while 48000 to 22050 differs on
-     * 15% of samples on uniform noise. Choosing 140 puts a fetched track on the
-     * same exact-decimation path to the analysis rate that a phone recording
-     * takes, so the two are analysed by the same arithmetic rather than by
-     * similar arithmetic. Every itag 140 measured on real music videos was
-     * 44100 Hz.
+     * these bitrates it is not. It arrives at 44100 Hz, and
+     * {@code Resampler}'s javadoc records that an integer decimation to the
+     * analysis rate is bit-identical while a fractional one is not — choosing
+     * 140 puts a fetched track on the same exact-decimation path a phone
+     * recording takes, so the two are analysed by the same arithmetic rather
+     * than by similar arithmetic.
      *
      * <p>After that, the highest bitrate that can be fetched. The 50 kbps
      * formats (139, 249) are last by that ordering rather than by name: they are

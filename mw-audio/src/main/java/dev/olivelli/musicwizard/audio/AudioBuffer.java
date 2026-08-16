@@ -73,20 +73,11 @@ public final class AudioBuffer {
      * a bug, and quietly substituting zero for that would alter the audio and
      * hide the cause at once.
      *
-     * <p>The scan is a full pass over every buffer, including ones the pipeline
-     * derives from other buffers, and that is affordable. Measured single-shot
-     * in a fresh JVM -- which is the regime that matters, since a run builds one
-     * of these -- five minutes at 22.05 kHz costs <b>8 to 14 ms</b> across
-     * repeats, against <b>370 to 843 ms</b> for the {@code Spectrogram.compute}
-     * that immediately follows it. There is deliberately no cheaper unchecked
-     * constructor for internally derived buffers.
-     *
-     * <p>Take the range rather than a single figure, and do not compare it with
-     * a number measured any other way. An earlier draft of this paragraph
-     * quoted 3.2 ms, from a warmed loop rather than one call, and set it beside
-     * a spectrogram figure taken cold -- which made the scan look three times
-     * cheaper relative to its neighbour than it is. The conclusion survives
-     * either way, at 1% to 4%; the comparison did not.
+     * <p>The scan is a full pass over every buffer, including derived ones,
+     * and that is affordable — measured at a few percent of the
+     * {@code Spectrogram.compute} that immediately follows it. There is
+     * deliberately no cheaper unchecked constructor for internally derived
+     * buffers.
      *
      * <p>What this does <em>not</em> give you is an invariant that holds for
      * the lifetime of the buffer. The array is shared rather than copied, so a

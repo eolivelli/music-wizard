@@ -187,75 +187,18 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
 
     /**
      * How far from the median an interval may sit and still be counted as one
-     * pulse, as a share of the median.
+     * pulse, as a share of the median. See {@link #steadyPulseRate()}: the
+     * question is "is this one beat or is it the tracker having lost the
+     * beat", which is about shape rather than any recording — an interval a
+     * fifth from typical is a beat pushed or pulled, one half again as long
+     * is a beat the tracker did not emit.
      *
-     * <p>See {@link #steadyPulseRate()}. Read as the answer to "is this one beat
-     * or is it the tracker having lost the beat", which is a question about
-     * shape rather than about any recording: an interval a fifth away from
-     * typical is still a beat pushed or pulled, and one half again as long is a
-     * beat the tracker did not emit.
-     *
-     * <p><b>Chosen from the middle of a plateau, not tuned to an edge of one.</b>
-     * Measured over the seven scored tier-2 benchmarks there were then, against
-     * each recording's own tempo, which is a measurement of the music rather
-     * than of the tracker -- the distinction #207 was closed for missing.
-     *
-     * <p>{@code tools/ScoreBeats.java} is committed and prints that reference
-     * for five of the seven, from the onset envelope's autocorrelation: 106.000,
-     * 105.000, 89.998, 89.999 and 149.889. The two vamps' 110 and 130 are not in
-     * it. {@code tools/measure-tempo.py --sweep} re-derives both the axis and
-     * the plateau (#245), measuring the vamps' 110 and 130 directly and, since
-     * #333, the bossa's half-note pulse as a measured reference rather than a
-     * modelled one. Its printout is the current reading, over grids the
-     * figures below do not describe -- they score a since-retired recording,
-     * predate the bossa's change of pulse, and were taken on an earlier
-     * tracker -- so the sweep's cells are not expected to reproduce them;
-     * they stay as the measurement that chose the value. What the retake does
-     * settle is the upper edge: the cliff above 0.30 is gone with the detour
-     * population behind it, as its bullet records.
-     *
-     * <p>The bossa's figure is a quarter-note rate. When the sweep below was
-     * taken its tracker ran at two thirds of it, and that pulse is what every
-     * bossa percentage below is measured against; since #231 it runs at half
-     * of it, which is the pulse the retaken sweep measures directly.
-     *
-     * <p>Swept at a step of 0.0025, every half-width from 0.075 to 0.30 puts all
-     * <b>six</b> directly measurable recordings inside 0.13% -- the worst cell is
-     * 0.121% on {@code gmajorblues.mp3} at 0.165 -- and holds the seventh,
-     * {@code bossa-cm.mp3}, inside 0.71% of the pulse its tracker then
-     * followed — two thirds of the rate {@code ScoreBeats} prints, before #231
-     * moved the tracker onto a pulse that can bar the recording. <b>The plateau spans a
-     * factor of four</b>, 0.30 being four times 0.075, and that ratio is the
-     * evidence that this is not fitted to a handful of files.
-     *
-     * <p>The corpus grew from five to seven while this was in review, and the
-     * two files added are the ones on which the rejected alternatives are worst
-     * of all -- the median 0.64% out on {@code eb7-vamp-130.mp3}, the plain mean
-     * 7.7% out on {@code fm7-vamp-110.mp3}. The widening exercised the choice
-     * rather than padding it, and did not move which recording or half-width is
-     * worst.
-     *
-     * <p>Both edges have a mechanism rather than a fitted value, which is the
-     * other half of the same argument.
-     *
-     * <ul>
-     *   <li><b>Below 0.0525 the band starts excluding beats that really are
-     *       beats.</b> A tracked pulse population is a few percent wide on its
-     *       own: from 0.05 down to 0.0425 {@code blues-shuffle-a-106bpm.mp3}
-     *       keeps 494 of its 576 intervals and reads +0.56%, which is <em>worse
-     *       than the median it replaces</em> at +0.44%, and below 0.0425 it
-     *       degrades further -- 465 kept and +0.76% at 0.04. One step up from
-     *       that run, at 0.0525, it keeps 545 and reads +0.07%.
-     *   <li><b>Above 0.30 it starts admitting a mistracked stretch.</b>
-     *       {@code bossa-cm.mp3} carried a population of intervals about 4/3 of
-     *       its median -- 54 of its 501 sat between 1.30x and 1.36x, measured
-     *       against the tracked intervals' own median and so independent of any
-     *       reference -- and a band reaching 1/3 let them in. #231 has since
-     *       removed the mistracking that produced the population; the figures
-     *       stay as the measurement that placed this edge. Against
-     *       two thirds of ScoreBeats' 149.889: 0.33% out at the value chosen
-     *       here, 0.71% at 0.30, then 2.82% at 0.325 and 3.91% at 0.35.
-     * </ul>
+     * <p>Chosen from the middle of a wide plateau, not tuned to an edge of
+     * one; {@code tools/measure-tempo.py --sweep} re-derives the axis and the
+     * plateau (#245), and both edges have a mechanism: too narrow and the
+     * band excludes beats that really are beats (a tracked population is a
+     * few percent wide on its own), too wide and it admits a mistracked
+     * stretch.
      */
     private static final double STEADY_BAND = 0.2;
 
@@ -310,30 +253,16 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
      * {@link #medianPulseRate()} answers a different question -- how long one
      * interval typically is -- and the two are equal only on an even grid.
      *
-     * <p>Two things are wrong with the median here and only the first was ever
-     * argued. It is not a rate. And <b>it is quantised</b>: it is one of the
-     * observed intervals, and beat times come off a frame axis, so at these
-     * tempos it moves in steps of about 2% and lands on the same value for
-     * recordings that are not at the same tempo -- {@code gmajorblues.mp3} and
-     * {@code blues-shuffle-a-106bpm.mp3} both get 105.46875 pulses a minute
-     * against measured tempos of 106.0 and 105.0. A mean is not quantised,
-     * because the step averages away over the intervals.
-     *
-     * <p><b>Why the plain mean is not the answer either, which is the whole of
-     * why this is trimmed.</b> The mean interval is exactly the end-to-end rate,
-     * since consecutive differences telescope, so it folds a gap where the
-     * tracker missed a beat into the rate as if the music had slowed there. A
-     * recording holding a handful of intervals longer than 1.5x its median is
-     * dragged under its true rate by exactly those, and using the plain mean
-     * cost 28 points of the emitted chart when it was tried (#200, #207). The
-     * band drops them.
-     *
-     * <p>So this concedes neither of the two cases #205 is open for, where the
-     * median and the mean each concede one. On an even 20-pulse grid at 120 BPM:
-     * with one pulse dropped the doubled interval falls outside the band and the
-     * answer is exactly 120, where the plain mean gives 113.68; with one spurious
-     * pulse both halves fall outside and the answer is again exactly 120, where
-     * the plain mean gives 126.32.
+     * <p>Two things are wrong with the median here and only the first was
+     * ever argued: it is not a rate, and it is quantised — it is one of the
+     * observed intervals, which come off a frame axis, so recordings at
+     * different tempos can land on the identical value. The plain mean is not
+     * the answer either: consecutive differences telescope, so it folds a gap
+     * where the tracker missed a beat into the rate as if the music had
+     * slowed there, which cost the emitted chart dearly when tried (#200,
+     * #207). The trimmed mean concedes neither of the two cases #205 is open
+     * for — a dropped pulse and a spurious one both fall outside the band and
+     * the answer is exact.
      *
      * <p>What it does not fix is a grid tracked a subdivision out for
      * <em>part</em> of a recording. Part of it at another rate makes the two

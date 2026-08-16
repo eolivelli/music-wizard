@@ -78,13 +78,11 @@ final class ExportGrid {
     /**
      * A length in quarter-note beats as whole grid units.
      *
-     * <p><b>Exact, with no tolerance.</b> That is a claim about IEEE arithmetic
-     * and not only about the mathematics, because a third of a beat is not a
-     * representable double — but {@code (1.0 / 6) * 768} is 128.0 to the last
-     * bit, and so is every other length the layout can reach. Round 1 of review
-     * caught an earlier version of this comment asserting the opposite, and a
-     * tolerance defended by it that nothing could reach: the exhaustive sweep in
-     * {@code ExportGridTest} finds not one length that misses.
+     * <p><b>Exact, with no tolerance.</b> A claim about IEEE arithmetic and
+     * not only the mathematics — a third of a beat is not representable, but
+     * scaled to grid units every length the layout can reach lands exactly;
+     * the exhaustive sweep in {@code ExportGridTest} finds not one that
+     * misses.
      *
      * <p>So a length that is not a whole number of units is evidence that
      * something upstream produced a position the notation layer cannot hold, and
@@ -92,8 +90,8 @@ final class ExportGrid {
      * measure out by exactly as much as the position was wrong.
      *
      * <p><b>Positive, too.</b> A length of zero or less is not a length, and
-     * {@link LilyPondDuration#wholeNoteFraction} has always refused one. Round 2
-     * of review pointed out that this did not, so a malformed {@link
+     * {@link LilyPondDuration#wholeNoteFraction} has always refused one; this
+     * did not, so a malformed {@link
      * dev.olivelli.musicwizard.arrange.QuantizedScore} — one whose grids
      * disagree with its own tempo map, which the model permits — failed on the
      * LilyPond side with a clear message and on this one much later with a

@@ -142,7 +142,13 @@ as well. **The final gate is CI on the pull request**: the full test matrix
 runs against the PR's merge preview, and a PR merges only when the reviewer
 has approved and every CI check is green on the approved head.
 
-A number belongs in prose only if a test asserts it or a committed harness
+Good code does not need much commentary. Javadoc and comments are written only
+where really necessary — a contract a caller could get wrong, a why that guards
+a known defect — in one or two sentences pointing at the issue or baseline
+rather than retelling it. **Comments and javadoc never carry numbers**: a
+figure in source is stale before it is read; it lives in a test or in
+`tools/baselines/`. Elsewhere — commit messages, issue and PR bodies — a number
+belongs only if a test asserts it or a committed harness
 reproduces it; otherwise write the qualitative fact. `premerge.sh` also prints,
 as a prompt and never a gate, whether any baseline moved on `main` since this
 branch started: the harness diff cannot see a figure quoted in a PR body or a

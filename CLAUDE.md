@@ -45,10 +45,10 @@ least like music, so it wins on a real mix whatever the chroma is.
 
 No single constant does it, though, and the first draft of this paragraph
 claimed one did — three changes reach 58.9% and the largest of them alone
-reaches 17.5%. `ChordEstimator` carries the decomposition and is the only place
-it is measured; do not restate it here, because this figure has already gone
-stale in four separate files. The lesson is not "a constant can fix it" but
-"the emission model was wrong in a way the front end could not compensate for".
+reaches 17.5%. `tools/ChordSweep.java` is what re-derives the decomposition;
+do not restate it anywhere, because this figure has already gone stale in four
+separate files. The lesson is not "a constant can fix it" but "the emission
+model was wrong in a way the front end could not compensate for".
 
 So: work that makes real audio work outranks work that polishes what already
 works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
@@ -121,7 +121,8 @@ read over about a bar rather than beat by beat, because a walking bass passes
 through the third and the sixth and asserting a root at every passing note
 splits a chord's run in two — and a run split in two has its quality decided
 twice from half the evidence each time, which is a different defect wearing the
-same clothes. `ChordEstimator` carries both constants and the sweeps;
+same clothes. `ChordEstimator` carries both constants, `tools/ChordSweep.java`
+re-derives the sweeps;
 `tools/baselines/` carries what it was worth, which was most of the corpus and
 not only the shuffle.
 
@@ -335,19 +336,24 @@ them are in `docs/history.md`. The short version:
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
   would have gone wrong without it.
-- **Keep prose short.** Comments, javadoc, commit messages, issue and PR bodies:
-  write what a future reader strictly needs and stop. Reviewing prose is the
-  most expensive thing this project does per unit of value, and every sentence
-  is a claim someone has to check.
-  - **Prefer the qualitative fact to the figure.** A number invites
-    verification, dates as soon as anything moves, and has to be restated
-    everywhere it appears. Give one only where it decides something.
+- **Good code does not need much commentary.** Javadoc and comments only where
+  really necessary — a contract a caller could get wrong, a why that guards a
+  known defect — and then one or two sentences pointing at the issue or the
+  committed baseline, never retelling them. A member whose name and signature
+  already say it gets nothing, and absent commentary is never a review finding.
+  Reviewing prose is the most expensive thing this project does per unit of
+  value; every sentence is a claim someone has to check.
+  - **No numbers in comments or javadoc, ever.** The project moves fast enough
+    that a figure in source is stale before it is read. Numbers live in tests
+    and in `tools/baselines/`; a comment that needs one points there.
+  - **Keep the rest of the prose short too** — commit messages, issue and PR
+    bodies: what a future reader strictly needs, then stop. A number is allowed
+    there only if a test asserts it or a committed harness reproduces it, and
+    prefer the qualitative fact even then.
   - **No superlative that is a ranking of the current corpus** — *worst*,
     *furthest*, *the only one* — since it dates the moment a benchmark is added.
     Point at the committed baseline instead. A superlative that follows from a
-    mechanism is fine and often the clearest thing to write, because growth
-    cannot falsify it. On #200 four successive drafts of one paragraph each
-    claimed a ranking the data did not hold.
+    mechanism is fine, because growth cannot falsify it.
   - **Do not narrate the review.** "An earlier draft said", "round 3 found",
     "corrected in review" is process history; it belongs in the commit message
     or the PR, once, not in the source. Fix the sentence and move on.

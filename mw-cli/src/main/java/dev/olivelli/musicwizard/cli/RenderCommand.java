@@ -172,13 +172,11 @@ final class RenderCommand implements Callable<Integer> {
          * down. Provenance re-derived by each reader is provenance that can
          * disagree between readers; carrying it on the score is #120.
          *
-         * <p>The wording of the empty-harmony case now lives in
-         * {@link MissingHarmony}, and this method does not have its own copy of
-         * it. Round 3 found the third divergent wording of the same explanation
-         * -- {@code analyze} had one too, and on a conductor-track-only file the
-         * two commands contradicted each other three lines apart. Two rounds of
-         * fixing this in place was the signal to remove the choice rather than
-         * make the same edit again.
+         * <p>The wording of the empty-harmony case lives in
+         * {@link MissingHarmony}, with no copy here: three divergent wordings
+         * of the same explanation once had two commands contradicting each
+         * other three lines apart, which was the signal to remove the choice
+         * rather than make the same edit again.
          */
         String unavailableReason(Score score) {
             if (notImplemented != null) {
@@ -242,10 +240,9 @@ final class RenderCommand implements Callable<Integer> {
      * PDF's bars do not sum is only useful next to the line saying the PDF was
      * written; printed before it, it reads as a reason the file is missing. That
      * pairing is what #156 asked for, and
-     * {@code RenderDiagnosticsTest.theWarningComesAfterTheFileItIsAbout} is what
-     * holds it — round 1 of
-     * review found the ordering untestable through two separate capture buffers,
-     * so moving the block back left every test green.
+     * {@code RenderDiagnosticsTest.theWarningComesAfterTheFileItIsAbout} holds
+     * it — through one capture buffer, since two separate buffers made the
+     * ordering untestable.
      *
      * @param files    every file produced, in the order to report them
      * @param warnings complete lines, already worded for a user, no prefix
@@ -435,12 +432,11 @@ final class RenderCommand implements Callable<Integer> {
                             java.util.Arrays.stream(Part.values()).map(Part::partName).toList()))));
         }
         if (resolved.isEmpty()) {
-            // Reachable, and round 3 removed this guard on the strength of an
-            // argument rather than a run. picocli requires at least one
-            // *argument* for --parts, not one value: with split=",", the argument
-            // "," splits into none. Without this the command printed an empty
-            // parts line and exited 1 -- the code it reserves for "the score had
-            // nothing to engrave" -- for what is a usage error, with no message.
+            // Reachable, though an argument once said otherwise: picocli
+            // requires at least one *argument* for --parts, not one value, and
+            // with split="," the argument "," splits into none. Without this
+            // the command exited with the nothing-to-engrave code for what is
+            // a usage error, with no message.
             //
             // "--parts ''" and "chords,,voice" do not reach here, because an
             // empty name among others is an unrecognised name and is refused
@@ -583,14 +579,10 @@ final class RenderCommand implements Callable<Integer> {
      *
      * <p>Every emitter goes through here rather than calling
      * {@link LilyPondRenderer} itself, and that is the point of the method
-     * existing: reading {@link LilyPondRenderer.Result#failedBarChecks()} is not
-     * something a future emitter should have to <em>remember</em> to do. Round 1
-     * of review named it — chords are the only part today, and #8 and #10 add
-     * three more, each of which would otherwise have its own copy of "render,
-     * add the PDF, and also check the bars", with the third copy the one that
-     * forgets. This project's recorded dominant failure mode is a fix that
-     * reaches one caller and misses another; removing the choice is what
-     * {@code Score.estimatedTempo()} came from.
+     * existing: reading {@link LilyPondRenderer.Result#failedBarChecks()} is
+     * not something a future emitter should have to <em>remember</em> to do —
+     * #8 and #10 add more parts, and the third copy of "render, add the PDF,
+     * and also check the bars" is the one that forgets.
      *
      * <p>The failure branch prints where it stands rather than returning a
      * warning, and deliberately: it is not a warning about a file, it is the
@@ -646,16 +638,12 @@ final class RenderCommand implements Callable<Integer> {
      * defect it cannot act on. It is the same posture a missing LilyPond binary
      * gets: emit what you can, say plainly what is wrong.
      *
-     * <p><b>The count is how many times LilyPond complained, not how many bars
-     * are wrong, and the wording says so.</b> Round 1 of review measured 2.26.0
-     * on a score with three staves each short by a different amount: one
-     * warning, naming one moment, from the last staff — because {@code
-     * Timing_translator} lives at the {@code Score} level from 2.25.6 and
-     * reports once per context rather than once per failure. So the number is a
-     * floor. Saying "the bar at 3/4 is wrong" would be the overclaim this
-     * project treats as a defect in its own right on a tool whose output is
-     * estimates; "LilyPond reported N, at these moments, check the rest too" is
-     * what the evidence supports.
+     * <p><b>The count is how many times LilyPond complained, not how many
+     * bars are wrong, and the wording says so.</b> Newer LilyPonds report
+     * once per context rather than once per failure — measured, three short
+     * staves produced one warning — so the number is a floor, and "LilyPond
+     * reported N, at these moments, check the rest too" is what the evidence
+     * supports.
      */
     private static Optional<String> wrongBars(LilyPondRenderer.Result result, Path ly) {
         List<String> moments = result.failedBarChecks();

@@ -96,8 +96,8 @@ public final class TempoEstimator {
      * @param periodicity    fraction of the envelope's energy at the winning
      *                       period, 0 to 1. Comparable between two readings of
      *                       the same recording, and highly sensitive to tempo
-     *                       drift — a click track wandering by ±8% scores about
-     *                       0.12 where a rigid one scores 0.85.
+     *                       drift — a gently wandering click track scores a
+     *                       small fraction of a rigid one.
      * @param peakiness      how concentrated the envelope's departures from its
      *                       own mean are, 0 to 1: 0 when they are spread no more
      *                       thinly than noise spreads them, approaching 1 for
@@ -122,62 +122,22 @@ public final class TempoEstimator {
         }
 
         /**
-         * How much to trust this reading, 0 to 1.
+         * How much to trust this reading, 0 to 1. The product rather than an
+         * average because the components are a conjunction — an average would
+         * let a sustained tone's near-perfect self-similarity carry it.
          *
-         * <p>The product rather than an average, because the two components are
-         * a conjunction: material that fails either one is not rhythmic, and an
-         * average would let a sustained tone's near-perfect self-similarity
-         * carry it. Zero for silence.
-         *
-         * <p><strong>Do not gate on this. It is an improvement in the average
-         * case and it separates nothing reliably.</strong> Issue #26 reported a
-         * sustained 440 Hz sine scoring 0.96 against a click track's 0.85; that
-         * fixture now scores 0.004. But swept rather than sampled, sustained
-         * material still reaches deep into the click-track range of 0.48 to
-         * 0.95:
-         *
-         * <ul>
-         *   <li><b>A held note with harmonics scores anywhere from 0.00 to
-         *       0.75</b>, over a grid of fundamentals from C2 to C6 and 1 to 10
-         *       partials, at constant amplitude with no attack and no
-         *       modulation. The worst point — 440 Hz with 8 partials — out-scores
-         *       72 of the 141 integer click tempi from 60 to 200 BPM. On
-         *       {@code main} it out-scored 135, so this is a real improvement,
-         *       but the residue is half the range rather than a tail.
-         *   <li><b>A pure sine scores 0.00 to 0.47</b> depending only on pitch:
-         *       0.004 at 440 Hz, 0.47 at 87 Hz, 0.20 at 262 Hz, 0.18 at 3520 Hz.
-         *       A crescendo tracks it within 0.005 at every pitch. There is no
-         *       "featureless material collapses" rule — the 440 Hz collapse is a
-         *       coincidence of that pitch.
-         *   <li><b>Held notes with vibrato, 0.61 to 0.64</b> (issue #43);
-         *       <b>clicks at random intervals reach 0.12</b> over 200 seeds, as
-         *       does a click track drifting ±8%, which is real music.
-         *   <li><b>Material below 40 BPM scores exactly zero</b>, indistinguishable
-         *       from silence: a clean 30 BPM metronome reads 0.000 with a
-         *       peakiness of 0.992. So does any clip too short to hold several
-         *       periods. Above 240 BPM it does not go to zero — a 300 BPM click
-         *       track reads 0.82 via a subharmonic.
-         * </ul>
-         *
-         * <p>The scatter is not noise and not tuning: partials beat at hundreds
-         * of hertz, the envelope is sampled at 172 fps with no low-pass before
-         * it, and the beating folds into the tempo band at a rate that depends
-         * on the exact frequencies present. Neighbouring inputs therefore score
-         * very differently — 440 Hz with 6 partials scores 0.57 and with 8
-         * scores 0.75. Issue #49 has the diagnosis and four refuted fixes.
-         *
-         * <p>So the only claims this supports are the two it started with:
-         * it is <b>zero for silence</b>, and it is <b>comparable between two
-         * readings of the same recording</b>. Any absolute threshold — "is this
-         * rhythmic", "is this arrhythmic", "warn the user" — is unsupported in
-         * both directions by the measurements above.
-         *
-         * <p>These figures are for {@link TempoEstimator#estimate} over a whole
-         * clip. {@link BeatTracker} averages a per-window strength and reports
-         * materially less on recordings just past a window boundary — a clean
-         * 78 BPM click track measures 0.53 here and 0.36 through
-         * {@code BeatGrid.beatConfidence} at 26 seconds, because the trailing
-         * one-second sliver is averaged in at full weight. See issue #47.
+         * <p><strong>Do not gate on this; it separates nothing
+         * reliably.</strong> Swept rather than sampled, sustained material
+         * still reaches deep into the click-track range: held notes with
+         * harmonics span most of it depending on the exact partials, a pure
+         * sine's score depends only on its pitch, vibrato and drifting or
+         * random clicks land mid-range, and material below the minimum tempo
+         * scores exactly zero while a fast track survives via a subharmonic.
+         * The scatter is partial-beating folding into the tempo band (#49 has
+         * the diagnosis and four refuted fixes). The only supported claims:
+         * zero for silence, and comparable between two readings of the same
+         * recording. Per-window averaging also under-reports near a window
+         * boundary (#47).
          */
         public double strength() {
             return periodicity * peakiness;
@@ -290,10 +250,9 @@ public final class TempoEstimator {
      * How many standard deviations of the envelope an accent may contribute to
      * the candidate search before it is held level with the others.
      *
-     * <p>It has to be low enough to level the accents themselves rather than to
-     * trim outliers above them. About two and a half percent of an envelope's
-     * frames sit above three deviations across this corpus, so this is roughly a
-     * 97.5th percentile: the loud beats are exactly what it levels.
+     * <p>It has to be low enough to level the accents themselves rather than
+     * to trim outliers above them — the loud beats are exactly what it
+     * levels.
      *
      * <p>The two ends fail differently. Low enough, the ceiling starts
      * levelling the quiet frames between beats too, and other recordings
