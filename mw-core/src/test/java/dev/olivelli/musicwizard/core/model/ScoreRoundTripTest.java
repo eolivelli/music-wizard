@@ -331,8 +331,7 @@ class ScoreRoundTripTest {
         void unquantizedSpanDoesNotBreakTheOverlapCheck() {
             // Comparing only against the immediately preceding span made a gap in
             // the beat axis conceal the overlap entirely -- and the gap is the
-            // normal case, because stages quantize one span at a time. Round 1
-            // review finding.
+            // normal case, because stages quantize one span at a time.
             PitchSpelling c = new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4);
             Score score = Score.empty(TempoMap.constant(120), 100);
 

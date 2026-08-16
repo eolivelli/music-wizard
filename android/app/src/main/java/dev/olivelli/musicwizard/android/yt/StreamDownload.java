@@ -33,14 +33,13 @@ import java.util.function.BooleanSupplier;
  *
  * <p><strong>The chunking is not an optimisation and must not be simplified
  * away.</strong> YouTube paces an unranged {@code GET} at roughly playback
- * speed: measured on a 3.4 MB track, one plain request took 107 seconds —
- * 0.03 MB/s — while the same file fetched as sequential 1 MiB {@code Range}
- * requests took 1.62 seconds, 2.13 MB/s. That is sixty-six times, and a
- * "tidy-up" to a single request would look obviously correct and make every
- * import unusable.
+ * speed, while sequential {@code Range} requests run at full speed — measured
+ * at nearly two orders of magnitude apart on one track. A "tidy-up" to a
+ * single request would look obviously correct and make every import
+ * unusable.
  *
- * <p>Sequential rather than parallel: at 2 MB/s a four-minute track is already
- * under two seconds, and concurrency would buy nothing for three more ways to
+ * <p>Sequential rather than parallel: chunked, a whole track already fetches
+ * in seconds, and concurrency would buy nothing for three more ways to
  * fail.
  *
  * <p>Redirects are followed here rather than by the transport, and the {@code
@@ -252,13 +251,12 @@ public final class StreamDownload {
      *       disagreeing, which the total check at the end cannot see.
      * </ul>
      *
-     * <p><strong>A 403 is retried here rather than believed.</strong> It reads
-     * like an expired link and usually is not: measured against the live
-     * endpoint, the first chunk of a fetch never returned one in six attempts,
-     * while a whole four-chunk fetch failed one time in four — so it arrives
-     * partway through, which is a rate limit on quick successive ranges and not
-     * a URL that has gone bad. Waiting clears it. Only a 403 that survives every
-     * attempt is reported as expiry, which is what makes {@link Fetch}'s
+     * <p><strong>A 403 is retried here rather than believed.</strong> It
+     * reads like an expired link and usually is not: measured against the
+     * live endpoint it arrives partway through a fetch rather than on the
+     * first chunk, which is a rate limit on quick successive ranges and not a
+     * URL that has gone bad, and waiting clears it. Only a 403 that survives
+     * every attempt is reported as expiry, which is what makes {@link Fetch}'s
      * resolve-and-start-again worth doing at all.
      */
     private Chunk fetch(String url, long from, long to, BooleanSupplier cancelled)

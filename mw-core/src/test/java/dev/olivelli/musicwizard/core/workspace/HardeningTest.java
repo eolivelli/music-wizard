@@ -36,7 +36,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Regression tests for defects found in the second and third review rounds.
+ * Regression tests for defects found after the code first landed.
  *
  * <p>A workspace is a directory that gets copied and shared, and stage names can
  * reach the cache from a command-line flag, so both are untrusted input.

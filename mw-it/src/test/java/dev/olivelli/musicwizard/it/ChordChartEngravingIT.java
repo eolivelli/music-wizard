@@ -199,9 +199,9 @@ class ChordChartEngravingIT {
      * a whole note, which no single note value names — is one this change
      * computed rather than one it passed through.
      *
-     * <p>Round 1 of review found the first draft of this fixture inert: its
-     * boundaries were tidied by the layout's own snapping before the reduction
-     * saw them, so it engraved the same page either way and tested nothing.
+     * <p>A fixture whose boundaries are tidied by the layout's own snapping
+     * before the reduction sees them engraves the same page either way and
+     * tests nothing; hence the offsets below.
      */
     private static Score aChatteringSevenEight() {
         TimeSignature meter = new TimeSignature(7, 8);
@@ -415,8 +415,8 @@ class ChordChartEngravingIT {
         // text in ChordChartTest. Counted from the bar checks the emitter wrote,
         // which catches a bar line lost against a bar kept and nothing more:
         // both sides come from the same text, so a bar dropped in ChartLayout
-        // takes its bar line with it and this still passes. Round 4 of review
-        // dropped ChartLayout's last bar and measured which tests noticed --
+        // takes its bar line with it and this still passes. Dropping
+        // ChartLayout's last bar was measured for which tests noticed --
         // not this one, and not the two-outputs comparison either, since both
         // its sides read one layout. The ones that fail are the ones asserting
         // what is in which bar against an expectation formed outside the
@@ -465,8 +465,8 @@ class ChordChartEngravingIT {
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
 
         // The emitter's own 3/4 output with one bar shortened, rather than
-        // hand-written LilyPond: a hand-copied file pins LilyPond's behaviour and
-        // says nothing about ours (#92, round 4). No bar check is inserted here,
+        // hand-written LilyPond: a hand-copied file pins LilyPond's behaviour
+        // and says nothing about ours (#92). No bar check is inserted here,
         // which is the whole difference from before #160 -- the chart brings its
         // own.
         String clean = ChordChart.toLilyPond(fourBarsIn(TimeSignature.THREE_FOUR, 1.5, 120), TAGGED);

@@ -321,7 +321,7 @@ class MidiExportTest {
         // built one by hand rather than through the quantizer can reach this.
         // A note-on and a note-off at the same tick is a note every reader
         // discards -- including this project's importer -- so the floor is what
-        // keeps it from vanishing. Round 1 of review found the floor untested.
+        // keeps it from vanishing. The floor was once untested.
         Note brief = new Note(0.5, 0.001, 60, 80, Optional.empty(),
                 Optional.of(0.0), Optional.of(1.0 / 4000), Confidence.CERTAIN);
         NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(brief),
@@ -341,7 +341,7 @@ class MidiExportTest {
         // file can name is 60,000,000 / 0xFFFFFF, about 3.576 BPM. TempoSegment
         // permits anything positive, so a score can carry a slower one -- and
         // truncating it to three bytes would write a tempo the score never had,
-        // silently and wildly wrong. Round 1 of review found this guard live
+        // silently and wildly wrong. This guard was once live
         // and untested.
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> MidiExport.toSequence(
@@ -350,7 +350,7 @@ class MidiExportTest {
 
         // Just above the boundary, which is what says the guard is at the edge
         // rather than somewhere convenient. The value is named rather than
-        // bounded: round 2 of review pointed out that reconstructing three bytes
+        // bounded: reconstructing three bytes
         // and asserting the result fits in three bytes is true by construction
         // and asserts nothing. 60,000,000 microseconds a minute over 3.6 beats.
         Sequence slow = MidiExport.toSequence(score(TimeSignature.FOUR_FOUR, 3.6, voice));

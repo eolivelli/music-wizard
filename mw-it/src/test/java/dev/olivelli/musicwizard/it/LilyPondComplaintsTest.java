@@ -48,8 +48,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>No {@code IT} in the name</b>, and deliberately. Everything an engraving
  * test can say about the tolerance is said behind {@code -Pintegration}; this
- * needs no binary and takes a tenth of a second. Round 1 of review on #148
- * pointed out what leaving it under that profile would mean: the guard against
+ * needs no binary and takes a tenth of a second. Leaving it under that
+ * profile would mean: the guard against
  * the matcher rotting would live inside the job whose being unread for weeks is
  * the whole subject of #145. Named this way it runs on every {@code mvn verify}
  * and in every CI job; named {@code *IT} it would run only where a reviewer had
@@ -64,18 +64,16 @@ import org.junit.jupiter.api.Test;
  * {@code failIfNoTests} is not configured anywhere in this build, so a
  * {@code *Test} that disappears is exactly as silent as an {@code *IT} that
  * does. The argument for the name is which job runs it, not what happens when
- * nothing does. (The count is deliberately not written down here — round 1
- * recorded one and the same commit then added a test, so it was stale before it
- * was pushed.)
+ * nothing does. (The count is deliberately not written down here — one was
+ * recorded once and went stale in the same commit.)
  */
 class LilyPondComplaintsTest {
 
     /**
      * LilyPond 2.24.3, the version the {@code integration} job installs. Every
      * line is byte-exact, the trailing space included; the four progress lines
-     * between preprocessing and success are cut, because they say nothing about
-     * bar checks and their absence is what round 2 of review corrected the word
-     * "verbatim" to.
+     * between preprocessing and success are cut, because they say nothing
+     * about bar checks — which is what "verbatim" here means.
      */
     private static final String OUTPUT_2_24 = """
             Processing `bar.ly'
@@ -180,9 +178,9 @@ class LilyPondComplaintsTest {
         // LilyPond echoes file names and the offending line of source back at
         // you, so the phrase turns up in output containing no failed bar check
         // at all, and a test that matched it would pass on a file named after
-        // the bug it was written for. Which part of the pattern does the work
-        // differs by case, and the two rounds of review it took to get this
-        // paragraph right are the argument for writing it down: the first two
+        // the bug it was written for. Which part of the pattern does the
+        // work differs by case, and that is the argument for writing it
+        // down: the first two
         // are rejected for reporting no moment; the third -- a commented-out
         // line of source, where everything else about the text is right -- is
         // the only one that needs the "warning:" prefix; and the fourth is
@@ -245,8 +243,8 @@ class LilyPondComplaintsTest {
     @Test
     @DisplayName("the tolerance is exactly one line, and everything either side of it still fails")
     void theToleranceIsNarrowerThanTheWordItContains() {
-        // Round 4 of review on #92 found nothing pinning the width: the filter
-        // could be widened to "any line containing the word error" and the whole
+        // Nothing pinned the width: the filter could be widened to "any
+        // line containing the word error" and the whole
         // suite stayed green, because the only negative fixture was a *warning*
         // and the carve-out sits on the error side. So the width is asserted
         // here, against the helper directly rather than through LilyPond -- a
@@ -272,33 +270,28 @@ class LilyPondComplaintsTest {
                 TOLERATED_COMPLAINT))
                 .isInstanceOf(AssertionError.class);
         // And the thing the ban exists for, beside the tolerated line rather
-        // than instead of it -- in both of LilyPond's spellings, which is #145's
-        // point and which #148's review rounds argued back and forth over.
+        // than instead of it -- in both of LilyPond's spellings (#145).
         //
-        // Where that argument got to, and why the older spelling is back. Round
-        // 2 of #148 showed the filter cannot read the bar-check wording at all:
-        // it selects on "warning" or "error" and excludes exact strings, and
-        // javap confirms no bar-check text in the method or its lambdas. Round 3
-        // refuted the stronger form -- a mutant adding
-        // "&& !line.contains(\"barcheck\")" to the tolerance does make the two
-        // spellings differ -- and the copy was dropped anyway, on the grounds
-        // that a real binary kills that mutant: under 2.24
+        // The filter cannot read the bar-check wording at all: it selects on
+        // "warning" or "error" and excludes exact strings, and javap confirms
+        // no bar-check text in the method or its lambdas. A mutant adding
+        // "&& !line.contains(\"barcheck\")" to the tolerance does make the
+        // two spellings differ, and a real binary kills it: under 2.24
         // TupletEngravingIT.bracketsAreEngravedWithTheDurationTheyClaim reaches
         // this filter in the older spelling already.
         //
-        // Round 2 of #164 measured what that is worth on the other version. The
-        // mutant is killed by three integration tests under 2.24.3 and by
-        // *nothing at all* under 2.26.0 -- so every developer on Homebrew
+        // On the other version that is worth nothing: the mutant is killed
+        // by integration tests under 2.24.3 and by *nothing at all* under
+        // 2.26.0 -- so every developer on Homebrew
         // LilyPond, which is what CLAUDE.md says most of them have, could widen
         // the tolerance to swallow bar checks and see a green suite. One line
         // here closes that, in the job everyone runs, on every machine.
         //
         // The pair below is about width in the sense this test is named for --
-        // that neither spelling is special to the tolerance -- rather than about
-        // the matcher, which is eitherSpellingIsFound's subject. Round 3 of
-        // review noted a reader might look there first; they are different API
-        // surfaces and the mutant that widens this filter is invisible to that
-        // test.
+        // that neither spelling is special to the tolerance -- rather than
+        // about the matcher, which is eitherSpellingIsFound's subject; they
+        // are different API surfaces and the mutant that widens this filter
+        // is invisible to that test.
         assertThatThrownBy(() -> assertEngravedCleanly("a bar check beside it",
                 engraved(TOLERATED_COMPLAINT, "part.ly:5:20: warning: bar check failed at: 3/4"),
                 TOLERATED_COMPLAINT))
@@ -322,8 +315,8 @@ class LilyPondComplaintsTest {
     @Test
     @DisplayName("a caller that asks for no tolerance gets none, including for the tolerated line")
     void theToleranceIsNotGrantedUnlessItIsAskedFor() {
-        // Round 1 of review on #164 named the hazard this pins: while the
-        // tolerance was baked into the helper, the obviously-named assertion
+        // The hazard this pins (#164): while the tolerance was baked into
+        // the helper, the obviously-named assertion
         // carried a carve-out for a tuplet-number spacing complaint to callers
         // engraving chord charts, which have neither beams nor tuplet numbers.
         // Every call site that engraves but one now passes nothing, and this is

@@ -42,13 +42,13 @@ import java.util.Map;
  * 'android_vr')}. Do not raise {@link #CLIENT_VERSION} past 1.65 to look
  * current: newer versions have been observed answering SABR-only.
  *
- * <p><strong>The session is bootstrapped from its own rejection.</strong> A call
- * carrying no {@code visitorData} is usually refused with {@code LOGIN_REQUIRED}
- * and "Sign in to confirm you're not a bot" — 7 of 8 videos in one run, 0 of 1
- * in another, so it varies by session and cannot be predicted. But the refusal
- * still carries a {@code responseContext.visitorData}, and replaying that on the
- * retry passes. One bootstrapped value then served 20 consecutive videos, which
- * is why it is cached for the life of the instance.
+ * <p><strong>The session is bootstrapped from its own rejection.</strong> A
+ * call carrying no {@code visitorData} is usually — but unpredictably, varying
+ * by session — refused with {@code LOGIN_REQUIRED} and "Sign in to confirm
+ * you're not a bot". The refusal still carries a
+ * {@code responseContext.visitorData}, and replaying that on the retry passes;
+ * one bootstrapped value then serves many consecutive videos, which is why it
+ * is cached for the life of the instance.
  *
  * <p>Neither fact is durable. yt-dlp already records selective proof-of-origin
  * enforcement on this client, so the day will come when the reply is

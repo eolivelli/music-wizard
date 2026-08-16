@@ -58,7 +58,7 @@ final class CliRunner {
          *
          * <p>Separate from {@link #all()} because the two answer different
          * questions and only this one can answer "did the warning come after the
-         * line it is about". Round 1 of review on #156 found that it could not
+         * line it is about". On #156 that question could not
          * be asked at all: {@code render} prints the files it wrote on stdout
          * and warns about them on stderr, and moving the warning block to before
          * the file list — the exact regression the {@code Emitted} record exists
@@ -70,8 +70,8 @@ final class CliRunner {
          * line is one write and lines cannot interleave within themselves;
          * nothing in this suite runs the command on more than one thread.
          *
-         * <p><b>Picocli's own writers are the exception</b>, noted by round 2 of
-         * review: they are not auto-flushing, so usage text and the exception
+         * <p><b>Picocli's own writers are the
+         * exception</b>: they are not auto-flushing, so usage text and the exception
          * handler's output can land in the transcript later than they were
          * written. Nothing asserts on the position of those, and this method
          * should not be used to.

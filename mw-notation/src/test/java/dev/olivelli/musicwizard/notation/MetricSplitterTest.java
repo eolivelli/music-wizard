@@ -112,10 +112,10 @@ class MetricSplitterTest {
 
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            // Round 1 of review found all of these written as one symbol lying
-            // across a beat that then vanished from the page. Length alone said
-            // yes -- a dotted quarter IS one 6/8 beat -- and nothing asked where
-            // the symbol started.
+            // All of these were once written as one symbol lying across a beat
+            // that then vanished from the page. Length alone said yes -- a
+            // dotted quarter IS one 6/8 beat -- and nothing asked where the
+            // symbol started.
             "6/8  | 0.5  | 2    | 4,8",
             "6/8  | 1    | 2.5  | 8,4",
             "9/8  | 0.5  | 2    | 4,8",
@@ -124,8 +124,8 @@ class MetricSplitterTest {
             // a sixteenth after beat one swallowed the middle of the bar.
             "4/4  | 0.25 | 2.25 | 8.,4,16",
             "4/4  | 1.5  | 3.5  | 8,4.",
-            // Round 2 found the first fix testing the *unit's* size rather than
-            // the *symbol's*, so it never fired in a meter whose beats do not
+            // The first fix tested the *unit's* size rather than the
+            // *symbol's*, so it never fired in a meter whose beats do not
             // come in a power-of-two count: there the bar divides straight into
             // beats, no unit is ever longer than one, and a whole note could
             // still swallow four beats of a 5/4 bar from a sixteenth offset.
@@ -133,8 +133,8 @@ class MetricSplitterTest {
             "5/4  | 0.5  | 3.5  | 8,2,8",
             "6/4  | 0.5  | 4.5  | 8,2.,8",
             "7/8  | 0.25 | 1.75 | 16,4,16",
-            // Round 3 found the second fix exempting a symbol of *exactly* a
-            // dotted beat. Where the bar divides straight into beats, such a
+            // The second fix exempted a symbol of *exactly* a dotted beat.
+            // Where the bar divides straight into beats, such a
             // symbol covers a complete one: 3/4 wrote this as a single 4. while
             // 4/4 tied the identical span.
             "3/4  | 0.75 | 2.25 | 16,4,16",
@@ -170,9 +170,9 @@ class MetricSplitterTest {
             "4/4  | 0.5  | 1.5  | 4",
             "4/4  | 0.5  | 2    | 4.",
             "2/2  | 0.5  | 3.5  | 2.",
-            // The same in the meters round 2 found unguarded: beginning on a
-            // beat is still enough, and a symbol shorter than a dotted beat
-            // still floats.
+            // The same in the meters the first fix left unguarded: beginning
+            // on a beat is still enough, and a symbol shorter than a dotted
+            // beat still floats.
             "3/4  | 1    | 3    | 2",
             "5/4  | 1    | 4    | 2.",
             "7/8  | 0.5  | 1.5  | 4",
@@ -221,17 +221,17 @@ class MetricSplitterTest {
     @Test
     @DisplayName("no symbol ever swallows a counted beat it did not start on")
     void noSymbolSwallowsACountedBeat() {
-        // Stated over the symbols that come out, in the terms a reader would use,
-        // rather than by re-asking the predicate that produced them. That
-        // distinction is not pedantry: three rounds of review found this rule
-        // wrong, and the first two sweeps that were supposed to catch it were
-        // written as the implementation's own length threshold negated, so they
-        // agreed with the code about which spans were even worth looking at.
+        // Stated over the symbols that come out, in the terms a reader would
+        // use, rather than by re-asking the predicate that produced them.
+        // That distinction is not pedantry: this rule has been wrong
+        // repeatedly, and sweeps written as the implementation's own length
+        // threshold negated agreed with the code about which spans were even
+        // worth looking at.
         //
         // The arithmetic here is exact integers counted in the shortest value the
         // emitter can write, so it shares no expression with the implementation
-        // either -- round 4 pointed out that copying its floating-point kernel
-        // leaves a change to that kernel marked only by its own duplicate. And it
+        // either -- copying its floating-point kernel would leave a change to
+        // that kernel marked only by its own duplicate. And it
         // sweeps at that same resolution, because sweeping a sixteenth grid while
         // MetricSplitter accepts a 64th one leaves three quarters of the legal
         // starting positions untested: a rule relaxed to a tolerance of a tenth
@@ -261,11 +261,11 @@ class MetricSplitterTest {
         // a meter nobody writes and "mvn verify must stay fast" is a rule of this
         // project rather than a preference.
         //
-        // The positions are chosen rather than stepped. A step is what round 6
-        // found wrong here: scaled to the bar, it came out a whole multiple of
-        // the beat unit in the three longest meters, so every span began on a
-        // counted beat -- and an off-beat start is the one position class that
-        // produced every defect this file has found.
+        // The positions are chosen rather than stepped: a step scaled to the
+        // bar comes out a whole multiple of the beat unit in the longest
+        // meters, so every span begins on a counted beat -- and an off-beat
+        // start is the one position class that produced every defect this
+        // file has found.
         long offBeatSymbols = 0;
         int meters = 0;
         for (TimeSignature meter : longBarMeters()) {
@@ -295,9 +295,9 @@ class MetricSplitterTest {
      * line, one unit either side of each of the first two beats, the last beat,
      * the middle of the bar and one unit either side of it, and the last unit.
      * Half of them are off the beat by construction, whatever the meter, which is
-     * what a scaled step cannot promise — round 6 found a step that came out a
-     * whole multiple of the beat unit in the three longest meters, so those
-     * sampled nothing but downbeats.
+     * what a scaled step cannot promise — a scaled step once came out a whole
+     * multiple of the beat unit in the three longest meters, so those sampled
+     * nothing but downbeats.
      */
     private static java.util.SortedSet<Long> samplePositions(long bar, long beat) {
         java.util.SortedSet<Long> positions = new java.util.TreeSet<>(List.of(
@@ -388,8 +388,8 @@ class MetricSplitterTest {
      * exhaustively at the emitter's own resolution — 190 of the 448.
      *
      * <p>Built from {@link TimeSignature}'s own limits rather than from a list
-     * somebody typed. Round 5 of review found the list version claiming to be
-     * this while covering 44: it stopped at denominator 16 and numerator 16, so
+     * somebody typed. The list version claimed to be this while covering 44:
+     * it stopped at denominator 16 and numerator 16, so
      * every meter in 32nds and 64ths, and both meters in whole notes, went
      * unswept while the javadoc said otherwise. On a rule four rounds found
      * wrong, the stated coverage is most of the test's value, and the excluded
@@ -426,10 +426,10 @@ class MetricSplitterTest {
     @DisplayName("the meter sweeps still cover everything the model admits")
     void theSweepsCoverTheWholeModel() {
         // The bounds above are copied from TimeSignature, which exposes no
-        // accessor for them. Copying is fine; copying silently is not -- round 5
-        // found a typed meter list that had gone stale against limits that never
-        // moved, and a list that goes stale against limits that DO move is the
-        // same failure with a slower fuse. So the copy is asserted: widen the
+        // accessor for them. Copying is fine; copying silently is not -- a
+        // typed meter list once went stale against limits that never moved,
+        // and a list that goes stale against limits that DO move is the same
+        // failure with a slower fuse. So the copy is asserted: widen the
         // model and this fails rather than the sweep quietly shrinking.
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new TimeSignature(1, MAX_DENOMINATOR * 2));

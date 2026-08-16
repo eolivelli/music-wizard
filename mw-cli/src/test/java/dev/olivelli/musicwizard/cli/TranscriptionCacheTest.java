@@ -95,7 +95,7 @@ class TranscriptionCacheTest {
      * options -- and constructed for exactly that reason. Comparing the two
      * <em>real</em> keys proves less than it looks: they differ in their option
      * components as well, so they stay distinct even if the kind stops being
-     * carried at all, which is what an earlier version of this test failed to
+     * carried at all, which such a comparison cannot
      * notice. Holding every other component equal leaves the stage as the only
      * thing that can separate them.
      */
@@ -195,15 +195,15 @@ class TranscriptionCacheTest {
     @Test
     @DisplayName("--skip-separation reaches the key and the warning from a real audio run")
     void skipSeparationIsWiredUpOnTheAudioPath() {
-        // Through the CLI on real audio, because the two halves of round 3's fix
+        // Through the CLI on real audio, because the two halves of the fix
         // that a key-builder test cannot reach are the wiring: whether the flag
         // is read out of the config into the key at all, and whether the warning
-        // fires on this path or only on the MIDI one. Round 4 found both mutants
-        // surviving a suite of 43.
+        // fires on this path or only on the MIDI one. Both mutants once
+        // survived a suite of 43.
         //
         // A short synthesised WAV. It is decoded by the bundled ffsampledsp
-        // natives rather than by the JDK's own provider -- an earlier version of
-        // this comment said otherwise -- but they ship in the jar, so nothing is
+        // natives rather than by the JDK's own provider
+        // -- but they ship in the jar, so nothing is
         // downloaded and no external binary is required: the fast suite stays
         // fast and offline, which is the property that matters.
         Path source = directory.resolve("tone.wav");
@@ -223,10 +223,10 @@ class TranscriptionCacheTest {
         assertThat(second.out())
                 .as("the audio path must cache, or the third run proves nothing")
                 .contains("reusing the cached analysis");
-        // Positively, and not only by the absence of the reuse line. An absence
-        // has more than one cause: round 5 showed that a mutant crashing every
-        // --skip-separation run on audio passed this test, because a run that
-        // dies also fails to print that it reused anything.
+        // Positively, and not only by the absence of the reuse line. An
+        // absence has more than one cause: a mutant crashing every
+        // --skip-separation run on audio once passed this test, because a run
+        // that dies also fails to print that it reused anything.
         assertThat(skipped.exitCode()).as(skipped.all()).isZero();
         assertThat(skipped.out())
                 .as("--skip-separation did not reach the cache key from a real run")

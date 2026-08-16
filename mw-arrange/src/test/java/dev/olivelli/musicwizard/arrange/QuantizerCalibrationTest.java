@@ -72,22 +72,13 @@ class QuantizerCalibrationTest {
         // penalties knows the tempo, so the calibration is a statement about a
         // range, and the range has to be tested rather than assumed.
         //
-        // Measured over 50 seeds, four bars, one material at a time:
-        //
-        //   BPM        60   90  120  140  160  180  200
-        //   quarters   50   50   50   50   50   50   50
-        //   eighths    50   50   50   50   50   50   48
-        //   trip 8ths  50   50   50   50   50   49   45
-        //   16ths      50   50   50   48   42   29   21
-        //   trip 16ths 50   50   49   46   41   38   32
-        //
-        // Up to 120 everything is exact bar one seed of triplet sixteenths.
-        // Above it the sixteenths go first, and they go the unreadable way --
-        // at 200 BPM most of them land on the sextuplet grid, finer and
-        // tupletted. Scaling the penalties with the tempo was tried and makes
-        // it worse: it tilts towards coarser grids, and the coarser neighbour
-        // of the sixteenth grid is the triplet, so the sixteenths go there
-        // instead.
+        // Measured per material and tempo: up to 120 BPM everything is exact
+        // bar one seed of triplet sixteenths. Above it the sixteenths go
+        // first, and they go the unreadable way -- at the top of the range
+        // most land on the sextuplet grid, finer and tupletted. Scaling the
+        // penalties with the tempo was tried and makes it worse: it tilts
+        // towards coarser grids, and the coarser neighbour of the sixteenth
+        // grid is the triplet, so the sixteenths go there instead.
         //
         // A caveat that cuts the other way, and is why this is not treated as a
         // defect: holding the spread at 25 ms across the sweep overstates the

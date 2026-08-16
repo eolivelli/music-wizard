@@ -435,8 +435,6 @@ class MidiImportEdgeCaseTest {
                 .withMessageContaining("not a readable file");
     }
 
-    // -------------------------------------------------- round 3 review findings
-
     @Test
     @DisplayName("a meter dropped by a chain of displacements is still reported")
     void aReportSurvivesTheRemovalOfTheEntryItWasParkedOn() throws Exception {
@@ -592,8 +590,6 @@ class MidiImportEdgeCaseTest {
                         new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
     }
 
-    // -------------------------------------------------- round 2 review findings
-
     @Test
     @DisplayName("a change one tick into a very wide opening bar does not take the walk apart")
     void aChangeJustAfterTheOriginDoesNotRemoveTheBarZeroEntry() throws Exception {
@@ -671,8 +667,8 @@ class MidiImportEdgeCaseTest {
     @DisplayName("a change that both displaces another and sits mid-bar still says it moved")
     void aSupersedingChangeStillReportsThatItMoved() throws Exception {
         // The 6/8 at beat 6 displaces the 5/4 and takes effect at beat 7, a
-        // whole quarter beat later than the file puts it. An earlier draft
-        // reported the move only on the non-superseding path, so this one was
+        // whole quarter beat later than the file puts it. The move was once
+        // reported only on the non-superseding path, so this one was
         // silent -- and the gap can be a whole bar.
         Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
         Track track = sequence.createTrack();
@@ -722,7 +718,6 @@ class MidiImportEdgeCaseTest {
                 message.contains("indistinguishable in time"));
     }
 
-    // -------------------------------------------------- round 1 review findings
     @Test
     @DisplayName("two tempo events the seconds axis cannot separate do not sink the file")
     void aTempoEventIndistinguishableInTimeIsSkipped() throws Exception {

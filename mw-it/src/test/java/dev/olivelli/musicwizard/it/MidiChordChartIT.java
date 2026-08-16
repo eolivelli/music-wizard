@@ -127,8 +127,8 @@ class MidiChordChartIT {
             LilyPondRenderer.Result result = renderer.renderSource(
                     tempDirectory.resolve(quality.name() + "/chord.ly"), source);
             // The other reader of this output, enumerated rather than left as
-            // the one call site the change above did not reach -- round 1 of
-            // review on #164 named it, and "the fix stopped at the layer the bug
+            // the one call site the change above did not reach --
+            // #164 named it, and "the fix stopped at the layer the bug
             // was noticed" is the pattern CLAUDE.md says keeps recurring here.
             // No complaint from any quality this loop reaches, on 2.24.3 or
             // 2.26.0; the pitch-class assertion below is the stronger check and

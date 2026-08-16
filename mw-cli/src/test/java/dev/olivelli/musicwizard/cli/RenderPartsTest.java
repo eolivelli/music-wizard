@@ -90,7 +90,7 @@ class RenderPartsTest {
      * are not about.
      *
      * <p>The source is always audio, and never varied to change what
-     * {@code render} says. That is the point of round 1's finding: what
+     * {@code render} says — the point being that what
      * {@code render} can produce is a property of the score, and it used to
      * re-sniff the file on disk to decide -- which failed when the file was gone
      * and lied when it had been replaced.
@@ -142,7 +142,7 @@ class RenderPartsTest {
         @DisplayName("a list of separators and nothing else is a usage error, not an empty run")
         void rejectsAListOfSeparators() {
             // picocli requires one *argument*, not one value: "," splits into
-            // none. Round 3 removed the guard for this on the strength of an
+            // none. The guard for this was once removed on the strength of an
             // argument rather than a run, and the command then printed an empty
             // parts line and exited 1 -- the code it reserves for "the score had
             // nothing to engrave" -- with no message at all.
@@ -197,10 +197,10 @@ class RenderPartsTest {
         @DisplayName("every notation key but lilypondPath is covered, not only the two with flags")
         void coverTheKeysWithNoFlagOfTheirOwn() {
             // capo and the accidental preference have no command-line flag, so
-            // the config file is the only way to ask for them -- and they are as
-            // inert as the two that do. Widened into the warning in round 10 with
-            // no test in either direction, which is how two of the four newly
-            // warned keys went unexercised.
+            // the config file is the only way to ask for them -- and they
+            // are as inert as the two that do. They were widened into the
+            // warning with no test in either direction, which is how two of
+            // the four newly warned keys went unexercised.
             Path workspace = audioWorkspace("song", fourChords());
             Workspace.open(workspace).updateConfig(new MusicWizardConfig(null, null,
                     new MusicWizardConfig.NotationConfig(null, null, null, 3,
@@ -241,8 +241,8 @@ class RenderPartsTest {
                     "render", workspace.toString(), "--no-pdf");
 
             // The exit code as well, because "the warning did not appear" is
-            // equally satisfied by the command dying before it would have -- the
-            // shape round 5 found and round 8 found again, both in this file.
+            // equally satisfied by the command dying before it would have -- a
+            // shape this file has held twice.
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err()).doesNotContain("no effect yet");
         }
@@ -372,8 +372,8 @@ class RenderPartsTest {
         void doesNotGuessAtProvenance() {
             // A MIDI file holding only a conductor track -- a plain tempo-map
             // export -- imports to a score with no parts, and so takes the same
-            // branch as an audio analysis that found nothing. Round 1's fix
-            // replaced a source-file sniff with a proxy; round 2 found the proxy
+            // branch as an audio analysis that found nothing. A source-file
+            // sniff was once replaced with a proxy, and the proxy
             // was wrong here, on a real file, with the source present and
             // untouched. So neither message may name a source kind at all.
             Path source = MidiFixtures.write(MidiFixtures.sequence()

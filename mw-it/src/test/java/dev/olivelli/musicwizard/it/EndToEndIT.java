@@ -206,9 +206,8 @@ class EndToEndIT {
         // about, so on the output CLAUDE.md calls this project's strongest, the
         // diagnostics were the one thing nothing looked at.
         //
-        // What this catches is worth being exact about, because round 1 of
-        // review on #164 found the first draft overclaiming it, and the claim
-        // has since changed. It caught anything LilyPond said about the chart
+        // What this catches is worth being exact about, because the claim
+        // has changed. It caught anything LilyPond said about the chart
         // and *not* a bar of the wrong length, because the emitter wrote no bar
         // checks and no \time -- halving every chord engraved in silence under
         // 2.24.3 and 2.26.0 alike. #160 closed that in the emitter, so the gate
@@ -218,7 +217,7 @@ class EndToEndIT {
         // No tolerance is passed. The one assertEngravedCleanly knows about is a
         // spacing complaint about a tuplet number against a beam, and a chord
         // chart has neither -- a carve-out with nothing behind it is the dead
-        // carve-out #92's review rounds spent two of themselves avoiding.
+        // carve-out #92 twice took pains to avoid.
         assertEngravedCleanly("the chord chart", result);
         Path pdf = result.pdf().orElseThrow();
         assertThat(Files.size(pdf)).isGreaterThan(1000);
@@ -243,7 +242,7 @@ class EndToEndIT {
 
         // The emitter's own output with a bar broken, rather than hand-written
         // LilyPond: engraving a hand-copied file pins LilyPond's behaviour and
-        // says nothing about ours. Round 4 of #92 made that distinction and it
+        // says nothing about ours. #92 made that distinction and it
         // applies here unchanged.
         //
         // One edit now, where this needed two. It used to have to insert the bar

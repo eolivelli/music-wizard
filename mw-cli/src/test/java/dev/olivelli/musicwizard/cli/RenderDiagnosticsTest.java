@@ -164,18 +164,17 @@ class RenderDiagnosticsTest {
         // not match the transcription. Present tense on purpose: no real run
         // has produced one, for the reason the class javadoc gives.
         //
-        // "check while" rather than "check": round 1 of review found that
-        // contains("1 failed bar check") is satisfied by "1 failed bar checkS",
-        // so the singular branch was pinned by nothing.
+        // "check while" rather than "check": contains("1 failed bar check")
+        // is satisfied by "1 failed bar checkS", so the singular branch was
+        // pinned by nothing.
         assertThat(render.err())
                 .contains("warning: LilyPond reported 1 failed bar check while")
                 .contains("at 3/4.");
-        // The file's name, not its path -- in *both* places the message names
-        // it. Round 9 found `contains("chords.ly")` satisfied either way; round
-        // 10 then found the assertion written for that keying on the first
-        // interpolation only, so mutating the second survived. Two readers of
-        // one value in a single statement, which is this project's recorded
-        // failure mode inside the fix written for it.
+        // The file's name, not its path -- asserted at *both* places the
+        // message names it: `contains("chords.ly")` is satisfied either way,
+        // and an assertion keyed on the first interpolation alone let a
+        // mutation of the second survive. Two readers of one value in a
+        // single statement.
         assertThat(render.err())
                 .contains("engraving chords.ly,")
                 .contains("report it with chords.ly attached")
@@ -193,8 +192,8 @@ class RenderDiagnosticsTest {
     void theWarningComesAfterTheFileItIsAbout() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
 
-        // The property the Emitted record exists for, and until round 1 of
-        // review it was held by nothing: the two streams were captured into two
+        // The property the Emitted record exists for, once held by nothing:
+        // the two streams were captured into two
         // buffers, so moving the warning block back above the file list -- the
         // exact regression -- left every test green. A warning printed before
         // "Wrote" reads as the reason a file is missing rather than as a fact
@@ -219,8 +218,8 @@ class RenderDiagnosticsTest {
         // And come before the chart this command prints last. That is the half
         // that proves the transcript is a real interleaving rather than stdout
         // followed by stderr: concatenating the two buffers would put the
-        // warning after the chart, and round 2 of review found exactly that
-        // mutant -- reorder the printing *and* degrade transcript() -- surviving.
+        // warning after the chart, and exactly that mutant -- reorder the
+        // printing *and* degrade transcript() -- once survived.
         int chart = transcript.indexOf("Tempo  ");
         assertThat(chart).as("%s", transcript).isNotNegative();
         assertThat(warning).as("the warning must not be buried after the chart%n%s", transcript)
@@ -232,8 +231,8 @@ class RenderDiagnosticsTest {
     void theCountIsNotLocalised() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
 
-        // Round 1 of review: String.format without a Locale localises %d, so on
-        // an ar_EG machine this sentence read "LilyPond reported ١٠ failed bar
+        // String.format without a Locale localises %d, so on an ar_EG
+        // machine this sentence read "LilyPond reported ١٠ failed bar
         // checks" with every other word in English. The same class of defect as
         // LilyPondRenderer.speakEnglish, one process in, and the reason the
         // engraved tempo mark already carries Locale.ROOT -- in mw-notation's
@@ -304,8 +303,8 @@ class RenderDiagnosticsTest {
     void theCapDoesNotBiteAtTheBoundary() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
 
-        // The boundary the cap is written on, which round 7 found unvisited:
-        // the tests either side of it use one moment and ten. Loosening the
+        // The boundary the cap is written on, previously unvisited: the
+        // tests either side of it use one moment and ten. Loosening the
         // comparison to >= is invisible except at exactly eight, where the user
         // would read "and 0 more".
         String[] eight = new String[8];
@@ -339,8 +338,8 @@ class RenderDiagnosticsTest {
 
         assertThat(render.exitCode()).as(render.all()).isZero();
         assertThat(render.out()).contains("chords.pdf");
-        // "bar check" alone, which subsumes the plural: round 1 of review noted
-        // the second clause could never fail independently.
+        // "bar check" alone, which subsumes the plural: a separate plural
+        // clause could never fail independently.
         assertThat(render.err()).doesNotContain("bar check");
     }
 

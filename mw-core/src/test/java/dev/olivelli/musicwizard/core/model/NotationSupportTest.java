@@ -180,7 +180,7 @@ class NotationSupportTest {
             // and notesBetweenBeats were added for each other, and if they
             // disagreed about whether the span is half-open, a melisma would come
             // out a note short or a one-note syllable would come out empty.
-            // Round 3 review finding -- neither half was tested against the other.
+            // Until this test, neither half was tested against the other.
             List<Note> notes = new java.util.ArrayList<>();
             for (int beat = 0; beat <= 5; beat++) {
                 notes.add(Note.ofSeconds(beat + 0.001, 1.0, 60 + beat, Confidence.CERTAIN)

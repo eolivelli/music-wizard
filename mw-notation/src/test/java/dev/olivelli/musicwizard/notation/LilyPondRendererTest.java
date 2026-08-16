@@ -45,10 +45,9 @@ import org.junit.jupiter.api.io.TempDir;
  * is checked here, against an environment poisoned on purpose rather than
  * against the machine's own.
  *
- * <p>That distinction is the finding of round 5 and is why this file was
- * rewritten: asserting on the ambient environment proved nothing, because the
- * build machine has no {@code LANGUAGE} set and every mutation of the code under
- * test passed.
+ * <p>That distinction is why this file is written this way: asserting on the
+ * ambient environment proved nothing, because the build machine has no
+ * {@code LANGUAGE} set and every mutation of the code under test passed.
  */
 class LilyPondRendererTest {
 
@@ -75,11 +74,9 @@ class LilyPondRendererTest {
     @Test
     @DisplayName("an LC_ALL that would override the message language is moved out of the way")
     void anAmbientLcAllIsNeutralisedRatherThanLeftToWin() {
-        // Round 6 of review found the previous version of this a no-op for the
-        // commonest way of all to set a locale: POSIX has LC_ALL override every
-        // individual category, so writing LC_MESSAGES=C beside an inherited
-        // LC_ALL=it_IT.UTF-8 changes nothing and LilyPond says "attenzione: bar
-        // check failed" -- which is round 4's bug, reopened by round 5's fix.
+        // POSIX has LC_ALL override every individual category, so writing
+        // LC_MESSAGES=C beside an inherited LC_ALL=it_IT.UTF-8 changes nothing
+        // and LilyPond says "attenzione: bar check failed".
         ProcessBuilder builder = new ProcessBuilder("true");
         Map<String, String> environment = builder.environment();
         environment.put("LC_ALL", "it_IT.UTF-8");
@@ -99,14 +96,13 @@ class LilyPondRendererTest {
     @Test
     @DisplayName("everything LC_ALL was covering is written out in its place, not just the ctype")
     void everyMaskedCategoryIsCarriedRatherThanUnMasked() {
-        // Round 5 of review found round 4 setting a C ctype and breaking
-        // canción.ly outright, so round 6 carried LC_ALL forward into LC_CTYPE.
-        // Round 7 found that this is still the bug one category wide: LC_ALL
-        // masks every category, and glibc's locale selection is all-or-nothing,
-        // so one un-masked variable naming a locale that is not installed takes
-        // the whole child down to C -- ctype included, and canción.ly with it.
-        // An ambient "LC_ALL=it_IT.UTF-8 LC_TIME=de_DE.UTF-8" does exactly that,
-        // and the second half of it is inert until the first is removed.
+        // Carrying LC_ALL into LC_CTYPE alone is the bug one category wide:
+        // LC_ALL masks every category, and glibc's locale selection is
+        // all-or-nothing, so one un-masked variable naming an uninstalled
+        // locale takes the whole child down to C -- ctype included, and
+        // canción.ly with it. An ambient "LC_ALL=it_IT.UTF-8
+        // LC_TIME=de_DE.UTF-8" does exactly that; the second half is inert
+        // until the first is removed.
         ProcessBuilder builder = new ProcessBuilder("true");
         Map<String, String> environment = builder.environment();
         environment.put("LC_ALL", "es_ES.UTF-8");
@@ -182,19 +178,14 @@ class LilyPondRendererTest {
     void theRendererAppliesItToTheProcessItStarts() throws Exception {
         assumeThat(File.separatorChar).as("POSIX only; see #33").isEqualTo('/');
 
-        // Round 6 of review found that deleting both call sites left every test
-        // green: the seam was tested and the wiring was not. A stand-in binary
-        // that reports the locale it was started with is the only thing that can
-        // see the difference without LilyPond.
-        //
-        // Round 8 then found this version of it inert on a machine whose own
-        // LC_MESSAGES is already C, because the child then reports C whether or
-        // not the code under test ran. The module's surefire configuration gives
-        // this JVM a non-C LC_MESSAGES for exactly that reason. Checked rather
-        // than assumed, because a build file losing that element would leave the
-        // assertion below true for the wrong reason on such a machine -- and
-        // true for the right reason everywhere else, which is how it would
-        // survive a review.
+        // Deleting both call sites once left every test green: the seam was
+        // tested and the wiring was not, and a stand-in binary that reports
+        // the locale it was started with is the only thing that can see the
+        // difference without LilyPond. On a machine whose own LC_MESSAGES is
+        // already C the child reports C whether or not the code ran, so the
+        // module's surefire configuration gives this JVM a non-C LC_MESSAGES
+        // -- checked rather than assumed, or a build file losing that element
+        // leaves the assertion true for the wrong reason on such a machine.
         assertThat(System.getenv("LC_MESSAGES"))
                 .as("mw-notation/pom.xml sets this for the test JVM; without it this test can"
                         + " still pass on a machine whose own LC_MESSAGES is C")
@@ -212,10 +203,9 @@ class LilyPondRendererTest {
         LilyPondRenderer renderer = new LilyPondRenderer(script);
 
         assertThat(renderer.render(source).output()).contains("LC_MESSAGES=[C]");
-        // And --version, which parses output too. Round 7 found the previous
-        // assertion here -- that a version was present at all -- satisfied by
-        // any output whatsoever, so deleting the call in version() was killed by
-        // nothing.
+        // And --version, which parses output too: asserting merely that a
+        // version was present was satisfied by any output whatsoever, so
+        // deleting the call in version() was killed by nothing.
         assertThat(renderer.version()).contains("LC_MESSAGES=[C]");
     }
 
@@ -253,11 +243,11 @@ class LilyPondRendererTest {
          * The same, for a fixture that is supposed to be real engraver output —
          * and which checks that it still is.
          *
-         * <p>Round 4 of review found three fixtures in this file claiming to be
-         * byte-exact 2.26.0 output while being off by as much as 17 columns, and
-         * columns are precisely what the echo is now recognised by. One of them
-         * had lost a single trailing space to a Java text block, which was enough
-         * that a working fix for the over-report still left this file green.
+         * <p>Three fixtures in this file once claimed to be byte-exact
+         * engraver output while being off by columns — one had lost a single
+         * trailing space to a Java text block — and columns are precisely what
+         * the echo is recognised by, so a working fix still left this file
+         * green.
          *
          * <p>So the layout is asserted rather than trusted: after a diagnostic
          * naming column C, the next line must print C - 1 wide and the one after
@@ -282,10 +272,9 @@ class LilyPondRendererTest {
                     indent++;
                 }
                 // Code points, not chars, and tabs to eight-column stops --
-                // the same arithmetic LilyPond uses. Round 5 found this check
-                // counting chars, which meant it would have certified an
-                // astral-bearing fixture as real output while the parser
-                // disagreed with the engraver about it.
+                // the same arithmetic LilyPond uses. Counting chars would
+                // certify an astral-bearing fixture as real output while the
+                // parser disagreed with the engraver about it.
                 int printed = 0;
                 for (int c = 0; c < beforeColumn.length();
                         c += Character.charCount(beforeColumn.codePointAt(c))) {
@@ -388,15 +377,13 @@ class LilyPondRendererTest {
         void anEchoedSourceLineIsNotASecondComplaint() {
             // LilyPond quotes the offending line back after each diagnostic,
             // verbatim and with no prefix of its own, so an echo of a line
-            // containing the phrase carries the "warning:" along with it. Round 1
-            // of review measured that against 2.26.0 -- one real failure, two
-            // moments reported by the pattern this replaced.
+            // containing the phrase carries the "warning:" along with it -- one real
+            // failure, two moments reported by the pattern this replaced.
             //
-            // Every fixture in this class is now the engraver's own output,
-            // captured and pasted rather than typed. Round 4 found three of them
-            // claiming to be byte-exact while being off by as much as 17 columns,
-            // and columns are exactly what the echo is recognised by, so a
-            // hand-typed fixture cannot test the thing this file is about. The
+            // Every fixture in this class is the engraver's own output,
+            // captured and pasted rather than typed: columns are exactly what
+            // the echo is recognised by, so a hand-typed fixture cannot test
+            // the thing this file is about. The
             // \s escapes are load-bearing: a text block strips trailing spaces,
             // and the first echo line ends in one.
             assertThat(engraverSaid("""
@@ -411,15 +398,15 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("is not read out of either half of the echo, wherever the check failed")
         void bothHalvesOfTheEchoAreRecognisedAndSkipped() {
-            // The two shapes rounds 2 and 3 each found the previous fix missing,
-            // and the reason this class stopped trying to tell a diagnostic from
-            // an echo by what the line looks like. LilyPond splits the echo at
+            // The two shapes that made this class stop trying to tell a
+            // diagnostic from an echo by what the line looks like. LilyPond
+            // splits the echo at
             // the failing column: the part before it is printed at column 0 and
             // the part from it is indented to line up.
             //
-            // Round 3's shape -- the *second* half, which ends at the end of the
-            // source line whatever the column was. Real 2.26.0 output, check
-            // failing at column 42, phrase in a trailing comment.
+            // The *second* half, which ends at the end of the source line
+            // whatever the column was. Real engraver output, check failing at
+            // column 42, phrase in a trailing comment.
             assertThat(engraverSaid("""
                     tail.ly:2:42: warning: bar check failed at: 3/4
                     \\score { \\new Staff { \\time 4/4 c4 c4 c4\s
@@ -428,8 +415,8 @@ class LilyPondRendererTest {
                     """).failedBarChecks())
                     .as("was [3/4, 9/9] until the echo was recognised by its layout")
                     .containsExactly("3/4");
-            // Round 4's shape -- the *first* half, with the phrase inside a ^"..."
-            // markup, which is ordinary LilyPond and is what engraved lyrics will
+            // The *first* half, with the phrase inside a ^"..." markup,
+            // which is ordinary LilyPond and is what engraved lyrics will
             // emit (#9). Note the fabricated moment carried a stray quote: the
             // user would have been shown `at 3/4, 9/9"`.
             assertThat(engraverSaid("""
@@ -452,9 +439,9 @@ class LilyPondRendererTest {
             // characters would see 41 against 51, decline to recognise the echo,
             // and report the phrase in the trailing comment as a second failure.
             //
-            // Round 4's sweep found this untested: with the width comparison
-            // loose, counting a tab as one column changed no result. It is exact
-            // now, so the expansion is load-bearing and this fixture proves it.
+            // With the width comparison loose, counting a tab as one column
+            // changed no result; it is exact, so the tab expansion is
+            // load-bearing and this fixture proves it.
             assertThat(engraverSaid("""
                     tabs.ly:2:52: warning: bar check failed at: 3/4
                     \\score { \\new Staff { \\time 4/4\tc4\tc4\tc4\s
@@ -535,9 +522,9 @@ class LilyPondRendererTest {
                     + " ".repeat(50) + "| rest\n").failedBarChecks())
                     .as("50 spaces of indent, but a 43-wide line where 50 was called for")
                     .containsExactly("3/4", "9/9");
-            // The other direction. Round 7 found >= killed only by a
-            // digit-formatting test in mw-cli, which is a fragile place for the
-            // skip-more direction of an invariant this javadoc calls exact.
+            // The other direction: >= here was killed only by a
+            // digit-formatting test in mw-cli, a fragile place for the
+            // skip-more direction of an invariant the javadoc calls exact.
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
                     + "xxxxxxxx\n"
                     + "   p.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
@@ -548,8 +535,8 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("is not skipped when the second line is indented further than the column")
         void theIndentMustMatchExactlyToo() {
-            // The sibling of the width comparison, and round 5 found it pinned
-            // by nothing: loosening this one to >= killed no test either. Same
+            // The sibling of the width comparison, previously pinned by
+            // nothing: loosening this one to >= killed no test either. Same
             // argument, same direction -- a looser indent test skips more, and
             // skipping is the only thing here that can lose a diagnostic.
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
@@ -564,9 +551,9 @@ class LilyPondRendererTest {
         void theEchoPaddingIsSpacesAndNothingElse() {
             // LilyPond pads the second half of an echo with spaces whatever the
             // source held, so a tab there means this pair is not an echo.
-            // Round 5 found the spaces-only rule unpinned: widening it to
-            // Character.isWhitespace killed nothing, and it widens in the skip-
-            // more direction.
+            // The spaces-only rule was unpinned: widening it to
+            // Character.isWhitespace killed nothing, and it widens in the
+            // skip-more direction.
             // Column 2, so one column of indent is called for and the line
             // offers exactly one tab. Counting whitespace generally would make
             // that a match and swallow the diagnostic; counting spaces does not.
@@ -583,8 +570,8 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("does not fall over when the output stops in the middle of an echo")
         void aTruncatedOutputIsReadRatherThanThrown() {
-            // The bounds guard, which round 5 found load-bearing rather than
-            // decorative: with it off by one this throws
+            // The bounds guard is load-bearing rather than decorative: with
+            // it off by one this throws
             // ArrayIndexOutOfBoundsException, and a killed or timed-out engraver
             // is exactly what leaves a half-written echo behind. An exception
             // here is worse than either failure this class chooses between,
@@ -609,7 +596,7 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("survives a column too large to be a number")
         void anUnparseableColumnIsNotAnException() {
-            // Round 5 got a NumberFormatException out of the accessor with this,
+            // This once got a NumberFormatException out of the accessor,
             // which escapes render() after the .txt, .ly and .pdf are written --
             // neither of the two outcomes this class says it degrades between.
             // A column nothing can parse is a column no layout can be checked
@@ -623,7 +610,7 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("counts a column the way LilyPond does when the line holds an astral character")
         void aSupplementaryCharacterIsOneColumnAndNotTwo() {
-            // Round 5, and not an exotic case for this project of all projects:
+            // Not an exotic case for this project of all projects:
             // a \markup carrying a clef or a note glyph is outside the basic
             // plane, so it is two chars in Java and one column to LilyPond. Real
             // 2.26.0 output for `c4^"<treble clef>"` before the failing column --
@@ -631,9 +618,8 @@ class LilyPondRendererTest {
             // source with a same-width plain character reported [3/4].
             //
             // The fixture is the engraver's own, and engraverSaid checks the
-            // layout with the same code-point arithmetic, which is the other
-            // half of round 5's finding: the check could not have caught this
-            // while it counted chars.
+            // layout with the same code-point arithmetic -- while it counted
+            // chars it could not have caught this.
             assertThat(engraverSaid("""
                     astral.ly:2:46: warning: bar check failed at: 3/4
                     \\score { \\new Staff { \\time 4/4 c4^"𝄞" c4 c4\s
@@ -680,7 +666,7 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("reads a moment followed by trailing whitespace, which the pattern allows on purpose")
         void trailingWhitespaceAfterTheMomentIsTolerated() {
-            // Round 5 found the pattern's trailing \s* unpinned. It is there
+            // The pattern's trailing \s* was unpinned. It is there
             // because a capture path may pad or a terminal may not, and dropping
             // it would make this blind to a diagnostic that is otherwise perfect
             // -- the direction that matters.
@@ -706,7 +692,7 @@ class LilyPondRendererTest {
             assertThat(said("p.ly:1:44: warning: bar check failed at: 3/4\n"
                     + swallowed + "\n"
                     + " ".repeat(43) + "| c4 c4 c4 | } }\n").failedBarChecks())
-                    .as("round 6: the first skipped line needs only the width")
+                    .as("the first skipped line needs only the width")
                     .containsExactly("3/4");
             // Second line. Here the indentation is what has to match, which
             // needs a file name that begins with whitespace, since LilyPond
@@ -715,8 +701,8 @@ class LilyPondRendererTest {
             // Column 1 used to be the other way in, and is not any more: an
             // indent of zero is satisfied by *any* unindented line, so column 1
             // matched a blank line and the next real diagnostic and swallowed
-            // it. A skip now needs a column of 2 or more. Round 7's generator
-            // showed that essentially all the loss lived there -- with echoes
+            // it. A skip needs a column of 2 or more; a generator showed
+            // essentially all the loss lived there -- with echoes
             // absent or malformed at random it failed within 500 trials, always
             // on this shape, and passes with the column floor in place. The cost
             // is that a genuine column-1 echo is no longer recognised and its
@@ -732,7 +718,7 @@ class LilyPondRendererTest {
             assertThat(said("p.ly:1:4: warning: bar check failed at: 3/4\n"
                     + "xxx\n"
                     + "   spaced.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())
-                    .as("round 6: a file name beginning with whitespace, at any column")
+                    .as("a file name beginning with whitespace, at any column")
                     .containsExactly("3/4");
             // And the one precondition all three share: LilyPond emitted no echo
             // where one was due. Give them their echoes and nothing is lost.
@@ -773,8 +759,8 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("is not lost to an echo that was present but not recognised")
         void anUnrecognisedEchoCannotEatTheNextDiagnostic() {
-            // Round 7, and the reason the residual's precondition had to become
-            // "no echo *this parser recognises*" rather than "no echo". An echo
+            // Why the residual's precondition had to become "no echo *this
+            // parser recognises*" rather than "no echo". An echo
             // LilyPond truncates (#169) is present but fails the layout test, so
             // it is read as a diagnostic in its own right -- the accepted
             // over-report -- and its fabricated column then drove a skip that
@@ -803,9 +789,9 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("costs nothing across several diagnostics either, however their echoes came out")
         void severalDiagnosticsWithEchoesPresentLoseNothing() {
-            // Restores the multi-diagnostic coverage that was deleted in the
-            // same commit as round 8's fix -- which is how that fix came to
-            // revert clean. The residual this whole design is described by is a
+            // Multi-diagnostic coverage was once deleted in the same commit
+            // as a fix, which is how that fix came to revert clean. The
+            // residual this whole design is described by is a
             // property of *neighbouring* diagnostics, so a single-diagnostic
             // generator cannot bound it however many trials it runs.
             //
@@ -832,8 +818,8 @@ class LilyPondRendererTest {
                     // Some file names begin with whitespace, which LilyPond
                     // prints verbatim and which is one way into the residual.
                     String file = (random.nextInt(4) == 0 ? "  " : "") + "f.ly";
-                    // A quarter of them name no column at all, which is the
-                    // branch round 9 found untested.
+                    // A quarter of them name no column at all, the branch
+                    // that was once untested.
                     String location = random.nextInt(4) == 0 ? "" : file + ":1:" + column + ": ";
                     output.append(location).append("warning: bar check failed at: ")
                             .append(moment).append('\n');
@@ -860,12 +846,11 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("costs nothing while an echo is there at all, recognised or not")
         void anEchoThatIsPresentNeverCostsAMoment() {
-            // Round 8 found the previous version of this passing on seed luck --
-            // 20 000 trials on the *same* seed failed, and 7 of 13 seeds failed
-            // at 2 000. The population had been made non-degenerate without
-            // re-deriving what was true of it: it emitted echoes that were
-            // absent or half-present, which is the documented residual, and then
-            // asserted no moment could be lost. Round 7's finding wearing a hat.
+            // A previous version of this passed on seed luck: its population
+            // had been made non-degenerate without re-deriving what was true
+            // of it -- it emitted echoes that were absent or half-present,
+            // which is the documented residual, and then asserted no moment
+            // could be lost.
             //
             // So this asserts an exact result over a population it can state
             // exactly: one diagnostic per output, its echo always present, well
@@ -924,7 +909,7 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("does not fall over when the echo would start past the end")
         void theBoundsGuardHoldsAtEitherEnd() {
-            // Round 9 found the guard pinned in one direction only. Widening it
+            // The guard was pinned in one direction only. Widening it
             // to first + 2 degrades to over-reporting rather than throwing, so
             // nothing noticed: the last line of the output is then read as an
             // echo's second half that is not there.
@@ -952,8 +937,7 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("refuses to be built without the output it derives everything from")
         void aResultCannotBeBuiltWithoutItsOutput() {
-            // Two production statements this PR added that no test could see --
-            // round 10's finding, and the same shape as round 9's: a fix with no
+            // Two production statements no test could see: a fix with no
             // regression test, here on new code rather than a change.
             //
             // Fail-fast is the reason, and it is worth being exact about it,
@@ -985,9 +969,9 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("suspects a region even for a diagnostic that named no column")
         void anUnlocatedDiagnosticStillOpensARegion() {
-            // Round 9: the round-8 fix had no regression test at all, and both
-            // halves of it reverted clean with the whole reactor green. This is
-            // the first half. The previous code opened a region only when the
+            // The suspect-region fix had no regression test at all, and both
+            // halves of it reverted clean with the whole reactor green. This
+            // is the first half: the code once opened a region only when the
             // diagnostic named a column, so an unlocated one left its echo free
             // to skip -- and every test written for that fix opened with a
             // *located* diagnostic, which the previous code already handled.
@@ -998,9 +982,9 @@ class LilyPondRendererTest {
                     + "     p.ly:2:30: warning: bar check failed at: 7/8\n").failedBarChecks())
                     .as("without a region the echo text skips and the 7/8 is lost")
                     .containsExactly("3/4", "9/9", "7/8");
-            // And the region's *reach* for an unlocated diagnostic, which the
-            // assertion that used to sit here claimed to test and did not --
-            // round 10 found its detected set a strict subset of the one above,
+            // And the region's *reach* for an unlocated diagnostic, which
+            // the assertion that used to sit here claimed to test and did not
+            // -- its detected set was a strict subset of the one above,
             // sensitive to no region mutant at all.
             //
             // This one separates the sizes: the diagnostic three lines down is
@@ -1020,8 +1004,8 @@ class LilyPondRendererTest {
         @Test
         @DisplayName("suspects a region even for a diagnostic already inside one")
         void aDiagnosticInsideARegionStillOpensItsOwn() {
-            // Round 9, the second half of the same gap. The previous code
-            // skipped straight past a diagnostic sitting inside a region, so it
+            // The second half of the same gap: the code once skipped
+            // straight past a diagnostic sitting inside a region, so it
             // opened none of its own -- which matters because a truncated echo
             // on 2.26.0 is *one* line, so a two-line region overshoots it and
             // the next diagnostic lands inside.
@@ -1111,21 +1095,21 @@ class LilyPondRendererTest {
                     + " ".repeat(41)
                     + "| c4 c4 | } } % a:1:2: warning: bar check failed at: 9/9\n")
                     .failedBarChecks())
-                    .as("round 3's second half, which is a whole-line match")
+                    .as("the echo's second half, which is a whole-line match")
                     .containsExactly("3/4");
             assertThat(said("f.ly:1:84: warning: bar check failed at: 3/4\n"
                     + "\\score { \\new Staff { \\time 4/4 c4 c4 c4^\"a:1:2: warning: bar check"
                     + " failed at: 9/9\"\n"
                     + " ".repeat(83) + "| c4 | } }\n").failedBarChecks())
-                    .as("round 4's first half, which is also a whole-line match")
+                    .as("the echo's first half, which is also a whole-line match")
                     .containsExactly("3/4");
         }
 
         @Test
         @DisplayName("is not read out of a phrase sitting mid-line, which is the start anchor's job")
         void theStartAnchorIsLoadBearingToo() {
-            // Round 3 of review found the leading anchor killed by nothing: every
-            // echo fixture happened to be rejected by the closing anchor instead,
+            // The leading anchor was killed by nothing: every echo fixture
+            // happened to be rejected by the closing anchor instead,
             // so the pattern could have been simplified with a green build and a
             // false positive reintroduced. This is the shape only whole-line
             // matching rejects -- an echoed tail with no location in front of it,
@@ -1166,16 +1150,16 @@ class LilyPondRendererTest {
                     .containsExactly("5/8");
             // And with no location, and with a line but no column, so that a
             // LilyPond dropping either makes this over-report rather than go
-            // blind. Neither shape occurs today -- round 2 of review confirmed
-            // every real diagnostic on 2.24.3 and 2.26.0 carries both numbers --
+            // blind. Neither shape occurs today -- every real diagnostic on
+            // both LilyPond versions carries both numbers --
             // and accepting them costs nothing. A diagnostic with no column also
             // has no echo to skip, which is the other half of why it is safe.
             assertThat(said("warning: bar check failed at: 7/8\n").failedBarChecks())
                     .containsExactly("7/8");
             // And an absent column must mean "do not skip", not "column 1".
-            // Round 7 found that returning 1 for a missing column survived the
-            // whole suite while losing a real diagnostic -- the property is
-            // claimed in this class's javadoc and was pinned nowhere.
+            // Returning 1 for a missing column once survived the whole
+            // suite while losing a real diagnostic -- the property is claimed
+            // in the parser's javadoc and was pinned nowhere else.
             assertThat(said("warning: bar check failed at: 3/4\n"
                     + "\n"
                     + "p.ly:9:9: warning: bar check failed at: 9/9\n").failedBarChecks())

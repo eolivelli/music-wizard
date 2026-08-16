@@ -54,12 +54,12 @@ public final class VideoLink {
      * myyoutu.be/ID} both parse as YouTube links, because the engine is free to
      * start matching in the middle of somebody else's domain name.
      *
-     * <p>It is also what keeps this linear. The scan tries every start offset in
-     * turn, and the subdomain part can match nothing, so on a long unbroken run
-     * of letters every offset used to begin a fresh walk — quadratic, and
-     * measured at 100 seconds for 160,000 characters. Rejecting an offset whose
-     * previous character could have been part of the host means only genuine
-     * word starts do any work.
+     * <p>It is also what keeps this linear. The scan tries every start
+     * offset in turn, and the subdomain part can match nothing, so on a long
+     * unbroken run of letters every offset used to begin a fresh walk —
+     * quadratic, and measured in minutes on a long paste. Rejecting an offset
+     * whose previous character could have been part of the host means only
+     * genuine word starts do any work.
      *
      * <p>The subdomain repetition is bounded for a third reason, which the
      * lookbehind does not cover: Java's engine recurses once per repetition, so

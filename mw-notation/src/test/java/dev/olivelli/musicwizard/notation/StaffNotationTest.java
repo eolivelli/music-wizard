@@ -250,8 +250,8 @@ class StaffNotationTest {
     @DisplayName("a bar the quantizer put on a triplet grid is bracketed, and only where it needs it")
     void tripletEighths() {
         // The notes are in Fixtures because MusicXmlExportTest engraves the
-        // same four bars, and round 2 of review found a copy of them there that
-        // had already been allowed to drift. One fixture, two emitters.
+        // same four bars, and a copy of them there had already been allowed
+        // to drift. One fixture, two emitters.
         Fixtures.Quantized fixture = Fixtures.tripletPractice();
         String source = StaffNotation.toLilyPond(fixture.plan(), fixture.voice());
         assertThat(source).contains(
@@ -470,7 +470,7 @@ class StaffNotationTest {
     @Test
     @DisplayName("a beat-long note starting off the beat in 6/8 is tied, not written as one symbol")
     void aCompoundBeatIsNeverHiddenByASymbolLyingAcrossIt() {
-        // Round 1 of review found this reaching the page as "c'8 d'4. e'4": a
+        // This once reached the page as "c'8 d'4. e'4": a
         // dotted quarter is exactly one 6/8 beat, and starting it on the second
         // eighth lays it across the bar of the second beat, which is the only
         // thing distinguishing 6/8 from 3/4.
@@ -485,7 +485,7 @@ class StaffNotationTest {
     @Test
     @DisplayName("a dotted-beat note off the beat in 3/4 is tied, exactly as it is in 4/4")
     void tripleTimeReadsNoMoreLooselyThanDuple() {
-        // Round 3 of review found "c'8. d'4. e'8." reaching the page in 3/4: the
+        // "c'8. d'4. e'8." once reached the page in 3/4: the
         // dotted quarter runs from beat 1.75 to beat 3.25, so beat 2 has neither
         // an onset nor an ending anywhere on the staff. 4/4 tied the identical
         // span, which is what made it a rule inconsistency rather than a
@@ -503,11 +503,11 @@ class StaffNotationTest {
     @Test
     @DisplayName("a long note off the beat in 5/4 is tied rather than swallowing four beats")
     void aBeatIsNeverHiddenInAMeterWhoseBeatsAreNotAPowerOfTwo() {
-        // Round 2 of review found this reaching the page as "c'16 d'1 e'8.":
-        // a whole note starting a sixteenth after the downbeat, with beats two
-        // to five nowhere on the staff. 5/4 divides straight into five beats, so
-        // no unit in its tree is longer than a beat, which is why the round 1
-        // fix -- which asked about the unit's size -- never fired here.
+        // This once reached the page as "c'16 d'1 e'8.": a whole note
+        // starting a sixteenth after the downbeat, with beats two to five
+        // nowhere on the staff. 5/4 divides straight into five beats, so no
+        // unit in its tree is longer than a beat, which is why a fix that
+        // asked about the unit's size never fired here.
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
                 note(0, 0.25, "C4"), note(0.25, 4, "D4"), note(4.25, 0.75, "E4"));
         String source = StaffNotation.toLilyPond(score(new TimeSignature(5, 4), 120, voice), voice);
@@ -534,8 +534,8 @@ class StaffNotationTest {
     @Test
     @DisplayName("parts share the end of the score, so a part that stops early rests to it")
     void partsShareTheEndOfTheScore() {
-        // Round 7 of review found the two ends of the bar grid derived from
-        // different scopes: the pickup across the score, the last bar across this
+        // The two ends of the bar grid were once derived from different
+        // scopes: the pickup across the score, the last bar across this
         // track alone. A bass that drops out for the outro therefore ended its
         // staff mid-system, with a final bar line drawn under the middle of the
         // parts beside it -- and every check passed, because each bar it did
@@ -557,10 +557,10 @@ class StaffNotationTest {
     @Test
     @DisplayName("every staff of a score agrees on how long the score is, outlier or not")
     void everyStaffAgreesOnTheLengthOfTheScore() {
-        // The invariant rounds 7, 8 and 9 converged on: the bar grid is a
-        // function of the score, not of which part is being engraved. Round 8
-        // broke it by clamping other parts' ends while never clamping this one,
-        // which put the two staves of one score at 8 bars and 101.
+        // The invariant: the bar grid is a function of the score, not of
+        // which part is being engraved. Clamping other parts' ends while
+        // never clamping this one broke it, putting the two staves of one
+        // score at 8 bars and 101.
         //
         // A note quantized a hundred bars late therefore does lengthen every
         // staff. That is the score saying the piece is a hundred bars long, and
@@ -603,7 +603,7 @@ class StaffNotationTest {
     @DisplayName("the ceiling blames the right part even when two parts share a name")
     void theBarCeilingIsNotConfusedByTwoPartsOfTheSameName() {
         // A score may hold two tracks with the same name in different roles, and
-        // a piano's two hands routinely do. Round 11 found the message deciding
+        // a piano's two hands routinely do. The message once decided
         // whether the culprit was another part by comparing names, which makes
         // the two hands indistinguishable and sends the reader to the part being
         // engraved when the cause is in the other one.
@@ -620,10 +620,9 @@ class StaffNotationTest {
     @Test
     @DisplayName("the bar ceiling is the length its javadoc claims it is")
     void theBarCeilingIsTheLengthItClaims() {
-        // Round 10 of review found the javadoc's figure wrong by a factor of
-        // sixteen, having survived nine rounds. It is the argument for the
-        // number, so it is checked rather than asserted: one bar of 4/4 at 120
-        // quarter-note BPM lasts two seconds.
+        // The javadoc's figure was once wrong by a factor of sixteen. It is
+        // the argument for the number, so it is checked rather than asserted:
+        // one bar of 4/4 at 120 quarter-note BPM lasts two seconds.
         double hours = StaffLayout.MAX_BARS * 4 / 120.0 / 60.0;
         assertThat(hours)
                 .as("the ceiling is %d bars, which is %.1f hours of 4/4 at 120 BPM",
@@ -634,8 +633,8 @@ class StaffNotationTest {
     @Test
     @DisplayName("a part that is only half quantized does not move the bar lines either")
     void aHalfQuantizedPartDoesNotDriveTheBarGrid() {
-        // staffBlock refuses to engrave such a part outright, and round 9 found
-        // it still voting on the grid with whichever of its notes happened to
+        // staffBlock refuses to engrave such a part outright, yet it still
+        // voted on the grid with whichever of its notes happened to
         // carry a position -- a part that can never be on the page moving the bar
         // lines of the part that is.
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C5"));
@@ -682,8 +681,8 @@ class StaffNotationTest {
     @Test
     @DisplayName("a note too short to write does not open a pickup bar for music that is not there")
     void aDroppedNoteDoesNotCreateAPickup() {
-        // Round 4 of review found this emitting "\\partial 1*63/64" followed by
-        // seven rest symbols: the pickup was measured on the notes and the music
+        // This once emitted "\\partial 1*63/64" followed by seven rest
+        // symbols: the pickup was measured on the notes and the music
         // on the events, and the two differ by exactly the notes the emitter
         // decided it could not write. A stray sub-64th onset at the head of a
         // transcription -- a click, a breath, a separation artefact -- is
@@ -811,8 +810,8 @@ class StaffNotationTest {
     @Test
     @DisplayName("a note leaving a bracket is cut at it, exactly as one entering it is")
     void aBracketIsClosedByTheNoteThatLeavesItAsWellAsByTheOneThatEntersIt() {
-        // Round 1 of review found that the cut rule was only tested from one
-        // side. Every fixture that crossed a bracket boundary crossed it *into* a
+        // The cut rule was once tested from one side only: every fixture
+        // that crossed a bracket boundary crossed it *into* a
         // printed bracket, so the half of the rule that closes a bracket behind a
         // note leaving it could be deleted and the whole repository stayed green
         // -- while ordinary music came out as "\tuplet 3/2 { c'8 d'8 e'2 }": a
@@ -857,8 +856,8 @@ class StaffNotationTest {
     @Test
     @DisplayName("a pickup inside a bracket fills its short bar in an odd meter too")
     void aPartialBracketInAPickupStillSumsExactly() {
-        // Round 1 of review found the bar-length helper rejecting this: a
-        // bracket holding fewer notes than its ratio sums a hair under its meter
+        // The bar-length helper once rejected this: a bracket holding fewer
+        // notes than its ratio sums a hair under its meter
         // in floating point, and LilyPond engraves it without a word. 4/4 happens
         // to round the same way, so the pickup test above did not show it; 3/2
         // does not.
@@ -1024,8 +1023,8 @@ class StaffNotationTest {
     void theGridBoundIsTakenAcrossEveryEntryRatherThanTheLastOne() {
         // QuantizedScore validates that its grids are ordered by bar and says
         // nothing about their startBeats, so the furthest end is not necessarily
-        // the last entry's. Round 4 of review found nothing pinning that: reading
-        // the bound off the last entry left the whole reactor green.
+        // the last entry's -- and reading the bound off the last entry left
+        // the whole reactor green, so it is pinned here.
         //
         // It matters because of blast radius rather than likelihood. A grid whose
         // startBeat disagrees with its own tempo map used to misplace its own bar
@@ -1066,7 +1065,7 @@ class StaffNotationTest {
     @Test
     @DisplayName("both overloads refuse an impossible score the same way, with the same message")
     void theTwoOverloadsFailIdentically() {
-        // Round 2 of review noticed the two diverging here. A note quantized past
+        // The two overloads once diverged here. A note quantized past
         // bar 2^31 makes TempoMap.toMusicalTime refuse outright, with a message
         // about bar indices -- so asking the grid where such a note falls threw
         // that instead of the emitter's own complaint, which says which part runs
@@ -1080,7 +1079,7 @@ class StaffNotationTest {
         QuantizedScore plan = quantized(score, GridResolution.THIRD_BEAT);
 
         // The Score overload's failure is caught and asserted non-null first.
-        // Round 3 of review found that reading its message inline gave a
+        // Reading its message inline gave a
         // NullPointerException the day it stopped throwing at all -- hiding the
         // one thing that had actually changed behind the least informative
         // failure there is.
@@ -1120,7 +1119,7 @@ class StaffNotationTest {
      * <p>Compared as exact fractions rather than as doubles, and the difference
      * is not academic: a tuplet bracket holding a partial group — which a pickup
      * inside a bracket produces — sums a bit under its meter in floating point,
-     * and round 1 of review found that this helper therefore rejected output
+     * and this helper therefore once rejected output
      * LilyPond engraves without a word. Loosening the comparison would have blunted
      * the one check that survives a golden-file regeneration, so the arithmetic
      * was made exact instead.
