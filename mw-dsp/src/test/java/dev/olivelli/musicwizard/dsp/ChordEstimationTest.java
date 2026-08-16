@@ -805,7 +805,24 @@ class ChordEstimationTest {
             out[0] = minorThird;
             out[1] = majorThird;
             out[9] = root;
-            return (from, to) -> out;
+            return over(4, (from, to) -> out);
+        }
+
+        /** An ablation over {@code spans} spans, answering with {@code answer}. */
+        private static PitchClassAblation over(int spans,
+                                               java.util.function.BiFunction<Integer, Integer,
+                                                       double[]> answer) {
+            return new PitchClassAblation() {
+                @Override
+                public int spanCount() {
+                    return spans;
+                }
+
+                @Override
+                public double[] significanceOver(int fromSpan, int toSpan) {
+                    return answer.apply(fromSpan, toSpan);
+                }
+            };
         }
 
         private static String label(PitchClassAblation ablation) {
@@ -855,10 +872,10 @@ class ChordEstimationTest {
             // Not per beat: thirteen solves a beat is a different price, and a
             // third that sounds on some beats of a chord is the chord's third.
             List<int[]> asked = new java.util.ArrayList<>();
-            PitchClassAblation recorder = (from, to) -> {
+            PitchClassAblation recorder = over(8, (from, to) -> {
                 asked.add(new int[] {from, to});
                 return new double[12];
-            };
+            });
             double[] onD = chroma(2, 0.35, 6, 0.20, 9, 0.25);
             Chroma both = beats(COMBINED, COMBINED, COMBINED, COMBINED, onD, onD, onD, onD);
 
@@ -872,6 +889,18 @@ class ChordEstimationTest {
         void rejectsANullAblation() {
             assertThatNullPointerException().isThrownBy(() -> ChordEstimator.estimate(
                     four(COMBINED), four(TREBLE), four(BASS), null, beatTimes(4)));
+        }
+
+        @Test
+        @DisplayName("refuses an ablation that does not describe the same beats")
+        void rejectsAnAblationOverOtherSpans() {
+            // An ablation that was never beat-synchronised covers analysis
+            // frames, and every chord would then be measured over the opening
+            // seconds of the recording with nothing to show for it.
+            assertThatIllegalArgumentException().isThrownBy(() -> ChordEstimator.estimate(
+                            four(COMBINED), four(TREBLE), four(BASS),
+                            over(900, (from, to) -> new double[12]), beatTimes(4)))
+                    .withMessageContaining("the same beats");
         }
     }
 }

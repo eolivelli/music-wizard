@@ -318,6 +318,11 @@ public final class ChordEstimator {
                     + " frames and bassChroma has " + bassChroma.frameCount()
                     + "; the two describe the same beats");
         }
+        if (ablation != null && chroma.frameCount() != ablation.spanCount()) {
+            throw new IllegalArgumentException("chroma has " + chroma.frameCount()
+                    + " frames and the ablation covers " + ablation.spanCount()
+                    + " spans; the two describe the same beats");
+        }
         if (chroma.frameCount() == 0 || beatTimes.size() < 2) {
             return ChordProgression.empty();
         }

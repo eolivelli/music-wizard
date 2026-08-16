@@ -150,19 +150,24 @@ public final class NnlsAblation implements PitchClassAblation {
         return new NnlsAblation(out, counts, 0, designs, solvers);
     }
 
-    /** Number of frames, or of spans once beat-synchronous. */
-    public int frameCount() {
+    /**
+     * Number of analysis frames, or of spans once
+     * {@link #beatSynchronous(List)} has been applied.
+     */
+    @Override
+    public int spanCount() {
         return spectra.length;
     }
 
     @Override
     public double[] significanceOver(int fromSpan, int toSpan) {
-        double[] out = new double[12];
-        int from = Math.clamp(fromSpan, 0, spectra.length);
-        int to = Math.clamp(toSpan, from, spectra.length);
-        if (from == to) {
-            return out;
+        if (fromSpan < 0 || toSpan > spectra.length || fromSpan >= toSpan) {
+            throw new IndexOutOfBoundsException("spans [" + fromSpan + ", " + toSpan
+                    + ") are not inside the " + spectra.length + " this covers");
         }
+        double[] out = new double[12];
+        int from = fromSpan;
+        int to = toSpan;
         int bins = spectra[0].length;
         double[] mean = new double[bins];
         int counted = 0;

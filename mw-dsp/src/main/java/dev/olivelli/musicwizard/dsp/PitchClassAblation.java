@@ -32,8 +32,18 @@ package dev.olivelli.musicwizard.dsp;
  * <p>An interface so {@link ChordEstimator} can be exercised without audio;
  * {@link NnlsAblation} is what the pipeline passes.
  */
-@FunctionalInterface
 public interface PitchClassAblation {
+
+    /**
+     * How many beat-synchronous spans this covers, which the estimator checks
+     * against its chroma.
+     *
+     * <p>The one mistake the estimator can catch: an ablation that was never
+     * beat-synchronised answers about analysis frames, so every chord would be
+     * measured over the first seconds of the recording and nothing would say
+     * so.
+     */
+    int spanCount();
 
     /**
      * Relative increase in squared residual, per pitch class, over the

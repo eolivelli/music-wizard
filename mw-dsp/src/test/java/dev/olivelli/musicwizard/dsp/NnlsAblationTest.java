@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -69,7 +70,7 @@ class NnlsAblationTest {
 
     private static double[] significanceOf(AudioBuffer audio) {
         NnlsAblation ablation = NnlsAblation.extract(NnlsChroma.transform(audio), 0);
-        return ablation.significanceOver(0, ablation.frameCount());
+        return ablation.significanceOver(0, ablation.spanCount());
     }
 
     private static double[] meanTreble(AudioBuffer audio) {
@@ -138,13 +139,25 @@ class NnlsAblationTest {
 
         NnlsAblation folded = NnlsAblation.extract(transform, 0).beatSynchronous(beats);
 
-        assertThat(folded.frameCount())
+        assertThat(folded.spanCount())
                 .isEqualTo(NnlsChroma.extract(transform, 0).treble()
                         .beatSynchronous(beats).frameCount())
                 .isEqualTo(beats.size() - 1);
         // The whole recording read span by span still finds the played third.
-        assertThat(folded.significanceOver(0, folded.frameCount())[C_SHARP])
-                .isGreaterThan(0.2 * folded.significanceOver(0, folded.frameCount())[A]);
+        assertThat(folded.significanceOver(0, folded.spanCount())[C_SHARP])
+                .isGreaterThan(0.2 * folded.significanceOver(0, folded.spanCount())[A]);
+    }
+
+    @Test
+    @DisplayName("refuses a span range it does not cover")
+    void rejectsARangeOutsideItself() {
+        NnlsAblation folded = NnlsAblation.extract(NnlsChroma.transform(notes(45)), 0)
+                .beatSynchronous(List.of(0.0, 0.5, 1.0));
+
+        assertThatExceptionOfType(IndexOutOfBoundsException.class)
+                .isThrownBy(() -> folded.significanceOver(0, 3));
+        assertThatExceptionOfType(IndexOutOfBoundsException.class)
+                .isThrownBy(() -> folded.significanceOver(1, 1));
     }
 
     @Test
