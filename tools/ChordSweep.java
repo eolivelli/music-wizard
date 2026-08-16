@@ -103,7 +103,12 @@ import java.util.TreeMap;
  * <p>A commercial recording is exactly what cannot be committed, and it is also
  * where the defects that matter show up — #527 is one of those, and every figure
  * quoted on it came from a probe outside the repository for want of this. Such
- * a file has no ground truth here, so it is profiled and never scored.
+ * a file has no ground truth here, so it is profiled and never scored, and the
+ * same path has to be given to {@code cache} and to {@code profile}: the cache
+ * is keyed by file name, and what keeps a path named here from quietly taking a
+ * benchmark's place is that each cache file records the recording it holds. A
+ * cache written before that does is rejected rather than read, so this change
+ * costs one re-run of {@code cache}.
  */
 public final class ChordSweep {
 
@@ -113,31 +118,44 @@ public final class ChordSweep {
     }
 
     /**
+     * @param path  where the recording is, which is also what its cache file
+     *     records: the cache is keyed by file name, so two recordings sharing
+     *     one are told apart here and nowhere else
      * @param truth one cycle of the known changes, or null for a recording kept
      *     only as a control for {@code profile}
      */
-    record Bench(String file, String truth) {
+    record Bench(Path path, String truth) {
+
+        /** The name the output and the cache go by. */
+        String file() {
+            return path.getFileName().toString();
+        }
+    }
+
+    /** A benchmark, which is always a recording in {@code samples/}. */
+    static Bench bench(String file, String truth) {
+        return new Bench(Path.of("samples", file), truth);
     }
 
     static final List<Bench> BENCHMARKS = List.of(
-            new Bench("g-blues-shuffle-cc.mp3", "G7 G7 G7 G7 C7 C7 G7 G7 D7 C7 G7 D7"),
-            new Bench("blues-a-90bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
-            new Bench("blues-shuffle-a-106bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
-            new Bench("blues-e-90bpm.mp3", "E7 E7 E7 E7 A7 A7 E7 E7 B7 A7 E7 B7"),
-            new Bench("slow-68-40.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
-            new Bench("bm-blues-slow.mp3", "Bm Bm Bm Bm Em Em Bm Bm G7 F#7 Bm Bm"),
-            new Bench("cm-blues-68-95.mp3", "Cm7 Cm7 Cm7 C7 Fm7 Fm7 Cm7 Cm7 Ab7 G7 Cm7 G7"),
-            new Bench("waltz-am-e7-160.mp3", "Am Am Am E7 E7 E7 E7 Am"),
-            new Bench("f-blues-swing-170.mp3",
+            bench("g-blues-shuffle-cc.mp3", "G7 G7 G7 G7 C7 C7 G7 G7 D7 C7 G7 D7"),
+            bench("blues-a-90bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
+            bench("blues-shuffle-a-106bpm.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
+            bench("blues-e-90bpm.mp3", "E7 E7 E7 E7 A7 A7 E7 E7 B7 A7 E7 B7"),
+            bench("slow-68-40.mp3", "A7 A7 A7 A7 D7 D7 A7 A7 E7 D7 A7 E7"),
+            bench("bm-blues-slow.mp3", "Bm Bm Bm Bm Em Em Bm Bm G7 F#7 Bm Bm"),
+            bench("cm-blues-68-95.mp3", "Cm7 Cm7 Cm7 C7 Fm7 Fm7 Cm7 Cm7 Ab7 G7 Cm7 G7"),
+            bench("waltz-am-e7-160.mp3", "Am Am Am E7 E7 E7 E7 Am"),
+            bench("f-blues-swing-170.mp3",
                     "F7 Bb7 F7 F7 Bb7 Bdim F7 Am7b5-D7 Gm7 C7 F7-D7 Gm7-C7"),
-            new Bench("jazz-251-c-140.mp3", "Dm7 Dm7 G7 G7 Cmaj7 Cmaj7 Cmaj7 Cmaj7"),
-            new Bench("fm7-vamp-110.mp3", "Fm7"),
-            new Bench("eb7-vamp-130.mp3", "Eb7"),
-            new Bench("bossa-cm.mp3",
+            bench("jazz-251-c-140.mp3", "Dm7 Dm7 G7 G7 Cmaj7 Cmaj7 Cmaj7 Cmaj7"),
+            bench("fm7-vamp-110.mp3", "Fm7"),
+            bench("eb7-vamp-130.mp3", "Eb7"),
+            bench("bossa-cm.mp3",
                     "Cm7 Cm7 Fm6 Fm6 Dm7b5 G7 Cm6 Cm6 Ebm7 Ab7 Dbmaj7 Dbmaj7 "
                             + "Dm7b5 G7 Cm6 Dm7b5-G7"),
-            new Bench("pop-c-g-am-f-120.mp3", "C G Am F"),
-            new Bench("pop-am-f-c-g-144.mp3", null));
+            bench("pop-c-g-am-f-120.mp3", "C G Am F"),
+            bench("pop-am-f-c-g-144.mp3", null));
 
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 ? args[0] : "score";
@@ -163,12 +181,15 @@ public final class ChordSweep {
                 }
             }
             case "profile" -> {
+                // Resolved before the header, so a path that is not cached
+                // reports that rather than a column heading over nothing.
+                List<Bench> benches = named.isEmpty() ? cached() : asBenches(named);
                 System.out.printf("%-26s %-8s", "recording", "register");
                 for (int interval = 0; interval < 12; interval++) {
                     System.out.printf("%6d", interval);
                 }
                 System.out.println("   b7 share (needs >0.155)");
-                for (Bench b : named.isEmpty() ? cached() : asBenches(named)) {
+                for (Bench b : benches) {
                     profile(b);
                 }
             }
@@ -197,7 +218,7 @@ public final class ChordSweep {
             return;
         }
         for (Bench b : BENCHMARKS) {
-            Path mp3 = Path.of("samples", b.file());
+            Path mp3 = b.path();
             if (!Files.isRegularFile(mp3)) {
                 System.out.println("  " + b.file() + ": not present (see samples/list.txt)");
                 continue;
@@ -210,9 +231,9 @@ public final class ChordSweep {
     /**
      * A named recording as a benchmark with no ground truth.
      *
-     * <p>Keyed by file name alone, which is how {@link #cache} keys the cache,
-     * so the same path works for both modes and a bare name works for the
-     * second once the first has run.
+     * <p>The path is carried rather than the name, because {@link #cache} keys
+     * the cache by name and {@link #load} is what tells two recordings sharing
+     * one apart. So the same path has to be given to both modes.
      */
     static List<Bench> asBenches(List<Path> named) {
         for (Path mp3 : named) {
@@ -220,9 +241,15 @@ public final class ChordSweep {
                 throw new IllegalArgumentException(mp3 + " is not cached; run cache first");
             }
         }
-        return named.stream()
-                .map(p -> new Bench(p.getFileName().toString(), null)).toList();
+        return named.stream().map(p -> new Bench(p, null)).toList();
     }
+
+    /**
+     * Marks a cache file as holding this format, and is checked on the way back
+     * in. A file written before the recording's own path was stored begins with
+     * the top half of a duration in seconds instead, which is not this.
+     */
+    private static final int CACHE_FORMAT = 0x4D57_4331;
 
     static void cache(Path mp3) throws Exception {
         AudioBuffer audio = AudioDecoder.decode(mp3);
@@ -243,6 +270,13 @@ public final class ChordSweep {
         Path partial = CACHE.resolve(mp3.getFileName() + ".bin.partial");
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(partial)))) {
+            out.writeInt(CACHE_FORMAT);
+            // Which recording this is. The file name alone does not say: the
+            // benchmarks are all in samples/ and cannot collide with each
+            // other, but a path named on the command line can carry the name of
+            // one of them, and then a score line reports a different recording
+            // under a benchmark's ground truth with nothing to show for it.
+            out.writeUTF(source(mp3));
             out.writeDouble(audio.durationSeconds());
             out.writeInt(down.phase());
             out.writeInt(down.beatsPerBar());
@@ -269,9 +303,25 @@ public final class ChordSweep {
                   double[][] combined, double[][] treble, double[][] bass) {
     }
 
-    static Cached load(String name) throws Exception {
+    /** How a recording is named in its own cache file, so the two modes agree. */
+    static String source(Path mp3) {
+        return mp3.normalize().toString();
+    }
+
+    static Cached load(Path mp3) throws Exception {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(
-                Files.newInputStream(CACHE.resolve(name + ".bin"))))) {
+                Files.newInputStream(CACHE.resolve(mp3.getFileName() + ".bin"))))) {
+            if (in.readInt() != CACHE_FORMAT) {
+                throw new IllegalStateException(mp3.getFileName()
+                        + " was cached before the cache recorded which recording it holds;"
+                        + " re-run cache");
+            }
+            String held = in.readUTF();
+            if (!held.equals(source(mp3))) {
+                throw new IllegalStateException(CACHE.resolve(mp3.getFileName() + ".bin")
+                        + " holds " + held + ", not " + source(mp3)
+                        + "; the cache is keyed by file name, so re-run cache for this one");
+            }
             double duration = in.readDouble();
             int phase = in.readInt();
             int beatsPerBar = in.readInt();
@@ -303,7 +353,7 @@ public final class ChordSweep {
     // ---------------------------------------------------------------- scoring
 
     static void score(Bench b) throws Exception {
-        Cached c = load(b.file());
+        Cached c = load(b.path());
         ChordProgression chords = estimate(c);
 
         List<Double> downbeats = new ArrayList<>();
@@ -403,7 +453,7 @@ public final class ChordSweep {
     // --------------------------------------------------------------- profiles
 
     static void profile(Bench b) throws Exception {
-        Cached c = load(b.file());
+        Cached c = load(b.path());
         ChordProgression chords = estimate(c);
 
         // The root the estimator decoded for each beat. Conditioning on that
@@ -432,39 +482,37 @@ public final class ChordSweep {
         for (Chord chord : chords.chords()) {
             qualities.merge(chord.quality().symbol().isEmpty() ? "maj"
                     : chord.quality().symbol(), 1, Integer::sum);
-            heldFor.merge(label(chord), chord.endSeconds() - chord.startSeconds(),
+            heldFor.merge(chord.symbol(), chord.endSeconds() - chord.startSeconds(),
                     Double::sum);
         }
         System.out.printf(Locale.ROOT, "%-26s spans=%d, by quality: %s%n",
                 b.file(), chords.size(), qualities);
-        // How long each chord was held, which is the only thing that can be said
-        // about a recording with no grid to score it on -- "the tonic was called
-        // major for longer than minor" is #527. A label under a hundredth of the
-        // recording is left out; it says nothing about the recording either way.
+        // How long each chord was held, which is what can be said about a
+        // recording with no grid to score it on -- "the tonic was called major
+        // for longer than minor" is #527. Spelled as Chord.symbol spells it,
+        // which is ChordEstimator's provisional sharp preference and not a
+        // decision (#227): D#7 here is the Eb7 of the truth line above.
+        //
+        // Labels holding under a hundredth of the recording are summarised
+        // rather than listed, and their number and total are printed so that
+        // what the cut removed is on the line rather than assumed small.
         System.out.printf("%-26s %-8s", "", "held");
+        double cut = c.duration() / 100;
         heldFor.entrySet().stream()
-                .filter(e -> e.getValue() >= c.duration() / 100)
+                .filter(e -> e.getValue() >= cut)
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .forEach(e -> System.out.printf(Locale.ROOT, " %s %.0fs", e.getKey(),
                         e.getValue()));
+        long brief = heldFor.values().stream().filter(v -> v < cut).count();
+        if (brief > 0) {
+            System.out.printf(Locale.ROOT, "  (+%d under %.1fs, %.0fs in all)", brief, cut,
+                    heldFor.values().stream().filter(v -> v < cut)
+                            .mapToDouble(Double::doubleValue).sum());
+        }
         System.out.println();
         printProfile("combined", c.combined(), root);
         printProfile("treble", c.treble(), root);
         printProfile("bass", c.bass(), root);
-    }
-
-    /** A chord as a chart would write it, for the durations {@link #profile} prints. */
-    static String label(Chord chord) {
-        if (chord.quality() == ChordQuality.NONE) {
-            return "N.C.";
-        }
-        return chord.root().letter()
-                + switch (chord.root().accidental()) {
-                    case SHARP -> "#";
-                    case FLAT -> "b";
-                    default -> "";
-                }
-                + chord.quality().symbol();
     }
 
     static void printProfile(String register, double[][] vectors, int[] root) {
