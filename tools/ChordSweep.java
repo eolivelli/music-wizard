@@ -315,7 +315,7 @@ public final class ChordSweep {
      * <p>The fallback is taken on any resolution failure and not only on an
      * absent file: a permission denied on a parent, or a symlink loop, lands
      * here as well, and for those the tidied path is a guess rather than the
-     * best available answer. Nothing reads it that would act on the difference.
+     * best available answer.
      */
     static Path real(Path mp3) {
         try {
