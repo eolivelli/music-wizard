@@ -154,11 +154,9 @@ class HarmonicRhythmTest {
         // #163.
         //
         // Every fixture here is one the reduction actually rewrites, and the
-        // assertion below says so rather than trusting it. Round 1 of review
-        // found that was not true of the first draft: it named 3/4, 5/4 and 7/8
-        // as the awkward meters and then chose bars in them that came out of the
-        // reduction identical to what went in, so only the 4/4 case tested
-        // anything.
+        // assertion below says so rather than trusting it -- a draft chose
+        // bars in the awkward meters that came out of the reduction identical
+        // to what went in, so only the 4/4 case tested anything.
         //
         // Getting that wrong is easy because the layout has already snapped its
         // chord positions onto a grid before any of this runs, and in most meters
@@ -225,9 +223,8 @@ class HarmonicRhythmTest {
     @Test
     @DisplayName("a bar whose named cell the reduction drops does not leave the name behind")
     void aDroppedNameIsRecomputedRatherThanKept() {
-        // Round 1 of review, and it reached real output: five bars across the
-        // five sample recordings printed a chord change in the text that the
-        // engraved page did not.
+        // This reached real output: bars across the sample recordings
+        // printed a chord change in the text that the engraved page did not.
         //
         // The bar in the middle is laid out as C for three beats then G for one,
         // so the *first* cell is the one that names -- and the reduction keeps
@@ -252,28 +249,25 @@ class HarmonicRhythmTest {
         // than over an instance, because the defect it guards was found on real
         // recordings and not on either fixture.
         //
-        // Round 2 of review found the first version of this test unable to fail
-        // for the defect, and the reason is worth keeping because it is the trap
-        // rather than a slip. It generated only bars of one chord per counted
-        // beat, and the reduction rewrites every such bar -- while the defect
-        // only ever showed on a bar the reduction hands *back untouched*, which
-        // is the one case where the old naming pass and the new one behave
-        // identically. Tens of thousands of generated scores therefore found
-        // nothing against deliberately broken code. Round 2 also measured that
-        // the untouched shape is a large minority of bars on every one of the
-        // five sample recordings, and that every real disagreement the fix
-        // removed was of it, so the omission was not an exotic corner.
+        // A first version of this test could not fail for the defect, and the
+        // reason is worth keeping because it is the trap rather than a slip:
+        // it generated only bars of one chord per counted beat, which the
+        // reduction rewrites -- while the defect only ever showed on a bar the
+        // reduction hands *back untouched*, the one case where the old naming
+        // pass and the new one behave identically. Tens of thousands of
+        // generated scores found nothing against deliberately broken code, and
+        // the untouched shape is a large minority of bars on every sample
+        // recording, so the omission was not an exotic corner.
         //
         // So every score here pairs a bar of one chord per counted beat with a
-        // bar holding a single chord, in both orders. Only one of those orders
-        // can reach the defect -- with the single-chord bar first there is no
-        // predecessor, so its cell is named in both passes and the stale branch
-        // is never taken -- and the reversed order is carried as a control on
-        // the rest of the composition rather than as evidence. Round 3 measured
-        // that too, and the comment here claimed both orders before it did.
+        // bar holding a single chord, in both orders. Only one order can reach
+        // the defect -- with the single-chord bar first there is no
+        // predecessor, so its cell is named in both passes and the stale
+        // branch is never taken -- and the reversed order is carried as a
+        // control on the rest of the composition rather than as evidence.
         //
-        // The counting below is round 3's finding and it is the same lesson a
-        // third time. Rebuilding the population was not enough: whether it can
+        // The counting below is the same lesson a third time. Rebuilding
+        // the population was not enough: whether it can
         // construct the precondition at all depends on EXTRA_CHORD_COST, which
         // this class's own javadoc invites a maintainer to move. Set that to
         // 0.05 and every one of these scores goes inert -- the reduction stops
@@ -373,8 +367,8 @@ class HarmonicRhythmTest {
      * this class has a gap before its first chord, and the second is unreachable
      * from any meter the model admits.
      *
-     * <p>Deliberately not "the written cells equal the laid ones", which was the
-     * first version and which round 4 of review showed is a <em>superset</em>:
+     * <p>Deliberately not "the written cells equal the laid ones", which is
+     * a <em>superset</em>:
      * a bar genuinely rewritten into cells that happen to match by value gets
      * new cells with a cleared flag and cannot strand anything. On this
      * population the two definitions gave the same count, so the guard was sound
@@ -390,9 +384,9 @@ class HarmonicRhythmTest {
      * which a reader of the engraved page sees one.
      *
      * <p>Both real emitters, read back out of what they wrote, rather than
-     * {@link ChartLayout.Cell#named()} compared against the rule that sets it --
-     * which round 2 of review pointed out is the implementation's own expression
-     * copied, and can only ever check the composition rather than the answer.
+     * {@link ChartLayout.Cell#named()} compared against the rule that sets
+     * it -- which is the implementation's own expression copied, and can only
+     * ever check the composition rather than the answer.
      * The page's rule is {@code chordChanges}, which prints a name wherever the
      * chord differs from the previous event's, so it is recovered here by
      * stripping the duration off each {@code chordmode} token and comparing.

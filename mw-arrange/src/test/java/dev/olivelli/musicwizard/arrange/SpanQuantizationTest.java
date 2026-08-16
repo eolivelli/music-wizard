@@ -267,14 +267,11 @@ class SpanQuantizationTest {
                         .isGreaterThan(heard);
                 // Exceeded, not attained -- and by exactly the start's distance
                 // BELOW the rounding midpoint, which is not the same as the
-                // overlap this fixture injects. It injects symmetrically, so the
-                // span overlap is twice this, and an earlier version of these
-                // lines called the quantity "overlapBeats" and let the factor of
-                // two propagate into the class javadoc as a general law.
-                //
-                // Two drafts before that: isCloseTo(unit / 2, within(1e-6)), a
-                // two-sided window twenty times the excess, which reported the
-                // bound as met when it is not.
+                // overlap this fixture injects. It injects symmetrically, so
+                // the span overlap is twice this — naming the quantity
+                // "overlapBeats" lets the factor of two propagate as a general
+                // law. Asserted exactly: a two-sided window wider than the
+                // excess reports the bound as met when it is not.
                 double belowMidpointBeats = tempoMap.secondsToBeats(at)
                         - tempoMap.secondsToBeats(at - overlap);
                 assertThat(printed - heard)
@@ -581,7 +578,7 @@ class SpanQuantizationTest {
                         // direction, so asserting every chord is quantized would
                         // restate it -- ChordProgression.isQuantized() is
                         // literally allMatch(Chord::isQuantized), so such an
-                        // assertion cannot fail. An earlier draft had exactly
+                        // assertion cannot fail. This test once held exactly
                         // that. What is checked instead is the invariant nothing
                         // else checks: Score.requireOrderedBeats covers keys and
                         // sections and *not* chords, which is #59, so a chord
@@ -682,9 +679,9 @@ class SpanQuantizationTest {
             // A fixture could: snapToCountedBeat's quotient runs across the bar,
             // so boundaries at beats 4.5 and 5.5 are steps 0 and 1 of bar 1, and
             // under rint the first goes back to 4.0 while the second goes on to
-            // 6.0. A draft of this comment said no fixture in the file could,
-            // which is true only of aBarLineTieGoesForward's snapToBarLine, whose
-            // quotient never leaves [0, 1) and so only ever sees step 0.
+            // 6.0. "No fixture in the file could" is true only of
+            // aBarLineTieGoesForward's snapToBarLine, whose quotient never
+            // leaves [0, 1) and so only ever sees step 0.
             TempoMap tempoMap = fourFour();
             Score score = chordsOnly(tempoMap,
                     chord("C4", at(tempoMap, 0), at(tempoMap, 2.5)),
@@ -1024,11 +1021,10 @@ class SpanQuantizationTest {
             // and a counted beat is one, so every span below is far shorter than
             // the unit it is snapped to and most of them collapse.
             //
-            // The three "and the collapses really happened" assertions are not
-            // ceremony: the first draft of this test used a 120 BPM map, where
-            // the chords are exactly one counted beat and nothing collapses at
-            // all, and the three size assertions passed on a pass that had
-            // nothing to decide. They caught it.
+            // The three "and the collapses really happened" assertions are
+            // not ceremony: at a 120 BPM map the chords are exactly one
+            // counted beat and nothing collapses at all, so the size
+            // assertions would pass on a pass with nothing to decide.
             TempoMap tempoMap = TempoMap.constant(60, TimeSignature.FOUR_FOUR);
             List<Section> shortSections = new ArrayList<>();
             List<Key> shortKeys = new ArrayList<>();
@@ -1298,9 +1294,8 @@ class SpanQuantizationTest {
      * #157's own fixture: eight chords a half-second apart, which is one per
      * beat of material heard at 120.
      *
-     * <p>Took an offset until round 10, for a multi-phase sweep whose figures
-     * were withdrawn for being unre-derivable. The parameter went with them
-     * rather than sitting here as the only evidence that the sweep ever existed.
+     * <p>It once took an offset, for a multi-phase sweep whose figures were
+     * withdrawn as unre-derivable; the parameter went with them.
      */
     private static Chord[] everyHalfSecond() {
         Chord[] chords = new Chord[8];

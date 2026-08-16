@@ -335,10 +335,10 @@ class MidiInputTest {
             assertThat(score.keys()).hasSize(2);
 
             // Asserted over the summary block alone, not over the whole of
-            // stdout. An earlier version of this test asserted the latter and
-            // passed only because the importer's wording happens to be "changes"
-            // where this command's is "changed" -- it read as "no line here
-            // reports a change" and proved something much narrower.
+            // stdout. Asserting the latter
+            // passes only because the importer's wording happens to be "changes"
+            // where this command's is "changed" -- it reads as "no line here
+            // reports a change" and proves something much narrower.
             String block = summaryBlock(analyze.out());
             assertThat(block)
                     .as("a restatement reported as a change")
@@ -385,9 +385,9 @@ class MidiInputTest {
             // first meter change to bar 0, and nothing imposes that on the key
             // list -- MidiTranscriber emits exactly the events the file carries.
             //
-            // Every key fixture in the repo declares at beat 0, so this row's
-            // overstatement survived five rounds behind the origin trap
-            // CLAUDE.md names. This file declares its first key four bars in and
+            // Every key fixture in the repo declares at beat 0, which is how
+            // this row's overstatement long survived behind the origin trap.
+            // This file declares its first key four bars in and
             // says nothing about the bars before it.
             Sequence lateKey = MidiFixtures.sequence()
                     .name("Late key")
@@ -648,7 +648,7 @@ class MidiInputTest {
         @Test
         @DisplayName("--skip-separation is answered for what it is: doing nothing in this run")
         void skipSeparationIsNotAMidiSpecificExclusion() {
-            // Round 3 found it described as an audio option, ignored in silence
+            // This was once described as an audio option, ignored in silence
             // by an audio run, and reported to a MIDI user in words implying an
             // audio run would honour it. On a MIDI workspace it changes nothing
             // whatever else is asked for, so that is what it says -- and it must not be listed

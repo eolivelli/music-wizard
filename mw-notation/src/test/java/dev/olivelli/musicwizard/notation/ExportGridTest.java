@@ -42,8 +42,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>So this enumerates the space instead: every meter the model accepts, every
  * grid the quantizer can choose, every note value the splitter can produce,
- * every run of steps inside a tuplet bracket, and every pickup fraction. Round 1
- * of review found the constant defended by a tolerance justified with a
+ * every run of steps inside a tuplet bracket, and every pickup fraction. The
+ * constant was once defended by a tolerance justified with a
  * <em>false</em> claim about that arithmetic — {@code (1.0 / 6) * 768} is 128.0
  * exactly — and the tolerance was consequently unreachable and untestable. It is
  * gone; this is what replaced it.
@@ -59,10 +59,9 @@ class ExportGridTest {
     /**
      * Spans the sweep visits, pinned exactly.
      *
-     * <p>An exact figure rather than a floor, because a sweep silently cut to a
-     * hundredth of itself passes {@code isGreaterThan}. Round 2 of review found
-     * two assertions here reading {@code isGreaterThan(1_000)} against real
-     * counts of 95,802 and 94,078.
+     * <p>An exact figure rather than a floor, because a sweep silently cut
+     * to a hundredth of itself passes {@code isGreaterThan} — two assertions
+     * here once used floors two orders of magnitude under the real counts.
      */
     private static final long EXPECTED_SPANS = 130_393;
 
@@ -132,7 +131,7 @@ class ExportGridTest {
     @Test
     @DisplayName("the splitter never writes a value outside the fourteen, in any meter")
     void theSplitterProducesNothingElse() {
-        // Round 2 of review pointed out what the first version of this test
+        // What the first version of this test
         // really proved: MetricSplitter returns NoteValue, whose constructor
         // closes the domain to seven heads and a dot, so re-checking each
         // returned value against unitsOf re-checks the fourteen above. The

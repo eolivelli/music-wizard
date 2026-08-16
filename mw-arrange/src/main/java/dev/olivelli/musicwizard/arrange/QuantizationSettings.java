@@ -123,11 +123,10 @@ public record QuantizationSettings(
     /**
      * Returns a copy with a different overlap tolerance.
      *
-     * <p>Exists so that the tolerance can be measured rather than asserted. It
-     * was a private constant for four review rounds, and the sentence
-     * justifying its value was wrong for all of them precisely because nothing
-     * could move it -- while its neighbour, which had an accessor, was measured
-     * and corrected twice.
+     * <p>Exists so that the tolerance can be measured rather than asserted:
+     * while it was a private constant, the sentence justifying its value
+     * stayed wrong precisely because nothing could move it -- while its
+     * neighbour, which had an accessor, was measured and corrected.
      */
     public QuantizationSettings withOverlapTolerance(double tolerance) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,

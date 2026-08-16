@@ -437,14 +437,13 @@ class DownbeatEstimationTest {
             // these fixtures measure 0.92 -- so under the cap the pushed reading
             // still came back at 0.600 against the bar line's 0.580.
             //
-            // What is asserted is that the accent moves the number by nothing at
-            // all, which is the mechanism. An earlier version asserted the
-            // outcome instead -- that the pushed reading never exceeds the
-            // unpushed one -- and that is not a property this code has, or should
-            // claim: the two are indistinguishable, so which is the larger is
-            // residual chroma leakage. It came out the right way at 32 seconds
-            // and the wrong way at 12, 16, 20, 24, 28, 36 and 40, by between
-            // 3e-4 and 5e-3.
+            // What is asserted is that the accent moves the number by
+            // nothing at all, which is the mechanism. Asserting the outcome
+            // instead -- that the pushed reading never exceeds the unpushed
+            // one -- is not a property this code has, or should claim: the
+            // two are indistinguishable, so which is larger is residual
+            // chroma leakage, and it comes out either way depending on the
+            // fixture length.
             // Whether they are close is asserted, once, in
             // anAnticipationLooksExactlyLikeAMidBarStart; asserting an ordering
             // between them would pin noise and be a fixture length away from red.

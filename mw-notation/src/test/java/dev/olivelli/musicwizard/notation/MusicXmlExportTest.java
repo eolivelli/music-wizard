@@ -253,8 +253,8 @@ class MusicXmlExportTest {
     @Test
     @DisplayName("triplet eighths are a tuplet, not tied 64ths")
     void tripletEighths() {
-        // Not a copy of StaffNotationTest's four bars but the same object: round
-        // 2 of review reproduced round 1's finding against a copy in one edit.
+        // Not a copy of StaffNotationTest's four bars but the same object: a
+        // copy went stale against its original in one edit.
         Fixtures.Quantized fixture = Fixtures.tripletPractice();
 
         assertGolden("triplet-eighths",
@@ -499,8 +499,8 @@ class MusicXmlExportTest {
     void theMetronomeMarkIsQualified() {
         // A reader of this file draws the metronome as a note and a number, so
         // an unqualified one states as exact what the PDF of the same score
-        // marks as approximate. Round 1 of review on #216 found the two goldens
-        // of one fixture disagreeing about exactly that, because the qualifier
+        // marks as approximate. On #216 the two goldens
+        // of one fixture disagreed about exactly that, because the qualifier
         // had reached the LilyPond writer and not this one.
         NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice", note(0, 4, "C4"));
 
@@ -959,9 +959,9 @@ class MusicXmlExportTest {
      * The LilyPond golden of the same name is the same music.
      *
      * <p>This is what makes the pairing an invariant rather than a convention.
-     * Round 1 of review found {@code triplet-eighths.ly} and
-     * {@code triplet-eighths.musicxml} describing different music under one
-     * name; round 2 found that copying the fixture across had not fixed it,
+     * {@code triplet-eighths.ly} and
+     * {@code triplet-eighths.musicxml} once described different music under one
+     * name, and copying the fixture across did not fix it,
      * because one copy could still be edited. Comparing the LilyPond generated
      * <em>here</em> against the golden {@code StaffNotationTest} committed
      * closes it for every shared fixture at once, including any added later.

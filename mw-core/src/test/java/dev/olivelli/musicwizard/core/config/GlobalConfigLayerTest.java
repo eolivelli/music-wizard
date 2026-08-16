@@ -261,8 +261,7 @@ class GlobalConfigLayerTest {
          * {@code render} and {@code info} all open that way. Isolating the
          * suite by quietly stopping them would delete the feature rather than
          * isolate the tests, and nothing else in the suite would notice —
-         * round-1 review confirmed both of these survive as mutants without
-         * them.
+         * both of these survive as mutants without them.
          */
         @Test
         @DisplayName("the loader-less create and open still layer the user's own config")
@@ -340,9 +339,9 @@ class GlobalConfigLayerTest {
          * {@code XDG_CONFIG_HOME} is {@code ${project.build.directory}}-derived
          * — one path per <i>module</i>, not per JVM — so two {@code mvn}
          * invocations in the same checkout plant and delete in each other's
-         * windows. That is not theoretical: review round 2 measured it failing
-         * 7 of 12 concurrent JVMs once round 1 took the number of plant/delete
-         * windows from one to three, against 0 of 12 before. A {@link FileLock}
+         * windows. That is not theoretical: with the number of plant/delete
+         * windows widened, this was measured failing a majority of concurrent
+         * JVMs where before it failed none. A {@link FileLock}
          * is held by the JVM rather than the thread, which is exactly the
          * complement of what {@code @ResourceLock} gives, so the pair covers
          * both and neither covers both alone.
@@ -439,9 +438,8 @@ class GlobalConfigLayerTest {
          * is not enough on its own. An abort protects them from writing into a
          * real {@code ~/.config}, which is right — but it means losing the pom
          * block turns the regression test into a skip, and a skipped test
-         * reports as a pass. Review round 4 confirmed exactly that: both blocks
-         * deleted gave {@code Tests run: 327, Failures: 0, Skipped: 1} and
-         * BUILD SUCCESS.
+         * reports as a pass — confirmed: with both blocks deleted the build
+         * succeeds with one test quietly skipped.
          *
          * <p>An IDE run with no {@code XDG_CONFIG_HOME} therefore fails here,
          * which is the intended answer rather than a cost — for the reason
@@ -453,8 +451,8 @@ class GlobalConfigLayerTest {
          *
          * <p>Takes the environment lock even though it only reads: a sibling
          * plants at the very location it asserts is absent, and without the
-         * lock a concurrent JVM's plant reads here as a real global config.
-         * Round 2 saw exactly that, once in twelve.
+         * lock a concurrent JVM's plant reads here as a real global config —
+         * seen in practice, not feared.
          */
         @Test
         @DisplayName("the test JVM must not be able to see a real global config")

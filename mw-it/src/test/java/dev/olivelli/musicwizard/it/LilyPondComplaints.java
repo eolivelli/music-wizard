@@ -72,9 +72,8 @@ import java.util.regex.Pattern;
  * it keeps out is a <em>quoted line of source</em> — LilyPond echoes the
  * offending line back at you, so a bar check that failed and was then fixed can
  * sit in a comment in the file being engraved. A file merely <em>named</em>
- * after the phrase is held out by the moment, not by the prefix; round 3 of
- * review measured which half does the work in each case, after round 2
- * corrected the same overclaim one file over and left this one standing.
+ * after the phrase is held out by the moment, not by the prefix — measured,
+ * per case.
  *
  * <p>The prefix is English because {@code LilyPondRenderer} pins the child's
  * message locale; read the {@code speakEnglish} javadoc there before assuming
@@ -108,10 +107,9 @@ final class LilyPondComplaints {
      * without writing a different rhythm.
      *
      * <p>It is <b>reachable from ordinary material</b>, which is why this is a
-     * decision taken deliberately rather than a surprise taken later: round 3 of
-     * review on #92 ran real {@code Quantizer} output through the emitter and
-     * found it in about one stave in eighty, in 4/4, 3/4, 3/2 and 7/8 — four of
-     * the twelve meters this project targets. It needs partial sixteenth-triplet
+     * decision taken deliberately rather than a surprise taken later: real
+     * {@code Quantizer} output through the emitter reaches it in ordinary
+     * meters (#92). It needs partial sixteenth-triplet
      * brackets among rests and ties, which is exactly what a quantized
      * performance produces and exactly what a bar with every grid position
      * filled does not.
@@ -124,27 +122,23 @@ final class LilyPondComplaints {
      * pins how little it covers. See #136, which also records that the printed
      * page is fine where it fires: the number is placed above the beam, not lost.
      *
-     * <p><b>It is not granted by default</b>, and after round 1 of review on
-     * #164 it is not granted by the helper either: a caller that wants it names
+     * <p><b>It is not granted by default</b>, and not by the helper either
+     * (#164): a caller that wants it names
      * it, so a suite cannot acquire a carve-out nothing it engraves can reach by
      * picking the obviously-named assertion. <b>Exactly one call site that
      * engraves a real page names it</b> —
      * {@link TupletEngravingIT#theToleratedComplaintIsReachableAndIsOnlyThisOne},
-     * the test that exists to reach it — and every other engraving site passes
-     * nothing. Round 2 of review measured the rest: not one produces this line
-     * on 2.24.3 or on 2.26.0. ({@link LilyPondComplaintsTest} names it freely,
+     * the test that exists to reach it — and every other engraving site
+     * passes nothing; measured, not one of them produces this line on either
+     * LilyPond. ({@link LilyPondComplaintsTest} names it freely,
      * on {@link LilyPondRenderer.Result} values it made up. That is the point of
      * it, and it engraves nothing.)
      *
-     * <p>How many "every other" is, is deliberately not written here. It is a
-     * number this file has never once carried correctly: round 1 of review on
-     * #164 introduced it already wrong, round 2 found that and corrected it to a
-     * figure the same commit invalidated by adding a site, and round 3 found
-     * that. A number that has to be re-derived on every edit is a claim that
-     * will be false again; the fact that survives edits is "one engraving site
-     * names it". Round 4 then found the scope removed along with the number,
-     * which is why the words "that engraves" above are load-bearing rather than
-     * decorative.
+     * <p>How many "every other" is, is deliberately not written here: a
+     * number that has to be re-derived on every edit is a claim that will be
+     * false again, and this file never once carried it correctly. The fact
+     * that survives edits is "one engraving site names it", and the words
+     * "that engraves" above are load-bearing rather than decorative.
      */
     static final String TOLERATED_COMPLAINT =
             "programming error: not enough space for tuplet number against beam";
@@ -181,18 +175,18 @@ final class LilyPondComplaints {
      * which is #155 and, one class over, #148.
      *
      * <p><b>Tolerating nothing is the default, and anything tolerated is named
-     * at the call site.</b> Round 1 of review on #164 pointed out the hazard in
-     * the shape this replaced: a single helper carrying
+     * at the call site.</b> The hazard in the shape this replaced (#164): a
+     * single helper carrying
      * {@link #TOLERATED_COMPLAINT} silently, whose javadoc had to <em>ask</em>
      * chord-chart callers not to use it. A carve-out nothing a suite engraves
-     * can reach is the dead carve-out #92 spent two review rounds avoiding, and
-     * an argument makes acquiring one a visible choice rather than a default.
+     * can reach is a dead carve-out, and an argument makes acquiring one a
+     * visible choice rather than a default.
      *
      * <p>Tolerated lines are matched exactly, where the selection in
      * {@link #complaintsIn} is case-insensitive. The two directions are
-     * deliberately different, for the reason given there. Round 5 of review on
-     * #92 found a trailing {@code strip()} on the match inert — LilyPond does not
-     * indent its diagnostics — so it is gone rather than kept as reassurance.
+     * deliberately different, for the reason given there. A trailing
+     * {@code strip()} on the match was inert — LilyPond does not indent its
+     * diagnostics — so it is gone rather than kept as reassurance.
      *
      * @param tolerated complaint lines this caller accepts, matched in full;
      *                  empty at every site that engraves but the one that

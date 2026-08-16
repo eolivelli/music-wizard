@@ -37,11 +37,11 @@ import java.util.List;
  * Music that more than one emitter's tests engrave.
  *
  * <p>Here because a fixture two test classes each hold a copy of is a fixture
- * that agrees today and need not tomorrow. Round 1 of review found
- * {@code triplet-eighths.ly} and {@code triplet-eighths.musicxml} describing
- * different music under one name; round 2 found the fix — copying the notes
- * across — reproduced the same defect in one edit, because nothing made the two
- * copies stay equal. This is the half of that fix that makes them one thing.
+ * that agrees today and need not tomorrow.
+ * {@code triplet-eighths.ly} and {@code triplet-eighths.musicxml} once described
+ * different music under one name, and the first fix — copying the notes
+ * across — could reproduce the same defect in one edit, because nothing made the
+ * two copies stay equal. This is the half of the fix that makes them one thing.
  *
  * <p>The other half is in {@code MusicXmlExportTest.assertGolden}, which
  * requires the LilyPond it generates to equal the committed {@code .ly} golden

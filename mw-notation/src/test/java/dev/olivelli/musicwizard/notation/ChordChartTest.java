@@ -931,7 +931,7 @@ class ChordChartTest {
         // decimal comma this comment used to blame it for and which %.0f
         // cannot produce; hi_IN formats %.0f, %.1f and %d in ASCII on this
         // JDK's locale data, so it is a locale in the list rather than a case
-        // under test. Round 3 of review measured all three.
+        // under test. All three were measured.
         Locale original = Locale.getDefault();
         try {
             for (Locale locale : List.of(Locale.forLanguageTag("fr-FR"),
@@ -1177,7 +1177,7 @@ class ChordChartTest {
         // highest-value action a user has.
         //
         // The engraving is where the phase becomes visible, and it is asserted
-        // separately from the text for a reason round 1 of review measured: the
+        // separately from the text for a measured reason: the
         // text chart prints chord *names* and not cell lengths, so it shows that
         // the harmony starts inside the first bar and cannot show by how much.
         // Phases 2 and 3 give the same text and different pages. Asserting the
@@ -1963,8 +1963,8 @@ class ChordChartTest {
         // not is one whose own bar gave it no more than half.
         //
         // Half and not less than half, and the difference is not pedantry --
-        // round 1 of review swept every bar of up to nine equal cells over three
-        // symbols in eleven meters and found the bound attained, twice over. The
+        // a sweep of every bar of up to nine equal cells over three symbols in
+        // eleven meters found the bound attained, twice over. The
         // last two fixtures below are those cases: a bar of I-V-I whose V holds a
         // contiguous half, and two chords alternating on the beat where the loser
         // holds an aggregate half. Both are ordinary shapes rather than corners,
@@ -2036,9 +2036,9 @@ class ChordChartTest {
         // measurement and says the same thing at more length. At that
         // recording's tempo a sixteenth grid moves a chord by at most 0.070s, so
         // that chord printed in the previous bar, where a beat grid moves it by
-        // up to 0.282s and it does not. Both tolerances are that recording's;
-        // quoting one of them at 120 BPM and the other at 106.6 is how this
-        // comment read until round 8.
+        // up to 0.282s and it does not. Both tolerances are that
+        // recording's; quoting them at two different tempos is the mistake to
+        // avoid.
         //
         // This fixture is that shape in miniature: four chords a bar apart at
         // 120 BPM, the third detected 0.16s early -- 0.32 of a beat, which a
@@ -2229,8 +2229,7 @@ class ChordChartTest {
         // 180 quarter notes a minute is 120 dotted quarters, and a 6/8 bar is
         // counted in dotted quarters. A mark reading "4 = 180" over these bars
         // is a metronome setting 50% fast -- the trap the text chart's tempo
-        // line has carried a comment about since round 2, now reachable through
-        // a second emitter.
+        // line guards against, now reachable through a second emitter.
         Score jig = aJig();
 
         assertThat(ChordChart.toText(jig)).contains("Tempo  120 BPM (180 quarter notes/min)");
@@ -2352,7 +2351,7 @@ class ChordChartTest {
      *
      * <p>Read structurally rather than by looking for a substring of the whole
      * source. #223's tempo mark is a {@code \markup}, and {@code \markup}
-     * contains {@code \mark}: an earlier draft of this feature probed the file
+     * contains {@code \mark}: this feature once probed the file
      * for {@code \mark}, which made one test that was named for "no repeat, no
      * annotation" pass on a source that always carries a markup. Counting the
      * ends of each span against the bars they fall on cannot be satisfied that

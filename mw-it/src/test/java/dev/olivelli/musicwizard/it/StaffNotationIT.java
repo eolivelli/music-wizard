@@ -104,8 +104,8 @@ class StaffNotationIT {
     }
 
     /**
-     * The meters whose beats do not come in a power-of-two count, where three
-     * rounds of review found the splitter hiding beats. The defects themselves
+     * The meters whose beats do not come in a power-of-two count, where the
+     * splitter has repeatedly hidden beats. The defects themselves
      * were invisible here — a bar that hides a beat still sums, so LilyPond
      * engraves it silently — but the tied output they now produce is the most
      * heavily split this emitter writes, and that it engraves at all is worth
@@ -194,8 +194,8 @@ class StaffNotationIT {
         assertThat(failedBarChecksIn(result.output()))
                 .as("%s", result.output())
                 .contains("3/4");
-        // And the gate the test above rests on fails on it. Round 2 of review on
-        // #164 called this an inconsistency rather than a gap -- the same fact
+        // And the gate the test above rests on fails on it. This was once an
+        // inconsistency rather than a gap (#164) -- the same fact
         // is pinned synthetically in LilyPondComplaintsTest -- but the two
         // teeth-tests in this module now read the same way, and this one says it
         // against a real binary on whichever spelling it uses.

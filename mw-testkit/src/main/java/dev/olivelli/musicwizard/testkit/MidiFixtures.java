@@ -44,8 +44,8 @@ import javax.sound.midi.Track;
  * that has to be compared within a tolerance but a value that either matches or
  * does not.
  *
- * <p>Two things the fixtures deliberately do that a first draft of a test never
- * does, because they are the two that catch real bugs:
+ * <p>Two things the fixtures deliberately do that a naive test never does,
+ * because they are the two that catch real bugs:
  *
  * <ul>
  *   <li><b>They do not start at beat 0.</b> Every derivation of a musical

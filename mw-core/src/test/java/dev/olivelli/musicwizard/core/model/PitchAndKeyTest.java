@@ -407,7 +407,7 @@ class PitchAndKeyTest {
         @Test
         @DisplayName("a melisma carries its own extent, not the gap to the next syllable")
         void melismaCarriesItsOwnExtent() {
-            // Round 2 review finding. Reading the extent off the next syllable's
+            // Reading the extent off the next syllable's
             // start needs the words ordered, all snapped and none sharing a beat,
             // and nothing promises any of the three -- least of all for the last
             // syllable of a line, which has no successor. So the span is recorded
@@ -444,7 +444,7 @@ class PitchAndKeyTest {
         void rejectsNonFiniteBeats() {
             // Jackson writes a non-finite double as the string "NaN", which is not
             // a JSON number -- one such value makes the whole score file unreadable
-            // by anything stricter than Jackson. Round 2 review finding.
+            // by anything stricter than Jackson.
             LyricWord word = LyricWord.ofSeconds("la", 0, 1, Confidence.CERTAIN);
 
             assertThatThrownBy(() -> word.snappedTo(Double.NaN, 1.0))
@@ -465,7 +465,7 @@ class PitchAndKeyTest {
         @Test
         @DisplayName("a syllable's beat span cannot be empty")
         void rejectsZeroLengthSpan() {
-            // Round 3 review finding. endBeat is the offset of a half-open span,
+            // endBeat is the offset of a half-open span,
             // exactly as on Chord and Section, so equal ends would describe a
             // syllable covering no notes at all -- and would make a one-note
             // syllable indistinguishable from a mistake to notesBetweenBeats. A
@@ -505,7 +505,7 @@ class PitchAndKeyTest {
         @Test
         @DisplayName("words are ordered across lines, not merely within them")
         void wordsAreOrderedAcrossOverlappingLines() {
-            // Round 3 review finding: sorting the lines was the layer the bug was
+            // Sorting the lines was the layer the bug was
             // noticed at, not the layer it lives at. Recognition spans on sung
             // speech overlap, so a later line can hold a word that starts before
             // the previous line ends, and concatenating ordered lines then gives
@@ -529,7 +529,7 @@ class PitchAndKeyTest {
         void rejectsNullLine() {
             // Sorting replaced List.copyOf, which is what did the rejecting; a
             // one-element list never invokes the comparator that would otherwise
-            // have dereferenced the null. Round 3 review finding.
+            // have dereferenced the null.
             List<LyricLine> withNull = new java.util.ArrayList<>();
             withNull.add(null);
 

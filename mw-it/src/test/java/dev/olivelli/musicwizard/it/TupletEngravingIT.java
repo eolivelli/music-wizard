@@ -159,9 +159,9 @@ class TupletEngravingIT {
         // LilyPond uses.
         //
         // It used to say it showed the *tolerance* did not swallow the bar
-        // check, and round 2 of review on #164 measured that this run emits no
-        // tolerated line at all, on either version -- so nothing was being
-        // swallowed and nothing was proved. That claim is
+        // check -- but this run emits no tolerated line at all, on either
+        // version, so nothing was being swallowed and nothing was proved.
+        // That claim is
         // LilyPondComplaintsTest.theToleranceIsNarrowerThanTheWordItContains's
         // to make, where a synthetic Result puts the two lines side by side
         // without asking LilyPond to produce both at once.
@@ -257,15 +257,15 @@ class TupletEngravingIT {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
 
-        // The material round 3 of review found this with, reduced to the notes
-        // rather than kept as the LilyPond it produced, and shrunk from three
-        // bars to the one that still complains.
+        // The material this was found with, reduced to the notes rather
+        // than kept as the LilyPond it produced, and shrunk from three bars
+        // to the one that still complains.
         //
         // One bar of sixteenth triplets, on the SIXTH_BEAT grid, with a third of
         // the positions silent and the rest one or two steps long -- so most
         // brackets are partial -- over four octaves, which is what makes the
-        // beams steep enough for the number to have nowhere to go. Reduced from
-        // the three bars round 3 sent to the one bar that still complains.
+        // beams steep enough for the number to have nowhere to go. Reduced
+        // from three bars to the one that still complains.
         //
         // {step index, length in steps, MIDI pitch}
         int[][] played = {
@@ -282,9 +282,9 @@ class TupletEngravingIT {
         NoteTrack voice = quantized.score().tracks().getFirst();
         String source = StaffNotation.toLilyPond(quantized, voice);
 
-        // Driven through the emitter, so this says the shape is one *we* write.
-        // Round 4 of review pointed out that engraving hand-copied LilyPond pins
-        // LilyPond's behaviour and says nothing about ours -- and a tolerance
+        // Driven through the emitter, so this says the shape is one *we*
+        // write: engraving hand-copied LilyPond pins LilyPond's behaviour and
+        // says nothing about ours -- and a tolerance
         // left standing for a shape this emitter can no longer produce is
         // exactly the dead carve-out worth avoiding. The day StaffNotation stops
         // writing partial sixteenth-triplet brackets, this fails here rather
@@ -301,23 +301,20 @@ class TupletEngravingIT {
                 .contains(TOLERATED_COMPLAINT);
         // And the music is still right underneath it: a page came out, and the
         // bar checks -- which is what the warning ban is really for -- passed.
-        // Round 4 rendered this page at 900 dpi and looked at both complaint
-        // sites: the tuplet number is present and legible, placed above the
-        // steep beam rather than inside it. Nothing missing, nothing colliding.
-        // Round 5 of review found this written "barcheck" and corrected it to
-        // "bar check", on the grounds that "barcheck" is a string LilyPond never
-        // emits. Both halves were half right and #145 is the other half: 2.26
-        // spells it with the space and 2.24 -- which is what the integration job
-        // installs -- without, so whichever of the two was written here, this
-        // assertion could not fail on one of the two versions in use. Asking for
+        // This page was rendered at high resolution and inspected at both
+        // complaint sites: the tuplet number is present and legible, placed
+        // above the steep beam rather than inside it. The spelling matters
+        // (#145): the two LilyPond versions in use spell "bar check"
+        // differently, so either spelling alone could not fail on one of
+        // them. Asking for
         // the moments rather than for the prose is what removes the question.
         assertThat(failedBarChecksIn(result.output())).isEmpty();
         assertThat(result.pdf()).isPresent();
         // The only call site that engraves and names the tolerance, and the only
-        // one that reaches it -- LilyPondComplaintsTest names it too, on Results
-        // it made up. Round 2 of review on #164 stripped the
-        // argument from all six sites in this file and got exactly one failure,
-        // here -- so the other five were carrying a carve-out for a line their
+        // one that reaches it -- LilyPondComplaintsTest names it too, on
+        // Results it made up. Stripping the argument from all six sites in
+        // this file got exactly one failure, here -- so the other five were
+        // carrying a carve-out for a line their
         // fixtures never produce, on either LilyPond version, which is the dead
         // carve-out the argument was introduced to make visible. They no longer
         // do. If one of them starts complaining, that is a fact about the
@@ -332,8 +329,8 @@ class TupletEngravingIT {
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
         LilyPondRenderer renderer = new LilyPondRenderer(lilypond);
 
-        // Round 5 of review found round 4's locale fix breaking this outright:
-        // LC_ALL and LANG set the character type as well as the message
+        // An early locale fix broke this outright: LC_ALL and LANG set the
+        // character type as well as the message
         // catalogue, and LilyPond cannot decode a non-ASCII name off its own
         // command line under a C ctype -- "fatal error: failed files:
         // canci??n.ly". A fix for a test that had silently stopped checking had

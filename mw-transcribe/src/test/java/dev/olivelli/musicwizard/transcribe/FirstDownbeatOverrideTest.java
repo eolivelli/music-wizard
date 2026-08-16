@@ -60,11 +60,10 @@ import org.junit.jupiter.api.Test;
  *     which has no opinion about it. It reproduces nothing.</li>
  * <li>{@code snapConfidenceBoundsAmbiguityInBothDirections} and
  *     {@code oneBeatToTheBarIsAlwaysCertain} are regression tests for defects
- *     found in review of the fix itself, both first raised in round 2 -- a
- *     confidence scale that over-reported a coin-flip phase, and a phase that
- *     cannot be wrong ranked below one that can. The first was then reworked in
- *     rounds 3, 5 and 6 as each round found the previous round's scale wrong in
- *     a new direction. They gate this file's own invariants, not #67.</li>
+ *     found in the fix itself -- a confidence scale that over-reported a
+ *     coin-flip phase, and a phase that cannot be wrong ranked below one that
+ *     can; the scale was reworked repeatedly, each fix wrong in a new
+ *     direction. They gate this file's own invariants, not #67.</li>
  * </ul>
  */
 class FirstDownbeatOverrideTest {
@@ -327,14 +326,15 @@ class FirstDownbeatOverrideTest {
         // DownbeatEstimator gives a phase it could not choose -- and #48 retuned
         // that scale while this branch was open.
         //
-        // This is the *only* ordering pinned here. An earlier draft also asserted
-        // the floor stays under what harmony reaches, measuring that ceiling from
-        // a synthesised four-chord loop. It was wrong twice over: the loop scored
-        // 0.539 against a nominal ceiling of 0.6, so it measured its own fixture
-        // rather than the ceiling and would have passed with the ceiling retuned
-        // to 0.55; and shortening it to four bars dropped it to 0.493, failing a
-        // test about the snap floor for a reason in another module. The claim it
-        // defended is not true either -- see SNAPPED_PHASE_FLOOR.
+        // This is the *only* ordering pinned here. Also asserting that the
+        // floor stays under what harmony reaches, measuring that ceiling from
+        // a synthesised four-chord loop, was tried and wrong twice over: the
+        // loop scored under the nominal ceiling, so it measured its own
+        // fixture rather than the ceiling and would have survived a retuned
+        // ceiling; and shortening the loop moved its figure below the floor,
+        // failing a test about the snap floor for a reason in another module.
+        // The claim it defended is not true either -- see
+        // SNAPPED_PHASE_FLOOR.
         BeatGrid estimatedGrid = grid(null, TimeSignature.FOUR_FOUR);
         double beatConfidence = estimatedGrid.beatConfidence().value();
 
@@ -386,8 +386,8 @@ class FirstDownbeatOverrideTest {
         // minutes past the end of the recording reads as *more* trustworthy than
         // a harmony-informed estimate on the same audio.
         //
-        // Pinned so that the limit is a known one rather than something the next
-        // round rediscovers -- and so that fixing #88 fails here rather than
+        // Pinned so that the limit is a known one rather than something to
+        // rediscover -- and so that fixing #88 fails here rather than
         // silently changing what a saved score means.
         for (TimeSignature meter : List.of(TimeSignature.SIX_EIGHT, new TimeSignature(2, 4))) {
             BeatGrid estimatedGrid = grid(null, meter);

@@ -76,9 +76,8 @@ class HarmonicRhythmTest {
         // no whole number of 0.6s pulses reaches 3.2s or any multiple of it
         // inside the lags this reads -- their first meeting is at 9.6s. A
         // strictly one-bar harmony would not do here: 0.6 genuinely bars
-        // 1.6s-periodic chords, eight pulses to three bars at 4.8s, and the
-        // first draft of this fixture proved it by passing the false pulse at
-        // 0.95 (#231).
+        // 1.6s-periodic chords, eight pulses to three bars at 4.8s — a
+        // one-bar fixture passes the false pulse (#231).
         HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(3.2, 64));
 
         double quarter = rhythm.supportFor(0.4);
@@ -109,7 +108,7 @@ class HarmonicRhythmTest {
         // rescue at two periods sits at 9s, out of reach. This is the one
         // choice the factor makes inside a family, it only ever runs toward
         // the faster member, and the class javadoc says so rather than
-        // claiming neutrality (#231 review, rounds 1 and 2).
+        // claiming neutrality (#231).
         HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(4.5, 63));
 
         double beat = rhythm.supportFor(0.5);

@@ -43,9 +43,9 @@ import org.junit.jupiter.api.Test;
  * day somebody needs a measure count and reaches for the exporter that already
  * computes one.
  *
- * <p>So it is checked here. The PR that added the exports claimed the rule held
- * and offered a {@code grep} as evidence; round 1 of review ran the grep and it
- * returned four hits the claim said it would not. The prose was right and the
+ * <p>So it is checked here. The PR that added the exports claimed the rule
+ * held and offered a {@code grep} as evidence; running the grep returned
+ * hits the claim said it would not. The prose was right and the
  * evidence was wrong, which is the worse of the two ways round: a check nobody
  * can run is a check nobody will re-run.
  *
@@ -74,13 +74,13 @@ class ExportsAreSiblingsTest {
      * Everything on the route to a PDF: every class in the package that is not
      * an export and not shared between them.
      *
-     * <p><b>Derived rather than listed</b>, and that is the whole of round 2's
-     * finding. The list was eleven names somebody thought of, so a class added
-     * tomorrow — the one that needs a measure count and reaches for the
-     * exporter that already computes one, which is the case this test's javadoc
-     * names — was outside the check by default. A reviewer added exactly that
-     * class and the test passed. Now the default is the other way: a new file
-     * is on the route to a PDF unless it is deliberately classified.
+     * <p><b>Derived rather than listed</b>, and that is the whole point.
+     * The list was names somebody thought of, so a class added tomorrow —
+     * the one that needs a measure count and reaches for the exporter that
+     * already computes one, which is the case this test's javadoc names —
+     * was outside the check by default; exactly that class was added and the
+     * test passed. Now the default is the other way: a new file is on the
+     * route to a PDF unless it is deliberately classified.
      */
     private static List<String> pdfPath() {
         List<String> path = sources()
@@ -200,8 +200,8 @@ class ExportsAreSiblingsTest {
      * treated the {@code //} in it as a line comment would delete the rest of
      * that line and could hide the very reference this is looking for.
      *
-     * <p>Text blocks are handled for the same reason one level up. Round 2 of
-     * review found that treating {@code """} as two ordinary quotes
+     * <p>Text blocks are handled for the same reason one level up.
+     * Treating {@code """} as two ordinary quotes
      * desynchronises everything after a block whose body holds an odd number of
      * them: the "inside a literal" and "inside code" phases swap, and real code
      * after it is deleted rather than read. No source in this package uses one
@@ -289,8 +289,8 @@ class ExportsAreSiblingsTest {
     void theStripperIsNotFooled() {
         // Every one of these is a construct that has to survive intact or the
         // architectural check above becomes unreliable in a way nobody would
-        // notice: it would pass, quietly, over a class that really does reach an
-        // export. The last two are round 2's finding.
+        // notice: it would pass, quietly, over a class that really does
+        // reach an export.
         assertThat(code("String url = \"http://x//y\"; MidiExport.g();"))
                 .as("a // inside a string is not a comment")
                 .contains("MidiExport");
@@ -314,12 +314,11 @@ class ExportsAreSiblingsTest {
     /**
      * Every source in the module, at any depth.
      *
-     * <p>The whole tree rather than this package's own directory, and that is
-     * round 3's finding rather than tidiness: listing one directory let a class
-     * in {@code notation.internal} reach an exporter with the check passing over
-     * it. That is round 2's defect one level down — evidence covering the places
-     * somebody thought to look — and the fix is the same one, which is to make
-     * the default "checked" rather than "not looked at".
+     * <p>The whole tree rather than this package's own directory, and that
+     * is not tidiness: listing one directory let a class in
+     * {@code notation.internal} reach an exporter with the check passing over
+     * it — evidence covering the places somebody thought to look — and the
+     * fix is to make the default "checked" rather than "not looked at".
      */
     private static Stream<Path> sources() {
         try {
