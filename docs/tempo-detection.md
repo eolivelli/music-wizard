@@ -7,7 +7,8 @@ recordings.
 ## The onset envelope (`OnsetEnvelope`)
 
 Spectral flux over mel bands: the first difference of each band's decibel
-series, half-wave rectified (a note *ending* is not an onset) and summed. Three details matter more than the textbook picture:
+series, half-wave rectified (a note *ending* is not an onset) and summed.
+Three details matter more than the textbook picture:
 
 - **Each band is low-passed along time before differencing.** A held note's
   partials beat inside FFT bins at rates far above the frame rate's Nyquist;
@@ -58,11 +59,9 @@ and each contributes its first half.
 - **Window seeds are corrected against the recording's pulse.** Each window
   estimates its own tempo (that is what follows drift), but which
   *subdivision* of the beat it landed on is a property of the recording:
-  every window's seed is read against the median of the full windows'
-  seeds (a fraction-of-a-window tail is tracked but does not vote), and a
-  seed
-  that is a musical subdivision (½, ⅓, 2, 3…) of that reference is divided
-  out before tracking. The dynamic program itself will not fix an octave
+  every window's seed is read against the median of the windows' seeds,
+  and a seed that is a musical subdivision (½, ⅓, 2, 3…) of that reference
+  is divided out before tracking. The dynamic program itself will not fix an octave
   error — at the published weight it follows its seed — so the seed is the
   only place it can be fixed.
 
