@@ -61,8 +61,8 @@ recipe and the layout.
 
 ## LilyPond
 
-Needed for PDFs only; without it MW writes `.ly`, `.musicxml` and `.midi` and
-says so. `brew install lilypond` or `apt install lilypond`, or set
+Needed for PDFs only; without it MW still writes the `.ly` source and says
+so. `brew install lilypond` or `apt install lilypond`, or set
 `notation.lilypondPath` to the binary.
 
 ## What the committed baselines assume
