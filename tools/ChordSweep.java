@@ -91,6 +91,19 @@ import java.util.TreeMap;
  * is not, because on its stated grid the estimator finds under half the roots
  * and a quality column read off bars that wrong says nothing. The b7 share is
  * read off the decoded spans and needs no grid either way.
+ *
+ * <p><b>{@code cache} and {@code profile} also take paths</b>, so a recording
+ * that is not in {@code samples/} can be read at the same speed:
+ *
+ * <pre>
+ *   java -cp mw-cli/target/mw.jar tools/ChordSweep.java cache uncommitted/x.mp3
+ *   java -cp mw-cli/target/mw.jar tools/ChordSweep.java profile uncommitted/x.mp3
+ * </pre>
+ *
+ * <p>A commercial recording is exactly what cannot be committed, and it is also
+ * where the defects that matter show up — #527 is one of those, and every figure
+ * quoted on it came from a probe outside the repository for want of this. Such
+ * a file has no ground truth here, so it is profiled and never scored.
  */
 public final class ChordSweep {
 
@@ -128,8 +141,12 @@ public final class ChordSweep {
 
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 ? args[0] : "score";
+        List<Path> named = new ArrayList<>();
+        for (int i = 1; i < args.length; i++) {
+            named.add(Path.of(args[i]));
+        }
         switch (mode) {
-            case "cache" -> cacheAll();
+            case "cache" -> cacheAll(named);
             case "score" -> {
                 System.out.println("samples with known ground truth:");
                 for (Bench b : cached()) {
@@ -144,7 +161,7 @@ public final class ChordSweep {
                     System.out.printf("%6d", interval);
                 }
                 System.out.println("   b7 share (needs >0.155)");
-                for (Bench b : cached()) {
+                for (Bench b : named.isEmpty() ? cached() : asBenches(named)) {
                     profile(b);
                 }
             }
@@ -159,8 +176,16 @@ public final class ChordSweep {
 
     // ---------------------------------------------------------------- caching
 
-    static void cacheAll() throws Exception {
+    /** The named recordings, or every benchmark when none is named. */
+    static void cacheAll(List<Path> named) throws Exception {
         Files.createDirectories(CACHE);
+        if (!named.isEmpty()) {
+            for (Path mp3 : named) {
+                cache(mp3);
+                System.out.println("  cached " + mp3);
+            }
+            return;
+        }
         for (Bench b : BENCHMARKS) {
             Path mp3 = Path.of("samples", b.file());
             if (!Files.isRegularFile(mp3)) {
@@ -170,6 +195,18 @@ public final class ChordSweep {
             cache(mp3);
             System.out.println("  cached " + b.file());
         }
+    }
+
+    /**
+     * A named recording as a benchmark with no ground truth.
+     *
+     * <p>Keyed by file name alone, which is how {@link #cache} keys the cache,
+     * so the same path works for both modes and a bare name works for the
+     * second once the first has run.
+     */
+    static List<Bench> asBenches(List<Path> named) {
+        return named.stream()
+                .map(p -> new Bench(p.getFileName().toString(), null)).toList();
     }
 
     static void cache(Path mp3) throws Exception {
@@ -376,15 +413,43 @@ public final class ChordSweep {
         // whose chords are plain triads, any four-note label is a false one, and
         // that is the only negative control this corpus has (#273).
         Map<String, Integer> qualities = new TreeMap<>();
+        Map<String, Double> heldFor = new TreeMap<>();
         for (Chord chord : chords.chords()) {
             qualities.merge(chord.quality().symbol().isEmpty() ? "maj"
                     : chord.quality().symbol(), 1, Integer::sum);
+            heldFor.merge(label(chord), chord.endSeconds() - chord.startSeconds(),
+                    Double::sum);
         }
         System.out.printf(Locale.ROOT, "%-26s spans=%d, by quality: %s%n",
                 b.file(), chords.size(), qualities);
+        // How long each chord was held, which is the only thing that can be said
+        // about a recording with no grid to score it on -- "the tonic was called
+        // major for longer than minor" is #527. A label under a hundredth of the
+        // recording is left out; it says nothing about the recording either way.
+        System.out.printf("%-26s %-8s", "", "held");
+        heldFor.entrySet().stream()
+                .filter(e -> e.getValue() >= c.duration() / 100)
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .forEach(e -> System.out.printf(Locale.ROOT, " %s %.0fs", e.getKey(),
+                        e.getValue()));
+        System.out.println();
         printProfile("combined", c.combined(), root);
         printProfile("treble", c.treble(), root);
         printProfile("bass", c.bass(), root);
+    }
+
+    /** A chord as a chart would write it, for the durations {@link #profile} prints. */
+    static String label(Chord chord) {
+        if (chord.quality() == ChordQuality.NONE) {
+            return "N.C.";
+        }
+        return chord.root().letter()
+                + switch (chord.root().accidental()) {
+                    case SHARP -> "#";
+                    case FLAT -> "b";
+                    default -> "";
+                }
+                + chord.quality().symbol();
     }
 
     static void printProfile(String register, double[][] vectors, int[] root) {
