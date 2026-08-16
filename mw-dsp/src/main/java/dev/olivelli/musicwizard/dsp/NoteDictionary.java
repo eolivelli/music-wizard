@@ -60,73 +60,22 @@ public final class NoteDictionary {
      * costs less than explaining it as somebody else's partial — is true peak by
      * peak and false over a chord, and a chord is what this is asked about.
      *
-     * <p>The arithmetic. Unit-normalised, a column with roll-off {@code s} gives
-     * its fundamental weight {@code sqrt(1 − s²)} and its {@code k}-th partial
-     * {@code s^(k−1)} times that. At 0.7 the fundamental carries 0.714, the
-     * second partial 0.500 and the third 0.350. So a note that is really
-     * sounding earns 0.714 from its own fundamental — and a note an octave
-     * below it, which is not sounding at all, earns 0.500 from that note's
-     * fundamental as its own second partial and 0.350 from a note a fifth above
-     * as its third, for 0.850. The absent note wins.
+     * <p>The arithmetic: unit-normalised, a shallow roll-off lets a note an
+     * octave below a sounding one collect that note's fundamental as its own
+     * second partial and a fifth above as its third, and win — handed three
+     * pure sines spelling a triad, the dictionary's largest activation was an
+     * octave below anything played and the real notes did not appear. Steeper
+     * is not simply better: too steep and the model under-predicts a real
+     * note's own upper partials, so the residual is explained by invented
+     * notes above it. The sweep over both failure modes peaks where accuracy
+     * also keeps a bass note in the bass register, so the two considerations
+     * agree rather than trade.
      *
-     * <p>Enumerating every note from A0 to C4 against a C4-E4-G4 triad at 0.7
-     * confirms which one it is. In order: C3 0.850, C4 0.714 (the real note),
-     * C2 0.536, E3 and G3 0.500, F2 and A2 0.350, E2 and G2 0.245, then G#1,
-     * D#2, F1, A1 and C1 below 0.18. The winner is the
-     * octave below, not something further down — a lower note has more partials
-     * landing on the triad but each is worth less, and the product peaks
-     * immediately.
-     *
-     * <p>That is not a hypothesis. Handed three pure sines at C4, E4 and G4 —
-     * no partials, nothing below C4 in the signal at all — the dictionary at 0.7
-     * put its single largest activation on C3, an octave below anything played,
-     * and invented G#1, C2, F2, A2 and E3 besides. C4 itself did not appear.
-     *
-     * <p>Steeper is not simply better, though, because the error has a mirror
-     * image. Too shallow and a note that is not sounding explains the ones that
-     * are; too steep and the model under-predicts a real note's own upper
-     * partials, so the residual is explained by further notes an octave and a
-     * twelfth above it. Both are measured here — sub-harmonic leakage by the
-     * share of activation the pure triad keeps on its own three notes, and
-     * super-harmonic leakage by what a single harmonic A1 keeps on A1 and by how
-     * its energy divides between the two registers — against per-bar root and
-     * root-plus-quality accuracy on {@code samples/gmajorblues.mp3}:
-     *
-     * <pre>
-     *   roll-off   triad keeps   A1 keeps   A1 bass    blues    blues
-     *              its 3 notes   its own    / treble   root     root+quality
-     *     0.70        0.310       0.720      10.62     72.0%      60.8%
-     *     0.60        0.489       0.490       4.76     78.3%      75.5%
-     *     0.55        0.589       0.395       3.40     83.4%      82.2%
-     *     0.50        0.682       0.321       2.40     86.6%      86.3%
-     *     0.45        0.764       0.268       1.87     85.4%      85.0%
-     *     0.40        0.833       0.233       1.53     85.0%      85.0%
-     *     0.30        0.930       0.194       1.11     85.4%      85.4%
-     * </pre>
-     *
-     * <p>The per-bar figures in this table were measured on the beat grid as
-     * it was before #196: chroma is averaged per tracked beat, so removing
-     * that grid's 1.9% rate error moves them. The comparison the table is
-     * for is not in doubt -- the differences down it are tens of points and
-     * the anchor moved by one -- but the cells read as current and are not.
-     * {@link ChordEstimator} carries the statement of this and #232 tracks
-     * re-measuring them.
-     *
-     * <p>0.50 is taken as the setting, where accuracy peaks on both columns.
-     * The peak is not sharp — everything from 0.50 down to 0.30 is within 1.6
-     * points — but it is on the side of the range that also keeps a bass note in
-     * the bass register, so the two considerations agree rather than having to
-     * be traded.
-     *
-     * <p>What this costs is stated rather than buried: at 0.70 a low A kept 72%
-     * of its activation on itself and ten times as much energy in the bass
-     * register as in the treble, and at 0.50 those are 32% and 2.4. The
-     * <em>pitch class</em> survives — which is why chord accuracy improves — but
-     * the octave often does not, so {@link NnlsChroma#bass()} is a good deal
-     * weaker than it was and naming a bass note from it is not yet safe (#194).
-     *
-     * <p>One recording sets the shape of the accuracy curve here, not the value
-     * of its peak. Calibrating on a tier-2 corpus is #193.
+     * <p>The cost: a low note keeps its pitch class but often not its octave,
+     * so {@link NnlsChroma#bass()} is weaker than it was and naming a bass
+     * note from it is not yet safe (#194). One recording sets the shape of
+     * the curve, not the value of its peak; calibrating on a tier-2 corpus is
+     * #193.
      */
     public static final double PARTIAL_ROLL_OFF = 0.50;
 
