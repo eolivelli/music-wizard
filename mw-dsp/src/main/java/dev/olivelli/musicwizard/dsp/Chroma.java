@@ -271,10 +271,9 @@ public record Chroma(double[][] vectors, double frameRate) {
         double[][] out = new double[spans][12];
 
         for (int span = 0; span < spans; span++) {
-            int from = (int) Math.floor(beatTimes.get(span) * frameRate);
-            int to = (int) Math.ceil(beatTimes.get(span + 1) * frameRate);
-            from = Math.clamp(from, 0, Math.max(0, vectors.length - 1));
-            to = Math.clamp(to, from + 1, vectors.length);
+            int[] range = spanFrames(beatTimes, span, frameRate, vectors.length);
+            int from = range[0];
+            int to = range[1];
 
             // Summing raw magnitudes weights each frame by how loud it actually
             // was, so the attack dominates and the decaying tail contributes
@@ -289,6 +288,23 @@ public record Chroma(double[][] vectors, double frameRate) {
         // Frame rate no longer applies: frames are now musical spans, not a
         // fixed grid, and pretending otherwise would invite a wrong conversion.
         return new Chroma(out, 0);
+    }
+
+    /**
+     * The frames one inter-beat span covers, as {@code {from, to}} with
+     * {@code to} exclusive and at least one frame wide.
+     *
+     * <p>Package-private and shared rather than restated, because
+     * {@link NnlsAblation#beatSynchronous} has to fold the spectra the same
+     * frames were folded into chroma: span {@code i} of the two must be span
+     * {@code i} of the same recording, and two copies of this arithmetic can
+     * drift apart without either being wrong on its own.
+     */
+    static int[] spanFrames(List<Double> beatTimes, int span, double frameRate, int frames) {
+        int from = (int) Math.floor(beatTimes.get(span) * frameRate);
+        int to = (int) Math.ceil(beatTimes.get(span + 1) * frameRate);
+        from = Math.clamp(from, 0, Math.max(0, frames - 1));
+        return new int[] {from, Math.clamp(to, from + 1, frames)};
     }
 
     private static void normalise(double[] vector) {

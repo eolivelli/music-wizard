@@ -16,6 +16,7 @@
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
@@ -25,6 +26,7 @@ import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.dsp.NnlsAblation;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import java.io.BufferedInputStream;
@@ -370,17 +372,34 @@ public final class ChordSweep {
         }
     }
 
-    /** The estimator run exactly as {@code AudioTranscriber} runs it. */
-    static ChordProgression estimate(Cached c) {
+    /**
+     * The estimator run exactly as {@code AudioTranscriber} runs it.
+     *
+     * <p>The ablation is rebuilt from the recording rather than cached: it
+     * needs the transform and the beats, and it solves per chord span rather
+     * than per frame, so rebuilding it costs seconds where the cached chroma
+     * costs minutes.
+     *
+     * <p><b>Which makes a stale cache worse than stale.</b> The cache carries a
+     * format tag and no front-end version, so after a change upstream of chroma
+     * this pairs a chroma from before it with an ablation from after it — two
+     * views of two different fits, reported as one reading. Re-run {@code cache}
+     * whenever anything the front end does moves.
+     */
+    static ChordProgression estimate(Bench b, Cached c) throws Exception {
+        AudioBuffer audio = AudioDecoder.decode(b.path());
+        Spectrogram transform = NnlsChroma.transform(audio);
+        NnlsAblation ablation = NnlsAblation.extract(transform, Chroma.estimateTuning(transform))
+                .beatSynchronous(c.beats());
         return ChordEstimator.estimate(new Chroma(c.combined(), 0),
-                new Chroma(c.treble(), 0), new Chroma(c.bass(), 0), c.beats());
+                new Chroma(c.treble(), 0), new Chroma(c.bass(), 0), ablation, c.beats());
     }
 
     // ---------------------------------------------------------------- scoring
 
     static void score(Bench b) throws Exception {
         Cached c = load(b.path());
-        ChordProgression chords = estimate(c);
+        ChordProgression chords = estimate(b, c);
 
         List<Double> downbeats = new ArrayList<>();
         for (int i = 0; i < c.beats().size(); i++) {
@@ -480,7 +499,7 @@ public final class ChordSweep {
 
     static void profile(Bench b) throws Exception {
         Cached c = load(b.path());
-        ChordProgression chords = estimate(c);
+        ChordProgression chords = estimate(b, c);
 
         // The root the estimator decoded for each beat. Conditioning on that
         // rather than on ground truth is what lets the pop controls, whose bar
