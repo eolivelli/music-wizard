@@ -236,8 +236,13 @@ public final class ChordSweep {
      * in. A file written before the recording's own name was stored begins with
      * the top half of a duration in seconds, which no duration makes equal to
      * this.
+     *
+     * <p>Moves whenever what the stored name <em>means</em> moves, not only when
+     * the fields do: a name that was tidied lexically and one that was resolved
+     * are the same bytes and different claims, and the older claim is the one
+     * a foreign recording could satisfy.
      */
-    private static final int CACHE_FORMAT = 0x4D57_4331;
+    private static final int CACHE_FORMAT = 0x4D57_4332;
 
     static void cache(Path mp3) throws Exception {
         AudioBuffer audio = AudioDecoder.decode(mp3);
@@ -304,12 +309,18 @@ public final class ChordSweep {
      * link/../samples/x.mp3} tidies to {@code samples/x.mp3} whatever {@code
      * link} points at, so a recording somewhere else takes that name and the
      * check passes. And {@link #load} is reachable for a recording whose cache
-     * is here and whose audio is not, so this cannot insist the file exist.
+     * is here and whose audio is not — a fresh clone is short of the gitignored
+     * benchmarks — so this cannot insist the file be there.
+     *
+     * <p>The fallback is taken on any resolution failure and not only on an
+     * absent file: a permission denied on a parent, or a symlink loop, lands
+     * here as well, and for those the tidied path is a guess rather than the
+     * best available answer. Nothing reads it that would act on the difference.
      */
     static Path real(Path mp3) {
         try {
             return mp3.toRealPath();
-        } catch (java.io.IOException absent) {
+        } catch (java.io.IOException unresolved) {
             return mp3.toAbsolutePath().normalize();
         }
     }
@@ -329,8 +340,7 @@ public final class ChordSweep {
                 Files.newInputStream(CACHE.resolve(mp3.getFileName() + ".bin"))))) {
             if (in.readInt() != CACHE_FORMAT) {
                 throw new IllegalStateException(mp3.getFileName()
-                        + " was cached before the cache recorded which recording it holds;"
-                        + " re-run cache");
+                        + " was cached in an older format; re-run cache");
             }
             String held = in.readUTF();
             if (!sameRecording(held, mp3)) {
