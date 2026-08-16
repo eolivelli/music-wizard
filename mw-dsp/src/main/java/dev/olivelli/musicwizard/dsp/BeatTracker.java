@@ -47,49 +47,20 @@ import java.util.Objects;
 public final class BeatTracker {
 
     /**
-     * Weight of the spacing penalty against onset strength.
-     *
-     * <p>Higher makes the tracker insist on even spacing and ignore evidence;
-     * lower lets it chase every syncopation. This is the reference
+     * Weight of the spacing penalty against onset strength — the reference
      * implementations' value for the penalty as Ellis writes it, in natural
-     * logs.
-     *
-     * <p><strong>It has to be read together with the base of the logarithm,
-     * and that is how it was wrong.</strong> The penalty here used to be
-     * {@code -(log2(gap / period))^2} weighted at 1, quoting a figure of
-     * "around 1" that belongs to the natural-log form. The two differ by
-     * {@code 1 / (ln 2)^2}, so the shipped penalty was <b>one forty-eighth</b>
-     * of the published one — not a loose setting of the algorithm but a
-     * different algorithm, which is why no constant downstream could
-     * compensate.
-     *
-     * <p>What it cost is worth stating in the units the recursion works in.
-     * The envelope is normalised to unit variance and a loud attack reads
-     * several, while inserting one extra beat — two gaps of half a period
-     * where there was one — cost {@code 2 * log2(1/2)^2 = 2} at the old
-     * weight. So an offbeat worth two standard deviations bought its own beat,
-     * and on a shuffle the swung eighth is exactly that. The tracker left the
-     * grid for it and came back a beat later, and the detours that failed to
-     * pair up accumulated into the 1.9% rate error of #196 — a whole extra
-     * beat per twelve-bar cycle.
-     *
-     * <p>Both halves of that are pinned rather than described.
-     * {@code BeatTrackingTest.aLouderOffbeatDoesNotBuyItselfABeat} is the
-     * mechanism on a synthetic shuffle, and {@code BluesLoopIT} is the
-     * consequence on the real recording: the share of intervals that are two
-     * thirds of a beat rather than a beat, and the tracked rate against the
-     * loop's own. Both carry their before-and-after figures.
-     *
-     * <p>The one thing not to read into the choice of value: it is the
-     * published one and it was not tuned. A sweep over the five benchmarks of
-     * {@code tools/score-samples.py} says the failure is on the low side and
-     * that this is not a cliff edge, and it says no more than that — every one
-     * of those recordings is a programmed loop with rigid timing, so a sweep
-     * on them rewards rigidity without bound and cannot choose a value. Two of
-     * the five have their best point a little below this one and two a little
-     * above, by margins far smaller than the distance from the old weight.
-     * Somewhere above it the tracker must stop following a human rubato, and
-     * nothing here measures where.
+     * logs. <strong>It has to be read together with the base of the
+     * logarithm, and that is how it was wrong</strong>: the penalty used to
+     * be written in log2 at weight 1, a factor of {@code (ln 2)^2} under the
+     * published one — a different algorithm, not a loose setting, which is
+     * why no constant downstream could compensate (#196: a swung eighth
+     * bought its own beat and the detours accumulated into a rate error).
+     * {@code BeatTrackingTest.aLouderOffbeatDoesNotBuyItselfABeat} pins the
+     * mechanism, {@code BluesLoopIT} the consequence. The value is the
+     * published one and was not tuned: a sweep over programmed loops rewards
+     * rigidity without bound and cannot choose one, and somewhere above it
+     * the tracker must stop following a human rubato, which nothing here
+     * measures.
      */
     private static final double TIGHTNESS = 100.0;
 
@@ -209,133 +180,33 @@ public final class BeatTracker {
     }
 
     /**
-     * The tempo actually implied by the tracked beats, as the median interval.
+     * The tempo actually implied by the tracked beats, as the median interval
+     * — reported rather than the seed estimate, which can disagree with the
+     * very beats returned alongside it. Since #200 nothing in production
+     * reads this median; the one production reader of
+     * {@link Result#beatsPerMinute()} is the progress line's
+     * fewer-than-two-beats arm, which never reaches it (#240), and retiring
+     * the field is #241.
      *
-     * <p>Reported rather than the seed estimate, because the two can disagree:
-     * the seed is one number for a window and this is what the beats in it
-     * actually did. Reporting the seed would contradict the very beats returned
-     * alongside it.
+     * <p><strong>The dynamic program does not rescue an octave error in the
+     * seed</strong>, and the two directions turn on different things — both
+     * have a closed form. A double-rate seed is followed whenever one
+     * gap-halving penalty is deeper than the envelope's floor between onsets,
+     * however loud the onsets are; a half-rate seed is corrected exactly
+     * while an onset is worth more than two penalties, which it is nowhere
+     * near at the shipped {@link #TIGHTNESS}. The forms need only that an
+     * onset is worth several units on a unit-variance envelope and that the
+     * floor is slightly negative — properties of {@link OnsetEnvelope}, not
+     * of a fixture.
+     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}
+     * pins both reachable outcomes. That is the design, not a hole: resolving
+     * the octave is {@link TempoEstimator}'s perceptual prior's job, and
+     * seeds an octave out no longer reach the recursion —
+     * {@link #divideOutSubdivision} corrects them against the recording's
+     * pulse first.
      *
-     * <p><strong>Since #200 nothing in production reads the median this
-     * computes, and the paragraph above used to claim every stage downstream
-     * did.</strong> {@code Score.estimatedTempo()} answers from
-     * {@link dev.olivelli.musicwizard.core.model.BeatGrid#steadyPulseRate()}
-     * instead, and {@code AudioTranscriber}'s progress line followed it there.
-     * The one remaining reader of {@link Result#beatsPerMinute()} <em>in
-     * production</em> is that progress line's fewer-than-two-beats arm -- where
-     * this method returns the {@code fallback} seed and never reaches the median
-     * at all, which is precisely the case the paragraph above says must not
-     * happen. #240 carries that.
-     *
-     * <p>The median itself is still pinned by one test, and it is the only thing
-     * pinning it: {@code BeatTrackingTest.tracksEvenlySpacedBeats} asserts this
-     * figure within 2% of the click rate at five tempi. So retiring the field is
-     * a call site plus that test, not a call site alone, and it is a change to
-     * this module's public shape either way -- #241, not here.
-     *
-     * <p><strong>What this no longer means is that the dynamic program will
-     * rescue an octave error in the seed.</strong> An earlier version of this
-     * comment said it would, on the grounds that onset strength outvotes a
-     * mistaken period once the spacing penalty allows the correct gap. That was
-     * true only because the penalty was a forty-eighth of the published weight,
-     * and it was true in only one of the two directions even then: measured on
-     * clean click tracks at 90, 120 and 160 BPM, a seed at half the true rate
-     * was rescued and a seed at double it was not.
-     *
-     * <p>The two are not mirror images, although the penalties are — halving and
-     * doubling a gap both cost {@code (ln 2)^2} times the weight. What differs is
-     * what the correction buys. Correcting a half-rate seed <em>adds</em> beats,
-     * and each one collects an onset the seed was stepping over; correcting a
-     * double-rate seed <em>removes</em> beats that were sitting between onsets
-     * and were nearly free to keep.
-     *
-     * <p>Both cases have a closed form, which is better than a measurement of
-     * one. Write {@code A} for the strength a grid at the true period collects
-     * per beat, {@code F} for the envelope's floor between onsets, and {@code p}
-     * for what one halving or doubling of a gap costs — 1 at the old weight,
-     * {@code 100 * (ln 2)^2} at this one. Then the margin by which the tracker
-     * prefers to <em>follow</em> its seed rather than correct it is as below,
-     * each row measured over the span on which its two grids realign — one true
-     * beat in the first, two in the second, so the rows are not comparable with
-     * each other in magnitude, only in sign:
-     *
-     * <pre>
-     *   double-rate seed    p + F     following alternates onset and floor,
-     *                                 so A cancels out of it entirely
-     *   half-rate seed      2p - A    following collects one onset where
-     *                                 correcting collects two and pays two
-     *                                 penalties for them
-     * </pre>
-     *
-     * <p>So the two are not merely asymmetric; they turn on different things.
-     * <b>A double-rate seed is followed whenever {@code p} is deeper than the
-     * floor</b>, and how loud the onsets are never enters it. That is not
-     * "always": the form says the tracker should start correcting just below
-     * {@code p = -F}, and it does. On a 120 BPM click track that fixture's
-     * {@code F} of −0.221 puts the crossing at a {@link #TIGHTNESS} of
-     * 0.4596, and the dynamic program was swept either side of it and does
-     * change there. The sweep's step is far coarser than the margin, so read it
-     * as the form predicting where the behaviour turns and not as a bound on
-     * where. What matters here is that the condition holds at every weight
-     * this tracker has had, and by a wide margin at both, so <b>raising the
-     * weight cannot have taken that rescue away — there was never one to
-     * take</b>. <b>A half-rate seed is corrected exactly while an onset is worth
-     * more than two penalties</b>, which it comfortably is at the old weight and
-     * is nowhere near at this one. That is the whole of the asymmetry, and it is
-     * arithmetic rather than a property of the search window.
-     *
-     * <p><strong>The measured value of {@code A} is deliberately not quoted
-     * here, and that is the fourth answer to this question rather than the
-     * first.</strong> ({@code F} is quoted above, where the closed form is
-     * checked against the tracker, because it is the envelope's mean over its
-     * standard deviation rather than a peak that has to be found. It is not a
-     * constant of the code: #306 rescaled the envelope and moved it, which is
-     * exactly why the closed forms are written to need only its sign.) Four review passes went on
-     * correcting figures in this paragraph — an onset of 5.8, then 7.06, then
-     * 7.23, each a better measurement of a quantity nothing asserts, the first
-     * two of them a phase swept too coarsely. Then the trouble moved to the
-     * margins, where independent measurements of {@code p + F} landed at 0.68,
-     * 0.78 and 0.89: not disagreement, but the same quantity taken over grids
-     * ending with one more onset than floor, or one fewer, which shifts it by
-     * one beat's worth of the difference between them. No summary of that
-     * survived a reading, and a claim made along the way that the earlier error
-     * had left every margin understated was true of exactly one of the four
-     * margins in view — the half-rate one at the old weight — and false of the
-     * other three.
-     *
-     * <p>The closed forms need none of it. What they need is that an onset is
-     * worth several units on an envelope normalised to unit variance and that
-     * the floor between onsets is slightly negative, and both are properties of
-     * {@link OnsetEnvelope} rather than of a fixture.
-     *
-     * <p>What is pinned is the two outcomes still reachable — both directions at
-     * the shipped weight — in
-     * {@code BeatTrackingTest.theDynamicProgramFollowsItsSeedRatherThanFixingIt}.
-     * The old weight's two are history and no test in the tree can hold them.
-     * See also {@link #TIGHTNESS}.
-     *
-     * <p>That is the algorithm working as designed rather than a hole opened by
-     * fixing it — resolving the octave is what {@link TempoEstimator}'s
-     * perceptual prior is for, and a tracker that quietly disagrees with the
-     * period it was given is a tracker whose reported tempo means nothing. But
-     * it does move where an octave error becomes visible, so it is worth saying
-     * here rather than only where the weight is set.
-     *
-     * <p><strong>Seeds an octave out still occur; they no longer reach the
-     * recursion.</strong> {@link #track} reads every window's seed against the
-     * pulse the rest of the recording agrees on and divides out the subdivision
-     * before tracking — see {@link #divideOutSubdivision} — so the limitation
-     * above is one the tracker is no longer asked to work around. A window whose
-     * seed disagrees with the recording by something that is <em>not</em> a
-     * subdivision is left alone and still lands where the seed points. That was
-     * {@code bossa-cm.mp3}, whose windows read three eighths of the bar -- one
-     * and a half quarter notes, no subdivision and no octave -- until the
-     * harmonic-rhythm weighting removed the candidate itself (#231); the case
-     * this clause now serves is any window at a rate the table has no business
-     * correcting.
-     *
-     * <p>Median rather than mean so that one dropped or doubled beat does not
-     * drag the answer.
+     * <p>Median rather than mean so one dropped or doubled beat does not drag
+     * the answer.
      */
     private static double tempoOf(List<Double> beats, double fallback) {
         if (beats.size() < 2) {
@@ -401,15 +272,11 @@ public final class BeatTracker {
     /**
      * The pulse the recording is read against: the median of the window seeds.
      *
-     * <p>Median rather than mean, and rather than
-     * {@link TempoEstimator#estimate} over the whole envelope, because both of
-     * those answer this recording's question wrongly. A mean sits between two
-     * subdivisions and is neither. The whole-envelope estimate is not a summary
-     * of the windows at all -- on {@code g-blues-shuffle-cc.mp3} it reads 52.5
-     * where 25 of the 26 windows read about 105, since one autocorrelation over
-     * five minutes of shuffle has its strongest peak at the half-bar. Anchoring
-     * on it would correct the whole recording <em>to</em> the rate this exists
-     * to correct away from.
+     * <p>Median rather than mean — a mean sits between two subdivisions and
+     * is neither — and rather than {@link TempoEstimator#estimate} over the
+     * whole envelope, whose one autocorrelation over minutes of shuffle peaks
+     * at the half-bar: anchoring on it would correct the whole recording
+     * <em>to</em> the rate this exists to correct away from.
      *
      * <p><b>The median is a vote, so it is only right where most windows are,
      * and where they are not this makes things worse rather than leaving them
