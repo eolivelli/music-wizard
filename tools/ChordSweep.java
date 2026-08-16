@@ -148,6 +148,13 @@ public final class ChordSweep {
         switch (mode) {
             case "cache" -> cacheAll(named);
             case "score" -> {
+                if (!named.isEmpty()) {
+                    // Not ignored quietly: a named recording has no truth here,
+                    // and a score line that silently came from the benchmarks
+                    // would be read as that recording's.
+                    throw new IllegalArgumentException(
+                            "score reads the benchmarks only; " + named + " has no truth here");
+                }
                 System.out.println("samples with known ground truth:");
                 for (Bench b : cached()) {
                     if (b.truth() != null) {
