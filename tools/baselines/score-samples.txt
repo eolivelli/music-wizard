@@ -7,7 +7,7 @@ samples with known ground truth:
   bm-blues-slow.mp3: bars=187  root 98.0/187 (52.4%)  root+quality 88.0/187 (47.1%)  split 1  N.C. 0.1% of 336s
   cm-blues-68-95.mp3: bars=91  root 32.0/91 (35.2%)  root+quality 24.0/91 (26.4%)  split 0  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=208  root 106.0/208 (51.0%)  root+quality 106.0/208 (51.0%)  split 0  N.C. 0.4% of 319s
-  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.0/111 (11.7%)  split 9  N.C. 1.8% of 316s
+  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.0/111 (11.7%)  split 8  N.C. 1.8% of 316s
   jazz-251-c-140.mp3: bars=175  root 35.5/175 (20.3%)  root+quality 27.5/175 (15.7%)  split 8  N.C. 0.4% of 304s
   fm7-vamp-110.mp3: bars=143  root 132.0/143 (92.3%)  root+quality 132.0/143 (92.3%)  split 0  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 160.0/165 (97.0%)  split 0  N.C. 0.5% of 309s
@@ -22,7 +22,7 @@ bar phase the rows above rest on, at the estimator's own confidence in it (a pha
   phase bm-blues-slow.mp3: beat 1 of 4 at 0.3504  root 52.4%  best beat 0 at 55.1%
   phase cm-blues-68-95.mp3: beat 0 of 4 at 0.3500  root 35.2%  best beat 1 at 41.8%
   phase waltz-am-e7-160.mp3: beat 2 of 4 at 0.3510  root 51.0%  best beat 3 at 51.2%
-  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3757  root 21.6%  best beat 3 at 25.8%
+  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3757  root 21.6%  best beat 3 at 25.6%
   phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3532  root 20.3%  best beat 1 at 28.9%
   phase fm7-vamp-110.mp3: beat 1 of 4 at 0.3637  root 92.3%  best beat 0 at 95.8%
   phase eb7-vamp-130.mp3: beat 0 of 4 at 0.3500  root 97.6%  best beat 3 at 98.2%
@@ -32,17 +32,17 @@ keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
   key blues-shuffle-a-106bpm.mp3: A major at 63%  want A major  OK
   key blues-e-90bpm.mp3: E major at 54%  want E major  OK
-  key slow-68-40.mp3: A major at 60%  want A major  OK
+  key slow-68-40.mp3: A major at 59%  want A major  OK
   key g-blues-shuffle-cc.mp3: G major at 51%  want G major  OK
   key fm7-vamp-110.mp3: F minor at 98%  want F minor  OK
   key eb7-vamp-130.mp3: Eb major at 80%  want Eb major  OK
   key bossa-cm.mp3: F minor at 7%  want C minor  WRONG
-  key bm-blues-slow.mp3: B minor at 79%  want B minor  OK
+  key bm-blues-slow.mp3: B minor at 78%  want B minor  OK
   key cm-blues-68-95.mp3: C minor at 34%  want C minor  OK
   key waltz-am-e7-160.mp3: A minor at 56%  want A minor  OK
   key f-blues-swing-170.mp3: F major at 7%  want F major  OK
-  key jazz-251-c-140.mp3: A minor at 53%  want C major  WRONG
-  key ballad-wine-roses-65.mp3: A minor at 5%  want F major  WRONG
+  key jazz-251-c-140.mp3: A minor at 56%  want C major  WRONG
+  key ballad-wine-roses-65.mp3: D minor at 5%  want F major  WRONG
   key footprints-200.mp3: C minor at 24%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
   key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG

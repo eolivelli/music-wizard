@@ -122,7 +122,10 @@ public final class NnlsAblation implements PitchClassAblation {
      * positively homogeneous, so scaling a span's spectrum scales its residuals
      * with it and leaves every ratio this reports unchanged — while normalising
      * per beat first would give a beat that fell silent the same weight in a
-     * span as one that did not.
+     * span as one that did not. The consequence is that a run's residual is
+     * weighted by each beat's energy where the chroma the verdict is applied to
+     * weights every beat of the run alike, so the two disagree most about a
+     * chord whose third sounds only on its quiet beats.
      */
     public NnlsAblation beatSynchronous(List<Double> beatTimes) {
         Objects.requireNonNull(beatTimes, "beatTimes");
@@ -134,13 +137,11 @@ public final class NnlsAblation implements PitchClassAblation {
         double[][] out = new double[spans][bins];
         int[] counts = new int[spans];
         for (int span = 0; span < spans; span++) {
-            // The same mapping Chroma.beatSynchronous uses, so that span i here
-            // and span i there cover the same frames.
-            int from = (int) Math.floor(beatTimes.get(span) * frameRate);
-            int to = (int) Math.ceil(beatTimes.get(span + 1) * frameRate);
-            from = Math.clamp(from, 0, Math.max(0, spectra.length - 1));
-            to = Math.clamp(to, from + 1, spectra.length);
-            for (int frame = from; frame < to; frame++) {
+            // The mapping Chroma.beatSynchronous folds by, called rather than
+            // copied, so that span i here and span i there cover the same
+            // frames however that arithmetic changes.
+            int[] range = Chroma.spanFrames(beatTimes, span, frameRate, spectra.length);
+            for (int frame = range[0]; frame < range[1]; frame++) {
                 for (int bin = 0; bin < bins; bin++) {
                     out[span][bin] += spectra[frame][bin];
                 }

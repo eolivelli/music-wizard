@@ -867,6 +867,28 @@ class ChordEstimationTest {
         }
 
         @Test
+        @DisplayName("a run too weak for any candidate does not fall to the vetoed chord")
+        void theFloorDoesNotMoveWithTheResidual() {
+            // The floor is what a candidate scores against a chroma carrying no
+            // information, and the residual test is a reading of this
+            // recording, so the floor must not see it. It did in an earlier
+            // draft, and the two families move opposite ways: a vetoed major
+            // candidate's floor falls and a minor candidate's rises, which
+            // admits the chord the veto was meant to rule out.
+            //
+            // The run where that shows is one no candidate explains well -- the
+            // triad carries less of the register than a flat chroma would give
+            // it -- with the phantom third the loudest thing in it. The minor
+            // triad is the only candidate above its own floor here, and it is
+            // the answer whichever way the third is read.
+            double[] weak = chroma(9, 0.10, 0, 0.04, 4, 0.10, 1, 0.175, 7, 0.02);
+
+            assertThat(ChordEstimator.estimate(four(COMBINED), four(weak), four(BASS),
+                            ablation(0.072, 0.045, 0.819), beatTimes(4)).chords())
+                    .extracting(Chord::symbol).containsExactly("Am");
+        }
+
+        @Test
         @DisplayName("the residual is read once per chord, over the chord's own beats")
         void theAblationIsAskedOncePerRun() {
             // Not per beat: thirteen solves a beat is a different price, and a

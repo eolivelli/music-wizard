@@ -185,8 +185,8 @@ public final class ChordEstimator {
      * <p>Swept by {@code tools/ChordSweep.java score}, and this sits in the
      * middle of the band where every scored benchmark holds. Below it the
      * phantom survives on the recording of #527; above the band a played major
-     * third starts being discounted and the dominant-seventh benchmarks give up
-     * bars monotonically.
+     * third starts being discounted and the dominant-seventh benchmarks fall
+     * away.
      */
     private static final double PHANTOM_THIRD_SHARE_OF_ROOT = 0.20;
 
@@ -490,7 +490,7 @@ public final class ChordEstimator {
                 // explained keeps the answer it has rather than being given a
                 // seventh the count alone argues for.
                 if (qualityScore(sum(qualityChroma, i, j), templates.get(seventh),
-                        significance[i]) > flatScore(templates.get(seventh), significance[i])) {
+                        significance[i]) > flatScore(templates.get(seventh))) {
                     for (int frame = i; frame < j; frame++) {
                         out[frame] = seventh;
                     }
@@ -535,7 +535,7 @@ public final class ChordEstimator {
                 continue;
             }
             double score = qualityScore(summed, candidate, significance);
-            if (score > best && score > flatScore(candidate, significance)) {
+            if (score > best && score > flatScore(candidate)) {
                 best = score;
                 chosen = t;
             }
@@ -576,7 +576,9 @@ public final class ChordEstimator {
      * leaves its real thirds where a sparse one leaves its phantoms. It is
      * one-sided for the same reason the subtraction is: partial 5 of the root
      * is the major third and no partial of it is the minor third, so only one
-     * of the two can be manufactured. See {@link PitchClassAblation}.
+     * of the two can be manufactured. See {@link PitchClassAblation}, and #544
+     * for the register the residual is read over against the register this
+     * chroma is.
      */
     private static double qualityScore(double[] chroma, Template template,
                                        double[] significance) {
@@ -613,6 +615,17 @@ public final class ChordEstimator {
      * lower, moving with {@link #ROOT_EXPLAINS_MAJOR_THIRD} — the floor has to
      * be the bar each candidate is actually scored against.
      *
+     * <p><b>The residual test is deliberately not applied here</b>, though the
+     * subtraction is. The difference is what each of them is a statement
+     * about: the subtraction is a rule about the candidate, which a null model
+     * of that candidate must carry, while the residual test is a reading of
+     * this recording, which a chroma carrying no information cannot have made.
+     * Letting it through makes the floor move with the audio, and in the wrong
+     * direction — a vetoed major candidate's floor falls and a minor
+     * candidate's rises, so the veto ends up admitting the chord it was meant
+     * to rule out. {@code ChordEstimationTest#thePhantomThirdDoesNotDecideTheQuality}
+     * covers the case it inverted.
+     *
      * <p>Used as a floor, and <b>a floor rules out only candidates that fit
      * worse than noise — not a bad fit that is still better than noise</b>. So
      * the seventh goes on winning on weak evidence, which is the cost of
@@ -620,10 +633,10 @@ public final class ChordEstimator {
      * {@code ChordEstimationTest#weakTrebleEvidenceStillFavoursTheSeventh}
      * pins it; #274 carries the sweep and the cures measured against it.
      */
-    private static double flatScore(Template template, double[] significance) {
+    private static double flatScore(Template template) {
         double[] flat = new double[12];
         java.util.Arrays.fill(flat, 1.0 / 12);
-        return qualityScore(flat, template, significance);
+        return qualityScore(flat, template, null);
     }
 
     /**

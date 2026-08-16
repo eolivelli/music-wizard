@@ -379,6 +379,12 @@ public final class ChordSweep {
      * needs the transform and the beats, and it solves per chord span rather
      * than per frame, so rebuilding it costs seconds where the cached chroma
      * costs minutes.
+     *
+     * <p><b>Which makes a stale cache worse than stale.</b> The cache carries a
+     * format tag and no front-end version, so after a change upstream of chroma
+     * this pairs a chroma from before it with an ablation from after it — two
+     * views of two different fits, reported as one reading. Re-run {@code cache}
+     * whenever anything the front end does moves.
      */
     static ChordProgression estimate(Bench b, Cached c) throws Exception {
         AudioBuffer audio = AudioDecoder.decode(b.path());
