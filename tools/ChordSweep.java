@@ -103,12 +103,7 @@ import java.util.TreeMap;
  * <p>A commercial recording is exactly what cannot be committed, and it is also
  * where the defects that matter show up — #527 is one of those, and every figure
  * quoted on it came from a probe outside the repository for want of this. Such
- * a file has no ground truth here, so it is profiled and never scored, and the
- * same path has to be given to {@code cache} and to {@code profile}: the cache
- * is keyed by file name, and what keeps a path named here from quietly taking a
- * benchmark's place is that each cache file records the recording it holds. A
- * cache written before that does is rejected rather than read, so this change
- * costs one re-run of {@code cache}.
+ * a file has no ground truth here, so it is profiled and never scored.
  */
 public final class ChordSweep {
 
@@ -118,9 +113,7 @@ public final class ChordSweep {
     }
 
     /**
-     * @param path  where the recording is, which is also what its cache file
-     *     records: the cache is keyed by file name, so two recordings sharing
-     *     one are told apart here and nowhere else
+     * @param path  where the recording is, which {@link #cache} records
      * @param truth one cycle of the known changes, or null for a recording kept
      *     only as a control for {@code profile}
      */
@@ -228,13 +221,7 @@ public final class ChordSweep {
         }
     }
 
-    /**
-     * A named recording as a benchmark with no ground truth.
-     *
-     * <p>The path is carried rather than the name, because {@link #cache} keys
-     * the cache by name and {@link #load} is what tells two recordings sharing
-     * one apart. So the same path has to be given to both modes.
-     */
+    /** A named recording as a benchmark with no ground truth. */
     static List<Bench> asBenches(List<Path> named) {
         for (Path mp3 : named) {
             if (!Files.isRegularFile(CACHE.resolve(mp3.getFileName() + ".bin"))) {
@@ -246,8 +233,9 @@ public final class ChordSweep {
 
     /**
      * Marks a cache file as holding this format, and is checked on the way back
-     * in. A file written before the recording's own path was stored begins with
-     * the top half of a duration in seconds instead, which is not this.
+     * in. A file written before the recording's own name was stored begins with
+     * the top half of a duration in seconds, which no duration makes equal to
+     * this.
      */
     private static final int CACHE_FORMAT = 0x4D57_4331;
 
@@ -303,9 +291,21 @@ public final class ChordSweep {
                   double[][] combined, double[][] treble, double[][] bass) {
     }
 
-    /** How a recording is named in its own cache file, so the two modes agree. */
+    /** How a recording is named in its own cache file. */
     static String source(Path mp3) {
         return mp3.normalize().toString();
+    }
+
+    /**
+     * Whether two names are the same recording. Resolved against the working
+     * directory rather than compared as text, because the same file named
+     * absolutely and relatively is one recording and rejecting the second
+     * spelling leaves no way out: the message can only tell the user to cache
+     * the path they already have.
+     */
+    static boolean sameRecording(String held, Path mp3) {
+        return Path.of(held).toAbsolutePath().normalize()
+                .equals(mp3.toAbsolutePath().normalize());
     }
 
     static Cached load(Path mp3) throws Exception {
@@ -317,7 +317,7 @@ public final class ChordSweep {
                         + " re-run cache");
             }
             String held = in.readUTF();
-            if (!held.equals(source(mp3))) {
+            if (!sameRecording(held, mp3)) {
                 throw new IllegalStateException(CACHE.resolve(mp3.getFileName() + ".bin")
                         + " holds " + held + ", not " + source(mp3)
                         + "; the cache is keyed by file name, so re-run cache for this one");
@@ -491,11 +491,7 @@ public final class ChordSweep {
         // recording with no grid to score it on -- "the tonic was called major
         // for longer than minor" is #527. Spelled as Chord.symbol spells it,
         // which is ChordEstimator's provisional sharp preference and not a
-        // decision (#227): D#7 here is the Eb7 of the truth line above.
-        //
-        // Labels holding under a hundredth of the recording are summarised
-        // rather than listed, and their number and total are printed so that
-        // what the cut removed is on the line rather than assumed small.
+        // decision (#227), so D#7 here is a pitch class and not a spelling.
         System.out.printf("%-26s %-8s", "", "held");
         double cut = c.duration() / 100;
         heldFor.entrySet().stream()
