@@ -6,9 +6,8 @@ recordings.
 
 ## The onset envelope (`OnsetEnvelope`)
 
-Spectral flux over forty mel bands: the first difference of each band's
-decibel series, half-wave rectified (a note *ending* is not an onset) and
-summed. Three details matter more than the textbook picture:
+Spectral flux over mel bands: the first difference of each band's decibel
+series, half-wave rectified (a note *ending* is not an onset) and summed. Three details matter more than the textbook picture:
 
 - **Each band is low-passed along time before differencing.** A held note's
   partials beat inside FFT bins at rates far above the frame rate's Nyquist;
@@ -59,7 +58,9 @@ and each contributes its first half.
 - **Window seeds are corrected against the recording's pulse.** Each window
   estimates its own tempo (that is what follows drift), but which
   *subdivision* of the beat it landed on is a property of the recording:
-  every window's seed is read against the median of all seeds, and a seed
+  every window's seed is read against the median of the full windows'
+  seeds (a fraction-of-a-window tail is tracked but does not vote), and a
+  seed
   that is a musical subdivision (½, ⅓, 2, 3…) of that reference is divided
   out before tracking. The dynamic program itself will not fix an octave
   error — at the published weight it follows its seed — so the seed is the
@@ -102,8 +103,11 @@ length hung on the phase the downbeats agree on (#233).
   correcting tempo is usually correcting a half-or-double reading, and the
   beats are measured evidence. The corrected ratio also tells MW how many
   tracked pulses fill a bar (#139), which nothing can measure from audio.
-- `--first-downbeat` chooses the bar phase outright; the estimator is not
-  run, because a human who counted the bars outranks harmonic novelty.
+- `--first-downbeat` chooses the bar phase outright, as a time in
+  *seconds* snapped to the nearest tracked beat; the estimator is not run,
+  because a human who counted the bars outranks harmonic novelty.
+- `--time-signature` states the meter, which is **assumed 4/4 and never
+  inferred** — nothing on the audio path estimates a meter.
 
-Both are read in the meter's *counted* beats — what a metronome shows —
-which differs from quarter notes in compound time.
+`--tempo` is read in the meter's *counted* beats per minute — what a
+metronome shows — which differs from quarter notes in compound time.

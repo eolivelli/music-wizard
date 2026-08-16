@@ -31,11 +31,13 @@ singing and a mix is separation's, not the melody stage's (#503).
 
 ## Notes from the track (`MelodyEstimator`)
 
-A run of voiced frames is cut wherever the rounded pitch changes; pieces too
-short to be notes are removed (the decoded path *travels through* the
-pitches between two notes, and those transit frames would otherwise become a
-note of their own on every interval wider than a semitone); what is left
-absorbs the gaps.
+A run of voiced frames is cut where the pitch moves away from the note's
+own running mean — deliberately *not* by rounding frames to semitones and
+grouping, which would make a slightly-flat note vanish into its neighbours.
+Pieces too short to be notes are removed (the decoded path *travels
+through* the pitches between two notes, and those transit frames would
+otherwise become a note of their own on every interval wider than a
+semitone); what is left absorbs the gaps.
 
 The onset envelope — the same one the beat tracker reads — splits
 **re-articulations**: two notes of the same pitch with no gap are invisible

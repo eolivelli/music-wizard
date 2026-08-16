@@ -23,9 +23,11 @@ drive, and read by the pipeline unaided.
 
 ## What it does today
 
-- **Beats and tempo** tracked from the audio, with the corrections that
-  matter most exposed as flags (`--tempo`, `--first-downbeat`) — beat
-  tracking is the least reliable stage and everything downstream hangs on it.
+- **Beats and tempo** tracked from the audio — the meter is assumed 4/4
+  unless `--time-signature` says otherwise — with the corrections that
+  matter most exposed as flags (`--tempo`, `--first-downbeat`), because beat
+  tracking is the least reliable stage and everything downstream hangs on
+  it.
 - **Key**, reported with separate confidences for the signature and for which
   of a relative pair is home.
 - **Chords** from the full mix — triads, dominant and minor sevenths — behind
@@ -42,8 +44,8 @@ drive, and read by the pipeline unaided.
   `--transpose`, `--beat-marks` and `--repeat-tags`.
 - **Standard MIDI File input**, read symbolically, with its declared tempo
   and meter kept apart from anything estimated.
-- **A workspace per song** with per-stage caching, so re-running recomputes
-  only what changed.
+- **A workspace per song** with the analysis cached against its inputs, so
+  an unchanged re-run does not recompute it.
 
 Honestly: the quality is that of a good automatic chord-recognition service,
 plus notation — usable with light edits on most pop, and not a replacement

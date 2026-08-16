@@ -1,8 +1,9 @@
 # How MW works: the pipeline
 
-MP3 in; melody, bass line, chords, lyrics and a simplified piano arrangement
-out, engraved as one PDF per part. This page is the map; each stage has a page
-of its own:
+MP3 in; beats, tempo, key and chords out, engraved as a chord chart —
+with lyrics under the chords when supplied or transcribed, and a lead sheet
+when the melody stage is asked for. Bass and piano parts are the goal, not
+yet the product. This page is the map; each stage has a page of its own:
 
 - [Tempo, beats and bars](tempo-detection.md)
 - [Harmony: chords and key](harmony-detection.md)
