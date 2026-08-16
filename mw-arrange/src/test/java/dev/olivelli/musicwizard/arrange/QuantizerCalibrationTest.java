@@ -74,8 +74,8 @@ class QuantizerCalibrationTest {
         //
         // Measured per material and tempo: up to 120 BPM everything is exact
         // bar one seed of triplet sixteenths. Above it the sixteenths go
-        // first, and they go the unreadable way -- at the top of the range
-        // most land on the sextuplet grid, finer and tupletted. Scaling the
+        // first, and they go the unreadable way -- onto the sextuplet grid,
+        // finer and tupletted. Scaling the
         // penalties with the tempo was tried and makes it worse: it tilts
         // towards coarser grids, and the coarser neighbour of the sixteenth
         // grid is the triplet, so the sixteenths go there instead.

@@ -108,7 +108,7 @@ class HarmonicRhythmTest {
         // rescue at two periods sits at 9s, out of reach. This is the one
         // choice the factor makes inside a family, it only ever runs toward
         // the faster member, and the class javadoc says so rather than
-        // claiming neutrality (#231 review, rounds 1 and 2).
+        // claiming neutrality (#231).
         HarmonicRhythm rhythm = HarmonicRhythm.of(barPeriodicChroma(4.5, 63));
 
         double beat = rhythm.supportFor(0.5);

@@ -702,9 +702,9 @@ class LilyPondRendererTest {
             // indent of zero is satisfied by *any* unindented line, so column 1
             // matched a blank line and the next real diagnostic and swallowed
             // it. A skip needs a column of 2 or more; a generator showed
-            // essentially all the loss lived there -- with echoes
-            // absent or malformed at random it failed within 500 trials, always
-            // on this shape, and passes with the column floor in place. The cost
+            // essentially all the loss lived at column 1 -- with echoes
+            // absent or malformed at random it failed quickly, always on this
+            // shape, and passes with the column floor in place. The cost
             // is that a genuine column-1 echo is no longer recognised and its
             // text may be over-reported, which is the direction this class
             // prefers, and a bar check at column 1 means the bar line is the
@@ -1085,7 +1085,7 @@ class LilyPondRendererTest {
             // matches once the greedy location has absorbed the padding and the
             // source text.
             //
-            // These two lines are the echoes rounds 3 and 4 found bypasses in,
+            // These two lines are the echo halves the bypasses came through,
             // and both would be exempted from skipping by that guard, putting
             // the fabricated 9/9 back in front of a user. Asserted through the
             // parser: each is skipped today, and neither could be if the guard

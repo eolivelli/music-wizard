@@ -57,10 +57,9 @@ import org.junit.jupiter.api.Test;
  * {@link #theToleranceIsNarrowerThanTheWordItContains} here for the same reason
  * one class over.
  *
- * <p>What that does <em>not</em> buy is noticing a test that stops being run at
- * all. Rounds 1 and 2 of review on #164 each renamed
- * {@link StaffNotationOverloadTest} to {@code *IT} and watched {@code mvn
- * verify} go green one test quieter than before: surefire's
+ * <p>What that does <em>not</em> buy is noticing a test that stops being run
+ * at all. Renaming {@link StaffNotationOverloadTest} to {@code *IT} watches
+ * {@code mvn verify} go green one test quieter than before: surefire's
  * {@code failIfNoTests} is not configured anywhere in this build, so a
  * {@code *Test} that disappears is exactly as silent as an {@code *IT} that
  * does. The argument for the name is which job runs it, not what happens when

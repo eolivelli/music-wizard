@@ -340,8 +340,8 @@ class GlobalConfigLayerTest {
          * — one path per <i>module</i>, not per JVM — so two {@code mvn}
          * invocations in the same checkout plant and delete in each other's
          * windows. That is not theoretical: with the number of plant/delete
-         * windows taken from one to three, this was measured failing 7 of 12
-         * concurrent JVMs, against 0 of 12 before. A {@link FileLock}
+         * windows widened, this was measured failing a majority of concurrent
+         * JVMs where before it failed none. A {@link FileLock}
          * is held by the JVM rather than the thread, which is exactly the
          * complement of what {@code @ResourceLock} gives, so the pair covers
          * both and neither covers both alone.
@@ -451,8 +451,8 @@ class GlobalConfigLayerTest {
          *
          * <p>Takes the environment lock even though it only reads: a sibling
          * plants at the very location it asserts is absent, and without the
-         * lock a concurrent JVM's plant reads here as a real global config.
-         * Exactly that has been seen, once in twelve.
+         * lock a concurrent JVM's plant reads here as a real global config —
+         * seen in practice, not feared.
          */
         @Test
         @DisplayName("the test JVM must not be able to see a real global config")

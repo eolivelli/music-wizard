@@ -326,14 +326,15 @@ class FirstDownbeatOverrideTest {
         // DownbeatEstimator gives a phase it could not choose -- and #48 retuned
         // that scale while this branch was open.
         //
-        // This is the *only* ordering pinned here. Also asserting that
-        // the floor stays under what harmony reaches, measuring that ceiling from
-        // a synthesised four-chord loop, was tried and wrong twice over: the loop scored
-        // 0.539 against a nominal ceiling of 0.6, so it measured its own fixture
-        // rather than the ceiling and would have passed with the ceiling retuned
-        // to 0.55; and shortening it to four bars dropped it to 0.493, failing a
-        // test about the snap floor for a reason in another module. The claim it
-        // defended is not true either -- see SNAPPED_PHASE_FLOOR.
+        // This is the *only* ordering pinned here. Also asserting that the
+        // floor stays under what harmony reaches, measuring that ceiling from
+        // a synthesised four-chord loop, was tried and wrong twice over: the
+        // loop scored under the nominal ceiling, so it measured its own
+        // fixture rather than the ceiling and would have survived a retuned
+        // ceiling; and shortening the loop moved its figure below the floor,
+        // failing a test about the snap floor for a reason in another module.
+        // The claim it defended is not true either -- see
+        // SNAPPED_PHASE_FLOOR.
         BeatGrid estimatedGrid = grid(null, TimeSignature.FOUR_FOUR);
         double beatConfidence = estimatedGrid.beatConfidence().value();
 

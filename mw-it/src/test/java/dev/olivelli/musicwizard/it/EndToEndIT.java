@@ -216,8 +216,8 @@ class EndToEndIT {
         //
         // No tolerance is passed. The one assertEngravedCleanly knows about is a
         // spacing complaint about a tuplet number against a beam, and a chord
-        // chart has neither -- a carve-out with nothing behind it is the dead
-        // carve-out #92 twice took pains to avoid.
+        // chart has neither -- a carve-out with nothing behind it is the
+        // dead carve-out #92 took pains to avoid.
         assertEngravedCleanly("the chord chart", result);
         Path pdf = result.pdf().orElseThrow();
         assertThat(Files.size(pdf)).isGreaterThan(1000);

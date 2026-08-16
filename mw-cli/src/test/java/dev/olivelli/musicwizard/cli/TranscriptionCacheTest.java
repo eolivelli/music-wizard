@@ -197,9 +197,9 @@ class TranscriptionCacheTest {
     void skipSeparationIsWiredUpOnTheAudioPath() {
         // Through the CLI on real audio, because the two halves of the fix
         // that a key-builder test cannot reach are the wiring: whether the flag
-        // is read out of the config into the key at all, and whether the warning
-        // fires on this path or only on the MIDI one. Both mutants once
-        // survived a suite of 43.
+        // is read out of the config into the key at all, and whether the
+        // warning fires on this path or only on the MIDI one. Both mutants
+        // once survived the whole suite.
         //
         // A short synthesised WAV. It is decoded by the bundled ffsampledsp
         // natives rather than by the JDK's own provider

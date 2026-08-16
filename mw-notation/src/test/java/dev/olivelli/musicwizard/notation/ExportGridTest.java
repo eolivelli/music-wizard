@@ -59,10 +59,9 @@ class ExportGridTest {
     /**
      * Spans the sweep visits, pinned exactly.
      *
-     * <p>An exact figure rather than a floor, because a sweep silently cut to a
-     * hundredth of itself passes {@code isGreaterThan}. Two assertions here
-     * once read {@code isGreaterThan(1_000)} against real
-     * counts of 95,802 and 94,078.
+     * <p>An exact figure rather than a floor, because a sweep silently cut
+     * to a hundredth of itself passes {@code isGreaterThan} — two assertions
+     * here once used floors two orders of magnitude under the real counts.
      */
     private static final long EXPECTED_SPANS = 130_393;
 

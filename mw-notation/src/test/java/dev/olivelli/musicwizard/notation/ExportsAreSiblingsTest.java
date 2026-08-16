@@ -43,9 +43,9 @@ import org.junit.jupiter.api.Test;
  * day somebody needs a measure count and reaches for the exporter that already
  * computes one.
  *
- * <p>So it is checked here. The PR that added the exports claimed the rule held
- * and offered a {@code grep} as evidence; running the grep
- * returned four hits the claim said it would not. The prose was right and the
+ * <p>So it is checked here. The PR that added the exports claimed the rule
+ * held and offered a {@code grep} as evidence; running the grep returned
+ * hits the claim said it would not. The prose was right and the
  * evidence was wrong, which is the worse of the two ways round: a check nobody
  * can run is a check nobody will re-run.
  *
@@ -75,12 +75,12 @@ class ExportsAreSiblingsTest {
      * an export and not shared between them.
      *
      * <p><b>Derived rather than listed</b>, and that is the whole point.
-     * The list was eleven names somebody thought of, so a class added
-     * tomorrow — the one that needs a measure count and reaches for the
-     * exporter that already computes one, which is the case this test's javadoc
-     * names — was outside the check by default. A reviewer added exactly that
-     * class and the test passed. Now the default is the other way: a new file
-     * is on the route to a PDF unless it is deliberately classified.
+     * The list was names somebody thought of, so a class added tomorrow —
+     * the one that needs a measure count and reaches for the exporter that
+     * already computes one, which is the case this test's javadoc names —
+     * was outside the check by default; exactly that class was added and the
+     * test passed. Now the default is the other way: a new file is on the
+     * route to a PDF unless it is deliberately classified.
      */
     private static List<String> pdfPath() {
         List<String> path = sources()
