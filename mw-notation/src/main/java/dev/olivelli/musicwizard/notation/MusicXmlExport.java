@@ -77,10 +77,8 @@ import org.audiveris.proxymusic.YesNo;
  * not on the path to a PDF and nothing on that path may reach it. That holds by
  * construction rather than by intention: both this and {@link StaffNotation}
  * are readers of {@link StaffLayout} rather than of each other, and nothing on
- * the route to a PDF names either export. {@code ExportsAreSiblingsTest} checks
- * that mechanically — round 1 of review on #151 found the same claim made in
- * prose with a {@code grep} for evidence, and the grep returned four hits the
- * claim said it would not.
+ * the route to a PDF names either export. {@code ExportsAreSiblingsTest}
+ * checks that mechanically — the same claim made in prose was once wrong.
  *
  * <p>Which means the two exports cannot disagree about the music. Where a held
  * note is cut by a bar line, which bars carry a tuplet bracket, which notes
@@ -332,10 +330,8 @@ public final class MusicXmlExport {
      * {@link Marshaller} is not thread-safe and one is made per export.
      *
      * <p>Built here rather than taken from {@code Marshalling.getContext},
-     * which round 1 of review found is a double-checked lock whose fast path
-     * reads a plain {@link java.util.HashMap} outside the monitor. Two threads
-     * first exporting at the same moment race on it, and a racing {@code
-     * HashMap} read does not merely return the wrong answer — it can spin. A
+     * whose fast path reads a plain {@link java.util.HashMap} outside its
+     * monitor — a racing read there can spin, not merely answer wrongly. A
      * class initializer costs nothing and cannot.
      */
     private static final class Context {
@@ -364,9 +360,9 @@ public final class MusicXmlExport {
          * <p>The failure is held rather than thrown from the initializer.
          * Throwing from one gives the first caller an
          * {@code ExceptionInInitializerError} carrying the reason and every
-         * caller after it a bare {@code NoClassDefFoundError} carrying nothing —
-         * and a broken classpath is exactly the situation where the message is
-         * all anybody has. Round 2 of review.
+         * caller after it a bare {@code NoClassDefFoundError} carrying nothing
+         * — and a broken classpath is exactly the situation where the message
+         * is all anybody has.
          */
         static JAXBContext get() {
             if (CONTEXT == null) {
@@ -502,14 +498,11 @@ public final class MusicXmlExport {
             DirectionType directionType = factory.createDirectionType();
             directionType.setMetronome(metronome);
             Direction direction = factory.createDirection();
-            // The qualifier first, as its own direction-type, which is how
-            // MusicXML spells a word standing next to a metronome mark. It is
-            // the same word LilyPond prints, from the same constant: this file
-            // and the .ly are two spellings of one page, and a reader that
-            // engraves this one -- MuseScore draws a metronome as a note and a
-            // number -- would otherwise state as exact the figure the PDF marks
-            // as an estimate. Round 1 of review found the two goldens of one
-            // fixture already disagreeing about it.
+            // The qualifier first, as its own direction-type — the same word
+            // LilyPond prints, from the same constant: this file and the .ly
+            // are two spellings of one page, and a reader engraving this one
+            // would otherwise state as exact the figure the PDF marks as an
+            // estimate.
             DirectionType qualifier = factory.createDirectionType();
             FormattedTextId words = factory.createFormattedTextId();
             words.setValue(TempoMark.ESTIMATE);

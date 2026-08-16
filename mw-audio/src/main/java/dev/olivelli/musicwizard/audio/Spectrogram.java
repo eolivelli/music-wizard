@@ -67,34 +67,9 @@ public record Spectrogram(float[][] magnitudes, int sampleRate, int windowSize, 
      * than a bug being caught. The structural clauses are the ones that will
      * ever fire, on a hand-built spectrogram.
      *
-     * <p>The scan is one pass over the magnitudes, and a run pays it twice --
-     * as the <em>first</em> construction in the process, which is the one that
-     * costs. Over five minutes at 22.05 kHz, four fresh JVMs each, timing the
-     * first {@code new Spectrogram} and then four more in the same JVM:
-     *
-     * <pre>
-     *   resolution        values     first        thereafter
-     *   4096/1024 harmony  13.2 M   16.3-16.6 ms   5.8-6.4 ms
-     *   1024/128  onsets   26.5 M   24.9-25.7 ms  12.7-13.5 ms
-     * </pre>
-     *
-     * <p>Against <b>370 to 479 ms</b> and <b>720 to 843 ms</b> to compute those
-     * two, so the check is 3% to 4% of the transform it guards either way.
-     *
-     * <p>Both columns are quoted because they answer different questions, and
-     * conflating them is how this paragraph has been wrong twice. The first
-     * column is what a recording pays; the second is what a
-     * {@code checkStructure()} called repeatedly would cost, which is what
-     * issue #79 needs. An earlier draft quoted the second column and described
-     * it as the first, and the draft before that explained the resulting 3.7x
-     * gap as a difference between resolutions.
-     *
-     * <p>It was not one. The onset resolution really does scan twice the data,
-     * and the two columns are far enough apart that no repeat of one resolution
-     * overlaps the other. But the <em>default</em> resolution scans 13,238,900
-     * values against harmony's 13,228,344 -- 0.08% apart -- so any gap measured
-     * between those two is method, not resolution, and that was the pair the
-     * 3.7x was drawn from.
+     * <p>The scan is one pass over the magnitudes, measured at a few percent
+     * of the transform it guards, so it is affordable even paid on every
+     * construction (#79 is the repeated-check case).
      *
      * <p>Like {@link AudioBuffer}, this validates at construction and shares
      * the array rather than copying it, so a caller that writes through

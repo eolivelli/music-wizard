@@ -160,11 +160,10 @@ public final class ChordChart {
      * <p>The two differ only when the harmony starts after a meter change, and
      * then it is the piece's that is wrong: it would name a meter no bar of the
      * chart is in, and -- because the tempo is counted in this same meter --
-     * hand a 6/8 chart a metronome mark 50% fast, which is the failure the
-     * counted beat exists to prevent, arriving by the other door. Round 2 of
-     * review found that on the text chart; it is answered here rather than
-     * there because the engraving now needs the same answer, and a second copy
-     * of the rule is a second chance for the two charts of one score to be
+     * hand a 6/8 chart a metronome mark half again too fast — the failure the
+     * counted beat exists to prevent, arriving by the other door. Answered
+     * here because both emitters need the same answer, and a second copy of
+     * the rule is a second chance for the two charts of one score to be
      * counted differently. A chart holding several meters says so beside this
      * one; see {@link #meterChanges}.
      */
@@ -222,13 +221,9 @@ public final class ChordChart {
     private static String tempo(double quarterBpm, TimeSignature meter) {
         // Locale.ROOT, because this number is meant to be typed back in via
         // --tempo and picocli parses it with Double.valueOf. What a default
-        // locale changes here is the digits and not the separator: %.0f prints
-        // no fractional part, so no decimal comma can arise from it, but under
-        // ar_EG it prints Arabic-Indic digits, which Double.valueOf rejects.
-        // Round 2 of review on #216 found this comment claiming the comma --
-        // AnalyzeCommand prints the same tempo with %.1f, where it is real, and
-        // the sentence had been carried across to a formatter that cannot
-        // reach it.
+        // locale changes here is the digits, not the separator: %.0f prints no
+        // fractional part, but some locales print digits Double.valueOf
+        // rejects.
         if (meter.beatUnitQuarters() == 1.0) {
             return String.format(Locale.ROOT, "%.0f BPM", quarterBpm);
         }

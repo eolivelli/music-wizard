@@ -37,8 +37,8 @@ import java.util.Optional;
  * notes per minute, so an unqualified figure in 6/8 is a metronome marking 50%
  * fast. The figure itself has to be {@link #headline}'s, which is what the text
  * chart prints, or the page contradicts the two lines the user read before
- * looking at it. And how much to trust it is {@link #ESTIMATE}, which round 1
- * of review found stated two ways in two goldens of one fixture.
+ * looking at it. And how much to trust it is {@link #ESTIMATE}, once stated
+ * two ways in two goldens of one fixture.
  *
  * <p>How each emitter reaches it differs, and only the decision is shared. The
  * chart asks {@link #of} directly. A staff goes through {@link StaffLayout},
@@ -68,12 +68,10 @@ record TempoMark(NoteValue unit, long perMinute) {
      * The word that says the figure is an estimate, in the one place both
      * spellings of the mark read it from.
      *
-     * <p>Three emitters print this mark -- LilyPond twice and MusicXML once --
-     * and a constant is what stops two of them agreeing on the number while
-     * disagreeing about how much to trust it. Round 1 of review found exactly
-     * that: the qualifier had reached {@link StaffNotation} and not
-     * {@link MusicXmlExport}, so one fixture's two goldens stated the same
-     * tempo with two different confidences.
+     * <p>Three emitters print this mark, and a constant is what stops two of
+     * them agreeing on the number while disagreeing about how much to trust
+     * it — which happened when the qualifier reached {@link StaffNotation}
+     * and not {@link MusicXmlExport}.
      *
      * <p>"ca." rather than "≈" or "approx.": it is the abbreviation engraving
      * already uses for this, and unlike "≈" it cannot be misread as "=" at

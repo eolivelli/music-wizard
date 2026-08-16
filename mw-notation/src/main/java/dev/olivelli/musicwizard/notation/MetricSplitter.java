@@ -243,18 +243,12 @@ final class MetricSplitter {
      *       where the reader is counting can run as long as it likes.
      * </ul>
      *
-     * <p>Three rounds of review went into that shape, and the two discarded
-     * versions are worth recording because both were wrong in the same direction.
-     * Round 1 tested length alone and hid compound beats. Round 2 tested the
-     * enclosing <em>unit's</em> size, which equals the symbol's only when the bar
-     * has a unit longer than a beat — it does not in 3/4, 5/4, 6/4 or 7/8, where
-     * the bar divides straight into beats, so a whole note could still swallow
-     * four beats of a 5/4 bar. Round 3 caught the replacement exempting a symbol
-     * of <em>exactly</em> a dotted beat, which in those same meters covers a
-     * complete beat: 3/4 wrote {@code [0.75..2.25]} as one {@code 4.} while 4/4
-     * tied the identical span. Each fix stopped at the layer the example came
-     * from. This one asks about the symbol and the beats directly, so there is no
-     * proxy left to be wrong about.
+     * <p>Two discarded shapes were wrong in the same direction: testing
+     * length alone hid compound beats, and testing the enclosing unit's size
+     * equals the symbol's only when the bar has a unit longer than a beat —
+     * not in the meters whose bar divides straight into beats. This asks
+     * about the symbol and the beats directly, so there is no proxy left to
+     * be wrong about.
      */
     private static boolean mayStartHere(double from, double to, double beatUnit,
                                         boolean compound) {

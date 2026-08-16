@@ -303,15 +303,10 @@ final class StaffLayout {
      * the caller built by hand does not silently lose either end.
      *
      * <p><b>This is a function of the score and not of which part is being
-     * engraved</b>, and that is the property to preserve if it is ever changed.
-     * Round 7 found the start score-wide and the end track-local, so a part that
-     * dropped out early ended its staff mid-system. Round 8 clamped other parts'
-     * ends to the length of the recording, to stop one badly quantized note
-     * padding every staff — and round 9 found that clamp both inert at ordinary
-     * song lengths, where a stray note at bar 101 is still inside a four-minute
-     * recording, and harmful, because clamping other parts while never clamping
-     * this one made the answer depend on which part you asked, which is round 7's
-     * defect again. The clamp is gone.
+     * engraved</b>, and that is the property to preserve if it is ever
+     * changed: a track-local end let a part that dropped out early end its
+     * staff mid-system, and a later clamp on other parts' ends made the
+     * answer depend on which part you asked — the same defect again.
      *
      * <p>So a note quantized a hundred bars late does lengthen every staff in the
      * score, and that is deliberate: the score says the piece is a hundred bars

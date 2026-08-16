@@ -780,11 +780,10 @@ public final class MidiTranscriber {
      * in a type 0 file the single track's name is a track name rather than a
      * title, and there is no title to take.
      *
-     * <p>Deliberately not "the first track that produced no notes", which an
-     * earlier draft used to avoid depending on the file type. A named part whose
-     * notes have been deleted -- what a muted or emptied track looks like in a
-     * DAW export -- sits between the conductor track and the first sounding one,
-     * and the piece was then titled after it.
+     * <p>Deliberately not "the first track that produced no notes": a named
+     * part whose notes have been deleted — a muted track in a DAW export —
+     * sits between the conductor track and the first sounding one, and the
+     * piece was then titled after it.
      */
     private static String readTitle(Track[] tracks) {
         return hasNotes(tracks[0]) ? null : readTrackName(tracks[0]);
