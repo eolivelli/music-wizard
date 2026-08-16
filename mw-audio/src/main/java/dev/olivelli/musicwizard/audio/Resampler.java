@@ -59,27 +59,12 @@ public final class Resampler {
      * above the bound. Double is the accurate side of the difference.
      *
      * <p>One thing worth knowing beyond the bound: the differences are common
-     * rather than rare, so this is not a last-bit curiosity. On the two
-     * conversions a real recording actually takes into the analysis rate,
-     * measured: <b>44.1k to 22.05k is bit-identical</b> -- the step is exactly
-     * 2, so {@code fraction} is always zero and no interpolation happens, which
-     * holds for any integer decimation -- and <b>48k to 22.05k differs on 15%
-     * of samples</b> on uniform noise, 0.9% on a triad.
-     *
-     * <p>Do not read a range off those two. Divergence varies from about 3% to
-     * 25% over the source rates a file might declare, it is not ordered by how
-     * steep the conversion is, and three successive attempts to state it as a
-     * swept range were each wrong at the floor. If you need the figure for some
-     * other pair, measure that pair.
-     *
-     * <p>Everything else about this difference -- how it distributes, how it
-     * relates to the exactness of the subtraction, and why the obvious bound of
-     * half an ulp of {@code |b - a|} is wrong by a factor of four -- is a
-     * side-question, and it was got wrong eight times over eight review rounds
-     * on PR #78, always by stating a measurement more broadly than it was
-     * taken. Those drafts are in this file's history from that PR. The bound
-     * above is what a caller needs; anyone who needs more should measure it
-     * rather than inherit it.
+     * rather than rare. An <b>integer decimation is bit-identical</b> —
+     * {@code fraction} is always zero, so no interpolation happens — while a
+     * fractional one differs on a substantial share of samples, a share that
+     * varies widely by source rate and is not ordered by how steep the
+     * conversion is. If you need the figure for a pair, measure that pair;
+     * the bound above is what a caller needs.
      */
     public static float[] resample(float[] samples, int fromRate, int toRate) {
         if (fromRate <= 0 || toRate <= 0) {

@@ -96,8 +96,8 @@ public final class TempoEstimator {
      * @param periodicity    fraction of the envelope's energy at the winning
      *                       period, 0 to 1. Comparable between two readings of
      *                       the same recording, and highly sensitive to tempo
-     *                       drift — a click track wandering by ±8% scores about
-     *                       0.12 where a rigid one scores 0.85.
+     *                       drift — a gently wandering click track scores a
+     *                       small fraction of a rigid one.
      * @param peakiness      how concentrated the envelope's departures from its
      *                       own mean are, 0 to 1: 0 when they are spread no more
      *                       thinly than noise spreads them, approaching 1 for
