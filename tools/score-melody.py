@@ -66,6 +66,7 @@ import argparse
 import json
 import math
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -415,20 +416,43 @@ def score_clip(jar: Path, clip: int, separated: bool = False,
 #: wrap it.
 REASON_BUDGET = 160
 
+#: How much of a URL inside one. A model URL is most of a fetch failure's
+#: length and is the same in every one of them, so it is what a bounded row
+#: gives up first: nothing is learned from the span the whole family shares.
+URL_BUDGET = 26
 
-def shortened(reason: str, budget: int = REASON_BUDGET) -> str:
-    """The reason, bounded, with the middle elided rather than the tail.
+ELLIPSIS = "..."
 
-    Keeping the head alone spends the budget on whatever the message happens
-    to put first, and a model fetch puts an invariant sentence and a URL
-    there -- so every download failure would read alike however it failed,
-    which is the one thing a skip row exists not to do. The end of a message
-    is where the cause usually is, so both ends are kept.
+URL = re.compile(r"https?://\S+")
+
+
+def elided(text: str, budget: int) -> str:
+    """`text`, no longer than `budget`, with its middle taken out.
+
+    The middle rather than the tail, because the tail is where a message says
+    what actually happened: a fetch failure names the model and the URL first
+    and the reason last, so keeping the head alone would read the same however
+    the fetch failed.
     """
-    if len(reason) <= budget:
-        return reason
-    head = (budget - 3) // 2
-    return reason[:head] + "..." + reason[head + 3 - budget:]
+    if len(text) <= budget:
+        return text
+    if budget <= len(ELLIPSIS):
+        return ELLIPSIS[:budget]
+    head = (budget - len(ELLIPSIS)) // 2
+    tail = budget - len(ELLIPSIS) - head
+    return text[:head] + ELLIPSIS + text[-tail:]
+
+
+def shortened(reason: str) -> str:
+    """The reason, bounded, giving up the invariant spans before the rest.
+
+    Two steps, because eliding by position alone answers this family badly:
+    the offline message's actionable clause sits in the middle, between a cache
+    path and the URL it would fetch from. Taking the URL out first leaves that
+    message whole, and leaves the rest more of the budget than it needs.
+    """
+    return elided(URL.sub(lambda match: elided(match.group(), URL_BUDGET), reason),
+                  REASON_BUDGET)
 
 
 def unavailable_line(name: str, reason: str) -> str:

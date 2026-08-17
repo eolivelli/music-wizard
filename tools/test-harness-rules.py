@@ -1264,10 +1264,9 @@ class MelodyRules(unittest.TestCase):
                         melody.NO_STEM, melody.NO_BEATS):
             self.assertIn(literal, printed)
 
-    #: The lines analyze prints around the cause, verbatim, so the fixtures
-    #: below are as long as the real thing: the row is bounded, and boilerplate
-    #: between the marker and the provider's message eats the budget the cause
-    #: needs. Their literals are pinned against the source by the test above.
+    #: The lines analyze prints around the cause, verbatim: the markers have
+    #: to appear where they appear. Their literals are pinned against the
+    #: source by the test above.
     NO_PROVIDER_REPORT = ("  the melody is read from the full mix: no separation"
                           " provider; the tracker is monophonic, so it returns the"
                           " loudest periodic line rather than the voice\n"
@@ -1282,20 +1281,31 @@ class MelodyRules(unittest.TestCase):
     MODEL_URI = ("https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems"
                  "/resolve/main/vocals.onnx")
 
-    #: What ModelCache raises, in its own words. The four are what a machine
-    #: that cannot separate actually says, and the last two are the hard pair:
-    #: identical for the length of a sentence and a URL, and distinct only at
-    #: the very end.
+    #: What ModelCache raises, in its own words -- what a machine that cannot
+    #: separate actually says. Each is hard in its own way: the offline
+    #: message's actionable clause sits between a cache path and a URL, the
+    #: certificate failure's sits behind them, and the last three are identical
+    #: for the length of a sentence and a URL and differ only at the very end.
+    OFFLINE = ("model spleeter-2stems (vocals.onnx, 37 MB) is not in"
+               " /home/x/.cache/music-wizard/models and ml.offline is set;"
+               f" unset it to download from {MODEL_URI}")
+    CERTIFICATE = (f"could not download model spleeter-2stems from {MODEL_URI}:"
+                   " PKIX path building failed: sun.security.provider.certpath"
+                   ".SunCertPathBuilderException: unable to find valid"
+                   " certification path to requested target")
     FETCH_FAILURES = (
-        "model spleeter-2stems (vocals.onnx, 37 MB) is not in"
-        " /home/x/.cache/music-wizard/models and ml.offline is set;"
-        f" unset it to download from {MODEL_URI}",
+        OFFLINE,
+        CERTIFICATE,
         f"model spleeter-2stems downloaded from {MODEL_URI} does not match its"
         f" checksum (expected {'b' * 64}, got {'c' * 64}); refusing to keep it",
         f"could not download model spleeter-2stems from {MODEL_URI}: Connection reset",
         f"could not download model spleeter-2stems from {MODEL_URI}:"
         " No space left on device",
     )
+
+    def row_for(self, message: str) -> str:
+        return melody.unavailable_line("pop-axis-g-116", melody.first_line(
+            self.SEPARATOR_FAILED.format(message), melody.REASONS))
 
     def test_a_skip_row_names_the_cause_rather_than_the_symptom(self):
         """Both reports carry "tracking the melody in the full mix"; what
@@ -1304,7 +1314,7 @@ class MelodyRules(unittest.TestCase):
         self.assertIn("no separation provider",
                       melody.first_line(self.NO_PROVIDER_REPORT, melody.REASONS))
         self.assertIn("No space left", melody.first_line(
-            self.SEPARATOR_FAILED.format(self.FETCH_FAILURES[3]), melody.REASONS))
+            self.SEPARATOR_FAILED.format(self.FETCH_FAILURES[4]), melody.REASONS))
 
     def test_no_two_causes_produce_the_same_skip_row(self):
         """The property the row exists for, held against the messages that make
@@ -1312,14 +1322,29 @@ class MelodyRules(unittest.TestCase):
         row keeping only the head of a fetch failure reads the same however the
         fetch failed, and the action it should have prompted -- unset offline,
         delete the file, free the disk -- is the part it dropped."""
-        rows = {melody.unavailable_line("pop-axis-g-116", melody.first_line(
-                    self.SEPARATOR_FAILED.format(message), melody.REASONS))
-                for message in self.FETCH_FAILURES}
+        rows = {self.row_for(message) for message in self.FETCH_FAILURES}
         self.assertEqual(len(self.FETCH_FAILURES), len(rows),
                          f"causes sharing a row: {rows}")
         for row in rows:
             # Bounded, so a message of any length cannot wrap the row.
             self.assertLess(len(row), 220)
+
+    def test_the_bounded_row_keeps_the_part_that_says_what_to_do(self):
+        """Distinctness is not enough: the row has to carry the clause the
+        reader acts on. These two are what the two ways of losing it look like
+        -- keeping only the head drops the certificate failure's reason behind
+        a model name and a URL, and eliding by position alone drops the offline
+        message's clause, which sits between a cache path and that same URL."""
+        self.assertIn("ml.offline is set", self.row_for(self.OFFLINE))
+        self.assertIn("certification path", self.row_for(self.CERTIFICATE))
+
+    def test_nothing_elided_comes_back_longer_than_its_budget(self):
+        """Including the budgets too small to hold the ellipsis, which no
+        caller passes today: a bound that grows what it is given is a trap for
+        whoever adds the second caller."""
+        for budget in range(0, 40):
+            self.assertLessEqual(len(melody.elided("x" * 400, budget)), budget)
+            self.assertLessEqual(len(melody.elided("xy", budget)), max(budget, 2))
 
     def test_the_fetch_failures_are_quoted_from_the_cache_that_raises_them(self):
         """The fixtures above are only worth what they resemble, so their
@@ -1332,6 +1357,9 @@ class MelodyRules(unittest.TestCase):
                          " does not match its checksum (expected ",
                          "); refusing to keep it"):
             self.assertIn(fragment, cache)
+            # Both ways round, or a fixture could drift away from the source
+            # while every fragment still matched the source it drifted from.
+            self.assertIn(fragment, "\n".join(self.FETCH_FAILURES))
         models = (repo / "mw-ml/src/main/java/dev/olivelli/musicwizard/ml"
                   / "SpleeterModels.java").read_text(encoding="utf-8")
         # Split across two lines in the source, so held in halves.
