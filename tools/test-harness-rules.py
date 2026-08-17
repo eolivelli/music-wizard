@@ -1282,11 +1282,8 @@ class MelodyRules(unittest.TestCase):
                  "/resolve/main/vocals.onnx")
 
     #: What ModelCache raises, in its own words -- what a machine that cannot
-    #: separate actually says. Each is hard in its own way: the offline
-    #: message's actionable clause sits between a cache path and a URL, the
-    #: certificate failure's sits behind both, and the last two are one message
-    #: shape failing two ways, identical for a sentence and a URL and different
-    #: only at the very end.
+    #: separate actually says. What makes each of them hard is in the docstring
+    #: of the test that needs it.
     OFFLINE = ("model spleeter-2stems (vocals.onnx, 37 MB) is not in"
                " /home/x/.cache/music-wizard/models and ml.offline is set;"
                f" unset it to download from {MODEL_URI}")
