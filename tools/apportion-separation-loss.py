@@ -84,8 +84,27 @@ def split(jar: Path, voice: Path, mixed: Path, stem: Path,
     return voice_part, band_part, done.stdout.strip().splitlines()[-1]
 
 
+def channels(path: Path) -> int:
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+         "stream=channels", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True)
+    if probe.returncode != 0:
+        sys.exit(f"ffprobe failed on {path}:\n{probe.stderr}")
+    return int(probe.stdout.strip())
+
+
 def add(first: Path, second: Path, into: Path) -> Path:
-    """Two mono signals summed, at float, so nothing clips on the way in."""
+    """Two mono signals summed, at float, so nothing clips on the way in.
+
+    Mono is checked rather than assumed: amix negotiates a shared layout and
+    inserts its own conversion, which would put one side in at a level this
+    sum is not asking for -- the defect BED_TO_MONO exists for next door.
+    """
+    for path in (first, second):
+        if channels(path) != 1:
+            sys.exit(f"{path.name} is not mono; this sum would be scaled by the"
+                     " layout conversion amix inserts")
     done = subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error", "-i", str(first), "-i", str(second),
         "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:normalize=0[out]",
