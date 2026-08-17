@@ -60,6 +60,11 @@ import java.util.Objects;
  * measuring its own, so a chord and the melody over it cannot be named in
  * different frames. It is one offset for the whole recording, so a recording
  * whose tuning drifts is out of scope.
+ *
+ * <p>The chart is a second input to that same rounding, and the two compose
+ * rather than compete: the offset says where the semitone boundaries lie and
+ * {@link HarmonicPrior} says which side of one a pitch caught between them
+ * belongs to.
  */
 public final class MelodyEstimator {
 
@@ -163,7 +168,7 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
-        return segment(pitches, null, 0);
+        return segment(pitches, null, 0, HarmonicPrior.NONE);
     }
 
     /**
@@ -171,13 +176,14 @@ public final class MelodyEstimator {
      *
      * <p>The envelope-less overload exists for callers with nothing to offer
      * it, and keeps two notes of one pitch with no gap as the one note a pitch
-     * track can see. Neither of these two rounds anywhere but on A440; the
-     * pipeline uses {@link #estimate(PitchTrack, OnsetEnvelope, double)}.
+     * track can see. Neither of these two rounds anywhere but on A440 and with
+     * no harmonic context; the pipeline uses
+     * {@link #estimate(PitchTrack, OnsetEnvelope, double, HarmonicPrior)}.
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
-        return segment(pitches, envelope, 0);
+        return segment(pitches, envelope, 0, HarmonicPrior.NONE);
     }
 
     /**
@@ -191,17 +197,30 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones) {
+        return estimate(pitches, envelope, tuningOffsetSemitones, HarmonicPrior.NONE);
+    }
+
+    /**
+     * The same, letting the recording's own chart settle the roundings the
+     * pitch leaves open.
+     *
+     * @param prior what the chart says a note over it is likely to be; see
+     *              {@link HarmonicPrior} for what it may and may not decide
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones, HarmonicPrior prior) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(prior, "prior");
         if (!Double.isFinite(tuningOffsetSemitones)) {
             throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
                     + tuningOffsetSemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones);
+        return segment(pitches, envelope, tuningOffsetSemitones, prior);
     }
 
     private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
-                                     double tuningOffsetSemitones) {
+                                     double tuningOffsetSemitones, HarmonicPrior prior) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -218,7 +237,7 @@ public final class MelodyEstimator {
             while (end < pitches.frameCount() && pitches.voiced()[end]) {
                 end++;
             }
-            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid));
+            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, prior));
             frame = end;
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
@@ -265,7 +284,7 @@ public final class MelodyEstimator {
 
     /** One unbroken voiced run, cut into notes. */
     private static List<Note> notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
-                                         int from, int to, double grid) {
+                                         int from, int to, double grid, HarmonicPrior prior) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
@@ -277,7 +296,7 @@ public final class MelodyEstimator {
             }
         }
 
-        List<int[]> merged = mergeEqualPitches(pitches, kept, grid);
+        List<int[]> merged = mergeEqualPitches(pitches, kept, grid, prior);
 
         double[] onsets = new double[merged.size()];
         for (int i = 0; i < merged.size(); i++) {
@@ -291,7 +310,7 @@ public final class MelodyEstimator {
             // rather than to no note at all.
             double onset = onsets[i];
             double end = i + 1 < merged.size() ? onsets[i + 1] : runEnd;
-            int pitch = medianPitch(pitches, span, grid);
+            int pitch = medianPitch(pitches, span, grid, prior);
             // The span's own statistics for every piece of it: a
             // re-articulation is the same pitch by construction, and the
             // envelope says where it was struck, not what it sounded like.
@@ -406,14 +425,14 @@ public final class MelodyEstimator {
      * false note without taking away any true one it could otherwise have kept.
      */
     private static List<int[]> mergeEqualPitches(PitchTrack pitches, List<int[]> spans,
-                                                 double grid) {
+                                                 double grid, HarmonicPrior prior) {
         List<int[]> merged = new ArrayList<>(spans.size());
         for (int[] span : spans) {
             if (!merged.isEmpty()) {
                 int[] previous = merged.get(merged.size() - 1);
                 if (previous[1] == span[0]
-                        && medianPitch(pitches, previous, grid)
-                                == medianPitch(pitches, span, grid)) {
+                        && medianPitch(pitches, previous, grid, prior)
+                                == medianPitch(pitches, span, grid, prior)) {
                     merged.set(merged.size() - 1, new int[] {previous[0], span[1]});
                     continue;
                 }
@@ -493,9 +512,11 @@ public final class MelodyEstimator {
      * any grid. {@link #mergeEqualPitches} does read it, through this method,
      * so a grid can still join or separate two spans that were cut the same
      * way — two spans a wide wobble apart round together on one grid and
-     * apart on another.
+     * apart on another. So does the prior, for the same reason and by the same
+     * route.
      */
-    private static int medianPitch(PitchTrack pitches, int[] span, double grid) {
+    private static int medianPitch(PitchTrack pitches, int[] span, double grid,
+                                   HarmonicPrior prior) {
         double[] sorted = new double[span[1] - span[0]];
         for (int frame = span[0]; frame < span[1]; frame++) {
             sorted[frame - span[0]] = pitches.midiPitchAt(frame);
@@ -505,7 +526,8 @@ public final class MelodyEstimator {
         double median = sorted.length % 2 == 1
                 ? sorted[middle]
                 : (sorted[middle - 1] + sorted[middle]) / 2;
-        return (int) Math.round(median - grid);
+        return prior.round(median - grid, pitches.timeOf(span[0]),
+                pitches.timeOf(span[1] - 1) + 1 / pitches.frameRate());
     }
 
     private static double meanVoicedness(PitchTrack pitches, int[] span) {
