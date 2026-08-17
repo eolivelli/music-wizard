@@ -435,9 +435,12 @@ strength of how a page looked:
   annotated voices three ways — clean, through the separator with no band, and
   through it with a band mixed in. The middle row costs almost nothing, so the
   separator does not spoil a voice by itself; the whole loss appears once a
-  band is there. What that gap is made of the tool cannot say, and the two
-  candidates want opposite fixes: band the mask failed to remove, or voice the
-  mask removed with it (#503). How far the voice sits above the band is the
+  band is there. **What that gap is made of is known now (#503): it is voice
+  the mask removed, not band it left behind**, and
+  `tools/apportion-separation-loss.py` is what says so — it takes the stem
+  apart against the two sources the measurement mixed, and scores each part.
+  The mask is softer for it, and the voice is still lost where the band is
+  loud, which is #575. How far the voice sits above the band is the
   variable the tool now states rather than inherits — but the bed is added to a
   voice at its own recorded level, so a clip with no headroom left rails before
   the band is anywhere near loud, and what is lost is the side where the band
@@ -461,7 +464,7 @@ movement. *When* a sung note starts is
 genuinely ambiguous and #497 records the limit.
 
 Still missing: melody accuracy on a real mix, which is separation's quality
-problem rather than the tracker's (#503), piano
+problem rather than the tracker's (#575), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing

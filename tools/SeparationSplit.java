@@ -44,19 +44,29 @@ import org.jtransforms.fft.FloatFFT_1D;
  * time-frequency bin of the stem is divided between the two in proportion to
  * the energy the two sources have in that bin, which is the ideal ratio mask —
  * so the two parts add back to the stem, and every sample of it is attributed
- * rather than discarded. What the split cannot do is separate two sources that
- * genuinely overlap in one bin; there it apportions by energy, which is a
- * choice and not a measurement.
+ * rather than discarded.
+ *
+ * <p>What the split cannot do is separate two sources that genuinely overlap
+ * in one bin. There it apportions by a rule, and the trailing argument is that
+ * rule's exponent: squared shares are the default and give an overlapped bin
+ * mostly to whichever source is louder there, and a smaller exponent divides
+ * it more evenly. A conclusion that changes with it is a conclusion about the
+ * rule.
  *
  * <p>The transform is the separator's own frame, hop and window, because that
  * is the grid the mask was applied on, and a coarser one would smear a mask
- * decision across bins that were decided separately. The
- * run asserts its own analysis-synthesis round trip and the sum of the parts,
- * and refuses rather than reporting a split that does not add up.
+ * decision across bins that were decided separately. Nothing here checks that
+ * the two agree; keep them in step with {@code SpleeterStft} by reading it.
+ *
+ * <p>The run prints its own analysis-synthesis round trip and refuses rather
+ * than reporting a split over a transform that does not invert. The sum of the
+ * parts is printed beside it and is the same measurement over again — the
+ * inverse is linear and the shares add to one — so read it as arithmetic
+ * confirmed, not as a second witness.
  *
  * <pre>
  *   java -cp mw-cli/target/mw.jar tools/SeparationSplit.java \
- *       voice.wav mix.wav stem.wav voice-part.wav band-part.wav
+ *       voice.wav mix.wav stem.wav voice-part.wav band-part.wav [exponent]
  * </pre>
  *
  * <p>Driven by {@code tools/apportion-separation-loss.py}, which mixes the
@@ -67,15 +77,19 @@ public final class SeparationSplit {
     static final int FRAME = 4096;
     static final int HOP = 1024;
 
-    /** Below this the split does not add up and the numbers are not usable. */
     private static final double MAX_ERROR_DB = -60.0;
 
+    /** How an overlapped bin is divided; see the class javadoc. */
+    private static final double DEFAULT_EXPONENT = 2.0;
+
     public static void main(String[] args) throws IOException {
-        if (args.length != 5) {
+        if (args.length != 5 && args.length != 6) {
             System.err.println("usage: SeparationSplit voice.wav mix.wav stem.wav"
-                    + " voice-part.wav band-part.wav");
+                    + " voice-part.wav band-part.wav [exponent]");
             System.exit(2);
         }
+        double exponent = args.length == 6
+                ? Double.parseDouble(args[5]) : DEFAULT_EXPONENT;
         float[] voice = mono(args[0]);
         float[] mix = mono(args[1]);
         float[] stem = mono(args[2]);
@@ -83,6 +97,13 @@ public final class SeparationSplit {
             System.err.printf("lengths differ: voice %d, mix %d, stem %d%n",
                     voice.length, mix.length, stem.length);
             System.exit(2);
+        }
+        if (energy(stem) == 0) {
+            // Distinguished from a split that does not add up, which is what
+            // the error below would otherwise call it: zero over zero is a
+            // perfect reconstruction of nothing.
+            System.err.println("the stem is silent: nothing to apportion");
+            System.exit(1);
         }
 
         float[] band = new float[mix.length];
@@ -95,27 +116,29 @@ public final class SeparationSplit {
         float[][] bandSpec = stft.forward(band);
         float[][] stemSpec = stft.forward(stem);
 
-        float[][] voicePartSpec = new float[stemSpec.length][];
-        float[][] bandPartSpec = new float[stemSpec.length][];
+        // The two source spectrograms are overwritten with the parts they
+        // decide, frame by frame once their shares are taken: a whole
+        // recording is several hundred megabytes of spectrogram per minute and
+        // this tool is run over a corpus.
         for (int t = 0; t < stemSpec.length; t++) {
-            voicePartSpec[t] = new float[stemSpec[t].length];
-            bandPartSpec[t] = new float[stemSpec[t].length];
             for (int f = 0; f < Stft.BINS; f++) {
-                double v = energy(voiceSpec[t], f);
-                double b = energy(bandSpec[t], f);
+                // Over the energies, so the default exponent is the identity
+                // and asks nothing of Math.pow.
+                double v = Math.pow(energy(voiceSpec[t], f), exponent / 2);
+                double b = Math.pow(energy(bandSpec[t], f), exponent / 2);
                 // A bin where neither source has anything is a bin where the
                 // stem has nothing either, so which side the zero falls on
                 // decides nothing; the floor only keeps the ratio finite.
-                double share = v / (v + b + 1e-20);
-                voicePartSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * share);
-                voicePartSpec[t][2 * f + 1] = (float) (stemSpec[t][2 * f + 1] * share);
-                bandPartSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * (1 - share));
-                bandPartSpec[t][2 * f + 1] = (float) (stemSpec[t][2 * f + 1] * (1 - share));
+                double share = v / (v + b + 1e-30);
+                voiceSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * share);
+                voiceSpec[t][2 * f + 1] = (float) (stemSpec[t][2 * f + 1] * share);
+                bandSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * (1 - share));
+                bandSpec[t][2 * f + 1] = (float) (stemSpec[t][2 * f + 1] * (1 - share));
             }
         }
 
-        float[] voicePart = stft.inverse(voicePartSpec, stem.length);
-        float[] bandPart = stft.inverse(bandPartSpec, stem.length);
+        float[] voicePart = stft.inverse(voiceSpec, stem.length);
+        float[] bandPart = stft.inverse(bandSpec, stem.length);
 
         double roundTrip = errorDb(stft.inverse(stemSpec, stem.length), stem, stem);
         float[] sum = new float[stem.length];
@@ -125,8 +148,8 @@ public final class SeparationSplit {
         double split = errorDb(sum, stem, stem);
         if (roundTrip > MAX_ERROR_DB || split > MAX_ERROR_DB) {
             System.err.printf(Locale.ROOT,
-                    "the split does not add up: round trip %.1f dB, parts %.1f dB%n",
-                    roundTrip, split);
+                    "the transform does not invert here: round trip %.1f dB,"
+                    + " parts %.1f dB%n", roundTrip, split);
             System.exit(1);
         }
 
@@ -261,7 +284,7 @@ public final class SeparationSplit {
             float[] out = new float[length];
             for (int i = 0; i < length; i++) {
                 int at = i + FRAME / 2;
-                out[i] = weights[at] > 1e-8f ? accumulator[at] / weights[at] : 0f;
+                out[i] = weights[at] > 1e-9f ? accumulator[at] / weights[at] : 0f;
             }
             return out;
         }

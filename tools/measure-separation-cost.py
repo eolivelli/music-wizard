@@ -253,10 +253,6 @@ def separate(jar: Path, mixed: Path, workspace: Path) -> Path:
 
 
 def score(jar: Path, audio: Path, reference: list) -> tuple[float, float, float]:
-    # `analyze` returns the score and, only when asked to read the separated
-    # stem, why it could not. This tool separates by hand and hands it plain
-    # audio, so the reason is always absent -- but the pair still has to be
-    # unpacked, and a run that did not crashed before it scored anything.
     document, _ = melody.analyze(jar, audio)
     notes = melody.estimated_notes(document)
     if not notes:

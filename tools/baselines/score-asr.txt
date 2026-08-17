@@ -1,2 +1,2 @@
 lyric words MW hears in the audio, against the same file as truth (the transcription loop, #391):
-  sere-doltremare.mp3: words 289  wer 38.8% (sub 83, del 25, ins 4)  onset median 0.484s, max 24.026s  line end median 7.000s, max 22.600s  anchors 54/59 line-level, ends 53/57  source asr
+  sere-doltremare.mp3: words 289  wer 33.9% (sub 69, del 28, ins 1)  onset median 0.410s, max 23.539s  line end median 6.875s, max 16.400s  anchors 52/59 line-level, ends 52/57  source asr

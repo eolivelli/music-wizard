@@ -33,8 +33,10 @@ defects are not additive in the score, because a tracker that has already lost
 the voice cannot lose it twice.
 
 **What the split assumes.** Where voice and band genuinely occupy one bin it
-apportions by energy, which is a choice and not a measurement. It is the same
-assumption an ideal ratio mask makes, and it is why the parts are scored rather
+apportions by a rule, which is a choice and not a measurement — squared shares
+by default, the same assumption an ideal ratio mask makes. `--share-exponent`
+varies it, and a conclusion that moves with it is a conclusion about the rule
+rather than about the separator. It is also why the parts are scored rather
 than merely measured: what a stage does with a signal is a stronger statement
 than how much energy is in it.
 
@@ -50,6 +52,7 @@ ratio.
 
 Usage:  python3 tools/apportion-separation-loss.py [--clips 10] [--ratio 0]
                                                    [--bed FILE] [--keep DIR]
+                                                   [--share-exponent N]
                                                    [--jar mw-cli/target/mw.jar]
 """
 
@@ -70,17 +73,20 @@ REPO = Path(__file__).resolve().parent.parent
 
 SPLITTER = REPO / "tools" / "SeparationSplit.java"
 
+#: The splitter's own default, restated so the sweep can say what it used.
+SHARE_EXPONENT = 2.0
+
 ROWS = ("clean", "mix", "voice part", "clean + band part", "stem")
 
 
 def split(jar: Path, voice: Path, mixed: Path, stem: Path,
-          into: Path, name: str) -> tuple[Path, Path, str]:
+          into: Path, name: str, exponent: float) -> tuple[Path, Path, str]:
     """The stem's voice part and band part, and what the splitter reported."""
     voice_part = into / f"{name}-voice-part.wav"
     band_part = into / f"{name}-band-part.wav"
     done = subprocess.run(
         ["java", "-cp", str(jar), str(SPLITTER), str(voice), str(mixed),
-         str(stem), str(voice_part), str(band_part)],
+         str(stem), str(voice_part), str(band_part), str(exponent)],
         capture_output=True, text=True)
     if done.returncode != 0:
         sys.exit(f"splitting {name} failed:\n{done.stdout}{done.stderr}")
@@ -129,6 +135,10 @@ def main() -> None:
                              " the sung spans; repeat it for a sweep")
     parser.add_argument("--keep", metavar="DIR",
                         help="where to leave the split stems for listening")
+    parser.add_argument("--share-exponent", type=float, default=SHARE_EXPONENT,
+                        metavar="N",
+                        help="how a bin both sources occupy is divided; a"
+                             " conclusion that moves with it is about the rule")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
@@ -143,7 +153,9 @@ def main() -> None:
 
     print("What separation costs the melody, apportioned between the two defects")
     print(f"(bed: {bed.name}; the voice sits the stated decibels above it,")
-    print(" measured over each clip's own annotated sung spans)")
+    print(" measured over each clip's own annotated sung spans;")
+    print(f" a bin both sources occupy is divided by share exponent"
+          f" {args.share_exponent:g})")
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
@@ -187,7 +199,8 @@ def main() -> None:
                 stem = cost.separate(jar, mixed, work / f"ws_{clip}")
                 name = f"vocadito_{clip}_{ratio:+.0f}dB"
                 voice_part, band_part, reported = split(
-                    jar, voice, mixed, stem, keep or work, name)
+                    jar, voice, mixed, stem, keep or work, name,
+                    args.share_exponent)
                 over_clean = add(voice, band_part,
                                  (keep or work) / f"{name}-clean-plus-band.wav")
 
@@ -205,6 +218,11 @@ def main() -> None:
                           f"   voicing {100 * row[key][2]:5.1f}%")
                 shutil.rmtree(work / f"ws_{clip}", ignore_errors=True)
                 mixed.unlink(missing_ok=True)
+                if not keep:
+                    # A sweep leaves several float wavs per clip per ratio
+                    # behind otherwise, and the scores are the output.
+                    for spent in (voice_part, band_part, over_clean):
+                        spent.unlink(missing_ok=True)
 
             if not scores["clean"]:
                 print(f"   {ratio:+6.1f} dB: every clip {cost.REFUSED_LABEL}; nothing to apportion")

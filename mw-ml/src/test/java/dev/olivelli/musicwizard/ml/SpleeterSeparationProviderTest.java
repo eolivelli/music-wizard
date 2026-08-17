@@ -261,8 +261,7 @@ class SpleeterSeparationProviderTest {
     void maskExponent() {
         // Squaring first is Spleeter's default and cuts harder wherever the
         // other stem wins a bin, which is where a voice under a band lives
-        // (#503). Asserted on one bin because the end-to-end tests above run
-        // masks of exactly one and zero, where every exponent agrees.
+        // (#503).
         float[] mix = new float[2 * SpleeterStft.BINS];
         mix[0] = 1f;
         float[] stem = new float[SpleeterStft.MODEL_BINS];
@@ -277,6 +276,23 @@ class SpleeterSeparationProviderTest {
         // to the mix whatever the exponent.
         assertThat(masked[0] + SpleeterSeparationProvider.maskedFrame(mix, other, stem)[0])
                 .isCloseTo(1f, within(1e-6f));
+    }
+
+    @Test
+    @DisplayName("a negative estimate cannot make a stem louder than the mix")
+    void negativeEstimate() {
+        // Squaring made a broken checkpoint's negative magnitude harmless; the
+        // ratio of the estimates would turn one into a mask of thousands.
+        float[] mix = new float[2 * SpleeterStft.BINS];
+        mix[0] = 1f;
+        float[] stem = new float[SpleeterStft.MODEL_BINS];
+        stem[0] = -1f;
+        float[] other = new float[SpleeterStft.MODEL_BINS];
+        other[0] = 1f + 1e-7f;
+
+        float[] masked = SpleeterSeparationProvider.maskedFrame(mix, stem, other);
+
+        assertThat(masked[0]).isBetween(0f, 1f);
     }
 
     @Test
