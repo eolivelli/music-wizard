@@ -417,8 +417,13 @@ public final class AudioTranscriber {
             // this same signal's pitch track (#495, #497).
             OnsetEnvelope melodyEnvelope =
                     separated ? OnsetEnvelope.fromAudio(melodyAudio) : envelope;
+            // The mix's tuning, not the stem's, and the same figure the chroma
+            // was built at: a lead sheet whose chords and whose melody were
+            // rounded on different grids can name the same sounding pitch two
+            // ways. The band is also the better reference of the two, having
+            // more of the recording in it than one voice does (#566).
             NoteTrack melody = MelodyEstimator.estimate(
-                    PitchTracker.track(melodyAudio), melodyEnvelope);
+                    PitchTracker.track(melodyAudio), melodyEnvelope, tuning);
             if (melody.isEmpty()) {
                 progress.accept("no melody was found");
             } else {
