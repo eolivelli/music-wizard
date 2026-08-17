@@ -28,12 +28,21 @@ import java.util.Objects;
 /**
  * Turns a frame-by-frame pitch track into notes.
  *
- * <p>A run of voiced frames is cut wherever the rounded pitch changes, and the
- * pieces too short to be notes are removed rather than kept: between two notes
+ * <p>A run of voiced frames is cut wherever the rounded pitch changes, and a
+ * piece becomes a note only where the pitch settles in it: between two notes
  * the decoded path travels through the pitches in between, and those frames
  * would otherwise become a note of their own on every interval wider than a
  * semitone. What is left absorbs the gap, so a note runs up to the start of the
  * next one and a boundary is placed once rather than twice.
+ *
+ * <p><strong>A piece is a note when it holds a pitch, not when it is long
+ * enough</strong> (#566). Sung notes are short, so a rule that dropped the
+ * short pieces would drop real music — and a sung scoop into a note is not
+ * short: the running mean leaves it again every time the singer has climbed
+ * far enough, so one glide arrives here as a row of pieces whose medians sit
+ * between semitones. Asking each piece for a stretch the pitch stays inside
+ * {@link #STEADY_SEMITONES} separates the two, because a glide holds no pitch
+ * at any length.
  *
  * <p><strong>The onset envelope splits the re-articulations; the pitch track
  * decides everything else.</strong> Two notes of the same pitch with no gap
@@ -90,6 +99,17 @@ public final class MelodyEstimator {
      * note sung slightly sharp its own boundary.
      */
     private static final double SPLIT_SEMITONES = 0.6;
+
+    /**
+     * How far the pitch may wander inside a window as long as
+     * {@link #MIN_NOTE_SECONDS} and still count as held.
+     *
+     * <p>The two together are a rate, which is what tells a sung glide from a
+     * run of short notes; length alone does not (#566). Swept by
+     * {@code tools/GlideSweep.java}: the real singing improves over a wide band
+     * around this value and the rendered packages move nowhere in it.
+     */
+    private static final double STEADY_SEMITONES = 0.7;
 
     /**
      * The least envelope strength, in its standard-deviation units, that may
@@ -163,7 +183,7 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
-        return segment(pitches, null, 0);
+        return segment(pitches, null, 0, STEADY_SEMITONES);
     }
 
     /**
@@ -177,7 +197,7 @@ public final class MelodyEstimator {
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
-        return segment(pitches, envelope, 0);
+        return segment(pitches, envelope, 0, STEADY_SEMITONES);
     }
 
     /**
@@ -197,11 +217,31 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
                     + tuningOffsetSemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones);
+        return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES);
+    }
+
+    /**
+     * The same at a chosen steadiness, which is what {@code tools/GlideSweep.java}
+     * sweeps. The pipeline calls the overload above and gets
+     * {@link #STEADY_SEMITONES}.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones, double steadySemitones) {
+        Objects.requireNonNull(pitches, "pitches");
+        Objects.requireNonNull(envelope, "envelope");
+        if (!Double.isFinite(tuningOffsetSemitones)) {
+            throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
+                    + tuningOffsetSemitones);
+        }
+        if (!(steadySemitones > 0) || !Double.isFinite(steadySemitones)) {
+            throw new IllegalArgumentException("steadySemitones must be finite and positive,"
+                    + " got: " + steadySemitones);
+        }
+        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones);
     }
 
     private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
-                                     double tuningOffsetSemitones) {
+                                     double tuningOffsetSemitones, double steadySemitones) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -218,7 +258,7 @@ public final class MelodyEstimator {
             while (end < pitches.frameCount() && pitches.voiced()[end]) {
                 end++;
             }
-            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid));
+            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, steadySemitones));
             frame = end;
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
@@ -265,14 +305,14 @@ public final class MelodyEstimator {
 
     /** One unbroken voiced run, cut into notes. */
     private static List<Note> notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
-                                         int from, int to, double grid) {
+                                         int from, int to, double grid, double steadySemitones) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
         double runEnd = pitches.timeOf(to - 1) + frameSeconds;
         List<int[]> kept = new ArrayList<>();
         for (int[] span : spans) {
-            if ((span[1] - span[0]) * frameSeconds >= MIN_NOTE_SECONDS) {
+            if (holdsAPitch(pitches, span, confirmFrames, steadySemitones)) {
                 kept.add(span);
             }
         }
@@ -308,6 +348,30 @@ public final class MelodyEstimator {
             }
         }
         return notes;
+    }
+
+    /**
+     * Whether a span holds a pitch: some window of it {@code frames} long stays
+     * inside {@code steadySemitones}.
+     *
+     * <p>A span shorter than that window holds no pitch either, so this is the
+     * only test a piece faces.
+     */
+    private static boolean holdsAPitch(PitchTrack pitches, int[] span, int frames,
+                                       double steadySemitones) {
+        for (int start = span[0]; start + frames <= span[1]; start++) {
+            double low = Double.POSITIVE_INFINITY;
+            double high = Double.NEGATIVE_INFINITY;
+            for (int frame = start; frame < start + frames; frame++) {
+                double pitch = pitches.midiPitchAt(frame);
+                low = Math.min(low, pitch);
+                high = Math.max(high, pitch);
+            }
+            if (high - low <= steadySemitones) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
