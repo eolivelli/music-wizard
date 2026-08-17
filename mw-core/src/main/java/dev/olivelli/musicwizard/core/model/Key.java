@@ -209,11 +209,10 @@ public record Key(
      * The name with what is trusted about it, for anything a person reads.
      *
      * <p>The two decisions separately where they were recorded, because they
-     * fail differently and their product says only that one of them was weak:
-     * a signature at its floor and a confident tonic multiply out to the same
-     * figure as the reverse, and the reader's next move differs (#529). The
-     * single figure otherwise, since a key that carries no components has none
-     * to name.
+     * fail differently: multiplication is symmetric, so their product says
+     * only that one of the two was weak, and which one it was decides whether
+     * the answer is worth correcting by hand at all (#529). The single figure
+     * otherwise, since a key that carries no components has none to name.
      *
      * <p>Here rather than in each caller so that the chart, the summary and the
      * progress line cannot word it three ways.

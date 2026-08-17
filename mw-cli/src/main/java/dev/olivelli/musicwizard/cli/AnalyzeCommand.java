@@ -924,10 +924,9 @@ final class AnalyzeCommand implements Callable<Integer> {
      * anyway, because it is the one row whose failure mode is invisible: a key
      * and its relative minor are the same seven notes, so a wrong answer here
      * reads as plausible as a right one and only the confidence says which was
-     * settled and which was a coin flip. Both of the estimator's figures where
-     * it recorded them, since a shaky signature and a coin-flip tonic are
-     * different complaints and the reader's next move differs. The row is
-     * absent when nothing sounded and no key was estimated.
+     * settled and which was a coin flip. Which figures those are is
+     * {@link Key#displayNameWithConfidence()}'s answer. The row is absent when
+     * nothing sounded and no key was estimated.
      */
     private static List<String> audioSummary(Score score) {
         List<String> lines = new ArrayList<>();
