@@ -20,8 +20,13 @@ for every row. That table covers every file the chord table does, and the ones
 it does not: a key can be stated for a recording whose bar-by-bar changes are
 not written down here.
 
-Last it reports the minor-quality seconds of the recordings in NO_MINOR_CHORD,
-whose truth is an invariant rather than a grid -- see that table.
+Then the minor-quality seconds of the recordings in NO_MINOR_CHORD, whose truth
+is an invariant rather than a grid -- see that table.
+
+Last, for the recordings in VOCABULARY, the chart time carried by a chord the
+song does not hold. A stated set says nothing about when anything sounds, so it
+scores hallucination where the tables above score alignment, and a recording
+can carry both kinds of truth and both rows.
 
 The committed CI gate lives in mw-it and reads one of these recordings; this
 script is the local, all-samples view of the same question: is the tool getting
@@ -161,19 +166,57 @@ NO_MINOR_CHORD = {
     "johnny-b-goode.mp3": "uncommitted",
 }
 
-# The qualities that hold a minor third, by ChordQuality's own name and symbol.
-# ChordQuality.isMinorish() is the rule -- a third of three semitones -- and
+# Recordings whose complete chord set a musician has stated: every chord the
+# song holds, with no claim about when any of them sounds (#572). It costs an
+# ear and no annotation, and it prices a chord the estimator invented -- which
+# is what no grid can do for the recordings nobody has written a grid for.
+# uncommitted/list.txt carries the confirmation per file, as it does for the
+# table above.
+#
+# The set is written in this corpus's shorthand, so a plain letter is a major
+# triad, and two columns come of that -- split the way the grid rows' root and
+# root+quality columns are. A root outside the set is a chord that is not in the
+# song at all; a chord outside the set on a root inside it is a colour on a
+# chord that is. Both are read against zero and they are different kinds of
+# wrong.
+VOCABULARY = {
+    "la-canzone-del-sole.mp3": ("uncommitted", "A E D"),
+}
+
+# ChordQuality's constants and the symbols it writes them with.
 # tools/test-harness-rules.py holds this table to the enum, so a quality added
-# there cannot go uncounted here.
-MINOR_THIRD = {
+# there cannot reach a row here unnamed.
+QUALITY_SYMBOL = {
+    "MAJOR": "",
     "MINOR": "m",
     "DIMINISHED": "dim",
+    "AUGMENTED": "aug",
+    "SUSPENDED_SECOND": "sus2",
+    "SUSPENDED_FOURTH": "sus4",
+    "DOMINANT_SEVENTH": "7",
+    "MAJOR_SEVENTH": "maj7",
     "MINOR_SEVENTH": "m7",
     "MINOR_MAJOR_SEVENTH": "mMaj7",
     "HALF_DIMINISHED_SEVENTH": "m7b5",
     "DIMINISHED_SEVENTH": "dim7",
+    "SIXTH": "6",
     "MINOR_SIXTH": "m6",
+    "NONE": "N.C.",
 }
+
+# The qualities that hold a minor third, by ChordQuality's own name.
+# ChordQuality.isMinorish() is the rule -- a third of three semitones -- and
+# tools/test-harness-rules.py holds this set to the enum, so a quality added
+# there cannot go uncounted here.
+MINOR_THIRD = frozenset({
+    "MINOR",
+    "DIMINISHED",
+    "MINOR_SEVENTH",
+    "MINOR_MAJOR_SEVENTH",
+    "HALF_DIMINISHED_SEVENTH",
+    "DIMINISHED_SEVENTH",
+    "MINOR_SIXTH",
+})
 
 # DownbeatEstimator.BASE_CONFIDENCE: what it reports for a phase nothing at all
 # supports. Printed once in the phase block's header rather than tested against
@@ -183,6 +226,10 @@ MINOR_THIRD = {
 PHASE_FLOOR = 0.35
 
 LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+# One name per pitch class, for rows that name a chord the tool produced. Every
+# comparison here folds a spelling to a pitch class, so a row that printed the
+# tool's own spelling could name the same chord two ways on one recording.
+PITCH_NAME = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 ACCIDENTAL = {"NONE": 0, "SHARP": 1, "FLAT": -1, "DOUBLE_SHARP": 2, "DOUBLE_FLAT": -2}
 # ChordQuality's own symbols, so a truth string is read the way the tool writes
 # a chord. Only the qualities the corpus actually holds are listed: an unknown
@@ -468,9 +515,10 @@ def score_no_minor(mp3: Path, doc: dict) -> None:
     held: dict[str, float] = {}
     minor = 0
     for span in spans:
-        symbol = MINOR_THIRD.get(span.get("quality", "NONE"))
-        if symbol is None:
+        quality = span.get("quality", "NONE")
+        if quality not in MINOR_THIRD:
             continue
+        symbol = QUALITY_SYMBOL[quality]
         held[symbol] = held.get(symbol, 0.0) + span["endSeconds"] - span["startSeconds"]
         minor += 1
     duration = doc.get("durationSeconds", 0.0)
@@ -482,6 +530,57 @@ def score_no_minor(mp3: Path, doc: dict) -> None:
     print(f"  minor {mp3.name}: {total:.1f}s of {duration:.0f}s"
           f" ({100 * total / duration if duration else 0:.1f}%)"
           f"  spans {minor}/{len(spans)}"
+          f"  {columns if columns else 'none'}")
+
+
+def spell(chord: tuple[int, str]) -> str:
+    """A (pitch class, quality) as a lead-sheet symbol."""
+    return PITCH_NAME[chord[0]] + QUALITY_SYMBOL[chord[1]]
+
+
+def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
+    """Chart time carried by chords outside the stated set, read against zero.
+
+    N.C. carries no chord, so it is neither inside the set nor outside it: it is
+    held out of both columns and out of the time they divide, and printed
+    beside them. Counting it as time inside would let a recording read as no
+    chord at all print the row a perfect reading prints.
+    """
+    want = {parse_chord(c) for c in stated.split()}
+    roots = {pc for pc, _ in want}
+    spans = doc.get("chords", {}).get("chords", [])
+    held = nc = outside_root = outside_chord = 0.0
+    invented: dict[str, float] = {}
+    for span in spans:
+        seconds = span["endSeconds"] - span["startSeconds"]
+        chord = chord_of(span)
+        if chord is None:
+            nc += seconds
+            continue
+        held += seconds
+        if chord not in want:
+            outside_chord += seconds
+        if chord[0] not in roots:
+            outside_root += seconds
+            # By root, because it is the root column this explains, and because
+            # one invented root read with three qualities is one invented root.
+            name = PITCH_NAME[chord[0]]
+            invented[name] = invented.get(name, 0.0) + seconds
+    written = ",".join(spell(c) for c in sorted(want))
+    if not held:
+        # Every column below would be an honest zero over nothing at all.
+        print(f"  vocabulary {mp3.name}: {written}  no chord time to score"
+              f"  N.C. {nc:.1f}s")
+        return
+    # Longest first, and by name where two are equal, so the row is the same
+    # text for the same recording.
+    columns = ", ".join(f"{name} {seconds:.1f}s" for name, seconds
+                        in sorted(invented.items(), key=lambda kv: (-kv[1], kv[0])))
+    print(f"  vocabulary {mp3.name}: {written}"
+          f"  outside-root {outside_root:.1f}s of {held:.1f}s"
+          f" ({100 * outside_root / held:.1f}%)"
+          f"  outside-chord {outside_chord:.1f}s ({100 * outside_chord / held:.1f}%)"
+          f"  N.C. {nc:.1f}s"
           f"  {columns if columns else 'none'}")
 
 
@@ -551,6 +650,18 @@ def main() -> None:
             score_no_minor(REPO / where / name, doc)
     for name, where in missing:
         print(missing_line(f"minor {name}", where))
+
+    print("chords outside the complete set a musician stated for the whole"
+          " recording (want zero):")
+    missing = []
+    for name, (where, stated) in VOCABULARY.items():
+        doc = doc_for(name, where)
+        if doc is None:
+            missing.append((name, where))
+        else:
+            score_vocabulary(REPO / where / name, doc, stated)
+    for name, where in missing:
+        print(missing_line(f"vocabulary {name}", where))
 
 
 if __name__ == "__main__":
