@@ -221,8 +221,7 @@ public final class SeparationSplit {
 
     /**
      * 32-bit float WAV: the parts are written as they were computed, and one
-     * of them may sit tens of decibels under the mix. What a reader keeps of
-     * that is the reader's business — MW's own decoder takes 16 bits.
+     * of them may sit tens of decibels under the mix.
      */
     private static void writeWav(Path path, float[] samples) throws IOException {
         byte[] pcm = new byte[samples.length * 4];
