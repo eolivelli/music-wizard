@@ -17,6 +17,8 @@ and nothing is discarded. Then each part is scored against the same
 annotations:
 
   clean               the voice as recorded — the ceiling
+  mix                 the mix as given, not separated at all — the floor the
+                      separator has to beat to be worth running
   voice part          what the separator delivered of the voice, alone.
                       Everything between this and clean is the mask cutting
                       into the singing.
@@ -67,7 +69,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 SPLITTER = REPO / "tools" / "SeparationSplit.java"
 
-ROWS = ("clean", "voice part", "clean + band part", "stem")
+ROWS = ("clean", "mix", "voice part", "clean + band part", "stem")
 
 
 def split(jar: Path, voice: Path, mixed: Path, stem: Path,
@@ -189,6 +191,7 @@ def main() -> None:
                                  (keep or work) / f"{name}-clean-plus-band.wav")
 
                 row = {"clean": clean[clip],
+                       "mix": cost.score(jar, mixed, references[clip]),
                        "voice part": cost.score(jar, voice_part, references[clip]),
                        "clean + band part": cost.score(jar, over_clean, references[clip]),
                        "stem": cost.score(jar, stem, references[clip])}
