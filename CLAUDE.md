@@ -81,10 +81,12 @@ What is now top of the bar axis is which grids to believe: the veto that decides
 it catches a tracker that lost the beat and says nothing about one that is
 merely jittery (#429).
 
-Then: the vocabulary still has no major seventh,
-sixth, minor sixth or half-diminished, each of which was measured and costs more
-than it buys until four-note candidates can be ranked on something better than
-which extra note is louder (#287, #274).
+Then: the residual gate of #543 admitted the minor sixth and the
+half-diminished (#547). The vocabulary still has no major seventh or plain
+sixth, for two different reasons: the seventh degree cannot be
+residual-gated (its real and synthetic populations invert), and the sixth
+really is sounding, so it needs root evidence rather than presence evidence
+(#287, #274).
 
 Dominant sevenths are found now (#208) — they were found on two benchmarks and
 called plain triads on three others whose roots were read nearly perfectly. The
@@ -444,19 +446,22 @@ strength of how a page looked:
   the separator is not level-invariant even at a fixed ratio (#515). None of it
   is baselined.
 
-**Melody is read from a signal that holds nothing else (#494).**
-pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
-staff, chord symbols, lyrics. The stage is off unless `analyze --melody` asks
-for it, and that is the whole shape of the thing: a monophonic tracker does not
-fail on a full mix, it confidently returns the loudest periodic line, which on
-a band is the bass. The corpus carries both cases and
-`tools/baselines/score-melody.txt` scores them side by side, the accompanied
-packages as controls rather than targets. What is not solved is *when* a note
-starts (#497) and two notes of one pitch abutting (#495); both want the onset
-envelope, which this stage deliberately does not read yet.
+**Melody is read from the separated vocal where a separator can be had
+(#559), and from the raw signal otherwise (#494).** pYIN in `mw-dsp`,
+segmented into notes, engraved as a lead sheet — melody staff, chord symbols,
+lyrics. The stage is off unless `analyze --melody` asks for it. The tracker
+itself is monophonic: on whatever signal it is given it confidently returns
+the loudest periodic line, so without a separator a band reads as its bass —
+and a *played* melody largely does not survive a vocal separator, which is
+what `--skip-separation` is for (#560 is choosing by evidence). The
+melody baselines under `tools/baselines/` carry both signals; only one of
+their rows runs in CI — the rest need this machine's vocadito audio or its
+separation model — so read premerge's output rather than CI for melody
+movement. *When* a sung note starts is
+genuinely ambiguous and #497 records the limit.
 
-Still missing: melody from a real mix, which is separation's problem rather
-than the tracker's, piano
+Still missing: melody accuracy on a real mix, which is separation's quality
+problem rather than the tracker's (#503), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing
