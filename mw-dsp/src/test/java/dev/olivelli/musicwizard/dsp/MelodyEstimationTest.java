@@ -307,8 +307,7 @@ class MelodyEstimationTest {
             // Only a run's *first* span can be short. A later one opens where a
             // departure began, and the departure after it cannot begin before
             // the frame that confirmed this one, so it spans at least as long
-            // as a note must — which makes this the one shape that reaches the
-            // filter.
+            // as a note must.
             PitchTrack pitches = track(60.0, 1, 72.0, 40);
             NoteTrack melody = MelodyEstimator.estimate(pitches);
 
@@ -507,6 +506,92 @@ class MelodyEstimationTest {
         /** An envelope with no peak in it, so nothing is re-articulated. */
         private OnsetEnvelope silence() {
             return new OnsetEnvelope(new double[600], 172.0);
+        }
+    }
+
+    @Nested
+    @DisplayName("a pitch that never settles")
+    class Glides {
+
+        /** A glide, one frame per step, from one pitch to another inclusive. */
+        private static List<Object> ramp(double from, double to, int frames) {
+            List<Object> runs = new ArrayList<>();
+            for (int frame = 0; frame < frames; frame++) {
+                runs.add(from + (to - from) * frame / (frames - 1));
+                runs.add(1);
+            }
+            return runs;
+        }
+
+        private static Object[] runs(Object... parts) {
+            List<Object> flat = new ArrayList<>();
+            for (Object part : parts) {
+                if (part instanceof List<?> list) {
+                    flat.addAll(list);
+                } else {
+                    flat.add(part);
+                }
+            }
+            return flat.toArray();
+        }
+
+        @Test
+        @DisplayName("becomes no note of its own between the two it joins")
+        void aGlideIsNotANote() {
+            // The scoop #566 was filed about: about eight semitones in half a
+            // second, which the running mean leaves several times over.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(runs(60.0, 40, ramp(60.2, 67.8, 41), 68.0, 40)));
+
+            assertThat(pitches(melody)).containsExactly(60, 68);
+        }
+
+        @Test
+        @DisplayName("is dropped however long it lasts")
+        void lengthDoesNotRescueIt() {
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(runs(60.0, 40, ramp(60.2, 75.8, 84), 76.0, 40)));
+
+            assertThat(pitches(melody)).containsExactly(60, 76);
+        }
+
+        @Test
+        @DisplayName("does not take the notes around it with it")
+        void aRunOfShortNotesSurvives() {
+            // Each barely longer than the shortest note there can be, which is
+            // what real singing is made of: a rule that read length rather than
+            // stillness would remove these too.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(60.0, 7, 62.0, 7, 64.0, 7, 66.0, 7, 68.0, 7));
+
+            assertThat(pitches(melody)).containsExactly(60, 62, 64, 66, 68);
+        }
+
+        @Test
+        @DisplayName("leaves its time to the note it left")
+        void theNoteBeforeAbsorbsIt() {
+            PitchTrack pitches = track(runs(60.0, 40, ramp(60.2, 67.8, 41), 68.0, 40));
+            NoteTrack melody = MelodyEstimator.estimate(pitches);
+
+            assertThat(melody.notes().get(0).offsetSeconds())
+                    .as("no gap opens where the glide was")
+                    .isCloseTo(melody.notes().get(1).onsetSeconds(), within(1e-9));
+            assertThat(melody.notes().get(0).durationSeconds())
+                    .as("the note it left runs on through it")
+                    .isGreaterThan(40 * frameSeconds());
+        }
+
+        @Test
+        @DisplayName("is decided at a steadiness the bench may choose")
+        void theSteadinessIsSweepable() {
+            PitchTrack pitches = track(runs(60.0, 40, ramp(60.2, 67.8, 41), 68.0, 40));
+            OnsetEnvelope silence = new OnsetEnvelope(new double[600], 172.0);
+
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 4.0)))
+                    .as("wide enough to hold the glide, and its pieces are notes again")
+                    .hasSizeGreaterThan(2);
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0));
         }
     }
 }

@@ -6,12 +6,12 @@ Melody, note by note against each package's own MIDI melody track
   hiphop-m7vamp-bbm-90: notes=54/99  F1@50ms 6.5%  F1@100ms 7.8%  pitch 13.6%  voiced 17.4%
   melody-level1-c-96: notes=88/96  F1@50ms 12.0%  F1@100ms 14.1%  pitch 17.1%  voiced 48.1%
   melody-level2-g-84: notes=118/113  F1@50ms 14.7%  F1@100ms 20.8%  pitch 43.5%  voiced 70.0%
-  melody-level2pad-g-84: notes=114/113  F1@50ms 5.3%  F1@100ms 7.0%  pitch 21.3%  voiced 50.0%
-  melody-level3-am-108: notes=87/74  F1@50ms 39.8%  F1@100ms 47.2%  pitch 73.1%  voiced 93.0%
-  melody-level4-f-126: notes=83/95  F1@50ms 22.5%  F1@100ms 28.1%  pitch 34.0%  voiced 63.7%
-  pop-axis-g-116: notes=117/135  F1@50ms 13.5%  F1@100ms 23.8%  pitch 32.2%  voiced 52.2%
+  melody-level2pad-g-84: notes=113/113  F1@50ms 5.3%  F1@100ms 7.1%  pitch 21.4%  voiced 50.0%
+  melody-level3-am-108: notes=86/74  F1@50ms 40.0%  F1@100ms 47.5%  pitch 73.1%  voiced 93.0%
+  melody-level4-f-126: notes=81/95  F1@50ms 22.7%  F1@100ms 28.4%  pitch 34.1%  voiced 63.6%
+  pop-axis-g-116: notes=116/135  F1@50ms 13.5%  F1@100ms 23.9%  pitch 32.2%  voiced 52.2%
   pop-deceptive-f-72: no melody track; not scored
   pop-m6-m7b5-gm-100: no melody track; not scored
   pop-maj7-sixth-c-92: no melody track; not scored
   pop-threechord-c-108: notes=58/88  F1@50ms 11.0%  F1@100ms 15.1%  pitch 30.1%  voiced 45.4%
-  rocknroll-12bar-a-168: notes=8/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.7%  voiced 2.4%
+  rocknroll-12bar-a-168: notes=8/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.8%  voiced 2.4%
