@@ -141,7 +141,7 @@ Five MIDI transcriptions of the same song, fetched 2026-08-17 as reference
 input. Not ground truth and not scored: each is somebody's arrangement, none is
 authoritative, and none has been checked against the recording. Each carries the
 page and file URL it came from in a .url.txt beside it, which is its fetch
-command; Probe.java beside them is the throwaway that read them.
+command.
 
 Not five independent reads, though. candidate-3 and candidate-4 are one sequence
 note for note -- candidate-3 with Italian track names, candidate-4 the .kar

@@ -545,11 +545,18 @@ def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
     held out of both columns and out of the time they divide, and printed
     beside them. Counting it as time inside would let a recording read as no
     chord at all print the row a perfect reading prints.
+
+    The span count is the rest of that guard, and the reason it is not enough
+    to say the time is zero. A reading that collapsed onto one stated chord for
+    a whole recording -- the #185 shape -- spends no time outside the set and
+    scores every column perfect; only the structure says it read nothing. The
+    numerator is the root column's, which the breakdown also explains.
     """
     want = {parse_chord(c) for c in stated.split()}
     roots = {pc for pc, _ in want}
     spans = doc.get("chords", {}).get("chords", [])
     held = nc = outside_root = outside_chord = 0.0
+    counted = 0
     invented: dict[str, float] = {}
     for span in spans:
         seconds = span["endSeconds"] - span["startSeconds"]
@@ -562,15 +569,18 @@ def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
             outside_chord += seconds
         if chord[0] not in roots:
             outside_root += seconds
+            counted += 1
             # By root, because it is the root column this explains, and because
-            # one invented root read with three qualities is one invented root.
+            # one root read with several qualities is one root the song lacks.
             name = PITCH_NAME[chord[0]]
             invented[name] = invented.get(name, 0.0) + seconds
     written = ",".join(spell(c) for c in sorted(want))
-    if not held:
-        # Every column below would be an honest zero over nothing at all.
+    if held <= 0:
+        # Every column below would be an honest zero over nothing at all. Time
+        # that ran backwards lands here too, since dividing by it reports a
+        # negative share of a negative whole rather than saying anything.
         print(f"  vocabulary {mp3.name}: {written}  no chord time to score"
-              f"  N.C. {nc:.1f}s")
+              f"  spans {counted}/{len(spans)}  N.C. {nc:.1f}s")
         return
     # Longest first, and by name where two are equal, so the row is the same
     # text for the same recording.
@@ -580,6 +590,7 @@ def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
           f"  outside-root {outside_root:.1f}s of {held:.1f}s"
           f" ({100 * outside_root / held:.1f}%)"
           f"  outside-chord {outside_chord:.1f}s ({100 * outside_chord / held:.1f}%)"
+          f"  spans {counted}/{len(spans)}"
           f"  N.C. {nc:.1f}s"
           f"  {columns if columns else 'none'}")
 

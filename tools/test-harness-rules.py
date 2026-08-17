@@ -270,6 +270,32 @@ class Vocabulary(unittest.TestCase):
             self.assertIn("no chord time to score", line)
             self.assertNotIn("0.0%", line)
 
+    def test_a_reading_collapsed_onto_one_stated_chord_is_told_from_a_good_one(self):
+        """The #185 shape: one span of a chord the song does hold, over the
+        whole recording. It spends no time outside the set, so every column is
+        a perfect zero and only the span count separates the two."""
+        collapsed = vocabulary_line([span("A", 0.0, 300.0)])
+        healthy = vocabulary_line([span("A", 0.0, 100.0), span("D", 100.0, 200.0),
+                                   span("E", 200.0, 300.0)])
+        self.assertIn("outside-root 0.0s of 300.0s (0.0%)", collapsed)
+        self.assertIn("outside-root 0.0s of 300.0s (0.0%)", healthy)
+        self.assertIn("spans 0/1", collapsed)
+        self.assertIn("spans 0/3", healthy)
+        self.assertNotEqual(collapsed, healthy)
+
+    def test_the_span_count_is_the_roots_the_column_beside_it_counts(self):
+        line = vocabulary_line([span("A", 0.0, 1.0), span("C#MINOR", 1.0, 2.0),
+                                span("F#MINOR", 2.0, 3.0),
+                                span("EDOMINANT_SEVENTH", 3.0, 4.0)])
+        self.assertIn("spans 2/4", line)
+
+    def test_time_that_ran_backwards_is_not_divided_by(self):
+        """No evidence MW emits such a span; the row must not invent a negative
+        share out of one if it ever does."""
+        line = vocabulary_line([span("A", 4.0, 0.0)])
+        self.assertIn("no chord time to score", line)
+        self.assertNotIn("-", line)
+
     def test_the_invented_roots_are_summed_and_named_longest_first(self):
         """By root, and across qualities: one root read three ways is one root
         the song does not hold, and the column this names is the root one."""
