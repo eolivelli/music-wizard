@@ -470,10 +470,13 @@ public final class MelodyEstimator {
      * and taking the upper middle rounds every such note up — which is a bias
      * that shows only on the notes least able to afford one.
      *
-     * <p>The only place the grid is read. {@link #cut} measures each frame
-     * against the note's own running mean, which no constant offset moves, so
-     * where the notes are cut is the same on any grid and only which semitone
-     * they are called changes.
+     * <p>The only place the grid is read, and {@link #cut} does not read it:
+     * it measures each frame against the note's own running mean, which no
+     * constant offset moves, so a departure is confirmed at the same frame on
+     * any grid. {@link #mergeEqualPitches} does read it, through this method,
+     * so a grid can still join or separate two spans that were cut the same
+     * way — two spans a wide wobble apart round together on one grid and
+     * apart on another.
      */
     private static int medianPitch(PitchTrack pitches, int[] span, double grid) {
         double[] sorted = new double[span[1] - span[0]];

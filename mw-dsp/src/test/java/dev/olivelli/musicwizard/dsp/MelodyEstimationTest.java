@@ -401,8 +401,12 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("the grid names the notes and does not move their boundaries")
-        void theGridDoesNotMoveTheBoundaries() {
+        @DisplayName("a departure is confirmed at the same frame on either grid")
+        void theGridDoesNotMoveADeparture() {
+            // Only where nothing merges. Whether two spans are one note is
+            // decided by the semitone they round to, so a grid does move that
+            // -- see mergeEqualPitches. These three are far enough apart that
+            // no grid can call any two of them the same note.
             List<Note> onA440 = MelodyEstimator.estimate(phrase(), silence()).notes();
             List<Note> onItsOwnGrid =
                     MelodyEstimator.estimate(phrase(), silence(), FLAT).notes();
