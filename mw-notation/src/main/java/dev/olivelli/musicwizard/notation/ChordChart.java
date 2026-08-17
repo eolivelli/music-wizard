@@ -237,11 +237,11 @@ public final class ChordChart {
      * <p>Qualified rather than stated flat, because on the audio path this row
      * is an estimate whose failure mode is invisible: a key and its relative
      * minor share every note, so a wrong answer reads exactly as well as a right
-     * one and only the number distinguishes them.
+     * one. Which figures qualify it is {@link Key#displayNameWithConfidence()}'s
+     * answer.
      */
     private static String keyLine(Key key) {
-        return String.format(Locale.ROOT, "Key    %s (%.0f%% confidence)\n",
-                key.displayName(), 100 * key.confidence().value());
+        return "Key    " + key.displayNameWithConfidence() + "\n";
     }
 
     /**

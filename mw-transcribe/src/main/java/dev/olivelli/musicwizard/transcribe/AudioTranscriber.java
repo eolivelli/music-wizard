@@ -355,15 +355,10 @@ public final class AudioTranscriber {
         Optional<KeyEstimator.Estimate> key =
                 KeyEstimator.estimate(chords, 0, audio.durationSeconds());
         key.ifPresentOrElse(
-                // Both halves reported, because they fail differently and the
-                // user correcting the answer by hand needs to know which one to
-                // look at: naming the signature is the reliable decision, and
-                // choosing between a key and its relative minor is not.
-                estimate -> progress.accept(String.format(Locale.ROOT,
-                        "key %s (signature %.0f%%, tonic over its relative %.0f%%)",
-                        estimate.key().displayName(),
-                        100 * estimate.signatureConfidence().value(),
-                        100 * estimate.tonicConfidence().value())),
+                // Worded by the key itself, so this line, the summary and the
+                // chart cannot describe one key three ways.
+                estimate -> progress.accept(
+                        "key " + estimate.key().displayNameWithConfidence()),
                 () -> progress.accept("no chord sounds, so no key was estimated"));
 
         Score score = Score.empty(tempoMap, audio.durationSeconds())

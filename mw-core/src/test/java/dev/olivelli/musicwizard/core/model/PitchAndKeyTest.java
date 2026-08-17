@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -342,6 +343,43 @@ class PitchAndKeyTest {
 
             assertThat(bare.signatureConfidence()).isEmpty();
             assertThat(bare.tonicConfidence()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("the display name names both decisions where they were recorded")
+        void displayNameNamesBothDecisions() {
+            // The product of these two is the same as that of the pair the
+            // other way round, and the two ask the reader to do different
+            // things, so the line has to say which one was weak.
+            Key key = Key.estimated(f, Mode.MAJOR, 0, 12,
+                    Confidence.of(0.5), Confidence.of(0.97));
+
+            assertThat(key.displayNameWithConfidence())
+                    .isEqualTo("F major (signature 50%, tonic over its relative 97%)");
+        }
+
+        @Test
+        @DisplayName("the display name falls back to the one figure a key without components has")
+        void displayNameFallsBackToTheSummary() {
+            Key bare = Key.ofSeconds(f, Mode.MAJOR, 0, 12, Confidence.of(0.25));
+
+            assertThat(bare.displayNameWithConfidence()).isEqualTo("F major (25% confidence)");
+        }
+
+        @Test
+        @DisplayName("both figures are printed the same way under any locale")
+        void displayNameIsLocaleIndependent() {
+            Locale original = Locale.getDefault();
+            try {
+                Locale.setDefault(Locale.forLanguageTag("ar-EG"));
+                Key key = Key.estimated(f, Mode.MAJOR, 0, 12,
+                        Confidence.of(0.5), Confidence.of(0.97));
+
+                assertThat(key.displayNameWithConfidence())
+                        .isEqualTo("F major (signature 50%, tonic over its relative 97%)");
+            } finally {
+                Locale.setDefault(original);
+            }
         }
     }
 

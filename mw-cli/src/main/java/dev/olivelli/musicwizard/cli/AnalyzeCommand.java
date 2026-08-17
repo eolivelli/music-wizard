@@ -923,17 +923,17 @@ final class AnalyzeCommand implements Callable<Integer> {
      * has already said so in the verbs it used. The key carries its confidence
      * anyway, because it is the one row whose failure mode is invisible: a key
      * and its relative minor are the same seven notes, so a wrong answer here
-     * reads as plausible as a right one and only the number says which was
-     * settled and which was a coin flip. The row is absent when nothing sounded
-     * and no key was estimated.
+     * reads as plausible as a right one and only the confidence says which was
+     * settled and which was a coin flip. Which figures those are is
+     * {@link Key#displayNameWithConfidence()}'s answer. The row is absent when
+     * nothing sounded and no key was estimated.
      */
     private static List<String> audioSummary(Score score) {
         List<String> lines = new ArrayList<>();
         lines.add(tempoLine(score));
         lines.add("Meter   " + score.tempoMap().initialTimeSignature());
-        score.primaryKey().ifPresent(key -> lines.add(String.format(Locale.ROOT,
-                "Key     %s (%.0f%% confidence)", key.displayName(),
-                100 * key.confidence().value())));
+        score.primaryKey().ifPresent(key ->
+                lines.add("Key     " + key.displayNameWithConfidence()));
         lines.add("Chords  " + score.chords().size() + " spans");
         // Absent when there is no melody, which covers both the stage not being
         // asked for and its having heard nothing: the transcriber adds no empty
