@@ -33,10 +33,10 @@ defects are not additive in the score, because a tracker that has already lost
 the voice cannot lose it twice.
 
 **What the split assumes.** Where voice and band genuinely occupy one bin it
-apportions by a rule, which is a choice and not a measurement — squared shares
-by default, the same assumption an ideal ratio mask makes. `--share-exponent`
-varies it, and a conclusion that moves with it is a conclusion about the rule
-rather than about the separator. It is also why the parts are scored rather
+apportions by a rule, which is a choice and not a measurement: the same
+assumption an ideal ratio mask makes. `--share-exponent` varies it, and a
+conclusion that moves with it is a conclusion about the rule rather than about
+the separator. It is also why the parts are scored rather
 than merely measured: what a stage does with a signal is a stronger statement
 than how much energy is in it.
 
@@ -74,7 +74,7 @@ REPO = Path(__file__).resolve().parent.parent
 SPLITTER = REPO / "tools" / "SeparationSplit.java"
 
 #: How a bin both sources occupy is divided; the splitter asks for it rather
-#: than defaulting, so this is the only statement of it.
+#: than defaulting.
 SHARE_EXPONENT = 2.0
 
 ROWS = ("clean", "mix", "voice part", "clean + band part", "stem")

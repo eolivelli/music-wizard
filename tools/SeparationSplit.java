@@ -96,6 +96,13 @@ public final class SeparationSplit {
             System.err.println(USAGE);
             System.exit(2);
         }
+        if (!Double.isFinite(exponent) || exponent < 0) {
+            // Not merely odd: a share of NaN divides nothing and reaches the
+            // guard below as a comparison that is false either way, so the run
+            // would write silence and report success.
+            System.err.println(USAGE);
+            System.exit(2);
+        }
         float[] voice = mono(args[0]);
         float[] mix = mono(args[1]);
         float[] stem = mono(args[2]);
@@ -127,8 +134,6 @@ public final class SeparationSplit {
         // over a corpus and a spectrogram of a whole recording is not small.
         for (int t = 0; t < stemSpec.length; t++) {
             for (int f = 0; f < Stft.BINS; f++) {
-                // Over the energies, so the default exponent is the identity
-                // and asks nothing of Math.pow.
                 double v = Math.pow(energy(voiceSpec[t], f), exponent / 2);
                 double b = Math.pow(energy(bandSpec[t], f), exponent / 2);
                 // A bin where neither source has anything is a bin where the
