@@ -97,9 +97,9 @@ public final class SeparationSplit {
             System.exit(2);
         }
         if (exponent < 0) {
-            // A negative exponent hands the louder source the smaller share,
-            // which the check below cannot see: the parts still sum to the
-            // stem, they are merely swapped.
+            // A negative exponent hands the louder source the smaller share.
+            // The parts still sum to the stem, so nothing downstream of here
+            // can tell.
             System.err.println(USAGE);
             System.exit(2);
         }
@@ -134,12 +134,8 @@ public final class SeparationSplit {
         // over a corpus and a spectrogram of a whole recording is not small.
         for (int t = 0; t < stemSpec.length; t++) {
             for (int f = 0; f < Stft.BINS; f++) {
-                double v = Math.pow(energy(voiceSpec[t], f), exponent / 2);
-                double b = Math.pow(energy(bandSpec[t], f), exponent / 2);
-                // A bin where neither source has anything is a bin where the
-                // stem has nothing either, so which side the zero falls on
-                // decides nothing; the floor only keeps the ratio finite.
-                double share = v / (v + b + 1e-30);
+                double share = share(energy(voiceSpec[t], f),
+                        energy(bandSpec[t], f), exponent);
                 voiceSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * share);
                 voiceSpec[t][2 * f + 1] = (float) (stemSpec[t][2 * f + 1] * share);
                 bandSpec[t][2 * f] = (float) (stemSpec[t][2 * f] * (1 - share));
@@ -172,6 +168,24 @@ public final class SeparationSplit {
         System.out.printf(Locale.ROOT,
                 "voice-retention %.1f  band-rejection %.1f  round-trip %.1f  split %.1f%n",
                 levelDb(voicePart, voice), levelDb(bandPart, band), roundTrip, split);
+    }
+
+    /**
+     * The voice's share of one bin, from the two sources' energies there.
+     *
+     * <p>Taken from their ratio rather than from each raised on its own, so
+     * that a quiet recording is apportioned exactly as a loud one is: raising
+     * absolute energies to a large exponent sends both to zero or both to
+     * infinity, and either one hands the whole bin to one source and prints
+     * what a correct run prints.
+     */
+    static double share(double voice, double band, double exponent) {
+        if (voice == 0 && band == 0) {
+            // The stem has nothing here either, so this decides nothing but
+            // has to be decided: the ratio would be NaN.
+            return 0;
+        }
+        return 1 / (1 + Math.pow(band / voice, exponent / 2));
     }
 
     private static double energy(float[] spectrum, int bin) {
