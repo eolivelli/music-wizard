@@ -97,6 +97,18 @@ public final class BeatTracker {
      * {@link TempoEstimator#estimate(OnsetEnvelope, HarmonicRhythm)}.
      */
     public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+        return track(envelope, rhythm, null);
+    }
+
+    /**
+     * The same again, with the recording's bass register available to say
+     * whether the pulse everything else settled on is stated or is a
+     * subdivision of the stated one — see {@link MarkedPulse}. Pass
+     * {@code null} for a caller that has no register; the octave is then left
+     * where the envelope and the prior put it.
+     */
+    public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
+                               OnsetEnvelope pulseRegister) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(rhythm, "rhythm");
         if (envelope.length() < 16 || envelope.isFlat()) {
@@ -106,8 +118,10 @@ public final class BeatTracker {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
             TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope, rhythm);
-            List<Double> beats = trackFixedTempo(envelope, tempo.beatsPerMinute(), 0, envelope.length());
-            return new Result(beats, tempoOf(beats, tempo.beatsPerMinute()),
+            double rate = MarkedPulse.resolveOctave(tempo.beatsPerMinute(), envelope,
+                    pulseRegister, List.of(new int[] {0, envelope.length()}));
+            List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
+            return new Result(beats, tempoOf(beats, rate),
                     Confidence.clamped(tempo.strength()));
         }
 
@@ -121,31 +135,23 @@ public final class BeatTracker {
         // an island: the seed is per-window by design -- that is what follows a
         // drifting tempo -- but which subdivision of the beat it names is a
         // property of the recording, and nothing was comparing the two.
-        List<int[]> bounds = new ArrayList<>();
+        List<int[]> bounds = analysisWindows(envelope);
         List<TempoEstimator.Estimate> seeds = new ArrayList<>();
         List<TempoEstimator.Estimate> voters = new ArrayList<>();
-        for (int start = 0; start < envelope.length(); start += step) {
-            int end = Math.min(envelope.length(), start + windowFrames);
-            if (end - start < 16) {
-                break;
-            }
+        for (int[] window : bounds) {
             TempoEstimator.Estimate seed =
-                    TempoEstimator.estimateWindow(envelope, start, end, rhythm);
-            bounds.add(new int[] {start, end});
+                    TempoEstimator.estimateWindow(envelope, window[0], window[1], rhythm);
             seeds.add(seed);
-            // The tail window can be a fraction of a second -- the guard above
-            // admits sixteen frames, about a tenth of one -- and a rate measured
-            // over that is not a reading of the recording. Such a window is
-            // still tracked, since its beats are wanted, but it does not get a
-            // vote on what the rest of the recording's pulse is. The first
-            // window always spans a full one, since a shorter envelope than that
-            // returned above, so there is always at least one voter.
-            if (end - start >= step) {
+            if (votes(window, step)) {
                 voters.add(seed);
             }
         }
 
-        double reference = pulseReference(voters);
+        // The register is read over the same windows that voted, and for the
+        // same reason: a sliver measures a phrase rather than the recording.
+        double reference =
+                MarkedPulse.resolveOctave(pulseReference(voters), envelope, pulseRegister,
+                        votingWindows(envelope));
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -180,6 +186,51 @@ public final class BeatTracker {
     }
 
     /**
+     * The half-overlapping windows one tempo is assumed within, as
+     * {@code {fromFrame, toFrame}}. Each contributes only its first half to the
+     * beats, so every beat comes from a window where it sits away from the
+     * edge.
+     */
+    static List<int[]> analysisWindows(OnsetEnvelope envelope) {
+        int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
+        int step = Math.max(1, windowFrames / 2);
+        List<int[]> windows = new ArrayList<>();
+        for (int start = 0; start < envelope.length(); start += step) {
+            int end = Math.min(envelope.length(), start + windowFrames);
+            if (end - start < 16) {
+                break;
+            }
+            windows.add(new int[] {start, end});
+        }
+        return windows;
+    }
+
+    /**
+     * The windows that get a say in what the recording's pulse is.
+     *
+     * <p>The tail window can be a fraction of a second — {@link
+     * #analysisWindows} admits sixteen frames, about a tenth of one — and a
+     * rate measured over that is not a reading of the recording. Such a window
+     * is still tracked, since its beats are wanted. The first window always
+     * spans a full one, since a shorter envelope than that never reaches here,
+     * so there is always at least one voter.
+     */
+    static List<int[]> votingWindows(OnsetEnvelope envelope) {
+        int step = Math.max(1, (int) Math.round(WINDOW_SECONDS * envelope.frameRate()) / 2);
+        List<int[]> windows = new ArrayList<>();
+        for (int[] window : analysisWindows(envelope)) {
+            if (votes(window, step)) {
+                windows.add(window);
+            }
+        }
+        return windows;
+    }
+
+    private static boolean votes(int[] window, int step) {
+        return window[1] - window[0] >= step;
+    }
+
+    /**
      * The tempo actually implied by the tracked beats, as the median interval
      * — reported rather than the seed estimate, which can disagree with the
      * very beats returned alongside it. Since #200 nothing in production
@@ -203,7 +254,7 @@ public final class BeatTracker {
      * the octave is {@link TempoEstimator}'s perceptual prior's job, and
      * seeds an octave out no longer reach the recursion —
      * {@link #divideOutSubdivision} corrects them against the recording's
-     * pulse first.
+     * pulse first, which {@link MarkedPulse} may have halved.
      *
      * <p>Median rather than mean so one dropped or doubled beat does not drag
      * the answer.

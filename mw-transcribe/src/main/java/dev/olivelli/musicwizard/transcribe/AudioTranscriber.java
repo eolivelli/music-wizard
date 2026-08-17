@@ -193,7 +193,13 @@ public final class AudioTranscriber {
         TimeSignature meter = settings.timeSignatureOrDefault();
 
         progress.accept("detecting onsets");
-        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        // One transform, two readings of it: the summed envelope everything
+        // downstream works from, and the bass register the beat tracker asks
+        // whether its pulse is stated or is a subdivision of the stated one.
+        Spectrogram onsets =
+                Spectrogram.compute(audio, OnsetEnvelope.ONSET_WINDOW, OnsetEnvelope.ONSET_HOP);
+        OnsetEnvelope envelope = OnsetEnvelope.compute(onsets);
+        OnsetEnvelope pulseRegister = OnsetEnvelope.pulseRegister(onsets);
 
         // Chroma is extracted before the beats, not after, and the order is
         // load-bearing since #231: the beat tracker weighs its tempo candidates
@@ -211,7 +217,7 @@ public final class AudioTranscriber {
         HarmonicRhythm harmonicRhythm = HarmonicRhythm.of(combinedFrames);
 
         progress.accept("tracking beats");
-        BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm);
+        BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, pulseRegister);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             if (settings.firstDownbeatSeconds() != null) {

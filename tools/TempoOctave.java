@@ -16,7 +16,9 @@
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.dsp.MarkedPulse;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
 import dev.olivelli.musicwizard.dsp.TempoEstimator;
@@ -55,6 +57,11 @@ import java.util.List;
  * which exposes none of them. The check that the reimplementation is the
  * estimator's is printed on every line: {@code argmax} is this file's winner
  * and {@code est} is {@link TempoEstimator#estimate}'s, and they must agree.
+ *
+ * <p>The {@code register} line is the exception: it is
+ * {@link MarkedPulse}'s own reading of the voter reference, not a
+ * reproduction, and it is what decides whether that rate is halved before
+ * anything is tracked (#509).
  */
 public final class TempoOctave {
 
@@ -83,6 +90,15 @@ public final class TempoOctave {
             this("samples", file, statedTempo, note);
         }
     }
+
+    /**
+     * The commercial recordings, which live outside the two corpora and are
+     * never redistributed: present on the machine that fetched them and
+     * SKIPPED everywhere else. They are here because the register reading
+     * below is a claim about what happens to real mixes, and fifteen of them
+     * are what makes it one.
+     */
+    private static final String LOCAL = "uncommitted";
 
     private static final List<Job> JOBS = List.of(
             // The four #349 names.
@@ -113,7 +129,31 @@ public final class TempoOctave {
             // written tempo, so a rule that moves it has moved something the
             // corpus says is already right.
             new Job("synthetic_samples", "pop-deceptive-f-72.mp3", 72, "target, #509"),
-            new Job("synthetic_samples", "pop-axis-g-116.mp3", 116, "control, synthetic"));
+            new Job("synthetic_samples", "pop-axis-g-116.mp3", 116, "control, synthetic"),
+            new Job("synthetic_samples", "pop-threechord-c-108.mp3", 108, "control, synthetic"),
+            new Job("synthetic_samples", "pop-m6-m7b5-gm-100.mp3", 100, "control, synthetic"),
+            new Job("synthetic_samples", "pop-maj7-sixth-c-92.mp3", 92, "control, synthetic"),
+            new Job("synthetic_samples", "hiphop-m7vamp-bbm-90.mp3", 90, "control, synthetic"),
+            new Job("synthetic_samples", "rocknroll-12bar-a-168.mp3", 168, "control, synthetic"),
+            new Job("synthetic_samples", "melody-level2pad-g-84.mp3", 84, "reads 2.16x, #499"),
+            // Commercial, local-only. The first two are #378's, which read
+            // double; the rest are scored by no harness and are here for the
+            // register reading, which is a claim about real mixes.
+            new Job(LOCAL, "la-canzone-del-sole.mp3", 93, "reads double, #378"),
+            new Job(LOCAL, "sweet-home-alabama.mp3", 97.9, "reads double, #378"),
+            new Job(LOCAL, "la-canzone-del-sole-ab.mp3", 87, "control, #378"),
+            new Job(LOCAL, "johnny-b-goode.mp3", 0, "control"),
+            new Job(LOCAL, "karma-chameleon.mp3", 0, "control"),
+            new Job(LOCAL, "generale.mp3", 0, "control"),
+            new Job(LOCAL, "gli-anni.mp3", 0, "control"),
+            new Job(LOCAL, "islanda.mp3", 0, "control"),
+            new Job(LOCAL, "bellissimissima.mp3", 0, "control"),
+            new Job(LOCAL, "hanno-ucciso-luomo-ragno.mp3", 0, "control"),
+            new Job(LOCAL, "la-mia-banda-suona-il-rock.mp3", 0, "control"),
+            new Job(LOCAL, "sere-doltremare.mp3", 0, "control"),
+            new Job(LOCAL, "rxbyn-bad-side.mp3", 0, "control"),
+            new Job(LOCAL, "cortez-feel-stripped.mp3", 0, "control"),
+            new Job(LOCAL, "josh-woodward-california-lullabye.mp3", 0, "control"));
 
     /** The ceiling this file's reproduction uses; {@code TempoEstimator}'s by default. */
     private static double ceiling = 3.0;
@@ -135,12 +175,34 @@ public final class TempoOctave {
 
     private static void report(Job job, Path file) {
         AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
-        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        Spectrogram onsets =
+                Spectrogram.compute(audio, OnsetEnvelope.ONSET_WINDOW, OnsetEnvelope.ONSET_HOP);
+        OnsetEnvelope envelope = OnsetEnvelope.compute(onsets);
+        OnsetEnvelope register = OnsetEnvelope.pulseRegister(onsets);
         HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
 
         System.out.printf("%n=== %s  (%s)%n", job.file(), job.note());
         whole(job, envelope, rhythm);
-        windows(job, envelope, rhythm);
+        double reference = windows(job, envelope, rhythm);
+        register(envelope, register, reference);
+    }
+
+    /**
+     * What the bass register says about the rate the windows voted for: the
+     * shipped reading rather than a reproduction of it, since a grid whose
+     * every second beat is unstated there is halved before anything is tracked
+     * (#509). A recording whose register is no louder on the beats than
+     * between them is one this abstains on, and most of them are.
+     */
+    private static void register(OnsetEnvelope envelope, OnsetEnvelope register,
+                                 double reference) {
+        if (reference <= 0) {
+            return;
+        }
+        MarkedPulse.Reading reading = MarkedPulse.read(envelope, register, reference);
+        System.out.printf("  register at %.2f: contrast %.2f  parity %.3f  ->  %.2f%n",
+                reference, reading.contrast(), reading.parity(),
+                reading.statesOnlyEveryOtherBeat() ? reference / 2 : reference);
     }
 
     /**
@@ -198,10 +260,10 @@ public final class TempoOctave {
         }
     }
 
-    private static void windows(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+    private static double windows(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
-            return;
+            return 0;
         }
         int step = windowFrames / 2;
         int at = 0;
@@ -260,6 +322,7 @@ public final class TempoOctave {
                 disagreements == 0 ? "" : "  [" + disagreements + " windows differ from the"
                         + " estimator, expected only when a ceiling is passed]");
         System.out.printf("  seeds: %s%n", seeds.toString().trim());
+        return reference;
     }
 
     /** Within 3% -- wide enough for the 0.25 grid and a drifting recording. */

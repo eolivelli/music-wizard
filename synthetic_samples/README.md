@@ -39,12 +39,12 @@ measurement the paragraph above describes: the grid runs at 2.16 times the
 written tempo, which is not a multiple of anything and so is a rate that is
 simply wrong rather than an octave error.
 
-`pop-deceptive-f-72` scores low the same way for a different reason: the beat
-is tracked at double the written tempo although the kick and side-stick mark
-every quarter — by every independent beat tracker tried too (#509), so the
-double is in the signal rather than in one tracker's prior — and the
-bar-aligned chord columns pay for it although the chords are right against
-the clock.
+`pop-deceptive-f-72` was tracked at double the written tempo until #509: its
+hi-hat and piano figure run in eighths under a kick and side-stick that mark
+every quarter, and every independent beat tracker tried read the double too,
+so the double was in the signal rather than in one tracker's prior. It is the
+package the bass-register octave check was measured on, and its chord columns
+show what the bar axis was costing them.
 
 Its key column is a tie read, not a verdict: the grid holds the two candidate
 keys in exact balance, so the name in that column comes from MW's own chord
