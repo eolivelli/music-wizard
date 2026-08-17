@@ -48,10 +48,10 @@ import org.jtransforms.fft.FloatFFT_1D;
  *
  * <p>What the split cannot do is separate two sources that genuinely overlap
  * in one bin. There it apportions by a rule, and the trailing argument is that
- * rule's exponent, over the sources' energies: squared shares give an
- * overlapped bin mostly to whichever source is louder there, and a smaller
- * exponent divides it more evenly. A conclusion that changes with it is a
- * conclusion about the rule, which is why the driver states what it used.
+ * rule's exponent over the sources' magnitudes: a larger one gives an
+ * overlapped bin mostly to whichever source is louder there, a smaller one
+ * divides it more evenly. A conclusion that changes with it is a conclusion
+ * about the rule, which is why the driver states what it used.
  *
  * <p>The transform is the separator's own frame, hop and window, because that
  * is the grid the mask was applied on, and a coarser one would smear a mask
@@ -96,10 +96,10 @@ public final class SeparationSplit {
             System.err.println(USAGE);
             System.exit(2);
         }
-        if (!Double.isFinite(exponent) || exponent < 0) {
-            // Not merely odd: a share of NaN divides nothing and reaches the
-            // guard below as a comparison that is false either way, so the run
-            // would write silence and report success.
+        if (exponent < 0) {
+            // A negative exponent hands the louder source the smaller share,
+            // which the check below cannot see: the parts still sum to the
+            // stem, they are merely swapped.
             System.err.println(USAGE);
             System.exit(2);
         }
@@ -156,7 +156,11 @@ public final class SeparationSplit {
             sum[i] = voicePart[i] + bandPart[i];
         }
         double split = errorDb(sum, stem, stem);
-        if (roundTrip > MAX_ERROR_DB || split > MAX_ERROR_DB) {
+        // Negated rather than compared directly, so that a share that came out
+        // NaN -- from an exponent large enough to overflow, whatever guarded
+        // the input -- refuses here instead of passing a comparison that is
+        // false either way.
+        if (!(roundTrip <= MAX_ERROR_DB && split <= MAX_ERROR_DB)) {
             System.err.printf(Locale.ROOT,
                     "the transform does not invert here: round trip %.1f dB,"
                     + " parts %.1f dB%n", roundTrip, split);
