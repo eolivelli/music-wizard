@@ -52,12 +52,11 @@ reading breaking the tie by about a bar of noise, and a change that flips it
 between WRONG and OK is neither a regression nor progress on #277 (#509).
 
 `pop-m6-m7b5-gm-100` states one note set twice, as `Cm6` and as `Am7b5`, which
-are the same four pitch classes on two roots (#316). Eight of its bars are out
-of reach of the `root+quality` column whatever MW does with them: neither
-quality is in the estimator's vocabulary (#287), so those eight bars score
-zero on quality until the vocabulary changes — but the column as a whole also
-moves with the other twenty-four bars, for the usual reasons. The root column
-is what this package measures.
+are the same four pitch classes on two roots (#316). Both qualities have been
+in the estimator's vocabulary since #547, gated on the fit, so the
+`root+quality` column now reads the whole grid; the baseline row carries what
+that is worth. What the package measures is unchanged: whether the two roots
+are told apart when only the bass can do it.
 
 `pop-maj7-sixth-c-92` is the same construction above a major third (#520): one
 note set stated as `C6` and as `Am7`, and `Cmaj7` beside the `Em` triad that
