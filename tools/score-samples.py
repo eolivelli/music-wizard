@@ -226,9 +226,9 @@ MINOR_THIRD = frozenset({
 PHASE_FLOOR = 0.35
 
 LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
-# One name per pitch class, for rows that name a chord the tool produced. Every
-# comparison here folds a spelling to a pitch class, so a row that printed the
-# tool's own spelling could name the same chord two ways on one recording.
+# One name per pitch class, for the rows that name a chord rather than count
+# one. Every comparison here folds a spelling to a pitch class, so a row that
+# printed a spelling could name one chord two ways on a single recording.
 PITCH_NAME = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 ACCIDENTAL = {"NONE": 0, "SHARP": 1, "FLAT": -1, "DOUBLE_SHARP": 2, "DOUBLE_FLAT": -2}
 # ChordQuality's own symbols, so a truth string is read the way the tool writes

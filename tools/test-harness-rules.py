@@ -291,7 +291,9 @@ class Vocabulary(unittest.TestCase):
         same kind of fact about the same kind of file."""
         repo = Path(__file__).resolve().parent.parent
         for name, (where, stated) in samples.VOCABULARY.items():
-            self.assertTrue({samples.parse_chord(c) for c in stated.split()})
+            # A set nothing parses to would put every span outside it.
+            self.assertTrue({samples.parse_chord(c) for c in stated.split()},
+                            f"{name} states no chord at all")
             self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
         for name, where in samples.NO_MINOR_CHORD.items():
             self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
