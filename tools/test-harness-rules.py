@@ -135,6 +135,57 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
+def minor_line(spans: list[dict], duration: float = 10.0) -> str:
+    """The one line score_no_minor prints for a recording."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        samples.score_no_minor(Path("x.mp3"),
+                               {"chords": {"chords": spans}, "durationSeconds": duration})
+    return out.getvalue().strip()
+
+
+class MinorSeconds(unittest.TestCase):
+    """#546: the recordings whose truth is that they hold no minor chord.
+
+    The row is read against zero, so what it counts has to be every quality
+    with a minor third and nothing else."""
+
+    def test_a_minor_span_is_counted_and_a_major_one_is_not(self):
+        line = minor_line([span("C", 0.0, 6.0), span("AMINOR", 6.0, 8.0)])
+        self.assertIn("2.0s of 10s (20.0%)", line)
+        self.assertIn("spans 1/2", line)
+        self.assertIn("m 2.0s", line)
+
+    def test_spans_of_one_quality_are_summed_across_roots(self):
+        """Broken down by quality, not by root: what a moved row asks is which
+        rule moved."""
+        line = minor_line([span("AMINOR", 0.0, 2.0), span("EMINOR", 2.0, 3.0),
+                           span("GMINOR_SEVENTH", 3.0, 4.5)])
+        self.assertIn("4.5s", line)
+        self.assertIn("m 3.0s, m7 1.5s", line)
+
+    def test_a_recording_with_no_minor_label_reads_zero(self):
+        line = minor_line([span("C", 0.0, 10.0)])
+        self.assertIn("0.0s of 10s (0.0%)", line)
+        self.assertIn("spans 0/1", line)
+        self.assertIn("none", line)
+
+    def test_the_qualities_counted_are_the_enum_s_own_minorish_ones(self):
+        """MINOR_THIRD is a copy of what ChordQuality.isMinorish() answers, and
+        of the symbols the row prints. A quality added to the enum with a minor
+        third must fail here rather than go uncounted in a row read against
+        zero."""
+        source = (Path(__file__).resolve().parent.parent
+                  / "mw-core/src/main/java/dev/olivelli/musicwizard/core/model"
+                  / "ChordQuality.java").read_text(encoding="utf-8")
+        constants = re.findall(r"^    ([A-Z_]+)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
+                               source, re.MULTILINE)
+        self.assertGreater(len(constants), 10, "the enum's constants did not parse")
+        minorish = {name: symbol for name, symbol, intervals in constants
+                    if 3 in [int(i) for i in re.findall(r"\d+", intervals)]}
+        self.assertEqual(minorish, samples.MINOR_THIRD)
+
+
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
         beat_confidence: float = 0.5, phase_confidence: float = 0.35) -> dict:
     """A score.json as far as the phase block reads it: one beat a second, bar
@@ -673,6 +724,13 @@ class Keying(unittest.TestCase):
         self.assertIn(".mp3:", line)
         self.assertEqual("sere-doltremare.mp3", line.split(":")[0].strip())
 
+    def test_a_minor_seconds_row_is_gated(self):
+        """The row of #546 is one premerge compares, under its own key -- a
+        recording is in two tables and neither may overwrite the other."""
+        line = minor_line([span("AMINOR", 0.0, 1.0)])
+        self.assertIn(".mp3:", line)
+        self.assertEqual("minor x.mp3", line.split(":")[0].strip())
+
     def test_an_ad_hoc_row_is_not_gated(self):
         """A file with no licence reaching its words must not become a baseline
         row, so its line is deliberately keyed out of the comparison."""
@@ -739,6 +797,7 @@ class Keying(unittest.TestCase):
         for line in (samples.missing_line("x.mp3"),
                      samples.missing_line("key x.mp3"),
                      samples.missing_line("phase x.mp3"),
+                     samples.missing_line("minor x.mp3", "uncommitted"),
                      chart.missing_line("x.mp3"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)

@@ -75,7 +75,9 @@ decisions that real recordings forced:
   small share of what the root itself removes, is not counted — neither as a
   major candidate's evidence nor against a minor one. Both conditions: the
   ranking alone also fires on a blues third over a dominant, where both
-  thirds are played.
+  thirds are played. The minor third is asked its own, simpler question —
+  does the fit need it at all — because otherwise a run holding neither
+  third goes minor on the noise left on its pitch class (#546).
 - **The seventh is a property of the chord, not of the bar**: the minor
   seventh is settled per root across the whole recording — believed where
   most of that root's beats carry it, withdrawn where a minority do — so one

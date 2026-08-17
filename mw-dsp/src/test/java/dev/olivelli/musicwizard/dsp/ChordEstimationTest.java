@@ -930,6 +930,82 @@ class ChordEstimationTest {
     }
 
     /**
+     * #546: a run in which neither third is in the fit.
+     *
+     * <p>The vectors are one span of {@code uncommitted/johnny-b-goode.mp3},
+     * eight seconds of a twelve-bar blues in B flat that the estimator labelled
+     * {@code A#m} — a recording confirmed to hold no minor chord at all.
+     */
+    @Nested
+    @DisplayName("a run with no third in it (#546)")
+    class ThirdlessRun {
+
+        /** Both registers added: B flat and F, and neither third to speak of. */
+        private static final double[] COMBINED = {
+                0.0702, 0.0467, 0.0552, 0.0504, 0.0654, 0.2461,
+                0.0092, 0.1073, 0.0244, 0.0508, 0.2470, 0.0272};
+        private static final double[] TREBLE = {
+                0.0555, 0.0393, 0.0475, 0.0733, 0.0571, 0.3091,
+                0.0103, 0.0819, 0.0275, 0.0304, 0.2393, 0.0287};
+        private static final double[] BASS = {
+                0.0947, 0.0587, 0.0682, 0.0133, 0.0807, 0.1399,
+                0.0075, 0.1487, 0.0196, 0.0821, 0.2617, 0.0249};
+
+        /**
+         * And the run's own residual. The root removes a third of the
+         * spectrum's; both thirds — D at index 2 and C sharp at index 1 —
+         * remove under a three-hundredth of what it does, and the minor one
+         * beats the major one by a fourteenth of that. Which is what decided
+         * eight seconds of chart before this rule.
+         */
+        private static final double[] RESIDUAL = {
+                0.0176, 0.0009, 0.0008, 0.0118, 0.0100, 0.3608,
+                0.0000, 0.0472, 0.0001, 0.0084, 0.3114, 0.0008};
+
+        private static Chroma four(double[] vector) {
+            return beats(vector, vector, vector, vector);
+        }
+
+        private static String label(double[] residual) {
+            return ChordEstimator.estimate(four(COMBINED), four(TREBLE), four(BASS),
+                    new PitchClassAblation() {
+                        @Override
+                        public int spanCount() {
+                            return 4;
+                        }
+
+                        @Override
+                        public double[] significanceOver(int fromSpan, int toSpan) {
+                            return residual;
+                        }
+                    }, beatTimes(4)).chords().get(0).symbol();
+        }
+
+        @Test
+        @DisplayName("a minor third the fit does not need does not turn the chord minor")
+        void aMinorThirdTheFitDoesNotNeedIsNotEvidence() {
+            // The veto reads the major third as a phantom -- correctly, it is
+            // at the level a silent pitch class sits at -- and before this rule
+            // that left the minor candidate holding the only third anyone was
+            // counting, on a pitch class whose residual is just as empty.
+            assertThat(label(RESIDUAL)).isEqualTo("A#");
+        }
+
+        @Test
+        @DisplayName("a minor third the fit does need still decides the quality")
+        void aPlayedMinorThirdIsStillEvidence() {
+            // The same run with its minor third moved to the share the minor
+            // tonic of #527 shows -- nothing else touched, the chroma least of
+            // all. The rule is a floor under the noise, not a discount on the
+            // third.
+            double[] played = RESIDUAL.clone();
+            played[1] = 0.088 * RESIDUAL[10];
+
+            assertThat(label(played)).isEqualTo("A#m");
+        }
+    }
+
+    /**
      * #287: the two qualities of that issue the corpus admits, measured again
      * on the estimator #543 left behind.
      *
