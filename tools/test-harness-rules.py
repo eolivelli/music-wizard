@@ -1274,9 +1274,28 @@ class MelodyRules(unittest.TestCase):
                           "  tracking the melody in the full mix\n")
     SEPARATOR_FAILED = ("  separating the vocal with onnx-spleeter\n"
                         "  tracking the melody in the full mix\n"
-                        "warning: the vocal could not be separated: {}; the melody"
-                        " is read from the full mix, where the tracker returns the"
-                        " loudest periodic line rather than the voice\n")
+                        "warning: the melody is read from the full mix, where the"
+                        " tracker returns the loudest periodic line rather than the"
+                        " voice; the vocal could not be separated: {}\n")
+
+    #: Spleeter's own model URI, which every fetch failure below quotes.
+    MODEL_URI = ("https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems"
+                 "/resolve/main/vocals.onnx")
+
+    #: What ModelCache raises, in its own words. The four are what a machine
+    #: that cannot separate actually says, and the last two are the hard pair:
+    #: identical for the length of a sentence and a URL, and distinct only at
+    #: the very end.
+    FETCH_FAILURES = (
+        "model spleeter-2stems (vocals.onnx, 37 MB) is not in"
+        " /home/x/.cache/music-wizard/models and ml.offline is set;"
+        f" unset it to download from {MODEL_URI}",
+        f"model spleeter-2stems downloaded from {MODEL_URI} does not match its"
+        f" checksum (expected {'b' * 64}, got {'c' * 64}); refusing to keep it",
+        f"could not download model spleeter-2stems from {MODEL_URI}: Connection reset",
+        f"could not download model spleeter-2stems from {MODEL_URI}:"
+        " No space left on device",
+    )
 
     def test_a_skip_row_names_the_cause_rather_than_the_symptom(self):
         """Both reports carry "tracking the melody in the full mix"; what
@@ -1284,22 +1303,41 @@ class MelodyRules(unittest.TestCase):
         for a machine with no model and for a separator that crashed."""
         self.assertIn("no separation provider",
                       melody.first_line(self.NO_PROVIDER_REPORT, melody.REASONS))
-        self.assertIn("not in the cache", melody.first_line(
-            self.SEPARATOR_FAILED.format("spleeter-2stems is not in the cache"),
-            melody.REASONS))
+        self.assertIn("No space left", melody.first_line(
+            self.SEPARATOR_FAILED.format(self.FETCH_FAILURES[3]), melody.REASONS))
 
-    def test_two_causes_do_not_produce_the_same_skip_row(self):
-        """The property the row exists for, held against the bound rather than
-        against a fixture short enough to fit inside it: two real provider
-        messages, each as far into the line as analyze puts them."""
+    def test_no_two_causes_produce_the_same_skip_row(self):
+        """The property the row exists for, held against the messages that make
+        it hard rather than against fixtures short enough to fit the bound: a
+        row keeping only the head of a fetch failure reads the same however the
+        fetch failed, and the action it should have prompted -- unset offline,
+        delete the file, free the disk -- is the part it dropped."""
         rows = {melody.unavailable_line("pop-axis-g-116", melody.first_line(
                     self.SEPARATOR_FAILED.format(message), melody.REASONS))
-                for message in (
-                    "model spleeter-2stems/vocals.onnx is not in the cache and"
-                    " ml.offline is set; unset it to download 74 MB",
-                    "model spleeter-2stems/vocals.onnx does not match its"
-                    " recorded checksum; delete it and it will be fetched again")}
-        self.assertEqual(2, len(rows), f"one row for two causes: {rows}")
+                for message in self.FETCH_FAILURES}
+        self.assertEqual(len(self.FETCH_FAILURES), len(rows),
+                         f"causes sharing a row: {rows}")
+        for row in rows:
+            # Bounded, so a message of any length cannot wrap the row.
+            self.assertLess(len(row), 220)
+
+    def test_the_fetch_failures_are_quoted_from_the_cache_that_raises_them(self):
+        """The fixtures above are only worth what they resemble, so their
+        invariant halves are held against the source that builds them."""
+        repo = Path(__file__).resolve().parent.parent
+        cache = (repo / "mw-ml/src/main/java/dev/olivelli/musicwizard/ml"
+                 / "ModelCache.java").read_text(encoding="utf-8")
+        for fragment in (" MB) is not in ", " and ml.offline is set; unset it to"
+                         " download from ", "could not download model ",
+                         " does not match its checksum (expected ",
+                         "); refusing to keep it"):
+            self.assertIn(fragment, cache)
+        models = (repo / "mw-ml/src/main/java/dev/olivelli/musicwizard/ml"
+                  / "SpleeterModels.java").read_text(encoding="utf-8")
+        # Split across two lines in the source, so held in halves.
+        self.assertIn("https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems",
+                      models)
+        self.assertIn("/resolve/main/vocals.onnx", models)
 
     def test_a_machine_that_cannot_separate_skips_rather_than_scoring_the_mix(self):
         """The separated loops need a model this machine may not have. Scoring

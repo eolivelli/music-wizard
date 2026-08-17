@@ -256,16 +256,22 @@ def analyze(jar: Path, mp3: Path, separated: bool = False,
 
 
 def first_line(report: str, markers: tuple[str, ...]) -> str:
-    """The first line carrying the earliest marker that appears at all.
+    """What analyze said after the earliest marker that appears at all.
 
     Marker by marker rather than line by line, so the order of `markers` is a
     priority: the cause is reported wherever analyze printed it, even though
-    the symptom is printed after it and, being on stdout, often first.
+    the symptom is printed on stdout and often first.
+
+    What follows the marker rather than the whole line, because the row is
+    bounded and every character of our own wording spends the budget the cause
+    needs -- and a model fetch's message is long, invariant at its head and
+    distinct only somewhere inside. Analyze puts nothing after it for that
+    reason. A marker with nothing after it is its own reason.
     """
     for marker in markers:
         for line in report.splitlines():
             if marker in line:
-                return line.strip().removeprefix("warning: ")
+                return line.split(marker, 1)[1].strip(" :;,.") or marker
     return "no reason given"
 
 
@@ -405,13 +411,32 @@ def score_clip(jar: Path, clip: int, separated: bool = False,
             f" ({len(other)} notes)")
 
 
+#: How much of the reason a skip row carries, so a pasted stack trace cannot
+#: wrap it.
+REASON_BUDGET = 160
+
+
+def shortened(reason: str, budget: int = REASON_BUDGET) -> str:
+    """The reason, bounded, with the middle elided rather than the tail.
+
+    Keeping the head alone spends the budget on whatever the message happens
+    to put first, and a model fetch puts an invariant sentence and a URL
+    there -- so every download failure would read alike however it failed,
+    which is the one thing a skip row exists not to do. The end of a message
+    is where the cause usually is, so both ends are kept.
+    """
+    if len(reason) <= budget:
+        return reason
+    head = (budget - 3) // 2
+    return reason[:head] + "..." + reason[head + 3 - budget:]
+
+
 def unavailable_line(name: str, reason: str) -> str:
     """A row this machine could not measure, in the marker premerge.sh turns
-    into a SKIP -- with analyze's own reason beside it, and bounded so a pasted
-    stack trace cannot wrap the row. Never baselined: a committed baseline that
-    certifies absence is a defect, and this text lives only on the current side
-    of the diff."""
-    return f"  {name}: not present (local-only; {reason[:160]})"
+    into a SKIP -- with analyze's own reason beside it. Never baselined: a
+    committed baseline that certifies absence is a defect, and this text lives
+    only on the current side of the diff."""
+    return f"  {name}: not present (local-only; {shortened(reason)})"
 
 
 def score_package(jar: Path, spec_file: Path, separated: bool = False,
