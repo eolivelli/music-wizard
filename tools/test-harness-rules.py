@@ -1260,8 +1260,24 @@ class MelodyRules(unittest.TestCase):
                     / "AudioTranscriber.java").read_text(encoding="utf-8")
             + (repo / "mw-cli/src/main/java/dev/olivelli/musicwizard/cli"
                     / "AnalyzeCommand.java").read_text(encoding="utf-8"))
-        for literal in (melody.FROM_STEM, melody.FROM_MIX, melody.NOT_SEPARATED):
+        for literal in (melody.FROM_STEM, melody.FROM_MIX, melody.NOT_SEPARATED,
+                        melody.NO_STEM, melody.NO_BEATS):
             self.assertIn(literal, printed)
+
+    def test_a_skip_row_names_the_cause_rather_than_the_symptom(self):
+        """Both reports carry "tracking the melody in the full mix"; what
+        differs is why. A row that named the symptom would read identically
+        for a machine with no model and for a separator that crashed."""
+        no_provider = ("  the melody is read from the full mix: no separation"
+                       " provider; the tracker is monophonic\n"
+                       "  tracking the melody in the full mix\n")
+        crashed = ("  separating the vocal with onnx-spleeter\n"
+                   "  tracking the melody in the full mix\n"
+                   "warning: the vocal could not be separated, so the melody is"
+                   " read from the full mix: spleeter-2stems is not in the cache\n")
+        self.assertIn("no separation provider",
+                      melody.first_line(no_provider, melody.REASONS))
+        self.assertIn("not in the cache", melody.first_line(crashed, melody.REASONS))
 
     def test_a_machine_that_cannot_separate_skips_rather_than_scoring_the_mix(self):
         """The separated loops need a model this machine may not have. Scoring

@@ -150,6 +150,24 @@ class MelodyFromTheStemTest {
     }
 
     @Test
+    @DisplayName("a stem melody is cached, and served to the next identical run")
+    void aStemMelodyIsCached() throws IOException {
+        configureSeparation("fake-cli-voice");
+        assertThat(CliRunner.run("analyze", workspaceDirectory.toString(), "--melody")
+                .exitCode()).isZero();
+
+        CliRunner.Result again = CliRunner.run(
+                "analyze", workspaceDirectory.toString(), "--melody");
+
+        // The other half of the suppression below: a run that got what its key
+        // promised must still be cached, or every --melody run would recompute.
+        assertThat(again.out()).contains("reusing the cached analysis");
+        assertThat(melodyNotes()).isNotEmpty().allSatisfy(note ->
+                assertThat(note.midiPitch())
+                        .isEqualTo(FakeVoiceSeparationProvider.VOICE_MIDI_PITCH));
+    }
+
+    @Test
     @DisplayName("a separator that cannot run leaves the melody, and is not cached as a stem")
     void aFailedSeparationDegradesAndDoesNotPoisonTheCache() throws IOException {
         configureSeparation("fake-cli-unavailable-separation");
@@ -168,5 +186,36 @@ class MelodyFromTheStemTest {
         CliRunner.Result again = CliRunner.run(
                 "analyze", workspaceDirectory.toString(), "--melody");
         assertThat(again.out()).doesNotContain("reusing the cached analysis");
+    }
+
+    @Test
+    @DisplayName("a separator whose native is missing degrades too, rather than ending the run")
+    void anUnloadableSeparatorDegrades() throws IOException {
+        // An Error, not an exception, and thrown where the real provider first
+        // touches ONNX Runtime. Uncaught it ends analyze with no score at all.
+        configureSeparation("fake-cli-unloadable-separation");
+
+        CliRunner.Result analyze = CliRunner.run(
+                "analyze", workspaceDirectory.toString(), "--melody");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(analyze.err()).contains(UnloadableSeparationProvider.MISSING);
+        assertThat(melodyNotes()).isNotEmpty().allSatisfy(note ->
+                assertThat(note.midiPitch()).isEqualTo(BASS_MIDI_PITCH));
+    }
+
+    @Test
+    @DisplayName("a separator that failed is not asked again by the next stage")
+    void aFailedSeparationIsAttemptedOnce() throws IOException {
+        configureSeparation("fake-cli-unavailable-separation");
+        int before = FailingSeparationProvider.ATTEMPTS.get();
+
+        CliRunner.Result analyze = CliRunner.run("analyze",
+                workspaceDirectory.toString(), "--melody", "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        assertThat(FailingSeparationProvider.ATTEMPTS.get() - before)
+                .as("retrying costs a second whole-file decode to be told the same thing")
+                .isEqualTo(1);
     }
 }

@@ -67,8 +67,8 @@ read the vocal stem: lyric transcription and, since #559, `--melody`.
 
 **Offline, or with the download failing:** both say so and fall back to the
 mix, and `--melody` on a band recording then returns the loudest periodic
-line instead of the voice. The two `--separated` melody rows in
-`tools/premerge.sh` skip rather than failing.
+line instead of the voice. The two `--separated` melody steps in
+`tools/premerge.sh` skip every row rather than failing.
 
 ## LilyPond
 

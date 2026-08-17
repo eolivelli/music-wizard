@@ -16,31 +16,28 @@
 
 package dev.olivelli.musicwizard.cli;
 
-import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
 import dev.olivelli.musicwizard.core.ml.SeparationProvider;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A separator present on the classpath whose model cannot be had — the
- * ordinary state of a fresh machine, and the one where a run promises a stem
- * and then cannot produce one.
+ * A separator whose class loads and whose native does not — an {@code Error},
+ * not an exception, and thrown from {@code separate} rather than from
+ * construction, which is where {@link
+ * dev.olivelli.musicwizard.core.ml.MlProviders} guards. The real provider
+ * touches ONNX Runtime for the first time in exactly that method, so this is
+ * the shape an optional ML stack (#25) fails in.
  */
-public final class FailingSeparationProvider implements SeparationProvider {
+public final class UnloadableSeparationProvider implements SeparationProvider {
 
-    /** What the failure says, so a test can find it in the report. */
-    static final String REASON = "the fake separation model was never downloaded";
-
-    /** How many times it has been asked, for the once-per-run rule. */
-    static final AtomicInteger ATTEMPTS = new AtomicInteger();
+    /** Named in the failure, so a test can find it in the report. */
+    static final String MISSING = "no fake-onnxruntime in java.library.path";
 
     @Override
     public String id() {
-        return "fake-cli-unavailable-separation";
+        return "fake-cli-unloadable-separation";
     }
 
     @Override
     public Separation separate(float[][] channels, int sampleRate) {
-        ATTEMPTS.incrementAndGet();
-        throw new ModelUnavailableException(REASON);
+        throw new UnsatisfiedLinkError(MISSING);
     }
 }

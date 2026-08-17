@@ -190,9 +190,24 @@ def melody_notes(midi: Path) -> list[tuple[float, float, int]]:
 # AnalyzeCommand's and AudioTranscriber's own source by a test in
 # tools/test-harness-rules.py: a rewording there must fail before this starts
 # scoring the wrong signal, or skipping every row, in silence.
+#
+# The outcome and the cause are different lines. The stage says which signal it
+# read; why it was the mix is the CLI's, either as the caveat it prints when
+# there is no stem to be had or as the warning it prints when a separator had
+# one and could not produce it. The causes are searched first, because a skip
+# row carrying the symptom would read the same for a machine with no model as
+# for a separator that crashed.
 FROM_STEM = "tracking the melody in the vocal stem"
 FROM_MIX = "tracking the melody in the full mix"
 NOT_SEPARATED = "the vocal could not be separated"
+NO_STEM = "the melody is read from the full mix"
+REASONS = (NOT_SEPARATED, NO_STEM, FROM_MIX)
+
+# A recording nothing could be tracked in reaches no melody stage at all and
+# prints neither outcome. Scored as the zero notes it produced, which is what
+# the pinned loop scores it as: the two loops must not disagree about what an
+# unanalysable package is.
+NO_BEATS = "no beats found"
 
 
 def analyze(jar: Path, mp3: Path, separated: bool = False,
@@ -229,20 +244,28 @@ def analyze(jar: Path, mp3: Path, separated: bool = False,
                          f"{done.stdout}{done.stderr}")
             report = done.stdout + "\n" + done.stderr
         if separated and FROM_STEM not in report:
-            if FROM_MIX in report or NOT_SEPARATED in report:
+            if FROM_MIX in report:
                 # No separator here, or none that ran. Scoring the mix melody
                 # against this baseline would report a machine's missing model
                 # as a regression in the stage.
-                return None, first_line(report, (NOT_SEPARATED, FROM_MIX))
-            sys.exit(f"{mp3.name}: analyze reported no melody outcome at all:\n"
-                     + report[-500:])
+                return None, first_line(report, REASONS)
+            if NO_BEATS not in report:
+                sys.exit(f"{mp3.name}: analyze reported no melody outcome at all:\n"
+                         + report[-500:])
         return json.loads((ws / "score" / "score.json").read_text()), None
 
 
 def first_line(report: str, markers: tuple[str, ...]) -> str:
-    for line in report.splitlines():
-        if any(marker in line for marker in markers):
-            return line.strip().removeprefix("warning: ")
+    """The first line carrying the earliest marker that appears at all.
+
+    Marker by marker rather than line by line, so the order of `markers` is a
+    priority: the cause is reported wherever analyze printed it, even though
+    the symptom is printed after it and, being on stdout, often first.
+    """
+    for marker in markers:
+        for line in report.splitlines():
+            if marker in line:
+                return line.strip().removeprefix("warning: ")
     return "no reason given"
 
 

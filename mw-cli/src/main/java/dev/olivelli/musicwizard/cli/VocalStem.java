@@ -20,6 +20,7 @@ import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.ml.MlProviders;
+import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
 import dev.olivelli.musicwizard.core.ml.SeparationProvider;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -30,8 +31,9 @@ import java.util.function.Consumer;
  *
  * <p>Two stages read it — the melody (#559) and lyric transcription (#314) —
  * and separating a song costs minutes, so whichever asks first pays and the
- * other is handed the same buffer. Lazily, because a run may reach neither:
- * an analysis served from the cache separates nothing at all.
+ * other is handed what it produced, success or failure alike. Lazily, because
+ * a run may reach neither: an analysis served from the cache separates
+ * nothing at all.
  *
  * <p>Here rather than in {@code mw-transcribe}, which must not depend on
  * {@code mw-ml} (#247): the CLI separates and hands the stem in.
@@ -41,6 +43,7 @@ final class VocalStem {
     private final Path source;
     private final SeparationProvider provider;
     private AudioBuffer voice;
+    private RuntimeException failure;
 
     private VocalStem(Path source, SeparationProvider provider) {
         this.source = source;
@@ -71,18 +74,41 @@ final class VocalStem {
      * <p>Announced like any other stage, and only on the call that does the
      * work: this takes real time, and a command that reports each step must
      * not sit mute through it.
+     *
+     * @throws ModelUnavailableException when the separator cannot run here.
+     *         Remembered like the stem itself, and for the same reason: the
+     *         second stage in a run must not pay a whole-file decode and a
+     *         model fetch to be told again what the first was told.
      */
     AudioBuffer voice(Consumer<String> report) {
+        if (failure != null) {
+            throw failure;
+        }
         if (voice == null) {
-            int preferred = provider.preferredSampleRate();
-            AudioBuffer mix = preferred > 0
-                    ? AudioDecoder.decode(source, preferred)
-                    : AudioDecoder.decode(source);
-            report.accept("separating the vocal with " + provider.id());
-            voice = new AudioBuffer(
-                    provider.separate(new float[][] {mix.samples()}, mix.sampleRate())
-                            .vocals()[0],
-                    mix.sampleRate());
+            try {
+                int preferred = provider.preferredSampleRate();
+                AudioBuffer mix = preferred > 0
+                        ? AudioDecoder.decode(source, preferred)
+                        : AudioDecoder.decode(source);
+                report.accept("separating the vocal with " + provider.id());
+                voice = new AudioBuffer(
+                        provider.separate(new float[][] {mix.samples()}, mix.sampleRate())
+                                .vocals()[0],
+                        mix.sampleRate());
+            } catch (RuntimeException e) {
+                failure = e;
+                throw e;
+            } catch (LinkageError e) {
+                // A provider whose class resolves and whose native does not is
+                // the ordinary shape of an optional ML stack (#25), and
+                // MlProviders guards only construction -- ONNX Runtime is first
+                // touched inside separate(). An Error here would take down an
+                // analysis that has otherwise succeeded, so it is reported as
+                // what it is to every caller of this: the model cannot be had.
+                failure = new ModelUnavailableException(
+                        "the separation provider could not be loaded: " + e, e);
+                throw failure;
+            }
         }
         return voice;
     }

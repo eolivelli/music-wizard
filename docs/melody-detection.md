@@ -36,12 +36,12 @@ not run. A run asking for both a melody and transcribed lyrics separates once.
 Two measurements decide that default, and they point opposite ways —
 `tools/baselines/score-melody*.txt` holds all four, each corpus read both ways.
 
-- Where a band plays under the melody, the mix melody is the band. Separating
-  is most of the difference between a pitch column near zero and one that
-  means something.
-- Where the melody is **sung** alone, separation costs about nothing: the
-  vocadito rows move by less than a point either way, which is #503's finding
-  on this corpus.
+- Where a band plays under the melody, the mix melody is the band. Three of
+  the four such packages go from a pitch column near zero to one that means
+  something; the fourth keeps almost nothing of its melody either way.
+- Where the melody is **sung** alone, separation costs about nothing: clips
+  move both ways and no column's mean moves by as much as a point, which is
+  #503's finding on this corpus.
 - Where the melody is **played** alone — a solo instrument, or the synthetic
   packages' rendered melody lines — a vocal separator has no voice to keep and
   the melody largely does not survive it. **Pass `--skip-separation` for a
