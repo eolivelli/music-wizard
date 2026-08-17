@@ -84,10 +84,9 @@ recording is 325 s, so the line times land; the words themselves are unchecked.
 Confirmed by ear 2026-08-11: **A major**, checked against a real piano. That is
 ground truth for the key.
 
-Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. That is a
-second piece of ground truth, and it is scorable without a grid --
-`tools/score-samples.py` counts the minor-quality seconds MW reports here and
-reads them against zero (#546).
+Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. That is
+the second piece of ground truth here, and the one tools/score-samples.py
+scores (#546).
 
 Run 2026-08-11, on the merge of #375. Two errors, both filed:
 - **key: E major at 9% confidence, where it is A** (#376). E is the dominant,
@@ -135,10 +134,8 @@ twelve-bar blues in B flat. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/johnny-b-goode.mp3 \
     https://www.youtube.com/watch?v=kSCpu-Jp4OU
-Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. Scorable
-without a grid, like the same fact about la-canzone-del-sole above:
-`tools/score-samples.py` counts the minor-quality seconds MW reports here and
-reads them against zero (#546).
+Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**, which is
+the ground truth scored for this file (#546).
 
 bellissimissima.mp3
 

@@ -255,19 +255,24 @@ public final class ChordEstimator {
      * noise sits on its pitch class. On a recording that holds no minor chord
      * that is seconds of false minor at a time, turned by two significances a
      * fraction of a percent apart (#546). With both thirds discounted the two
-     * triads score alike and the argmax keeps the first of them, which is the
-     * major one — so a run with no third in it reads as a plain triad rather
-     * than as a minor chord ({@link #buildTemplates} fixes that order).
+     * triads score alike, so where both clear their own floors the argmax keeps
+     * the first of them, which is the major one ({@link #buildTemplates} fixes
+     * that order) — a run with no third in it reads as a plain triad. Their
+     * floors are not the same bar, though, and #557 is that: {@link #flatScore}
+     * charges a minor candidate the {@link #ROOT_EXPLAINS_MAJOR_THIRD}
+     * subtraction that a discounted score no longer pays, so between the two
+     * floors the major candidate is ruled out and the minor one admitted.
      *
      * <p>Much smaller than its neighbours, which is the measurement rather than
      * caution: a minor third that is really played removes a large share of its
      * root's residual, so this has only to clear the noise. Swept by {@code
-     * tools/ChordSweep.java score} from a four-hundredth to a twentieth. The
-     * benchmarks whose chords really are minor keep every minor label across
-     * that sweep bar one — {@code jazz-251-c-140}'s {@code Dm7} runs carry a
-     * tail of weakly fitted minor thirds, and at a hundredth two of its bars go
-     * with them. This sits at the largest share swept at which no scored
-     * benchmark loses a bar.
+     * tools/ChordSweep.java score} from a four-hundredth to a twentieth, and
+     * this is the largest share swept at which no scored benchmark loses a bar.
+     * Above it they go one at a time, so a reader raising this should watch all
+     * three: at a hundredth {@code jazz-251-c-140} gives up two {@code Dm7}
+     * bars, and by a twentieth {@code cm-blues-68-95} has turned an {@code m7}
+     * into a {@code 7} and {@code pop-c-g-am-f-120} — the plain-triad benchmark
+     * — two of its {@code Am} bars major.
      */
     private static final double MINOR_THIRD_SHARE_OF_ROOT = 0.0075;
 

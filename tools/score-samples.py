@@ -20,12 +20,8 @@ for every row. That table covers every file the chord table does, and the ones
 it does not: a key can be stated for a recording whose bar-by-bar changes are
 not written down here.
 
-Last it reports, for the recordings of NO_MINOR_CHORD, how many seconds of
-minor-quality label MW emitted where a musician has confirmed the harmony holds
-none. Those recordings are commercial and live in uncommitted/, so no grid is
-written down for them and none is needed: the truth is an invariant over the
-whole recording rather than a bar-by-bar cycle, and every second it counts is a
-false label.
+Last it reports the minor-quality seconds of the recordings in NO_MINOR_CHORD,
+whose truth is an invariant rather than a grid -- see that table.
 
 The committed CI gate lives in mw-it and reads one of these recordings; this
 script is the local, all-samples view of the same question: is the tool getting
@@ -153,16 +149,13 @@ KEYS = {
 }
 
 # Recordings a musician has confirmed hold no minor chord anywhere, with where
-# each of them is. They are commercial audio, so they live in uncommitted/ and
-# never leave this machine -- which is exactly why the truth about them can be
-# written down here while the recordings cannot (CLAUDE.md). uncommitted/list.txt
-# carries the confirmation per file.
+# each of them is; uncommitted/list.txt carries the confirmation per file. They
+# are commercial audio, which is why the truth about them can live here while
+# the recordings themselves cannot (CLAUDE.md).
 #
-# No grid is written down for either, and the invariant does not want one: "this
-# recording holds no minor chord" is a statement about the whole of it, so any
-# minor-quality second the estimator reports is a false label whatever bar it
-# lands in. That prices the veto of #543 and the qualities of #547, which chart
-# diffs were pricing before (#546); the seconds are the price, and zero is right.
+# The invariant wants no grid: any minor-quality second is a false label
+# whatever bar it lands in. That is what prices the veto of #543 and the
+# qualities of #547, which chart diffs were pricing before (#546).
 NO_MINOR_CHORD = {
     "la-canzone-del-sole.mp3": "uncommitted",
     "johnny-b-goode.mp3": "uncommitted",
@@ -465,13 +458,11 @@ ACCIDENTAL_SIGN = {"NATURAL": "", "NONE": "", "SHARP": "#", "FLAT": "b",
 
 
 def score_no_minor(mp3: Path, doc: dict) -> None:
-    """Minor-quality seconds on a recording confirmed to hold no minor chord.
+    """Minor-quality seconds on a recording of NO_MINOR_CHORD, read against zero.
 
-    Every one of them is a false label, so the row is read against zero and
-    nothing has to be aligned to a grid to read it. Broken down by quality
-    rather than by root, because the rules that produce them are per quality:
-    the third is decided by one test, the seventh across a whole root, the
-    sixth and the diminished fifth by another (`ChordEstimator`).
+    Broken down by quality rather than by root, because the rules that produce
+    them are per quality: `ChordEstimator` decides the third one way, the
+    seventh across a whole root, the sixth and the diminished fifth another.
     """
     spans = doc.get("chords", {}).get("chords", [])
     held: dict[str, float] = {}
