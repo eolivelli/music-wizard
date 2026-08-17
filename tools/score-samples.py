@@ -549,8 +549,7 @@ def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
     The span count is the rest of that guard, and the reason it is not enough
     to say the time is zero. A reading that collapsed onto one stated chord for
     a whole recording -- the #185 shape -- spends no time outside the set and
-    scores every column perfect; only the structure says it read nothing. The
-    numerator is the root column's, which the breakdown also explains.
+    scores every column perfect; only the structure says it read nothing.
     """
     want = {parse_chord(c) for c in stated.split()}
     roots = {pc for pc, _ in want}
@@ -576,9 +575,7 @@ def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:
             invented[name] = invented.get(name, 0.0) + seconds
     written = ",".join(spell(c) for c in sorted(want))
     if held <= 0:
-        # Every column below would be an honest zero over nothing at all. Time
-        # that ran backwards lands here too, since dividing by it reports a
-        # negative share of a negative whole rather than saying anything.
+        # Every column below would be an honest zero over nothing at all.
         print(f"  vocabulary {mp3.name}: {written}  no chord time to score"
               f"  spans {counted}/{len(spans)}  N.C. {nc:.1f}s")
         return
