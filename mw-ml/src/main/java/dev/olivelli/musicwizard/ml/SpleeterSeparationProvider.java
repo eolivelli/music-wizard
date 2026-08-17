@@ -42,7 +42,7 @@ import java.util.Map;
  *
  * <p>The models eat magnitude spectrograms and emit per-stem magnitude
  * estimates; the STFT, the soft masks and the inverse are host-side, in
- * {@link SpleeterStft}. Masks are the ratio of squared estimates, applied to
+ * {@link SpleeterStft}. Masks are the ratio of the estimates, applied to
  * the complex mix spectrogram, so the stems sum close to the mix. Bins above
  * the model's 1024 are given to neither stem, matching Spleeter's own default
  * mask extension.
@@ -259,19 +259,31 @@ public final class SpleeterSeparationProvider implements SeparationProvider {
     /**
      * One frame of the mix under one stem's soft mask.
      *
-     * <p>Ratio of squared estimates, Spleeter's own separation exponent, with a
-     * small floor so silence divides to silence rather than to noise. Above the
-     * model's bins the mask is zero for both stems — Spleeter's default
-     * extension ({@code mask_extension: "zeros"} in its 2stems config) — so the
-     * stems' sum is the mix only below ~11 kHz, and that is the checkpoint's
-     * behaviour, not a defect here.
+     * <p>Ratio of the estimates themselves, with a small floor so silence
+     * divides to silence rather than to noise. Spleeter's own default squares
+     * them first, which cuts harder where the band beats the voice in a bin —
+     * and what the melody stage loses to separation is dominated by voice the
+     * mask removed rather than by band it left behind, so the harder mask was
+     * paying for the wrong thing (#503).
+     * {@code tools/apportion-separation-loss.py} is what re-measures the
+     * trade.
+     *
+     * <p>Estimates are magnitudes and a negative one is a broken checkpoint,
+     * but squaring used to make that harmless and this does not: it would give
+     * a mask outside zero to one, and a stem louder than the mix it came from.
+     * Floored for that reason and no other.
+     *
+     * <p>Above the model's bins the mask is zero for both stems — Spleeter's
+     * default extension ({@code mask_extension: "zeros"} in its 2stems config)
+     * — so the stems' sum is the mix only below ~11 kHz, and that is the
+     * checkpoint's behaviour, not a defect here.
      */
-    private static float[] maskedFrame(float[] mixFrame, float[] stem, float[] other) {
+    static float[] maskedFrame(float[] mixFrame, float[] stem, float[] other) {
         float[] spectrum = new float[mixFrame.length];
         for (int f = 0; f < SpleeterStft.MODEL_BINS; f++) {
-            float s = stem[f];
-            float o = other[f];
-            float mask = (s * s) / (s * s + o * o + 1e-10f);
+            float s = Math.max(0f, stem[f]);
+            float o = Math.max(0f, other[f]);
+            float mask = s / (s + o + 1e-10f);
             spectrum[2 * f] = mixFrame[2 * f] * mask;
             spectrum[2 * f + 1] = mixFrame[2 * f + 1] * mask;
         }

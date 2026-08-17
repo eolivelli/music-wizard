@@ -1594,6 +1594,21 @@ class SeparationRatio(unittest.TestCase):
         self.assertTrue(separation.railed(-0.1))
         self.assertFalse(separation.railed(-0.5))
 
+    def test_scoring_unpacks_the_pair_analyze_returns(self):
+        """`analyze` returns a score and a reason; scoring reads both.
+
+        The reason arrived with #559 and this tool kept passing the pair
+        straight on, so every run of it died on the first clip — the whole
+        instrument, on an interface change in its neighbour. Pinned here
+        because nothing else executes this function without a jar.
+        """
+        document = {"tracks": [{"role": "LEAD_VOCAL", "notes": [
+            {"onsetSeconds": 0.0, "durationSeconds": 1.0, "midiPitch": 69}]}]}
+        with mock.patch.object(melody, "analyze", return_value=(document, None)):
+            scored = separation.score(Path("mw.jar"), Path("clip.wav"),
+                                      [(0.0, 1.0, 69)])
+        self.assertEqual((1.0, 1.0, 1.0), scored)
+
 
 class SyntheticTempo(unittest.TestCase):
     """The tempo column (#453): the parse and the ratio, on fixtures."""

@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.ml;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -253,6 +254,45 @@ class SpleeterSeparationProviderTest {
                 new float[][] {eight, eight, eight}, 44100))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at most two");
+    }
+
+    @Test
+    @DisplayName("the mask is the ratio of the estimates, not of their squares")
+    void maskExponent() {
+        // Squaring first is Spleeter's default and cuts harder wherever the
+        // other stem wins a bin, which is where a voice under a band lives
+        // (#503).
+        float[] mix = new float[2 * SpleeterStft.BINS];
+        mix[0] = 1f;
+        float[] stem = new float[SpleeterStft.MODEL_BINS];
+        stem[0] = 2f;
+        float[] other = new float[SpleeterStft.MODEL_BINS];
+        other[0] = 1f;
+
+        float[] masked = SpleeterSeparationProvider.maskedFrame(mix, stem, other);
+
+        assertThat(masked[0]).isCloseTo(2f / 3f, within(1e-6f));
+        // The stems' masks still sum to one, which is what makes them add back
+        // to the mix whatever the exponent.
+        assertThat(masked[0] + SpleeterSeparationProvider.maskedFrame(mix, other, stem)[0])
+                .isCloseTo(1f, within(1e-6f));
+    }
+
+    @Test
+    @DisplayName("a negative estimate cannot make a stem louder than the mix")
+    void negativeEstimate() {
+        // Squaring made a broken checkpoint's negative magnitude harmless; the
+        // ratio of the estimates would turn one into a mask of thousands.
+        float[] mix = new float[2 * SpleeterStft.BINS];
+        mix[0] = 1f;
+        float[] stem = new float[SpleeterStft.MODEL_BINS];
+        stem[0] = -1f;
+        float[] other = new float[SpleeterStft.MODEL_BINS];
+        other[0] = 1f + 1e-7f;
+
+        float[] masked = SpleeterSeparationProvider.maskedFrame(mix, stem, other);
+
+        assertThat(masked[0]).isBetween(0f, 1f);
     }
 
     @Test
