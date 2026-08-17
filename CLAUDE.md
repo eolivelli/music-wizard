@@ -444,19 +444,21 @@ strength of how a page looked:
   the separator is not level-invariant even at a fixed ratio (#515). None of it
   is baselined.
 
-**Melody is read from a signal that holds nothing else (#494).**
-pYIN in `mw-dsp`, segmented into notes, engraved as a lead sheet — melody
-staff, chord symbols, lyrics. The stage is off unless `analyze --melody` asks
-for it, and that is the whole shape of the thing: a monophonic tracker does not
-fail on a full mix, it confidently returns the loudest periodic line, which on
-a band is the bass. The corpus carries both cases and
-`tools/baselines/score-melody.txt` scores them side by side, the accompanied
-packages as controls rather than targets. What is not solved is *when* a note
-starts (#497) and two notes of one pitch abutting (#495); both want the onset
-envelope, which this stage deliberately does not read yet.
+**Melody is read from the separated vocal where a separator can be had
+(#559), and from the raw signal otherwise (#494).** pYIN in `mw-dsp`,
+segmented into notes, engraved as a lead sheet — melody staff, chord symbols,
+lyrics. The stage is off unless `analyze --melody` asks for it. The tracker
+itself is monophonic: on whatever signal it is given it confidently returns
+the loudest periodic line, so without a separator a band reads as its bass —
+and a *played* melody largely does not survive a vocal separator, which is
+what `--skip-separation` is for (#560 is choosing by evidence). The four
+melody baselines under `tools/baselines/` carry both signals; the
+`--separated` pair is local-only. Note boundaries read the onset envelope of
+the same signal as the pitch (#495); *when* a sung note starts is genuinely
+ambiguous and #497 records the limit.
 
-Still missing: melody from a real mix, which is separation's problem rather
-than the tracker's, piano
+Still missing: melody accuracy on a real mix, which is separation's quality
+problem rather than the tracker's (#503), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
 NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 `tools/score-samples.py` and `tools/score-chart.py` are the standing

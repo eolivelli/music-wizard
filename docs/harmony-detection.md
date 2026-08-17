@@ -83,12 +83,14 @@ decisions that real recordings forced:
   most of that root's beats carry it, withdrawn where a minority do — so one
   beat of melody bleed cannot relabel one bar of a vamp.
 
-The vocabulary today: major and minor triads, dominant and minor sevenths.
-Major sevenths, sixths and half-diminished were each measured to cost more
-than they buy until four-note candidates can be ranked on something better
-than which extra note is louder (#287, #274). The constants' sweeps are
-re-derivable with `tools/ChordSweep.java`; current readings live in
-`tools/baselines/`.
+The vocabulary today: major and minor triads, dominant and minor sevenths,
+and — since the quality decision can ask the NNLS fit whether a candidate's
+distinguishing note is really there (#537, #543) — minor sixths and
+half-diminished sevenths (#547). Major sevenths and plain sixths stay out:
+the residual test that admits the others cannot rank a *seventh*, whose
+real-versus-synthetic populations invert (#287 carries the tables). The
+constants' sweeps are re-derivable with `tools/ChordSweep.java`; current
+readings live in `tools/baselines/`.
 
 ## The symbolic estimator (`SymbolicChordEstimator`)
 
