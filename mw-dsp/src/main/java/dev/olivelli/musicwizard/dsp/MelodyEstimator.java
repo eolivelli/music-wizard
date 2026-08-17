@@ -131,13 +131,13 @@ public final class MelodyEstimator {
      * names before that offset is used to round them.
      *
      * <p>The measure is the mean of {@code cos} over each voiced frame's
-     * distance from that grid, so it is 1 for a track dead on it, 0 for one
-     * spread evenly across the semitone, and negative for one sitting between
-     * its lines. An offset a recording does not sit on is not a tuning, and
-     * shifting by it moves whatever share of the notes the shift is wide
-     * across a boundary for nothing — which is what unaccompanied singing
-     * costs, because {@link Chroma#estimateTuning} answers it as confidently
-     * as it answers a band. Where the track does not sit on any grid the
+     * distance from that grid, so it is one for a track dead on it, zero for
+     * one spread evenly across the semitone, and negative for one sitting
+     * between its lines. An offset a recording does not sit on is not a
+     * tuning, and shifting by it moves whatever share of the notes the shift
+     * is wide across a boundary for nothing — which is what unaccompanied
+     * singing costs, because {@link Chroma#estimateTuning} answers it as
+     * confidently as it answers a band. Where the track sits on no grid the
      * rounding cannot be helped by a shift either, so refusing is also the
      * cheaper mistake.
      *

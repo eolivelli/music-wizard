@@ -359,8 +359,8 @@ class MelodyEstimationTest {
         void aFlatTransferRoundsSomeNotesDown() {
             // What the field report on #566 describes: the line is followed,
             // and the notes whose singing strays furthest to the flat side are
-            // the ones that fall a semitone. Left of the boundary by 0.01 and
-            // 0.06 of a semitone here; the middle note survives on its own.
+            // the ones that fall a semitone. The middle note strays least and
+            // survives on its own; the outer two are just past the boundary.
             assertThat(pitches(MelodyEstimator.estimate(phrase())))
                     .containsExactly(68, 71, 68);
         }
