@@ -17,10 +17,10 @@ of it.
 
 So the gap between the outer rows is not attributable by this tool. It holds
 band the mask failed to remove and voice the mask removed along with the band,
-in unknown proportion, and those are different defects with different fixes.
-Projecting the stems back onto the clean voice says the second is large at the
-ratios these clips present, so do not read this gap as leftover band. #503
-carries that measurement.
+and those are different defects with different fixes.
+`tools/apportion-separation-loss.py` is what apportions them, by taking the
+stem apart against the two sources the mix was made of; the voice side
+dominates, so do not read this gap as leftover band.
 
 **The vocal-to-band ratio is stated, not inherited (#505).** The bed is scaled
 per clip so that the voice sits a named number of decibels above it, and the

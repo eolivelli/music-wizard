@@ -73,7 +73,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 SPLITTER = REPO / "tools" / "SeparationSplit.java"
 
-#: The splitter's own default, restated so the sweep can say what it used.
+#: How a bin both sources occupy is divided; the splitter asks for it rather
+#: than defaulting, so this is the only statement of it.
 SHARE_EXPONENT = 2.0
 
 ROWS = ("clean", "mix", "voice part", "clean + band part", "stem")

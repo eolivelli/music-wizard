@@ -48,10 +48,10 @@ import org.jtransforms.fft.FloatFFT_1D;
  *
  * <p>What the split cannot do is separate two sources that genuinely overlap
  * in one bin. There it apportions by a rule, and the trailing argument is that
- * rule's exponent: squared shares are the default and give an overlapped bin
- * mostly to whichever source is louder there, and a smaller exponent divides
- * it more evenly. A conclusion that changes with it is a conclusion about the
- * rule.
+ * rule's exponent, over the sources' energies: squared shares give an
+ * overlapped bin mostly to whichever source is louder there, and a smaller
+ * exponent divides it more evenly. A conclusion that changes with it is a
+ * conclusion about the rule, which is why the driver states what it used.
  *
  * <p>The transform is the separator's own frame, hop and window, because that
  * is the grid the mask was applied on, and a coarser one would smear a mask
@@ -66,7 +66,7 @@ import org.jtransforms.fft.FloatFFT_1D;
  *
  * <pre>
  *   java -cp mw-cli/target/mw.jar tools/SeparationSplit.java \
- *       voice.wav mix.wav stem.wav voice-part.wav band-part.wav [exponent]
+ *       voice.wav mix.wav stem.wav voice-part.wav band-part.wav share-exponent
  * </pre>
  *
  * <p>Driven by {@code tools/apportion-separation-loss.py}, which mixes the
@@ -79,17 +79,23 @@ public final class SeparationSplit {
 
     private static final double MAX_ERROR_DB = -60.0;
 
-    /** How an overlapped bin is divided; see the class javadoc. */
-    private static final double DEFAULT_EXPONENT = 2.0;
+    private static final String USAGE = "usage: SeparationSplit voice.wav mix.wav"
+            + " stem.wav voice-part.wav band-part.wav share-exponent";
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 5 && args.length != 6) {
-            System.err.println("usage: SeparationSplit voice.wav mix.wav stem.wav"
-                    + " voice-part.wav band-part.wav [exponent]");
+        if (args.length != 6) {
+            System.err.println(USAGE);
             System.exit(2);
         }
-        double exponent = args.length == 6
-                ? Double.parseDouble(args[5]) : DEFAULT_EXPONENT;
+        double exponent = 0;
+        try {
+            // Asked for rather than defaulted, so the rule an apportionment
+            // used is stated by whoever ran it and lives in one place.
+            exponent = Double.parseDouble(args[5]);
+        } catch (NumberFormatException e) {
+            System.err.println(USAGE);
+            System.exit(2);
+        }
         float[] voice = mono(args[0]);
         float[] mix = mono(args[1]);
         float[] stem = mono(args[2]);
@@ -117,9 +123,8 @@ public final class SeparationSplit {
         float[][] stemSpec = stft.forward(stem);
 
         // The two source spectrograms are overwritten with the parts they
-        // decide, frame by frame once their shares are taken: a whole
-        // recording is several hundred megabytes of spectrogram per minute and
-        // this tool is run over a corpus.
+        // decide, frame by frame once their shares are taken; this tool is run
+        // over a corpus and a spectrogram of a whole recording is not small.
         for (int t = 0; t < stemSpec.length; t++) {
             for (int f = 0; f < Stft.BINS; f++) {
                 // Over the energies, so the default exponent is the identity
@@ -212,12 +217,9 @@ public final class SeparationSplit {
     }
 
     /**
-     * The separator's own transform: frame 4096, hop 1024, periodic Hann,
-     * centre-padded, inverted by weighted overlap-add.
-     *
-     * <p>A copy rather than a use of {@code SpleeterStft}, which is not visible
-     * outside its package; the parameters are asserted by the round trip this
-     * tool prints.
+     * The separator's own transform, centre-padded, inverted by weighted
+     * overlap-add. A copy rather than a use of {@code SpleeterStft}, which is
+     * not visible outside its package.
      */
     private static final class Stft {
 

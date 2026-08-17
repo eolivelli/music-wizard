@@ -435,10 +435,11 @@ strength of how a page looked:
   annotated voices three ways — clean, through the separator with no band, and
   through it with a band mixed in. The middle row costs almost nothing, so the
   separator does not spoil a voice by itself; the whole loss appears once a
-  band is there. **What that gap is made of is known now (#503): it is voice
-  the mask removed, not band it left behind**, and
-  `tools/apportion-separation-loss.py` is what says so — it takes the stem
-  apart against the two sources the measurement mixed, and scores each part.
+  band is there. **What that gap is made of is known now (#503): voice the
+  mask removed dominates it, and band the mask left costs the tracker
+  something too**, and `tools/apportion-separation-loss.py` is what says so —
+  it takes the stem apart against the two sources the measurement mixed, and
+  scores each part.
   The mask is softer for it, and the voice is still lost where the band is
   loud, which is #575. How far the voice sits above the band is the
   variable the tool now states rather than inherits — but the bed is added to a
