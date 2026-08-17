@@ -41,11 +41,21 @@ F = (5, "MAJOR")
 
 
 def span(symbol: str, start: float, end: float) -> dict:
-    """One estimated chord span, as score.json spells it."""
-    letter, accidental = symbol[0], "NATURAL"
-    quality = symbol[1:] or "MAJOR"
+    """One estimated chord span, as score.json spells it: a letter, an optional
+    '#' or 'b', then ChordQuality's own constant name."""
+    letter, rest = symbol[0], symbol[1:]
+    accidental = {"#": "SHARP", "b": "FLAT"}.get(rest[:1], "NATURAL")
+    if accidental != "NATURAL":
+        rest = rest[1:]
     return {"root": {"letter": letter, "accidental": accidental},
-            "quality": quality, "startSeconds": start, "endSeconds": end}
+            "quality": rest or "MAJOR", "startSeconds": start, "endSeconds": end}
+
+
+def no_chord(start: float, end: float) -> dict:
+    """An N.C. span. score.json writes a root here like any other span's, and
+    the quality is what says there is no chord."""
+    return {"root": {"letter": "C", "accidental": "NATURAL"}, "quality": "NONE",
+            "startSeconds": start, "endSeconds": end}
 
 
 def chart_score(lines: list[str], truth: str) -> tuple[float, float]:
@@ -135,6 +145,18 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
+def chord_quality_constants() -> list[tuple[str, str, str]]:
+    """ChordQuality's constants, as (name, symbol, the intervals' text)."""
+    source = (Path(__file__).resolve().parent.parent
+              / "mw-core/src/main/java/dev/olivelli/musicwizard/core/model"
+              / "ChordQuality.java").read_text(encoding="utf-8")
+    constants = re.findall(r"^    ([A-Z_]+)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
+                           source, re.MULTILINE)
+    if len(constants) < 10:
+        raise AssertionError("the enum's constants did not parse")
+    return constants
+
+
 def minor_line(spans: list[dict], duration: float = 10.0) -> str:
     """The one line score_no_minor prints for a recording."""
     out = io.StringIO()
@@ -171,19 +193,136 @@ class MinorSeconds(unittest.TestCase):
         self.assertIn("none", line)
 
     def test_the_qualities_counted_are_the_enum_s_own_minorish_ones(self):
-        """MINOR_THIRD is a copy of what ChordQuality.isMinorish() answers, and
-        of the symbols the row prints. A quality added to the enum with a minor
-        third must fail here rather than go uncounted in a row read against
-        zero."""
-        source = (Path(__file__).resolve().parent.parent
-                  / "mw-core/src/main/java/dev/olivelli/musicwizard/core/model"
-                  / "ChordQuality.java").read_text(encoding="utf-8")
-        constants = re.findall(r"^    ([A-Z_]+)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
-                               source, re.MULTILINE)
-        self.assertGreater(len(constants), 10, "the enum's constants did not parse")
-        minorish = {name: symbol for name, symbol, intervals in constants
+        """MINOR_THIRD is a copy of what ChordQuality.isMinorish() answers. A
+        quality added to the enum with a minor third must fail here rather than
+        go uncounted in a row read against zero."""
+        constants = chord_quality_constants()
+        minorish = {name for name, _, intervals in constants
                     if 3 in [int(i) for i in re.findall(r"\d+", intervals)]}
-        self.assertEqual(minorish, samples.MINOR_THIRD)
+        self.assertEqual(minorish, set(samples.MINOR_THIRD))
+
+    def test_every_quality_the_enum_names_can_be_spelled(self):
+        """The symbols the minor row and the vocabulary row print. A quality
+        added to the enum would otherwise reach a row as a KeyError, or --
+        worse, since the harnesses run unattended -- be dropped from one."""
+        constants = chord_quality_constants()
+        self.assertEqual({name: symbol for name, symbol, _ in constants},
+                         samples.QUALITY_SYMBOL)
+
+    def test_a_truth_suffix_spells_back_to_itself(self):
+        """SUFFIX_QUALITY reads a written chord and QUALITY_SYMBOL writes one.
+        They are deliberately not each other's inverse -- the reader covers only
+        the qualities the corpus states, so an unknown suffix fails loudly --
+        but where they overlap they must agree, or a stated set would print as
+        a set nobody stated."""
+        for suffix in samples.SUFFIX_QUALITY:
+            self.assertEqual("C" + suffix, samples.spell(samples.parse_chord("C" + suffix)))
+
+
+def vocabulary_line(spans: list[dict], stated: str = "A E D") -> str:
+    """The one line score_vocabulary prints for a recording."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        samples.score_vocabulary(Path("x.mp3"), {"chords": {"chords": spans}}, stated)
+    return out.getvalue().strip()
+
+
+class Vocabulary(unittest.TestCase):
+    """#572: the recordings whose truth is the complete set of chords they
+    hold, and nothing about when any of them sounds."""
+
+    def test_a_chord_outside_the_set_costs_both_columns(self):
+        line = vocabulary_line([span("A", 0.0, 6.0), span("C#MINOR", 6.0, 8.0)])
+        self.assertIn("outside-root 2.0s of 8.0s (25.0%)", line)
+        self.assertIn("outside-chord 2.0s (25.0%)", line)
+        self.assertIn("C# 2.0s", line)
+
+    def test_a_colour_on_a_stated_root_is_outside_by_chord_only(self):
+        """The split the grid rows draw between root and root+quality: a
+        seventh on a chord the song holds is not a chord the song does not."""
+        line = vocabulary_line([span("A", 0.0, 6.0),
+                                span("EDOMINANT_SEVENTH", 6.0, 8.0)])
+        self.assertIn("outside-root 0.0s of 8.0s (0.0%)", line)
+        self.assertIn("outside-chord 2.0s (25.0%)", line)
+        self.assertTrue(line.endswith("none"), line)
+
+    def test_a_stated_set_may_name_qualities(self):
+        """Stated as sevenths, a plain triad on the same root is the colour
+        that is outside the set -- the same rule read the other way."""
+        line = vocabulary_line([span("A", 0.0, 2.0)], "A7 D7 E7")
+        self.assertIn("D7,E7,A7", line)
+        self.assertIn("outside-root 0.0s of 2.0s (0.0%)", line)
+        self.assertIn("outside-chord 2.0s (100.0%)", line)
+
+    def test_no_chord_is_neither_inside_the_set_nor_outside_it(self):
+        """N.C. is held out of the time the columns divide. Counted as time
+        inside, the row below would read 20% rather than 50%."""
+        line = vocabulary_line([span("A", 0.0, 2.0), span("C#MINOR", 2.0, 4.0),
+                                no_chord(4.0, 10.0)])
+        self.assertIn("outside-root 2.0s of 4.0s (50.0%)", line)
+        self.assertIn("N.C. 6.0s", line)
+
+    def test_a_reading_that_named_no_chord_at_all_does_not_read_clean(self):
+        """The columns would all be honest zeros over nothing measured, which
+        is what a perfect reading prints."""
+        for spans in ([no_chord(0.0, 10.0)], []):
+            line = vocabulary_line(spans)
+            self.assertIn("no chord time to score", line)
+            self.assertNotIn("0.0%", line)
+
+    def test_a_reading_collapsed_onto_one_stated_chord_is_told_from_a_good_one(self):
+        """The #185 shape: one span of a chord the song does hold, over the
+        whole recording. It spends no time outside the set, so every column is
+        a perfect zero and only the span count separates the two."""
+        collapsed = vocabulary_line([span("A", 0.0, 300.0)])
+        healthy = vocabulary_line([span("A", 0.0, 100.0), span("D", 100.0, 200.0),
+                                   span("E", 200.0, 300.0)])
+        self.assertIn("outside-root 0.0s of 300.0s (0.0%)", collapsed)
+        self.assertIn("outside-root 0.0s of 300.0s (0.0%)", healthy)
+        self.assertIn("spans 0/1", collapsed)
+        self.assertIn("spans 0/3", healthy)
+        self.assertNotEqual(collapsed, healthy)
+
+    def test_the_span_count_is_the_roots_the_column_beside_it_counts(self):
+        line = vocabulary_line([span("A", 0.0, 1.0), span("C#MINOR", 1.0, 2.0),
+                                span("F#MINOR", 2.0, 3.0),
+                                span("EDOMINANT_SEVENTH", 3.0, 4.0)])
+        self.assertIn("spans 2/4", line)
+
+    def test_time_that_ran_backwards_is_not_divided_by(self):
+        """No evidence MW emits such a span; the row must not invent a negative
+        share out of one if it ever does."""
+        line = vocabulary_line([span("A", 4.0, 0.0)])
+        self.assertIn("no chord time to score", line)
+        self.assertNotIn("-", line)
+
+    def test_the_invented_roots_are_summed_and_named_longest_first(self):
+        """By root, and across qualities: one root read three ways is one root
+        the song does not hold, and the column this names is the root one."""
+        line = vocabulary_line([span("C#MINOR", 0.0, 1.0), span("F#MINOR", 1.0, 4.0),
+                                span("C#", 4.0, 6.5)])
+        self.assertTrue(line.endswith("C# 3.5s, F# 3.0s"), line)
+
+    def test_the_stated_set_reads_the_same_however_it_is_written_down(self):
+        """It is printed so that a change to the truth moves the row rather
+        than silently re-scoring it -- so its order must be the harness's, not
+        the order someone typed."""
+        self.assertEqual(vocabulary_line([span("A", 0.0, 1.0)], "A E D"),
+                         vocabulary_line([span("A", 0.0, 1.0)], "D A E"))
+        self.assertIn("D,E,A", vocabulary_line([span("A", 0.0, 1.0)]))
+
+    def test_every_stated_set_is_written_down_where_an_ear_confirmed_it(self):
+        """A table entry whose file its list.txt does not name would be ground
+        truth from nowhere. Holds for the invariant of #546 too, which is the
+        same kind of fact about the same kind of file."""
+        repo = Path(__file__).resolve().parent.parent
+        for name, (where, stated) in samples.VOCABULARY.items():
+            # A set nothing parses to would put every span outside it.
+            self.assertTrue({samples.parse_chord(c) for c in stated.split()},
+                            f"{name} states no chord at all")
+            self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
+        for name, where in samples.NO_MINOR_CHORD.items():
+            self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
@@ -731,6 +870,13 @@ class Keying(unittest.TestCase):
         self.assertIn(".mp3:", line)
         self.assertEqual("minor x.mp3", line.split(":")[0].strip())
 
+    def test_a_vocabulary_row_is_gated(self):
+        """The row of #572, under its own key: la-canzone-del-sole is in this
+        table and in #546's, and neither row may overwrite the other."""
+        line = vocabulary_line([span("A", 0.0, 1.0)])
+        self.assertIn(".mp3:", line)
+        self.assertEqual("vocabulary x.mp3", line.split(":")[0].strip())
+
     def test_an_ad_hoc_row_is_not_gated(self):
         """A file with no licence reaching its words must not become a baseline
         row, so its line is deliberately keyed out of the comparison."""
@@ -798,6 +944,7 @@ class Keying(unittest.TestCase):
                      samples.missing_line("key x.mp3"),
                      samples.missing_line("phase x.mp3"),
                      samples.missing_line("minor x.mp3", "uncommitted"),
+                     samples.missing_line("vocabulary x.mp3", "uncommitted"),
                      chart.missing_line("x.mp3"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)
