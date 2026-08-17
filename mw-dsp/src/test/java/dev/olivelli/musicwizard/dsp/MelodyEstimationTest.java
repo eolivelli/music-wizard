@@ -389,15 +389,92 @@ class MelodyEstimationTest {
         @Test
         @DisplayName("only voiced frames vote on whether the grid holds")
         void unvoicedFramesDoNotVote() {
-            // The decoder carries a pitch through a silence, and here it sits
-            // where the grid is not. Counted, it would outvote the singing and
-            // the phrase would be rounded on A440 again.
-            PitchTrack withSilence = track(69 + FLAT - 0.15, 40,
-                                           null, 400,
-                                           71 + FLAT - 0.05, 40);
+            // The decoder carries a pitch through a silence and its voicedness
+            // there is low but not nothing, which is what the tracker emits.
+            // Here the carried pitch sits half a semitone off the grid and
+            // there is far more of it than there is singing, so counted it
+            // would outvote the phrase and round it on A440 again.
+            PitchTrack withSilence = frames(
+                    voiced(69 + FLAT - 0.15, 40),
+                    unvoiced(69 + FLAT - 0.15 + 0.5, 400),
+                    voiced(71 + FLAT - 0.05, 40));
 
             assertThat(pitches(MelodyEstimator.estimate(withSilence, silence(), FLAT)))
                     .containsExactly(69, 71);
+        }
+
+        @Test
+        @DisplayName("a track just clear of the floor is rounded on the grid")
+        void aTrackJustClearOfTheFloorIsHonoured() {
+            assertThat(pitches(MelodyEstimator.estimate(atDistance(0.21), silence(), FLAT)))
+                    .containsExactly(69);
+        }
+
+        @Test
+        @DisplayName("a track just under it is not, though it is barely further off")
+        void aTrackJustUnderTheFloorIsRefused() {
+            // Barely further from the grid than the note above, and the whole
+            // recording is named a semitone lower. The floor is a cliff, and
+            // this pair is where it stands.
+            assertThat(pitches(MelodyEstimator.estimate(atDistance(0.226), silence(), FLAT)))
+                    .containsExactly(68);
+        }
+
+        @Test
+        @DisplayName("an offset the estimator cannot tell from concert pitch is not used")
+        void anUnresolvableOffsetIsNotUsed() {
+            // Chroma.estimateTuning answers in slots and never returns zero
+            // where it found anything, so the slot holding concert pitch is
+            // reported as half a step off it. The long note here sits on that
+            // grid, which is what makes the track corroborate the offset; the
+            // short one sits on a rounding boundary, and rounding it on a
+            // shift that narrow would decide it in whichever direction it
+            // happened to lie.
+            double halfAStep = Chroma.TUNING_RESOLUTION_SEMITONES / 2;
+            PitchTrack onTheBoundary = track(69 - halfAStep, 200, 71.49, 40);
+
+            assertThat(pitches(MelodyEstimator.estimate(onTheBoundary, silence(), -halfAStep)))
+                    .containsExactly(69, 71)
+                    .isEqualTo(pitches(MelodyEstimator.estimate(onTheBoundary)));
+        }
+
+        /** One held note the given distance under the flat transfer's own grid. */
+        private PitchTrack atDistance(double belowTheGrid) {
+            return track(69 + FLAT - belowTheGrid, 40);
+        }
+
+        private double[] voiced(double pitch, int count) {
+            return new double[] {pitch, count, 0.9};
+        }
+
+        /**
+         * Frames the decoder called silence: they still carry a pitch, and a
+         * voicedness of their own that a fixture must not zero out if it wants
+         * to say anything about whether that weight is read.
+         */
+        private double[] unvoiced(double pitch, int count) {
+            return new double[] {pitch, count, -0.4};
+        }
+
+        /** A track from {@link #voiced} and {@link #unvoiced} runs. */
+        private PitchTrack frames(double[]... runs) {
+            int total = 0;
+            for (double[] run : runs) {
+                total += (int) run[1];
+            }
+            double[] hz = new double[total];
+            boolean[] isVoiced = new boolean[total];
+            double[] voicedness = new double[total];
+            int at = 0;
+            for (double[] run : runs) {
+                for (int i = 0; i < (int) run[1]; i++, at++) {
+                    hz[at] = 440 * Math.pow(2, (run[0] - 69) / 12);
+                    isVoiced[at] = run[2] > 0;
+                    voicedness[at] = Math.abs(run[2]);
+                }
+            }
+            return new PitchTrack(hz, isVoiced, voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
         }
 
         @Test

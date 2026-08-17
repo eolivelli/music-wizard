@@ -141,10 +141,14 @@ public final class MelodyEstimator {
      * rounding cannot be helped by a shift either, so refusing is also the
      * cheaper mistake.
      *
-     * <p>Swept against vocadito, whose annotations say which clips have a
-     * tuning centre and which have none: below this the corpus starts paying
-     * for clips whose estimate the singing does not support, and no benchmark
-     * that has one is admitted by lowering it further.
+     * <p>It is a trade and not a separation. Swept against vocadito, the
+     * value here is low enough to admit a band recording whose singing agrees
+     * with its transfer, and admitting that also admits two clips of
+     * unaccompanied singing, which pay — where the melody is the whole
+     * recording the offset was measured on the signal it is applied to and
+     * this test cannot be anything but circular (#568). No value both admits
+     * the one and refuses the others; `tools/baselines/score-melody*.txt`
+     * carry what each is worth.
      */
     private static final double TUNING_CORROBORATION_FLOOR = 0.2;
 
@@ -181,10 +185,9 @@ public final class MelodyEstimator {
      *
      * @param tuningOffsetSemitones how far the recording sits above A440, in
      *                              the sense of {@link Chroma#estimateTuning}.
-     *                              Honoured only where this track's own pitches
-     *                              sit on the grid it names, so passing an
-     *                              offset measured from a signal the melody is
-     *                              not in cannot move the notes on its own.
+     *                              Honoured only where it says something that
+     *                              estimator can resolve and where this track's
+     *                              own pitches sit on the grid it names.
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones) {
@@ -203,7 +206,7 @@ public final class MelodyEstimator {
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
         // one is not.
-        double grid = corroborates(pitches, tuningOffsetSemitones) ? tuningOffsetSemitones : 0;
+        double grid = honours(pitches, tuningOffsetSemitones) ? tuningOffsetSemitones : 0;
         List<Note> notes = new ArrayList<>();
         int frame = 0;
         while (frame < pitches.frameCount()) {
@@ -219,6 +222,21 @@ public final class MelodyEstimator {
             frame = end;
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
+    }
+
+    /**
+     * Whether an offset is worth rounding on: it has to say something
+     * {@link Chroma#estimateTuning} can resolve, and the track's own pitches
+     * have to sit on the grid it names.
+     *
+     * <p>Half a step is the slot that holds zero, so an offset that small is
+     * an estimator saying "concert pitch" — and a shift that narrow decides
+     * nothing but notes already on a rounding boundary, in whichever
+     * direction they happened to lie.
+     */
+    private static boolean honours(PitchTrack pitches, double tuningOffsetSemitones) {
+        return Math.abs(tuningOffsetSemitones) > Chroma.TUNING_RESOLUTION_SEMITONES / 2
+                && corroborates(pitches, tuningOffsetSemitones);
     }
 
     /**

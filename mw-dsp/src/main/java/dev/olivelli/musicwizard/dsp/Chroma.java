@@ -124,6 +124,17 @@ public record Chroma(double[][] vectors, double frameRate) {
     }
 
     /**
+     * How wide a step {@link #estimateTuning} can answer in, in semitones.
+     *
+     * <p>Its answer is a histogram slot's centre, so it is a multiple of this
+     * away from a slot boundary and never lands on zero unless it found no
+     * evidence at all. A caller deciding whether a recording is at concert
+     * pitch has to read the answer against this, not against zero: an offset
+     * of half a step is the slot that contains zero.
+     */
+    public static final double TUNING_RESOLUTION_SEMITONES = 0.025;
+
+    /**
      * Estimates how far the recording sits from A4 = 440 Hz, in semitones.
      *
      * <p>Every spectral peak is compared with the nearest equal-tempered pitch,
@@ -131,11 +142,12 @@ public record Chroma(double[][] vectors, double frameRate) {
      * near zero; one recorded flat has them clustered at a consistent negative
      * offset. The mode of that distribution is the correction.
      *
-     * @return the offset in semitones, within (-0.5, 0.5]
+     * @return the offset in semitones, within (-0.5, 0.5], quantised to
+     *     {@link #TUNING_RESOLUTION_SEMITONES}
      */
     public static double estimateTuning(Spectrogram spectrogram) {
         Objects.requireNonNull(spectrogram, "spectrogram");
-        int bins = 40;
+        int bins = (int) Math.round(1 / TUNING_RESOLUTION_SEMITONES);
         double[] histogram = new double[bins];
 
         int lowBin = Math.max(1, spectrogram.binOf(MIN_HZ));
