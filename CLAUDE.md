@@ -83,7 +83,7 @@ merely jittery (#429).
 
 Then: the residual gate of #543 admitted the minor sixth and the
 half-diminished (#547). The vocabulary still has no major seventh or plain
-sixth, for two different reasons #287 carries: the seventh degree cannot be
+sixth, for two different reasons: the seventh degree cannot be
 residual-gated (its real and synthetic populations invert), and the sixth
 really is sounding, so it needs root evidence rather than presence evidence
 (#287, #274).
@@ -455,8 +455,9 @@ the loudest periodic line, so without a separator a band reads as its bass —
 and a *played* melody largely does not survive a vocal separator, which is
 what `--skip-separation` is for (#560 is choosing by evidence). The
 melody baselines under `tools/baselines/` carry both signals; only one of
-their rows runs in CI, the rest needing local-only audio, so read premerge's
-output rather than CI for melody movement. *When* a sung note starts is
+their rows runs in CI — the rest need this machine's vocadito audio or its
+separation model — so read premerge's output rather than CI for melody
+movement. *When* a sung note starts is
 genuinely ambiguous and #497 records the limit.
 
 Still missing: melody accuracy on a real mix, which is separation's quality
