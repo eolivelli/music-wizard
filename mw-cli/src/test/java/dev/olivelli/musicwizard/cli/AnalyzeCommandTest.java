@@ -151,6 +151,20 @@ class AnalyzeCommandTest {
         }
 
         @Test
+        @DisplayName("names both of the estimator's decisions when the key carries them")
+        void namesBothComponentsWhenRecorded() {
+            // The row a user acts on: the signature and the tonic over its
+            // relative fail differently, and their product says only that one
+            // of them did.
+            Score score = trackedAt(0.5, TimeSignature.FOUR_FOUR)
+                    .withKeys(List.of(Key.estimated(PitchSpelling.parse("A4"), Mode.MINOR,
+                            0, 12.0, Confidence.of(0.5), Confidence.of(0.97))));
+
+            assertThat(AnalyzeCommand.summary(SourceKind.AUDIO, score))
+                    .contains("Key     A minor (signature 50%, tonic over its relative 97%)");
+        }
+
+        @Test
         @DisplayName("says nothing at all when no key was estimated")
         void omitsTheRowWithoutAKey() {
             assertThat(AnalyzeCommand.summary(SourceKind.AUDIO,

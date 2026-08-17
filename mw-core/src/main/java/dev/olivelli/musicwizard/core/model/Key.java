@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -202,6 +203,31 @@ public record Key(
     /** Name such as {@code F# minor}. */
     public String displayName() {
         return tonic.letter().name() + tonic.accidental().displaySuffix() + " " + mode.name().toLowerCase();
+    }
+
+    /**
+     * The name with what is trusted about it, for anything a person reads.
+     *
+     * <p>The two decisions separately where they were recorded, because they
+     * fail differently and their product says only that one of them was weak:
+     * a signature at its floor and a confident tonic multiply out to the same
+     * figure as the reverse, and the reader's next move differs (#529). The
+     * single figure otherwise, since a key that carries no components has none
+     * to name.
+     *
+     * <p>Here rather than in each caller so that the chart, the summary and the
+     * progress line cannot word it three ways.
+     */
+    public String displayNameWithConfidence() {
+        if (signatureConfidence.isEmpty()) {
+            return String.format(Locale.ROOT, "%s (%.0f%% confidence)",
+                    displayName(), 100 * confidence.value());
+        }
+        return String.format(Locale.ROOT,
+                "%s (signature %.0f%%, tonic over its relative %.0f%%)",
+                displayName(),
+                100 * signatureConfidence.orElseThrow().value(),
+                100 * tonicConfidence.orElseThrow().value());
     }
 
     @Override

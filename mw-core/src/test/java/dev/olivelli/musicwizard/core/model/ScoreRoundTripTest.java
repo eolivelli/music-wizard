@@ -190,6 +190,22 @@ class ScoreRoundTripTest {
         }
 
         @Test
+        @DisplayName("a key's two component confidences are named at the workspace boundary")
+        void namesTheKeyConfidenceComponents() {
+            // By name, because these are what a reader outside this repository
+            // -- the phone app, a future UI -- has to look for to tell a shaky
+            // signature from a coin-flip tonic (#529). Renaming or dropping
+            // them is a change to that contract, not an internal one.
+            Score restored = ScoreJson.fromJson(ScoreJson.toJson(fullyPopulated()));
+
+            assertThat(ScoreJson.toJson(fullyPopulated()))
+                    .contains("\"signatureConfidence\"")
+                    .contains("\"tonicConfidence\"");
+            assertThat(restored.keys().get(0).signatureConfidence()).contains(Confidence.of(0.9));
+            assertThat(restored.keys().get(0).tonicConfidence()).contains(Confidence.of(0.6));
+        }
+
+        @Test
         @DisplayName("still opens a score written before the key confidence components existed")
         void readsAScoreBeforeKeyComponents() throws Exception {
             // #512 added the two components as Optionals, so a file without

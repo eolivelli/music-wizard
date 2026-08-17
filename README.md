@@ -11,7 +11,7 @@ $ mw init song.mp3 && mw analyze song.mwz && mw render song.mwz
 
 Tempo  116 BPM
 Meter  4/4
-Key    G major (92% confidence)
+Key    G major (signature 88%, tonic over its relative 100%)
 
 | N.C. G      | %           | %           | D           |
 | %           | G           | C           | G           |

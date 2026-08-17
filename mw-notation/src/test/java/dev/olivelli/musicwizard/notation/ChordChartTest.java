@@ -276,6 +276,36 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("names both of the estimator's decisions when the key carries them")
+    void headsTheChartWithBothConfidences() {
+        // The product hides which half was weak, and the chart is where a
+        // player reads the key: a confident tonic under a shaky signature and
+        // the reverse multiply out alike and ask for different corrections.
+        Score score = fourChordSong(1).withKeys(List.of(Key.estimated(
+                new PitchSpelling(NoteLetter.A, Accidental.NATURAL, 4), Mode.MINOR,
+                0, 8.0, Confidence.of(0.5), Confidence.of(0.97))));
+
+        assertThat(ChordChart.toText(score))
+                .contains("Key    A minor (signature 50%, tonic over its relative 97%)");
+    }
+
+    @Test
+    @DisplayName("words a declared key the same way, since the chart cannot tell it apart")
+    void wordsADeclaredKeyLikeAnEstimatedOne() {
+        // Both halves certain is what MidiTranscriber records from a key
+        // signature meta event, the file stating the mode as well as the
+        // accidentals. A key carries no provenance, so reading certainty as
+        // "stated" would be a guess -- and one that would silently drop the
+        // figures from an estimate that happened to come out certain.
+        Score score = fourChordSong(1).withKeys(List.of(Key.estimated(
+                new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4), Mode.MAJOR,
+                0, 8.0, Confidence.CERTAIN, Confidence.CERTAIN)));
+
+        assertThat(ChordChart.toText(score))
+                .contains("Key    C major (signature 100%, tonic over its relative 100%)");
+    }
+
+    @Test
     @DisplayName("leaves the key line out when no key was estimated")
     void omitsTheKeyLineWithoutAKey() {
         assertThat(ChordChart.toText(fourChordSong(1))).doesNotContain("Key");
