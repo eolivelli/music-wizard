@@ -50,6 +50,16 @@ import java.util.Objects;
  * two differ by the very interval the correction spans. The gap #497 names is
  * real against MIDI attacks and is not this stage's defect against sung
  * truth; the measurements are with that issue.
+ *
+ * <p><strong>Notes are rounded on the recording's grid, not on A440</strong>
+ * (#566). A transfer that runs fast or slow puts every sung note off the
+ * concert-pitch grid by one constant, which does not move a note by a semitone
+ * on its own — it spends the rounding margin on one side, so the singer's own
+ * scatter then crosses the boundary in one direction only. The offset is the
+ * one the harmony is already analysed at; this stage is handed it rather than
+ * measuring its own, so a chord and the melody over it cannot be named in
+ * different frames. It is one offset for the whole recording, so a recording
+ * whose tuning drifts is out of scope.
  */
 public final class MelodyEstimator {
 
@@ -116,6 +126,32 @@ public final class MelodyEstimator {
      */
     private static final double DIP_REACH_SECONDS = 0.06;
 
+    /**
+     * How strongly the track's own pitches must sit on the grid a tuning offset
+     * names before that offset is used to round them.
+     *
+     * <p>The measure is the mean of {@code cos} over each voiced frame's
+     * distance from that grid, so it is one for a track dead on it, zero for
+     * one spread evenly across the semitone, and negative for one sitting
+     * between its lines. An offset a recording does not sit on is not a
+     * tuning, and shifting by it moves whatever share of the notes the shift
+     * is wide across a boundary for nothing — which is what unaccompanied
+     * singing costs, because {@link Chroma#estimateTuning} answers it as
+     * confidently as it answers a band. Where the track sits on no grid the
+     * rounding cannot be helped by a shift either, so refusing is also the
+     * cheaper mistake.
+     *
+     * <p>It is a trade and not a separation. Swept against vocadito, the
+     * value here is low enough to admit a band recording whose singing agrees
+     * with its transfer, and admitting that also admits two clips of
+     * unaccompanied singing, which pay — where the melody is the whole
+     * recording the offset was measured on the signal it is applied to and
+     * this test cannot be anything but circular (#568). No value both admits
+     * the one and refuses the others; `tools/baselines/score-melody*.txt`
+     * carry what each is worth.
+     */
+    private static final double TUNING_CORROBORATION_FLOOR = 0.2;
+
     private MelodyEstimator() {
     }
 
@@ -127,23 +163,50 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
-        return segment(pitches, null);
+        return segment(pitches, null, 0);
     }
 
     /**
      * The same, with same-pitch re-articulations split by the onset envelope.
      *
-     * <p>This is the form the pipeline uses; the envelope-less overload exists
-     * for callers with nothing to offer it, and keeps two notes of one pitch
-     * with no gap as the one note a pitch track can see.
+     * <p>The envelope-less overload exists for callers with nothing to offer
+     * it, and keeps two notes of one pitch with no gap as the one note a pitch
+     * track can see. Neither of these two rounds anywhere but on A440; the
+     * pipeline uses {@link #estimate(PitchTrack, OnsetEnvelope, double)}.
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
-        return segment(pitches, envelope);
+        return segment(pitches, envelope, 0);
     }
 
-    private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope) {
+    /**
+     * The same, rounding notes on a recording whose tuning is known.
+     *
+     * @param tuningOffsetSemitones how far the recording sits above A440, in
+     *                              the sense of {@link Chroma#estimateTuning}.
+     *                              Honoured only where it says something that
+     *                              estimator can resolve and where this track's
+     *                              own pitches sit on the grid it names.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones) {
+        Objects.requireNonNull(pitches, "pitches");
+        Objects.requireNonNull(envelope, "envelope");
+        if (!Double.isFinite(tuningOffsetSemitones)) {
+            throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
+                    + tuningOffsetSemitones);
+        }
+        return segment(pitches, envelope, tuningOffsetSemitones);
+    }
+
+    private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones) {
+        // Decided once for the whole track and before anything is cut: the
+        // offset shifts where a semitone boundary falls, so a decision taken
+        // per run would let one note of a phrase be rounded on a grid the next
+        // one is not.
+        double grid = honours(pitches, tuningOffsetSemitones) ? tuningOffsetSemitones : 0;
         List<Note> notes = new ArrayList<>();
         int frame = 0;
         while (frame < pitches.frameCount()) {
@@ -155,15 +218,54 @@ public final class MelodyEstimator {
             while (end < pitches.frameCount() && pitches.voiced()[end]) {
                 end++;
             }
-            notes.addAll(notesOfRun(pitches, envelope, frame, end));
+            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid));
             frame = end;
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
     }
 
+    /**
+     * Whether an offset is worth rounding on: it has to say something
+     * {@link Chroma#estimateTuning} can resolve, and the track's own pitches
+     * have to sit on the grid it names.
+     *
+     * <p>An offset that reads as concert pitch is not rounded on at all: a
+     * shift that narrow decides nothing but notes already on a rounding
+     * boundary, in whichever direction they happened to lie.
+     */
+    private static boolean honours(PitchTrack pitches, double tuningOffsetSemitones) {
+        return !Chroma.readsAsConcertPitch(tuningOffsetSemitones)
+                && corroborates(pitches, tuningOffsetSemitones);
+    }
+
+    /**
+     * Whether the track's own pitches sit on the grid an offset names, against
+     * {@link #TUNING_CORROBORATION_FLOOR}.
+     *
+     * <p>Read frame by frame rather than from the notes, so that the decision
+     * does not depend on the cuts it goes on to move, and weighted by
+     * voicedness so a frame the decoder was unsure was singing does not vote
+     * like one it was sure of. Unvoiced frames carry the decoder's memory
+     * rather than a measurement ({@link PitchTrack}) and are left out.
+     */
+    private static boolean corroborates(PitchTrack pitches, double tuningOffsetSemitones) {
+        double agreement = 0;
+        double weight = 0;
+        for (int frame = 0; frame < pitches.frameCount(); frame++) {
+            if (!pitches.voiced()[frame]) {
+                continue;
+            }
+            double pitch = pitches.midiPitchAt(frame);
+            double distance = pitch - Math.round(pitch) - tuningOffsetSemitones;
+            agreement += pitches.voicedness()[frame] * Math.cos(2 * Math.PI * distance);
+            weight += pitches.voicedness()[frame];
+        }
+        return weight > 0 && agreement / weight >= TUNING_CORROBORATION_FLOOR;
+    }
+
     /** One unbroken voiced run, cut into notes. */
     private static List<Note> notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
-                                         int from, int to) {
+                                         int from, int to, double grid) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
@@ -175,7 +277,7 @@ public final class MelodyEstimator {
             }
         }
 
-        List<int[]> merged = mergeEqualPitches(pitches, kept);
+        List<int[]> merged = mergeEqualPitches(pitches, kept, grid);
 
         double[] onsets = new double[merged.size()];
         for (int i = 0; i < merged.size(); i++) {
@@ -189,7 +291,7 @@ public final class MelodyEstimator {
             // rather than to no note at all.
             double onset = onsets[i];
             double end = i + 1 < merged.size() ? onsets[i + 1] : runEnd;
-            int pitch = medianPitch(pitches, span);
+            int pitch = medianPitch(pitches, span, grid);
             // The span's own statistics for every piece of it: a
             // re-articulation is the same pitch by construction, and the
             // envelope says where it was struck, not what it sounded like.
@@ -303,13 +405,15 @@ public final class MelodyEstimator {
      * the same note sung twice with no gap (#495), so joining them takes away a
      * false note without taking away any true one it could otherwise have kept.
      */
-    private static List<int[]> mergeEqualPitches(PitchTrack pitches, List<int[]> spans) {
+    private static List<int[]> mergeEqualPitches(PitchTrack pitches, List<int[]> spans,
+                                                 double grid) {
         List<int[]> merged = new ArrayList<>(spans.size());
         for (int[] span : spans) {
             if (!merged.isEmpty()) {
                 int[] previous = merged.get(merged.size() - 1);
                 if (previous[1] == span[0]
-                        && medianPitch(pitches, previous) == medianPitch(pitches, span)) {
+                        && medianPitch(pitches, previous, grid)
+                                == medianPitch(pitches, span, grid)) {
                     merged.set(merged.size() - 1, new int[] {previous[0], span[1]});
                     continue;
                 }
@@ -373,7 +477,7 @@ public final class MelodyEstimator {
     }
 
     /**
-     * A span's pitch: the median of its frames, rounded.
+     * A span's pitch: the median of its frames, rounded on the recording's grid.
      *
      * <p>The median rather than the mean, because a span's first frames are the
      * ones that crossed into it and sit between this note and the one before.
@@ -382,8 +486,16 @@ public final class MelodyEstimator {
      * wavering across a semitone boundary spends half its frames either side,
      * and taking the upper middle rounds every such note up — which is a bias
      * that shows only on the notes least able to afford one.
+     *
+     * <p>The only place the grid is read, and {@link #cut} does not read it:
+     * it measures each frame against the note's own running mean, which no
+     * constant offset moves, so a departure is confirmed at the same frame on
+     * any grid. {@link #mergeEqualPitches} does read it, through this method,
+     * so a grid can still join or separate two spans that were cut the same
+     * way — two spans a wide wobble apart round together on one grid and
+     * apart on another.
      */
-    private static int medianPitch(PitchTrack pitches, int[] span) {
+    private static int medianPitch(PitchTrack pitches, int[] span, double grid) {
         double[] sorted = new double[span[1] - span[0]];
         for (int frame = span[0]; frame < span[1]; frame++) {
             sorted[frame - span[0]] = pitches.midiPitchAt(frame);
@@ -393,7 +505,7 @@ public final class MelodyEstimator {
         double median = sorted.length % 2 == 1
                 ? sorted[middle]
                 : (sorted[middle - 1] + sorted[middle]) / 2;
-        return (int) Math.round(median);
+        return (int) Math.round(median - grid);
     }
 
     private static double meanVoicedness(PitchTrack pitches, int[] span) {

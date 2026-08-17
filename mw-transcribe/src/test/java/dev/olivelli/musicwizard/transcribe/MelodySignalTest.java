@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -133,5 +134,55 @@ class MelodySignalTest {
 
         assertThat(melodyOf(score)).isNotEmpty().allSatisfy(note ->
                 assertThat(note.midiPitch()).isEqualTo(BASS_MIDI_PITCH));
+    }
+
+    @DisplayName("the melody is rounded on the mix's tuning")
+    @Nested
+    class Tuning {
+
+        /** How far the flat transfer's band sits under concert pitch. */
+        private static final double FLAT = -0.44;
+
+        /**
+         * A voice under the flat band's own A by a little over a tenth of a
+         * semitone. Under concert-pitch A by more than half of one, which is
+         * the whole of the defect in #566: rounded on A440 it is a G sharp.
+         */
+        private static final double VOICE_MIDI = VOICE_MIDI_PITCH - 0.6;
+
+        private AudioBuffer bandAt(double offsetSemitones) {
+            float[] samples = SignalFactory.clickTrack(120, SECONDS, RATE);
+            for (int pitch : new int[] {45, 52, 57}) {
+                float[] tone = SignalFactory.sine(hz(pitch + offsetSemitones), SECONDS, RATE);
+                for (int i = 0; i < samples.length; i++) {
+                    samples[i] = 0.5f * samples[i] + 0.5f * tone[i];
+                }
+            }
+            return new AudioBuffer(samples, RATE);
+        }
+
+        private AudioBuffer voice() {
+            return new AudioBuffer(SignalFactory.sine(hz(VOICE_MIDI), SECONDS, RATE), RATE);
+        }
+
+        private double hz(double midiPitch) {
+            return 440 * Math.pow(2, (midiPitch - 69) / 12);
+        }
+
+        @Test
+        @DisplayName("the same voice is an A over a flat band and a G sharp over one in tune")
+        void theMixsTuningNamesTheNote() {
+            Score flat = new AudioTranscriber().transcribe(
+                    bandAt(FLAT), WITH_MELODY, this::voice);
+            Score inTune = new AudioTranscriber().transcribe(
+                    bandAt(0), WITH_MELODY, this::voice);
+
+            assertThat(melodyOf(flat)).isNotEmpty().allSatisfy(note ->
+                    assertThat(note.midiPitch()).isEqualTo(VOICE_MIDI_PITCH));
+            // Nothing about the stem differs between the two runs, so this is
+            // the mix's estimate reaching the melody stage and nothing else.
+            assertThat(melodyOf(inTune)).isNotEmpty().allSatisfy(note ->
+                    assertThat(note.midiPitch()).isEqualTo(VOICE_MIDI_PITCH - 1));
+        }
     }
 }

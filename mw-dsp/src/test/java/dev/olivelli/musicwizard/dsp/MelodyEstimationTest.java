@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.Note;
@@ -333,6 +334,179 @@ class MelodyEstimationTest {
             NoteTrack melody = MelodyEstimator.estimate(track(60.0, 5));
 
             assertThat(melody.isEmpty()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("the recording's tuning")
+    class Tuning {
+
+        /** A transfer running slow, in the sense of Chroma.estimateTuning. */
+        private static final double FLAT = -0.36;
+
+        /**
+         * A phrase sung on a flat transfer: every note {@link #FLAT} under its
+         * nominal pitch, and the singer a little under that again.
+         */
+        private PitchTrack phrase() {
+            return track(69 + FLAT - 0.15, 40,
+                         71 + FLAT - 0.05, 40,
+                         69 + FLAT - 0.20, 40);
+        }
+
+        @Test
+        @DisplayName("a flat transfer takes the rounding margin off one side only")
+        void aFlatTransferRoundsSomeNotesDown() {
+            // What the field report on #566 describes: the line is followed,
+            // and the notes whose singing strays furthest to the flat side are
+            // the ones that fall a semitone. The middle note strays least and
+            // survives on its own; the outer two are just past the boundary.
+            assertThat(pitches(MelodyEstimator.estimate(phrase())))
+                    .containsExactly(68, 71, 68);
+        }
+
+        @Test
+        @DisplayName("rounding on the recording's grid puts them back")
+        void theRecordingsGridRecoversThem() {
+            assertThat(pitches(MelodyEstimator.estimate(phrase(), silence(), FLAT)))
+                    .containsExactly(69, 71, 69);
+        }
+
+        @Test
+        @DisplayName("an offset the singing does not sit on is refused")
+        void anOffsetTheSingingDoesNotSitOnIsRefused() {
+            // Unaccompanied singing that has no tuning centre: the pitches are
+            // spread evenly across the semitone, so no grid describes them and
+            // estimateTuning still names one. Shifting by it would move the
+            // second and fourth notes up and nothing towards the truth.
+            PitchTrack spread = track(60.0, 40, 62.4, 40, 64.8, 40, 67.2, 40, 69.6, 40);
+
+            assertThat(pitches(MelodyEstimator.estimate(spread, silence(), -0.4)))
+                    .containsExactly(60, 62, 65, 67, 70)
+                    .isEqualTo(pitches(MelodyEstimator.estimate(spread)));
+        }
+
+        @Test
+        @DisplayName("only voiced frames vote on whether the grid holds")
+        void unvoicedFramesDoNotVote() {
+            // The decoder carries a pitch through a silence and its voicedness
+            // there is low but not nothing, which is what the tracker emits.
+            // Here the carried pitch is half a semitone above the note it
+            // follows, which puts it far enough off the grid to vote against
+            // it, and there is far more of it than there is singing -- so
+            // counted, it would round the phrase on A440 again.
+            PitchTrack withSilence = frames(
+                    voiced(69 + FLAT - 0.15, 40),
+                    unvoiced(69 + FLAT - 0.15 + 0.5, 400),
+                    voiced(71 + FLAT - 0.05, 40));
+
+            assertThat(pitches(MelodyEstimator.estimate(withSilence, silence(), FLAT)))
+                    .containsExactly(69, 71);
+        }
+
+        @Test
+        @DisplayName("a track just clear of the floor is rounded on the grid")
+        void aTrackJustClearOfTheFloorIsHonoured() {
+            assertThat(pitches(MelodyEstimator.estimate(atDistance(0.21), silence(), FLAT)))
+                    .containsExactly(69);
+        }
+
+        @Test
+        @DisplayName("a track just under it is not, though it is barely further off")
+        void aTrackJustUnderTheFloorIsRefused() {
+            // Barely further from the grid than the note above, and the whole
+            // recording is named a semitone lower. The floor is a cliff, and
+            // this pair is where it stands.
+            assertThat(pitches(MelodyEstimator.estimate(atDistance(0.226), silence(), FLAT)))
+                    .containsExactly(68);
+        }
+
+        @Test
+        @DisplayName("an offset that reads as concert pitch is not used")
+        void anOffsetReadingAsConcertPitchIsNotUsed() {
+            // Which offsets those are is Chroma's to say and its own tests
+            // pin; this one only has to be one of them. The long note sits on
+            // that offset's grid, which is what makes the track corroborate
+            // it, and the short one sits just off a rounding boundary, so a
+            // shift this narrow would carry it over.
+            double concertPitch = -Chroma.TUNING_RESOLUTION_SEMITONES / 2;
+            assertThat(Chroma.readsAsConcertPitch(concertPitch)).isTrue();
+            PitchTrack track = track(69 + concertPitch, 200, 71.49, 40);
+
+            assertThat(pitches(MelodyEstimator.estimate(track, silence(), concertPitch)))
+                    .containsExactly(69, 71)
+                    .isEqualTo(pitches(MelodyEstimator.estimate(track)));
+        }
+
+        /** One held note the given distance under the flat transfer's own grid. */
+        private PitchTrack atDistance(double belowTheGrid) {
+            return track(69 + FLAT - belowTheGrid, 40);
+        }
+
+        private double[] voiced(double pitch, int count) {
+            return new double[] {pitch, count, 0.9};
+        }
+
+        /**
+         * Frames the decoder called silence: they still carry a pitch, and a
+         * voicedness of their own that a fixture must not zero out if it wants
+         * to say anything about whether that weight is read.
+         */
+        private double[] unvoiced(double pitch, int count) {
+            return new double[] {pitch, count, -0.4};
+        }
+
+        /** A track from {@link #voiced} and {@link #unvoiced} runs. */
+        private PitchTrack frames(double[]... runs) {
+            int total = 0;
+            for (double[] run : runs) {
+                total += (int) run[1];
+            }
+            double[] hz = new double[total];
+            boolean[] isVoiced = new boolean[total];
+            double[] voicedness = new double[total];
+            int at = 0;
+            for (double[] run : runs) {
+                for (int i = 0; i < (int) run[1]; i++, at++) {
+                    hz[at] = 440 * Math.pow(2, (run[0] - 69) / 12);
+                    isVoiced[at] = run[2] > 0;
+                    voicedness[at] = Math.abs(run[2]);
+                }
+            }
+            return new PitchTrack(hz, isVoiced, voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
+        @Test
+        @DisplayName("a departure is confirmed at the same frame on either grid")
+        void theGridDoesNotMoveADeparture() {
+            // Only where nothing merges. Whether two spans are one note is
+            // decided by the semitone they round to, so a grid does move that
+            // -- see mergeEqualPitches. These three are far enough apart that
+            // no grid can call any two of them the same note.
+            List<Note> onA440 = MelodyEstimator.estimate(phrase(), silence()).notes();
+            List<Note> onItsOwnGrid =
+                    MelodyEstimator.estimate(phrase(), silence(), FLAT).notes();
+
+            assertThat(onItsOwnGrid).hasSameSizeAs(onA440);
+            for (int i = 0; i < onA440.size(); i++) {
+                assertThat(onItsOwnGrid.get(i).onsetSeconds())
+                        .isEqualTo(onA440.get(i).onsetSeconds());
+                assertThat(onItsOwnGrid.get(i).durationSeconds())
+                        .isEqualTo(onA440.get(i).durationSeconds());
+            }
+        }
+
+        @Test
+        @DisplayName("a non-finite offset is rejected")
+        void aNonFiniteOffsetIsRejected() {
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(phrase(), silence(), Double.NaN));
+        }
+
+        /** An envelope with no peak in it, so nothing is re-articulated. */
+        private OnsetEnvelope silence() {
+            return new OnsetEnvelope(new double[600], 172.0);
         }
     }
 }
