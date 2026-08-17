@@ -662,5 +662,43 @@ class NnlsChromaTest {
                     Spectrogram.compute(new AudioBuffer(detuned, RATE), 4096, 1024)))
                     .isCloseTo(0.25, within(0.15));
         }
+
+        @Test
+        @DisplayName("reads exactly the two slots touching zero as concert pitch")
+        void readsTheSlotsTouchingZeroAsConcertPitch() {
+            // Every answer the function can give, by its own arithmetic, so
+            // that no slot centre can fall the wrong side of the comparison:
+            // the two straddling zero are a whole step nearer it than any
+            // other, and the arithmetic that produces them misses half a step
+            // by an ulp in both directions.
+            int slots = (int) Math.round(1 / Chroma.TUNING_RESOLUTION_SEMITONES);
+            for (int slot = 0; slot < slots; slot++) {
+                double answer = (slot + 0.5) / slots - 0.5;
+                assertThat(Chroma.readsAsConcertPitch(answer))
+                        .as("slot %d answers %s", slot, answer)
+                        .isEqualTo(slot == slots / 2 || slot == slots / 2 - 1);
+            }
+        }
+
+        @Test
+        @DisplayName("reads the no-evidence answer as concert pitch too")
+        void readsNoEvidenceAsConcertPitch() {
+            // estimateTuning returns a literal zero where it found nothing,
+            // and that is the one answer no slot produces.
+            assertThat(Chroma.readsAsConcertPitch(0)).isTrue();
+        }
+
+        @Test
+        @DisplayName("reads a real offset as something other than concert pitch")
+        void readsARealOffsetAsItself() {
+            double quarterToneSharp = Math.pow(2, 0.25 / 12);
+            float[] detuned = SignalFactory.chord(new double[] {
+                    440 * quarterToneSharp, 554.37 * quarterToneSharp,
+                    659.26 * quarterToneSharp}, 3.0, RATE);
+
+            assertThat(Chroma.readsAsConcertPitch(Chroma.estimateTuning(
+                    Spectrogram.compute(new AudioBuffer(detuned, RATE), 4096, 1024))))
+                    .isFalse();
+        }
     }
 }

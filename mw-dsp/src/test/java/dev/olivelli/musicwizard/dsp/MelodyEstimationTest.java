@@ -391,9 +391,10 @@ class MelodyEstimationTest {
         void unvoicedFramesDoNotVote() {
             // The decoder carries a pitch through a silence and its voicedness
             // there is low but not nothing, which is what the tracker emits.
-            // Here the carried pitch sits half a semitone off the grid and
-            // there is far more of it than there is singing, so counted it
-            // would outvote the phrase and round it on A440 again.
+            // Here the carried pitch is half a semitone above the note it
+            // follows, which puts it far enough off the grid to vote against
+            // it, and there is far more of it than there is singing -- so
+            // counted, it would round the phrase on A440 again.
             PitchTrack withSilence = frames(
                     voiced(69 + FLAT - 0.15, 40),
                     unvoiced(69 + FLAT - 0.15 + 0.5, 400),
@@ -421,21 +422,20 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("an offset the estimator cannot tell from concert pitch is not used")
-        void anUnresolvableOffsetIsNotUsed() {
-            // Chroma.estimateTuning answers in slots and never returns zero
-            // where it found anything, so the slot holding concert pitch is
-            // reported as half a step off it. The long note here sits on that
-            // grid, which is what makes the track corroborate the offset; the
-            // short one sits on a rounding boundary, and rounding it on a
-            // shift that narrow would decide it in whichever direction it
-            // happened to lie.
-            double halfAStep = Chroma.TUNING_RESOLUTION_SEMITONES / 2;
-            PitchTrack onTheBoundary = track(69 - halfAStep, 200, 71.49, 40);
+        @DisplayName("an offset that reads as concert pitch is not used")
+        void anOffsetReadingAsConcertPitchIsNotUsed() {
+            // Which offsets those are is Chroma's to say and its own tests
+            // pin; this one only has to be one of them. The long note sits on
+            // that offset's grid, which is what makes the track corroborate
+            // it, and the short one sits just off a rounding boundary, so a
+            // shift this narrow would carry it over.
+            double concertPitch = -Chroma.TUNING_RESOLUTION_SEMITONES / 2;
+            assertThat(Chroma.readsAsConcertPitch(concertPitch)).isTrue();
+            PitchTrack track = track(69 + concertPitch, 200, 71.49, 40);
 
-            assertThat(pitches(MelodyEstimator.estimate(onTheBoundary, silence(), -halfAStep)))
+            assertThat(pitches(MelodyEstimator.estimate(track, silence(), concertPitch)))
                     .containsExactly(69, 71)
-                    .isEqualTo(pitches(MelodyEstimator.estimate(onTheBoundary)));
+                    .isEqualTo(pitches(MelodyEstimator.estimate(track)));
         }
 
         /** One held note the given distance under the flat transfer's own grid. */

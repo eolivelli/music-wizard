@@ -229,13 +229,12 @@ public final class MelodyEstimator {
      * {@link Chroma#estimateTuning} can resolve, and the track's own pitches
      * have to sit on the grid it names.
      *
-     * <p>Half a step is the slot that holds zero, so an offset that small is
-     * an estimator saying "concert pitch" — and a shift that narrow decides
-     * nothing but notes already on a rounding boundary, in whichever
-     * direction they happened to lie.
+     * <p>An offset that reads as concert pitch is not rounded on at all: a
+     * shift that narrow decides nothing but notes already on a rounding
+     * boundary, in whichever direction they happened to lie.
      */
     private static boolean honours(PitchTrack pitches, double tuningOffsetSemitones) {
-        return Math.abs(tuningOffsetSemitones) > Chroma.TUNING_RESOLUTION_SEMITONES / 2
+        return !Chroma.readsAsConcertPitch(tuningOffsetSemitones)
                 && corroborates(pitches, tuningOffsetSemitones);
     }
 

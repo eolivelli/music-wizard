@@ -126,13 +126,25 @@ public record Chroma(double[][] vectors, double frameRate) {
     /**
      * How wide a step {@link #estimateTuning} can answer in, in semitones.
      *
-     * <p>Its answer is a histogram slot's centre, so it is a multiple of this
-     * away from a slot boundary and never lands on zero unless it found no
-     * evidence at all. A caller deciding whether a recording is at concert
-     * pitch has to read the answer against this, not against zero: an offset
-     * of half a step is the slot that contains zero.
+     * <p>Its answer is a histogram slot's centre, so it never lands on zero
+     * unless it found no evidence at all; {@link #readsAsConcertPitch} is how
+     * a caller asks whether it found any.
      */
     public static final double TUNING_RESOLUTION_SEMITONES = 0.025;
+
+    /**
+     * Whether an offset from {@link #estimateTuning} is one that estimator
+     * cannot tell from concert pitch.
+     *
+     * <p>True of the two slots whose deviations reach zero, and of the zero
+     * itself that means no evidence. Their centres are half a step either side
+     * of it and every other slot's is at least a step and a half away, so the
+     * comparison is made against a whole step: a centre is arithmetic on a
+     * tenth and a hundredth and misses half a step by an ulp, either way.
+     */
+    public static boolean readsAsConcertPitch(double offsetSemitones) {
+        return Math.abs(offsetSemitones) < TUNING_RESOLUTION_SEMITONES;
+    }
 
     /**
      * Estimates how far the recording sits from A4 = 440 Hz, in semitones.
