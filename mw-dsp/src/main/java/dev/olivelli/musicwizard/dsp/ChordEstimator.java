@@ -146,10 +146,29 @@ public final class ChordEstimator {
      * choose. These carry the same root as one of {@link #DECODED}, so they
      * can only relabel a chord the decoder has already placed, never move it.
      * See {@link #chooseQualities} for what keeps a minor seventh from being
-     * reported wherever a dominant one is right, #287 for the qualities not
-     * here, and #274 for the false-seventh rate on plain-triad material.
+     * reported wherever a dominant one is right, and #274 for the
+     * false-seventh rate on plain-triad material.
+     *
+     * <p><b>The major seventh and the sixth are deliberately absent</b> (#287).
+     * Both add a note to a triad, where a binary template only asks the note to
+     * carry 2/sqrt(3) - 1 of the triad's mass — and both notes are ones the mix
+     * carries without them being played: the major seventh is the perfect fifth
+     * above the chord's own major third, so a plain triad manufactures it as
+     * that third's third partial, and the sixth is what a boogie shuffle plays
+     * under a dominant. Measured with the residual test below applied to each,
+     * the major seventh still labels plain triads and the sixth still takes the
+     * dominant-seventh benchmarks; #287 carries both tables.
+     *
+     * <p>The half-diminished seventh needs no such test, being the one quality
+     * of the four that <em>swaps</em> a note rather than adding one: it is the
+     * minor seventh with a diminished fifth, same size and same root, so the
+     * two are ranked on which fifth is sounding and the size bias
+     * {@link #flatScore} names never enters. What admits it at all is the bass
+     * root prior ({@link #BASS_ROOT_WEIGHT}), since {@code Am7b5} is a
+     * {@code Cm} triad with an A in it and the fold put those bars on C.
      */
-    private static final ChordQuality[] QUALITY_ONLY = {ChordQuality.MINOR_SEVENTH};
+    private static final ChordQuality[] QUALITY_ONLY = {ChordQuality.MINOR_SEVENTH,
+            ChordQuality.MINOR_SIXTH, ChordQuality.HALF_DIMINISHED_SEVENTH};
 
     /** States the decoder chooses between: {@link #DECODED} on every root, plus no-chord. */
     private static final int DECODED_STATES = 12 * DECODED.length + 1;
@@ -189,6 +208,34 @@ public final class ChordEstimator {
      * away.
      */
     private static final double PHANTOM_THIRD_SHARE_OF_ROOT = 0.20;
+
+    /**
+     * Share of the residual its root removes that a sixth must remove to be
+     * counted at all. Only {@link #qualityScore} reads it, and only where a
+     * {@link PitchClassAblation} is available.
+     *
+     * <p>What ranks a sixth against the seventh it competes with, instead of
+     * asking which of the two is louder (#287). The fold cannot answer that:
+     * over a minor triad the seventh is the root's own seventh partial and the
+     * sixth is a note some other chord is built on, so both are there in a
+     * chroma whichever is played. Deleting the pitch class and refitting is
+     * what tells them apart, and a sixth that is genuinely voiced removes
+     * several times the residual a manufactured seventh does (#537's bands).
+     *
+     * <p><b>The seventh is not tested the same way</b>, and that is measured
+     * rather than an omission: a flat seventh really played on a real mix
+     * removes less residual, as a share of its root's, than a manufactured one
+     * does on a rendered package, so the two populations are ordered the wrong
+     * way round and no share separates them. #274 carries the seventh's own
+     * false-positive rate.
+     *
+     * <p>Swept by {@code tools/ChordSweep.java score} and sitting in the middle
+     * of the band where {@code synthetic_samples/pop-m6-m7b5-gm-100} reads
+     * every bar right and no scored benchmark moves at all. Above the band a
+     * voiced sixth stops being counted; below it, sixths appear on recordings
+     * that play none.
+     */
+    private static final double ADDED_SIXTH_SHARE_OF_ROOT = 0.40;
 
     private ChordEstimator() {
     }
@@ -446,6 +493,13 @@ public final class ChordEstimator {
      * decoder's answer stands — which may be a dominant seventh — read from
      * {@code path}, the only array still holding it.
      *
+     * <p><b>A half-diminished run is counted and never itself changed</b>
+     * ({@link #carriesMinorSeventh}): it is the same seventh on the same root,
+     * so it is evidence in the count — left out, a root reading {@code m7b5}
+     * for part of a recording could fall under the half and lose sevenths the
+     * recording states plainly — while withdrawing one would be a statement
+     * about its diminished fifth, which a count of sevenths does not make.
+     *
      * <p>Grouping either array gives the same runs, since {@link #sameChord}
      * reads only the root and nothing here changes one.
      */
@@ -461,7 +515,7 @@ public final class ChordEstimator {
                 continue;
             }
             beats[template.rootPitchClass()]++;
-            if (template.quality() == ChordQuality.MINOR_SEVENTH) {
+            if (carriesMinorSeventh(template.quality())) {
                 sevenths[template.rootPitchClass()]++;
             }
         }
@@ -498,6 +552,26 @@ public final class ChordEstimator {
             }
             i = j;
         }
+    }
+
+    /**
+     * Whether {@code quality} states a minor seventh over a minor third, which
+     * is what {@link #decideSeventhsPerRoot} counts.
+     *
+     * <p>The minor seventh and the half-diminished, and not the dominant
+     * seventh, whose flat seventh sits over a major third: a count including it
+     * would have a root read {@code C7} through most of a recording adding the
+     * seventh to its {@code Cm} runs, which is a question about the third and
+     * not about the seventh.
+     */
+    private static boolean carriesMinorSeventh(ChordQuality quality) {
+        boolean minorThird = false;
+        boolean minorSeventh = false;
+        for (int interval : quality.intervals()) {
+            minorThird |= interval == 3;
+            minorSeventh |= interval == 10;
+        }
+        return minorThird && minorSeventh;
     }
 
     /** The template for {@code quality} on {@code root}. */
@@ -581,6 +655,12 @@ public final class ChordEstimator {
      * no partial of it is the minor third, so only one of the two can be
      * manufactured. See {@link PitchClassAblation}, and #544 for the register
      * the residual is read over against the register this chroma is.
+     *
+     * <p><b>The same residual decides whether a sixth is there</b>
+     * ({@link #ADDED_SIXTH_SHARE_OF_ROOT}), and a sixth that is not counts for
+     * nothing — which leaves a sixth candidate scored on the triad's own notes
+     * over a larger norm, so the triad wins. That is what ranks it against the
+     * seventh on evidence rather than on which of the two is louder (#287).
      */
     private static double qualityScore(double[] chroma, Template template,
                                        double[] significance) {
@@ -593,12 +673,16 @@ public final class ChordEstimator {
                         < PHANTOM_THIRD_SHARE_OF_ROOT * significance[root]) {
             majorThirdMass = 0;
         }
+        int sixth = Math.floorMod(root + 9, 12);
+        boolean sixthCounts = significance == null
+                || significance[sixth] >= ADDED_SIXTH_SHARE_OF_ROOT * significance[root];
         double mass = 0;
         double energy = 0;
         for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
             energy += chroma[pitchClass] * chroma[pitchClass];
             if (template.profile()[pitchClass] > 0) {
-                mass += pitchClass == majorThird ? majorThirdMass : chroma[pitchClass];
+                double value = pitchClass == majorThird ? majorThirdMass : chroma[pitchClass];
+                mass += pitchClass == sixth && !sixthCounts ? 0 : value;
             }
         }
         if (template.quality().isMinorish()) {
