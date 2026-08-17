@@ -447,9 +447,9 @@ def shortened(reason: str) -> str:
     """The reason, bounded, giving up the invariant spans before the rest.
 
     Two steps, because eliding by position alone answers this family badly:
-    the offline message's actionable clause sits in the middle, between a cache
-    path and the URL it would fetch from. Taking the URL out first leaves that
-    message whole, and leaves the rest more of the budget than it needs.
+    the offline message's actionable clause sits between a cache path and the
+    URL it would fetch from, so a middle taken out of the whole message takes
+    the clause. Stubbing the URL first buys the tail enough room to reach it.
     """
     return elided(URL.sub(lambda match: elided(match.group(), URL_BUDGET), reason),
                   REASON_BUDGET)

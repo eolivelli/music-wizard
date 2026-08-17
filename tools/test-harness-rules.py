@@ -1284,8 +1284,9 @@ class MelodyRules(unittest.TestCase):
     #: What ModelCache raises, in its own words -- what a machine that cannot
     #: separate actually says. Each is hard in its own way: the offline
     #: message's actionable clause sits between a cache path and a URL, the
-    #: certificate failure's sits behind them, and the last three are identical
-    #: for the length of a sentence and a URL and differ only at the very end.
+    #: certificate failure's sits behind both, and the last two are one message
+    #: shape failing two ways, identical for a sentence and a URL and different
+    #: only at the very end.
     OFFLINE = ("model spleeter-2stems (vocals.onnx, 37 MB) is not in"
                " /home/x/.cache/music-wizard/models and ml.offline is set;"
                f" unset it to download from {MODEL_URI}")
@@ -1339,9 +1340,8 @@ class MelodyRules(unittest.TestCase):
         self.assertIn("certification path", self.row_for(self.CERTIFICATE))
 
     def test_nothing_elided_comes_back_longer_than_its_budget(self):
-        """Including the budgets too small to hold the ellipsis, which no
-        caller passes today: a bound that grows what it is given is a trap for
-        whoever adds the second caller."""
+        """Including the budgets too small to hold the ellipsis: a bound that
+        grows what it is given is worse than no bound."""
         for budget in range(0, 40):
             self.assertLessEqual(len(melody.elided("x" * 400, budget)), budget)
             self.assertLessEqual(len(melody.elided("xy", budget)), max(budget, 2))
