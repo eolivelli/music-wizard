@@ -110,6 +110,31 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
+     * A recording's summed envelope and its {@link #pulseRegister}, the two
+     * readings {@link BeatTracker} takes of one transform.
+     *
+     * @param envelope      the envelope every stage downstream works from
+     * @param pulseRegister the bass register, for the octave decision alone
+     */
+    public record Both(OnsetEnvelope envelope, OnsetEnvelope pulseRegister) {}
+
+    /**
+     * Both readings, from one transform.
+     *
+     * <p><b>Built here rather than by the caller so that the spectrogram dies
+     * at this method's return.</b> At the onset hop it is the largest array in
+     * the pipeline — hundreds of megabytes on a long recording, where the
+     * envelopes are a few hundred kilobytes — and a caller that holds it in a
+     * local to read it twice keeps it live for the whole transcription, which
+     * on the phone (#236) is an out-of-memory rather than a nicety.
+     */
+    public static Both bothFromAudio(AudioBuffer audio) {
+        Objects.requireNonNull(audio, "audio");
+        Spectrogram spectrogram = Spectrogram.compute(audio, ONSET_WINDOW, ONSET_HOP);
+        return new Both(compute(spectrogram), pulseRegister(spectrogram));
+    }
+
+    /**
      * Computes the envelope from a spectrogram.
      *
      * <p><b>Not composable over slices.</b> The band floor is a share of the

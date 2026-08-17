@@ -155,8 +155,11 @@ public final class TempoOctave {
             new Job(LOCAL, "cortez-feel-stripped.mp3", 0, "control"),
             new Job(LOCAL, "josh-woodward-california-lullabye.mp3", 0, "control"));
 
-    /** The ceiling this file's reproduction uses; {@code TempoEstimator}'s by default. */
-    private static double ceiling = 3.0;
+    /** {@code TempoEstimator.ACCENT_CEILING}, which this file's search reproduces. */
+    private static final double SHIPPED_CEILING = 3.0;
+
+    /** The ceiling this file's reproduction uses; the shipped one by default. */
+    private static double ceiling = SHIPPED_CEILING;
 
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -175,17 +178,19 @@ public final class TempoOctave {
 
     private static void report(Job job, Path file) {
         AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
-        Spectrogram onsets =
-                Spectrogram.compute(audio, OnsetEnvelope.ONSET_WINDOW, OnsetEnvelope.ONSET_HOP);
-        OnsetEnvelope envelope = OnsetEnvelope.compute(onsets);
-        OnsetEnvelope register = OnsetEnvelope.pulseRegister(onsets);
+        OnsetEnvelope.Both onsets = OnsetEnvelope.bothFromAudio(audio);
+        OnsetEnvelope envelope = onsets.envelope();
+        OnsetEnvelope register = onsets.pulseRegister();
         HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
 
         System.out.printf("%n=== %s  (%s)%n", job.file(), job.note());
         whole(job, envelope, rhythm);
-        double reference = windows(job, envelope, rhythm);
-        register(envelope, register, reference);
+        Vote vote = windows(job, envelope, rhythm);
+        register(envelope, register, vote, rhythm);
     }
+
+    /** The windows' verdict: the rate they voted for, and whether it is the estimator's. */
+    private record Vote(double reference, boolean reproduced) {}
 
     /**
      * What the bass register says about the rate the windows voted for: the
@@ -193,12 +198,24 @@ public final class TempoOctave {
      * every second beat is unstated there is halved before anything is tracked
      * (#509). A recording whose register is no louder on the beats than
      * between them is one this abstains on, and most of them are.
+     *
+     * <p>Printed only where this file's search agreed with the estimator's,
+     * because the reading is of a <em>rate</em>: under a swept ceiling the
+     * rate is one the shipped code never produces, and a shipped reading of it
+     * would look like a shipped decision.
      */
-    private static void register(OnsetEnvelope envelope, OnsetEnvelope register,
-                                 double reference) {
-        if (reference <= 0) {
+    private static void register(OnsetEnvelope envelope, OnsetEnvelope register, Vote vote,
+                                 HarmonicRhythm rhythm) {
+        if (!vote.reproduced()) {
+            System.out.println("  register: not printed, since the seeds above are this"
+                    + " file's rather than the estimator's");
             return;
         }
+        // A clip shorter than one window has no voters and one assumed tempo,
+        // which is the rate BeatTracker asks the register about.
+        double reference = vote.reference() > 0
+                ? vote.reference()
+                : TempoEstimator.estimate(envelope, rhythm).beatsPerMinute();
         MarkedPulse.Reading reading = MarkedPulse.read(envelope, register, reference);
         System.out.printf("  register at %.2f: contrast %.2f  parity %.3f  ->  %.2f%n",
                 reference, reading.contrast(), reading.parity(),
@@ -260,10 +277,10 @@ public final class TempoOctave {
         }
     }
 
-    private static double windows(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
+    private static Vote windows(Job job, OnsetEnvelope envelope, HarmonicRhythm rhythm) {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
-            return 0;
+            return new Vote(0, ceiling == SHIPPED_CEILING);
         }
         int step = windowFrames / 2;
         int at = 0;
@@ -322,7 +339,7 @@ public final class TempoOctave {
                 disagreements == 0 ? "" : "  [" + disagreements + " windows differ from the"
                         + " estimator, expected only when a ceiling is passed]");
         System.out.printf("  seeds: %s%n", seeds.toString().trim());
-        return reference;
+        return new Vote(reference, disagreements == 0);
     }
 
     /** Within 3% -- wide enough for the 0.25 grid and a drifting recording. */

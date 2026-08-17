@@ -201,9 +201,13 @@ class BeatTrackingTest {
      *
      * <p>The kick is long and low enough to land in the register
      * {@link OnsetEnvelope#pulseRegister} reads and the hat far above it; the
-     * bed is load-bearing for the same reason it is in
-     * {@link #accentedClicks}, since a click over digital silence rises nearly
-     * as far as a loud one whatever its gain.
+     * bed is load-bearing twice over. It makes the accent reach the envelope
+     * at all, for the reason {@link #accentedClicks} gives — and it gives the
+     * bass register a floor, without which the hat's own attack, which is
+     * broadband however high its tone, is the loudest thing down there
+     * between the kicks. A real mix has that floor; digital silence does not,
+     * and at a tenth of this bed the hat's leakage alone lifts the register on
+     * the offbeats to a tenth of the kick's level.
      */
     private static float[] kickAndHat(double quartersPerMinute, double seconds, long seed) {
         double quarter = 60.0 / quartersPerMinute;
@@ -217,7 +221,7 @@ class BeatTrackingTest {
         }
         Random random = new Random(seed);
         for (int i = 0; i < out.length; i++) {
-            out[i] += (float) (0.004 * (2 * random.nextDouble() - 1));
+            out[i] += (float) (0.02 * (2 * random.nextDouble() - 1));
         }
         return out;
     }
@@ -1617,22 +1621,32 @@ class BeatTrackingTest {
     @DisplayName("the marked pulse")
     class Marked {
 
-        @Test
-        @DisplayName("a hat on every eighth does not take the beat off the marked quarter")
-        void theMarkedQuarterOutranksTheHatsEighth() {
+        @ParameterizedTest(name = "a hat on every eighth does not take the beat off the"
+                + " marked quarter, bed seed {0}")
+        @ValueSource(longs = {3, 11})
+        void theMarkedQuarterOutranksTheHatsEighth(long seed) {
             // #509. Every eighth carries an onset, so the summed envelope is
             // periodic at both levels; the quarters are louder, and levelling
             // the accents -- which is what stops a recording arguing for its
             // own half -- is what takes that difference out again, whereupon
             // the prior takes the faster of the two. Only the register
             // distinguishes them, because only the quarters are stated in it.
-            double quarters = 72;
-            float[] audio = kickAndHat(quarters, 60, 11);
+            //
+            // Two seeds because the bed is noise and the reading is a ratio of
+            // levels within it. Swept over eight seeds at 58, 60 and 63
+            // quarters a minute, the reading moves between 0.005 and 0.030
+            // against a gate of 0.10, so the margin is the fixture's rather
+            // than one draw's -- and the assertions below are on the reading,
+            // not only on the rate, so a future front-end change that erodes
+            // it says so instead of flipping a BPM.
+            double quarters = 60;
+            float[] audio = kickAndHat(quarters, 60, seed);
             OnsetEnvelope envelope = envelopeOf(audio);
+            OnsetEnvelope register = registerOf(audio);
 
             BeatTracker.Result withoutRegister = BeatTracker.track(envelope);
             BeatTracker.Result withRegister =
-                    BeatTracker.track(envelope, HarmonicRhythm.none(), registerOf(audio));
+                    BeatTracker.track(envelope, HarmonicRhythm.none(), register);
 
             assertThat(withoutRegister.beatsPerMinute())
                     .as("the eighths, which is what the envelope and the prior settle on")
@@ -1640,6 +1654,15 @@ class BeatTrackingTest {
             assertThat(withRegister.beatsPerMinute())
                     .as("the quarters, which are the beats the register states")
                     .isCloseTo(quarters, withinPercentage(5));
+
+            MarkedPulse.Reading reading =
+                    MarkedPulse.read(envelope, register, withoutRegister.beatsPerMinute());
+            assertThat(reading.parity())
+                    .as("the offbeat eighths against the quarters, in the register")
+                    .isLessThan(0.05);
+            assertThat(reading.contrast())
+                    .as("the register on the tracked beats against between them")
+                    .isGreaterThan(20);
         }
 
         @Test
@@ -1667,6 +1690,50 @@ class BeatTrackingTest {
             assertThat(MarkedPulse.resolveOctave(rate, envelope, alsoBetween, whole))
                     .as("the same silences, but the register is no quieter between the beats")
                     .isEqualTo(rate);
+        }
+
+        @Test
+        @DisplayName("one loud frame in an otherwise empty register decides nothing")
+        void aSingleFrameCannotCarryTheReading() {
+            // The mean of a half is not evidence that the half is stated: on a
+            // register that is silent but for one thump -- a high-passed
+            // source, or a knock at the top of a phone take -- one frame makes
+            // that mean, and the beats between it are silent, so both gates
+            // read as strongly as they can.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = impulses(frameRate, frames, period, 0, 1);
+            double[] oneThump = new double[frames];
+            oneThump[0] = 5;
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope,
+                    new OnsetEnvelope(oneThump, frameRate), List.of(new int[] {0, frames})))
+                    .isEqualTo(rate);
+        }
+
+        @Test
+        @DisplayName("a clip shorter than a window is read over the whole of it")
+        void aShortClipIsReadOverItsWholeSpan() {
+            // One tempo is assumed over a clip this short, so the span it was
+            // decided over is the clip itself. The instrument has to answer
+            // about the same span as the decision, or it reports an abstention
+            // on a recording the shipped code halves.
+            double frameRate = 100;
+            int frames = 800;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = impulses(frameRate, frames, period, 0, 1);
+            OnsetEnvelope everySecondBeat = impulses(frameRate, frames, 2 * period, 0, 1);
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, everySecondBeat,
+                    BeatTracker.votingWindows(envelope)))
+                    .isEqualTo(rate / 2);
+            assertThat(MarkedPulse.read(envelope, everySecondBeat, rate)
+                    .statesOnlyEveryOtherBeat())
+                    .as("the public reading, over the same windows")
+                    .isTrue();
         }
 
         @Test

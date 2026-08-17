@@ -51,6 +51,13 @@ import java.util.Objects;
  * the corpus a one-chord vamp's comping then reads as strongly as a walking
  * bass, so the two populations do not separate (measured on #353's
  * recordings and on this corpus's controls; the readings are on #509).
+ *
+ * <p><b>What the corpus says about the two gates below.</b> Measured over both
+ * corpora and the commercial recordings held locally, every recording that
+ * abstains clears one gate or the other by at least a factor of two and a
+ * half, and the one this halves clears both, the tighter of them by a factor
+ * of four. {@code tools/TempoOctave.java} prints the reading per benchmark,
+ * which is where to check that rather than here.
  */
 public final class MarkedPulse {
 
@@ -60,12 +67,7 @@ public final class MarkedPulse {
      *
      * <p>Below it the register is not stating this grid at all — a mix whose
      * bass sustains rather than articulates, or one with no low end — and the
-     * parity below would be a ratio of two noise levels. Every recording in
-     * the corpus quiet enough on alternate beats to reach that gate has a
-     * register barely louder on the beats than between them, and the one this
-     * fires on is louder by more than an order of magnitude, so the constant
-     * sits in a gap rather than on a boundary. {@code tools/TempoOctave.java}
-     * prints both numbers per benchmark.
+     * parity below would be a ratio of two noise levels.
      */
     private static final double REGISTER_CONTRAST = 4.0;
 
@@ -76,10 +78,30 @@ public final class MarkedPulse {
      *
      * <p>A beat the register does not state at all reads near zero here, and a
      * pulse it states unevenly — which is ordinary, since a bass need not play
-     * every beat equally — reads well above. Nothing in the corpus lands
-     * between.
+     * every beat equally — reads far above.
+     *
+     * <p><b>A two-way interleave cannot tell a subdivision from a bass that
+     * plays once a bar.</b> Any even period puts every stated beat in one
+     * half, so a register striking every fourth beat of a correct grid reads
+     * the same as one striking every second beat of a doubled grid. What keeps
+     * that off the corpus is not the statistic: it is that a kick on the bar
+     * line leaves enough in these bands on the beats between — from the snare,
+     * the bass and the rest of the mix — to lift the quieter half well clear.
+     * A mix that did not would be halved wrongly, and {@link
+     * #REGISTER_CONTRAST} is the only thing standing in front of it.
      */
     private static final double UNSTATED_BEAT = 0.10;
+
+    /**
+     * How many of the beats in a grid's louder half the register must state
+     * before its silence on the other half is evidence about anything.
+     *
+     * <p>Low, because it is not a measure of how well the grid is stated —
+     * that is the two gates above — but a floor under how many frames may
+     * carry the reading. Every recording in the corpus states well over half,
+     * including those whose register plays on a minority of all the beats.
+     */
+    private static final double STATED_BEATS = 0.25;
 
     private MarkedPulse() {
     }
@@ -152,8 +174,21 @@ public final class MarkedPulse {
             for (int i = 0; i < frames.length; i++) {
                 frames[i] = register.frameOf(beats.get(i));
             }
+            double[] halves = halfMeans(register, frames);
+            if (statedShareOfLouderHalf(register, frames, halves) < STATED_BEATS) {
+                // Too few frames are carrying the mean of the half this would
+                // read as the stated one: a register with a thump in it and
+                // nothing else says nothing about any grid, and its silence
+                // between the beats would otherwise read as the strongest
+                // contrast there is. Read as no evidence rather than skipped,
+                // so that a recording whose register goes quiet cannot be
+                // decided by the passages where it does not.
+                contrasts.add(0.0);
+                parities.add(1.0);
+                continue;
+            }
             contrasts.add(contrast(register, frames, periodFrames));
-            parities.add(parity(register, frames));
+            parities.add(parity(halves));
         }
         return contrasts.isEmpty()
                 ? new Reading(Double.NaN, Double.NaN)
@@ -163,6 +198,12 @@ public final class MarkedPulse {
     /**
      * How much stronger the register is on the beats than at the midpoints
      * between them. One means it is saying nothing about this grid.
+     *
+     * <p>Unbounded where the register is silent between the beats, which is
+     * the strongest a grid can be stated rather than a degenerate case: the
+     * caller has already established that the stated half is stated at its
+     * median, so there is something there for the silence to be a contrast
+     * with.
      */
     private static double contrast(OnsetEnvelope register, int[] frames, double periodFrames) {
         double onBeats = 0;
@@ -180,7 +221,13 @@ public final class MarkedPulse {
      * bar phase — so this is a ratio of the two, taken in the order that keeps
      * it within one.
      */
-    private static double parity(OnsetEnvelope register, int[] frames) {
+    private static double parity(double[] halfMeans) {
+        double louder = Math.max(halfMeans[0], halfMeans[1]);
+        return louder > 0 ? Math.min(halfMeans[0], halfMeans[1]) / louder : 1;
+    }
+
+    /** The mean register strength on the even-indexed beats and on the odd. */
+    private static double[] halfMeans(OnsetEnvelope register, int[] frames) {
         double even = 0;
         double odd = 0;
         int evenCount = 0;
@@ -195,10 +242,28 @@ public final class MarkedPulse {
                 oddCount++;
             }
         }
-        double first = even / evenCount;
-        double second = odd / oddCount;
-        double louder = Math.max(first, second);
-        return louder > 0 ? Math.min(first, second) / louder : 1;
+        return new double[] {even / evenCount, odd / oddCount};
+    }
+
+    /**
+     * The share of the louder half's beats the register states at all.
+     *
+     * <p>A mean is a poor summary of a half that is mostly silence, and this
+     * is what says so: a register that plays on one beat in fifty has the same
+     * mean as one that plays quietly on all of them.
+     */
+    private static double statedShareOfLouderHalf(OnsetEnvelope register, int[] frames,
+                                                  double[] halfMeans) {
+        int louder = halfMeans[0] >= halfMeans[1] ? 0 : 1;
+        int stated = 0;
+        int total = 0;
+        for (int i = louder; i < frames.length; i += 2) {
+            total++;
+            if (strengthAt(register, frames[i]) > 0) {
+                stated++;
+            }
+        }
+        return total > 0 ? stated / (double) total : 0;
     }
 
     /**

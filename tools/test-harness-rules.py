@@ -1417,8 +1417,9 @@ class SyntheticTempo(unittest.TestCase):
         self.assertEqual("tempo none/96", synthetic.tempo_verdict(None, "96"))
 
     def test_a_doubled_grid_reads_as_a_doubling(self):
-        """The row this column exists for: pop-deceptive-f-72 is written at 72
-        and tracked at 144, and the ratio says so without the reader dividing."""
+        """The reading this column exists to name: a grid at twice the written
+        tempo, which is what pop-deceptive-f-72 read until #509. The ratio says
+        so without the reader dividing."""
         self.assertEqual("tempo 144.1/72 (x2.00)",
                          synthetic.tempo_verdict(144.1, "72"))
 
@@ -1431,8 +1432,8 @@ class SyntheticTempo(unittest.TestCase):
 
     def test_a_rate_that_is_no_musical_multiple_is_not_rounded_to_one(self):
         """2.16 is neither a double nor a drift, and the column must not round
-        it toward either: melody-level2pad-g-84 reads this, and it is a
-        different defect from pop-deceptive-f-72's clean double."""
+        it toward either: melody-level2pad-g-84 reads this, which is a rate
+        that is simply wrong rather than an octave error."""
         self.assertEqual("tempo 181.3/84 (x2.16)",
                          synthetic.tempo_verdict(181.3, "84"))
 

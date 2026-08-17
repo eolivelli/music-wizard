@@ -119,7 +119,7 @@ public final class BeatTracker {
         if (envelope.length() <= windowFrames) {
             TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope, rhythm);
             double rate = MarkedPulse.resolveOctave(tempo.beatsPerMinute(), envelope,
-                    pulseRegister, List.of(new int[] {0, envelope.length()}));
+                    pulseRegister, votingWindows(envelope));
             List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
             return new Result(beats, tempoOf(beats, rate),
                     Confidence.clamped(tempo.strength()));
@@ -134,7 +134,6 @@ public final class BeatTracker {
         // drifting tempo -- but which subdivision of the beat it names is a
         // property of the recording, and nothing was comparing the two.
         List<int[]> bounds = analysisWindows(envelope);
-        List<int[]> voterBounds = new ArrayList<>();
         List<TempoEstimator.Estimate> seeds = new ArrayList<>();
         List<TempoEstimator.Estimate> voters = new ArrayList<>();
         for (int[] window : bounds) {
@@ -143,7 +142,6 @@ public final class BeatTracker {
             seeds.add(seed);
             if (votes(window, step)) {
                 voters.add(seed);
-                voterBounds.add(window);
             }
         }
 
@@ -151,7 +149,7 @@ public final class BeatTracker {
         // same reason: a sliver measures a phrase rather than the recording.
         double reference =
                 MarkedPulse.resolveOctave(pulseReference(voters), envelope, pulseRegister,
-                        voterBounds);
+                        votingWindows(envelope));
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -211,9 +209,14 @@ public final class BeatTracker {
      * <p>The tail window can be a fraction of a second — {@link
      * #analysisWindows} admits sixteen frames, about a tenth of one — and a
      * rate measured over that is not a reading of the recording. Such a window
-     * is still tracked, since its beats are wanted. The first window always
-     * spans a full one, since a shorter envelope than that never reaches here,
-     * so there is always at least one voter.
+     * is still tracked, since its beats are wanted.
+     *
+     * <p>A recording shorter than half a window has no window that clears
+     * that bar, and one tempo is assumed over the whole of it. Its span is
+     * then the span the rate was decided over, which is what this has to
+     * return: {@link MarkedPulse} reads the register over these windows, and
+     * on a short clip it must read the same span {@link #track} estimated
+     * over rather than none at all.
      */
     static List<int[]> votingWindows(OnsetEnvelope envelope) {
         int step = stepFrames(envelope);
@@ -222,6 +225,9 @@ public final class BeatTracker {
             if (votes(window, step)) {
                 windows.add(window);
             }
+        }
+        if (windows.isEmpty() && envelope.length() >= 16) {
+            windows.add(new int[] {0, envelope.length()});
         }
         return windows;
     }
