@@ -153,9 +153,8 @@ public final class SeparationSplit {
         }
         double split = errorDb(sum, stem, stem);
         // Negated rather than compared directly, so that a share that came out
-        // NaN -- from an exponent large enough to overflow, whatever guarded
-        // the input -- refuses here instead of passing a comparison that is
-        // false either way.
+        // NaN refuses here instead of passing a comparison that is false
+        // either way.
         if (!(roundTrip <= MAX_ERROR_DB && split <= MAX_ERROR_DB)) {
             System.err.printf(Locale.ROOT,
                     "the transform does not invert here: round trip %.1f dB,"
@@ -221,8 +220,9 @@ public final class SeparationSplit {
     }
 
     /**
-     * 32-bit float WAV, because a part may sit tens of decibels under the mix
-     * and 16-bit would quantise exactly the quiet signal being measured.
+     * 32-bit float WAV: the parts are written as they were computed, and one
+     * of them may sit tens of decibels under the mix. What a reader keeps of
+     * that is the reader's business — MW's own decoder takes 16 bits.
      */
     private static void writeWav(Path path, float[] samples) throws IOException {
         byte[] pcm = new byte[samples.length * 4];
