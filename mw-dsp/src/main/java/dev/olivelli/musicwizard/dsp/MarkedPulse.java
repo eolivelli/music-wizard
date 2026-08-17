@@ -111,8 +111,17 @@ public final class MarkedPulse {
      * contrast there is. Strict positivity does not separate those, because
      * the envelope is zero-mean and about a quarter of arbitrary frames are
      * positive; a level does.
+     *
+     * <p><b>Both ends of this one are close, and the upper end is a property
+     * of the texture rather than of the corpus.</b> A kick on the first and
+     * third beats states half of the quarters and no more, so a share much
+     * above a half refuses the very arrangement this exists for; below about a
+     * quarter, a register that is silence with a few thumps in it is read as a
+     * bass part. It sits between, and {@code TempoOctave}'s {@code register}
+     * line prints the share and the count of windows this refused, so a
+     * recording that has drifted toward either end says so.
      */
-    private static final double STATED_BEATS = 0.40;
+    private static final double STATED_BEATS = 0.35;
 
     /** See {@link #STATED_BEATS}. */
     private static final double STATED_LEVEL = 0.5;
@@ -122,14 +131,25 @@ public final class MarkedPulse {
 
     /**
      * What the register says about one candidate grid, and whether the
-     * envelope agrees: how much louder the register is on the grid's beats
-     * than between them, how the quieter of the grid's two interleaved halves
-     * compares with the louder, and whether most windows rank the half above
-     * the grid on the envelope the candidates were ranked on. The two numbers
-     * are {@code NaN} where there was nothing to measure, which reads as an
-     * abstention.
+     * envelope agrees.
+     *
+     * @param contrast           how much louder the register is on the grid's
+     *                           beats than between them, median over windows;
+     *                           {@code NaN} where there was nothing to measure
+     * @param parity             the quieter of the grid's two interleaved
+     *                           halves over the louder, median over windows
+     * @param statedShare        the share of the louder half's beats the
+     *                           register states, median over windows — the
+     *                           quantity {@link #STATED_BEATS} gates on, so
+     *                           that a refusal is legible rather than showing
+     *                           only as a contrast of zero
+     * @param windowsRefused     how many windows that gate refused
+     * @param envelopePrefersHalf whether most windows rank the half above the
+     *                           grid on the envelope the candidates were
+     *                           ranked on
      */
-    public record Reading(double contrast, double parity, boolean envelopePrefersHalf) {
+    public record Reading(double contrast, double parity, double statedShare,
+                          int windowsRefused, boolean envelopePrefersHalf) {
 
         /**
          * Whether this grid should be halved: the register states it and
@@ -185,7 +205,9 @@ public final class MarkedPulse {
         double periodFrames = envelope.frameRate() * 60.0 / rate;
         List<Double> contrasts = new ArrayList<>();
         List<Double> parities = new ArrayList<>();
+        List<Double> shares = new ArrayList<>();
         int preferHalf = 0;
+        int refused = 0;
         for (int[] window : windows) {
             List<Double> beats =
                     BeatTracker.trackFixedTempo(envelope, rate, window[0], window[1]);
@@ -196,28 +218,32 @@ public final class MarkedPulse {
             for (int i = 0; i < frames.length; i++) {
                 frames[i] = register.frameOf(beats.get(i));
             }
+            // Asked before the register is consulted, because it is a question
+            // about the envelope: a window the register says nothing about has
+            // still ranked the two rates, and refusing it a vote here would be
+            // a claim it never made.
+            if (TempoEstimator.ranksHalfAbove(envelope, window[0], window[1], rate)) {
+                preferHalf++;
+            }
             double[] halves = halfMeans(register, frames);
-            if (statedShareOfLouderHalf(register, frames, halves) < STATED_BEATS) {
+            double share = statedShareOfLouderHalf(register, frames, halves);
+            shares.add(share);
+            if (share < STATED_BEATS) {
                 // Too few frames are carrying that half's mean for it to be a
                 // bass part. Read as no evidence rather than skipped, so that a
                 // recording whose register goes quiet cannot be decided by the
                 // passages where it does not.
                 contrasts.add(0.0);
                 parities.add(1.0);
+                refused++;
                 continue;
             }
             contrasts.add(contrast(register, frames, periodFrames));
             parities.add(parity(halves));
-            if (TempoEstimator.ranksHalfAbove(envelope, window[0], window[1], rate)) {
-                preferHalf++;
-            }
         }
-        // Out of every window that held beats, not only those the register
-        // spoke for: a window it said nothing about does not get a vote on the
-        // halving either, which can only hold one back.
         return contrasts.isEmpty()
-                ? new Reading(Double.NaN, Double.NaN, false)
-                : new Reading(median(contrasts), median(parities),
+                ? new Reading(Double.NaN, Double.NaN, Double.NaN, 0, false)
+                : new Reading(median(contrasts), median(parities), median(shares), refused,
                         preferHalf * 2 > contrasts.size());
     }
 
