@@ -16,10 +16,12 @@
 # or baseline may quote a line or two where it genuinely needs one; the full
 # text never is. CLAUDE.md carries the rule.
 #
-# So an entry here can say what the ear has settled. One does: what key
-# la-canzone-del-sole is in. That is worth writing down wherever it is
-# confirmed, because the next reader would otherwise re-derive it or, as
-# happened, read MW's correct answer as a bug.
+# So an entry here can say what the ear has settled, and some do: what key
+# la-canzone-del-sole is in, and that neither it nor johnny-b-goode holds a
+# minor chord. That is worth writing down wherever it is confirmed, because the
+# next reader would otherwise re-derive it or, as happened, read MW's correct
+# answer as a bug. A fact stated here can also be scored: tools/score-samples.py
+# reads the second of those, as seconds of minor label against zero.
 #
 # The second kind of file is a recording whose rights are clear on both sides
 # and which is waiting to be confirmed by ear before it is promoted into
@@ -80,7 +82,12 @@ CLAUDE.md carries that rule. The file is timed against a 326 s edit and this
 recording is 325 s, so the line times land; the words themselves are unchecked.
 
 Confirmed by ear 2026-08-11: **A major**, checked against a real piano. That is
-ground truth for the key and nothing else here is.
+ground truth for the key.
+
+Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. That is a
+second piece of ground truth, and it is scorable without a grid --
+`tools/score-samples.py` counts the minor-quality seconds MW reports here and
+reads them against zero (#546).
 
 Run 2026-08-11, on the merge of #375. Two errors, both filed:
 - **key: E major at 9% confidence, where it is A** (#376). E is the dominant,
@@ -120,6 +127,18 @@ Confirmed by ear: this upload is in Ab, checked against a real piano. That is a
 fact about the upload, not about the song.
 Do not treat a reading of this file as a reading of the recording: it is a
 transposed, slowed rendering, and any figure from it belongs to it alone.
+
+johnny-b-goode.mp3
+
+"Johnny B. Goode" (Chuck Berry), 2:40, the 2024 remaster. Rock and roll, a
+twelve-bar blues in B flat. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/johnny-b-goode.mp3 \
+    https://www.youtube.com/watch?v=kSCpu-Jp4OU
+Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. Scorable
+without a grid, like the same fact about la-canzone-del-sole above:
+`tools/score-samples.py` counts the minor-quality seconds MW reports here and
+reads them against zero (#546).
 
 bellissimissima.mp3
 

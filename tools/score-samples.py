@@ -20,6 +20,13 @@ for every row. That table covers every file the chord table does, and the ones
 it does not: a key can be stated for a recording whose bar-by-bar changes are
 not written down here.
 
+Last it reports, for the recordings of NO_MINOR_CHORD, how many seconds of
+minor-quality label MW emitted where a musician has confirmed the harmony holds
+none. Those recordings are commercial and live in uncommitted/, so no grid is
+written down for them and none is needed: the truth is an invariant over the
+whole recording rather than a bar-by-bar cycle, and every second it counts is a
+false label.
+
 The committed CI gate lives in mw-it and reads one of these recordings; this
 script is the local, all-samples view of the same question: is the tool getting
 closer to the charts a musician would write?
@@ -145,6 +152,36 @@ KEYS = {
     "pop-am-f-c-g-144.mp3": "A minor",
 }
 
+# Recordings a musician has confirmed hold no minor chord anywhere, with where
+# each of them is. They are commercial audio, so they live in uncommitted/ and
+# never leave this machine -- which is exactly why the truth about them can be
+# written down here while the recordings cannot (CLAUDE.md). uncommitted/list.txt
+# carries the confirmation per file.
+#
+# No grid is written down for either, and the invariant does not want one: "this
+# recording holds no minor chord" is a statement about the whole of it, so any
+# minor-quality second the estimator reports is a false label whatever bar it
+# lands in. That prices the veto of #543 and the qualities of #547, which chart
+# diffs were pricing before (#546); the seconds are the price, and zero is right.
+NO_MINOR_CHORD = {
+    "la-canzone-del-sole.mp3": "uncommitted",
+    "johnny-b-goode.mp3": "uncommitted",
+}
+
+# The qualities that hold a minor third, by ChordQuality's own name and symbol.
+# ChordQuality.isMinorish() is the rule -- a third of three semitones -- and
+# tools/test-harness-rules.py holds this table to the enum, so a quality added
+# there cannot go uncounted here.
+MINOR_THIRD = {
+    "MINOR": "m",
+    "DIMINISHED": "dim",
+    "MINOR_SEVENTH": "m7",
+    "MINOR_MAJOR_SEVENTH": "mMaj7",
+    "HALF_DIMINISHED_SEVENTH": "m7b5",
+    "DIMINISHED_SEVENTH": "dim7",
+    "MINOR_SIXTH": "m6",
+}
+
 # DownbeatEstimator.BASE_CONFIDENCE: what it reports for a phase nothing at all
 # supports. Printed once in the phase block's header rather than tested against
 # per row -- which rows sit at it is the whole of what that column is for, and a
@@ -170,11 +207,14 @@ SUFFIX_QUALITY = {
 }
 
 
-def missing_line(label: str) -> str:
+def missing_line(label: str, where: str = "samples") -> str:
     """A baselined name this machine cannot measure; premerge.sh skips rows
     carrying this line's marker, and test-harness-rules.py holds every writer
-    of it, and premerge.sh itself, to one literal."""
-    return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
+    of it, and premerge.sh itself, to one literal.
+
+    `where` is the directory the file belongs in, because its own list.txt is
+    what says how to fetch it."""
+    return f"  {label}: not present (local-only; see {where}/list.txt to fetch)"
 
 
 def parse_chord(symbol: str) -> tuple[int, str]:
@@ -424,6 +464,36 @@ ACCIDENTAL_SIGN = {"NATURAL": "", "NONE": "", "SHARP": "#", "FLAT": "b",
                    "DOUBLE_SHARP": "##", "DOUBLE_FLAT": "bb"}
 
 
+def score_no_minor(mp3: Path, doc: dict) -> None:
+    """Minor-quality seconds on a recording confirmed to hold no minor chord.
+
+    Every one of them is a false label, so the row is read against zero and
+    nothing has to be aligned to a grid to read it. Broken down by quality
+    rather than by root, because the rules that produce them are per quality:
+    the third is decided by one test, the seventh across a whole root, the
+    sixth and the diminished fifth by another (`ChordEstimator`).
+    """
+    spans = doc.get("chords", {}).get("chords", [])
+    held: dict[str, float] = {}
+    minor = 0
+    for span in spans:
+        symbol = MINOR_THIRD.get(span.get("quality", "NONE"))
+        if symbol is None:
+            continue
+        held[symbol] = held.get(symbol, 0.0) + span["endSeconds"] - span["startSeconds"]
+        minor += 1
+    duration = doc.get("durationSeconds", 0.0)
+    total = sum(held.values())
+    # Longest first, and by symbol where two are equal, so the row is the same
+    # text for the same recording.
+    columns = ", ".join(f"{symbol} {seconds:.1f}s" for symbol, seconds
+                        in sorted(held.items(), key=lambda kv: (-kv[1], kv[0])))
+    print(f"  minor {mp3.name}: {total:.1f}s of {duration:.0f}s"
+          f" ({100 * total / duration if duration else 0:.1f}%)"
+          f"  spans {minor}/{len(spans)}"
+          f"  {columns if columns else 'none'}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
@@ -439,11 +509,11 @@ def main() -> None:
     # nothing until it is over looks hung both here and in the CI job log.
     analysed = {}
 
-    def doc_for(name: str) -> dict | None:
-        if name not in analysed:
-            mp3 = REPO / "samples" / name
-            analysed[name] = analyze(jar, mp3) if mp3.exists() else None
-        return analysed[name]
+    def doc_for(name: str, where: str = "samples") -> dict | None:
+        mp3 = REPO / where / name
+        if mp3 not in analysed:
+            analysed[mp3] = analyze(jar, mp3) if mp3.exists() else None
+        return analysed[mp3]
 
     print("samples with known ground truth:")
     missing = []
@@ -478,6 +548,18 @@ def main() -> None:
             score_key(REPO / "samples" / name, doc, want)
     for name in missing:
         print(missing_line(f"key {name}"))
+
+    print("minor-quality seconds where a musician confirms the recording holds"
+          " no minor chord (want zero):")
+    missing = []
+    for name, where in NO_MINOR_CHORD.items():
+        doc = doc_for(name, where)
+        if doc is None:
+            missing.append((name, where))
+        else:
+            score_no_minor(REPO / where / name, doc)
+    for name, where in missing:
+        print(missing_line(f"minor {name}", where))
 
 
 if __name__ == "__main__":
