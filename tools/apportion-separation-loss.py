@@ -27,10 +27,10 @@ annotations:
                       following the band.
   stem                the two together — the row the other tool reports
 
-The two middle rows are what apportions the loss, and they are read as two
-separate subtractions from `clean` rather than as a chain: the defects are not
-additive in the score, because a tracker that has already lost the voice cannot
-lose it twice.
+`voice part` and `clean + band part` are what apportions the loss, and they are
+read as two separate subtractions from `clean` rather than as a chain: the
+defects are not additive in the score, because a tracker that has already lost
+the voice cannot lose it twice.
 
 **What the split assumes.** Where voice and band genuinely occupy one bin it
 apportions by energy, which is a choice and not a measurement. It is the same
@@ -41,11 +41,12 @@ than how much energy is in it.
 **Railed mixes are skipped, not averaged in (#518).** A clip recorded loud has
 no headroom for the bed, and the ratios where the loss happens are exactly the
 ones it cannot reach. The run names the clips it skipped and apportions the
-rest, since an apportionment over five clips is worth more than a mean over ten
-that includes distortion.
+rest, since an apportionment over the clips that fit is worth more than a mean
+over all of them that includes distortion.
 
 Nothing here is baselined: it answers a question asked when the separator
-changes, and costs one separation and four analyses per clip.
+changes, and costs a separation and an analysis of every row, per clip and
+ratio.
 
 Usage:  python3 tools/apportion-separation-loss.py [--clips 10] [--ratio 0]
                                                    [--bed FILE] [--keep DIR]

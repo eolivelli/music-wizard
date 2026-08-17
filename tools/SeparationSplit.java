@@ -48,9 +48,9 @@ import org.jtransforms.fft.FloatFFT_1D;
  * genuinely overlap in one bin; there it apportions by energy, which is a
  * choice and not a measurement.
  *
- * <p>The transform is the separator's own — frame 4096, hop 1024, periodic
- * Hann — because that is the grid the mask was applied on, and a coarser one
- * would smear a mask decision across bins that were decided separately. The
+ * <p>The transform is the separator's own frame, hop and window, because that
+ * is the grid the mask was applied on, and a coarser one would smear a mask
+ * decision across bins that were decided separately. The
  * run asserts its own analysis-synthesis round trip and the sum of the parts,
  * and refuses rather than reporting a split that does not add up.
  *
