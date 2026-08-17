@@ -233,13 +233,12 @@ public final class ChordEstimator {
      * <p>Swept by {@code tools/ChordSweep.java score} and {@code
      * tools/score-chart.py} over shares from a twentieth to a half. Across that
      * sweep no benchmark's chord accuracy moves at all, and this sits inside
-     * the narrower band where {@code
-     * synthetic_samples/pop-m6-m7b5-gm-100} also reads every bar right: above
-     * that band a voiced diminished fifth stops being counted, and below it
-     * half-diminished labels appear on a minor blues whose dominants hold no
-     * flat fifth. That it lands at the same share as
-     * {@link #PHANTOM_THIRD_SHARE_OF_ROOT} is not a shared constant: they are
-     * separate rules, free to move apart, whose bands happen to overlap.
+     * the narrower band where {@code synthetic_samples/pop-m6-m7b5-gm-100} also
+     * reads every bar right: above that band a voiced diminished fifth stops
+     * being counted, and below it half-diminished labels appear on a minor
+     * blues whose dominants hold no flat fifth. That it lands at the same share
+     * as {@link #PHANTOM_THIRD_SHARE_OF_ROOT} is not a shared constant: they
+     * are separate rules, free to move apart, whose bands happen to overlap.
      */
     private static final double ADDED_NOTE_SHARE_OF_ROOT = 0.20;
 
