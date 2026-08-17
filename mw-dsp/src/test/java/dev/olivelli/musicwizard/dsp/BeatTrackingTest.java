@@ -1776,6 +1776,53 @@ class BeatTrackingTest {
         }
 
         @Test
+        @DisplayName("a window the register goes quiet in still votes on what the envelope ranked")
+        void aRefusedWindowKeepsItsVoteOnTheEnvelope() {
+            // The order the two questions are asked in, which nothing else
+            // here reaches: the register is read window by window, and a
+            // window where the bass drops out -- an intro, a breakdown -- has
+            // still ranked the two rates on the envelope. Asking the register
+            // first and letting its refusal swallow that vote would be a claim
+            // about the envelope the window never made.
+            double frameRate = 100;
+            int window = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            List<int[]> windows = List.of(new int[] {0, window},
+                    new int[] {window, 2 * window}, new int[] {2 * window, 3 * window});
+
+            // Accented in the first and last window and level in the middle
+            // one, so the envelope ranks the half above the rate in two of the
+            // three -- a majority only if the last one is counted.
+            double[] strength = new double[3 * window];
+            int beat = 0;
+            for (double at = 0; at < strength.length; at += period, beat++) {
+                boolean level = at >= window && at < 2 * window;
+                strength[(int) Math.round(at)] = level || beat % 2 == 0 ? 1 : 0.35;
+            }
+            OnsetEnvelope envelope = new OnsetEnvelope(strength, frameRate);
+
+            // The register states every second beat, and goes all but silent
+            // for the last window.
+            double[] bass = new double[3 * window];
+            for (double at = 0; at < 2 * window; at += 2 * period) {
+                bass[(int) Math.round(at)] = 1;
+            }
+            bass[2 * window] = 1;
+            OnsetEnvelope register = new OnsetEnvelope(bass, frameRate);
+
+            MarkedPulse.Reading reading = MarkedPulse.read(envelope, register, rate, windows);
+            assertThat(reading.windowsRefused())
+                    .as("the window the register went quiet in")
+                    .isEqualTo(1);
+            assertThat(reading.envelopePrefersHalf())
+                    .as("two of the three windows rank the half above the rate")
+                    .isTrue();
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, register, windows))
+                    .isEqualTo(rate / 2);
+        }
+
+        @Test
         @DisplayName("a clip shorter than a window is read over the whole of it")
         void aShortClipIsReadOverItsWholeSpan() {
             // One tempo is assumed over a clip this short, so the span it was

@@ -114,12 +114,13 @@ public final class MarkedPulse {
      *
      * <p><b>Both ends of this one are close, and the upper end is a property
      * of the texture rather than of the corpus.</b> A kick on the first and
-     * third beats states half of the quarters and no more, so a share much
-     * above a half refuses the very arrangement this exists for; below about a
-     * quarter, a register that is silence with a few thumps in it is read as a
-     * bass part. It sits between, and {@code TempoOctave}'s {@code register}
-     * line prints the share and the count of windows this refused, so a
-     * recording that has drifted toward either end says so.
+     * third beats states half of the quarters and no more, and the windows
+     * scatter about that, so a share of a half already refuses the very
+     * arrangement this exists for; below about a quarter, a register that is
+     * silence with a few thumps in it is read as a bass part. It sits between,
+     * and {@code TempoOctave}'s {@code register} line prints the share, the
+     * windows read and the windows this refused, so a recording that has
+     * drifted toward either end says so.
      */
     private static final double STATED_BEATS = 0.35;
 
@@ -143,13 +144,15 @@ public final class MarkedPulse {
      *                           quantity {@link #STATED_BEATS} gates on, so
      *                           that a refusal is legible rather than showing
      *                           only as a contrast of zero
+     * @param windowsRead        how many windows held beats to read at all,
+     *                           which is what the refusals below are out of
      * @param windowsRefused     how many windows that gate refused
      * @param envelopePrefersHalf whether most windows rank the half above the
      *                           grid on the envelope the candidates were
      *                           ranked on
      */
     public record Reading(double contrast, double parity, double statedShare,
-                          int windowsRefused, boolean envelopePrefersHalf) {
+                          int windowsRead, int windowsRefused, boolean envelopePrefersHalf) {
 
         /**
          * Whether this grid should be halved: the register states it and
@@ -200,8 +203,13 @@ public final class MarkedPulse {
         return read(envelope, register, rate, windows).callsForHalving() ? halved : rate;
     }
 
-    private static Reading read(OnsetEnvelope envelope, OnsetEnvelope register, double rate,
-                                List<int[]> windows) {
+    /**
+     * The same over windows the caller chooses. Package-private so a test can
+     * put the register's silence in one window and not another, which is the
+     * only shape in which the order of the two questions below is visible.
+     */
+    static Reading read(OnsetEnvelope envelope, OnsetEnvelope register, double rate,
+                        List<int[]> windows) {
         double periodFrames = envelope.frameRate() * 60.0 / rate;
         List<Double> contrasts = new ArrayList<>();
         List<Double> parities = new ArrayList<>();
@@ -242,9 +250,9 @@ public final class MarkedPulse {
             parities.add(parity(halves));
         }
         return contrasts.isEmpty()
-                ? new Reading(Double.NaN, Double.NaN, Double.NaN, 0, false)
-                : new Reading(median(contrasts), median(parities), median(shares), refused,
-                        preferHalf * 2 > contrasts.size());
+                ? new Reading(Double.NaN, Double.NaN, Double.NaN, 0, 0, false)
+                : new Reading(median(contrasts), median(parities), median(shares),
+                        contrasts.size(), refused, preferHalf * 2 > contrasts.size());
     }
 
     /**
