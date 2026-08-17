@@ -933,12 +933,15 @@ class ChordEstimationTest {
      * #287: the two qualities of that issue the corpus admits, measured again
      * on the estimator #543 left behind.
      *
-     * <p>The vectors are what the pipeline gave the estimator over one
-     * {@code Cm6} and one {@code Am7b5} presentation of {@code
+     * <p>Every vector below is a reading of a real span. The first two are what
+     * the pipeline gave the estimator over one {@code Cm6} and one
+     * {@code Am7b5} presentation of {@code
      * synthetic_samples/pop-m6-m7b5-gm-100.mp3}, whose spec compiled the MIDI:
      * the guitar plays the same four pitch classes on both, and the bass plays
-     * C under one and A under the other. #514 read those bars {@code Cm7} and
-     * {@code Am7} — each asserting a note the music does not play.
+     * C under one and A under the other, and #514 read those bars {@code Cm7}
+     * and {@code Am7} — each asserting a note the music does not play. The
+     * third is a run of {@code samples/cm-blues-68-95.mp3}, which is where the
+     * residual test earns its place on a real recording.
      */
     @Nested
     @DisplayName("the sixth and the half-diminished (#287)")
@@ -956,10 +959,10 @@ class ChordEstimationTest {
                 0.0119, 0.0576, 0.0123, 0.1045, 0.0290, 0.0389};
 
         /**
-         * And that run's leave-one-out residual. The sixth removes over half of
-         * what the root removes and the flat seventh a seventh of it, though
-         * the chroma puts them within a factor of two — which is the whole
-         * reason the decision reads this and not the chroma.
+         * And that run's leave-one-out residual. The sixth removes over half
+         * of what the root removes and the flat seventh a tenth of it, where
+         * the chroma has them within a factor of three — which is why the
+         * decision reads this and not the chroma.
          */
         private static final double[] SIXTH_RESIDUAL = {
                 1.4547, 0.0037, 0.0665, 0.5840, 0.0879, 0.0035,
@@ -975,6 +978,33 @@ class ChordEstimationTest {
         private static final double[] HALF_BASS = {
                 0.0141, 0.0110, 0.0490, 0.0019, 0.0919, 0.0164,
                 0.0187, 0.0305, 0.0080, 0.7438, 0.0017, 0.0130};
+
+        /**
+         * And that run's residual: the diminished fifth removes over a quarter
+         * of what the root removes, the perfect fifth less than a third of
+         * that.
+         */
+        private static final double[] HALF_RESIDUAL = {
+                0.4990, 0.0288, 0.0361, 0.4914, 0.1418, 0.0000,
+                0.0027, 0.3346, 0.0053, 1.8086, 0.1211, 0.0390};
+
+        /**
+         * A G-rooted run of {@code samples/cm-blues-68-95.mp3} and its own
+         * residual, where the flat fifth is in the band a silent pitch class
+         * occupies. The recording's truth holds {@code G7}.
+         */
+        private static final double[] BLUES_COMBINED = {
+                0.1030, 0.0206, 0.0357, 0.0781, 0.0426, 0.2074,
+                0.0177, 0.1816, 0.0392, 0.0334, 0.1328, 0.1080};
+        private static final double[] BLUES_TREBLE = {
+                0.1467, 0.0251, 0.0143, 0.0990, 0.0452, 0.2603,
+                0.0183, 0.0360, 0.0284, 0.0167, 0.1812, 0.1288};
+        private static final double[] BLUES_BASS = {
+                0.0135, 0.0115, 0.0794, 0.0353, 0.0372, 0.0993,
+                0.0164, 0.4793, 0.0612, 0.0675, 0.0339, 0.0654};
+        private static final double[] BLUES_RESIDUAL = {
+                0.1601, 0.0004, 0.0009, 0.0456, 0.0063, 0.3375,
+                0.0003, 0.2722, 0.0041, 0.0283, 0.2337, 0.1218};
 
         private static Chroma four(double[] vector) {
             return beats(vector, vector, vector, vector);
@@ -1001,6 +1031,18 @@ class ChordEstimationTest {
                     .chords().get(0).symbol();
         }
 
+        private static String halfLabel(double[] residual) {
+            return ChordEstimator.estimate(four(HALF_COMBINED), four(HALF_TREBLE),
+                            four(HALF_BASS), ablation(residual), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
+        private static String bluesLabel(double[] residual) {
+            return ChordEstimator.estimate(four(BLUES_COMBINED), four(BLUES_TREBLE),
+                            four(BLUES_BASS), ablation(residual), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
         @Test
         @DisplayName("names a sixth the fold hears as a seventh")
         void reportsASixth() {
@@ -1024,25 +1066,37 @@ class ChordEstimationTest {
         @Test
         @DisplayName("names the diminished fifth the vocabulary had no word for")
         void reportsAHalfDiminishedSeventh() {
-            assertThat(ChordEstimator.estimate(four(HALF_COMBINED), four(HALF_TREBLE),
-                            four(HALF_BASS), beatTimes(4)).chords().get(0).symbol())
-                    .isEqualTo("Am7b5");
+            assertThat(halfLabel(HALF_RESIDUAL)).isEqualTo("Am7b5");
         }
 
         @Test
         @DisplayName("the perfect fifth is what decides it, not the template's size")
         void aMinorSeventhIsStillAMinorSeventh() {
-            // The same run with the fifth and the flat fifth exchanged. The two
-            // candidates are the same size and share every other note, so this
-            // is the whole of what separates them — and it is why this quality
-            // needs none of the residual test the sixth above does.
+            // The same run with the fifth and the flat fifth exchanged in the
+            // chroma. The two candidates are the same size and share every
+            // other note, so this is the whole of what the fold has to go on.
             double[] fifth = HALF_TREBLE.clone();
             fifth[3] = HALF_TREBLE[4];
             fifth[4] = HALF_TREBLE[3];
 
             assertThat(ChordEstimator.estimate(four(HALF_COMBINED), four(fifth),
-                            four(HALF_BASS), beatTimes(4)).chords().get(0).symbol())
-                    .isEqualTo("Am7");
+                            four(HALF_BASS), ablation(HALF_RESIDUAL), beatTimes(4))
+                    .chords().get(0).symbol()).isEqualTo("Am7");
+        }
+
+        @Test
+        @DisplayName("a diminished fifth the fit does not need is not one")
+        void aFlatFifthTheFitDoesNotNeedIsNotReported() {
+            // The recording's truth holds G7 twice a cycle and no flat fifth
+            // anywhere: the fold takes the half-diminished on this run, and the
+            // residual says the C sharp explains nothing. Voice one — the same
+            // run with its flat fifth at the share the package's played one
+            // carries — and the label comes back.
+            double[] played = BLUES_RESIDUAL.clone();
+            played[1] = 0.27 * BLUES_RESIDUAL[7];
+
+            assertThat(bluesLabel(BLUES_RESIDUAL)).isEqualTo("Gm7");
+            assertThat(bluesLabel(played)).isEqualTo("Gm7b5");
         }
 
         @Test

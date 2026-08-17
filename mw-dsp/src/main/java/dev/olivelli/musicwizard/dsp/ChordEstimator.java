@@ -159,13 +159,11 @@ public final class ChordEstimator {
      * the major seventh still labels plain triads and the sixth still takes the
      * dominant-seventh benchmarks; #287 carries both tables.
      *
-     * <p>The half-diminished seventh needs no such test, being the one quality
-     * of the four that <em>swaps</em> a note rather than adding one: it is the
-     * minor seventh with a diminished fifth, same size and same root, so the
-     * two are ranked on which fifth is sounding and the size bias
-     * {@link #flatScore} names never enters. What admits it at all is the bass
-     * root prior ({@link #BASS_ROOT_WEIGHT}), since {@code Am7b5} is a
-     * {@code Cm} triad with an A in it and the fold put those bars on C.
+     * <p>The two here are decided on the same test
+     * ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the diminished
+     * fifth. The half-diminished also needs the bass root prior
+     * ({@link #BASS_ROOT_WEIGHT}) to be reachable at all, since {@code Am7b5}
+     * is a {@code Cm} triad with an A in it and the fold put those bars on C.
      */
     private static final ChordQuality[] QUALITY_ONLY = {ChordQuality.MINOR_SEVENTH,
             ChordQuality.MINOR_SIXTH, ChordQuality.HALF_DIMINISHED_SEVENTH};
@@ -210,32 +208,37 @@ public final class ChordEstimator {
     private static final double PHANTOM_THIRD_SHARE_OF_ROOT = 0.20;
 
     /**
-     * Share of the residual its root removes that a sixth must remove to be
-     * counted at all. Only {@link #qualityScore} reads it, and only where a
+     * Share of the residual its root removes that a sixth or a diminished fifth
+     * must remove to be counted at all — the two notes the qualities #287 adds
+     * are decided by. Only {@link #qualityScore} reads it, and only where a
      * {@link PitchClassAblation} is available.
      *
-     * <p>What ranks a sixth against the seventh it competes with, instead of
-     * asking which of the two is louder (#287). The fold cannot answer that:
-     * over a minor triad the seventh is the root's own seventh partial and the
-     * sixth is a note some other chord is built on, so both are there in a
-     * chroma whichever is played. Deleting the pitch class and refitting is
-     * what tells them apart, and a sixth that is genuinely voiced removes
-     * several times the residual a manufactured seventh does (#537's bands).
+     * <p>What ranks those candidates on the fit rather than on which extra note
+     * is louder, which is what #287 said was missing. The fold cannot answer
+     * it: over a minor triad the flat seventh is the root's own seventh partial
+     * and the sixth is a note another chord is built on, so both are in the
+     * chroma whichever is played, and a diminished fifth need only carry
+     * 2/sqrt(3) - 1 of the triad's mass to be reported. Deleting the pitch
+     * class and refitting separates them, because a note that is sounding
+     * cannot be deleted cheaply (#537).
      *
-     * <p><b>The seventh is not tested the same way</b>, and that is measured
+     * <p><b>The seventh is not tested the same way</b>, which is measured
      * rather than an omission: a flat seventh really played on a real mix
      * removes less residual, as a share of its root's, than a manufactured one
      * does on a rendered package, so the two populations are ordered the wrong
      * way round and no share separates them. #274 carries the seventh's own
      * false-positive rate.
      *
-     * <p>Swept by {@code tools/ChordSweep.java score} and sitting in the middle
-     * of the band where {@code synthetic_samples/pop-m6-m7b5-gm-100} reads
-     * every bar right and no scored benchmark moves at all. Above the band a
-     * voiced sixth stops being counted; below it, sixths appear on recordings
-     * that play none.
+     * <p>Swept by {@code tools/ChordSweep.java score} and {@code
+     * tools/score-chart.py}, and this sits inside the band where {@code
+     * synthetic_samples/pop-m6-m7b5-gm-100} reads every bar right and no
+     * benchmark moves. Above the band a voiced diminished fifth stops being
+     * counted; below it, half-diminished labels appear on a minor blues whose
+     * dominants hold no flat fifth. That it lands at the same share as
+     * {@link #PHANTOM_THIRD_SHARE_OF_ROOT} is not a shared constant: they are
+     * separate rules, free to move apart, and the two bands happen to overlap.
      */
-    private static final double ADDED_SIXTH_SHARE_OF_ROOT = 0.40;
+    private static final double ADDED_NOTE_SHARE_OF_ROOT = 0.20;
 
     private ChordEstimator() {
     }
@@ -656,11 +659,12 @@ public final class ChordEstimator {
      * manufactured. See {@link PitchClassAblation}, and #544 for the register
      * the residual is read over against the register this chroma is.
      *
-     * <p><b>The same residual decides whether a sixth is there</b>
-     * ({@link #ADDED_SIXTH_SHARE_OF_ROOT}), and a sixth that is not counts for
-     * nothing — which leaves a sixth candidate scored on the triad's own notes
-     * over a larger norm, so the triad wins. That is what ranks it against the
-     * seventh on evidence rather than on which of the two is louder (#287).
+     * <p><b>The same residual decides whether a sixth or a diminished fifth is
+     * there</b> ({@link #ADDED_NOTE_SHARE_OF_ROOT}), and one that is not counts
+     * for nothing — which leaves the candidate scored on the triad's own notes
+     * over a larger norm, so the chord it competes with wins. That is what
+     * ranks the qualities #287 adds on evidence rather than on which extra note
+     * is louder.
      */
     private static double qualityScore(double[] chroma, Template template,
                                        double[] significance) {
@@ -674,15 +678,20 @@ public final class ChordEstimator {
             majorThirdMass = 0;
         }
         int sixth = Math.floorMod(root + 9, 12);
-        boolean sixthCounts = significance == null
-                || significance[sixth] >= ADDED_SIXTH_SHARE_OF_ROOT * significance[root];
+        int diminishedFifth = Math.floorMod(root + 6, 12);
         double mass = 0;
         double energy = 0;
         for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
             energy += chroma[pitchClass] * chroma[pitchClass];
             if (template.profile()[pitchClass] > 0) {
                 double value = pitchClass == majorThird ? majorThirdMass : chroma[pitchClass];
-                mass += pitchClass == sixth && !sixthCounts ? 0 : value;
+                if (significance != null
+                        && (pitchClass == sixth || pitchClass == diminishedFifth)
+                        && significance[pitchClass]
+                                < ADDED_NOTE_SHARE_OF_ROOT * significance[root]) {
+                    value = 0;
+                }
+                mass += value;
             }
         }
         if (template.quality().isMinorish()) {
