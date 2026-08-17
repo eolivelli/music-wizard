@@ -414,10 +414,6 @@ public final class GlideSweep {
     /**
      * A digest of the classpath with {@link MelodyEstimator}'s own classes left
      * out — the one thing a sweep is expected to edit between runs.
-     *
-     * <p>Entry names and their CRCs rather than their contents, which is what
-     * makes this cost a directory read instead of a decompression of the shaded
-     * jar.
      */
     private static byte[] classpathDigest() throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");

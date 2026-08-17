@@ -307,8 +307,7 @@ class MelodyEstimationTest {
             // Only a run's *first* span can be short. A later one opens where a
             // departure began, and the departure after it cannot begin before
             // the frame that confirmed this one, so it spans at least as long
-            // as a note must — which makes this the one shape that reaches the
-            // filter.
+            // as a note must.
             PitchTrack pitches = track(60.0, 1, 72.0, 40);
             NoteTrack melody = MelodyEstimator.estimate(pitches);
 

@@ -41,8 +41,7 @@ import java.util.Objects;
  * short: the running mean leaves it again every time the singer has climbed
  * far enough, so one glide arrives here as a row of pieces whose medians sit
  * between semitones. Asking each piece for a stretch the pitch stays inside
- * {@link #STEADY_SEMITONES} separates the two, because a glide holds no pitch
- * at any length.
+ * {@link #STEADY_SEMITONES} separates the two.
  *
  * <p><strong>The onset envelope splits the re-articulations; the pitch track
  * decides everything else.</strong> Two notes of the same pitch with no gap
