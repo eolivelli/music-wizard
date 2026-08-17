@@ -217,9 +217,10 @@ public final class TempoOctave {
                 ? vote.reference()
                 : TempoEstimator.estimate(envelope, rhythm).beatsPerMinute();
         MarkedPulse.Reading reading = MarkedPulse.read(envelope, register, reference);
-        System.out.printf("  register at %.2f: contrast %.2f  parity %.3f  ->  %.2f%n",
+        System.out.printf("  register at %.2f: contrast %.2f  parity %.3f  envelope %s  ->  %.2f%n",
                 reference, reading.contrast(), reading.parity(),
-                reading.statesOnlyEveryOtherBeat() ? reference / 2 : reference);
+                reading.envelopePrefersHalf() ? "prefers the half" : "keeps this rate",
+                reading.callsForHalving() ? reference / 2 : reference);
     }
 
     /**

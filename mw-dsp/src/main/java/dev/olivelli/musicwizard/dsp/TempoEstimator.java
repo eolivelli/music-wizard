@@ -333,6 +333,35 @@ public final class TempoEstimator {
     }
 
     /**
+     * Whether the envelope's own ranking puts half of a rate above it, over one
+     * window — the comparison {@link #estimate} makes before the prior and the
+     * harmonic support are multiplied in.
+     *
+     * <p>{@link MarkedPulse} asks this because the register may only restore a
+     * preference the envelope had, never invent one: a recording whose
+     * autocorrelation ranks its tracked rate above the half is one where the
+     * prior did not overturn anything, and a sparse register saying otherwise
+     * is saying something about the bass part rather than about the beat.
+     *
+     * <p>False where the window is too short to hold the longer lag, since
+     * there is then no comparison to make.
+     */
+    static boolean ranksHalfAbove(OnsetEnvelope envelope, int fromFrame, int toFrame,
+                                  double beatsPerMinute) {
+        int from = Math.max(0, fromFrame);
+        int to = Math.min(envelope.length(), toFrame);
+        double frameRate = envelope.frameRate();
+        double halfLag = frameRate * 60.0 / (beatsPerMinute / 2);
+        if (!(beatsPerMinute > 0) || to - from <= halfLag + 1) {
+            return false;
+        }
+        double[] slice = new double[to - from];
+        System.arraycopy(envelope.strength(), from, slice, 0, slice.length);
+        double[] ranked = autocorrelate(compressAccents(slice), (int) Math.ceil(halfLag) + 1);
+        return interpolate(ranked, halfLag) > interpolate(ranked, halfLag / 2);
+    }
+
+    /**
      * How concentrated an envelope's departures from its own mean are, on 0 to 1.
      *
      * <p>Derived from kurtosis, read as an effective duty cycle. For a signal
