@@ -23,11 +23,30 @@ The two decisions that carry the quality are pYIN's rather than YIN's:
 
 **Monophonic means monophonic.** Pointed at a mix it does not fail — it
 confidently returns one fundamental for whatever is loudest and most
-periodic, usually the bass. That is why `analyze --melody` is off by
-default: it is for a recording whose melody is the only thing sounding, or a
-separated vocal stem. Reading the melody out of a full mix through
-separation is the roadmap item (#8), and the measured gap between clean solo
-singing and a mix is separation's, not the melody stage's (#503).
+periodic, usually the bass. That is why `analyze --melody` is off by default,
+and why it does not point the tracker at the mix.
+
+## Which signal the tracker reads (#559)
+
+`analyze --melody` reads the **separated vocal** wherever a separation
+provider can be had, and says which signal it read in its own output. The mix
+is the fallback: no provider, `--skip-separation`, or a separator that could
+not run. A run asking for both a melody and transcribed lyrics separates once.
+
+Two measurements decide that default, and they point opposite ways —
+`tools/baselines/score-melody*.txt` holds all four, each corpus read both ways.
+
+- Where a band plays under the melody, the mix melody is the band. Separating
+  is most of the difference between a pitch column near zero and one that
+  means something.
+- Where the melody is **sung** alone, separation costs about nothing: the
+  vocadito rows move by less than a point either way, which is #503's finding
+  on this corpus.
+- Where the melody is **played** alone — a solo instrument, or the synthetic
+  packages' rendered melody lines — a vocal separator has no voice to keep and
+  the melody largely does not survive it. **Pass `--skip-separation` for a
+  recording whose melody is not a voice.** Choosing between the two signals by
+  evidence rather than by a flag is #560.
 
 ## Notes from the track (`MelodyEstimator`)
 
@@ -39,11 +58,14 @@ through* the pitches between two notes, and those transit frames would
 otherwise become a note of their own on every interval wider than a
 semitone); what is left absorbs the gaps.
 
-The onset envelope — the same one the beat tracker reads — splits
+The onset envelope of **the signal being tracked** splits
 **re-articulations**: two notes of the same pitch with no gap are invisible
 in a pitch track, because a re-articulation is an amplitude event. A strong
 envelope peak inside a note cuts it in two, but only where the voice itself
-restarts (#495).
+restarts (#495). Its strength is measured in standard deviations of that
+signal's own envelope, so on a stem run this is the stem's envelope and not
+the mix's — a mix envelope would rate the drums against the band's spread and
+cut vocal notes on them.
 
 What the envelope deliberately does *not* do is move the boundaries: against
 exact MIDI truth that would close the onset lateness completely, but against

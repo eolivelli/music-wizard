@@ -44,7 +44,9 @@ are estimated (symbolically — exact pitches, no chroma).
 
 **Chords are estimated from the full mix, never from separated stems.**
 Separation artifacts destroy the partial structure chroma estimation depends
-on. Separation exists to feed melody, bass and lyrics only.
+on. Separation exists to feed melody, bass and lyrics only — and it does feed
+melody: `--melody` tracks the separated vocal where there is a separator
+(#559), which is why the stage sits outside the chain above.
 
 **Nothing downstream of the beat grid works in seconds.** Once beats are
 known, every time value is in quarter-note beats; `TempoMap` is the only

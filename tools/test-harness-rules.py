@@ -1249,6 +1249,55 @@ class MelodyRules(unittest.TestCase):
         reference = [(0.0, 0.5, 60), (0.02, 0.5, 60)]
         self.assertAlmostEqual(2 / 3, melody.note_f1([(0.0, 0.5, 60)], reference, 0.05))
 
+    def test_the_signal_literals_exist_in_the_pipeline_itself(self):
+        """The --separated loop classifies by what analyze prints, so those
+        literals are held against the source that prints them: a rewording
+        would otherwise make the loop skip every row, or -- worse -- score the
+        mix melody against the separated baseline, in silence."""
+        repo = Path(__file__).resolve().parent.parent
+        printed = (
+            (repo / "mw-transcribe/src/main/java/dev/olivelli/musicwizard/transcribe"
+                    / "AudioTranscriber.java").read_text(encoding="utf-8")
+            + (repo / "mw-cli/src/main/java/dev/olivelli/musicwizard/cli"
+                    / "AnalyzeCommand.java").read_text(encoding="utf-8"))
+        for literal in (melody.FROM_STEM, melody.FROM_MIX, melody.NOT_SEPARATED):
+            self.assertIn(literal, printed)
+
+    def test_a_machine_that_cannot_separate_skips_rather_than_scoring_the_mix(self):
+        """The separated loops need a model this machine may not have. Scoring
+        the mix melody against their baseline would report a missing download
+        as a regression, so the row is a skip -- keyed, and in the marker
+        premerge turns into one."""
+        row = melody.unavailable_line("melody-level1-c-96", "no separation provider")
+        self.assertIn(": not present (local-only", row)
+        self.assertEqual("melody-level1-c-96", row.split(":")[0].strip())
+        self.assertIn("no separation provider", row)
+        # Bounded, so a stack trace pasted as the reason cannot wrap the row.
+        self.assertLess(len(melody.unavailable_line("x", "y" * 500)), 220)
+
+    def test_the_pinned_loops_hand_analyze_the_flag_that_pins_them(self):
+        """Without --skip-separation the default rows would measure whatever
+        separation the machine could do, against a baseline CI regenerates
+        without one."""
+        class Stop(Exception):
+            pass
+
+        seen = []
+
+        def record(command, **kwargs):
+            seen.append(command)
+            if "analyze" in command:
+                raise Stop
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(melody.subprocess, "run", record):
+            for separated in (False, True):
+                with self.assertRaises(Stop):
+                    melody.analyze(Path("mw.jar"), Path("x.mp3"), separated=separated)
+        pinned, through_the_stem = seen[1], seen[3]
+        self.assertIn("--skip-separation", pinned)
+        self.assertNotIn("--skip-separation", through_the_stem)
+
 
 class SeparationRatio(unittest.TestCase):
     """The level arithmetic behind #505.

@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -28,6 +29,7 @@ import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,9 +56,55 @@ class TranscriptionCacheTest {
 
     private Path workspaceDirectory;
 
+    /** What {@link AnalyzeCommand#melodySignal} answers for a run without {@code --melody}. */
+    private static final String MELODY_OFF =
+            AnalyzeCommand.melodySignal(AudioTranscriber.Options.defaults(), Optional.empty());
+
     /** A score no transcriber would ever produce from the fixture. */
     private static Score poison() {
         return Score.empty(TempoMap.constant(66), 999.0);
+    }
+
+    /** A config naming one separation provider, or none. */
+    private static MusicWizardConfig configNaming(String separationProvider) {
+        return new MusicWizardConfig(null, null, null, null,
+                new MusicWizardConfig.MlConfig(separationProvider, null, null, null,
+                        null, null, null, null, false),
+                null);
+    }
+
+    @Test
+    @DisplayName("the melody component names the signal, not merely that a melody was asked for")
+    void melodySignalNamesWhatWillBeRead() {
+        AudioTranscriber.Options on = new AudioTranscriber.Options(null, null, null, true);
+        Path source = workspace().sourceFile();
+
+        assertThat(MELODY_OFF).isEqualTo("off");
+        assertThat(AnalyzeCommand.melodySignal(on, Optional.empty())).isEqualTo("mix");
+        assertThat(AnalyzeCommand.melodySignal(on,
+                VocalStem.forRun(source, configNaming("fake-cli-separation"))))
+                .isEqualTo("stem:fake-cli-separation");
+        // A configured provider nothing on the classpath supplies is the mix,
+        // which is what the run will actually read.
+        assertThat(AnalyzeCommand.melodySignal(on,
+                VocalStem.forRun(source, configNaming("no-such-separation"))))
+                .isEqualTo("mix");
+    }
+
+    @Test
+    @DisplayName("a melody read from the stem is not served to a run reading it from the mix")
+    void theMelodySignalSeparatesTheKeys() {
+        Path source = workspace().sourceFile();
+        AudioTranscriber.Options on = new AudioTranscriber.Options(null, null, null, true);
+
+        String fromMix = AnalyzeCommand.transcriptionKey(
+                SourceKind.AUDIO, source, on, false, true, "mix").digest();
+
+        assertThat(AnalyzeCommand.transcriptionKey(
+                SourceKind.AUDIO, source, on, false, true, "stem:fake-cli-separation")
+                .digest())
+                .as("the same options over the same file read a different signal (#559)")
+                .isNotEqualTo(fromMix);
     }
 
     @BeforeEach
@@ -85,7 +133,7 @@ class TranscriptionCacheTest {
     private StageCache.Key keyFor(SourceKind kind) {
         return AnalyzeCommand.transcriptionKey(kind, workspace().sourceFile(),
                 kind == SourceKind.AUDIO ? AudioTranscriber.Options.defaults() : null,
-                false, workspace().effectiveConfig().isLlmEnabled());
+                false, workspace().effectiveConfig().isLlmEnabled(), MELODY_OFF);
     }
 
     /**
@@ -101,7 +149,7 @@ class TranscriptionCacheTest {
      */
     private StageCache.Key audioKeyWithMidiComponents() {
         return AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, workspace().sourceFile(),
-                null, false, workspace().effectiveConfig().isLlmEnabled());
+                null, false, workspace().effectiveConfig().isLlmEnabled(), MELODY_OFF);
     }
 
     @Test
@@ -267,10 +315,11 @@ class TranscriptionCacheTest {
         Path source = workspace().sourceFile();
 
         String plain = AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, true)
-                .digest();
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, true,
+                MELODY_OFF).digest();
         String corrected = AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
-                new AudioTranscriber.Options(90.0, null, null), false, true).digest();
+                new AudioTranscriber.Options(90.0, null, null), false, true,
+                MELODY_OFF).digest();
 
         assertThat(corrected)
                 .as("a corrected tempo produces a different audio analysis")
@@ -281,34 +330,36 @@ class TranscriptionCacheTest {
         // changes the analysis while the key does not change is how a corrected
         // run gets served the answer it was correcting.
         assertThat(AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true, true)
-                .digest())
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), true, true,
+                MELODY_OFF).digest())
                 .as("--skip-separation will change the audio analysis under #8")
                 .isNotEqualTo(plain);
         // The melody stage genuinely changes what the cached score holds, which
         // makes this the one component here that is not keyed against a future.
         assertThat(AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
-                new AudioTranscriber.Options(null, null, null, true), false, true).digest())
+                new AudioTranscriber.Options(null, null, null, true), false, true,
+                "mix").digest())
                 .as("--melody adds a note track to the analysis")
                 .isNotEqualTo(plain);
         // The advisor is keyed on both paths: #11 advises on meter, structure
         // and spelling, all of which a symbolic import produces too.
         assertThat(AnalyzeCommand.transcriptionKey(
-                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, false)
-                .digest())
+                SourceKind.AUDIO, source, AudioTranscriber.Options.defaults(), false, false,
+                MELODY_OFF).digest())
                 .as("the advisor will change the analysis under #11")
                 .isNotEqualTo(plain);
-        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null, false, false)
-                .digest())
+        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.MIDI, source, null, false, false,
+                MELODY_OFF).digest())
                 .as("the advisor is not an audio-only stage")
                 .isNotEqualTo(AnalyzeCommand.transcriptionKey(
-                        SourceKind.MIDI, source, null, false, true).digest());
+                        SourceKind.MIDI, source, null, false, true, MELODY_OFF).digest());
         // Nothing on the MIDI path reads any of them, so keying on them would
         // miss the cache for a reason that is not a reason.
         assertThat(AnalyzeCommand.transcriptionKey(
-                SourceKind.MIDI, source, null, false, true).digest())
+                SourceKind.MIDI, source, null, false, true, MELODY_OFF).digest())
                 .isEqualTo(AnalyzeCommand.transcriptionKey(
                         SourceKind.MIDI, source,
-                        new AudioTranscriber.Options(90.0, null, null), true, true).digest());
+                        new AudioTranscriber.Options(90.0, null, null), true, true,
+                        "stem:whatever").digest());
     }
 }

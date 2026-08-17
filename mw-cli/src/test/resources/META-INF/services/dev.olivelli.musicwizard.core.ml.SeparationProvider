@@ -1,1 +1,3 @@
 dev.olivelli.musicwizard.cli.FakeSeparationProvider
+dev.olivelli.musicwizard.cli.FakeVoiceSeparationProvider
+dev.olivelli.musicwizard.cli.FailingSeparationProvider
