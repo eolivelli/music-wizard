@@ -669,8 +669,7 @@ class NnlsChromaTest {
             // Every answer the function can give, by its own arithmetic, so
             // that no slot centre can fall the wrong side of the comparison:
             // the two straddling zero are a whole step nearer it than any
-            // other, and the arithmetic that produces them misses half a step
-            // by an ulp in both directions.
+            // other, and that margin is what the comparison is placed in.
             int slots = (int) Math.round(1 / Chroma.TUNING_RESOLUTION_SEMITONES);
             for (int slot = 0; slot < slots; slot++) {
                 double answer = (slot + 0.5) / slots - 0.5;
