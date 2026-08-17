@@ -870,10 +870,14 @@ final class AnalyzeCommand implements Callable<Integer> {
                 return stem.get().voice(AnalyzeCommand::report);
             } catch (RuntimeException e) {
                 melodyFellBackToTheMix = true;
-                System.err.println("warning: the vocal could not be separated, so the"
-                        + " melody is read from the full mix, where the tracker returns"
-                        + " the loudest periodic line rather than the voice: "
-                        + e.getMessage());
+                // The provider's own message early, before this line's own
+                // words: it is what distinguishes an offline machine from a
+                // failed checksum, and the melody harness's skip row carries a
+                // bounded prefix of this line as its reason.
+                System.err.println("warning: the vocal could not be separated: "
+                        + e.getMessage() + "; the melody is read from the full mix,"
+                        + " where the tracker returns the loudest periodic line"
+                        + " rather than the voice");
                 return null;
             }
         };

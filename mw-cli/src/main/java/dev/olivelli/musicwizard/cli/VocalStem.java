@@ -75,10 +75,12 @@ final class VocalStem {
      * work: this takes real time, and a command that reports each step must
      * not sit mute through it.
      *
-     * @throws ModelUnavailableException when the separator cannot run here.
-     *         Remembered like the stem itself, and for the same reason: the
-     *         second stage in a run must not pay a whole-file decode and a
-     *         model fetch to be told again what the first was told.
+     * @throws ModelUnavailableException when the separator cannot run here;
+     *         anything else that fails, the decode included, propagates as it
+     *         is. Whichever it was is remembered like the stem itself and
+     *         rethrown, so the second stage in a run does not pay a whole-file
+     *         decode and a model fetch to be told again what the first was
+     *         told.
      */
     AudioBuffer voice(Consumer<String> report) {
         if (failure != null) {

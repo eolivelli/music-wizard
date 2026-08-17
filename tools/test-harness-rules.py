@@ -1264,20 +1264,42 @@ class MelodyRules(unittest.TestCase):
                         melody.NO_STEM, melody.NO_BEATS):
             self.assertIn(literal, printed)
 
+    #: The lines analyze prints around the cause, verbatim, so the fixtures
+    #: below are as long as the real thing: the row is bounded, and boilerplate
+    #: between the marker and the provider's message eats the budget the cause
+    #: needs. Their literals are pinned against the source by the test above.
+    NO_PROVIDER_REPORT = ("  the melody is read from the full mix: no separation"
+                          " provider; the tracker is monophonic, so it returns the"
+                          " loudest periodic line rather than the voice\n"
+                          "  tracking the melody in the full mix\n")
+    SEPARATOR_FAILED = ("  separating the vocal with onnx-spleeter\n"
+                        "  tracking the melody in the full mix\n"
+                        "warning: the vocal could not be separated: {}; the melody"
+                        " is read from the full mix, where the tracker returns the"
+                        " loudest periodic line rather than the voice\n")
+
     def test_a_skip_row_names_the_cause_rather_than_the_symptom(self):
         """Both reports carry "tracking the melody in the full mix"; what
         differs is why. A row that named the symptom would read identically
         for a machine with no model and for a separator that crashed."""
-        no_provider = ("  the melody is read from the full mix: no separation"
-                       " provider; the tracker is monophonic\n"
-                       "  tracking the melody in the full mix\n")
-        crashed = ("  separating the vocal with onnx-spleeter\n"
-                   "  tracking the melody in the full mix\n"
-                   "warning: the vocal could not be separated, so the melody is"
-                   " read from the full mix: spleeter-2stems is not in the cache\n")
         self.assertIn("no separation provider",
-                      melody.first_line(no_provider, melody.REASONS))
-        self.assertIn("not in the cache", melody.first_line(crashed, melody.REASONS))
+                      melody.first_line(self.NO_PROVIDER_REPORT, melody.REASONS))
+        self.assertIn("not in the cache", melody.first_line(
+            self.SEPARATOR_FAILED.format("spleeter-2stems is not in the cache"),
+            melody.REASONS))
+
+    def test_two_causes_do_not_produce_the_same_skip_row(self):
+        """The property the row exists for, held against the bound rather than
+        against a fixture short enough to fit inside it: two real provider
+        messages, each as far into the line as analyze puts them."""
+        rows = {melody.unavailable_line("pop-axis-g-116", melody.first_line(
+                    self.SEPARATOR_FAILED.format(message), melody.REASONS))
+                for message in (
+                    "model spleeter-2stems/vocals.onnx is not in the cache and"
+                    " ml.offline is set; unset it to download 74 MB",
+                    "model spleeter-2stems/vocals.onnx does not match its"
+                    " recorded checksum; delete it and it will be fetched again")}
+        self.assertEqual(2, len(rows), f"one row for two causes: {rows}")
 
     def test_a_machine_that_cannot_separate_skips_rather_than_scoring_the_mix(self):
         """The separated loops need a model this machine may not have. Scoring

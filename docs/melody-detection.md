@@ -36,9 +36,10 @@ not run. A run asking for both a melody and transcribed lyrics separates once.
 Two measurements decide that default, and they point opposite ways —
 `tools/baselines/score-melody*.txt` holds all four, each corpus read both ways.
 
-- Where a band plays under the melody, the mix melody is the band. Three of
-  the four such packages go from a pitch column near zero to one that means
-  something; the fourth keeps almost nothing of its melody either way.
+- Where a band plays under the melody, the mix melody is the band. Separating
+  lifts the pitch column off the floor on some of those packages and not on
+  others; `score-melody-separated.txt` beside `score-melody.txt` is the
+  reading.
 - Where the melody is **sung** alone, separation costs about nothing: clips
   move both ways and no column's mean moves by as much as a point, which is
   #503's finding on this corpus.
