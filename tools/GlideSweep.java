@@ -28,6 +28,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,7 +42,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
@@ -69,8 +69,11 @@ import javax.sound.midi.Track;
  *
  * <p><b>Its rows reproduce {@code score-melody.py}'s</b> for both corpora at the
  * shipped constant — that agreement is the only reason to trust the ladder, and
- * {@code rows} is what re-checks it against {@code tools/baselines/}. It scores
- * what the pinned harness rows score: the audio as given, with no separation.
+ * {@code rows} is what re-checks it against {@code tools/baselines/}. A figure
+ * landing exactly half way is the one thing that will not match, and never will:
+ * Java rounds a tie up where Python rounds it to even. It scores what the pinned
+ * harness rows score — the audio as given, with no separation — so the two
+ * {@code --separated} baselines are outside its reach.
  *
  * <p><b>The cache cannot go stale silently.</b> Its key is a digest of the
  * recording's bytes and of every class on the classpath except the segmenter's
@@ -418,7 +421,8 @@ public final class GlideSweep {
      */
     private static byte[] classpathDigest() throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        for (String element : System.getProperty("java.class.path").split(java.io.File.pathSeparator)) {
+        String[] elements = System.getProperty("java.class.path").split(File.pathSeparator);
+        for (String element : elements) {
             Path path = Path.of(element);
             if (Files.isRegularFile(path)) {
                 try (ZipFile jar = new ZipFile(path.toFile())) {
@@ -435,7 +439,7 @@ public final class GlideSweep {
                     List<Path> files = walk.filter(Files::isRegularFile).sorted().toList();
                     for (Path file : files) {
                         String name = path.relativize(file).toString();
-                        if (swept(name.replace(java.io.File.separatorChar, '/'))) {
+                        if (swept(name.replace(File.separatorChar, '/'))) {
                             continue;
                         }
                         digest.update(name.getBytes(StandardCharsets.UTF_8));
