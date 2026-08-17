@@ -60,9 +60,12 @@ public final class MarkedPulse {
      *
      * <p>Below it the register is not stating this grid at all — a mix whose
      * bass sustains rather than articulates, or one with no low end — and the
-     * parity below would be a ratio of two noise levels. Corpus-wide the
-     * recordings whose parity is low enough to matter sit either far above
-     * this or a little under 2, so it is a gap rather than a boundary.
+     * parity below would be a ratio of two noise levels. Every recording in
+     * the corpus quiet enough on alternate beats to reach that gate has a
+     * register barely louder on the beats than between them, and the one this
+     * fires on is louder by more than an order of magnitude, so the constant
+     * sits in a gap rather than on a boundary. {@code tools/TempoOctave.java}
+     * prints both numbers per benchmark.
      */
     private static final double REGISTER_CONTRAST = 4.0;
 
