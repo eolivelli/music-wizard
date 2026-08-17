@@ -46,6 +46,11 @@ class BeatTrackingTest {
         return OnsetEnvelope.fromAudio(new AudioBuffer(samples, RATE));
     }
 
+    /** Both readings of a recording's onsets, by the route the pipeline takes. */
+    private static OnsetEnvelope.Both bothOf(float[] samples) {
+        return OnsetEnvelope.bothFromAudio(new AudioBuffer(samples, RATE));
+    }
+
     /**
      * Clicks at intervals drawn uniformly from 0.12 s to 1.12 s: onsets as sharp
      * as a metronome's with no tempo behind them.
@@ -184,6 +189,51 @@ class BeatTrackingTest {
             clicks.add(new double[] {t, 0.8});
         }
         return clicksWithGains(clicks, seconds);
+    }
+
+    /**
+     * The texture #509 is about: a kick on every quarter, a hi-hat on every
+     * eighth, over a noise bed. Every eighth carries an onset, the quarters
+     * carry more of one, and only the quarters are stated in the bass
+     * register.
+     *
+     * <p>The kick is long and low enough to land in the register
+     * {@link OnsetEnvelope#pulseRegister} reads and the hat far above it; the
+     * bed is load-bearing twice over. It makes the accent reach the envelope
+     * at all, for the reason {@link #accentedClicks} gives — and it gives the
+     * bass register a floor, without which the hat's own attack, which is
+     * broadband however high its tone, is the loudest thing down there
+     * between the kicks. A real mix has that floor; digital silence does not,
+     * and at a tenth of this bed the hat's leakage alone lifts the register on
+     * the offbeats to a tenth of the kick's level.
+     */
+    private static float[] kickAndHat(double quartersPerMinute, double seconds, long seed) {
+        double quarter = 60.0 / quartersPerMinute;
+        float[] out = new float[(int) Math.round(seconds * RATE)];
+        for (double t = 0; t < seconds; t += quarter / 2) {
+            boolean onQuarter = Math.round(t / (quarter / 2)) % 2 == 0;
+            if (onQuarter) {
+                addBurst(out, t, 60, 0.10, 0.9);
+            }
+            addBurst(out, t, 6000, 0.01, 0.25);
+        }
+        Random random = new Random(seed);
+        for (int i = 0; i < out.length; i++) {
+            out[i] += (float) (0.02 * (2 * random.nextDouble() - 1));
+        }
+        return out;
+    }
+
+    /** A decaying sine burst, mixed in at a time. */
+    private static void addBurst(float[] out, double atSeconds, double frequencyHz,
+                                 double lengthSeconds, double gain) {
+        int start = (int) Math.round(atSeconds * RATE);
+        int length = (int) Math.round(lengthSeconds * RATE);
+        for (int i = 0; i < length && start + i < out.length; i++) {
+            double decay = Math.exp(-5.0 * i / length);
+            out[start + i] +=
+                    (float) (gain * decay * Math.sin(2 * Math.PI * frequencyHz * i / RATE));
+        }
     }
 
     private static float[] whiteNoise(double seconds, long seed) {
@@ -1562,6 +1612,286 @@ class BeatTrackingTest {
             // Downbeat phase is a weaker claim than the beats themselves.
             assertThat(grid.downbeatConfidence().value())
                     .isLessThan(grid.beatConfidence().value() + 1e-9);
+        }
+    }
+
+    @Nested
+    @DisplayName("the marked pulse")
+    class Marked {
+
+        @ParameterizedTest(name = "a hat on every eighth does not take the beat off the"
+                + " marked quarter, bed seed {0}")
+        @ValueSource(longs = {3, 11})
+        void theMarkedQuarterOutranksTheHatsEighth(long seed) {
+            // #509. Every eighth carries an onset, so the summed envelope is
+            // periodic at both levels; the quarters are louder, and levelling
+            // the accents -- which is what stops a recording arguing for its
+            // own half -- is what takes that difference out again, whereupon
+            // the prior takes the faster of the two. Only the register
+            // distinguishes them, because only the quarters are stated in it.
+            //
+            // Two seeds because the bed is noise and the reading is a ratio of
+            // levels within it. Swept over eight seeds at 58 and 60 quarters a
+            // minute -- the tempi at which this fixture presents the ambiguity
+            // at all, since at 63 the tracker reads the quarters unaided on
+            // most seeds -- the parity at the doubled rate stays between 0.011
+            // and 0.030 against a gate of 0.10. So the margin is the
+            // fixture's rather than one draw's, and the assertions below are
+            // on the reading rather than only on the rate, so a front-end
+            // change that erodes it says so instead of flipping a BPM.
+            double quarters = 60;
+            OnsetEnvelope.Both onsets = bothOf(kickAndHat(quarters, 60, seed));
+            OnsetEnvelope envelope = onsets.envelope();
+            OnsetEnvelope register = onsets.pulseRegister();
+
+            BeatTracker.Result withoutRegister = BeatTracker.track(envelope);
+            BeatTracker.Result withRegister =
+                    BeatTracker.track(envelope, HarmonicRhythm.none(), register);
+
+            assertThat(withoutRegister.beatsPerMinute())
+                    .as("the eighths, which is what the envelope and the prior settle on")
+                    .isCloseTo(2 * quarters, withinPercentage(5));
+            assertThat(withRegister.beatsPerMinute())
+                    .as("the quarters, which are the beats the register states")
+                    .isCloseTo(quarters, withinPercentage(5));
+
+            MarkedPulse.Reading reading =
+                    MarkedPulse.read(envelope, register, withoutRegister.beatsPerMinute());
+            assertThat(reading.parity())
+                    .as("the offbeat eighths against the quarters, in the register")
+                    .isLessThan(0.05);
+            assertThat(reading.contrast())
+                    .as("the register on the tracked beats against between them")
+                    .isGreaterThan(20);
+        }
+
+        @Test
+        @DisplayName("a register articulating some other grid is not read as evidence")
+        void aRegisterThatDoesNotStateTheGridDecidesNothing() {
+            // The gate that keeps this off the recordings whose bass plays
+            // every second beat of a correct grid, or plays across it: the
+            // silences only mean something where the register is otherwise
+            // loudest on the beats. Here it strikes every second beat and
+            // every midpoint, so it states a grid, but not this one.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = accentedImpulses(frameRate, frames, period);
+            List<int[]> whole = List.of(new int[] {0, frames});
+
+            OnsetEnvelope everySecondBeat = impulses(frameRate, frames, 2 * period, 0, 1);
+            OnsetEnvelope alsoBetween = merged(everySecondBeat,
+                    impulses(frameRate, frames, period, period / 2, 1));
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, everySecondBeat, whole))
+                    .as("the register states these beats and every second one is silent")
+                    .isEqualTo(rate / 2);
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, alsoBetween, whole))
+                    .as("the same silences, but the register is no quieter between the beats")
+                    .isEqualTo(rate);
+        }
+
+        @Test
+        @DisplayName("an envelope that ranks its own rate above the half keeps it")
+        void theRegisterDoesNotOverturnAnEnvelopeThatDidNotAskIt() {
+            // The register restores a preference the envelope had; it does not
+            // invent one. On a grid whose beats are all equally loud the
+            // envelope ranks the grid above its half, so however sparse the
+            // bass part is -- here it plays every second beat, the strongest
+            // reading the two gates have -- the octave is left where the
+            // envelope and the prior put it.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope unaccented = impulses(frameRate, frames, period, 0, 1);
+
+            assertThat(MarkedPulse.resolveOctave(rate, unaccented,
+                    impulses(frameRate, frames, 2 * period, 0, 1),
+                    List.of(new int[] {0, frames})))
+                    .isEqualTo(rate);
+        }
+
+        @Test
+        @DisplayName("a register that is silence with thumps in it states nothing")
+        void aFewFramesCannotCarryTheReading() {
+            // A mean is a poor summary of a half that is mostly silence: a
+            // handful of loud frames make the same mean as a bass playing on
+            // every beat, and the silence between the beats then reads as the
+            // strongest contrast there is. Eight thumps in three thousand
+            // frames is a quarter of this grid's louder half, which is why the
+            // share is measured against that half's own level rather than
+            // against zero -- the register is zero-mean, so about a quarter of
+            // arbitrary frames are positive.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = accentedImpulses(frameRate, frames, period);
+            List<int[]> whole = List.of(new int[] {0, frames});
+
+            // Eight thumps four beats apart cover a quarter of this grid's
+            // louder half; a bass playing once a bar over the whole of it
+            // covers all of them, which is the case the test below pins.
+            for (int thumps : new int[] {1, 8}) {
+                double[] register = new double[frames];
+                for (int i = 0; i < thumps; i++) {
+                    register[(int) Math.round(i * 4 * period)] = 5;
+                }
+                // A floor, because a register of digital silence is the one
+                // case real audio never presents and the guard must not need.
+                for (int i = 0; i < frames; i++) {
+                    register[i] += 0.001;
+                }
+                assertThat(MarkedPulse.resolveOctave(rate, envelope,
+                        new OnsetEnvelope(register, frameRate), whole))
+                        .as("%d thumps in %d frames", thumps, frames)
+                        .isEqualTo(rate);
+            }
+        }
+
+        @Test
+        @DisplayName("a bass playing once a bar under an accented grid is halved wrongly")
+        void aSparseBassPartIsIndistinguishableFromASubdivision() {
+            // The limitation, pinned rather than claimed away, as
+            // theReferenceFollowsTheMajorityEvenWhereTheMajorityIsWrong pins
+            // the one it sits beside. A two-way interleave reads a register
+            // striking every fourth beat of a correct grid exactly as it reads
+            // one striking every second beat of a doubled one, and the
+            // envelope agrees with it here because the grid is accented. No
+            // recording in the corpus is this bare in the bass register --
+            // tools/TempoOctave.java prints what they read -- and if one
+            // arrives, this is the test that says what it will do.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = accentedImpulses(frameRate, frames, period);
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope,
+                    impulses(frameRate, frames, 4 * period, 0, 1),
+                    List.of(new int[] {0, frames})))
+                    .isEqualTo(rate / 2);
+        }
+
+        @Test
+        @DisplayName("a window the register goes quiet in still votes on what the envelope ranked")
+        void aRefusedWindowKeepsItsVoteOnTheEnvelope() {
+            // The order the two questions are asked in, which nothing else
+            // here reaches: the register is read window by window, and a
+            // window where the bass drops out -- an intro, a breakdown -- has
+            // still ranked the two rates on the envelope. Asking the register
+            // first and letting its refusal swallow that vote would be a claim
+            // about the envelope the window never made.
+            double frameRate = 100;
+            int window = 3000;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            List<int[]> windows = List.of(new int[] {0, window},
+                    new int[] {window, 2 * window}, new int[] {2 * window, 3 * window});
+
+            // Accented in the first and last window and level in the middle
+            // one, so the envelope ranks the half above the rate in two of the
+            // three -- a majority only if the last one is counted.
+            double[] strength = new double[3 * window];
+            int beat = 0;
+            for (double at = 0; at < strength.length; at += period, beat++) {
+                boolean level = at >= window && at < 2 * window;
+                strength[(int) Math.round(at)] = level || beat % 2 == 0 ? 1 : 0.35;
+            }
+            OnsetEnvelope envelope = new OnsetEnvelope(strength, frameRate);
+
+            // The register states every second beat, and goes all but silent
+            // for the last window.
+            double[] bass = new double[3 * window];
+            for (double at = 0; at < 2 * window; at += 2 * period) {
+                bass[(int) Math.round(at)] = 1;
+            }
+            bass[2 * window] = 1;
+            OnsetEnvelope register = new OnsetEnvelope(bass, frameRate);
+
+            MarkedPulse.Reading reading = MarkedPulse.read(envelope, register, rate, windows);
+            assertThat(reading.windowsRefused())
+                    .as("the window the register went quiet in")
+                    .isEqualTo(1);
+            assertThat(reading.envelopePrefersHalf())
+                    .as("two of the three windows rank the half above the rate")
+                    .isTrue();
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, register, windows))
+                    .isEqualTo(rate / 2);
+        }
+
+        @Test
+        @DisplayName("a clip shorter than a window is read over the whole of it")
+        void aShortClipIsReadOverItsWholeSpan() {
+            // One tempo is assumed over a clip this short, so the span it was
+            // decided over is the clip itself. The instrument has to answer
+            // about the same span as the decision, or it reports an abstention
+            // on a recording the shipped code halves.
+            double frameRate = 100;
+            int frames = 800;
+            double rate = 120;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = accentedImpulses(frameRate, frames, period);
+            OnsetEnvelope everySecondBeat = impulses(frameRate, frames, 2 * period, 0, 1);
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, everySecondBeat,
+                    BeatTracker.votingWindows(envelope)))
+                    .isEqualTo(rate / 2);
+            assertThat(MarkedPulse.read(envelope, everySecondBeat, rate)
+                    .callsForHalving())
+                    .as("the public reading, over the same windows")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("a halving that would leave the estimator's range is not made")
+        void theCorrectionStaysInsideTheEstimatorsRange() {
+            // A rate below MIN_TEMPO is one no window could have been seeded
+            // with, which is the same bound divideOutSubdivision keeps.
+            double frameRate = 100;
+            int frames = 3000;
+            double rate = 1.5 * TempoEstimator.MIN_TEMPO;
+            double period = frameRate * 60.0 / rate;
+            OnsetEnvelope envelope = accentedImpulses(frameRate, frames, period);
+            OnsetEnvelope everySecondBeat = impulses(frameRate, frames, 2 * period, 0, 1);
+
+            assertThat(MarkedPulse.resolveOctave(rate, envelope, everySecondBeat,
+                    List.of(new int[] {0, frames})))
+                    .isEqualTo(rate);
+        }
+
+        /**
+         * An envelope whose beats alternate loud and quiet, which is what
+         * makes its own autocorrelation rank the half above the beat -- the
+         * situation the register exists to settle.
+         */
+        private OnsetEnvelope accentedImpulses(double frameRate, int frames, double period) {
+            double[] strength = new double[frames];
+            int beat = 0;
+            for (double at = 0; at < frames; at += period, beat++) {
+                strength[(int) Math.round(at)] = beat % 2 == 0 ? 1 : 0.35;
+            }
+            return new OnsetEnvelope(strength, frameRate);
+        }
+
+        /** An envelope that is {@code gain} every {@code period} frames and zero elsewhere. */
+        private OnsetEnvelope impulses(double frameRate, int frames, double period,
+                                       double offset, double gain) {
+            double[] strength = new double[frames];
+            for (double at = offset; at < frames; at += period) {
+                strength[(int) Math.round(at)] = gain;
+            }
+            return new OnsetEnvelope(strength, frameRate);
+        }
+
+        private OnsetEnvelope merged(OnsetEnvelope first, OnsetEnvelope second) {
+            double[] strength = first.strength().clone();
+            for (int i = 0; i < strength.length; i++) {
+                strength[i] = Math.max(strength[i], second.strength()[i]);
+            }
+            return new OnsetEnvelope(strength, first.frameRate());
         }
     }
 }

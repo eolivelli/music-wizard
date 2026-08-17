@@ -248,15 +248,17 @@ public final class ChordSweep {
 
     static void cache(Path mp3) throws Exception {
         AudioBuffer audio = AudioDecoder.decode(mp3);
-        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        OnsetEnvelope.Both onsets = OnsetEnvelope.bothFromAudio(audio);
+        OnsetEnvelope envelope = onsets.envelope();
         // The pipeline's own composition, and both orderings matter: chroma is
         // extracted before the beats so the tracker can weigh tempo candidates
         // by the harmonic rhythm (#231), and folding precedes
-        // beat-synchronising -- see NnlsChroma.combined.
+        // beat-synchronising -- see NnlsChroma.combined. The tracker also reads
+        // the bass register, which decides the pulse's octave (#509).
         NnlsChroma registers = NnlsChroma.extract(audio);
         Chroma combinedFrames = registers.combined();
-        List<Double> beatTimes = BeatTracker
-                .track(envelope, HarmonicRhythm.of(combinedFrames)).beatTimes();
+        List<Double> beatTimes = BeatTracker.track(envelope, HarmonicRhythm.of(combinedFrames),
+                onsets.pulseRegister()).beatTimes();
         Chroma combined = combinedFrames.beatSynchronous(beatTimes);
         DownbeatEstimator.Estimate down = DownbeatEstimator.estimate(
                 beatTimes, combined, envelope, TimeSignature.FOUR_FOUR.beatsPerBar());

@@ -200,7 +200,8 @@ public final class ScoreBeats {
 
     private static void score(Job job, Path file) {
         AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
-        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        OnsetEnvelope.Both onsets = OnsetEnvelope.bothFromAudio(audio);
+        OnsetEnvelope envelope = onsets.envelope();
         double period = referencePeriod(envelope, job);
         double phase = referencePhase(envelope, period);
         double duration = envelope.length() / envelope.frameRate();
@@ -209,9 +210,11 @@ public final class ScoreBeats {
         // The rhythm-weighted path, because it is the pipeline's: since #231
         // the tracker weighs tempo candidates by whether the harmony can be
         // barred by them, and a harness that tracked without the chroma would
-        // silently measure a grid the pipeline no longer produces.
+        // silently measure a grid the pipeline no longer produces. The bass
+        // register is here for the same reason, since #509.
         HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
-        List<Double> beats = BeatTracker.track(envelope, rhythm).beatTimes();
+        List<Double> beats =
+                BeatTracker.track(envelope, rhythm, onsets.pulseRegister()).beatTimes();
         if (beats.size() < 2) {
             System.out.printf("%-28s %9.3f  no usable grid%n", job.file(), 60 / period);
             return;

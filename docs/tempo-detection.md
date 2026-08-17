@@ -39,6 +39,17 @@ corrections earn their place on real music:
   all; what that pulse cannot do is *bar the harmony*. `HarmonicRhythm`
   measures which pulses can, from frame-level chroma, and candidates the
   harmony cannot be barred by keep only a floor of their score.
+- **The bass register decides one octave the other two cannot.** Levelling
+  the accents is also what stops a marked quarter outscoring an eighth-note
+  hi-hat, and the prior then takes the faster grid (#509). Which instruments
+  play on the beats in question is the evidence the summed envelope throws
+  away, so `MarkedPulse` reads the lowest mel bands alone
+  (`OnsetEnvelope.pulseRegister`) on the beats the tracker lays down, and
+  halves a grid whose every second beat is unstated there — but only where
+  the envelope's own ranking had the half above the grid anyway, since read
+  alone the register cannot tell a doubled grid from a correct one whose bass
+  plays half as often. Only that direction, too: doubling would have to force
+  the tracker to twice the rate, where it lands beats on any energy at all.
 
 The confidence (`periodicity × peakiness`) is deliberately weak: it is zero
 for silence and comparable between two readings of the same recording, and

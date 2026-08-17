@@ -110,6 +110,31 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
+     * A recording's summed envelope and its {@link #pulseRegister}, the two
+     * readings {@link BeatTracker} takes of one transform.
+     *
+     * @param envelope      the envelope every stage downstream works from
+     * @param pulseRegister the bass register, for the octave decision alone
+     */
+    public record Both(OnsetEnvelope envelope, OnsetEnvelope pulseRegister) {}
+
+    /**
+     * Both readings, from one transform.
+     *
+     * <p><b>Built here rather than by the caller so that the spectrogram dies
+     * at this method's return.</b> At the onset hop it is the largest array in
+     * the pipeline — hundreds of megabytes on a long recording, where the
+     * envelopes are a few hundred kilobytes — and a caller that holds it in a
+     * local to read it twice keeps it live for the whole transcription, which
+     * on the phone (#236) is an out-of-memory rather than a nicety.
+     */
+    public static Both bothFromAudio(AudioBuffer audio) {
+        Objects.requireNonNull(audio, "audio");
+        Spectrogram spectrogram = Spectrogram.compute(audio, ONSET_WINDOW, ONSET_HOP);
+        return new Both(compute(spectrogram), pulseRegister(spectrogram));
+    }
+
+    /**
      * Computes the envelope from a spectrogram.
      *
      * <p><b>Not composable over slices.</b> The band floor is a share of the
@@ -119,6 +144,48 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * which is what every caller does.
      */
     public static OnsetEnvelope compute(Spectrogram spectrogram) {
+        return compute(spectrogram, MEL_BANDS);
+    }
+
+    /**
+     * The same envelope read from the lowest bands alone: the register the kick
+     * and the bass state the pulse in.
+     *
+     * <p>It is not a better onset envelope and must not be used as one — a mix's
+     * rhythm lives across the spectrum, and reading only the bottom of it loses
+     * most of the attacks. What it is for is a question the summed envelope
+     * cannot answer, because summing forty bands throws the answer away: whether
+     * the instruments that state a pulse play on every beat of a candidate grid
+     * or on every second one. See {@link MarkedPulse}.
+     *
+     * <p>The ceiling is the top of the bass register rather than a band count,
+     * so it survives a change to {@link #MEL_BANDS}; a fundamental above it
+     * belongs to an instrument that ornaments the pulse rather than states it.
+     */
+    public static OnsetEnvelope pulseRegister(Spectrogram spectrogram) {
+        Objects.requireNonNull(spectrogram, "spectrogram");
+        return compute(spectrogram, pulseRegisterBands(spectrogram));
+    }
+
+    /** Top of the register {@link #pulseRegister} reads, in hertz. */
+    private static final double PULSE_REGISTER_MAX_HZ = 300;
+
+    /** How many mel bands sit under {@link #PULSE_REGISTER_MAX_HZ}. */
+    private static int pulseRegisterBands(Spectrogram spectrogram) {
+        double minMel = hzToMel(MIN_HZ);
+        double maxMel = hzToMel(Math.min(MAX_HZ, spectrogram.sampleRate() / 2.0));
+        int bands = 0;
+        for (int band = 0; band < MEL_BANDS; band++) {
+            // The band's upper edge, which is where toMelDecibels puts it.
+            double mel = minMel + (maxMel - minMel) * (band + 2) / (double) (MEL_BANDS + 1);
+            if (melToHz(mel) <= PULSE_REGISTER_MAX_HZ) {
+                bands++;
+            }
+        }
+        return Math.max(1, bands);
+    }
+
+    private static OnsetEnvelope compute(Spectrogram spectrogram, int bands) {
         Objects.requireNonNull(spectrogram, "spectrogram");
         int frames = spectrogram.frameCount();
         if (frames < 2) {
@@ -133,7 +200,7 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         double[] flux = new double[frames];
         for (int frame = 1; frame < frames; frame++) {
             double sum = 0;
-            for (int band = 0; band < MEL_BANDS; band++) {
+            for (int band = 0; band < bands; band++) {
                 double rise = melBands[frame][band] - melBands[frame - 1][band];
                 if (rise > 0) {
                     sum += rise;
