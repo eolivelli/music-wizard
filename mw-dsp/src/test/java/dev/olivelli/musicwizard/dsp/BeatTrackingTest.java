@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assertions.withinPercentage;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
-import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
@@ -47,10 +46,9 @@ class BeatTrackingTest {
         return OnsetEnvelope.fromAudio(new AudioBuffer(samples, RATE));
     }
 
-    /** The same recording's bass register, as {@link AudioTranscriber} reads it. */
-    private static OnsetEnvelope registerOf(float[] samples) {
-        return OnsetEnvelope.pulseRegister(Spectrogram.compute(new AudioBuffer(samples, RATE),
-                OnsetEnvelope.ONSET_WINDOW, OnsetEnvelope.ONSET_HOP));
+    /** Both readings of a recording's onsets, by the route the pipeline takes. */
+    private static OnsetEnvelope.Both bothOf(float[] samples) {
+        return OnsetEnvelope.bothFromAudio(new AudioBuffer(samples, RATE));
     }
 
     /**
@@ -1640,9 +1638,9 @@ class BeatTrackingTest {
             // not only on the rate, so a future front-end change that erodes
             // it says so instead of flipping a BPM.
             double quarters = 60;
-            float[] audio = kickAndHat(quarters, 60, seed);
-            OnsetEnvelope envelope = envelopeOf(audio);
-            OnsetEnvelope register = registerOf(audio);
+            OnsetEnvelope.Both onsets = bothOf(kickAndHat(quarters, 60, seed));
+            OnsetEnvelope envelope = onsets.envelope();
+            OnsetEnvelope register = onsets.pulseRegister();
 
             BeatTracker.Result withoutRegister = BeatTracker.track(envelope);
             BeatTracker.Result withRegister =
