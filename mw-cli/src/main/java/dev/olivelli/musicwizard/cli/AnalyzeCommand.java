@@ -48,7 +48,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -109,15 +111,15 @@ final class AnalyzeCommand implements Callable<Integer> {
     @Option(names = "--melody",
             description = "Read the melody out of the recording and write it into the "
                     + "score, so that 'render --parts lead' can engrave a lead sheet. "
-                    + "The tracker is monophonic: give it a recording whose melody is "
-                    + "the only thing sounding, or a separated vocal stem. On a full "
-                    + "mix it returns the loudest periodic line, usually the bass, "
-                    + "rather than failing. Audio only.")
+                    + "Read from the separated vocal where a separation provider is "
+                    + "available, and otherwise from the mix — where the tracker is "
+                    + "monophonic and returns the loudest periodic line, usually not "
+                    + "the voice, rather than failing. Audio only.")
     boolean melody;
 
     @Option(names = "--skip-separation",
-            description = "Analyse the mix directly instead of separating stems. Today "
-                    + "this only makes lyric transcription hear the full mix; chords "
+            description = "Analyse the mix directly instead of separating stems. Makes "
+                    + "--melody and lyric transcription hear the full mix; chords "
                     + "always come from the mix regardless.")
     boolean skipSeparation;
 
@@ -147,12 +149,26 @@ final class AnalyzeCommand implements Callable<Integer> {
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
     boolean force;
 
+    /**
+     * Set when the melody stage was promised the stem and got the mix, which
+     * only a separator failing mid-run can do. It suppresses the cache write:
+     * the key names the stem this run could not produce, so storing the result
+     * under it would serve a mix melody to the next run — the one where the
+     * model is finally there — as the answer to a question it never asked.
+     */
+    private boolean melodyFellBackToTheMix;
+
     @Override
     public Integer call() {
         Workspace workspace = Workspace.open(workspaceDirectory);
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         Path source = workspace.sourceFile();
         SourceKind kind = SourceKind.detect(source);
+        // One per run, and lazy: the melody and the lyrics both read it, and
+        // neither separation happens unless its stage is reached.
+        Optional<VocalStem> stem = skipSeparationRequested(config)
+                ? Optional.empty()
+                : VocalStem.forRun(source, config);
 
         if (!workspace.sourceMatchesDigest()) {
             // The cache is keyed on the file's digest, so a changed source
@@ -172,7 +188,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 ? "enabled, but advises nothing yet (#11)" : "disabled"));
         System.out.println();
 
-        Transcription result = transcribe(workspace, kind, source, config);
+        Transcription result = transcribe(workspace, kind, source, config, stem);
         Score score = withSuppliedLyrics(workspace, titled(workspace, result.score()));
         if (lyricsFile != null) {
             // Only what this run supplied: carried-forward lyrics were aligned
@@ -185,16 +201,19 @@ final class AnalyzeCommand implements Callable<Integer> {
             // words". Stated rather than detected, because a recognizer told to
             // guess the language produces fluent wrong words when it guesses
             // wrong, which nothing downstream can notice.
-            score = withTranscribedLyrics(workspace, score, config);
+            score = withTranscribedLyrics(workspace, score, config, stem);
         }
 
         // The score is persisted before the cache entry: the failure cannot
         // then happen before the deliverable is safe.
         workspace.writeScore(score);
-        if (!result.fromCache()) {
+        if (!result.fromCache() && !melodyFellBackToTheMix) {
             // The transcription, not the titled score — the key says nothing
             // about metadata, and titled() runs on the way out of the cache.
             storeQuietly(workspace.cache(), result.key(), result.score());
+        } else if (melodyFellBackToTheMix) {
+            System.err.println("warning: this analysis is not cached, so the next run"
+                    + " reads the melody from the stem if the separator works then.");
         }
 
         System.out.println();
@@ -446,7 +465,7 @@ final class AnalyzeCommand implements Callable<Integer> {
      * asking for lyrics must not recompute the DSP.
      */
     private Score withTranscribedLyrics(Workspace workspace, Score score,
-                                        MusicWizardConfig config) {
+                                        MusicWizardConfig config, Optional<VocalStem> stem) {
         if (!score.lyrics().isEmpty() && !force) {
             // Carried lyrics may be a corrected file someone supplied; quietly
             // re-transcribing over them would undo the correction. --force
@@ -487,7 +506,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             return score;
         }
         try {
-            AudioBuffer voice = voiceFor(workspace, config);
+            AudioBuffer voice = voiceFor(workspace, config, stem);
             var segments = VocalSegments.split(voice.samples(), voice.sampleRate());
             if (segments.isEmpty()) {
                 System.out.println("  lyrics not transcribed: no sung stretches found");
@@ -543,29 +562,17 @@ final class AnalyzeCommand implements Callable<Integer> {
      * separation was skipped or has no provider — said out loud, because mix
      * transcription hears the guitars too and the words are measurably worse.
      */
-    private static AudioBuffer voiceFor(Workspace workspace, MusicWizardConfig config) {
-        var separation = skipSeparationRequested(config)
-                ? java.util.Optional.<dev.olivelli.musicwizard.core.ml.SeparationProvider>empty()
-                : MlProviders.separation(
-                        config.ml() == null ? null : config.ml().separationProvider());
-        if (separation.isEmpty()) {
-            AudioBuffer mix = AudioDecoder.decode(workspace.sourceFile());
+    private static AudioBuffer voiceFor(Workspace workspace, MusicWizardConfig config,
+                                        Optional<VocalStem> stem) {
+        if (stem.isEmpty()) {
             System.out.println("  transcribing from the full mix"
                     + (skipSeparationRequested(config)
                             ? " (--skip-separation)" : ": no separation provider"));
-            return mix;
+            return AudioDecoder.decode(workspace.sourceFile());
         }
-        int preferred = separation.get().preferredSampleRate();
-        AudioBuffer mix = preferred > 0
-                ? AudioDecoder.decode(workspace.sourceFile(), preferred)
-                : AudioDecoder.decode(workspace.sourceFile());
-        // Announced like every other stage: this takes real time, and a
-        // command that reports each step must not sit mute through it.
-        System.out.println("  separating the vocal with " + separation.get().id());
-        float[] vocals = separation.get()
-                .separate(new float[][] {mix.samples()}, mix.sampleRate())
-                .vocals()[0];
-        return new AudioBuffer(vocals, mix.sampleRate());
+        // Already separated when this run also read a melody; the stem
+        // remembers, so a run asking for both separates once.
+        return stem.get().voice(AnalyzeCommand::report);
     }
 
     /**
@@ -807,10 +814,23 @@ final class AnalyzeCommand implements Callable<Integer> {
      * since moved on -- must still analyse rather than become unusable.
      */
     private Transcription transcribe(
-            Workspace workspace, SourceKind kind, Path source, MusicWizardConfig config) {
+            Workspace workspace, SourceKind kind, Path source, MusicWizardConfig config,
+            Optional<VocalStem> stem) {
         StageCache cache = workspace.cache();
-        StageCache.Key key = transcriptionKey(kind, source, audioOptions(kind, config),
-                skipSeparationRequested(config), config.isLlmEnabled());
+        AudioTranscriber.Options options = audioOptions(kind, config);
+        StageCache.Key key = transcriptionKey(kind, source, options,
+                skipSeparationRequested(config), config.isLlmEnabled(),
+                melodySignal(options, stem));
+        if (kind == SourceKind.AUDIO && melody && stem.isEmpty()) {
+            // Said before the analysis and whether or not it is recomputed: it
+            // describes the melody the score ends up carrying, and a cached one
+            // was read from the mix too.
+            System.out.println("  the melody is read from the full mix"
+                    + (skipSeparationRequested(config)
+                            ? " (--skip-separation)" : ": no separation provider")
+                    + "; the tracker is monophonic, so it returns the loudest periodic"
+                    + " line rather than the voice");
+        }
 
         if (!force) {
             Score cached = readCached(cache, key);
@@ -826,10 +846,56 @@ final class AnalyzeCommand implements Callable<Integer> {
 
         Score score = switch (kind) {
             case AUDIO -> new AudioTranscriber(AnalyzeCommand::report)
-                    .transcribe(source, audioOptions(kind, config));
+                    .transcribe(source, options, melodySupplier(stem));
             case MIDI -> new MidiTranscriber(AnalyzeCommand::report).transcribe(source);
         };
         return new Transcription(score, key, false);
+    }
+
+    /**
+     * What the melody stage listens to, or null for the mix.
+     *
+     * <p>A separator that fails hands back the mix rather than taking down an
+     * analysis that has otherwise succeeded — the same degradation every
+     * provider-backed stage here makes, and it leaves {@code --melody} working
+     * exactly where it worked before separation was wired to it. The mix
+     * melody is worth having: it is what this stage produced until now.
+     */
+    private Supplier<AudioBuffer> melodySupplier(Optional<VocalStem> stem) {
+        if (!melody || stem.isEmpty()) {
+            return null;
+        }
+        return () -> {
+            try {
+                return stem.get().voice(AnalyzeCommand::report);
+            } catch (RuntimeException e) {
+                melodyFellBackToTheMix = true;
+                // The provider's own message last, with nothing of ours after
+                // it: what distinguishes an offline machine from a failed
+                // checksum from a dropped connection is somewhere in it, it
+                // has no length anyone here controls, and the melody harness
+                // quotes it into a bounded skip row by taking what follows the
+                // marker.
+                System.err.println("warning: the melody is read from the full mix,"
+                        + " where the tracker returns the loudest periodic line"
+                        + " rather than the voice; the vocal could not be separated: "
+                        + e.getMessage());
+                return null;
+            }
+        };
+    }
+
+    /**
+     * What the melody stage will read, for the cache key: {@code off}, the mix,
+     * or the separator that will produce the stem.
+     *
+     * <p>Package-private so a test can compare two keys without a recording.
+     */
+    static String melodySignal(AudioTranscriber.Options options, Optional<VocalStem> stem) {
+        if (options == null || !options.trackMelody()) {
+            return "off";
+        }
+        return stem.map(VocalStem::providerId).map(id -> "stem:" + id).orElse("mix");
     }
 
     private static void report(String message) {
@@ -875,18 +941,25 @@ final class AnalyzeCommand implements Callable<Integer> {
      * changes, which no SNAPSHOT or {@code target/classes} run does; that is
      * why the reuse is announced on every hit and why {@code --force} exists.
      * The audio settings are components only on the audio path, where they are
-     * read. {@code skipSeparation} and {@code advisorEnabled} are components
-     * even though nothing reads either yet (#8, #11): a setting that will
-     * change the analysis while the key does not is how a corrected run gets
-     * served the answer it was correcting, a shape already paid for once with
-     * {@code --tempo}. The advisor is keyed on both paths — it is not an audio
-     * stage.
+     * read. {@code advisorEnabled} is a component even though nothing reads it
+     * yet (#11): a setting that will change the analysis while the key does not
+     * is how a corrected run gets served the answer it was correcting, a shape
+     * already paid for once with {@code --tempo}. The advisor is keyed on both
+     * paths — it is not an audio stage.
+     *
+     * <p>{@code melodySignal} is that rule applied to what {@code --melody}
+     * now reads (#559): the same options over the same file give a different
+     * melody depending on whether a separator was there, so the key says which
+     * one was, and not merely that a melody was asked for. {@code
+     * skipSeparation} stays a component of its own because it also decides what
+     * the lyric stages hear.
      *
      * <p>Package-private so a test can compare two keys over the same file.
      */
     static StageCache.Key transcriptionKey(SourceKind kind, Path source,
                                            AudioTranscriber.Options options,
-                                           boolean skipSeparation, boolean advisorEnabled) {
+                                           boolean skipSeparation, boolean advisorEnabled,
+                                           String melodySignal) {
         StageCache.Key key = StageCache.Key
                 .forStage(STAGE_PREFIX + kind.name().toLowerCase(Locale.ROOT))
                 .with("build", buildVersion())
@@ -896,7 +969,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             key.with("tempo", options.tempoOverride())
                     .with("meter", options.timeSignatureOrDefault())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
-                    .with("melody", options.trackMelody())
+                    .with("melody", melodySignal)
                     .with("skipSeparation", skipSeparation);
         }
         return key;
@@ -1161,11 +1234,12 @@ final class AnalyzeCommand implements Callable<Integer> {
             }
         }
         if (skipSeparationRequested(config)
-                && !(kind == SourceKind.AUDIO && transcriptionRequested())) {
+                && !(kind == SourceKind.AUDIO && (transcriptionRequested() || melody))) {
             System.err.println("warning: skipping separation changes nothing in this run;"
-                    + " its only effect today is making lyric transcription"
-                    + " (--lyrics-language without --lyrics, audio only) hear the full"
-                    + " mix, and separation feeds the rest of the analysis under #8");
+                    + " its only effects today are making --melody and lyric"
+                    + " transcription (--lyrics-language without --lyrics) hear the full"
+                    + " mix, both audio only, and separation feeds the rest of the"
+                    + " analysis under #8");
         }
     }
 

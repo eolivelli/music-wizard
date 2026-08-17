@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.transcribe;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Resampler;
 import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
@@ -47,6 +48,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Runs the analysis stages over a recording and assembles a {@link Score}.
@@ -111,8 +113,11 @@ public final class AudioTranscriber {
      *                            rather than failing. Writing that into every
      *                            score by default would put a wrong melody in
      *                            front of every user who wanted a chord chart.
-     *                            Turn it on for a melody-only recording or a
-     *                            separated vocal stem.
+     *                            What it reads is the mix unless the caller
+     *                            hands in a vocal stem — see
+     *                            {@link #transcribe(Path, Options, Supplier)},
+     *                            which is what {@code analyze --melody} does
+     *                            wherever a separation provider can be had.
      */
     public record Options(
             Double tempoOverride,
@@ -169,8 +174,30 @@ public final class AudioTranscriber {
         this(null);
     }
 
-    /** Decodes and analyses a recording. */
+    /** Decodes and analyses a recording, reading the melody from the mix. */
     public Score transcribe(Path file, Options options) {
+        return transcribe(file, options, null);
+    }
+
+    /**
+     * The same, with the melody stage pointed at a separated vocal stem.
+     *
+     * <p>Everything else still reads the mix, chroma above all: separation
+     * artifacts destroy the partial structure chord estimation depends on.
+     * The melody is the opposite case — {@link PitchTracker} is monophonic and
+     * on a mix returns the loudest periodic line, so on a band recording it
+     * reads the bass or the guitar and calls it the melody (#559).
+     *
+     * <p>Supplied as a {@link Supplier} rather than a buffer because
+     * separating costs minutes and this stage is off by default: nothing is
+     * separated unless {@link Options#trackMelody()} is set and the pipeline
+     * reaches the melody stage. It may return {@code null}, which means the
+     * mix — that is how a caller whose separator failed degrades to the
+     * behaviour of the overload above rather than to no melody at all. The
+     * separation itself lives in the caller because {@code mw-transcribe}
+     * does not depend on {@code mw-ml} (#247).
+     */
+    public Score transcribe(Path file, Options options, Supplier<AudioBuffer> vocalStem) {
         Objects.requireNonNull(file, "file");
         Options settings = options != null ? options : Options.defaults();
 
@@ -183,11 +210,17 @@ public final class AudioTranscriber {
         progress.accept(String.format(Locale.ROOT, "decoded %.1fs at %d Hz",
                 audio.durationSeconds(), audio.sampleRate()));
 
-        return transcribe(audio, settings);
+        return transcribe(audio, settings, vocalStem);
     }
 
-    /** Analyses already-decoded audio. */
+    /** Analyses already-decoded audio, reading the melody from it. */
     public Score transcribe(AudioBuffer audio, Options options) {
+        return transcribe(audio, options, null);
+    }
+
+    /** Analyses already-decoded audio, with {@link #transcribe(Path, Options, Supplier)}'s stem. */
+    public Score transcribe(AudioBuffer audio, Options options,
+                            Supplier<AudioBuffer> vocalStem) {
         Objects.requireNonNull(audio, "audio");
         Options settings = options != null ? options : Options.defaults();
         TimeSignature meter = settings.timeSignatureOrDefault();
@@ -366,17 +399,26 @@ public final class AudioTranscriber {
                 .withChords(chords)
                 .withKeys(key.map(estimate -> List.of(estimate.key())).orElse(List.of()));
 
-        // Last, and from the full mix rather than from a stem, because there is
-        // no separation in this module: the caller decides what signal is a
-        // melody by choosing what to hand in. The stage is off unless asked for
-        // -- see Options.trackMelody -- so nothing here runs on a recording
-        // whose melody cannot be read this way.
+        // Last, and from whatever the caller says the melody is in: there is no
+        // separation in this module, so the signal is chosen by handing it in.
+        // The stage is off unless asked for -- see Options.trackMelody.
         if (settings.trackMelody()) {
-            progress.accept("tracking the melody");
-            // The same envelope the beat tracker read: the melody is analysed
-            // on the same buffer, and its note boundaries are placed by
-            // articulation rather than by pitch change (#495, #497).
-            NoteTrack melody = MelodyEstimator.estimate(PitchTracker.track(audio), envelope);
+            AudioBuffer melodyAudio = melodySignal(audio, vocalStem);
+            boolean separated = melodyAudio != audio;
+            progress.accept(separated
+                    ? "tracking the melody in the vocal stem"
+                    : "tracking the melody in the full mix");
+            // The envelope of the signal being tracked, not of the mix. It
+            // decides where a note is struck again at the same pitch, and
+            // MelodyEstimator measures a peak in standard deviations of the
+            // envelope it is given -- so a mix envelope would rate the band's
+            // drums against the band's own spread and cut vocal notes on them.
+            // The other half of that decision, the voicedness dip, is read from
+            // this same signal's pitch track (#495, #497).
+            OnsetEnvelope melodyEnvelope =
+                    separated ? OnsetEnvelope.fromAudio(melodyAudio) : envelope;
+            NoteTrack melody = MelodyEstimator.estimate(
+                    PitchTracker.track(melodyAudio), melodyEnvelope);
             if (melody.isEmpty()) {
                 progress.accept("no melody was found");
             } else {
@@ -387,6 +429,32 @@ public final class AudioTranscriber {
             }
         }
         return score;
+    }
+
+    /**
+     * What the melody stage listens to: the caller's stem, or the mix when
+     * there is no stem to be had. The mix arm returns the very buffer it was
+     * given, which is what lets the caller keep the mix's own envelope.
+     *
+     * <p>Resampled here rather than by the caller because the two rates belong
+     * to different modules: a separator states its own
+     * ({@code SeparationProvider.preferredSampleRate}) and {@link PitchTracker}
+     * insists on the analysis rate, which it throws rather than assumes. The
+     * clock is untouched — a resample changes how many samples carry a second,
+     * not how many seconds there are — so the notes stay on the recording's
+     * timeline and align with the beats and chords read from the mix.
+     */
+    private static AudioBuffer melodySignal(AudioBuffer audio, Supplier<AudioBuffer> vocalStem) {
+        AudioBuffer stem = vocalStem == null ? null : vocalStem.get();
+        if (stem == null) {
+            return audio;
+        }
+        if (stem.sampleRate() == audio.sampleRate()) {
+            return stem;
+        }
+        return new AudioBuffer(
+                Resampler.resample(stem.samples(), stem.sampleRate(), audio.sampleRate()),
+                audio.sampleRate());
     }
 
     /**

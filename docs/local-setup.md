@@ -59,6 +59,17 @@ English downloads itself. Italian is a local export because no trusted ONNX one
 is published: [`italian-alignment-model.md`](italian-alignment-model.md) is the
 recipe and the layout.
 
+## The separation model
+
+Downloads itself on first use into `ml.modelCacheDirectory`, so there is
+nothing to set up — but there is something to know, because two stages now
+read the vocal stem: lyric transcription and, since #559, `--melody`.
+
+**Offline, or with the download failing:** both say so and fall back to the
+mix, and `--melody` on a band recording then returns the loudest periodic
+line instead of the voice. The two `--separated` melody steps in
+`tools/premerge.sh` skip every row rather than failing.
+
 ## LilyPond
 
 Needed for PDFs only; without it MW still writes the `.ly` source and says

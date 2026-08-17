@@ -36,10 +36,11 @@ drive, and read by the pipeline unaided.
 - **Lyrics**, two ways: place a supplied [LRC][lrc] file under the chords, or
   transcribe the singing from the recording itself; transcription and
   syllable splitting cover Italian and English.
-- **Melody**, from a recording whose melody is the only thing sounding:
-  `analyze --melody` reads the sung line and `render --parts lead` engraves a
-  lead sheet. Off unless asked for, because the tracker is monophonic — on a
-  full mix it confidently returns the loudest line, usually the bass.
+- **Melody**: `analyze --melody` reads the sung line and `render --parts lead`
+  engraves a lead sheet. The tracker is monophonic, so it is pointed at the
+  separated vocal where a separation provider can be had; pass
+  `--skip-separation` for a recording whose melody is not a voice. Off unless
+  asked for.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — with
   `--transpose`, `--beat-marks` and `--repeat-tags`.
 - **Standard MIDI File input**, read symbolically, with its declared tempo

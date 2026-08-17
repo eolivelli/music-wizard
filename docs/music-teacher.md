@@ -23,10 +23,12 @@ Each package is three files sharing a base name:
 
 Some packages exist for the melody stage instead: a `melody-level` on a
 1–4 difficulty ramp with the accompaniment thinned to a `pad` or removed —
-a monophonic pitch tracker pointed at a full mix measures the separation
-that did not happen in front of it, so these take the band away. A package
-with no accompaniment carries no evidence for its own chord grid and is
-skipped by the chord harness.
+a monophonic pitch tracker pointed at a full mix measures what is in front of
+it rather than the melody, so these take the band away. The stage does
+separate now (#559), and these packages are what says what a vocal separator
+costs a melody that is played rather than sung. A package with no
+accompaniment carries no evidence for its own chord grid and is skipped by the
+chord harness.
 
 ## What the agent does
 

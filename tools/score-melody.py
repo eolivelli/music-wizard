@@ -51,13 +51,22 @@ rather than the singing.
 **Nothing here is separated.** The clips are solo voice already, so these rows
 measure segmentation and nothing else; a mix would be measuring Spleeter too.
 
+`--separated` reads either corpus the way `analyze --melody` reads a recording
+since #559: through the separated vocal. Its pair with the pinned rows is the
+measurement — what separation buys where a band is playing under the melody,
+and what it costs where the melody is alone, sung on one corpus and rendered
+from a soundbank on the other. Local-only, because it needs a separation model
+this machine has downloaded; without one every row skips.
+
 Usage:  python3 tools/score-melody.py [--jar mw-cli/target/mw.jar]
-                                      [--source synthetic|vocadito]
+                                      [--source synthetic|vocadito] [--separated]
 """
 
 import argparse
 import json
 import math
+import os
+import re
 import struct
 import subprocess
 import sys
@@ -178,18 +187,93 @@ def melody_notes(midi: Path) -> list[tuple[float, float, int]]:
 
 # ------------------------------------------------------------------- analysis
 
-def analyze(jar: Path, mp3: Path) -> dict:
-    """Runs the pipeline with the melody stage on, and reads the score back."""
+# What analyze prints for each way the melody stage can end, held against
+# AnalyzeCommand's and AudioTranscriber's own source by a test in
+# tools/test-harness-rules.py: a rewording there must fail before this starts
+# scoring the wrong signal, or skipping every row, in silence.
+#
+# The outcome and the cause are different lines. The stage says which signal it
+# read; why it was the mix is the CLI's, either as the caveat it prints when
+# there is no stem to be had or as the warning it prints when a separator had
+# one and could not produce it. The causes are searched first, because a skip
+# row carrying the symptom would read the same for a machine with no model as
+# for a separator that crashed.
+FROM_STEM = "tracking the melody in the vocal stem"
+FROM_MIX = "tracking the melody in the full mix"
+NOT_SEPARATED = "the vocal could not be separated"
+NO_STEM = "the melody is read from the full mix"
+REASONS = (NOT_SEPARATED, NO_STEM, FROM_MIX)
+
+# A recording nothing could be tracked in reaches no melody stage at all and
+# prints neither outcome. Scored as the zero notes it produced, which is what
+# the pinned loop scores it as: the two loops must not disagree about what an
+# unanalysable package is.
+NO_BEATS = "no beats found"
+
+
+def analyze(jar: Path, mp3: Path, separated: bool = False,
+            config_home: Path | None = None) -> tuple[dict | None, str | None]:
+    """Runs the pipeline with the melody stage on, and reads the score back.
+
+    Returns (score document, None), or (None, reason) when `separated` was
+    asked for and the environment could not separate.
+
+    Without `separated` the run passes `--skip-separation`, which pins what
+    these rows measure: the tracker and the segmenter, on the audio as given.
+    Since #559 `--melody` reads the separated vocal wherever a provider can be
+    had, and whether one can is a fact about the machine -- so an unpinned run
+    would measure Spleeter here and the mix in CI, against one committed
+    baseline. What separation is worth is measured by `--source separated`,
+    which is local-only for exactly that reason.
+    """
+    environment = dict(os.environ)
+    if config_home is not None:
+        # The harness's own empty config home, so a machine's
+        # ml.separationProvider cannot move a committed baseline; the model
+        # cache lives under XDG_CACHE_HOME and is untouched by this.
+        environment["XDG_CONFIG_HOME"] = str(config_home)
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp) / "w.mwz"
+        melody = ["analyze", str(ws), "--melody"]
+        report = ""
         for args in (["init", str(mp3), "--workspace", str(ws)],
-                     ["analyze", str(ws), "--melody"]):
+                     melody if separated else melody + ["--skip-separation"]):
             done = subprocess.run(["java", "-jar", str(jar), *args],
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, env=environment)
             if done.returncode != 0:
                 sys.exit(f"mw {args[0]} failed on {mp3.name}:\n"
                          f"{done.stdout}{done.stderr}")
-        return json.loads((ws / "score" / "score.json").read_text())
+            report = done.stdout + "\n" + done.stderr
+        if separated and FROM_STEM not in report:
+            if FROM_MIX in report:
+                # No separator here, or none that ran. Scoring the mix melody
+                # against this baseline would report a machine's missing model
+                # as a regression in the stage.
+                return None, first_line(report, REASONS)
+            if NO_BEATS not in report:
+                sys.exit(f"{mp3.name}: analyze reported no melody outcome at all:\n"
+                         + report[-500:])
+        return json.loads((ws / "score" / "score.json").read_text()), None
+
+
+def first_line(report: str, markers: tuple[str, ...]) -> str:
+    """What analyze said after the earliest marker that appears at all.
+
+    Marker by marker rather than line by line, so the order of `markers` is a
+    priority: the cause is reported wherever analyze printed it, even though
+    the symptom is printed on stdout and often first.
+
+    What follows the marker rather than the whole line, because the row is
+    bounded and every character of our own wording spends the budget the cause
+    needs -- and a model fetch's message is long, invariant at its head and
+    distinct only somewhere inside. Analyze puts nothing after it for that
+    reason. A marker with nothing after it is its own reason.
+    """
+    for marker in markers:
+        for line in report.splitlines():
+            if marker in line:
+                return line.split(marker, 1)[1].strip(" :;,.") or marker
+    return "no reason given"
 
 
 def estimated_notes(doc: dict) -> list[tuple[float, float, int]]:
@@ -300,14 +384,18 @@ def missing_clip_line(clip: int) -> str:
             f" see uncommitted/list.txt to fetch)")
 
 
-def score_clip(jar: Path, clip: int) -> str:
+def score_clip(jar: Path, clip: int, separated: bool = False,
+               config_home: Path | None = None) -> str:
     audio = VOCADITO / "Audio" / f"vocadito_{clip}.wav"
     first = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA1.csv"
     second = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA2.csv"
     if not audio.exists() or not first.exists() or not second.exists():
         return missing_clip_line(clip)
+    document, reason = analyze(jar, audio, separated, config_home)
+    if reason is not None:
+        return unavailable_line(f"vocadito_{clip}", reason)
     reference = vocadito_notes(first)
-    estimate = estimated_notes(analyze(jar, audio))
+    estimate = estimated_notes(document)
     other = vocadito_notes(second)
     if not estimate:
         return (f"  vocadito_{clip}: notes=0/{len(reference)}  F1@50ms 0.0%"
@@ -324,7 +412,59 @@ def score_clip(jar: Path, clip: int) -> str:
             f" ({len(other)} notes)")
 
 
-def score_package(jar: Path, spec_file: Path) -> str:
+#: How much of the reason a skip row carries, so a pasted stack trace cannot
+#: wrap it.
+REASON_BUDGET = 160
+
+#: How much of a URL inside one. A model URL is most of a fetch failure's
+#: length and is the same in every one of them, so it is what a bounded row
+#: gives up first: nothing is learned from the span the whole family shares.
+URL_BUDGET = 26
+
+ELLIPSIS = "..."
+
+URL = re.compile(r"https?://\S+")
+
+
+def elided(text: str, budget: int) -> str:
+    """`text`, no longer than `budget`, with its middle taken out.
+
+    The middle rather than the tail, because the tail is where a message says
+    what actually happened: a fetch failure names the model and the URL first
+    and the reason last, so keeping the head alone would read the same however
+    the fetch failed.
+    """
+    if len(text) <= budget:
+        return text
+    if budget <= len(ELLIPSIS):
+        return ELLIPSIS[:budget]
+    head = (budget - len(ELLIPSIS)) // 2
+    tail = budget - len(ELLIPSIS) - head
+    return text[:head] + ELLIPSIS + text[-tail:]
+
+
+def shortened(reason: str) -> str:
+    """The reason, bounded, giving up the invariant spans before the rest.
+
+    Two steps, because eliding by position alone answers this family badly:
+    the offline message's actionable clause sits between a cache path and the
+    URL it would fetch from, so a middle taken out of the whole message takes
+    the clause. Stubbing the URL first buys the tail enough room to reach it.
+    """
+    return elided(URL.sub(lambda match: elided(match.group(), URL_BUDGET), reason),
+                  REASON_BUDGET)
+
+
+def unavailable_line(name: str, reason: str) -> str:
+    """A row this machine could not measure, in the marker premerge.sh turns
+    into a SKIP -- with analyze's own reason beside it. Never baselined: a
+    committed baseline that certifies absence is a defect, and this text lives
+    only on the current side of the diff."""
+    return f"  {name}: not present (local-only; {shortened(reason)})"
+
+
+def score_package(jar: Path, spec_file: Path, separated: bool = False,
+                  config_home: Path | None = None) -> str:
     name = spec_file.name.removesuffix(".spec.txt")
     mp3 = spec_file.with_name(name + ".mp3")
     midi = spec_file.with_name(name + ".mid")
@@ -334,7 +474,10 @@ def score_package(jar: Path, spec_file: Path) -> str:
     if not reference:
         return f"  {name}: no melody track; not scored"
 
-    estimate = estimated_notes(analyze(jar, mp3))
+    document, reason = analyze(jar, mp3, separated, config_home)
+    if reason is not None:
+        return unavailable_line(name, reason)
+    estimate = estimated_notes(document)
     if not estimate:
         return (f"  {name}: notes=0/{len(reference)}"
                 f"  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 0.0%")
@@ -352,28 +495,40 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
     parser.add_argument("--source", choices=("synthetic", "vocadito"), default="synthetic")
+    parser.add_argument("--separated", action="store_true",
+                        help="read the melody through the separated vocal, as"
+                             " analyze --melody does (#559)")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
         sys.exit(f"jar not found: {jar} (build with: mvn -DskipTests package)")
 
-    if args.source == "vocadito":
-        print("Melody, note by note against vocadito's annotations (real solo singing)")
-        print("(the annotators column is one musician scored against the other by this")
-        print(" same rule: it is the ceiling, not a target to pass)")
-        for clip in range(1, VOCADITO_CLIPS + 1):
-            print(score_clip(jar, clip))
-        return
+    # The config home is this harness's own and empty, so a machine's
+    # ml.separationProvider cannot move a committed baseline. Created for both
+    # loops, because the pinned one has the same reason to ignore the machine.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_home = Path(tmp)
+        if args.source == "vocadito":
+            print("Melody, note by note against vocadito's annotations (real solo singing)")
+            print("(the annotators column is one musician scored against the other by this")
+            print(" same rule: it is the ceiling, not a target to pass)")
+            if args.separated:
+                print("(read through the separated vocal: what analyze --melody now does)")
+            for clip in range(1, VOCADITO_CLIPS + 1):
+                print(score_clip(jar, clip, args.separated, config_home))
+            return
 
-    specs = sorted(CORPUS.glob("*.spec.txt"))
-    if not specs:
-        sys.exit(f"no specs in {CORPUS}")
-    print("Melody, note by note against each package's own MIDI melody track")
-    print("(seconds throughout: the beat grid is scored by the chart harnesses)")
-    print("(a package with a band under the melody is a control, not a target:")
-    print(" the tracker is monophonic and reads the loudest periodic line)")
-    for spec_file in specs:
-        print(score_package(jar, spec_file))
+        specs = sorted(CORPUS.glob("*.spec.txt"))
+        if not specs:
+            sys.exit(f"no specs in {CORPUS}")
+        print("Melody, note by note against each package's own MIDI melody track")
+        print("(seconds throughout: the beat grid is scored by the chart harnesses)")
+        print("(a package with a band under the melody is a control, not a target:")
+        print(" the tracker is monophonic and reads the loudest periodic line)")
+        if args.separated:
+            print("(read through the separated vocal: what analyze --melody now does)")
+        for spec_file in specs:
+            print(score_package(jar, spec_file, args.separated, config_home))
 
 
 if __name__ == "__main__":
