@@ -242,6 +242,35 @@ public final class ChordEstimator {
      */
     private static final double ADDED_NOTE_SHARE_OF_ROOT = 0.20;
 
+    /**
+     * Share of the residual its root removes that a minor third must remove to
+     * be counted at all. Only {@link #qualityScore} reads it, and only where a
+     * {@link PitchClassAblation} is available.
+     *
+     * <p>{@link #ADDED_NOTE_SHARE_OF_ROOT}'s rule — a note is evidence where
+     * the fit needs it, not where the chroma carries it — applied to the third.
+     * Without it, the test above decides a run in which <em>neither</em> third
+     * is in the fit: the major third's mass is zeroed and the minor third's is
+     * read at face value, so the minor candidate takes the run on whatever
+     * noise sits on its pitch class. On a recording that holds no minor chord
+     * that is seconds of false minor at a time, turned by two significances a
+     * fraction of a percent apart (#546). With both thirds discounted the two
+     * triads score alike and the argmax keeps the first of them, which is the
+     * major one — so a run with no third in it reads as a plain triad rather
+     * than as a minor chord ({@link #buildTemplates} fixes that order).
+     *
+     * <p>Much smaller than its neighbours, which is the measurement rather than
+     * caution: a minor third that is really played removes a large share of its
+     * root's residual, so this has only to clear the noise. Swept by {@code
+     * tools/ChordSweep.java score} from a four-hundredth to a twentieth. The
+     * benchmarks whose chords really are minor keep every minor label across
+     * that sweep bar one — {@code jazz-251-c-140}'s {@code Dm7} runs carry a
+     * tail of weakly fitted minor thirds, and at a hundredth two of its bars go
+     * with them. This sits at the largest share swept at which no scored
+     * benchmark loses a bar.
+     */
+    private static final double MINOR_THIRD_SHARE_OF_ROOT = 0.0075;
+
     private ChordEstimator() {
     }
 
@@ -680,7 +709,10 @@ public final class ChordEstimator {
      * ({@link #PHANTOM_THIRD_SHARE_OF_ROOT}). It is one-sided for the same
      * reason the subtraction is: partial 5 of the root is the major third and
      * no partial of it is the minor third, so only one of the two can be
-     * manufactured. See {@link PitchClassAblation}, and #544 for the register
+     * manufactured. What the minor third is asked instead is whether the fit
+     * needs it at all ({@link #MINOR_THIRD_SHARE_OF_ROOT}) — a different
+     * question, and the one that keeps a run holding neither third from going
+     * minor on noise. See {@link PitchClassAblation}, and #544 for the register
      * the residual is read over against the register this chroma is.
      *
      * <p><b>The same residual decides whether a sixth or a diminished fifth is
@@ -707,6 +739,7 @@ public final class ChordEstimator {
         // candidate's own degree rather than as a pitch class.
         int sixth = statesASixth(template.quality()) ? Math.floorMod(root + 9, 12) : -1;
         int diminishedFifth = Math.floorMod(root + 6, 12);
+        int minorThird = Math.floorMod(root + 3, 12);
         double mass = 0;
         double energy = 0;
         for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
@@ -717,6 +750,11 @@ public final class ChordEstimator {
                         && (pitchClass == sixth || pitchClass == diminishedFifth)
                         && significance[pitchClass]
                                 < ADDED_NOTE_SHARE_OF_ROOT * significance[root]) {
+                    value = 0;
+                }
+                if (significance != null && pitchClass == minorThird
+                        && significance[minorThird]
+                                < MINOR_THIRD_SHARE_OF_ROOT * significance[root]) {
                     value = 0;
                 }
                 mass += value;
