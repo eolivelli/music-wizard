@@ -159,11 +159,12 @@ public final class ChordEstimator {
      * the major seventh still labels plain triads and the sixth still takes the
      * dominant-seventh benchmarks; #287 carries both tables.
      *
-     * <p>The two here are decided on the same test
-     * ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the diminished
-     * fifth. The half-diminished also needs the bass root prior
-     * ({@link #BASS_ROOT_WEIGHT}) to be reachable at all, since {@code Am7b5}
-     * is a {@code Cm} triad with an A in it and the fold put those bars on C.
+     * <p>The two here are decided on the same test where the fit's residual is
+     * available ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the
+     * diminished fifth. The half-diminished also depends on the root the
+     * decoder found: {@code Am7b5} is a {@code Cm} triad with an A in it, and
+     * before the bass root prior ({@link #BASS_ROOT_WEIGHT}) the fold put the
+     * package's bars on C, where no relabelling can reach them.
      */
     private static final ChordQuality[] QUALITY_ONLY = {ChordQuality.MINOR_SEVENTH,
             ChordQuality.MINOR_SIXTH, ChordQuality.HALF_DIMINISHED_SEVENTH};
@@ -217,10 +218,10 @@ public final class ChordEstimator {
      * is louder, which is what #287 said was missing. The fold cannot answer
      * it: over a minor triad the flat seventh is the root's own seventh partial
      * and the sixth is a note another chord is built on, so both are in the
-     * chroma whichever is played, and a diminished fifth need only carry
-     * 2/sqrt(3) - 1 of the triad's mass to be reported. Deleting the pitch
-     * class and refitting separates them, because a note that is sounding
-     * cannot be deleted cheaply (#537).
+     * chroma whichever is played, and the half-diminished — the same size as
+     * the minor seventh — is decided on nothing but which of the two fifths
+     * carries more of it. Deleting the pitch class and refitting separates
+     * them, because a note that is sounding cannot be deleted cheaply (#537).
      *
      * <p><b>The seventh is not tested the same way</b>, which is measured
      * rather than an omission: a flat seventh really played on a real mix
@@ -230,13 +231,16 @@ public final class ChordEstimator {
      * false-positive rate.
      *
      * <p>Swept by {@code tools/ChordSweep.java score} and {@code
-     * tools/score-chart.py}, and this sits inside the band where {@code
-     * synthetic_samples/pop-m6-m7b5-gm-100} reads every bar right and no
-     * benchmark moves. Above the band a voiced diminished fifth stops being
-     * counted; below it, half-diminished labels appear on a minor blues whose
-     * dominants hold no flat fifth. That it lands at the same share as
+     * tools/score-chart.py} over shares from a twentieth to a half. Across that
+     * sweep no benchmark's chord accuracy moves at all, and this sits inside
+     * the narrower band where {@code
+     * synthetic_samples/pop-m6-m7b5-gm-100} also reads every bar right: above
+     * that band a voiced diminished fifth stops being counted, and below it
+     * half-diminished labels appear on a minor blues whose dominants hold no
+     * flat fifth. Both edges are readings of one span each, which is what the
+     * middle of the band is for. That it lands at the same share as
      * {@link #PHANTOM_THIRD_SHARE_OF_ROOT} is not a shared constant: they are
-     * separate rules, free to move apart, and the two bands happen to overlap.
+     * separate rules, free to move apart, whose bands happen to overlap.
      */
     private static final double ADDED_NOTE_SHARE_OF_ROOT = 0.20;
 
@@ -503,6 +507,14 @@ public final class ChordEstimator {
      * recording states plainly — while withdrawing one would be a statement
      * about its diminished fifth, which a count of sevenths does not make.
      *
+     * <p><b>A sixth run is not counted at all</b> ({@link #statesASixth}), on
+     * either side. Counting it in the total alone would make it a vote against
+     * the seventh on its root, and a vote that cannot be right: the withdrawal
+     * it triggers drops the other runs to <em>triads</em>, so a recording that
+     * really states sixths would still not be labelled with them. Measured, one
+     * short run relabelled a sixth withdrew the seventh from every other run on
+     * that root, seconds of them.
+     *
      * <p>Grouping either array gives the same runs, since {@link #sameChord}
      * reads only the root and nothing here changes one.
      */
@@ -514,7 +526,7 @@ public final class ChordEstimator {
         int[] beats = new int[12];
         for (int state : out) {
             Template template = templates.get(state);
-            if (template.quality() == ChordQuality.NONE) {
+            if (template.quality() == ChordQuality.NONE || statesASixth(template.quality())) {
                 continue;
             }
             beats[template.rootPitchClass()]++;
@@ -567,6 +579,17 @@ public final class ChordEstimator {
      * seventh to its {@code Cm} runs, which is a question about the third and
      * not about the seventh.
      */
+    /**
+     * Whether {@code quality} states a sixth where a seventh would go: a
+     * four-note chord declaring no seventh, which is what {@link
+     * ChordQuality#hasSeventh()} exists to distinguish, since nine semitones is
+     * the sixth of a {@code 6} chord and the diminished seventh of a
+     * {@code dim7}.
+     */
+    private static boolean statesASixth(ChordQuality quality) {
+        return !quality.hasSeventh() && quality.intervals().length == 4;
+    }
+
     private static boolean carriesMinorSeventh(ChordQuality quality) {
         boolean minorThird = false;
         boolean minorSeventh = false;
@@ -677,7 +700,11 @@ public final class ChordEstimator {
                         < PHANTOM_THIRD_SHARE_OF_ROOT * significance[root]) {
             majorThirdMass = 0;
         }
-        int sixth = Math.floorMod(root + 9, 12);
+        // Nine semitones above the root is a sixth here and a diminished
+        // seventh in a dim7 (ChordQuality.hasSeventh), and the two are not the
+        // same claim about the recording — so the note is looked up as this
+        // candidate's own degree rather than as a pitch class.
+        int sixth = statesASixth(template.quality()) ? Math.floorMod(root + 9, 12) : -1;
         int diminishedFifth = Math.floorMod(root + 6, 12);
         double mass = 0;
         double energy = 0;
@@ -720,7 +747,7 @@ public final class ChordEstimator {
      * candidate's rises, so the veto ends up admitting the chord it was meant
      * to rule out.
      * {@code ChordEstimationTest#theFloorDoesNotMoveWithTheResidual} is the run
-     * where that shows, and the only test in that class which catches it.
+     * where that shows.
      *
      * <p>Used as a floor, and <b>a floor rules out only candidates that fit
      * worse than noise — not a bad fit that is still better than noise</b>. So

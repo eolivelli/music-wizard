@@ -1010,12 +1010,17 @@ class ChordEstimationTest {
             return beats(vector, vector, vector, vector);
         }
 
-        /** An ablation answering {@code residual} for every span asked of it. */
+        /** An ablation over four spans answering {@code residual} for each. */
         private static PitchClassAblation ablation(double[] residual) {
+            return over(4, residual);
+        }
+
+        /** An ablation over {@code spans} spans, answering {@code residual}. */
+        private static PitchClassAblation over(int spans, double[] residual) {
             return new PitchClassAblation() {
                 @Override
                 public int spanCount() {
-                    return 4;
+                    return spans;
                 }
 
                 @Override
@@ -1061,6 +1066,43 @@ class ChordEstimationTest {
             silent[9] = SIXTH_RESIDUAL[11];
 
             assertThat(sixthLabel(silent)).isEqualTo("Cm7");
+        }
+
+        @Test
+        @DisplayName("a sixth is no evidence about the seventh on its own root")
+        void aSixthDoesNotWithdrawSeventhsElsewhereOnItsRoot() {
+            // The count that settles the minor seventh across a root's runs
+            // reads neither side of a sixth. Counted in the total alone it
+            // would be a vote against, and one that cannot come out right: the
+            // withdrawal it triggers drops the other runs to triads, so a
+            // recording that really states sixths would still not be labelled
+            // with them. Here the third C run is an unaltered Cm7 and keeps its
+            // seventh; counting the two Cm6 runs against it takes it away.
+            double[] seventh = SIXTH_TREBLE.clone();
+            seventh[9] = SIXTH_TREBLE[10];
+            seventh[10] = SIXTH_TREBLE[9];
+            double[] onG = spread(7, 0.30, 10, 0.24, 2, 0.22);
+            double[] gBass = spread(7, 0.74);
+
+            Chroma treble = beats(SIXTH_TREBLE, SIXTH_TREBLE, SIXTH_TREBLE, SIXTH_TREBLE,
+                    onG, onG, onG, onG,
+                    SIXTH_TREBLE, SIXTH_TREBLE, SIXTH_TREBLE, SIXTH_TREBLE,
+                    onG, onG, onG, onG,
+                    seventh, seventh, seventh, seventh);
+            Chroma combined = beats(SIXTH_COMBINED, SIXTH_COMBINED, SIXTH_COMBINED,
+                    SIXTH_COMBINED, onG, onG, onG, onG,
+                    SIXTH_COMBINED, SIXTH_COMBINED, SIXTH_COMBINED, SIXTH_COMBINED,
+                    onG, onG, onG, onG,
+                    SIXTH_COMBINED, SIXTH_COMBINED, SIXTH_COMBINED, SIXTH_COMBINED);
+            Chroma bass = beats(SIXTH_BASS, SIXTH_BASS, SIXTH_BASS, SIXTH_BASS,
+                    gBass, gBass, gBass, gBass,
+                    SIXTH_BASS, SIXTH_BASS, SIXTH_BASS, SIXTH_BASS,
+                    gBass, gBass, gBass, gBass,
+                    SIXTH_BASS, SIXTH_BASS, SIXTH_BASS, SIXTH_BASS);
+
+            assertThat(ChordEstimator.estimate(combined, treble, bass,
+                            over(20, SIXTH_RESIDUAL), beatTimes(20)).chords())
+                    .extracting(Chord::symbol).containsSubsequence("Cm6", "Cm6", "Cm7");
         }
 
         @Test
