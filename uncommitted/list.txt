@@ -143,12 +143,12 @@ authoritative, and none has been checked against the recording. Each carries the
 page and file URL it came from in a .url.txt beside it, which is its fetch
 command; Probe.java beside them is the throwaway that read them.
 
-Three arrangements, not five. candidate-3 and candidate-4 are one sequence note
-for note -- candidate-3 with Italian track names, candidate-4 the .kar carrying
-the Italian lyrics -- and both are pitched a semitone below the recording, in Ab
-rather than A. candidate-5 is a demo excerpt naming candidate-2's own tracks.
-candidate-1 and candidate-2 are in A, and candidate-2 is the one with a track
-named Melody.
+Not five independent reads, though. candidate-3 and candidate-4 are one sequence
+note for note -- candidate-3 with Italian track names, candidate-4 the .kar
+carrying the Italian lyrics -- and both are pitched a semitone below the
+recording, in Ab where it is in A. candidate-5 is a short demo excerpt whose
+text events name candidate-2's own tracks. candidate-1 and candidate-2 sit at
+the recording's own pitch, and candidate-2 is the one with a track named Melody.
 
 johnny-b-goode.mp3
 
