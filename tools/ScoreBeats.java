@@ -16,6 +16,7 @@
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
@@ -200,7 +201,9 @@ public final class ScoreBeats {
 
     private static void score(Job job, Path file) {
         AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
-        OnsetEnvelope envelope = OnsetEnvelope.fromAudio(audio);
+        Spectrogram onsets =
+                Spectrogram.compute(audio, OnsetEnvelope.ONSET_WINDOW, OnsetEnvelope.ONSET_HOP);
+        OnsetEnvelope envelope = OnsetEnvelope.compute(onsets);
         double period = referencePeriod(envelope, job);
         double phase = referencePhase(envelope, period);
         double duration = envelope.length() / envelope.frameRate();
@@ -209,9 +212,11 @@ public final class ScoreBeats {
         // The rhythm-weighted path, because it is the pipeline's: since #231
         // the tracker weighs tempo candidates by whether the harmony can be
         // barred by them, and a harness that tracked without the chroma would
-        // silently measure a grid the pipeline no longer produces.
+        // silently measure a grid the pipeline no longer produces. The bass
+        // register is here for the same reason, since #509.
         HarmonicRhythm rhythm = HarmonicRhythm.of(NnlsChroma.extract(audio).combined());
-        List<Double> beats = BeatTracker.track(envelope, rhythm).beatTimes();
+        List<Double> beats = BeatTracker
+                .track(envelope, rhythm, OnsetEnvelope.pulseRegister(onsets)).beatTimes();
         if (beats.size() < 2) {
             System.out.printf("%-28s %9.3f  no usable grid%n", job.file(), 60 / period);
             return;

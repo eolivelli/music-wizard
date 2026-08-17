@@ -125,9 +125,7 @@ public final class BeatTracker {
                     Confidence.clamped(tempo.strength()));
         }
 
-        // Half-overlapping windows; each contributes only its first half, so
-        // every beat comes from a window where it sits away from the edge.
-        int step = windowFrames / 2;
+        int step = stepFrames(envelope);
 
         // Every window's seed is estimated before any of them is tracked, so
         // that each can be read against the pulse the recording as a whole
@@ -136,6 +134,7 @@ public final class BeatTracker {
         // drifting tempo -- but which subdivision of the beat it names is a
         // property of the recording, and nothing was comparing the two.
         List<int[]> bounds = analysisWindows(envelope);
+        List<int[]> voterBounds = new ArrayList<>();
         List<TempoEstimator.Estimate> seeds = new ArrayList<>();
         List<TempoEstimator.Estimate> voters = new ArrayList<>();
         for (int[] window : bounds) {
@@ -144,6 +143,7 @@ public final class BeatTracker {
             seeds.add(seed);
             if (votes(window, step)) {
                 voters.add(seed);
+                voterBounds.add(window);
             }
         }
 
@@ -151,7 +151,7 @@ public final class BeatTracker {
         // same reason: a sliver measures a phrase rather than the recording.
         double reference =
                 MarkedPulse.resolveOctave(pulseReference(voters), envelope, pulseRegister,
-                        votingWindows(envelope));
+                        voterBounds);
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -193,7 +193,7 @@ public final class BeatTracker {
      */
     static List<int[]> analysisWindows(OnsetEnvelope envelope) {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
-        int step = Math.max(1, windowFrames / 2);
+        int step = stepFrames(envelope);
         List<int[]> windows = new ArrayList<>();
         for (int start = 0; start < envelope.length(); start += step) {
             int end = Math.min(envelope.length(), start + windowFrames);
@@ -216,7 +216,7 @@ public final class BeatTracker {
      * so there is always at least one voter.
      */
     static List<int[]> votingWindows(OnsetEnvelope envelope) {
-        int step = Math.max(1, (int) Math.round(WINDOW_SECONDS * envelope.frameRate()) / 2);
+        int step = stepFrames(envelope);
         List<int[]> windows = new ArrayList<>();
         for (int[] window : analysisWindows(envelope)) {
             if (votes(window, step)) {
@@ -228,6 +228,11 @@ public final class BeatTracker {
 
     private static boolean votes(int[] window, int step) {
         return window[1] - window[0] >= step;
+    }
+
+    /** How far apart the windows start: half a window, so they half-overlap. */
+    private static int stepFrames(OnsetEnvelope envelope) {
+        return Math.max(1, (int) Math.round(WINDOW_SECONDS * envelope.frameRate()) / 2);
     }
 
     /**
