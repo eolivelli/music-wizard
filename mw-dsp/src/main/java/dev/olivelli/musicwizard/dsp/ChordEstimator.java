@@ -237,8 +237,7 @@ public final class ChordEstimator {
      * synthetic_samples/pop-m6-m7b5-gm-100} also reads every bar right: above
      * that band a voiced diminished fifth stops being counted, and below it
      * half-diminished labels appear on a minor blues whose dominants hold no
-     * flat fifth. Both edges are readings of one span each, which is what the
-     * middle of the band is for. That it lands at the same share as
+     * flat fifth. That it lands at the same share as
      * {@link #PHANTOM_THIRD_SHARE_OF_ROOT} is not a shared constant: they are
      * separate rules, free to move apart, whose bands happen to overlap.
      */
@@ -511,9 +510,10 @@ public final class ChordEstimator {
      * either side. Counting it in the total alone would make it a vote against
      * the seventh on its root, and a vote that cannot be right: the withdrawal
      * it triggers drops the other runs to <em>triads</em>, so a recording that
-     * really states sixths would still not be labelled with them. Measured, one
-     * short run relabelled a sixth withdrew the seventh from every other run on
-     * that root, seconds of them.
+     * really states sixths would still not be labelled with them. What this
+     * does not fix is the count's own edge — a beat that used to vote for the
+     * seventh and now states a sixth leaves the numerator too, and a root
+     * sitting exactly at {@link #SEVENTH_MUST_HOLD_FOR} turns on it (#548).
      *
      * <p>Grouping either array gives the same runs, since {@link #sameChord}
      * reads only the root and nothing here changes one.
@@ -579,17 +579,6 @@ public final class ChordEstimator {
      * seventh to its {@code Cm} runs, which is a question about the third and
      * not about the seventh.
      */
-    /**
-     * Whether {@code quality} states a sixth where a seventh would go: a
-     * four-note chord declaring no seventh, which is what {@link
-     * ChordQuality#hasSeventh()} exists to distinguish, since nine semitones is
-     * the sixth of a {@code 6} chord and the diminished seventh of a
-     * {@code dim7}.
-     */
-    private static boolean statesASixth(ChordQuality quality) {
-        return !quality.hasSeventh() && quality.intervals().length == 4;
-    }
-
     private static boolean carriesMinorSeventh(ChordQuality quality) {
         boolean minorThird = false;
         boolean minorSeventh = false;
@@ -598,6 +587,19 @@ public final class ChordEstimator {
             minorSeventh |= interval == 10;
         }
         return minorThird && minorSeventh;
+    }
+
+    /**
+     * Whether {@code quality} states a sixth where a seventh would go: a
+     * four-note chord declaring no seventh, which is what {@link
+     * ChordQuality#hasSeventh()} exists to distinguish, since nine semitones is
+     * the sixth of a {@code 6} chord and the diminished seventh of a
+     * {@code dim7}. Four notes and no seventh is the sixths and nothing else in
+     * this vocabulary; it is a reading of the enum, not a definition of the
+     * chord.
+     */
+    private static boolean statesASixth(ChordQuality quality) {
+        return !quality.hasSeventh() && quality.intervals().length == 4;
     }
 
     /** The template for {@code quality} on {@code root}. */
