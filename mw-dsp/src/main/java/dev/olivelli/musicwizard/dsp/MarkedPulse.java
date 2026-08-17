@@ -212,6 +212,9 @@ public final class MarkedPulse {
                 preferHalf++;
             }
         }
+        // Out of every window that held beats, not only those the register
+        // spoke for: a window it said nothing about does not get a vote on the
+        // halving either, which can only hold one back.
         return contrasts.isEmpty()
                 ? new Reading(Double.NaN, Double.NaN, false)
                 : new Reading(median(contrasts), median(parities),
