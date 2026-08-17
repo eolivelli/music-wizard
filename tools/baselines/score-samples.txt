@@ -7,7 +7,7 @@ samples with known ground truth:
   bm-blues-slow.mp3: bars=187  root 98.0/187 (52.4%)  root+quality 88.0/187 (47.1%)  split 1  N.C. 0.1% of 336s
   cm-blues-68-95.mp3: bars=91  root 32.0/91 (35.2%)  root+quality 24.0/91 (26.4%)  split 0  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=208  root 106.0/208 (51.0%)  root+quality 106.0/208 (51.0%)  split 0  N.C. 0.4% of 319s
-  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.0/111 (11.7%)  split 9  N.C. 1.8% of 316s
+  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 13.5/111 (12.2%)  split 9  N.C. 1.8% of 316s
   jazz-251-c-140.mp3: bars=175  root 35.5/175 (20.3%)  root+quality 27.5/175 (15.7%)  split 8  N.C. 0.4% of 304s
   fm7-vamp-110.mp3: bars=143  root 132.0/143 (92.3%)  root+quality 132.0/143 (92.3%)  split 0  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 160.0/165 (97.0%)  split 0  N.C. 0.5% of 309s
@@ -38,11 +38,14 @@ keys, against the expected key for each file:
   key eb7-vamp-130.mp3: Eb major at 80%  want Eb major  OK
   key bossa-cm.mp3: F minor at 6%  want C minor  WRONG
   key bm-blues-slow.mp3: B minor at 79%  want B minor  OK
-  key cm-blues-68-95.mp3: C minor at 35%  want C minor  OK
+  key cm-blues-68-95.mp3: C minor at 36%  want C minor  OK
   key waltz-am-e7-160.mp3: A minor at 56%  want A minor  OK
-  key f-blues-swing-170.mp3: F major at 7%  want F major  OK
-  key jazz-251-c-140.mp3: A minor at 58%  want C major  WRONG
+  key f-blues-swing-170.mp3: F major at 6%  want F major  OK
+  key jazz-251-c-140.mp3: A minor at 57%  want C major  WRONG
   key ballad-wine-roses-65.mp3: D minor at 5%  want F major  WRONG
-  key footprints-200.mp3: C minor at 24%  want C minor  OK
+  key footprints-200.mp3: C minor at 23%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
   key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG
+minor-quality seconds where a musician confirms the recording holds no minor chord (want zero):
+  minor la-canzone-del-sole.mp3: 48.8s of 325s (15.0%)  spans 54/302  m 38.0s, m7 8.3s, m6 2.2s, m7b5 0.3s
+  minor johnny-b-goode.mp3: 20.2s of 160s (12.7%)  spans 21/92  m 15.6s, m7 3.5s, m6 1.1s
