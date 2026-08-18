@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -506,6 +507,119 @@ class MelodyEstimationTest {
         /** An envelope with no peak in it, so nothing is re-articulated. */
         private OnsetEnvelope silence() {
             return new OnsetEnvelope(new double[600], 172.0);
+        }
+    }
+
+    @Nested
+    @DisplayName("a note the tracker read an octave out")
+    class OctaveErrors {
+
+        /** Ten notes of singing, a bar apart in pitch, around D above middle C. */
+        private static Object[] singing() {
+            return new Object[] {
+                62.0, 40, null, 4, 65.0, 40, null, 4, 62.0, 40, null, 4, 60.0, 40, null, 4,
+                62.0, 40, null, 4, 67.0, 40, null, 4, 65.0, 40, null, 4, 62.0, 40, null, 4,
+                60.0, 40, null, 4, 62.0, 40,
+            };
+        }
+
+        /** Two frame sequences one after the other; a silence marker is null. */
+        private static Object[] with(Object[] head, Object... tail) {
+            List<Object> all = new ArrayList<>();
+            Collections.addAll(all, head);
+            Collections.addAll(all, tail);
+            return all.toArray();
+        }
+
+        @Test
+        @DisplayName("is folded back into the melody's own octave")
+        void isFoldedBack() {
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(singing(), null, 4, 86.0, 20)));
+
+            assertThat(pitches(melody).get(10))
+                    .as("two octaves out, and its pitch class was already right")
+                    .isEqualTo(62);
+        }
+
+        @Test
+        @DisplayName("is moved rather than dropped")
+        void isNotDropped() {
+            PitchTrack pitches = track(with(singing(), null, 4, 86.0, 20));
+            NoteTrack melody = MelodyEstimator.estimate(pitches);
+
+            assertThat(melody.notes()).hasSize(11);
+            assertThat(melody.notes().get(10).onsetSeconds())
+                    .as("it keeps its place in time")
+                    .isCloseTo(pitches.timeOf(440), within(1e-9));
+        }
+
+        @Test
+        @DisplayName("goes to the octave nearest the melody, not the first one in range")
+        void goesToTheNearestOctave() {
+            // Landing it merely inside the band would leave it an octave out,
+            // which is the population #596 was reported from.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(singing(), null, 4, 86.0, 20)));
+
+            assertThat(pitches(melody).get(10)).isNotEqualTo(74);
+        }
+
+        @Test
+        @DisplayName("is read against the singing where the stem was empty before it")
+        void leakageIsReadAgainstTheSinging() {
+            // What the separator leaves behind before the singer enters: the
+            // tracker follows it and reports it high (#575).
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(new Object[] {85.0, 10, null, 4, 86.0, 10, null, 4, 85.0, 10,
+                            null, 8}, (Object[]) singing())));
+
+            assertThat(pitches(melody).subList(0, 3)).containsExactly(61, 62, 61);
+        }
+
+        @Test
+        @DisplayName("never moves the singing to meet an empty stretch")
+        void anEmptyStretchIsNotEvidence() {
+            // The same leakage lasting long enough to widen the band it is
+            // judged against. It may then keep its own octave — what it must
+            // not do is take the singing's with it, which is what an average
+            // rather than a share of the sounding time would have let it do.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(new Object[] {85.0, 30, null, 4, 86.0, 30, null, 4, 85.0, 30,
+                            null, 8}, (Object[]) singing())));
+
+            assertThat(pitches(melody).subList(3, 13))
+                    .containsExactly(62, 65, 62, 60, 62, 67, 65, 62, 60, 62);
+        }
+
+        @Test
+        @DisplayName("a line that really ranges that far is left alone")
+        void aWideLineIsNotClamped() {
+            // What --skip-separation gives the stage when the melody is played
+            // rather than sung (#560): four octaves, wider than any voice, and
+            // the band comes from this line's own spread rather than a voice's.
+            NoteTrack melody = MelodyEstimator.estimate(track(
+                    36.0, 40, null, 4, 48.0, 40, null, 4, 60.0, 40, null, 4, 72.0, 40,
+                    null, 4, 84.0, 40, null, 4, 72.0, 40, null, 4, 60.0, 40, null, 4,
+                    48.0, 40, null, 4, 36.0, 40));
+
+            assertThat(pitches(melody))
+                    .containsExactly(36, 48, 60, 72, 84, 72, 60, 48, 36);
+        }
+
+        @Test
+        @DisplayName("is judged against a band the bench may choose")
+        void theBandIsSweepable() {
+            PitchTrack pitches = track(with(singing(), null, 4, 86.0, 20));
+            OnsetEnvelope silence = new OnsetEnvelope(new double[1200], 172.0);
+
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 0, 1)))
+                    .as("a band reaching the whole melody folds nothing")
+                    .endsWith(86);
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9));
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 1.5));
         }
     }
 

@@ -171,6 +171,32 @@ public final class MelodyEstimator {
      */
     private static final double TUNING_CORROBORATION_FLOOR = 0.2;
 
+    /**
+     * The narrowest half-band an octave may be judged against, in semitones.
+     *
+     * <p>What sizes it is that a real melody can span two whole octaves, so a
+     * band an octave either side of the centre sits exactly on such a melody's
+     * own extremes and clips them as soon as the centre is estimated a semitone
+     * off. This sits in the middle of the swept plateau where every melody
+     * package holds; {@code tools/OctaveSweep.java} walks it and the melody
+     * baselines carry what each setting was worth.
+     */
+    private static final double RANGE_FLOOR_SEMITONES = 15;
+
+    /**
+     * The share of the melody's sounding time the band is asked to reach.
+     *
+     * <p>This is the half that comes from the recording rather than from a
+     * constant, and it is why a melody that is played rather than sung is not
+     * held to a voice's compass: a line that ranges further reaches this share
+     * further out and buys a wider band with it. A quantile rather than a
+     * multiple of the median deviation, because the median of a track with a
+     * handful of notes in it is zero however far apart they are — and a band
+     * estimated from a handful of notes must be the wide one. Swept by
+     * {@code tools/OctaveSweep.java}.
+     */
+    private static final double RANGE_SPREAD_QUANTILE = 0.9;
+
     private MelodyEstimator() {
     }
 
@@ -182,7 +208,8 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
-        return segment(pitches, null, 0, STEADY_SEMITONES);
+        return segment(pitches, null, 0, STEADY_SEMITONES,
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
     }
 
     /**
@@ -196,7 +223,8 @@ public final class MelodyEstimator {
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
-        return segment(pitches, envelope, 0, STEADY_SEMITONES);
+        return segment(pitches, envelope, 0, STEADY_SEMITONES,
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
     }
 
     /**
@@ -216,7 +244,8 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
                     + tuningOffsetSemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES);
+        return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
     }
 
     /**
@@ -236,11 +265,47 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("steadySemitones must be finite and positive,"
                     + " got: " + steadySemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones);
+        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
+    }
+
+    /**
+     * The same with the octave fold's band chosen too, which is what
+     * {@code tools/OctaveSweep.java} sweeps. The pipeline calls
+     * {@link #estimate(PitchTrack, OnsetEnvelope, double)} and gets
+     * {@link #RANGE_FLOOR_SEMITONES} and {@link #RANGE_SPREAD_QUANTILE}.
+     *
+     * <p>A band narrower than an octave folds nothing at all, since no pitch
+     * then has a representative inside it.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones, double steadySemitones,
+                                     double rangeFloorSemitones, double rangeSpreadQuantile) {
+        Objects.requireNonNull(pitches, "pitches");
+        Objects.requireNonNull(envelope, "envelope");
+        if (!Double.isFinite(tuningOffsetSemitones)) {
+            throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
+                    + tuningOffsetSemitones);
+        }
+        if (!(steadySemitones > 0) || !Double.isFinite(steadySemitones)) {
+            throw new IllegalArgumentException("steadySemitones must be finite and positive,"
+                    + " got: " + steadySemitones);
+        }
+        if (!(rangeFloorSemitones >= 0) || !Double.isFinite(rangeFloorSemitones)) {
+            throw new IllegalArgumentException("rangeFloorSemitones must be finite and"
+                    + " non-negative, got: " + rangeFloorSemitones);
+        }
+        if (!(rangeSpreadQuantile >= 0) || !(rangeSpreadQuantile <= 1)) {
+            throw new IllegalArgumentException("rangeSpreadQuantile must be within 0..1,"
+                    + " got: " + rangeSpreadQuantile);
+        }
+        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+                rangeFloorSemitones, rangeSpreadQuantile);
     }
 
     private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
-                                     double tuningOffsetSemitones, double steadySemitones) {
+                                     double tuningOffsetSemitones, double steadySemitones,
+                                     double rangeFloorSemitones, double rangeSpreadQuantile) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -260,7 +325,116 @@ public final class MelodyEstimator {
             notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, steadySemitones));
             frame = end;
         }
-        return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, trackConfidence(notes));
+        List<Note> folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile);
+        return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", folded, trackConfidence(folded));
+    }
+
+    /**
+     * Brings notes the tracker read an octave or two out back to the octave the
+     * melody is in (#596).
+     *
+     * <p>A monophonic tracker that locks onto a harmonic instead of the
+     * fundamental reports a multiple of the true frequency, and a multiple of
+     * two or four is exactly an octave or two — so the error is a factor and
+     * not a random pitch, and the note is recovered by moving it rather than
+     * lost by dropping it. Which octave the melody is in is asked of the
+     * recording itself, because no fixed bound separates one singer from
+     * another or a voice from a played line.
+     *
+     * <p>The band decides <em>whether</em> a note is out; the centre decides
+     * <em>where</em> it goes, which is the octave of its own pitch class
+     * nearest that centre. Landing it merely inside the band instead would
+     * leave a note read two octaves out one octave out, which is the population
+     * #596 was reported from.
+     *
+     * <p>A band narrower than an octave is refused rather than applied: there
+     * would be pitch classes with no representative in it at all, so every note
+     * of one would be moved on no evidence.
+     */
+    private static List<Note> foldOctaves(List<Note> notes, double rangeFloorSemitones,
+                                          double rangeSpreadQuantile) {
+        if (notes.isEmpty()) {
+            return notes;
+        }
+        double[] pitches = new double[notes.size()];
+        double[] weights = new double[notes.size()];
+        for (int i = 0; i < notes.size(); i++) {
+            pitches[i] = notes.get(i).midiPitch();
+            weights[i] = notes.get(i).durationSeconds();
+        }
+        double centre = weightedQuantile(pitches, weights, 0.5);
+        double[] deviations = new double[pitches.length];
+        for (int i = 0; i < pitches.length; i++) {
+            deviations[i] = Math.abs(pitches[i] - centre);
+        }
+        double half = Math.max(rangeFloorSemitones,
+                weightedQuantile(deviations, weights, rangeSpreadQuantile));
+        if (2 * half < 12) {
+            return notes;
+        }
+        List<Note> folded = new ArrayList<>(notes.size());
+        for (Note note : notes) {
+            int semitones = foldedPitch(note.midiPitch(), centre, half) - note.midiPitch();
+            folded.add(semitones == 0 ? note : note.transposedBy(semitones));
+        }
+        return folded;
+    }
+
+    /**
+     * A pitch outside the band, moved to the octave of itself nearest the centre.
+     *
+     * <p>The two candidate octaves bracket that centre, so one of them is the
+     * nearest there is. On a tie — an octave and a half out is equally far
+     * either way — the smaller displacement wins, being both the likelier error
+     * and the cheaper mistake.
+     */
+    private static int foldedPitch(int pitch, double centre, double half) {
+        if (Math.abs(pitch - centre) <= half) {
+            return pitch;
+        }
+        int below = (int) Math.floor((centre - pitch) / 12.0);
+        int lower = pitch + 12 * below;
+        int upper = lower + 12;
+        double toLower = Math.abs(lower - centre);
+        double toUpper = Math.abs(upper - centre);
+        boolean tied = toLower == toUpper;
+        int folded = toLower < toUpper || (tied && Math.abs(below) <= Math.abs(below + 1))
+                ? lower
+                : upper;
+        return folded >= 0 && folded <= 127 ? folded : pitch;
+    }
+
+    /**
+     * A weighted quantile of a sample: the first value at which that share of
+     * the weight has been passed.
+     *
+     * <p>Weighted by how long each note sounds, and a quantile rather than a
+     * mean, because the population it has to survive is the point. A stretch
+     * where the separator left no voice still yields notes — the tracker
+     * follows what the mask left behind — and those are exactly the frames that
+     * carry no evidence about the singer's tessitura (#575). They are few and
+     * short against the singing, so a statistic that reads a share of the
+     * weight ignores them, where an average would be pulled towards them by
+     * every one of them.
+     */
+    private static double weightedQuantile(double[] values, double[] weights, double share) {
+        Integer[] order = new Integer[values.length];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        Arrays.sort(order, (left, right) -> Double.compare(values[left], values[right]));
+        double total = 0;
+        for (double weight : weights) {
+            total += weight;
+        }
+        double passed = 0;
+        for (int index : order) {
+            passed += weights[index];
+            if (passed >= share * total) {
+                return values[index];
+            }
+        }
+        return values[order[order.length - 1]];
     }
 
     /**
