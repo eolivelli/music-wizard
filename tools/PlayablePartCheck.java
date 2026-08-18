@@ -85,15 +85,17 @@ public final class PlayablePartCheck {
                 score.lyrics().lines().size());
 
         double[] fit = fit(events(estimate), reference);
+        double bar = barSeconds(Path.of(args[1])) * fit[0];
         System.out.printf(Locale.ROOT,
-                "clock fit against the estimate: reference x %.4f %+.2f s%n", fit[0], fit[1]);
+                "clock fit against the estimate: reference x %.4f %+.2f s, its bar %.3f s%n",
+                fit[0], fit[1], bar);
 
         List<Event> mapped = new ArrayList<>(reference.size());
         for (Event event : reference) {
             mapped.add(new Event(event.seconds() * fit[0] + fit[1], event.pitch()));
         }
-        report("estimate", events(estimate), mapped);
-        report("reduced ", events(reduced), mapped);
+        report("estimate", events(estimate), mapped, bar);
+        report("reduced ", events(reduced), mapped, bar);
 
         if (args.length >= 5) {
             double from = Double.parseDouble(args[3]);
@@ -141,7 +143,8 @@ public final class PlayablePartCheck {
     }
 
     /** Counts per reference bar, and one-to-one pitch-class agreement. */
-    private static void report(String label, List<Event> mine, List<Event> reference) {
+    private static void report(String label, List<Event> mine, List<Event> reference,
+                               double barSeconds) {
         boolean[] used = new boolean[mine.size()];
         int matched = 0;
         for (Event event : reference) {
@@ -167,7 +170,7 @@ public final class PlayablePartCheck {
         System.out.printf(Locale.ROOT,
                 "%s  count per reference bar off by %.2f on average  |  matched %d,"
                         + " precision %.1f%% recall %.1f%% F1 %.1f%%%n",
-                label, countError(mine, reference),
+                label, countError(mine, reference, barSeconds),
                 matched, 100 * precision, 100 * recall, 100 * f1);
     }
 
@@ -178,14 +181,13 @@ public final class PlayablePartCheck {
      * at double rate (#378), so counting into it would price that defect rather
      * than the reduction.
      */
-    private static double countError(List<Event> mine, List<Event> reference) {
-        if (reference.size() < 2) {
+    private static double countError(List<Event> mine, List<Event> reference,
+                                     double bar) {
+        if (reference.size() < 2 || !(bar > 0)) {
             return Double.NaN;
         }
         double first = reference.get(0).seconds();
         double last = reference.get(reference.size() - 1).seconds();
-        // Four beats of the reference's own steady tempo, taken from its span.
-        double bar = (last - first) / Math.max(1, Math.round((last - first) / 2.5));
         int bars = (int) Math.ceil((last - first) / bar);
         int[] here = new int[bars + 1];
         int[] there = new int[bars + 1];
@@ -251,6 +253,40 @@ public final class PlayablePartCheck {
             }
         }
         return low;
+    }
+
+    /**
+     * One bar of the reference, in its own seconds.
+     *
+     * <p>Read from the file's opening tempo and meter rather than assumed. A
+     * file that changes either of them is out of scope for this tool, which
+     * exists to window a comparison and not to follow an arrangement.
+     */
+    private static double barSeconds(Path file) throws Exception {
+        Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
+        double secondsPerQuarter = 0.5;
+        int numerator = 4;
+        int denominator = 4;
+        long earliestTempo = Long.MAX_VALUE;
+        long earliestMeter = Long.MAX_VALUE;
+        for (Track track : sequence.getTracks()) {
+            for (int i = 0; i < track.size(); i++) {
+                if (!(track.get(i).getMessage() instanceof MetaMessage meta)) {
+                    continue;
+                }
+                byte[] data = meta.getData();
+                if (meta.getType() == 0x51 && track.get(i).getTick() < earliestTempo) {
+                    earliestTempo = track.get(i).getTick();
+                    secondsPerQuarter = (((data[0] & 0xff) << 16)
+                            | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
+                } else if (meta.getType() == 0x58 && track.get(i).getTick() < earliestMeter) {
+                    earliestMeter = track.get(i).getTick();
+                    numerator = data[0] & 0xff;
+                    denominator = 1 << (data[1] & 0xff);
+                }
+            }
+        }
+        return numerator * (4.0 / denominator) * secondsPerQuarter;
     }
 
     /** The named track's note-ons, in seconds, honouring the file's tempo events. */
