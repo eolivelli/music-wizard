@@ -84,9 +84,10 @@ merely jittery (#429).
 Then: the residual gate of #543 admitted the minor sixth and the
 half-diminished (#547). The vocabulary still has no major seventh or plain
 sixth, for two different reasons. The major seventh *can* be residual-gated and
-still buys nothing: on both scored recordings whose truth holds one, those bars
-are named on the wrong root, so a quality that cannot move a root cannot reach
-them (#588). The sixth really is sounding, so it needs root evidence rather
+in this vocabulary still buys nothing: on the scored recordings whose truth
+holds one, those bars are named on the wrong root, and a quality decision cannot
+move a root. What reaches them is the same template in the decoder, at the price
+#588 measures. The sixth really is sounding, so it needs root evidence rather
 than presence evidence (#287, #274).
 
 **A third is settled across every run on a root, not run by run** (#558). That
