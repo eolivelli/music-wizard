@@ -96,6 +96,7 @@ public final class PlayablePartCheck {
         }
         report("estimate", events(estimate), mapped, bar);
         report("reduced ", events(reduced), mapped, bar);
+        removals(events(estimate), events(reduced), mapped);
 
         if (args.length >= 5) {
             double from = Double.parseDouble(args[3]);
@@ -142,11 +143,15 @@ public final class PlayablePartCheck {
         return names[Math.floorMod(pitch, 12)] + (pitch / 12 - 1);
     }
 
-    /** Counts per reference bar, and one-to-one pitch-class agreement. */
-    private static void report(String label, List<Event> mine, List<Event> reference,
-                               double barSeconds) {
+    /**
+     * Which of my note-heads a reference note was matched to, one to one.
+     *
+     * <p>Nearest first among the ones whose pitch class agrees, and each of
+     * mine may be claimed once: two note-heads a reduction merged must not both
+     * be able to answer for the same reference note.
+     */
+    private static boolean[] matched(List<Event> mine, List<Event> reference) {
         boolean[] used = new boolean[mine.size()];
-        int matched = 0;
         for (Event event : reference) {
             int best = -1;
             double nearest = TOLERANCE_SECONDS;
@@ -161,6 +166,49 @@ public final class PlayablePartCheck {
             }
             if (best >= 0) {
                 used[best] = true;
+            }
+        }
+        return used;
+    }
+
+    /**
+     * What the reduction stopped printing, and whether it was any good.
+     *
+     * <p>Not the difference of the two matched counts, which is what it looks
+     * like: a group's surviving note carries its <em>first</em> piece's onset
+     * and its <em>settled</em> pitch, so it is a note-head neither side had.
+     * Both directions are therefore counted rather than subtracted.
+     */
+    private static void removals(List<Event> estimate, List<Event> reduced,
+                                 List<Event> reference) {
+        boolean[] agreed = matched(estimate, reference);
+        java.util.Set<Event> kept = new java.util.HashSet<>(reduced);
+        int gone = 0;
+        int goneAndAgreed = 0;
+        for (int i = 0; i < estimate.size(); i++) {
+            if (!kept.contains(estimate.get(i))) {
+                gone++;
+                if (agreed[i]) {
+                    goneAndAgreed++;
+                }
+            }
+        }
+        java.util.Set<Event> was = new java.util.HashSet<>(estimate);
+        long fresh = reduced.stream().filter(event -> !was.contains(event)).count();
+        System.out.printf(Locale.ROOT,
+                "removals: %d of the estimate's note-heads are no longer printed at the same"
+                        + " onset and pitch, %d of them ones that had agreed;"
+                        + " %d are printed at a new one%n",
+                gone, goneAndAgreed, fresh);
+    }
+
+    /** Counts per reference bar, and one-to-one pitch-class agreement. */
+    private static void report(String label, List<Event> mine, List<Event> reference,
+                               double barSeconds) {
+        boolean[] used = matched(mine, reference);
+        int matched = 0;
+        for (boolean claimed : used) {
+            if (claimed) {
                 matched++;
             }
         }
