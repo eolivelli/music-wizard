@@ -1,0 +1,26 @@
+title: Pop-rock in A - the plain triads under pop-sus-a-104
+genre: pop
+style: pop-rock
+tempo: 104
+key: A major
+seed: 41
+melody: none
+accompaniment: full
+bars:
+# The control half of the pair: pop-sus-a-104 with a plain triad wherever it
+# suspends, and identical in everything else - tempo, key, seed, band, form.
+# Without it a suspension read as a triad cannot be told from a triad reported
+# because nothing said not to, which is what #273 records the plain-triad
+# benchmark being needed for. Read the two rows together (#600).
+# A
+A A A A
+D D E E
+# B
+D D A A
+Bm Bm E A
+# A again
+A A A A
+D D E E
+# B again
+D D A A
+Bm Bm E A

@@ -210,13 +210,22 @@ class MinorSeconds(unittest.TestCase):
                          samples.QUALITY_SYMBOL)
 
     def test_a_truth_suffix_spells_back_to_itself(self):
-        """SUFFIX_QUALITY reads a written chord and QUALITY_SYMBOL writes one.
+        """SUFFIX_QUALITY reads a written chord and TRUTH_SYMBOL writes one.
         They are deliberately not each other's inverse -- the reader covers only
         the qualities the corpus states, so an unknown suffix fails loudly --
         but where they overlap they must agree, or a stated set would print as
         a set nobody stated."""
         for suffix in samples.SUFFIX_QUALITY:
             self.assertEqual("C" + suffix, samples.spell(samples.parse_chord("C" + suffix)))
+
+    def test_a_corpus_only_quality_is_one_the_enum_does_not_hold(self):
+        """The shapes a spec may state that MW has no constant for (#600). One
+        that gained a constant and stayed here would be scored as unnameable
+        for ever after MW learned to name it."""
+        constants = {name for name, _, _ in chord_quality_constants()}
+        self.assertEqual(set(), constants & set(samples.CORPUS_ONLY_QUALITY))
+        self.assertEqual({**samples.QUALITY_SYMBOL, **samples.CORPUS_ONLY_QUALITY},
+                         samples.TRUTH_SYMBOL)
 
 
 def vocabulary_line(spans: list[dict], stated: str = "A E D") -> str:

@@ -1,0 +1,30 @@
+title: Pop-rock in A - the suspensions and their resolutions
+genre: pop
+style: pop-rock
+tempo: 104
+key: A major
+seed: 41
+melody: none
+accompaniment: full
+bars:
+# A suspension replaces the third rather than adding a note to the triad,
+# which is a different ranking problem from every colour #287 and #274 weigh
+# (#600). This package states it the way a guitar band plays it: the sus4 for
+# a bar, its resolution the next, on the tonic and on both its neighbours.
+# pop-sus-triads-a-104 is the same spec with the plain triad in every
+# suspended slot - same tempo, same seed, same band - so a reading that
+# differs between the two differs because of the shape and nothing else.
+# ChordQuality holds both suspensions; whether either can be decoded and
+# ranked is the open question.
+# A: sus4 into its triad on I and IV, then on V - half cadence
+Asus4 A Asus4 A
+Dsus4 D Esus4 E
+# B: the sus2 on IV and I, then plain triads into an authentic cadence
+Dsus2 D Asus2 A
+Bm Bm E A
+# A again
+Asus4 A Asus4 A
+Dsus4 D Esus4 E
+# B again
+Dsus2 D Asus2 A
+Bm Bm E A

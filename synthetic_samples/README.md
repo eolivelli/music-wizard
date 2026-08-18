@@ -67,6 +67,24 @@ can show here is the rest of the grid: in particular the `Am7` bars, which
 carry the same four pitch classes as the `C6` ones and are nameable, and the
 plain `Em` triad.
 
+**Two packages come in pairs, and the pairing is what they measure.**
+`pop-sus-a-104` states the suspensions — which *replace* the third rather than
+adding a note to the triad — and `pop-add9-g-96` states the added ninth, which
+keeps it. Each has a twin, `pop-sus-triads-a-104` and `pop-add9-triads-g-96`,
+carrying a plain triad in every coloured slot and identical in everything else:
+tempo, key, seed, band, form. Without the twin a colour read as a triad cannot
+be told from a triad reported because nothing said not to, which is what #273
+records the plain-triad benchmark being needed for. #600 is the gap they were
+built to decide, and #606 to #609 carry what MW names for each.
+
+The two shapes are unreadable in different ways. `ChordQuality` holds both
+suspensions, so a suspended bar can be scored on `root+quality` the day one is
+decoded; it holds no added ninth at all, so an `add9` bar can never be credited
+in that column however well it is read, and its truth is spelled from a table
+of the harness's own (`CORPUS_ONLY_QUALITY` in `tools/score-samples.py`). A
+quality added to the enum has to leave that table in the same change, which is
+what `tools/test-harness-rules.py` holds it to.
+
 Regenerate a package with:
 
 ```sh

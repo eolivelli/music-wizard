@@ -244,7 +244,20 @@ SUFFIX_QUALITY = {
     "m7b5": "HALF_DIMINISHED_SEVENTH",
     "m6": "MINOR_SIXTH",
     "6": "SIXTH",
+    "sus4": "SUSPENDED_FOURTH",
+    "sus2": "SUSPENDED_SECOND",
+    "add9": "ADDED_NINTH",
 }
+
+# A shape the corpus states that ChordQuality has no constant for (#600), kept
+# out of QUALITY_SYMBOL because that table is the enum's own: MW can never
+# print this one, so it appears on the truth side of a comparison and nowhere
+# else, and the bars stating it can never be credited on quality.
+CORPUS_ONLY_QUALITY = {"ADDED_NINTH": "add9"}
+
+# What a truth chord is written back as: the enum's symbols, plus the shapes
+# only the corpus states.
+TRUTH_SYMBOL = {**QUALITY_SYMBOL, **CORPUS_ONLY_QUALITY}
 
 
 def missing_line(label: str, where: str = "samples") -> str:
@@ -535,7 +548,7 @@ def score_no_minor(mp3: Path, doc: dict) -> None:
 
 def spell(chord: tuple[int, str]) -> str:
     """A (pitch class, quality) as a lead-sheet symbol."""
-    return PITCH_NAME[chord[0]] + QUALITY_SYMBOL[chord[1]]
+    return PITCH_NAME[chord[0]] + TRUTH_SYMBOL[chord[1]]
 
 
 def score_vocabulary(mp3: Path, doc: dict, stated: str) -> None:

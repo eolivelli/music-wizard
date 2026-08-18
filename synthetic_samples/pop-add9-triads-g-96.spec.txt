@@ -1,0 +1,26 @@
+title: Pop-rock in G - the plain triads under pop-add9-g-96
+genre: pop
+style: pop-rock
+tempo: 96
+key: G major
+seed: 44
+melody: none
+accompaniment: full
+bars:
+# The control half of the pair: pop-add9-g-96 with a plain triad wherever it
+# adds the ninth, and identical in everything else - tempo, key, seed, band,
+# form. Its own grid is nameable end to end, so it says what this
+# arrangement scores when nothing colours it, and the coloured twin's
+# shortfall is then the shape's (#600, #273).
+# A
+G G C C
+G G D D
+# B
+Em Em C C
+G G D G
+# A again
+G G C C
+G G D D
+# B again
+Em Em C C
+G G D G
