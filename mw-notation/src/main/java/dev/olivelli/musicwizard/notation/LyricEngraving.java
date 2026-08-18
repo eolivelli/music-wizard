@@ -99,10 +99,14 @@ final class LyricEngraving {
         private final List<Syllable> syllables = new ArrayList<>();
 
         /** The unit the last syllable took, which the next one must clear. */
-        private long lastUnit = Long.MIN_VALUE;
+        private long lastUnit;
 
         /** The latest of the moments its syllables are sung at. */
         private double sungThrough = Double.NEGATIVE_INFINITY;
+
+        Lane(long opening) {
+            lastUnit = opening - 1;
+        }
 
         /**
          * Adds one word's syllables, the last of them sung at {@code seconds}.
@@ -126,26 +130,79 @@ final class LyricEngraving {
      *             deriving a second time from the tempo map
      */
     static Optional<String> block(Score score, List<ChartLayout.Bar> bars) {
-        return block(score, bars, Attachment.BELOW_CHORDS);
+        return block(score, bars, Attachment.BELOW_CHORDS, Optional.empty());
     }
 
-    /** The same, leaning towards whatever it is written under. */
+    /**
+     * The same, leaning towards whatever it is written under and opening where
+     * the staff beside it opens.
+     *
+     * <p>A {@code \partial} is a claim about the score's shared timing, so a
+     * lane that still wrote bar zero full sits one bar less the pickup behind
+     * the music from bar one onwards. LilyPond reports that once and then
+     * resynchronises, so the whole lane is displaced behind a single failed bar
+     * check (#601).
+     */
     static Optional<String> block(Score score, List<ChartLayout.Bar> bars,
-                                  Attachment attachment) {
+                                  Attachment attachment,
+                                  Optional<StaffNotation.Pickup> pickup) {
         if (score.lyrics().isEmpty() || bars.isEmpty()) {
             return Optional.empty();
         }
         long[] barStart = ChartGrid.barStarts(bars);
-        List<List<Syllable>> lanes = placed(score, bars, barStart);
+        Opening opening = Opening.of(barStart, pickup);
+        List<List<Syllable>> lanes = placed(score, bars, barStart, opening.unit());
         if (lanes.isEmpty()) {
             return Optional.empty();
         }
 
         StringBuilder out = new StringBuilder();
         for (List<Syllable> syllables : lanes) {
-            lane(out, syllables, bars, barStart, attachment);
+            lane(out, syllables, bars, barStart, attachment, opening);
         }
         return Optional.of(out.toString());
+    }
+
+    /**
+     * Where a lane's first bar begins: the grid unit its syllables start at, and
+     * the length by which the pickup reaches back past that unit.
+     *
+     * <p>The cut moves the origin and nothing else. A syllable is an event, so
+     * the chord names' answer — dropping what came before the pickup — is not
+     * available: {@link #placed} pushes a word sung before the staff enters onto
+     * the opening rather than off the page.
+     *
+     * @param unit                the first grid unit inside the printed music
+     * @param residualNumerator   how far {@code unit} falls short of the pickup,
+     *                            as a fraction of a whole note; zero when the
+     *                            pickup lands on the grid
+     * @param residualDenominator that fraction's denominator
+     */
+    private record Opening(long unit, long residualNumerator, long residualDenominator) {
+
+        /** The opening for a pickup, whose length the grid can rarely name exactly. */
+        static Opening of(long[] barStart, Optional<StaffNotation.Pickup> pickup) {
+            if (pickup.isEmpty()) {
+                return new Opening(barStart[0], 0, 1);
+            }
+            long numerator = pickup.get().wholeNoteNumerator();
+            long denominator = pickup.get().wholeNoteDenominator();
+            // Floored, so what is left over is never negative, and clamped for
+            // the case where the chart's first bar is shorter than the pickup —
+            // the whole of it is then inside the printed music and the rest of
+            // the pickup is lead-in the chart does not reach.
+            long units = Math.min(barStart[1] - barStart[0],
+                    numerator * ChartGrid.UNITS_PER_WHOLE / denominator);
+            return new Opening(barStart[1] - units,
+                    numerator * ChartGrid.UNITS_PER_WHOLE - units * denominator,
+                    denominator * ChartGrid.UNITS_PER_WHOLE);
+        }
+
+        /** The rest that fills the gap between the pickup's start and {@link #unit}. */
+        Optional<String> leadIn() {
+            return residualNumerator == 0 ? Optional.empty()
+                    : Optional.of(ChartGrid.skip(residualNumerator, residualDenominator));
+        }
     }
 
     /**
@@ -187,7 +244,7 @@ final class LyricEngraving {
      */
     private static void lane(StringBuilder out, List<Syllable> syllables,
                              List<ChartLayout.Bar> bars, long[] barStart,
-                             Attachment attachment) {
+                             Attachment attachment, Opening opening) {
         out.append("  \\new Lyrics \\with {\n");
         // Which way is not this lane's choice; see Attachment.
         out.append("    \\override VerticalAxisGroup.staff-affinity = ")
@@ -207,9 +264,12 @@ final class LyricEngraving {
 
         int at = 0;
         for (int i = 0; i < bars.size(); i++) {
-            long from = barStart[i];
+            long from = i == 0 ? opening.unit() : barStart[i];
             long to = barStart[i + 1];
             StringBuilder line = new StringBuilder();
+            if (i == 0) {
+                opening.leadIn().ifPresent(rest -> line.append(rest).append(' '));
+            }
             long cursor = from;
             while (at < syllables.size() && syllables.get(at).unit() < to) {
                 Syllable syllable = syllables.get(at);
@@ -277,14 +337,14 @@ final class LyricEngraving {
      * its own moment and is the output to read when the two differ.
      */
     private static List<List<Syllable>> placed(Score score, List<ChartLayout.Bar> bars,
-                                               long[] barStart) {
+                                               long[] barStart, long opening) {
         // Absent for a language with no patterns, and for the "und" a lyric file
         // carries until something establishes one -- then a word stays whole,
         // which is what the page did before syllables were split at all.
         Optional<Hyphenator> hyphenator = Hyphenator.forLanguage(score.lyrics().language());
         List<Lane> lanes = new ArrayList<>();
         for (int i = 0; i < LANES; i++) {
-            lanes.add(new Lane());
+            lanes.add(new Lane(opening));
         }
         long chartEnd = barStart[bars.size()];
         for (LyricLine line : score.lyrics().lines()) {

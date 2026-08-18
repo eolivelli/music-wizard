@@ -131,6 +131,44 @@ class LeadSheetTest {
         return Quantizer.quantize(score);
     }
 
+    /**
+     * A melody entering on beat four, with words under it, the first of them
+     * sung at {@code firstWordBeat}.
+     *
+     * <p>The pair the defect needed and no fixture had (#601): a staff that
+     * opens with a pickup and a lyric lane that has to open with it. The first
+     * word's beat is the parameter because a word sung inside the pickup and a
+     * word sung before the staff enters are the two cases the opening decides
+     * between.
+     */
+    private static QuantizedScore withPickupAndLyrics(double firstWordBeat) {
+        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(map, 3, 1, "G4"),
+                note(map, 4, 4, "C5"),
+                note(map, 8, 4, "E5"),
+                note(map, 12, 4, "D5")), Confidence.CERTAIN);
+        String[] sung = {"one", "two", "three", "four"};
+        double[] at = {firstWordBeat, 4, 8, 12};
+        double[] until = {4, 8, 12, 16};
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < sung.length; i++) {
+            words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(at[i]),
+                    map.beatsToSeconds(until[i]), Confidence.CERTAIN));
+        }
+        Score score = Score.empty(map, 16 / (QUARTER_BPM / 60))
+                .withTrack(voice)
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 4),
+                        chord(map, "F4", ChordQuality.MAJOR, 4, 8),
+                        chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12),
+                        chord(map, "C4", ChordQuality.MAJOR, 12, 16)),
+                        Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+        return Quantizer.quantize(score);
+    }
+
     /** A position or length of {@code steps} triplet eighths, in quarter beats. */
     private static double thirds(double steps) {
         return steps / 3.0;
@@ -165,6 +203,24 @@ class LeadSheetTest {
             grids.add(new BarGrid(bar, bar * 4.0, perBar[bar], TimeSignature.FOUR_FOUR));
         }
         return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
+    /** The triplet pickup, with words, the first sung on the note that opens it. */
+    private static QuantizedScore withTripletPickupAndLyrics() {
+        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
+        String[] sung = {"sung", "on", "time"};
+        double[] at = {3 + thirds(1), 4, 8};
+        double[] until = {4, 8, 12};
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < sung.length; i++) {
+            words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(at[i]),
+                    map.beatsToSeconds(until[i]), Confidence.CERTAIN));
+        }
+        QuantizedScore quantized = withTripletPickup();
+        return new QuantizedScore(quantized.score().withLyrics(
+                new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN)),
+                quantized.grids(), quantized.swing());
     }
 
     private static NoteTrack melodyOf(QuantizedScore quantized) {
@@ -302,6 +358,73 @@ class LeadSheetTest {
         assertThat(context(source, "\\new Lyrics"))
                 .contains("\\override VerticalAxisGroup.staff-affinity = #UP");
         assertThat(source).contains("\\lyricmode");
+    }
+
+    @Test
+    @DisplayName("opens the words on the same bar the staff's pickup opens")
+    void lyricsHonourThePickup() {
+        QuantizedScore quantized = withPickupAndLyrics(3);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Staff")).contains("\\partial 4");
+        assertThat(barsOf(context(source, "\\new Lyrics")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .as("the words' first bar must fill the pickup and no more")
+                .isEqualTo("\"one\"4");
+        assertThat(barsOf(context(source, "\\new Lyrics")))
+                .hasSameSizeAs(barsOf(context(source, "\\new Staff")));
+    }
+
+    @Test
+    @DisplayName("keeps a word sung before the staff enters, on the pickup")
+    void aWordBeforeThePickupIsPushedIntoIt() {
+        QuantizedScore quantized = withPickupAndLyrics(1);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        // A syllable is an event, so it cannot be cut the way the chord names
+        // cut a chord that was already sounding: the page is sung from.
+        assertThat(barsOf(context(source, "\\new Lyrics")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .isEqualTo("\"one\"4");
+    }
+
+    @Test
+    @DisplayName("pays a pickup no number of 64ths can write with a leading rest")
+    void lyricsFollowATripletPickup() {
+        QuantizedScore quantized = withTripletPickupAndLyrics();
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        // The lane opens on the nearest grid unit inside the pickup and a
+        // leading rest pays the rest of it, the two summing to the \partial.
+        assertThat(context(source, "\\new Staff")).contains("\\partial 1*1/6");
+        assertThat(barsOf(context(source, "\\new Lyrics")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .isEqualTo("\\skip 1*1/96 \"sung\"1*5/32");
+    }
+
+    @Test
+    @DisplayName("leaves a lead sheet with no pickup alone")
+    void lyricsWithoutAPickupOpenOnBarOne() {
+        QuantizedScore quantized = withLyrics();
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Staff")).doesNotContain("\\partial");
+        assertThat(barsOf(context(source, "\\new Lyrics")))
+                .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .isEqualTo("\"one\"2 \"two\"2");
+    }
+
+    @Test
+    @DisplayName("the whole page, so the three lanes can be read against each other")
+    void theWholePageWithAPickupAndWords() {
+        QuantizedScore quantized = withPickupAndLyrics(3);
+
+        Goldens.assertGolden("lead-sheet-pickup-lyrics",
+                LeadSheet.toLilyPond(quantized, melodyOf(quantized)));
     }
 
     @Test
