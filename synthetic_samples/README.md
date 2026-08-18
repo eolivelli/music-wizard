@@ -67,6 +67,27 @@ can show here is the rest of the grid: in particular the `Am7` bars, which
 carry the same four pitch classes as the `C6` ones and are nameable, and the
 plain `Em` triad.
 
+**Four packages, two pairs, and the pairing is what they are for.**
+`pop-sus-a-104` states the suspensions — which *replace* the third rather than
+adding a note to the triad — and `pop-add9-g-96` states the added ninth, which
+keeps it. Each has a twin, `pop-sus-triads-a-104` and `pop-add9-triads-g-96`,
+carrying a plain triad in every coloured slot on the same tempo, key, seed and
+form. Without the twin a colour read as a triad cannot be told from a triad
+reported because nothing said not to, which is what #273 records the
+plain-triad benchmark being needed for. #600 is the gap they were built to
+decide, and #606 to #609 carry what MW names for each.
+
+**Only the add9 pair is a minimal pair.** Both pairs share their drums and
+bass note for note, and the add9 twins' comping is the same voicing bar for
+bar with the ninth taken out. The sus twins' is not: the arranger voices each
+chord nearest the one before it, so the register a package reaches depends on
+its own history, and the suspended bars carry it forward — some of the bars
+the two grids state alike are voiced differently (#611). Their rows are not
+comparable on quality until that voicing is a function of the chord rather
+than of history. Each package's own row stands, and what these four were built
+to show is per package anyway: every suspended and every added-ninth bar is
+named as its plain triad.
+
 Regenerate a package with:
 
 ```sh

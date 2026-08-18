@@ -36,6 +36,9 @@ class ChordSymbolTest {
             "Cm6,  0,  MINOR_SIXTH",
             "Bm7b5, 11, HALF_DIMINISHED",
             "Ebdim, 3, DIMINISHED",
+            "Asus4, 9, SUSPENDED_FOURTH",
+            "Dsus2, 2, SUSPENDED_SECOND",
+            "Cadd9, 0, ADDED_NINTH",
     })
     void parsesTheGridShorthand(String token, int rootPc, ChordSymbol.Quality quality) {
         ChordSymbol chord = ChordSymbol.parse(token);
@@ -51,12 +54,24 @@ class ChordSymbolTest {
     }
 
     /**
+     * The suspension replaces the third and the added ninth keeps it: the whole
+     * difference the packages of #600 are built to state.
+     */
+    @Test
+    void aSuspensionDropsTheThirdAndAnAddedNinthKeepsIt() {
+        assertThat(ChordSymbol.parse("Asus4").pitchClasses()).containsExactly(9, 2, 4);
+        assertThat(ChordSymbol.parse("Dsus2").pitchClasses()).containsExactly(2, 4, 9);
+        assertThat(ChordSymbol.parse("Cadd9").pitchClasses()).containsExactly(0, 4, 7, 2);
+    }
+
+    /**
      * A quality the grid cannot spell must fail the token, not fall through to
      * the pattern's empty alternative: a silent fall-through would compile a
      * spec's stated quality into a plain major triad and call it ground truth.
      */
     @ParameterizedTest
-    @CsvSource({"H", "Cx", "Cmin", "C/E", "c", "''", "C9", "Cadd4", "Cmaj9", "C69"})
+    @CsvSource({"H", "Cx", "Cmin", "C/E", "c", "''", "C9", "Cadd4", "Cmaj9", "C69",
+            "Csus", "C9sus4", "Cadd9b5"})
     void refusesWhatTheShorthandCannotSpell(String token) {
         assertThatThrownBy(() -> ChordSymbol.parse(token))
                 .isInstanceOf(IllegalArgumentException.class);

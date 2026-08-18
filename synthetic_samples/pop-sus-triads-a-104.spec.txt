@@ -1,0 +1,29 @@
+title: Pop-rock in A - the plain triads under pop-sus-a-104
+genre: pop
+style: pop-rock
+tempo: 104
+key: A major
+seed: 41
+melody: none
+accompaniment: full
+bars:
+# The control half of the pair: pop-sus-a-104 with a plain triad wherever it
+# suspends, on the same tempo, key, seed and form, and with the same drums and
+# bass note for note. The comping is where they part: the arranger voices each
+# chord nearest the one before it, so the suspended bars carry the register
+# forward and some of the bars the two grids state alike are voiced
+# differently (#611). Until that is a function of the chord rather than of
+# history, the two rows are not comparable on quality - what this grid says on
+# its own is what one plain-triad reading of this arrangement is worth (#600).
+# A
+A A A A
+D D E E
+# B
+D D A A
+Bm Bm E A
+# A again
+A A A A
+D D E E
+# B again
+D D A A
+Bm Bm E A

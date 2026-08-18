@@ -1,0 +1,29 @@
+title: Pop-rock in G - the added ninth on I, IV and V
+genre: pop
+style: pop-rock
+tempo: 96
+key: G major
+seed: 44
+melody: none
+accompaniment: full
+bars:
+# The added ninth keeps the third and adds the second degree beside it, and is
+# ordinary vocabulary on the I and the IV of a guitar band. ChordQuality has
+# no constant for it at all (#600), so the root+quality column cannot credit
+# an add9 bar however well it is read; what those bars can show is which triad
+# MW names instead, and whether the ninth moves the root.
+# pop-add9-triads-g-96 is the same spec with the plain triad in every coloured
+# slot, voiced bar for bar as this one with the ninth taken out, so the two
+# rows are comparable.
+# A: the ninth on I and IV, then the same I plain and a half cadence on V
+Gadd9 Gadd9 Cadd9 Cadd9
+G G D D
+# B: vi-IV, then I and the ninth on V into an authentic cadence
+Em Em Cadd9 Cadd9
+G G Dadd9 G
+# A again
+Gadd9 Gadd9 Cadd9 Cadd9
+G G D D
+# B again
+Em Em Cadd9 Cadd9
+G G Dadd9 G
