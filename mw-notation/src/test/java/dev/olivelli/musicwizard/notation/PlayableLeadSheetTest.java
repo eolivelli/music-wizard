@@ -37,15 +37,8 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -63,8 +56,6 @@ import org.junit.jupiter.api.Test;
  */
 class PlayableLeadSheetTest {
 
-    private static final String UPDATE_PROPERTY = "mw.golden.update";
-
     private static final double QUARTER_BPM = 120;
 
     @Test
@@ -72,7 +63,7 @@ class PlayableLeadSheetTest {
     void theEstimate() {
         QuantizedScore quantized = Quantizer.quantize(scooped());
 
-        assertGolden("lead-sheet-estimate",
+        Goldens.assertGolden("lead-sheet-estimate",
                 LeadSheet.toLilyPond(quantized, melodyOf(quantized)));
     }
 
@@ -83,7 +74,7 @@ class PlayableLeadSheetTest {
         QuantizedScore quantized =
                 Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
 
-        assertGolden("lead-sheet-playable",
+        Goldens.assertGolden("lead-sheet-playable",
                 LeadSheet.toLilyPond(quantized, melodyOf(quantized)));
     }
 
@@ -195,60 +186,5 @@ class PlayableLeadSheetTest {
         int next = source.indexOf("  \\new ", from + opening.length());
         int end = next >= 0 ? next : source.indexOf("  >>", from);
         return source.substring(from, end < 0 ? source.length() : end);
-    }
-
-    /**
-     * Compares generated LilyPond against its golden file.
-     *
-     * <p>The same contract as {@code StaffNotationTest}'s: {@code
-     * -Dmw.golden.update=true} rewrites the file from the source tree Maven
-     * passes as {@code -Dbasedir}, and the run that does it is expected to read
-     * the diff, because the comparison it would have failed is the one the flag
-     * suppressed.
-     */
-    private static void assertGolden(String name, String actual) {
-        if (Boolean.getBoolean(UPDATE_PROPERTY)) {
-            Path target = goldenDirectory()
-                    .orElseThrow(() -> new AssertionError(UPDATE_PROPERTY
-                            + " needs the module directory, which Maven passes as -Dbasedir"))
-                    .resolve(name + ".ly");
-            try {
-                Files.writeString(target, actual);
-            } catch (IOException e) {
-                throw new UncheckedIOException("could not update golden " + name, e);
-            }
-            System.err.println("updated golden file " + target);
-        }
-        assertThat(actual).isEqualTo(readGolden(name));
-    }
-
-    private static String readGolden(String name) {
-        Optional<Path> onDisk = goldenDirectory().map(dir -> dir.resolve(name + ".ly"))
-                .filter(Files::isRegularFile);
-        if (onDisk.isPresent()) {
-            try {
-                return Files.readString(onDisk.get());
-            } catch (IOException e) {
-                throw new UncheckedIOException("could not read golden " + name, e);
-            }
-        }
-        try (InputStream in = PlayableLeadSheetTest.class
-                .getResourceAsStream("/golden/" + name + ".ly")) {
-            if (in == null) {
-                throw new AssertionError("no golden file for " + name);
-            }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not read golden " + name, e);
-        }
-    }
-
-    private static Optional<Path> goldenDirectory() {
-        String basedir = System.getProperty("basedir", System.getProperty("user.dir"));
-        if (basedir == null) {
-            return Optional.empty();
-        }
-        Path directory = Path.of(basedir, "src", "test", "resources", "golden");
-        return Files.isDirectory(directory) ? Optional.of(directory) : Optional.empty();
     }
 }

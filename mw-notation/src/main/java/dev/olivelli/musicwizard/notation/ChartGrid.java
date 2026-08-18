@@ -33,6 +33,12 @@ final class ChartGrid {
     /** The grid a lane is placed on: the shortest value a duration can name. */
     static final double UNIT = LilyPondDuration.SHORTEST_QUARTERS;
 
+    /**
+     * Grid units in a whole note, which is what a pickup's exact fraction is of
+     * — so a pickup and a lane position can be compared without a double.
+     */
+    static final long UNITS_PER_WHOLE = LilyPondDuration.SHORTEST_DENOMINATOR;
+
     private ChartGrid() {
     }
 
@@ -71,5 +77,10 @@ final class ChartGrid {
     /** A rest of {@code units} grid steps, for the gap before the next mark. */
     static String skip(long units) {
         return "\\skip " + LilyPondDuration.scaled(units * UNIT);
+    }
+
+    /** The same, for a length off the grid, as an exact fraction of a whole note. */
+    static String skip(long wholeNoteNumerator, long wholeNoteDenominator) {
+        return "\\skip " + LilyPondDuration.scaled(wholeNoteNumerator, wholeNoteDenominator);
     }
 }

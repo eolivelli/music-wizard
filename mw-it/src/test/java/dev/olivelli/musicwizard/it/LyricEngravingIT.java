@@ -20,6 +20,10 @@ import static dev.olivelli.musicwizard.it.LilyPondComplaints.assertEngravedClean
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.Chord;
@@ -30,11 +34,15 @@ import dev.olivelli.musicwizard.core.model.LrcLyrics;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
+import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.notation.LeadSheet;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import dev.olivelli.musicwizard.notation.LyricSheet;
 
@@ -230,6 +238,93 @@ class LyricEngravingIT {
                 .withMetadata("Quantized", "Tester");
         return score.withLyrics(LrcLyrics.parse(
                 "[00:00.00]<00:00.00>on <00:01.00>the <00:02.50>beat <00:05.00>axis\n", 8.0));
+    }
+
+    /**
+     * A melody entering late enough for a pickup, with words under it, on a
+     * grid of {@code resolution}.
+     *
+     * <p>The grid is stated rather than quantized so that the triplet case is
+     * the triplet case whatever the quantizer decides this week, which is how
+     * {@code LeadSheetTest} states its own.
+     *
+     * @param entryBeat where the melody comes in, which is what the pickup is
+     * @param wordBeats where each word is sung, which need not begin with the
+     *                  melody
+     */
+    private static QuantizedScore sungFromAPickup(double entryBeat, double[] wordBeats,
+                                                  GridResolution resolution) {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                sungNote(map, entryBeat, 4 - entryBeat), sungNote(map, 4, 4),
+                sungNote(map, 8, 4), sungNote(map, 12, 4)), Confidence.CERTAIN);
+        String[] sung = {"Hal", "le", "lu", "jah"};
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < sung.length; i++) {
+            double until = i + 1 < sung.length ? wordBeats[i + 1] : 16;
+            words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(wordBeats[i]),
+                            map.beatsToSeconds(until), Confidence.CERTAIN)
+                    .withHyphenToNext(i + 1 < sung.length));
+        }
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.F, NoteLetter.G, NoteLetter.C};
+        for (int i = 0; i < 4; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    map.beatsToSeconds(i * 4), map.beatsToSeconds(i * 4 + 4), Confidence.of(0.9)));
+        }
+        Score score = Score.empty(map, map.beatsToSeconds(16))
+                .withTrack(voice)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN))
+                .withMetadata("Pickup", "Tester");
+        List<BarGrid> grids = new ArrayList<>();
+        for (int bar = 0; bar < 4; bar++) {
+            grids.add(new BarGrid(bar, bar * 4.0, resolution, TimeSignature.FOUR_FOUR));
+        }
+        return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
+    private static Note sungNote(TempoMap map, double onsetBeat, double beats) {
+        return Note.ofSeconds(map.beatsToSeconds(onsetBeat),
+                        map.beatsToSeconds(onsetBeat + beats) - map.beatsToSeconds(onsetBeat),
+                        67, Confidence.CERTAIN)
+                .quantizedTo(onsetBeat, beats);
+    }
+
+    static Stream<Arguments> leadSheets() {
+        return Stream.of(
+                // A pickup the grid can name exactly.
+                Arguments.of("pickup",
+                        sungFromAPickup(3, new double[] {3, 4, 8, 12}, GridResolution.BEAT)),
+                // One it cannot, which is what entering inside a triplet gives.
+                Arguments.of("triplet-pickup",
+                        sungFromAPickup(3 + 1 / 3.0, new double[] {3 + 1 / 3.0, 4, 8, 12},
+                                GridResolution.THIRD_BEAT)),
+                // Words sung before the staff enters, which the lane pushes onto
+                // the pickup rather than dropping -- a hyphen chain among them,
+                // since a syllable pushed off the page leaves its partner's
+                // hyphen unterminated.
+                Arguments.of("words-before-the-pickup",
+                        sungFromAPickup(3.5, new double[] {0.5, 1.5, 2.5, 3.5},
+                                GridResolution.HALF_BEAT)));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("leadSheets")
+    @DisplayName("a lead sheet's words open on the staff's pickup")
+    void everyLeadSheetBarSumsToWhatOpensIt(String name, QuantizedScore quantized) {
+        Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
+        assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
+        NoteTrack melody = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
+
+        LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
+                .renderSource(tempDirectory.resolve(name + "/lead.ly"),
+                        LeadSheet.toLilyPond(quantized, melody));
+
+        assertThat(result.failedBarChecks()).as("%s", result.output()).isEmpty();
+        assertEngravedCleanly(name, result);
+        assertThat(result.pdf()).isPresent();
     }
 
     @ParameterizedTest(name = "{0}")
