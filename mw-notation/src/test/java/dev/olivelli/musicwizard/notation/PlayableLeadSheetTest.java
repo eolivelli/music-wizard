@@ -88,6 +88,25 @@ class PlayableLeadSheetTest {
     }
 
     @Test
+    @DisplayName("touches the staff and nothing else on the page")
+    void onlyTheStaffMoves() {
+        Score score = scooped();
+        String estimate = LeadSheet.toLilyPond(
+                Quantizer.quantize(score), melodyOf(Quantizer.quantize(score)));
+        QuantizedScore reduced =
+                Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
+
+        String playable = LeadSheet.toLilyPond(reduced, melodyOf(reduced));
+
+        assertThat(context(playable, "\\new ChordNames"))
+                .isEqualTo(context(estimate, "\\new ChordNames"));
+        assertThat(context(playable, "\\new Lyrics"))
+                .isEqualTo(context(estimate, "\\new Lyrics"));
+        assertThat(context(playable, "\\new Staff"))
+                .isNotEqualTo(context(estimate, "\\new Staff"));
+    }
+
+    @Test
     @DisplayName("the staff says which of the two pages it is")
     void theStaffIsNamed() {
         Score score = scooped();
@@ -157,6 +176,15 @@ class PlayableLeadSheetTest {
 
     private static NoteTrack melodyOf(QuantizedScore quantized) {
         return quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
+    }
+
+    /** One context of the score, from its opening line to the next one's. */
+    private static String context(String source, String opening) {
+        int from = source.indexOf(opening);
+        assertThat(from).as("no %s in the source", opening).isNotNegative();
+        int next = source.indexOf("  \\new ", from + opening.length());
+        int end = next >= 0 ? next : source.indexOf("  >>", from);
+        return source.substring(from, end < 0 ? source.length() : end);
     }
 
     /**
