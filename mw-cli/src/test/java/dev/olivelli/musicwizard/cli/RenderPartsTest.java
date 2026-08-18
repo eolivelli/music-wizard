@@ -151,7 +151,7 @@ class RenderPartsTest {
     class PartsLine {
 
         @Test
-        @DisplayName("defaults to what is implemented, not to what is planned")
+        @DisplayName("defaults to what it can produce unasked, not to what is planned")
         void defaultsToTheImplementedParts() {
             Path workspace = audioWorkspace("song", fourChords());
 

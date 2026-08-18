@@ -67,20 +67,20 @@ import picocli.CommandLine.Spec;
  * then write only the chord files, with exit status 0 — so a user could not tell
  * whether three parts had failed, been skipped, or never existed. Bass and piano
  * are still M2 and M4 work; a part that cannot be produced is named along with
- * the reason, exactly as a missing engraver is. The default is therefore what is
- * actually implemented, and naming an unimplemented part explicitly is answered
- * rather than ignored.
+ * the reason, exactly as a missing engraver is. The default is therefore what
+ * this command can produce without being asked, and naming an unimplemented
+ * part explicitly is answered rather than ignored.
  *
- * <p>The two melody parts are implemented and can still be unavailable, which
- * is the distinction the reason strings carry: {@code lead} and {@code voice}
- * have code to run, and nothing to run it on unless the score was analysed with
- * {@code --melody}. That is a property of the score rather than of this build,
- * and it is answered from the score like every other reason here.
+ * <p>A part can be implemented and still be unavailable, which is the
+ * distinction the reason strings carry: a melody part has code to run and
+ * nothing to run it on unless the score was analysed with {@code --melody}.
+ * That is a property of the score rather than of this build, and it is
+ * answered from the score like every other reason here.
  *
  * <p>Non-zero exit is reserved for producing <em>nothing at all</em>. Writing
- * three parts of four is a partial success and the command says which three; a
- * run that wrote nothing has failed at the only thing it was asked to do, and a
- * script chaining {@code render} needs to be able to tell.
+ * some of the parts asked for is a partial success and the command says which;
+ * a run that wrote nothing has failed at the only thing it was asked to do,
+ * and a script chaining {@code render} needs to be able to tell.
  *
  * <p>A file that was written and is <em>wrong</em> falls under the same rule,
  * and that is #156. LilyPond treats a bar that does not fill its meter as a

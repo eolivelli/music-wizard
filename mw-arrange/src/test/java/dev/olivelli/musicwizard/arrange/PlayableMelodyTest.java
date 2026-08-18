@@ -91,9 +91,6 @@ class PlayableMelodyTest {
         @Test
         @DisplayName("but its ornaments are still ornaments")
         void aMelismaIsNotExemptFromTheOrnamentRule() {
-            // What the exemption means, exactly: the melisma's notes are not
-            // one note-head, they are grouped by the weaker rule instead. A
-            // scoop inside a held syllable is decoration wherever it sits.
             Score score = sung(
                     notes(note(0.0, 0.1, 60), note(0.1, 0.9, 64)),
                     line(word("aaah", 0.0, 1.0).withMelisma(true)));

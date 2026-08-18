@@ -57,9 +57,9 @@ degrades in silence without each.
 
 ## Rendering
 
-`render` defaults to the parts that are implemented — the chord chart, the
-chords-and-lyrics sheet, and, when the score was analysed with `--melody`,
-the lead sheet and the melody staff. `--parts playable` adds a second lead
+`render` defaults to the parts it can produce without being asked — the chord
+chart, the chords-and-lyrics sheet, and, when the score was analysed with
+`--melody`, the lead sheet and the melody staff. `--parts playable` adds a second lead
 sheet whose melody has been reduced to what a player reads; it is written
 only when named, being an arrangement of MW's estimate rather than a reading
 of the recording. Ask for a part that is not implemented (`--parts piano`),
