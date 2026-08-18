@@ -12,8 +12,11 @@ bars:
 # (#600). This package states it the way a guitar band plays it: the sus4 for
 # a bar, its resolution the next, on the tonic and on both its neighbours.
 # pop-sus-triads-a-104 is the same spec with the plain triad in every
-# suspended slot - same tempo, same seed, same band - so a reading that
-# differs between the two differs because of the shape and nothing else.
+# suspended slot, and its drums and bass are note-for-note this package's.
+# Its comping is not: the arranger voices each chord nearest the one before
+# it, so from the first sus2 onward the two grids voice their shared bars at
+# different pitches (#611). The two rows are therefore not comparable on
+# quality; each package's own row stands.
 # ChordQuality holds both suspensions; whether either can be decoded and
 # ranked is the open question.
 # A: sus4 into its triad on I and IV, then on V - half cadence

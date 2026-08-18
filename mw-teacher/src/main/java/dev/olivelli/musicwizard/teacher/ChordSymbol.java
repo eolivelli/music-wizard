@@ -46,7 +46,7 @@ public record ChordSymbol(String token, int rootPitchClass, Quality quality) {
         DIMINISHED("dim", 0, 3, 6),
         SUSPENDED_FOURTH("sus4", 0, 5, 7),
         SUSPENDED_SECOND("sus2", 0, 2, 7),
-        ADDED_NINTH("add9", 0, 4, 7, 14);
+        ADDED_NINTH("add9", 0, 4, 7, 2);
 
         private final String suffix;
         private final int[] intervals;
