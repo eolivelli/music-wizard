@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.cli;
 
 import dev.olivelli.musicwizard.arrange.ChordSpeller;
 import dev.olivelli.musicwizard.arrange.PitchSpeller;
+import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.arrange.Transposer;
@@ -66,20 +67,19 @@ import picocli.CommandLine.Spec;
  * then write only the chord files, with exit status 0 — so a user could not tell
  * whether three parts had failed, been skipped, or never existed. Bass and piano
  * are still M2 and M4 work; a part that cannot be produced is named along with
- * the reason, exactly as a missing engraver is. The default is therefore what is
- * actually implemented, and naming an unimplemented part explicitly is answered
- * rather than ignored.
+ * the reason, exactly as a missing engraver is, and naming an unimplemented
+ * part explicitly is answered rather than ignored.
  *
- * <p>The two melody parts are implemented and can still be unavailable, which
- * is the distinction the reason strings carry: {@code lead} and {@code voice}
- * have code to run, and nothing to run it on unless the score was analysed with
- * {@code --melody}. That is a property of the score rather than of this build,
- * and it is answered from the score like every other reason here.
+ * <p>A part can be implemented and still be unavailable, which is the
+ * distinction the reason strings carry: a melody part has code to run and
+ * nothing to run it on unless the score was analysed with {@code --melody}.
+ * That is a property of the score rather than of this build, and it is
+ * answered from the score like every other reason here.
  *
  * <p>Non-zero exit is reserved for producing <em>nothing at all</em>. Writing
- * three parts of four is a partial success and the command says which three; a
- * run that wrote nothing has failed at the only thing it was asked to do, and a
- * script chaining {@code render} needs to be able to tell.
+ * some of the parts asked for is a partial success and the command says which;
+ * a run that wrote nothing has failed at the only thing it was asked to do,
+ * and a script chaining {@code render} needs to be able to tell.
  *
  * <p>A file that was written and is <em>wrong</em> falls under the same rule,
  * and that is #156. LilyPond treats a bar that does not fill its meter as a
@@ -118,17 +118,27 @@ final class RenderCommand implements Callable<Integer> {
         LYRICS("lyrics", null, RenderCommand::writeLyricSheet),
         LEAD("lead", null, RenderCommand::writeLeadSheet),
         VOICE("voice", null, RenderCommand::writeVoicePart),
+        // Asked for by name or not written. It is an arrangement of MW's own
+        // estimate rather than a reading of the recording (#592), so a run that
+        // did not ask for one gets the same files it always did.
+        PLAYABLE("playable", null, RenderCommand::writePlayableLeadSheet, false),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
 
         private final String partName;
         private final String notImplemented;
         private final Emitter emitter;
+        private final boolean writtenByDefault;
 
         Part(String partName, String notImplemented, Emitter emitter) {
+            this(partName, notImplemented, emitter, true);
+        }
+
+        Part(String partName, String notImplemented, Emitter emitter, boolean writtenByDefault) {
             this.partName = partName;
             this.notImplemented = notImplemented;
             this.emitter = emitter;
+            this.writtenByDefault = writtenByDefault;
         }
 
         String partName() {
@@ -199,9 +209,9 @@ final class RenderCommand implements Callable<Integer> {
                         + " LRC file, or with --lyrics-language alone to ask for"
                         + " transcription";
             }
-            // Both melody parts, gated on the same absence and worded the same
+            // Every melody part, gated on the same absence and worded the same
             // way: a score analysed without --melody carries no note track, and
-            // a user who asked for either output wants the same instruction back.
+            // a user who asked for any of them wants the same instruction back.
             //
             // Naming no source kind, for the reason the harmony case names none:
             // this method may only read the score. The pointer is to the option
@@ -209,7 +219,7 @@ final class RenderCommand implements Callable<Integer> {
             // was advice this command cannot keep, since on a MIDI workspace the
             // flag does nothing and no melody role is ever assigned (#500).
             // analyze says so where the source kind is known.
-            if ((this == LEAD || this == VOICE)
+            if ((this == LEAD || this == VOICE || this == PLAYABLE)
                     && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
                 return "this score holds no melody part; see --melody on analyze";
             }
@@ -228,6 +238,11 @@ final class RenderCommand implements Callable<Integer> {
 
         static List<Part> implemented() {
             return java.util.Arrays.stream(values()).filter(Part::isImplemented).toList();
+        }
+
+        /** What an unqualified run writes: everything implemented that is not opt-in. */
+        static List<Part> byDefault() {
+            return implemented().stream().filter(part -> part.writtenByDefault).toList();
         }
     }
 
@@ -264,11 +279,13 @@ final class RenderCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
-            description = "Which parts to render: chords, lyrics, lead, voice, bass, "
-                    + "piano. The lead sheet and the voice staff need a score analysed "
-                    + "with --melody; bass and piano cannot be produced at all yet, and "
-                    + "naming any part reports why it cannot be produced. Defaults to "
-                    + "every part that is implemented.")
+            description = "Which parts to render: chords, lyrics, lead, voice, playable, "
+                    + "bass, piano. The lead sheet, the voice staff and the playable lead "
+                    + "sheet need a score analysed with --melody; bass and piano cannot be "
+                    + "produced at all yet, and naming any part reports why it cannot be "
+                    + "produced. Defaults to every part that is implemented except "
+                    + "playable, which is an arrangement of the melody rather than a "
+                    + "reading of it and is written only when asked for.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
@@ -414,13 +431,13 @@ final class RenderCommand implements Callable<Integer> {
     /**
      * The parts to attempt.
      *
-     * <p>Absent rather than a four-name default, so that "the user asked for
+     * <p>Absent rather than a named default, so that "the user asked for
      * everything that works" and "the user asked for piano" stay distinguishable:
      * the second deserves an answer about piano and the first does not.
      */
     private List<Part> requestedParts() {
         if (parts == null) {
-            return Part.implemented();
+            return Part.byDefault();
         }
         // Ordered and de-duplicated: --parts chords,chords should not write the
         // chart twice, and the order the user typed is the order to report in.
@@ -539,6 +556,21 @@ final class RenderCommand implements Callable<Integer> {
                 (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
     }
 
+    /**
+     * Writes the lead sheet again, with the melody reduced to what a player reads.
+     *
+     * <p>The reduction is handed to the engraver in a copy of the score, in the
+     * melody's own role, because that is how a staff writer is told what to
+     * print. Nothing else sees it: the workspace's transcription is untouched,
+     * and {@code lead.pdf} still carries the estimate.
+     */
+    private static Emitted writePlayableLeadSheet(
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
+        return writeStaffOutput(workspace, score.withTrack(PlayableMelody.reduce(score)),
+                lilypond, "lead-playable",
+                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+    }
+
     /** Writes the melody on a staff of its own, with no chords and no words. */
     private static Emitted writeVoicePart(
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
@@ -546,7 +578,7 @@ final class RenderCommand implements Callable<Integer> {
                 (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody));
     }
 
-    /** What the two melody outputs share: quantize, spell, write, engrave. */
+    /** What the melody outputs share: quantize, spell, write, engrave. */
     private static Emitted writeStaffOutput(Workspace workspace, Score score,
             Optional<Path> lilypond, String name,
             BiFunction<QuantizedScore, NoteTrack, String> engraving) {

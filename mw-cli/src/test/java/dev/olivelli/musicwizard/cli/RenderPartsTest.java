@@ -112,6 +112,32 @@ class RenderPartsTest {
         return root;
     }
 
+    /**
+     * A workspace whose score holds a sung melody: two syllables, and a scoop
+     * into each of them for the reduction to have something to take out.
+     */
+    private Path sungWorkspace(String name) {
+        List<Note> notes = List.of(
+                Note.ofSeconds(0.0, 0.25, 64, Confidence.CERTAIN),
+                Note.ofSeconds(0.25, 0.25, 65, Confidence.CERTAIN),
+                Note.ofSeconds(0.5, 0.5, 67, Confidence.CERTAIN),
+                Note.ofSeconds(1.0, 0.25, 69, Confidence.CERTAIN),
+                Note.ofSeconds(1.25, 0.75, 72, Confidence.CERTAIN));
+        List<dev.olivelli.musicwizard.core.model.LyricWord> words = List.of(
+                dev.olivelli.musicwizard.core.model.LyricWord.ofSeconds(
+                        "one", 0.0, 1.0, Confidence.CERTAIN),
+                dev.olivelli.musicwizard.core.model.LyricWord.ofSeconds(
+                        "two", 1.0, 2.0, Confidence.CERTAIN));
+        Path root = workspaceWith(name, fourChords(), List.of(
+                new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN)));
+        Workspace workspace = Workspace.open(root);
+        workspace.writeScore(workspace.readScore().orElseThrow().withLyrics(
+                new dev.olivelli.musicwizard.core.model.Lyrics(
+                        List.of(new dev.olivelli.musicwizard.core.model.LyricLine(
+                                words, Confidence.CERTAIN)), "en", Confidence.CERTAIN)));
+        return root;
+    }
+
     /** One part's worth of notes, so a score can hold notes and no harmony. */
     private static NoteTrack aPart(String name) {
         return new NoteTrack(PartRole.OTHER, name,
@@ -125,7 +151,7 @@ class RenderPartsTest {
     class PartsLine {
 
         @Test
-        @DisplayName("defaults to what is implemented, not to what is planned")
+        @DisplayName("names the parts it will attempt, not the ones the epic plans")
         void defaultsToTheImplementedParts() {
             Path workspace = audioWorkspace("song", fourChords());
 
@@ -327,6 +353,69 @@ class RenderPartsTest {
                     .isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out()).contains("Nothing could be written.");
             assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
+        }
+    }
+
+    @Nested
+    @DisplayName("the playable part")
+    class Playable {
+
+        @Test
+        @DisplayName("is not written unless it is asked for")
+        void optInOnly() {
+            Path workspace = sungWorkspace("opt-in");
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.out()).doesNotContain("playable");
+            assertThat(workspace.resolve("out/lead.ly")).exists();
+            assertThat(workspace.resolve("out/lead-playable.ly")).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("is a second page beside the estimate's, not a replacement for it")
+        void besideTheEstimate() {
+            Path workspace = sungWorkspace("beside");
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead,playable", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(noteHeads(workspace.resolve("out/lead-playable.ly")))
+                    .as("the reduced page prints fewer note-heads than the estimate's")
+                    .isLessThan(noteHeads(workspace.resolve("out/lead.ly")));
+            // The saved transcription is the estimate and stays the estimate:
+            // every melody baseline scores that track.
+            assertThat(Workspace.open(workspace).readScore().orElseThrow()
+                    .track(PartRole.LEAD_VOCAL).orElseThrow().size()).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("needs a melody for the same reason the other two do")
+        void needsAMelody() {
+            Path workspace = audioWorkspace("silent", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "chords,playable", "--no-pdf");
+
+            assertThat(render.out()).contains("playable this score holds no melody part;"
+                    + " see --melody on analyze");
+        }
+
+        /** Note-heads, counted as the pitch letters the staff block writes. */
+        private long noteHeads(Path lilyPond) {
+            String staff;
+            try {
+                String source = java.nio.file.Files.readString(lilyPond);
+                int from = source.indexOf("\\new Staff");
+                staff = source.substring(from, source.indexOf("\\new Lyrics", from));
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+            return java.util.regex.Pattern.compile("(?<![a-z\\\\])[a-g][',]*[0-9]")
+                    .matcher(staff).results().count();
         }
     }
 
