@@ -96,14 +96,18 @@ The vocabulary today: major and minor triads, dominant and minor sevenths,
 and — since the quality decision can ask the NNLS fit whether a candidate's
 distinguishing note is really there (#537, #543) — minor sixths and
 half-diminished sevenths (#547). The two exclusions have two different
-reasons (#287 carries the tables): the *seventh degree* is not
-residual-gated at all, because a flat seventh really played on a real mix
-removes less residual as a share of its root's than a manufactured one does
-on a rendered package, so major sevenths cannot be admitted the way the
-sixth and the diminished fifth were; and the plain sixth's problem is the
-opposite — a boogie shuffle really plays its sixth, so no test of whether
-the note is sounding can help, and telling `A6` from `F#m7` needs evidence
-about which sounding note the chord is built on. The
+reasons (#287 carries the tables). The major seventh *can* be gated on the
+residual as a share of what the root removes, and it still buys nothing: no
+real recording gains a bar, because on both scored recordings whose truth
+holds a major seventh those bars are named on the wrong root and a quality
+decision cannot move one — where they are lost is the decoder (#588). The
+plain sixth's problem is a different one — a boogie shuffle really plays its
+sixth, so no test of whether the note is sounding can help, and telling `A6`
+from `F#m7` needs evidence about which sounding note the chord is built on.
+The *flat* seventh is not gated either, for a third reason: really played on
+a real mix it removes less residual, as a share of its root's, than a
+manufactured one does on a rendered package, so the two populations are
+ordered the wrong way round. The
 constants' sweeps are re-derivable with `tools/ChordSweep.java`; current
 readings live in `tools/baselines/`.
 
