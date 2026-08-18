@@ -82,6 +82,13 @@ decisions that real recordings forced:
   seventh is settled per root across the whole recording — believed where
   most of that root's beats carry it, withdrawn where a minority do — so one
   beat of melody bleed cannot relabel one bar of a vamp.
+- **So is the third** (#558). The tests above leave the third weakest exactly
+  where a run holds no third at all: the major one is discounted for not
+  being in the fit and the minor one only has to clear the noise, so the run
+  is settled by whichever pitch class the mix left something on. Counted
+  across every run on the root instead, a minor third a minority of the
+  root's beats hold is withdrawn. Read one way only, for the same reason the
+  correction above is one-sided, and #581 carries the other.
 
 The vocabulary today: major and minor triads, dominant and minor sevenths,
 and — since the quality decision can ask the NNLS fit whether a candidate's

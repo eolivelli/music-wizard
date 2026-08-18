@@ -481,7 +481,7 @@ public final class ChordEstimator {
                     significance[frame] = runSignificance;
                 }
                 int chosen = bestQuality(sum(qualityChroma, i, j), templates,
-                        start.rootPitchClass(), false, runSignificance);
+                        start.rootPitchClass(), quality -> true, runSignificance);
                 // Nothing explained the run better than a flat chroma would, so
                 // there is nothing here to overrule the decoder with.
                 if (chosen >= 0) {
@@ -492,8 +492,77 @@ public final class ChordEstimator {
             }
             i = j;
         }
+        decideThirdsPerRoot(path, out, templates, qualityChroma, significance);
         decideSeventhsPerRoot(path, out, templates, qualityChroma, significance);
         return out;
+    }
+
+    /**
+     * Share of a root's beats that decides its third for all of them. Only
+     * {@link #decideThirdsPerRoot} reads it, and it is the same definition
+     * {@link #SEVENTH_MUST_HOLD_FOR} is — a half, read strictly, so an even
+     * split leaves each run as it read — rather than a second fitted constant.
+     */
+    private static final double THIRD_MUST_HOLD_FOR = 0.5;
+
+    /**
+     * Withdraws the minor third from every run on a root the recording states a
+     * major third on, in place.
+     *
+     * <p>{@link #decideSeventhsPerRoot}'s prior — a chord recurs, and its
+     * quality belongs to the chord rather than to the bar — read on the third.
+     * The third is the decision the residual instrument leaves weakest: a major
+     * third the fit does not need is discounted ({@link
+     * #PHANTOM_THIRD_SHARE_OF_ROOT}) and a minor third only has to clear the
+     * noise ({@link #MINOR_THIRD_SHARE_OF_ROOT}), so a run holding no third at
+     * all is settled by whichever pitch class the mix happened to leave
+     * something on. Over one run that is a coin toss; over every run on a root
+     * it is a count, and the count is what the recordings of #558 have.
+     *
+     * <p><b>Withdrawal only</b>, where the seventh's rule reads its count both
+     * ways. The two directions are not the same claim: a major third is
+     * manufactured by the root's own fifth partial and a minor third is not, so
+     * a majority of major-third runs can be an artefact of the production while
+     * a majority of minor-third ones cannot. #581 carries the other direction.
+     *
+     * <p>The re-decision is held to {@link #bestQuality}'s floor like every
+     * other, so a run no major-third candidate explains keeps the answer it has.
+     */
+    private static void decideThirdsPerRoot(int[] path, int[] out, List<Template> templates,
+                                            Chroma qualityChroma, double[][] significance) {
+        int[] minorThirds = new int[12];
+        int[] beats = new int[12];
+        for (int state : out) {
+            Template template = templates.get(state);
+            if (template.quality() == ChordQuality.NONE) {
+                continue;
+            }
+            beats[template.rootPitchClass()]++;
+            if (template.quality().isMinorish()) {
+                minorThirds[template.rootPitchClass()]++;
+            }
+        }
+
+        int i = 0;
+        while (i < path.length) {
+            Template start = templates.get(path[i]);
+            int j = i;
+            while (j < path.length && sameChord(templates.get(path[j]), start)) {
+                j++;
+            }
+            int root = templates.get(out[i]).rootPitchClass();
+            if (templates.get(out[i]).quality().isMinorish()
+                    && minorThirds[root] < THIRD_MUST_HOLD_FOR * beats[root]) {
+                int major = bestQuality(sum(qualityChroma, i, j), templates, root,
+                        quality -> !quality.isMinorish(), significance[i]);
+                if (major >= 0) {
+                    for (int frame = i; frame < j; frame++) {
+                        out[frame] = major;
+                    }
+                }
+            }
+            i = j;
+        }
     }
 
     /**
@@ -579,8 +648,8 @@ public final class ChordEstimator {
             ChordQuality quality = templates.get(out[i]).quality();
             if (quality == ChordQuality.MINOR_SEVENTH
                     && sevenths[root] < SEVENTH_MUST_HOLD_FOR * beats[root]) {
-                int fallback = bestQuality(sum(qualityChroma, i, j), templates, root, true,
-                        significance[i]);
+                int fallback = bestQuality(sum(qualityChroma, i, j), templates, root,
+                        triad -> triad.intervals().length == 3, significance[i]);
                 // No triad beat a flat chroma: the decoder's answer stands.
                 for (int frame = i; frame < j; frame++) {
                     out[frame] = fallback >= 0 ? fallback : path[frame];
@@ -650,23 +719,23 @@ public final class ChordEstimator {
      * The best-scoring candidate on {@code root} that also beats a flat chroma,
      * or -1 if none does.
      *
-     * @param triadsOnly whether to leave out of the argmax any quality that is
-     *     not a three-note one. Counted rather than asked of {@link
-     *     ChordQuality#hasSeventh()}, which is declared per constant and is false
-     *     for the sixths — four-note chords that would otherwise slip into a
-     *     fallback whose whole point is to drop back to three, on the day #287
-     *     puts one in the vocabulary. Counting also holds without the
-     *     {@code NONE} clause above it, which has no intervals at all.
+     * @param admissible which qualities the argmax may choose between. A
+     *     fallback that means "drop back to a triad" asks for three notes rather
+     *     than for {@link ChordQuality#hasSeventh()}, which is declared per
+     *     constant and is false for the sixths — four-note chords that would
+     *     otherwise slip through it. Never asked of {@code NONE}, which has no
+     *     intervals at all.
      */
     private static int bestQuality(double[] summed, List<Template> templates, int root,
-                                   boolean triadsOnly, double[] significance) {
+                                   java.util.function.Predicate<ChordQuality> admissible,
+                                   double[] significance) {
         int chosen = -1;
         double best = 0;
         for (int t = 0; t < templates.size(); t++) {
             Template candidate = templates.get(t);
             if (candidate.quality() == ChordQuality.NONE
                     || candidate.rootPitchClass() != root
-                    || (triadsOnly && candidate.quality().intervals().length != 3)) {
+                    || !admissible.test(candidate.quality())) {
                 continue;
             }
             double score = qualityScore(summed, candidate, significance);

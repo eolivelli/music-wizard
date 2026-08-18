@@ -1263,4 +1263,110 @@ class ChordEstimationTest {
             return out;
         }
     }
+    /**
+     * #558: the third decided across every run on a root rather than run by run.
+     *
+     * <p>Three runs of {@code uncommitted/la-canzone-del-sole.mp3}, a recording
+     * confirmed to hold no minor chord: two the estimator reads on A and one it
+     * reads on D, with each run's own chroma in both registers and its own
+     * residual. The second A run is one of the false minors the recording's
+     * harness row counts.
+     */
+    @Nested
+    @DisplayName("the third across a root's runs (#558)")
+    class ThirdPerRoot {
+
+        private static final double[] A_COMBINED = {
+                0.0452, 0.1199, 0.0608, 0.0303, 0.2079, 0.0215,
+                0.0229, 0.0277, 0.0906, 0.3246, 0.0039, 0.0448};
+        private static final double[] A_TREBLE = {
+                0.0449, 0.2054, 0.0882, 0.0391, 0.2444, 0.0355,
+                0.0222, 0.0025, 0.1133, 0.1180, 0.0069, 0.0798};
+        private static final double[] A_BASS = {
+                0.0492, 0.0023, 0.0352, 0.0211, 0.1661, 0.0009,
+                0.0253, 0.0595, 0.0607, 0.5738, 0.0000, 0.0059};
+        private static final double[] A_RESIDUAL = {
+                0.0026, 0.0375, 0.0038, 0.0000, 0.0898, 0.0044,
+                0.0001, 0.0000, 0.0109, 0.2010, 0.0000, 0.0390};
+
+        /** The run that reads minor: its C is under a fiftieth of its A. */
+        private static final double[] MINOR_COMBINED = {
+                0.0257, 0.0567, 0.0375, 0.0161, 0.2639, 0.0239,
+                0.0221, 0.0224, 0.0272, 0.3654, 0.0277, 0.1114};
+        private static final double[] MINOR_TREBLE = {
+                0.0332, 0.0924, 0.0324, 0.0208, 0.3351, 0.0182,
+                0.0308, 0.0138, 0.0447, 0.2434, 0.0292, 0.1061};
+        private static final double[] MINOR_BASS = {
+                0.0137, 0.0039, 0.0465, 0.0087, 0.1531, 0.0335,
+                0.0088, 0.0358, 0.0006, 0.5488, 0.0251, 0.1215};
+        private static final double[] MINOR_RESIDUAL = {
+                0.0447, 0.0120, 0.0001, 0.0000, 0.2831, 0.0000,
+                0.0001, 0.0000, 0.0053, 0.5158, 0.0000, 0.0370};
+
+        private static final double[] D_COMBINED = {
+                0.0086, 0.0591, 0.3431, 0.0066, 0.1145, 0.0093,
+                0.0653, 0.0488, 0.0161, 0.3018, 0.0090, 0.0177};
+        private static final double[] D_TREBLE = {
+                0.0124, 0.0959, 0.2274, 0.0070, 0.1805, 0.0101,
+                0.0903, 0.0080, 0.0103, 0.3371, 0.0115, 0.0094};
+        private static final double[] D_BASS = {
+                0.0034, 0.0065, 0.5007, 0.0070, 0.0284, 0.0084,
+                0.0279, 0.1047, 0.0232, 0.2544, 0.0063, 0.0290};
+        private static final double[] D_RESIDUAL = {
+                0.0009, 0.0725, 1.2379, 0.0000, 0.2964, 0.0000,
+                0.0359, 0.0273, 0.0000, 1.0165, 0.0007, 0.0000};
+
+        /**
+         * {@code majorBeats} beats of the A run, four of the D run that separates
+         * them, then four of the run that reads minor. Every span answers with
+         * its own residual, keyed by where the span starts.
+         */
+        private static List<Chord> chords(int majorBeats) {
+            int total = majorBeats + 8;
+            double[][] combined = new double[total][];
+            double[][] treble = new double[total][];
+            double[][] bass = new double[total][];
+            for (int beat = 0; beat < total; beat++) {
+                boolean minor = beat >= majorBeats + 4;
+                boolean onD = !minor && beat >= majorBeats;
+                combined[beat] = onD ? D_COMBINED : minor ? MINOR_COMBINED : A_COMBINED;
+                treble[beat] = onD ? D_TREBLE : minor ? MINOR_TREBLE : A_TREBLE;
+                bass[beat] = onD ? D_BASS : minor ? MINOR_BASS : A_BASS;
+            }
+            PitchClassAblation residual = new PitchClassAblation() {
+                @Override
+                public int spanCount() {
+                    return total;
+                }
+
+                @Override
+                public double[] significanceOver(int fromSpan, int toSpan) {
+                    return fromSpan >= majorBeats + 4 ? MINOR_RESIDUAL
+                            : fromSpan >= majorBeats ? D_RESIDUAL : A_RESIDUAL;
+                }
+            };
+            return ChordEstimator.estimate(beats(combined), beats(treble), beats(bass),
+                    residual, beatTimes(total)).chords();
+        }
+
+        @Test
+        @DisplayName("a minor third a minority of a root's beats hold is withdrawn")
+        void aMinorityMinorThirdIsWithdrawn() {
+            // Eight beats of A against four that read minor: the recording
+            // states a major third on this root, so the odd run out is read as
+            // one too.
+            assertThat(chords(8)).extracting(Chord::symbol)
+                    .containsExactly("A", "D", "A");
+        }
+
+        @Test
+        @DisplayName("a minor third most of a root's beats hold is left alone")
+        void aMajorityMinorThirdStands() {
+            // The same runs with the major one cut to three beats, so the minor
+            // third now holds most of the root's. Nothing here says a minor
+            // chord is wrong -- only that this recording does not state one.
+            assertThat(chords(3)).extracting(Chord::symbol)
+                    .containsExactly("A", "D", "Am");
+        }
+    }
 }
