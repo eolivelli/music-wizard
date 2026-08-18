@@ -48,6 +48,6 @@ keys, against the expected key for each file:
   key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG
 minor-quality seconds where a musician confirms the recording holds no minor chord (want zero):
   minor la-canzone-del-sole.mp3: 23.8s of 325s (7.3%)  spans 32/302  m 13.4s, m7 8.3s, m6 1.9s, m7b5 0.3s
-  minor johnny-b-goode.mp3: 5.7s of 160s (3.5%)  spans 10/92  m7 3.5s, m 1.8s, m6 0.4s
+  minor johnny-b-goode.mp3: 3.9s of 160s (2.4%)  spans 7/92  m7 3.5s, m 0.3s
 chords outside the complete set a musician stated for the whole recording (want zero):
   vocabulary la-canzone-del-sole.mp3: D,E,A  outside-root 33.3s of 320.7s (10.4%)  outside-chord 64.3s (20.0%)  spans 54/302  N.C. 3.0s  F# 11.8s, G# 10.8s, B 4.5s, C# 3.2s, G 2.6s, C 0.3s

@@ -492,8 +492,8 @@ public final class ChordEstimator {
             }
             i = j;
         }
-        decideThirdsPerRoot(path, out, templates, qualityChroma, significance);
         decideSeventhsPerRoot(path, out, templates, qualityChroma, significance);
+        decideThirdsPerRoot(path, out, templates, qualityChroma, significance);
         return out;
     }
 
@@ -525,8 +525,22 @@ public final class ChordEstimator {
      * a majority of major-third runs can be an artefact of the production while
      * a majority of minor-third ones cannot. #581 carries the other direction.
      *
+     * <p><b>Runs after {@link #decideSeventhsPerRoot}</b>, so that it has the
+     * last word on the third: that rule's withdrawal picks among triads, and
+     * falls back to the decoder's own answer where none of them clears the
+     * floor, so either way it can leave a minor third behind on a root this one
+     * has already read as major. The reverse order leaves those spans standing,
+     * measured. Nothing is lost the other way: the count here is over thirds,
+     * and the count there deliberately excludes the dominant seventh, so a
+     * major-third candidate chosen here carries no claim that rule has made.
+     *
      * <p>The re-decision is held to {@link #bestQuality}'s floor like every
-     * other, so a run no major-third candidate explains keeps the answer it has.
+     * other, and that is a weak guard here: a major triad is scored on the root
+     * and the fifth, which clear the floor between them with no third in the run
+     * at all. So the cost is a chord where the seventh's is a colour — a minor
+     * chord a recording states once on a root it otherwise plays major goes with
+     * the false ones — and #583 carries it, unpriced for want of a benchmark
+     * whose grid holds a root played both ways.
      */
     private static void decideThirdsPerRoot(int[] path, int[] out, List<Template> templates,
                                             Chroma qualityChroma, double[][] significance) {

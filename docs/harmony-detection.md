@@ -88,7 +88,9 @@ decisions that real recordings forced:
   is settled by whichever pitch class the mix left something on. Counted
   across every run on the root instead, a minor third a minority of the
   root's beats hold is withdrawn. Read one way only, for the same reason the
-  correction above is one-sided, and #581 carries the other.
+  correction above is one-sided, and #581 carries the other. Its cost is a
+  chord where the seventh's is a colour — a minor chord stated once on a root
+  otherwise played major goes with the false ones — and #583 carries that.
 
 The vocabulary today: major and minor triads, dominant and minor sevenths,
 and — since the quality decision can ask the NNLS fit whether a candidate's

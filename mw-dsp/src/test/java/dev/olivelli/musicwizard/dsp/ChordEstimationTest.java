@@ -1263,6 +1263,7 @@ class ChordEstimationTest {
             return out;
         }
     }
+
     /**
      * #558: the third decided across every run on a root rather than run by run.
      *
@@ -1289,7 +1290,6 @@ class ChordEstimationTest {
                 0.0026, 0.0375, 0.0038, 0.0000, 0.0898, 0.0044,
                 0.0001, 0.0000, 0.0109, 0.2010, 0.0000, 0.0390};
 
-        /** The run that reads minor: its C is under a fiftieth of its A. */
         private static final double[] MINOR_COMBINED = {
                 0.0257, 0.0567, 0.0375, 0.0161, 0.2639, 0.0239,
                 0.0221, 0.0224, 0.0272, 0.3654, 0.0277, 0.1114};

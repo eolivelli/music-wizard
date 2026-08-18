@@ -96,7 +96,9 @@ on its pitch class — and once the gate fires it cannot lose. Over one run that
 is a coin toss; over a root it is a count. The recordings a musician confirms
 hold no minor chord lost most of their false minors to it and no scored
 benchmark moved a bar; `tools/baselines/score-samples.txt` carries both rows.
-What it cannot reach is a minor label on a root the song does not have, which
+Its cost is a chord where the seventh's is a colour — a minor chord stated
+once on a root otherwise played major goes with the false ones (#583) — and
+what it cannot reach is a minor label on a root the song does not have, which
 is #448's fold and #287's missing major seventh wearing minor clothes.
 
 Dominant sevenths are found now (#208) — they were found on two benchmarks and
