@@ -40,7 +40,9 @@ drive, and read by the pipeline unaided.
   engraves a lead sheet. The tracker is monophonic, so it is pointed at the
   separated vocal where a separation provider can be had; pass
   `--skip-separation` for a recording whose melody is not a voice. Off unless
-  asked for.
+  asked for. `render --parts playable` engraves the same sheet from a melody
+  reduced to what a player reads, beside the estimate rather than instead of
+  it.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — with
   `--transpose`, `--beat-marks` and `--repeat-tags`.
 - **Standard MIDI File input**, read symbolically, with its declared tempo

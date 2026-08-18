@@ -59,9 +59,12 @@ degrades in silence without each.
 
 `render` defaults to the parts that are implemented — the chord chart, the
 chords-and-lyrics sheet, and, when the score was analysed with `--melody`,
-the lead sheet and the melody staff. Ask for a part that is not implemented
-(`--parts piano`), or for a melody the score does not hold, and it says so
-and why rather than listing it and writing nothing.
+the lead sheet and the melody staff. `--parts playable` adds a second lead
+sheet whose melody has been reduced to what a player reads; it is written
+only when named, being an arrangement of MW's estimate rather than a reading
+of the recording. Ask for a part that is not implemented (`--parts piano`),
+or for a melody the score does not hold, and it says so and why rather than
+listing it and writing nothing.
 
 PDF needs [LilyPond](https://lilypond.org) on the `PATH` (or
 `notation.lilypondPath`); without it the tool still writes the `.ly` source
