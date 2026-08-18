@@ -75,6 +75,18 @@ envelope marks the attack where a human marks the sung vowel (#497). One
 more instance of the project's standing rule: what synthetic truth rewards,
 real truth can punish.
 
+Last, notes the tracker read **an octave or two out** are folded back (#596).
+A tracker that locks onto a harmonic reports a multiple of the fundamental,
+so the pitch class survives and the note is recovered by moving it, never by
+dropping it. The octave the melody is in comes from the recording's own notes
+rather than from a fixed compass, so a stretch where the separator left no
+voice cannot state the singer's tessitura and a line that is played rather
+than sung is not held to a voice's range. `tools/OctaveSweep.java` is the
+bench, and its `octaves` mode says what the corpora can and cannot show:
+almost none of what the stage gets wrong on clean solo singing is wrong by
+whole octaves, so this is a defect of mixes and separation and the field
+recordings are what witness it.
+
 ## What comes out
 
 `render --parts lead` engraves a lead sheet (melody, chord symbols, words)
