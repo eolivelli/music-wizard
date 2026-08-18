@@ -97,11 +97,11 @@ and — since the quality decision can ask the NNLS fit whether a candidate's
 distinguishing note is really there (#537, #543) — minor sixths and
 half-diminished sevenths (#547). The two exclusions have two different
 reasons (#287 carries the tables). The major seventh *can* be gated on the
-residual as a share of what the root removes, and in this vocabulary it still
-buys nothing: no real recording gains a bar, because on the scored recordings
-whose truth holds a major seventh those bars are named on the wrong root and a
-quality decision cannot move one. Reaching them means the template in the
-decoder too, which #588 measures and prices. The plain sixth's problem is a
+residual as a share of what the root removes, and in this vocabulary it reaches
+almost nothing: on the scored recordings whose truth holds a major seventh those
+bars are named on the wrong root, and a quality decision cannot move one.
+Reaching them means the template in the decoder too, which #588 measures and
+prices. The plain sixth's problem is a
 different one — a boogie shuffle really plays its sixth, so no test of whether
 the note is sounding can help, and telling `A6` from `F#m7` needs evidence
 about which sounding note the chord is built on. The

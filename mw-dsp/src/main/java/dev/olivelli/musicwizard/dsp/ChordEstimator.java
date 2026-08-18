@@ -156,7 +156,7 @@ public final class ChordEstimator {
      * above the chord's own major third, so a plain triad manufactures it as
      * that third's third partial, and the sixth is what a boogie shuffle plays
      * under a dominant. Measured with the residual test below applied to each,
-     * the major seventh gains no real recording — the recordings whose truth
+     * the major seventh reaches almost no real bar — the recordings whose truth
      * holds one do not name those bars on their own root (#588) — and the sixth
      * still takes the dominant-seventh benchmarks; #287 carries both tables.
      *
