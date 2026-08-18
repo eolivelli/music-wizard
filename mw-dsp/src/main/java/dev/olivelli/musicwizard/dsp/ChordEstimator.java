@@ -156,8 +156,9 @@ public final class ChordEstimator {
      * above the chord's own major third, so a plain triad manufactures it as
      * that third's third partial, and the sixth is what a boogie shuffle plays
      * under a dominant. Measured with the residual test below applied to each,
-     * the major seventh still labels plain triads and the sixth still takes the
-     * dominant-seventh benchmarks; #287 carries both tables.
+     * the major seventh reaches almost no real bar — the recordings whose truth
+     * holds one do not name those bars on their own root (#588) — and the sixth
+     * still takes the dominant-seventh benchmarks; #287 carries both tables.
      *
      * <p>The two here are decided on the same test where the fit's residual is
      * available ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the
@@ -223,7 +224,7 @@ public final class ChordEstimator {
      * carries more of it. Deleting the pitch class and refitting separates
      * them, because a note that is sounding cannot be deleted cheaply (#537).
      *
-     * <p><b>The seventh is not tested the same way</b>, which is measured
+     * <p><b>The flat seventh is not tested the same way</b>, which is measured
      * rather than an omission: a flat seventh really played on a real mix
      * removes less residual, as a share of its root's, than a manufactured one
      * does on a rendered package, so the two populations are ordered the wrong

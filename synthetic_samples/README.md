@@ -61,8 +61,8 @@ are told apart when only the bass can do it.
 `pop-maj7-sixth-c-92` is the same construction above a major third (#520): one
 note set stated as `C6` and as `Am7`, and `Cmaj7` beside the `Em` triad that
 holds three of its four notes. Eight of its bars — the four `C6` and the four
-`Cmaj7` — are out of reach of the `root+quality` column whatever MW does,
-neither quality being in the estimator's vocabulary (#287). What that column
+`Cmaj7` — are out of reach of the `root+quality` column today, neither quality
+being in the estimator's vocabulary (#287). What that column
 can show here is the rest of the grid: in particular the `Am7` bars, which
 carry the same four pitch classes as the `C6` ones and are nameable, and the
 plain `Em` triad.

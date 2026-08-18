@@ -75,9 +75,11 @@ Bb7 Bdim F7 Am7b5-D7
 Gm7 C7 F7-D7 Gm7-C7
 
 jazz-251-c-140.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=45u1nwqITh4)
-ii-V-I in C, stated 140 bpm. Half of it is a major seventh, which the
-estimator cannot name at all (#287), so its root and root+quality columns are
-expected to come apart rather than move together.
+ii-V-I in C, stated 140 bpm. Half of it is a major seventh, and those bars fail
+on the root: almost none of them is named on C at all, so the quality
+vocabulary #287 is about cannot reach them and the two columns barely come
+apart there. tools/ChordSweep.java score prints the confusion that says so, and
+#588 carries what the decoder does with it.
 
 Dm7 Dm7 G7 G7
 Cmaj7 Cmaj7 Cmaj7 Cmaj7
