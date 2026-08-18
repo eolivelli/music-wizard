@@ -46,10 +46,10 @@ import java.util.Optional;
  *
  * <p>Notes are grouped and each group prints as one note. A sung syllable is
  * the grouping evidence wherever there is one, since a syllable carries one
- * note unless it is a melisma; everything else is grouped by the weaker rule
- * that an ornament belongs to the note it leads into. The printed pitch is the
- * one the group <em>settles</em> on rather than the one it sounds longest —
- * over a scoop those differ, and it is the arrival that was sung.
+ * note; everything else is grouped by the weaker rule that an ornament belongs
+ * to the note it leads into. The printed pitch is the one the group
+ * <em>settles</em> on rather than the one it sounds longest — over a scoop
+ * those differ, and it is the arrival that was sung.
  *
  * <p>Chord tones only separate candidates the group's own evidence leaves
  * level, and only under a chart span this trusts. Rounding a melody to the
@@ -71,12 +71,15 @@ public final class PlayableMelody {
      */
     private static final double ORNAMENT_BEATS = 1.0 / 3;
 
-    /** How much shorter than the note it leads into an ornament has to be. */
+    /** What fraction of the note it leads into an ornament may last. */
     private static final double ORNAMENT_RATIO = 0.5;
 
     /**
-     * The share of the group's dominant pitch that its last note must sound
-     * for the group to count as having settled on it unaided.
+     * The share of the group's dominant pitch that the pitch it ends on must
+     * itself sound for the group to count as having settled unaided.
+     *
+     * <p>The pitch's total across the group, not the last note's own length: a
+     * group that leaves a pitch and returns to it has settled on it twice.
      */
     private static final double SETTLED_SHARE = 0.75;
 
@@ -189,8 +192,9 @@ public final class PlayableMelody {
      * analysis window placed late (#497), still belongs to the syllable it is
      * sung on.
      *
-     * <p>A syllable sung as a melisma claims nothing, because it is the one
-     * case where more than one note is right.
+     * <p>A syllable some stage has marked as a melisma claims nothing, so its
+     * notes fall to the ornament rule rather than collapsing to one. Nothing
+     * marks one today, which is #597.
      */
     private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map) {
         long[] claimed = new long[pieces.size()];

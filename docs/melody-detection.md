@@ -83,9 +83,11 @@ right, rhythm approximate — the quantizer's job is a plausible reading, not
 a literal one.
 
 `--parts playable` engraves the lead sheet a second time from a **reduced**
-melody (#592): a sung syllable carries one note-head unless it is a melisma,
-and the pitch printed is the one its group settles on rather than an average
-of the ones it passed through. That is synthesis rather than transcription,
+melody (#592): a sung syllable carries one note-head, and the pitch printed
+is the one its group settles on rather than an average of the ones it passed
+through. A syllable sung over several notes gets one note-head like any
+other, because deciding that a held syllable is a melisma is a judgement
+nothing in the pipeline makes yet (#597). That is synthesis rather than transcription,
 so it is written only when asked for and the estimate is untouched — every
 melody baseline scores the estimate, and a page a player reads and a page
 that answers what the singer did are two different correctness conditions.

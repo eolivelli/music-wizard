@@ -102,8 +102,11 @@ class PlayableLeadSheetTest {
                 .isEqualTo(context(estimate, "\\new ChordNames"));
         assertThat(context(playable, "\\new Lyrics"))
                 .isEqualTo(context(estimate, "\\new Lyrics"));
-        assertThat(context(playable, "\\new Staff"))
-                .isNotEqualTo(context(estimate, "\\new Staff"));
+        // Compared with the staff's name taken out, since the two differ by
+        // that line whatever the reduction did, and what is being asserted here
+        // is that the music differs.
+        assertThat(music(context(playable, "\\new Staff")))
+                .isNotEqualTo(music(context(estimate, "\\new Staff")));
     }
 
     @Test
@@ -176,6 +179,13 @@ class PlayableLeadSheetTest {
 
     private static NoteTrack melodyOf(QuantizedScore quantized) {
         return quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
+    }
+
+    /** A staff context without the line that names it. */
+    private static String music(String staff) {
+        return staff.lines()
+                .filter(line -> !line.contains("instrumentName"))
+                .reduce("", (a, b) -> a + b + "\n");
     }
 
     /** One context of the score, from its opening line to the next one's. */

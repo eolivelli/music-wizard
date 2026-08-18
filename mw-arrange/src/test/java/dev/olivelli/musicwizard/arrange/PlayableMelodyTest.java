@@ -79,13 +79,26 @@ class PlayableMelodyTest {
         }
 
         @Test
-        @DisplayName("a syllable sung as a melisma keeps its notes")
+        @DisplayName("a syllable marked as a melisma is not collapsed to one note")
         void aMelismaIsNotCollapsed() {
             Score score = sung(
                     notes(note(0.0, 0.4, 60), note(0.4, 0.4, 62), note(0.8, 0.4, 64)),
                     line(word("aaah", 0.0, 1.2).withMelisma(true)));
 
             assertThat(pitches(PlayableMelody.reduce(score))).containsExactly(60, 62, 64);
+        }
+
+        @Test
+        @DisplayName("but its ornaments are still ornaments")
+        void aMelismaIsNotExemptFromTheOrnamentRule() {
+            // What the exemption means, exactly: the melisma's notes are not
+            // one note-head, they are grouped by the weaker rule instead. A
+            // scoop inside a held syllable is decoration wherever it sits.
+            Score score = sung(
+                    notes(note(0.0, 0.1, 60), note(0.1, 0.9, 64)),
+                    line(word("aaah", 0.0, 1.0).withMelisma(true)));
+
+            assertThat(pitches(PlayableMelody.reduce(score))).containsExactly(64);
         }
 
         @Test
@@ -265,6 +278,21 @@ class PlayableMelodyTest {
 
             assertThat(pitches(PlayableMelody.reduce(score))).containsExactly(62, 64);
         }
+
+        @Test
+        @DisplayName("how short an ornament is, is a length in beats and not in seconds")
+        void theThresholdIsOnTheBeatAxis() {
+            // The same two notes under a tempo four times as fast. The first is
+            // an ornament of the second at one beat a second and a note of its
+            // own at four, and every other fixture here runs at the one tempo
+            // where those two answers coincide.
+            List<Note> pair = notes(note(0.0, 0.2, 62), note(0.2, 0.8, 64));
+
+            assertThat(pitches(PlayableMelody.reduce(atTempo(pair, 60))))
+                    .containsExactly(64);
+            assertThat(pitches(PlayableMelody.reduce(atTempo(pair, 240))))
+                    .containsExactly(62, 64);
+        }
     }
 
     /** One syllable held over the whole of a short group, so the chart has a tie to break. */
@@ -311,8 +339,18 @@ class PlayableMelodyTest {
     private static Score score(List<Note> notes, ChordProgression chords, Lyrics lyrics) {
         // One beat a second, so that a duration in seconds reads as the same
         // number of beats.
+        return atTempo(notes, chords, lyrics, 60);
+    }
+
+    private static Score atTempo(List<Note> notes, double beatsPerMinute) {
+        return atTempo(notes, ChordProgression.empty(), Lyrics.empty(), beatsPerMinute);
+    }
+
+    private static Score atTempo(List<Note> notes, ChordProgression chords, Lyrics lyrics,
+                                 double beatsPerMinute) {
         return new Score(java.util.Optional.empty(), java.util.Optional.empty(),
-                TempoMap.constant(60), java.util.Optional.empty(), List.of(), List.of(),
+                TempoMap.constant(beatsPerMinute), java.util.Optional.empty(),
+                List.of(), List.of(),
                 List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.of(0.7))),
                 chords, lyrics, 30);
     }

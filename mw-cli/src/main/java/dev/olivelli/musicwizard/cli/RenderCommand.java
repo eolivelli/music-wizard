@@ -579,7 +579,7 @@ final class RenderCommand implements Callable<Integer> {
                 (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody));
     }
 
-    /** What the two melody outputs share: quantize, spell, write, engrave. */
+    /** What the melody outputs share: quantize, spell, write, engrave. */
     private static Emitted writeStaffOutput(Workspace workspace, Score score,
             Optional<Path> lilypond, String name,
             BiFunction<QuantizedScore, NoteTrack, String> engraving) {

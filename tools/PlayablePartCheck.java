@@ -97,6 +97,7 @@ public final class PlayablePartCheck {
         report("estimate", events(estimate), mapped, bar);
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
+        chart(score, reduced);
 
         if (args.length >= 5) {
             double from = Double.parseDouble(args[3]);
@@ -169,6 +170,29 @@ public final class PlayablePartCheck {
             }
         }
         return used;
+    }
+
+    /**
+     * How much of the reduced part the chord chart is responsible for.
+     *
+     * <p>Measured by reducing the same score with its progression removed,
+     * which is the one input the chart reaches: grouping never asks about
+     * harmony, so every difference between the two runs is a tie the chart
+     * broke. #571 is why this wants stating rather than assuming.
+     */
+    private static void chart(Score score, NoteTrack reduced) {
+        NoteTrack without = PlayableMelody.reduce(
+                score.withChords(dev.olivelli.musicwizard.core.model.ChordProgression.empty()));
+        int moved = 0;
+        for (int i = 0; i < Math.min(reduced.size(), without.size()); i++) {
+            if (reduced.notes().get(i).midiPitch() != without.notes().get(i).midiPitch()) {
+                moved++;
+            }
+        }
+        System.out.printf(Locale.ROOT,
+                "chart: reducing without the progression gives %d note-heads and moves %d"
+                        + " of the printed pitches%n",
+                without.size(), moved + Math.abs(reduced.size() - without.size()));
     }
 
     /**
