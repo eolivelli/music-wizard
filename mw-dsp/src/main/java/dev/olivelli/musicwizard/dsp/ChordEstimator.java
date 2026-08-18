@@ -525,14 +525,16 @@ public final class ChordEstimator {
      * a majority of major-third runs can be an artefact of the production while
      * a majority of minor-third ones cannot. #581 carries the other direction.
      *
-     * <p><b>Runs after {@link #decideSeventhsPerRoot}</b>, so that it has the
-     * last word on the third: that rule's withdrawal picks among triads, and
-     * falls back to the decoder's own answer where none of them clears the
-     * floor, so either way it can leave a minor third behind on a root this one
-     * has already read as major. The reverse order leaves those spans standing,
-     * measured. Nothing is lost the other way: the count here is over thirds,
-     * and the count there deliberately excludes the dominant seventh, so a
-     * major-third candidate chosen here carries no claim that rule has made.
+     * <p><b>Runs after {@link #decideSeventhsPerRoot}</b>, so the count is read
+     * over labels that rule has already settled. Its withdrawal turns minor
+     * sevenths into triads, which moves this count's numerator and can tip a
+     * root from mostly minor to mostly major — and a root read the other way
+     * round is one this rule leaves entirely alone. So the order decides which
+     * roots are counted as major at all, not merely what is left over: run
+     * first, this rule declines those roots and the runs stay minor, measured.
+     * Nothing is lost the other way, because the count there deliberately
+     * excludes the dominant seventh, so a major-third candidate chosen here
+     * carries no claim that rule has made.
      *
      * <p>The re-decision is held to {@link #bestQuality}'s floor like every
      * other, and that is a weak guard here: a major triad is scored on the root
@@ -671,9 +673,6 @@ public final class ChordEstimator {
             } else if (quality == ChordQuality.MINOR
                     && sevenths[root] > SEVENTH_MUST_HOLD_FOR * beats[root]) {
                 int seventh = indexOf(templates, root, ChordQuality.MINOR_SEVENTH);
-                // Held to the floor bestQuality applies: a run no candidate
-                // explained keeps the answer it has rather than being given a
-                // seventh the count alone argues for.
                 if (qualityScore(sum(qualityChroma, i, j), templates.get(seventh),
                         significance[i]) > flatScore(templates.get(seventh))) {
                     for (int frame = i; frame < j; frame++) {
