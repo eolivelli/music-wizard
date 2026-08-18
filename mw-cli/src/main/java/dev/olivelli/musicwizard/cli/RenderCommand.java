@@ -67,8 +67,7 @@ import picocli.CommandLine.Spec;
  * then write only the chord files, with exit status 0 — so a user could not tell
  * whether three parts had failed, been skipped, or never existed. Bass and piano
  * are still M2 and M4 work; a part that cannot be produced is named along with
- * the reason, exactly as a missing engraver is. The default is therefore what
- * this command can produce without being asked, and naming an unimplemented
+ * the reason, exactly as a missing engraver is, and naming an unimplemented
  * part explicitly is answered rather than ignored.
  *
  * <p>A part can be implemented and still be unavailable, which is the
