@@ -59,8 +59,7 @@ degrades in silence without each.
 
 `render` attempts a default set of parts — the chord chart, the
 chords-and-lyrics sheet, the lead sheet and the melody staff — and names the
-ones it could not produce, with the reason: the lyric sheet needs lyrics, and
-both melody parts need a score analysed with `--melody`. `--parts playable`
+ones it could not produce, with the reason. `--parts playable`
 adds a second lead sheet whose melody has been reduced to what a player
 reads; it is written only when named, being an arrangement of MW's estimate
 rather than a reading of the recording. Ask for a part that is not
