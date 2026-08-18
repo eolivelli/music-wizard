@@ -81,12 +81,12 @@ decide, and #606 to #609 carry what MW names for each.
 bass note for note, and the add9 twins' comping is the same voicing bar for
 bar with the ninth taken out. The sus twins' is not: the arranger voices each
 chord nearest the one before it, so the register a package reaches depends on
-its own history, and the suspended bars carry it forward — from the first
-`sus2` on, the two grids voice their shared bars differently (#611). Their
-rows are not comparable on quality until that voicing is a function of the
-chord rather than of history. Each package's own row stands, and what these
-four were built to show is per package anyway: every suspended and every
-added-ninth bar is named as its plain triad.
+its own history, and the suspended bars carry it forward — some of the bars
+the two grids state alike are voiced differently (#611). Their rows are not
+comparable on quality until that voicing is a function of the chord rather
+than of history. Each package's own row stands, and what these four were built
+to show is per package anyway: every suspended and every added-ninth bar is
+named as its plain triad.
 
 Regenerate a package with:
 

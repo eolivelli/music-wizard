@@ -14,9 +14,9 @@ bars:
 # pop-sus-triads-a-104 is the same spec with the plain triad in every
 # suspended slot, and its drums and bass are note-for-note this package's.
 # Its comping is not: the arranger voices each chord nearest the one before
-# it, so from the first sus2 onward the two grids voice their shared bars at
-# different pitches (#611). The two rows are therefore not comparable on
-# quality; each package's own row stands.
+# it, so the suspended bars carry the register forward and some of the bars
+# the two grids state alike are voiced differently (#611). The two rows are
+# therefore not comparable on quality; each package's own row stands.
 # ChordQuality holds both suspensions; whether either can be decoded and
 # ranked is the open question.
 # A: sus4 into its triad on I and IV, then on V - half cadence

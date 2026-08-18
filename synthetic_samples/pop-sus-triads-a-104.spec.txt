@@ -11,8 +11,8 @@ bars:
 # suspends, on the same tempo, key, seed and form, and with the same drums and
 # bass note for note. The comping is where they part: the arranger voices each
 # chord nearest the one before it, so the suspended bars carry the register
-# forward and the two grids voice their shared bars differently from the first
-# sus2 onward (#611). Until that is a function of the chord rather than of
+# forward and some of the bars the two grids state alike are voiced
+# differently (#611). Until that is a function of the chord rather than of
 # history, the two rows are not comparable on quality - what this grid says on
 # its own is what one plain-triad reading of this arrangement is worth (#600).
 # A
