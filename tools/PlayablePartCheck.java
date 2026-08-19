@@ -63,7 +63,11 @@ import javax.sound.midi.Track;
  * what it moves the onsets by, and whether the printed onsets end up nearer
  * the reference or further from it (#594).
  *
+ * <p>What a printed note-head welds together needs no reference, so the
+ * reference is optional and a workspace on its own gets that table (#598).
+ *
  * <pre>
+ *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid [TRACK]
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid Melody 11.4 13.0
  * </pre>
@@ -89,13 +93,25 @@ public final class PlayablePartCheck {
      */
     private static final double TIGHT_SECONDS = 0.05;
 
+    /**
+     * How much silence inside one printed note-head this counts as a weld, in
+     * quarter-note beats. A beat of rest is a rest a reader would have played.
+     */
+    private static final double WELD_BEATS = 1.0;
+
+    /** The claim bounds swept, in quarter-note beats; the first is no bound at all. */
+    private static final double[] CLAIM_BOUNDS =
+            {Double.MAX_VALUE, 4, 2, 1.5, 1.25, 1, 0.5, 0.25, 0};
+
+    private static final double EPSILON = 1e-9;
+
     private record Event(double seconds, int pitch) {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.err.println("usage: PlayablePartCheck WORKSPACE REFERENCE.mid"
-                    + " [TRACK [FROM TO]]");
+        if (args.length < 1) {
+            System.err.println("usage: PlayablePartCheck WORKSPACE [REFERENCE.mid"
+                    + " [TRACK [FROM TO]]]");
             System.exit(2);
         }
         Path workspace = Path.of(args[0]);
@@ -106,14 +122,23 @@ public final class PlayablePartCheck {
                 () -> new IllegalStateException("no melody in " + scoreFile
                         + "; analyse with --melody"));
         NoteTrack reduced = PlayableMelody.reduce(score);
-        List<Event> reference = melodyOf(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
 
-        System.out.printf(Locale.ROOT, "notes: estimate %d  reduced %d  reference %d%n",
-                estimate.size(), reduced.size(), reference.size());
+        System.out.printf(Locale.ROOT, "notes: estimate %d  reduced %d%n",
+                estimate.size(), reduced.size());
         System.out.printf(Locale.ROOT, "syllables: %d over %d lyric lines%n",
                 score.lyrics().lines().stream().mapToInt(l -> l.words().size()).sum(),
                 score.lyrics().lines().size());
+        chart(score, reduced);
+        if (args.length < 2) {
+            // Everything below reads the reference arrangement. What the part
+            // welds together does not, so a recording nobody has sequenced
+            // still gets that table rather than a usage error.
+            claims(score, estimate, List.of(), Double.NaN);
+            return;
+        }
 
+        List<Event> reference = melodyOf(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
+        System.out.printf(Locale.ROOT, "reference: %d notes%n", reference.size());
         double[] fit = fit(events(estimate), reference);
         double bar = barSeconds(Path.of(args[1])) * fit[0];
         System.out.printf(Locale.ROOT,
@@ -127,7 +152,7 @@ public final class PlayablePartCheck {
         report("estimate", events(estimate), mapped, bar);
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
-        chart(score, reduced);
+        claims(score, estimate, mapped, bar);
         subdivisions(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
         vocabularies(score, estimate, reduced, mapped);
 
@@ -150,6 +175,83 @@ public final class PlayablePartCheck {
             }
             System.out.println();
         }
+    }
+
+    /**
+     * What the printed note-heads run across, and what bounding the claim costs.
+     *
+     * <p>A group prints from its first onset to its furthest release, so a claim
+     * that reached over an instrumental gap prints as one note-head across the
+     * silence (#598). Read off the two tracks rather than out of the grouping:
+     * what a reader sees is the estimate's own rests vanishing inside a printed
+     * span.
+     *
+     * <p>{@code welded} and {@code widest} are what a note-head runs across,
+     * which an unbounded claim is one cause of and a syllable the aligner
+     * really does hold another. {@code heads}
+     * climbing back toward the estimate's own count is what the bound costs,
+     * since a note it refuses to claim prints on its own; the count and F1
+     * columns say whether that cost lands on the music, and are left blank
+     * where nobody has sequenced the recording.
+     */
+    private static void claims(Score score, NoteTrack estimate, List<Event> reference,
+                               double barSeconds) {
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%14s %7s %7s %9s %9s %10s %9s%n",
+                "claim bound", "heads", "welded", "widest", "span", "per bar", "F1 loose");
+        for (double bound : CLAIM_BOUNDS) {
+            NoteTrack reduced = PlayableMelody.reduce(score, bound);
+            Weld weld = welds(estimate, reduced, score.tempoMap());
+            List<Event> events = events(reduced);
+            System.out.printf(Locale.ROOT, "%14s %7d %7d %9.2f %9.2f %10s %9s%n",
+                    bound == Double.MAX_VALUE ? "none"
+                            : String.format(Locale.ROOT, "%.2f", bound),
+                    reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
+                    reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
+                            countError(events, reference, barSeconds)),
+                    reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
+                            100 * f1(events, reference, TOLERANCE_SECONDS)));
+        }
+    }
+
+    /** Silence inside the printed note-heads, in quarter-note beats. */
+    private record Weld(int welded, double widestSilence, double widestSpan) {
+    }
+
+    /**
+     * How much of what each printed note-head covers was not sounding.
+     *
+     * <p>The estimate's notes that lie inside the printed span, in order, with
+     * the widest hole between consecutive ones taken as that note-head's
+     * silence. Nothing here assumes the estimate is monophonic, which is the
+     * same reason {@code collapse} takes the furthest release rather than the
+     * last one.
+     */
+    private static Weld welds(NoteTrack estimate, NoteTrack reduced, TempoMap map) {
+        int welded = 0;
+        double widestSilence = 0;
+        double widestSpan = 0;
+        for (Note printed : reduced.notes()) {
+            double from = map.secondsToBeats(printed.onsetSeconds());
+            double to = map.secondsToBeats(printed.offsetSeconds());
+            widestSpan = Math.max(widestSpan, to - from);
+            double reached = from;
+            double silence = 0;
+            for (Note note : estimate.notes()) {
+                double start = map.secondsToBeats(note.onsetSeconds());
+                double end = map.secondsToBeats(note.offsetSeconds());
+                if (start < from - EPSILON || end > to + EPSILON) {
+                    continue;
+                }
+                silence = Math.max(silence, start - reached);
+                reached = Math.max(reached, end);
+            }
+            if (silence > WELD_BEATS) {
+                welded++;
+            }
+            widestSilence = Math.max(widestSilence, silence);
+        }
+        return new Weld(welded, widestSilence, widestSpan);
     }
 
     /**
