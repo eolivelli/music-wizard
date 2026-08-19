@@ -314,9 +314,8 @@ class AlignedLyricsTest {
     @DisplayName("analyze marks a syllable the melody moves under")
     void analyzeMarksAMelisma() throws IOException {
         // The whole wiring, from --melody to the file: a stepped tone under one
-        // syllable an aligner gave the span of. Nothing else exercises the
-        // measured-line gate, and a run whose melody track never arrived would
-        // pass every other test in this file (#597).
+        // syllable an aligner gave the span of. A run whose melody track never
+        // arrived would pass every other test in this file (#597).
         int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
         float[] samples = new float[0];
         for (int midiPitch : new int[] {57, 60, 57}) {

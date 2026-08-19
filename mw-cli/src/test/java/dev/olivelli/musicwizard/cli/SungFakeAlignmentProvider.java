@@ -24,9 +24,8 @@ import java.util.List;
 
 /**
  * An aligner that gives each word a share of the whole window, the way a real
- * one does for a syllable held over a phrase. {@link FakeAlignmentProvider}
- * returns spans too narrow for any note to be claimed on, which is what a test
- * of what a syllable is sung over needs.
+ * one does for a syllable held over a phrase, so that a line's hull covers the
+ * notes a test means a syllable to be sung over.
  */
 public final class SungFakeAlignmentProvider implements AlignmentProvider {
 

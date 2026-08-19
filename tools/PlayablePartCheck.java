@@ -261,8 +261,6 @@ public final class PlayablePartCheck {
         System.out.printf(Locale.ROOT, "%7s %5s %7s %7s %7s %9s %9s %10s %9s%n",
                 "run", "fold", "marked", "heads", "welded", "widest", "span", "per bar",
                 "F1 loose");
-        // The workspace as it stands, which is the part render writes and what
-        // every other table here reports.
         row("as read", "", score, estimate, reference, barSeconds);
         melisma(score, estimate, reference, barSeconds, MELISMA_OFF, MELISMA_OFF);
         for (int run = 0; run <= MELISMA_SEMITONES; run++) {

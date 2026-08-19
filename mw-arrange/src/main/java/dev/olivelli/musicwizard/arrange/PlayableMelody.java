@@ -161,8 +161,7 @@ public final class PlayableMelody {
      * <p>Built by the same claim, the same ornament grouping and the same
      * collapse the reduction uses, so a stage deciding what a syllable holds
      * (#597) reads the heads marking it produces rather than a prediction of
-     * them. Which way the mark already on the lyrics points does not enter,
-     * since it changes neither the claim nor the grouping inside a syllable.
+     * them.
      */
     static List<SungSyllable> sungSyllables(Score score) {
         Objects.requireNonNull(score, "score");
@@ -249,11 +248,6 @@ public final class PlayableMelody {
     /**
      * The run split into the note-heads the ornament rule leaves: an ornament
      * joins the note it leads into, and anything else stands on its own.
-     *
-     * <p>Bounded to the run it is given, which is what keeps a marked
-     * syllable's notes out of its neighbours' — a note that reached across
-     * would print in a group the syllable does not own, so what the syllable
-     * prints would stop being a function of what it holds.
      */
     private static List<List<Piece>> ornamentGroups(List<Piece> run) {
         List<List<Piece>> groups = new ArrayList<>();
