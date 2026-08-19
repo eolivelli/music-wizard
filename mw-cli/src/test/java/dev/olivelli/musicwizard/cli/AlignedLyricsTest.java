@@ -311,6 +311,51 @@ class AlignedLyricsTest {
     }
 
     @Test
+    @DisplayName("analyze marks a syllable the melody moves under")
+    void analyzeMarksAMelisma() throws IOException {
+        // The whole wiring, from --melody to the file: a stepped tone under one
+        // syllable an aligner gave the span of. Nothing else exercises the
+        // measured-line gate, and a run whose melody track never arrived would
+        // pass every other test in this file (#597).
+        int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
+        float[] samples = new float[0];
+        for (int midiPitch : new int[] {57, 60, 57}) {
+            samples = concat(samples, tone(midiPitch, 2.0, rate));
+        }
+        Path source = directory.resolve("melisma.wav");
+        SignalFactory.writeWav(source, samples, rate);
+        Path root = directory.resolve("melisma.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
+                .exitCode()).isZero();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                + "\nconfig:\n  ml:\n    alignmentProvider: sung-fake-cli-alignment\n");
+        Path lrc = directory.resolve("melisma.lrc");
+        Files.writeString(lrc, "[00:00.50]aah\n");
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(), "--melody",
+                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        assertThat(score.track(PartRole.LEAD_VOCAL)).as(analyze.all()).isPresent();
+        assertThat(score.lyrics().allWords()).extracting(LyricWord::melisma)
+                .as(analyze.all()).containsExactly(true);
+    }
+
+    /** A tone with partials, which the melody stage tracks and a bare sine it does not. */
+    private static float[] tone(int midiPitch, double seconds, int rate) {
+        double hz = SignalFactory.midiToHz(midiPitch);
+        return SignalFactory.chord(new double[] {hz, 2 * hz, 3 * hz, 4 * hz}, seconds, rate);
+    }
+
+    private static float[] concat(float[] first, float[] second) {
+        float[] out = java.util.Arrays.copyOf(first, first.length + second.length);
+        System.arraycopy(second, 0, out, first.length, second.length);
+        return out;
+    }
+
+    @Test
     @DisplayName("melismas are decided only where the aligner measured the spans")
     void onlyMeasuredLinesGetMelismas() {
         // Two lines with the same run of notes under each syllable. The

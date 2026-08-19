@@ -144,9 +144,11 @@ public final class PlayablePartCheck {
 
         System.out.printf(Locale.ROOT, "notes: estimate %d  reduced %d%n",
                 estimate.size(), reduced.size());
-        System.out.printf(Locale.ROOT, "syllables: %d over %d lyric lines%n",
+        System.out.printf(Locale.ROOT,
+                "syllables: %d over %d lyric lines, %d of them marked as melismas%n",
                 score.lyrics().lines().stream().mapToInt(l -> l.words().size()).sum(),
-                score.lyrics().lines().size());
+                score.lyrics().lines().size(),
+                score.lyrics().allWords().stream().filter(LyricWord::melisma).count());
         chart(score, reduced);
         if (args.length < 2) {
             // Everything below reads the reference arrangement. What the part
@@ -241,9 +243,12 @@ public final class PlayablePartCheck {
      * be to be a run, and how far apart they are instead read as the melody
      * stage's octave fold.
      *
-     * <p>Every row decides afresh from the melody, {@code off} included, so
-     * the sweep reads the same whether or not the workspace was analysed with
-     * melismas on. {@code marked} is how many syllables the
+     * <p>Every row but the first decides afresh from the melody, {@code off}
+     * included, so the sweep reads the same whether or not the workspace was
+     * analysed with melismas on. The first row is the workspace as it stands,
+     * which is the part {@code render} writes and the one every other table
+     * here reports; it is printed beside the sweep so the two cannot be read
+     * as the same quantity. {@code marked} is how many syllables the
      * setting turns into melismas and {@code heads} what that puts on the
      * page; a setting that marks liberally walks {@code heads} back toward the
      * estimate's own count, which is the reduction undoing itself. {@code
@@ -253,9 +258,12 @@ public final class PlayablePartCheck {
     private static void melismas(Score score, NoteTrack estimate, List<Event> reference,
                                  double barSeconds) {
         System.out.println();
-        System.out.printf(Locale.ROOT, "%5s %5s %7s %7s %7s %9s %9s %10s %9s%n",
+        System.out.printf(Locale.ROOT, "%7s %5s %7s %7s %7s %9s %9s %10s %9s%n",
                 "run", "fold", "marked", "heads", "welded", "widest", "span", "per bar",
                 "F1 loose");
+        // The workspace as it stands, which is the part render writes and what
+        // every other table here reports.
+        row("as read", "", score, estimate, reference, barSeconds);
         melisma(score, estimate, reference, barSeconds, MELISMA_OFF, MELISMA_OFF);
         for (int run = 0; run <= MELISMA_SEMITONES; run++) {
             melisma(score, estimate, reference, barSeconds, run, MELISMA_FOLD);
@@ -268,13 +276,18 @@ public final class PlayablePartCheck {
     private static void melisma(Score score, NoteTrack estimate, List<Event> reference,
                                 double barSeconds, int run, int fold) {
         boolean off = run == MELISMA_OFF;
-        Score marked = score.withLyrics(Melismas.marked(score, run, fold));
+        row(off ? "off" : String.valueOf(run), off ? "off" : String.valueOf(fold),
+                score.withLyrics(Melismas.marked(score, run, fold)),
+                estimate, reference, barSeconds);
+    }
+
+    private static void row(String run, String fold, Score marked, NoteTrack estimate,
+                            List<Event> reference, double barSeconds) {
         NoteTrack reduced = PlayableMelody.reduce(marked);
-        Weld weld = welds(estimate, reduced, score.tempoMap());
+        Weld weld = welds(estimate, reduced, marked.tempoMap());
         List<Event> events = events(reduced);
-        System.out.printf(Locale.ROOT, "%5s %5s %7d %7d %7d %9.2f %9.2f %10s %9s%n",
-                off ? "off" : String.valueOf(run),
-                off ? "off" : String.valueOf(fold),
+        System.out.printf(Locale.ROOT, "%7s %5s %7d %7d %7d %9.2f %9.2f %10s %9s%n",
+                run, fold,
                 marked.lyrics().allWords().stream().filter(LyricWord::melisma).count(),
                 reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
                 reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",

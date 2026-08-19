@@ -121,6 +121,25 @@ class MelismasTest {
     }
 
     @Test
+    @DisplayName("a marked syllable prints the heads it was marked for, next to an unclaimed note")
+    void theHeadsCountedAreTheHeadsPrinted() {
+        // The syllable's last note is an ornament of a note no syllable claims.
+        // While a marked syllable claimed nothing, the two fell into one
+        // ornament run together and the syllable printed a single head after
+        // all -- on the pitch it approached from rather than the one it
+        // reached.
+        Score score = sung(
+                notes(note(0.0, 0.65, 62), note(0.95, 0.05, 65), note(1.0, 0.75, 58)),
+                line(word("aaah", 0.0, 1.0)));
+
+        Score marked = score.withLyrics(Melismas.marked(score));
+
+        assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
+        assertThat(pitches(PlayableMelody.reduce(marked))).containsExactly(62, 65, 58);
+    }
+
+    @Test
     @DisplayName("a note no syllable claims decides nothing")
     void anUnclaimedRunLeavesTheSyllableAlone() {
         Score score = sung(

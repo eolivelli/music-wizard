@@ -1,3 +1,4 @@
 dev.olivelli.musicwizard.cli.FakeAlignmentProvider
 dev.olivelli.musicwizard.cli.LateFakeAlignmentProvider
 dev.olivelli.musicwizard.cli.TailFakeAlignmentProvider
+dev.olivelli.musicwizard.cli.SungFakeAlignmentProvider

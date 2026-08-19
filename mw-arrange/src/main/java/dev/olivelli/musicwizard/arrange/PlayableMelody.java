@@ -47,8 +47,10 @@ import java.util.Optional;
  *
  * <p>Notes are grouped and each group prints as one note. A sung syllable is
  * the grouping evidence wherever there is one, since a syllable carries one
- * note; everything else is grouped by the weaker rule that an ornament belongs
- * to the note it leads into. The printed pitch is the one the group
+ * note — unless some stage has marked it a melisma (#597), which says the
+ * melody moves under it and its run is to be printed. Everything else is
+ * grouped by the weaker rule that an ornament belongs to the note it leads
+ * into, and so is a melisma's own run. The printed pitch is the one the group
  * <em>settles</em> on rather than the one it sounds longest — over a scoop
  * those differ, and it is the arrival that was sung.
  *
@@ -148,20 +150,19 @@ public final class PlayableMelody {
         return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, reduced, melody.confidence());
     }
 
-    /** One syllable of the lyrics and the note-heads an uncollapsed reading prints for it. */
+    /** One syllable of the lyrics and the note-heads it prints when it is a melisma. */
     record SungSyllable(int line, int word, List<Note> heads) {
     }
 
     /**
-     * Every syllable some note is claimed for, with the note-heads it would
-     * print if it were not collapsed: its claimed notes, less the ones the
-     * ornament rule absorbs into their successor.
+     * Every syllable some note is claimed for, with the note-heads
+     * {@link #reduce} prints for it once it is marked a melisma.
      *
-     * <p>The reduction's own claim and its own ornament rule, so a stage
-     * deciding what a syllable holds (#597) sees exactly the heads marking it
-     * would produce. Any mark already on the lyrics is ignored, since a marked
-     * syllable claims nothing and reading one would answer from its own
-     * previous answer.
+     * <p>Built by the same claim, the same ornament grouping and the same
+     * collapse the reduction uses, so a stage deciding what a syllable holds
+     * (#597) reads the heads marking it produces rather than a prediction of
+     * them. Which way the mark already on the lyrics points does not enter,
+     * since it changes neither the claim nor the grouping inside a syllable.
      */
     static List<SungSyllable> sungSyllables(Score score) {
         Objects.requireNonNull(score, "score");
@@ -174,39 +175,29 @@ public final class PlayableMelody {
         for (Note note : melody.get().notes()) {
             pieces.add(Piece.of(note, map));
         }
-        long[] claimed = syllableOf(pieces, unmarked(score.lyrics()), map, CLAIM_BEATS);
-        Map<Long, List<Piece>> bySyllable = new LinkedHashMap<>();
-        for (int i = 0; i < pieces.size(); i++) {
-            if (claimed[i] != UNSUNG) {
-                bySyllable.computeIfAbsent(claimed[i], key -> new ArrayList<>()).add(pieces.get(i));
+        long[] claimed = syllableOf(pieces, score.lyrics(), map, CLAIM_BEATS);
+        Map<Long, List<Note>> bySyllable = new LinkedHashMap<>();
+        int from = 0;
+        while (from < pieces.size()) {
+            int to = from;
+            while (to + 1 < pieces.size() && claimed[to + 1] == claimed[from]) {
+                to++;
             }
+            if (claimed[from] != UNSUNG) {
+                List<Note> heads = bySyllable.computeIfAbsent(claimed[from],
+                        key -> new ArrayList<>());
+                for (List<Piece> group : ornamentGroups(pieces.subList(from, to + 1))) {
+                    heads.add(collapse(group, score.chords(), map));
+                }
+            }
+            from = to + 1;
         }
         List<SungSyllable> out = new ArrayList<>(bySyllable.size());
         for (var entry : bySyllable.entrySet()) {
-            List<Piece> run = entry.getValue();
-            List<Note> heads = new ArrayList<>(run.size());
-            for (int i = 0; i < run.size(); i++) {
-                if (i + 1 == run.size() || !leadsInto(run.get(i), run.get(i + 1))) {
-                    heads.add(run.get(i).note());
-                }
-            }
             out.add(new SungSyllable((int) (entry.getKey() >> 32), (int) (long) entry.getKey(),
-                    List.copyOf(heads)));
+                    List.copyOf(entry.getValue())));
         }
         return List.copyOf(out);
-    }
-
-    /** The same lyrics with every melisma mark taken off. */
-    private static Lyrics unmarked(Lyrics lyrics) {
-        List<LyricLine> lines = new ArrayList<>(lyrics.lines().size());
-        for (LyricLine line : lyrics.lines()) {
-            List<LyricWord> words = new ArrayList<>(line.words().size());
-            for (LyricWord word : line.words()) {
-                words.add(word.melisma() ? word.withMelisma(false) : word);
-            }
-            lines.add(new LyricLine(words, line.confidence()));
-        }
-        return new Lyrics(lines, lyrics.language(), lyrics.confidence());
     }
 
     /**
@@ -241,20 +232,45 @@ public final class PlayableMelody {
         int from = 0;
         while (from < pieces.size()) {
             int to = from;
-            if (syllable[from] != UNSUNG) {
-                while (to + 1 < pieces.size() && syllable[to + 1] == syllable[from]) {
-                    to++;
-                }
-            } else {
-                while (to + 1 < pieces.size() && syllable[to + 1] == UNSUNG
-                        && leadsInto(pieces.get(to), pieces.get(to + 1))) {
-                    to++;
-                }
+            while (to + 1 < pieces.size() && syllable[to + 1] == syllable[from]) {
+                to++;
             }
-            groups.add(pieces.subList(from, to + 1));
+            List<Piece> run = pieces.subList(from, to + 1);
+            if (syllable[from] != UNSUNG && !isMelisma(lyrics, syllable[from])) {
+                groups.add(run);
+            } else {
+                groups.addAll(ornamentGroups(run));
+            }
             from = to + 1;
         }
         return groups;
+    }
+
+    /**
+     * The run split into the note-heads the ornament rule leaves: an ornament
+     * joins the note it leads into, and anything else stands on its own.
+     *
+     * <p>Bounded to the run it is given, which is what keeps a marked
+     * syllable's notes out of its neighbours' — a note that reached across
+     * would print in a group the syllable does not own, so what the syllable
+     * prints would stop being a function of what it holds.
+     */
+    private static List<List<Piece>> ornamentGroups(List<Piece> run) {
+        List<List<Piece>> groups = new ArrayList<>();
+        int from = 0;
+        while (from < run.size()) {
+            int to = from;
+            while (to + 1 < run.size() && leadsInto(run.get(to), run.get(to + 1))) {
+                to++;
+            }
+            groups.add(run.subList(from, to + 1));
+            from = to + 1;
+        }
+        return groups;
+    }
+
+    private static boolean isMelisma(Lyrics lyrics, long syllable) {
+        return lyrics.lines().get((int) (syllable >> 32)).words().get((int) syllable).melisma();
     }
 
     /**
@@ -289,8 +305,9 @@ public final class PlayableMelody {
      * welded to whatever it sang (#598). Both present here as the same
      * distance, so one bound answers both.
      *
-     * <p>A syllable some stage has marked as a melisma claims nothing, so its
-     * notes fall to the ornament rule rather than collapsing to one.
+     * <p>A syllable marked as a melisma claims its notes like any other; what
+     * changes is that {@link #groups} then splits its run by the ornament rule
+     * instead of collapsing it.
      */
     private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map,
                                      double claimBeats) {
@@ -339,7 +356,7 @@ public final class PlayableMelody {
             int word = nearest(syllableStart[line], piece.startBeat());
             double silence = Math.max(0, Math.max(piece.startBeat(), syllableStart[line][word])
                     - Math.min(piece.endBeat(), syllableEnd[line][word]));
-            if (silence <= claimBeats && !lines.get(line).words().get(word).melisma()) {
+            if (silence <= claimBeats) {
                 claimed[i] = ((long) line << 32) | word;
             }
         }

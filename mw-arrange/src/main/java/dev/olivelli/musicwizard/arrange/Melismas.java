@@ -37,10 +37,10 @@ import java.util.Objects;
  * left unmarked: the first is a long note and the second a repeated one, and
  * neither is a run a reader needs printed separately.
  *
- * <p>The heads come from {@link PlayableMelody}'s own claim and ornament rule,
- * so a syllable is marked exactly when marking it would put more than one
- * note-head on the page: a scoop and the note it arrives at count once, and a
- * syllable whose extra notes are all scoop fragments stays collapsed.
+ * <p>The heads are the ones {@link PlayableMelody} prints for the syllable
+ * once it is marked, read from that class rather than predicted: a scoop and
+ * the note it arrives at count once, so a syllable whose extra notes are all
+ * scoop fragments stays collapsed.
  *
  * <p>The decision is a function of the melody alone, so marks already on the
  * lyrics are replaced rather than added to.
@@ -49,8 +49,8 @@ public final class Melismas {
 
     /**
      * How far apart, in semitones, the note-heads under one syllable must
-     * reach for the syllable to be sung over a run: a step, so that a tracked
-     * note wandering by less than one is not a melody moving.
+     * reach for the syllable to be sung over a run: a step, since a tracked
+     * note that wanders inside one is not a melody moving.
      *
      * <p>Swept by {@code tools/PlayablePartCheck.java}.
      */
