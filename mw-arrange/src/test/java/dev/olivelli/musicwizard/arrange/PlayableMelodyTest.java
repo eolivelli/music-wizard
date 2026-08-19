@@ -79,6 +79,50 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a note in the instrumental gap a line's hull spans is not welded to it")
+        void anInstrumentalGapInsideALineIsNotClaimed() {
+            // One lyric line whose two words sit a long way apart, and a note
+            // played between them. The line's hull covers the gap, so the note
+            // is inside it and equally near both words (#598).
+            Score score = sung(
+                    notes(note(0.0, 0.3, 60), note(20.0, 0.3, 67), note(40.0, 0.3, 62)),
+                    line(word("one", 0.0, 0.3), word("two", 40.0, 40.3)));
+
+            NoteTrack reduced = PlayableMelody.reduce(score);
+
+            assertThat(pitches(reduced)).containsExactly(60, 67, 62);
+            assertThat(reduced.notes().get(0).offsetSeconds()).isEqualTo(0.3);
+            assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(20.0);
+        }
+
+        @Test
+        @DisplayName("a note far from every syllable of the line it sits in is not claimed either")
+        void aNoteFarFromEverySyllableIsNotClaimed() {
+            // The second note is nearer this line's middle word than either of
+            // the others, so the hull is not what welds it -- there is simply
+            // no syllable close enough for it to have been sung on.
+            Score score = sung(
+                    notes(note(6.0, 0.3, 60), note(12.0, 0.3, 67), note(20.0, 0.3, 62)),
+                    line(word("one", 0.0, 0.3), word("two", 5.0, 6.3),
+                            word("three", 20.0, 20.3)));
+
+            NoteTrack reduced = PlayableMelody.reduce(score);
+
+            assertThat(pitches(reduced)).containsExactly(60, 67, 62);
+            assertThat(reduced.notes().get(0).offsetSeconds()).isEqualTo(6.3);
+        }
+
+        @Test
+        @DisplayName("the bound does not reject a note that starts late inside its own syllable")
+        void aLongSyllableStillClaimsWhatSoundsUnderIt() {
+            Score score = sung(
+                    notes(note(0.0, 4.0, 60), note(4.0, 4.0, 62)),
+                    line(word("aaah", 0.0, 8.0)));
+
+            assertThat(pitches(PlayableMelody.reduce(score))).containsExactly(62);
+        }
+
+        @Test
         @DisplayName("a syllable marked as a melisma is not collapsed to one note")
         void aMelismaIsNotCollapsed() {
             Score score = sung(

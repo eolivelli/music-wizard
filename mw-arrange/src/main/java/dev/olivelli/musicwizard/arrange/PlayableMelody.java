@@ -86,6 +86,17 @@ public final class PlayableMelody {
     /** How far the chart has to be trusted before a chord tone may break a tie. */
     private static final double CHART_CONFIDENCE_FLOOR = 0.5;
 
+    /**
+     * How much silence there may be between a note and a syllable, in
+     * quarter-note beats, for the note to have been sung on it.
+     *
+     * <p>Silence between the two spans rather than distance between their
+     * starts: a note sounding under a syllable is at no distance from it,
+     * however late in it the note begins (#598). Swept by
+     * {@code tools/PlayablePartCheck.java}.
+     */
+    private static final double CLAIM_BEATS = 2.0;
+
     /** No syllable claims this note. */
     private static final long UNSUNG = Long.MIN_VALUE;
 
@@ -104,7 +115,24 @@ public final class PlayableMelody {
      * @throws IllegalArgumentException if the score holds no melody part
      */
     public static NoteTrack reduce(Score score) {
+        return reduce(score, CLAIM_BEATS);
+    }
+
+    /**
+     * The same at a chosen claim bound, which is what
+     * {@code tools/PlayablePartCheck.java} sweeps.
+     *
+     * @param claimBeats how much silence there may be between a note and a
+     *                   syllable for the note to be sung on it, in quarter-note
+     *                   beats
+     * @throws IllegalArgumentException if the score holds no melody part, or
+     *                                  the bound is not a finite number
+     */
+    public static NoteTrack reduce(Score score, double claimBeats) {
         Objects.requireNonNull(score, "score");
+        if (!Double.isFinite(claimBeats)) {
+            throw new IllegalArgumentException("claimBeats must be finite, got: " + claimBeats);
+        }
         NoteTrack melody = score.track(PartRole.LEAD_VOCAL).orElseThrow(
                 () -> new IllegalArgumentException("the score holds no melody to reduce"));
         TempoMap map = score.tempoMap();
@@ -113,7 +141,7 @@ public final class PlayableMelody {
             pieces.add(Piece.of(note, map));
         }
         List<Note> reduced = new ArrayList<>(pieces.size());
-        for (List<Piece> group : groups(pieces, score.lyrics(), map)) {
+        for (List<Piece> group : groups(pieces, score.lyrics(), map, claimBeats)) {
             reduced.add(collapse(group, score.chords(), map));
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, reduced, melody.confidence());
@@ -144,8 +172,9 @@ public final class PlayableMelody {
         }
     }
 
-    private static List<List<Piece>> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map) {
-        long[] syllable = syllableOf(pieces, lyrics, map);
+    private static List<List<Piece>> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map,
+                                            double claimBeats) {
+        long[] syllable = syllableOf(pieces, lyrics, map, claimBeats);
         List<List<Piece>> groups = new ArrayList<>();
         int from = 0;
         while (from < pieces.size()) {
@@ -192,11 +221,18 @@ public final class PlayableMelody {
      * analysis window placed late (#497), still belongs to the syllable it is
      * sung on.
      *
+     * <p>A line's hull covers whatever instrumental gap sits inside it, so
+     * without the claim bound both a note in such a gap and a note simply far
+     * from every syllable of its line would be claimed by the nearest one and
+     * welded to whatever it sang (#598). Both present here as the same
+     * distance, so one bound answers both.
+     *
      * <p>A syllable some stage has marked as a melisma claims nothing, so its
      * notes fall to the ornament rule rather than collapsing to one. Nothing
      * marks one today, which is #597.
      */
-    private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map) {
+    private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map,
+                                     double claimBeats) {
         long[] claimed = new long[pieces.size()];
         Arrays.fill(claimed, UNSUNG);
         List<LyricLine> lines = lyrics.lines();
@@ -204,11 +240,13 @@ public final class PlayableMelody {
             return claimed;
         }
         double[][] syllableStart = new double[lines.size()][];
+        double[][] syllableEnd = new double[lines.size()][];
         double[] lineStart = new double[lines.size()];
         double[] lineEnd = new double[lines.size()];
         for (int l = 0; l < lines.size(); l++) {
             List<LyricWord> words = lines.get(l).words();
             syllableStart[l] = new double[words.size()];
+            syllableEnd[l] = new double[words.size()];
             lineStart[l] = Double.POSITIVE_INFINITY;
             lineEnd[l] = Double.NEGATIVE_INFINITY;
             for (int w = 0; w < words.size(); w++) {
@@ -217,6 +255,7 @@ public final class PlayableMelody {
                         .orElseGet(() -> map.secondsToBeats(word.startSeconds()));
                 double end = word.endBeat().orElseGet(() -> map.secondsToBeats(word.endSeconds()));
                 syllableStart[l][w] = start;
+                syllableEnd[l][w] = end;
                 lineStart[l] = Math.min(lineStart[l], start);
                 lineEnd[l] = Math.max(lineEnd[l], end);
             }
@@ -237,7 +276,9 @@ public final class PlayableMelody {
                 continue;
             }
             int word = nearest(syllableStart[line], piece.startBeat());
-            if (!lines.get(line).words().get(word).melisma()) {
+            double silence = Math.max(0, Math.max(piece.startBeat(), syllableStart[line][word])
+                    - Math.min(piece.endBeat(), syllableEnd[line][word]));
+            if (silence <= claimBeats && !lines.get(line).words().get(word).melisma()) {
                 claimed[i] = ((long) line << 32) | word;
             }
         }
