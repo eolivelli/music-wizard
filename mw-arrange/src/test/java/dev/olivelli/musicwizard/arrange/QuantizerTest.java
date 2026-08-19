@@ -31,10 +31,8 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.Section;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -887,28 +885,26 @@ class QuantizerTest {
     }
 
     @Nested
-    @DisplayName("the vocabulary a bar may be written on")
+    @DisplayName("the divisions a bar may be written on")
     class Vocabulary {
 
         @Test
-        @DisplayName("a resolution left out of the settings is never chosen")
-        void onlyTheOfferedGridsAreUsed() {
+        @DisplayName("a division the meter does not subdivide by is never chosen")
+        void aTupletDivisionIsNotOffered() {
             // The same triplet passage tripletsLandOnThirds reads as triplets:
-            // the grid that fits it best is exactly the one withheld here.
+            // the division that fits it best is exactly the one withheld here.
             Performance performance = new Performance(fourFour(), 6);
             performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
 
             QuantizedScore quantized = Quantizer.quantize(performance.score(),
                     QuantizationSettings.READING);
 
-            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g -> {
-                assertThat(QuantizationSettings.READING.grids()).contains(g.resolution());
-                assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse();
-            });
+            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g ->
+                    assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse());
         }
 
         @Test
-        @DisplayName("what the reading vocabulary costs: a real triplet is written duple")
+        @DisplayName("what withholding them costs: a real triplet is written duple")
         void aTripletIsWrittenOnTheNearestDuplePositions() {
             Performance performance = new Performance(fourFour(), 6);
             performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
@@ -916,17 +912,76 @@ class QuantizerTest {
             List<Note> notes = Quantizer.quantize(performance.score(),
                     QuantizationSettings.READING).score().tracks().get(0).notes();
 
+            // On the deepest duple division there is, which is what a triplet
+            // costs a reader who may not be shown one: the thirds are chased
+            // down the ladder rather than rounded to the nearest eighth.
             for (Note note : notes) {
                 double beat = note.onsetBeat().orElseThrow();
-                assertThat(beat * 4).isCloseTo(Math.round(beat * 4), within(1e-9));
+                assertThat(beat * 8).isCloseTo(Math.round(beat * 8), within(1e-9));
+            }
+            assertThat(Quantizer.quantize(performance.score(), QuantizationSettings.READING)
+                    .grids()).anySatisfy(g ->
+                            assertThat(g.resolution()).isEqualTo(GridResolution.EIGHTH_BEAT));
+        }
+
+        @Test
+        @DisplayName("in compound time it is the halves that go, and the plain eighths stay")
+        void compoundTimeKeepsItsOwnDivisions() {
+            // Which divisions are the meter's own is the whole point of asking
+            // per bar: a set of resolutions fixed in simple time names exactly
+            // the three that are duplets here, and would print every beat of a
+            // 6/8 song inside a bracket.
+            TempoMap map = TempoMap.constantPulse(120, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(map, 11, 0);
+            performance.run(60, 0.5, 0, 0.5, 1.0, 1.5, 2.0, 2.5);
+
+            QuantizedScore quantized =
+                    Quantizer.quantize(performance.score(), QuantizationSettings.READING);
+
+            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g ->
+                    assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse());
+            List<Note> notes = quantized.score().tracks().get(0).notes();
+            for (int i = 0; i < notes.size(); i++) {
+                assertThat(notes.get(i).onsetBeat().orElseThrow())
+                        .describedAs("note %d", i)
+                        .isCloseTo(i * 0.5, within(1e-9));
             }
         }
 
         @Test
-        @DisplayName("the transcription's vocabulary is still every resolution there is")
-        void theDefaultOffersEverything() {
-            assertThat(QuantizationSettings.DEFAULT.grids())
-                    .containsExactly(GridResolution.values());
+        @DisplayName("a transcription may still divide as far as the resolutions go")
+        void theDefaultPermitsEverything() {
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT)) {
+                for (GridResolution grid : GridResolution.values()) {
+                    assertThat(QuantizationSettings.DEFAULT.permits(grid, meter))
+                            .describedAs("%s in %s", grid, meter)
+                            .isTrue();
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("the counted beat is always available, whatever the meter calls it")
+        void theCountedBeatIsNeverWithheld() {
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT)) {
+                assertThat(QuantizationSettings.READING.permits(GridResolution.BEAT, meter))
+                        .describedAs("the counted beat in %s", meter)
+                        .isTrue();
+            }
+        }
+
+        @Test
+        @DisplayName("a depth floor withholds what is below it, in either meter")
+        void theDepthFloorIsMeterRelative() {
+            QuantizationSettings shallow =
+                    QuantizationSettings.DEFAULT.withLevelsBelowTheBeat(1);
+
+            assertThat(shallow.permits(GridResolution.HALF_BEAT, TimeSignature.FOUR_FOUR)).isTrue();
+            assertThat(shallow.permits(GridResolution.QUARTER_BEAT, TimeSignature.FOUR_FOUR))
+                    .isFalse();
+            assertThat(shallow.permits(GridResolution.THIRD_BEAT, TimeSignature.SIX_EIGHT)).isTrue();
+            assertThat(shallow.permits(GridResolution.SIXTH_BEAT, TimeSignature.SIX_EIGHT))
+                    .isFalse();
         }
     }
 
@@ -1003,46 +1058,35 @@ class QuantizerTest {
             // quietly resets the overlap tolerance would still quantize, just
             // differently. Nothing in the suite could see three of the four
             // places overlapTolerance had to be carried.
-            // The grids carried here are not the default set, so a copy method
-            // that dropped them would come back holding every resolution.
-            Set<GridResolution> some = EnumSet.of(GridResolution.BEAT, GridResolution.SIXTH_BEAT);
+            // Both of the last two differ from the defaults, so a copy method
+            // that dropped either would come back holding a transcription's.
             QuantizationSettings from =
-                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, some);
+                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, false, 2);
 
             assertThat(from.withGridChangePenalty(0.99))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true, some));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true,
+                            false, 2));
             assertThat(from.withArticulationRatio(0.75))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true, some));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true,
+                            false, 2));
             assertThat(from.withOverlapTolerance(0.09))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true, some));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true,
+                            false, 2));
             assertThat(from.withoutSwingDetection())
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false, some));
-            assertThat(from.withGrids(EnumSet.of(GridResolution.HALF_BEAT)))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false,
+                            false, 2));
+            assertThat(from.withLevelsBelowTheBeat(1))
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
-                            EnumSet.of(GridResolution.HALF_BEAT)));
+                            false, 1));
+            assertThat(QuantizationSettings.DEFAULT.withoutTuplets())
+                    .isEqualTo(QuantizationSettings.READING);
         }
 
         @Test
-        @DisplayName("a settings object cannot be left with no grid to write a bar on")
-        void everySettingsHasSomeGrid() {
-            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withGrids(List.of()))
+        @DisplayName("a bar cannot be asked to divide above the counted beat")
+        void theDepthIsNotNegative() {
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withLevelsBelowTheBeat(-1))
                     .isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withGrids(null))
-                    .isInstanceOf(NullPointerException.class);
-        }
-
-        @Test
-        @DisplayName("the grids are copied, so a caller's set cannot be edited afterwards")
-        void gridsAreCopied() {
-            Set<GridResolution> mutable = EnumSet.of(GridResolution.BEAT, GridResolution.THIRD_BEAT);
-            QuantizationSettings settings = QuantizationSettings.DEFAULT.withGrids(mutable);
-
-            mutable.remove(GridResolution.THIRD_BEAT);
-
-            assertThat(settings.grids())
-                    .containsExactly(GridResolution.BEAT, GridResolution.THIRD_BEAT);
-            assertThatThrownBy(() -> settings.grids().add(GridResolution.EIGHTH_BEAT))
-                    .isInstanceOf(UnsupportedOperationException.class);
         }
     }
 

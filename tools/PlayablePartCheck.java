@@ -20,6 +20,7 @@ import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Note;
@@ -33,12 +34,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
@@ -145,13 +144,11 @@ public final class PlayablePartCheck {
     }
 
     /**
-     * Which subdivisions of its own beat the reference arrangement uses.
+     * Which divisions of its own counted beat the reference arrangement uses.
      *
      * <p>Read in the reference's clock rather than the recording's, so it says
      * what somebody decided a reader should play and not how well the beat
-     * tracker followed it. It is the anchor for the table below: a vocabulary
-     * the arranger never needed is one the reduction is unlikely to need
-     * either.
+     * tracker followed it.
      */
     private static void subdivisions(Path file, String track) throws Exception {
         Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
@@ -167,10 +164,14 @@ public final class PlayablePartCheck {
                 }
             }
         }
-        double resolution = sequence.getResolution();
+        // Ticks per COUNTED beat, which is what a resolution divides: the file
+        // states ticks per quarter, and in compound time the counted beat is a
+        // dotted quarter, so dividing the one by the other would label every
+        // row with the wrong note value.
+        double perBeat = sequence.getResolution() * meterOf(sequence).beatUnitQuarters();
         StringBuilder line = new StringBuilder();
         for (GridResolution grid : GridResolution.values()) {
-            double step = resolution / grid.divisionsPerBeat();
+            double step = perBeat / grid.divisionsPerBeat();
             int on = 0;
             for (long tick : ticks) {
                 if (Math.abs(tick - Math.round(tick / step) * step) < 1e-6) {
@@ -194,37 +195,38 @@ public final class PlayablePartCheck {
     }
 
     /**
-     * What each grid vocabulary makes of the two parts, which is the sweep
-     * {@link QuantizationSettings#READING} was chosen from (#594).
+     * What each way of restricting the divisions makes of the two parts, which
+     * is the sweep {@link QuantizationSettings#READING} was chosen from (#594).
      *
      * <p>Three quantities, because no one of them decides it. {@code tupletBars}
      * and the histogram are what the page costs a reader. {@code moved} is what
      * the printing costs in literalness, in beats, against the part's own
      * onsets. The F1 columns are the printed onsets against the reference, at a
      * tolerance below what the melody stage can place (#497) and at one above
-     * it: a vocabulary that reads better and agrees no worse is free, and one
+     * it: a restriction that reads better and agrees no worse is free, and one
      * that buys the page by moving notes away from the music shows it here.
      */
     private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
                                      List<Event> reference) {
-        Map<String, Set<GridResolution>> sets = new LinkedHashMap<>();
-        sets.put("all", EnumSet.allOf(GridResolution.class));
-        sets.put("no tuplets", EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT,
-                GridResolution.QUARTER_BEAT, GridResolution.EIGHTH_BEAT));
-        sets.put("no tuplets, floor at the sixteenth", QuantizationSettings.READING.grids());
-        sets.put("no tuplets, floor at the eighth",
-                EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT));
-        sets.put("the counted beat only", EnumSet.of(GridResolution.BEAT));
+        Map<String, QuantizationSettings> ways = new LinkedHashMap<>();
+        QuantizationSettings all = QuantizationSettings.DEFAULT;
+        ways.put("every division", all);
+        ways.put("the meter's own only", all.withoutTuplets());
+        ways.put("the meter's own, one level below the beat",
+                all.withoutTuplets().withLevelsBelowTheBeat(1));
+        ways.put("the meter's own, two levels below the beat",
+                all.withoutTuplets().withLevelsBelowTheBeat(2));
+        ways.put("the counted beat only", all.withLevelsBelowTheBeat(0));
         System.out.println();
-        System.out.printf(Locale.ROOT, "%-46s %8s %8s %8s %10s   %s%n",
-                "vocabulary", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
-        for (Map.Entry<String, Set<GridResolution>> entry : sets.entrySet()) {
+        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s   %s%n",
+                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
+        for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
             vocabulary("estimate  " + entry.getKey(), score, estimate,
-                    QuantizationSettings.DEFAULT.withGrids(entry.getValue()), reference);
+                    entry.getValue(), reference);
         }
-        for (Map.Entry<String, Set<GridResolution>> entry : sets.entrySet()) {
+        for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
             vocabulary("reduced   " + entry.getKey(), score.withTrack(reduced), reduced,
-                    QuantizationSettings.DEFAULT.withGrids(entry.getValue()), reference);
+                    entry.getValue(), reference);
         }
     }
 
@@ -250,7 +252,7 @@ public final class PlayablePartCheck {
                 tuplets++;
             }
         }
-        System.out.printf(Locale.ROOT, "%-46s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
+        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
                 label, 100 * f1(events, reference, TIGHT_SECONDS),
                 100 * f1(events, reference, TOLERANCE_SECONDS),
                 moved / Math.max(1, printed.size()), tuplets, histogram);
@@ -499,28 +501,38 @@ public final class PlayablePartCheck {
     private static double barSeconds(Path file) throws Exception {
         Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
         double secondsPerQuarter = 0.5;
-        int numerator = 4;
-        int denominator = 4;
         long earliestTempo = Long.MAX_VALUE;
-        long earliestMeter = Long.MAX_VALUE;
         for (Track track : sequence.getTracks()) {
             for (int i = 0; i < track.size(); i++) {
-                if (!(track.get(i).getMessage() instanceof MetaMessage meta)) {
-                    continue;
-                }
-                byte[] data = meta.getData();
-                if (meta.getType() == 0x51 && track.get(i).getTick() < earliestTempo) {
+                if (track.get(i).getMessage() instanceof MetaMessage meta
+                        && meta.getType() == 0x51 && track.get(i).getTick() < earliestTempo) {
                     earliestTempo = track.get(i).getTick();
+                    byte[] data = meta.getData();
                     secondsPerQuarter = (((data[0] & 0xff) << 16)
                             | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
-                } else if (meta.getType() == 0x58 && track.get(i).getTick() < earliestMeter) {
-                    earliestMeter = track.get(i).getTick();
+                }
+            }
+        }
+        return meterOf(sequence).quarterBeatsPerBar() * secondsPerQuarter;
+    }
+
+    /** The file's opening meter, or common time when it states none. */
+    private static TimeSignature meterOf(Sequence sequence) {
+        int numerator = 4;
+        int denominator = 4;
+        long earliest = Long.MAX_VALUE;
+        for (Track track : sequence.getTracks()) {
+            for (int i = 0; i < track.size(); i++) {
+                if (track.get(i).getMessage() instanceof MetaMessage meta
+                        && meta.getType() == 0x58 && track.get(i).getTick() < earliest) {
+                    earliest = track.get(i).getTick();
+                    byte[] data = meta.getData();
                     numerator = data[0] & 0xff;
                     denominator = 1 << (data[1] & 0xff);
                 }
             }
         }
-        return numerator * (4.0 / denominator) * secondsPerQuarter;
+        return new TimeSignature(numerator, denominator);
     }
 
     /** The named track's note-ons, in seconds, honouring the file's tempo events. */

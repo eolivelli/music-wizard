@@ -122,12 +122,13 @@ into the note it leads into, which is much weaker: what says where a sung
 gesture begins is the onset envelope, and that is audio, which the
 arrangement layer cannot see.
 
-The reduced page is also written on a **reading vocabulary** rather than the
-transcription's (#594): the meter's own subdivisions, and nothing shorter than
-the second one below the counted beat. A bar of the reduction holds a handful
-of note-heads, few enough that some subdivision always fits them, so the grid
-that wins on a fine vocabulary is fitting the segmenter's spread — and it puts
-triplet brackets on a song in straight time. `tools/PlayablePartCheck.java`
-prints the sweep this was chosen from, against an arranger's own reading of the
-same recording. What it costs is that a real triplet is written on the nearest
-duple positions; the estimate's own page still reads one as a triplet.
+The reduced page is also **divided only the way its meter divides** (#594),
+where the estimate's page may use any subdivision. A bar of the reduction holds
+a handful of note-heads, few enough that some subdivision always fits them, so
+the division that wins where all are offered is fitting the segmenter's spread
+— and it puts triplet brackets on a song in straight time. Which divisions are
+the meter's own is asked per bar, because the answer inverts between simple and
+compound time. `tools/PlayablePartCheck.java` prints the sweep this was chosen
+from, against an arranger's own reading of the same recording. What it costs is
+that a real triplet is chased down the duple ladder instead; the estimate's own
+page still reads one as a triplet.

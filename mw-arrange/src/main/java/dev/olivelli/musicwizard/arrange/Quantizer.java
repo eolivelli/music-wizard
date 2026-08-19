@@ -39,8 +39,8 @@ import java.util.function.ToDoubleFunction;
  *
  * <p>The objective is plausibility, not reproduction — a more literal
  * transcription is usually a worse lead sheet. Per bar, each of
- * {@link QuantizationSettings#grids()} is scored as total onset deviation plus
- * a complexity penalty charged per note; the per-bar scores are then decoded
+ * {@link GridResolution} the settings permit in that bar's meter is scored as
+ * total onset deviation plus a complexity penalty charged per note; the per-bar scores are then decoded
  * with a Viterbi pass charging {@link QuantizationSettings#gridChangePenalty()}
  * for changing subdivision between bars, waived at a {@link Section} boundary.
  * One grid per bar for the whole score, so the staves of a system agree about
@@ -276,7 +276,7 @@ public final class Quantizer {
     private static GridResolution[] chooseGrids(List<Note> notes, List<Section> sections,
                                                 BarTable bars, SwingFeel swing,
                                                 QuantizationSettings settings) {
-        GridResolution[] candidates = settings.grids().toArray(new GridResolution[0]);
+        GridResolution[] candidates = GridResolution.values();
         return decode(costs(notes, bars, swing, settings, candidates), candidates,
                 sectionStarts(sections, bars), settings.gridChangePenalty());
     }
@@ -301,6 +301,19 @@ public final class Quantizer {
                 double step = candidates[g].stepQuarters(meter);
                 cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step))
                         + complexity(candidates[g], meter, settings);
+            }
+        }
+        // Priced out of the bar rather than out of the candidate array, because
+        // which divisions a part may be written on depends on the meter and a
+        // score may change meter (#594). Charged on the empty bars too: they
+        // cost nothing on every grid and would otherwise inherit a division
+        // their own meter forbids.
+        for (int bar = 0; bar < bars.barCount(); bar++) {
+            TimeSignature meter = bars.meterOf(bar);
+            for (int g = 0; g < candidates.length; g++) {
+                if (!settings.permits(candidates[g], meter)) {
+                    cost[bar][g] = Double.POSITIVE_INFINITY;
+                }
             }
         }
         return cost;

@@ -16,11 +16,7 @@
 
 package dev.olivelli.musicwizard.arrange;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.Objects;
-import java.util.Set;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 
 /**
  * The knobs the quantizer trades readability against literalness with.
@@ -58,9 +54,13 @@ import java.util.Set;
  *                          held <em>through</em> its written end rather than
  *                          short of it. 0.0 applies the allowance to everything
  * @param detectSwing       whether to look for a shuffle and write it straight
- * @param grids             the subdivisions a bar may be written on. The costs
- *                          above choose among these; a resolution left out
- *                          cannot be chosen however well it fits
+ * @param tuplets           whether a bar may be written on a division its meter
+ *                          does not subdivide by. Withheld, the costs above
+ *                          choose among the meter's own divisions only, however
+ *                          well a tuplet would have fitted
+ * @param levelsBelowTheBeat how far below the counted beat a bar may be
+ *                          divided, in halvings or thirdings. The deepest the
+ *                          resolutions offer is the whole ladder
  */
 public record QuantizationSettings(
         double levelPenalty,
@@ -69,7 +69,14 @@ public record QuantizationSettings(
         double articulationRatio,
         double overlapTolerance,
         boolean detectSwing,
-        Set<GridResolution> grids) {
+        boolean tuplets,
+        int levelsBelowTheBeat) {
+
+    /** The narrowest articulation allowance that is not absurd. */
+    private static final double MIN_ARTICULATION_RATIO = 0.25;
+
+    /** The whole ladder the resolutions offer, which is what a transcription uses. */
+    private static final int DEEPEST = deepest();
 
     /**
      * The calibrated defaults.
@@ -88,13 +95,10 @@ public record QuantizationSettings(
      * Scaling these constants with the tempo was tried and makes it worse.
      */
     public static final QuantizationSettings DEFAULT =
-            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true,
-                    EnumSet.allOf(GridResolution.class));
+            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true, true, DEEPEST);
 
     /**
-     * The defaults, restricted to the subdivisions a part written to be
-     * <em>read</em> is written in: the meter's own, down to two levels below
-     * the counted beat.
+     * The defaults, restricted to the divisions the meter itself subdivides by.
      *
      * <p>For {@link PlayableMelody}'s reduction rather than for a
      * transcription, and the difference is what evidence there is (#594). The
@@ -103,15 +107,10 @@ public record QuantizationSettings(
      * the one that wins is fitting the segmenter's spread rather than the
      * singing. Where that lands a triplet in a song in straight time, the
      * reader is being told something the recording never said.
-     * {@code tools/PlayablePartCheck.java} sweeps the vocabularies and holds
-     * each against an arranger's own reading of the same recording.
+     * {@code tools/PlayablePartCheck.java} sweeps both axes and holds each
+     * against an arranger's own reading of the same recording.
      */
-    public static final QuantizationSettings READING = DEFAULT.withGrids(
-            EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT,
-                    GridResolution.QUARTER_BEAT));
-
-    /** The narrowest articulation allowance that is not absurd. */
-    private static final double MIN_ARTICULATION_RATIO = 0.25;
+    public static final QuantizationSettings READING = DEFAULT.withoutTuplets();
 
     public QuantizationSettings {
         requireNonNegative(levelPenalty, "levelPenalty");
@@ -123,21 +122,35 @@ public record QuantizationSettings(
                     "articulationRatio must be within " + MIN_ARTICULATION_RATIO
                             + "..1.0, got: " + articulationRatio);
         }
-        grids = copyOf(grids);
+        if (levelsBelowTheBeat < 0) {
+            throw new IllegalArgumentException(
+                    "levelsBelowTheBeat cannot be negative, got: " + levelsBelowTheBeat);
+        }
     }
 
     /**
-     * An unmodifiable copy iterating in {@link GridResolution} declaration
-     * order, which is what makes the quantizer's tie-break — the simplest grid
-     * — depend on the enum rather than on how a caller happened to build the
-     * set.
+     * Whether a bar in this meter may be written on this division.
+     *
+     * <p>Asked per bar, because both halves of the answer depend on the meter
+     * it is asked about: simple time subdivides by two and compound time by
+     * three, so the very divisions that are tuplets in one are the natural ones
+     * in the other. The counted beat itself is always allowed — it is not a
+     * subdivision at all, and {@link GridResolution#isTupletIn} answers about
+     * it as though it were (#130).
      */
-    private static Set<GridResolution> copyOf(Collection<GridResolution> grids) {
-        Objects.requireNonNull(grids, "grids");
-        if (grids.isEmpty()) {
-            throw new IllegalArgumentException("a bar has to be written on some grid");
+    public boolean permits(GridResolution grid, TimeSignature meter) {
+        if (grid.depthIn(meter) > levelsBelowTheBeat) {
+            return false;
         }
-        return Collections.unmodifiableSet(EnumSet.copyOf(grids));
+        return tuplets || grid == GridResolution.BEAT || !grid.isTupletIn(meter);
+    }
+
+    private static int deepest() {
+        int deepest = 0;
+        for (GridResolution grid : GridResolution.values()) {
+            deepest = Math.max(deepest, grid.depthIn(TimeSignature.FOUR_FOUR));
+        }
+        return deepest;
     }
 
     private static void requireNonNegative(double value, String name) {
@@ -150,25 +163,38 @@ public record QuantizationSettings(
     /** Returns a copy with swing detection turned off. */
     public QuantizationSettings withoutSwingDetection() {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, overlapTolerance, false, grids);
+                articulationRatio, overlapTolerance, false, tuplets, levelsBelowTheBeat);
     }
 
     /** Returns a copy with a different per-section grid-change cost. */
     public QuantizationSettings withGridChangePenalty(double penalty) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, penalty,
-                articulationRatio, overlapTolerance, detectSwing, grids);
+                articulationRatio, overlapTolerance, detectSwing, tuplets, levelsBelowTheBeat);
     }
 
     /** Returns a copy with a different articulation allowance. */
     public QuantizationSettings withArticulationRatio(double ratio) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                ratio, overlapTolerance, detectSwing, grids);
+                ratio, overlapTolerance, detectSwing, tuplets, levelsBelowTheBeat);
     }
 
-    /** Returns a copy written on the given subdivisions and no others. */
-    public QuantizationSettings withGrids(Collection<GridResolution> allowed) {
+    /** Returns a copy written on the meter's own divisions only. */
+    public QuantizationSettings withoutTuplets() {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, overlapTolerance, detectSwing, copyOf(allowed));
+                articulationRatio, overlapTolerance, detectSwing, false, levelsBelowTheBeat);
+    }
+
+    /**
+     * Returns a copy divided no further below the counted beat than the given
+     * number of halvings or thirdings.
+     *
+     * <p>Exists so that the depth can be measured rather than asserted: the
+     * sweep in {@code tools/PlayablePartCheck.java} is what said that
+     * {@link #READING} should not restrict it.
+     */
+    public QuantizationSettings withLevelsBelowTheBeat(int levels) {
+        return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
+                articulationRatio, overlapTolerance, detectSwing, tuplets, levels);
     }
 
     /**
@@ -181,6 +207,6 @@ public record QuantizationSettings(
      */
     public QuantizationSettings withOverlapTolerance(double tolerance) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, tolerance, detectSwing, grids);
+                articulationRatio, tolerance, detectSwing, tuplets, levelsBelowTheBeat);
     }
 }
