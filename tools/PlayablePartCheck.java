@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
+import dev.olivelli.musicwizard.arrange.QuantizationSettings;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Note;
@@ -22,10 +27,14 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
+import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +58,11 @@ import javax.sound.midi.Track;
  * is fitted against MW's <em>estimate</em>, so the reduction cannot be scored
  * on an alignment chosen to suit it.
  *
+ * <p>Then rhythm: which subdivisions the arranger themselves used, and what
+ * each candidate grid vocabulary makes of both parts — the page it produces,
+ * what it moves the onsets by, and whether the printed onsets end up nearer
+ * the reference or further from it (#594).
+ *
  * <pre>
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid [TRACK]
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid Melody 11.4 13.0
@@ -58,6 +72,22 @@ public final class PlayablePartCheck {
 
     /** How far apart two onsets may be and still be called the same note. */
     private static final double TOLERANCE_SECONDS = 0.25;
+
+    /** The largest denominator exponent this reads. */
+    private static final int MAX_DENOMINATOR_SHIFT = 6;
+
+    private static final TimeSignature COMMON_TIME = new TimeSignature(4, 4);
+
+    private static final int TEMPO = 0x51;
+
+    private static final int METER = 0x58;
+
+    /**
+     * The tighter tolerance the vocabulary table is also read at. Below what
+     * the melody stage can place a sung onset to (#497), so it says which
+     * printing sits nearer the music rather than which one is right.
+     */
+    private static final double TIGHT_SECONDS = 0.05;
 
     private record Event(double seconds, int pitch) {
     }
@@ -98,6 +128,8 @@ public final class PlayablePartCheck {
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
         chart(score, reduced);
+        subdivisions(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
+        vocabularies(score, estimate, reduced, mapped);
 
         if (args.length >= 5) {
             double from = Double.parseDouble(args[3]);
@@ -118,6 +150,152 @@ public final class PlayablePartCheck {
             }
             System.out.println();
         }
+    }
+
+    /**
+     * Which divisions of its own counted beat the reference arrangement uses.
+     *
+     * <p>Read in the reference's clock rather than the recording's, so it says
+     * what somebody decided a reader should play and not how well the beat
+     * tracker followed it.
+     */
+    private static void subdivisions(Path file, String track) throws Exception {
+        Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
+        List<Long> ticks = new ArrayList<>();
+        for (Track candidate : sequence.getTracks()) {
+            if (named(candidate, track)) {
+                for (int i = 0; i < candidate.size(); i++) {
+                    if (candidate.get(i).getMessage() instanceof ShortMessage message
+                            && message.getCommand() == ShortMessage.NOTE_ON
+                            && message.getData2() > 0) {
+                        ticks.add(candidate.get(i).getTick());
+                    }
+                }
+            }
+        }
+        // Ticks per COUNTED beat, which is what a resolution divides: the file
+        // states ticks per quarter, and in compound time the counted beat is a
+        // dotted quarter, so dividing the one by the other would label every
+        // row with the wrong note value.
+        double perBeat = sequence.getResolution() * meterOf(sequence).beatUnitQuarters();
+        StringBuilder line = new StringBuilder();
+        for (GridResolution grid : GridResolution.values()) {
+            double step = perBeat / grid.divisionsPerBeat();
+            int on = 0;
+            for (long tick : ticks) {
+                if (Math.abs(tick - Math.round(tick / step) * step) < 1e-6) {
+                    on++;
+                }
+            }
+            line.append(String.format(Locale.ROOT, " %s %d", grid, on));
+        }
+        System.out.printf(Locale.ROOT,
+                "the reference's own reading: %d melody onsets, of which sit exactly on%s%n",
+                ticks.size(), line);
+    }
+
+    private static boolean named(Track track, String wanted) {
+        for (int i = 0; i < track.size(); i++) {
+            if (track.get(i).getMessage() instanceof MetaMessage meta && meta.getType() == 0x03) {
+                return new String(meta.getData()).trim().equalsIgnoreCase(wanted);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * What each way of restricting the divisions makes of the two parts, which
+     * is the sweep {@link QuantizationSettings#READING} was chosen from (#594).
+     *
+     * <p>A page gets hard to read in two ways, and withdrawing a division fixes
+     * one by worsening the other: the brackets go and the same notes come back
+     * as chains of tied shorter values. {@code tupletBars} counts the first,
+     * which needs counting because whether a division is a tuplet depends on
+     * the meter. The second is read off {@code grids}, which says how many bars
+     * went to each division: a summary of that column loses the handful of bars
+     * the defect lives in, whichever way it is summarised. {@code moved} is
+     * what the printing costs in literalness, in beats, against the part's own
+     * onsets. The F1 columns are the printed onsets against the reference, at a
+     * tolerance below what the melody stage can place (#497) and at one above
+     * it.
+     */
+    private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
+                                     List<Event> reference) {
+        Map<String, QuantizationSettings> ways = new LinkedHashMap<>();
+        QuantizationSettings all = QuantizationSettings.DEFAULT;
+        ways.put("every division", all);
+        ways.put("the meter's own only", all.withoutTuplets());
+        ways.put("the meter's own, one level down",
+                all.withoutTuplets().withLevelsBelowTheBeat(1));
+        ways.put("the meter's own, two levels down (READING)",
+                QuantizationSettings.READING);
+        ways.put("the counted beat only", all.withLevelsBelowTheBeat(0));
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s   %s%n",
+                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
+        for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
+            vocabulary("estimate  " + entry.getKey(), score, estimate,
+                    entry.getValue(), reference);
+        }
+        for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
+            vocabulary("reduced   " + entry.getKey(), score.withTrack(reduced), reduced,
+                    entry.getValue(), reference);
+        }
+    }
+
+    private static void vocabulary(String label, Score score, NoteTrack played,
+                                   QuantizationSettings settings, List<Event> reference) {
+        QuantizedScore quantized = Quantizer.quantize(score, settings);
+        NoteTrack printed = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
+        TempoMap map = score.tempoMap();
+        List<Event> events = new ArrayList<>(printed.size());
+        double moved = 0;
+        for (int i = 0; i < printed.size(); i++) {
+            Note note = printed.notes().get(i);
+            double beat = note.onsetBeat()
+                    .orElseGet(() -> map.secondsToBeats(note.onsetSeconds()));
+            events.add(new Event(map.beatsToSeconds(beat), note.midiPitch()));
+            moved += Math.abs(beat - map.secondsToBeats(played.notes().get(i).onsetSeconds()));
+        }
+        int tuplets = 0;
+        Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
+        for (BarGrid grid : quantized.grids()) {
+            histogram.merge(grid.resolution(), 1, Integer::sum);
+            if (grid.resolution().isTupletIn(grid.timeSignature())
+                    && grid.resolution() != GridResolution.BEAT) {
+                tuplets++;
+            }
+        }
+        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
+                label, 100 * f1(events, reference, TIGHT_SECONDS),
+                100 * f1(events, reference, TOLERANCE_SECONDS),
+                moved / Math.max(1, printed.size()), tuplets, histogram);
+    }
+
+    /** Note F1 at a stated onset tolerance, matched one to one by pitch class. */
+    private static double f1(List<Event> mine, List<Event> reference, double tolerance) {
+        boolean[] used = new boolean[mine.size()];
+        int matched = 0;
+        for (Event event : reference) {
+            int best = -1;
+            double nearest = tolerance;
+            for (int i = 0; i < mine.size(); i++) {
+                double distance = Math.abs(mine.get(i).seconds() - event.seconds());
+                if (!used[i] && distance < nearest
+                        && Math.floorMod(mine.get(i).pitch(), 12)
+                        == Math.floorMod(event.pitch(), 12)) {
+                    nearest = distance;
+                    best = i;
+                }
+            }
+            if (best >= 0) {
+                used[best] = true;
+                matched++;
+            }
+        }
+        double precision = mine.isEmpty() ? 0 : matched / (double) mine.size();
+        double recall = reference.isEmpty() ? 0 : matched / (double) reference.size();
+        return matched == 0 ? 0 : 2 * precision * recall / (precision + recall);
     }
 
     private static List<Event> events(NoteTrack track) {
@@ -336,29 +514,86 @@ public final class PlayablePartCheck {
      */
     private static double barSeconds(Path file) throws Exception {
         Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
+        MetaMessage tempo = earliest(sequence, TEMPO);
         double secondsPerQuarter = 0.5;
-        int numerator = 4;
-        int denominator = 4;
-        long earliestTempo = Long.MAX_VALUE;
-        long earliestMeter = Long.MAX_VALUE;
+        byte[] data = tempo == null ? null : payload(tempo, 3);
+        if (data != null) {
+            secondsPerQuarter = (((data[0] & 0xff) << 16)
+                    | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
+        }
+        return meterOf(sequence).quarterBeatsPerBar() * secondsPerQuarter;
+    }
+
+    /**
+     * The earliest event of a meta type in the file, or null.
+     *
+     * <p>Chosen before it is decoded, so that a malformed one is reported as
+     * what was used rather than skipped in favour of a later event the file
+     * does not open with.
+     */
+    private static MetaMessage earliest(Sequence sequence, int type) {
+        MetaMessage found = null;
+        long at = Long.MAX_VALUE;
         for (Track track : sequence.getTracks()) {
             for (int i = 0; i < track.size(); i++) {
-                if (!(track.get(i).getMessage() instanceof MetaMessage meta)) {
-                    continue;
-                }
-                byte[] data = meta.getData();
-                if (meta.getType() == 0x51 && track.get(i).getTick() < earliestTempo) {
-                    earliestTempo = track.get(i).getTick();
-                    secondsPerQuarter = (((data[0] & 0xff) << 16)
-                            | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
-                } else if (meta.getType() == 0x58 && track.get(i).getTick() < earliestMeter) {
-                    earliestMeter = track.get(i).getTick();
-                    numerator = data[0] & 0xff;
-                    denominator = 1 << (data[1] & 0xff);
+                if (track.get(i).getMessage() instanceof MetaMessage meta
+                        && meta.getType() == type && track.get(i).getTick() < at) {
+                    at = track.get(i).getTick();
+                    found = meta;
                 }
             }
         }
-        return numerator * (4.0 / denominator) * secondsPerQuarter;
+        return found;
+    }
+
+    /**
+     * A meta event's bytes, or null with a warning when there are too few.
+     *
+     * <p>Every reference this reads is third-party MIDI off the web, so a
+     * truncated event is a thing that happens and must not take down a run that
+     * has printed nothing yet. One reader for all of them.
+     */
+    private static byte[] payload(MetaMessage meta, int minimum) {
+        byte[] data = meta.getData();
+        if (data.length < minimum) {
+            System.err.printf(Locale.ROOT,
+                    "warning: a meta event of type 0x%02x carries %d byte(s) where %d are"
+                            + " needed, so it is ignored%n", meta.getType(), data.length, minimum);
+            return null;
+        }
+        return data;
+    }
+
+    /** The file's opening meter, or common time when it states none this can read. */
+    private static TimeSignature meterOf(Sequence sequence) {
+        MetaMessage event = earliest(sequence, METER);
+        byte[] data = event == null ? null : payload(event, 2);
+        if (data == null) {
+            return COMMON_TIME;
+        }
+        int exponent = data[1] & 0xff;
+        // A shift is taken mod 32 in Java, so an out-of-range one does not
+        // overflow loudly -- it returns a plausible denominator and a silently
+        // wrong bar length.
+        if (exponent > MAX_DENOMINATOR_SHIFT) {
+            System.err.printf(Locale.ROOT,
+                    "warning: the opening meter's denominator exponent is %d, past what this"
+                            + " reads, so it is read as %s%n", exponent, COMMON_TIME);
+            return COMMON_TIME;
+        }
+        int numerator = data[0] & 0xff;
+        int denominator = 1 << exponent;
+        try {
+            return new TimeSignature(numerator, denominator);
+        } catch (IllegalArgumentException e) {
+            // The meter only labels a row and scales the bar, so a meter the
+            // model refuses is worth a line on stderr rather than a stack trace
+            // in place of the whole report.
+            System.err.printf(Locale.ROOT,
+                    "warning: the opening meter %d/%d is not one this can read, so it is read"
+                            + " as %s: %s%n", numerator, denominator, COMMON_TIME, e.getMessage());
+            return COMMON_TIME;
+        }
     }
 
     /** The named track's note-ons, in seconds, honouring the file's tempo events. */
@@ -367,8 +602,12 @@ public final class PlayablePartCheck {
         TreeMap<Long, Double> tempo = new TreeMap<>();
         for (Track track : sequence.getTracks()) {
             for (int i = 0; i < track.size(); i++) {
-                if (track.get(i).getMessage() instanceof MetaMessage meta && meta.getType() == 0x51) {
-                    byte[] data = meta.getData();
+                if (track.get(i).getMessage() instanceof MetaMessage meta
+                        && meta.getType() == TEMPO) {
+                    byte[] data = payload(meta, 3);
+                    if (data == null) {
+                        continue;
+                    }
                     int microseconds = ((data[0] & 0xff) << 16)
                             | ((data[1] & 0xff) << 8) | (data[2] & 0xff);
                     tempo.put(track.get(i).getTick(), microseconds / 1_000_000.0);

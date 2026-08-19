@@ -38,13 +38,13 @@ import java.util.function.ToDoubleFunction;
  * missing.
  *
  * <p>The objective is plausibility, not reproduction — a more literal
- * transcription is usually a worse lead sheet. Per bar, each candidate in
- * {@link GridResolution} is scored as total onset deviation plus a complexity
- * penalty charged per note; the per-bar scores are then decoded with a Viterbi
- * pass charging {@link QuantizationSettings#gridChangePenalty()} for changing
- * subdivision between bars, waived at a {@link Section} boundary. One grid per
- * bar for the whole score, so the staves of a system agree about what a beam
- * means.
+ * transcription is usually a worse lead sheet. Per bar, each of
+ * {@link GridResolution} the settings permit in that bar's meter is scored as
+ * total onset deviation plus a complexity penalty charged per note; the per-bar scores are then decoded
+ * with a Viterbi pass charging {@link QuantizationSettings#gridChangePenalty()}
+ * for changing subdivision between bars, waived at a {@link Section} boundary.
+ * One grid per bar for the whole score, so the staves of a system agree about
+ * what a beam means.
  *
  * <p>Chords, sections and keys go onto the beat axis too — leaving them in
  * seconds would leave two independently rounded answers to where beat three is
@@ -301,6 +301,19 @@ public final class Quantizer {
                 double step = candidates[g].stepQuarters(meter);
                 cost[bar][g] += Math.abs(beatInBar - snapWithin(beatInBar, step))
                         + complexity(candidates[g], meter, settings);
+            }
+        }
+        // Priced out of the bar rather than out of the candidate array, because
+        // which divisions a part may be written on depends on the meter and a
+        // score may change meter (#594). Charged on the empty bars too: they
+        // cost nothing on every grid and would otherwise inherit a division
+        // their own meter forbids.
+        for (int bar = 0; bar < bars.barCount(); bar++) {
+            TimeSignature meter = bars.meterOf(bar);
+            for (int g = 0; g < candidates.length; g++) {
+                if (!settings.permits(candidates[g], meter)) {
+                    cost[bar][g] = Double.POSITIVE_INFINITY;
+                }
             }
         }
         return cost;

@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
+import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.core.model.Accidental;
@@ -71,11 +72,37 @@ class PlayableLeadSheetTest {
     @DisplayName("one note-head per syllable, and the rest of the page untouched")
     void theReduction() {
         Score score = scooped();
-        QuantizedScore quantized =
-                Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
+        QuantizedScore quantized = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
 
         Goldens.assertGolden("lead-sheet-playable",
                 LeadSheet.toLilyPond(quantized, melodyOf(quantized)));
+    }
+
+    @Test
+    @DisplayName("the triplets are the reduction's doing: the estimate of the same line is duple")
+    void theOffGridEstimateIsDuple() {
+        QuantizedScore estimate = Quantizer.quantize(offGrid());
+        Score score = offGrid();
+        QuantizedScore reduced =
+                Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
+
+        assertThat(LeadSheet.toLilyPond(estimate, melodyOf(estimate)))
+                .doesNotContain("\\tuplet");
+        assertThat(LeadSheet.toLilyPond(reduced, melodyOf(reduced))).contains("\\tuplet");
+    }
+
+    @Test
+    @DisplayName("no triplet bracket in a song in straight time")
+    void theOffGridReduction() {
+        Score score = offGrid();
+        QuantizedScore quantized = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(source).doesNotContain("\\tuplet");
+        Goldens.assertGolden("lead-sheet-off-grid-playable", source);
     }
 
     @Test
@@ -84,8 +111,8 @@ class PlayableLeadSheetTest {
         Score score = scooped();
         String estimate = LeadSheet.toLilyPond(
                 Quantizer.quantize(score), melodyOf(Quantizer.quantize(score)));
-        QuantizedScore reduced =
-                Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
+        QuantizedScore reduced = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
 
         String playable = LeadSheet.toLilyPond(reduced, melodyOf(reduced));
 
@@ -104,8 +131,8 @@ class PlayableLeadSheetTest {
     @DisplayName("the staff says which of the two pages it is")
     void theStaffIsNamed() {
         Score score = scooped();
-        QuantizedScore quantized =
-                Quantizer.quantize(score.withTrack(PlayableMelody.reduce(score)));
+        QuantizedScore quantized = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
 
         assertThat(LeadSheet.toLilyPond(quantized, melodyOf(quantized)))
                 .contains("instrumentName = \"" + PlayableMelody.TRACK_NAME + "\"");
@@ -142,6 +169,93 @@ class PlayableLeadSheetTest {
                         chord(map, "F4", ChordQuality.MAJOR, 8, 12),
                         chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 12, 16)),
                         Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+    }
+
+    @Test
+    @DisplayName("a compound-meter page keeps its plain eighths and gains no bracket")
+    void compoundTimeIsNotBracketed() {
+        // The restriction is on the divisions the meter does not subdivide by,
+        // and which those are inverts here: a rule fixed in simple time would
+        // withhold the plain eighth and bracket every beat of this page.
+        Score score = inSixEight();
+        QuantizedScore quantized = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(source).doesNotContain("\\tuplet");
+        List<Note> printed = melodyOf(quantized).notes();
+        // Counted as well as placed: a reduction that collapsed the line would
+        // leave the loop below asserting nothing at all.
+        assertThat(printed).hasSize(12);
+        for (int i = 0; i < printed.size(); i++) {
+            assertThat(printed.get(i).onsetBeat().orElseThrow())
+                    .describedAs("note %d", i)
+                    .isCloseTo(i * 0.5, org.assertj.core.api.Assertions.within(1e-9));
+        }
+    }
+
+    /**
+     * Four bars of a sung line whose syllables do not begin on the beat, the
+     * shape #594 was reported on: every group is scooped into and every scoop
+     * starts a little off the duple grid, so the bar the reduction leaves has
+     * few enough note-heads that a triplet subdivision fits them.
+     *
+     * <p>The offsets are the same in every bar, which is what makes the pair of
+     * goldens legible — the page is one figure repeated, so a difference between
+     * them is the subdivision and nothing else.
+     */
+    private static Score offGrid() {
+        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
+        double[] entries = {0.08, 1.28, 2.72};
+        String[] scoops = {"D4", "F4", "A4"};
+        String[] targets = {"E4", "G4", "B4"};
+        List<Note> voice = new ArrayList<>();
+        List<LyricWord> words = new ArrayList<>();
+        String[] sung = {"la", "di", "da"};
+        for (int bar = 0; bar < 4; bar++) {
+            for (int i = 0; i < entries.length; i++) {
+                double at = 4 * bar + entries[i];
+                voice.add(note(map, at, 0.2, scoops[i]));
+                voice.add(note(map, at + 0.2, 0.9, targets[i]));
+                words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(at),
+                        map.beatsToSeconds(at + 1.1), Confidence.CERTAIN));
+            }
+        }
+        return Score.empty(map, 16 / (QUARTER_BPM / 60))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voice, Confidence.CERTAIN))
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 8),
+                        chord(map, "G4", ChordQuality.MAJOR, 8, 16)),
+                        Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+    }
+
+    /**
+     * A 6/8 tune of plain eighths, one syllable to each, played exactly.
+     *
+     * <p>Exact rather than performed: what is being asserted is that the
+     * division survives, so a jittered onset would leave the test unable to say
+     * whether a moved note was the meter or the dice.
+     */
+    private static Score inSixEight() {
+        TempoMap map = TempoMap.constantPulse(QUARTER_BPM, TimeSignature.SIX_EIGHT);
+        String[] sung = {"one", "two", "three", "four", "five", "six"};
+        List<Note> voice = new ArrayList<>();
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            double at = i * 0.5;
+            voice.add(note(map, at, 0.5, i % 2 == 0 ? "E4" : "G4"));
+            words.add(LyricWord.ofSeconds(sung[i % sung.length], map.beatsToSeconds(at),
+                    map.beatsToSeconds(at + 0.5), Confidence.CERTAIN));
+        }
+        return Score.empty(map, map.beatsToSeconds(12))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voice, Confidence.CERTAIN))
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 6)), Confidence.of(0.9)))
                 .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
                         "en", Confidence.CERTAIN));
     }

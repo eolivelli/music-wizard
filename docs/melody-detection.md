@@ -121,3 +121,12 @@ Where there are no words the grouping falls back to absorbing an ornament
 into the note it leads into, which is much weaker: what says where a sung
 gesture begins is the onset envelope, and that is audio, which the
 arrangement layer cannot see.
+
+The reduced page is also written on a **narrower set of divisions** than the
+estimate's (#594), which `QuantizationSettings.READING` defines. A bar of the
+reduction holds a handful of note-heads, few enough that some division always
+fits them, so the one that wins where all are offered is fitting the
+segmenter's spread. `tools/PlayablePartCheck.java` prints the sweep it was
+chosen from, against an arranger's own reading of the same recording, and its
+two page columns are why the restriction has two halves: withdrawing a division
+takes brackets off the page and puts depth on.

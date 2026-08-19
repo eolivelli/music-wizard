@@ -885,6 +885,138 @@ class QuantizerTest {
     }
 
     @Nested
+    @DisplayName("the divisions a bar may be written on")
+    class Vocabulary {
+
+        @Test
+        @DisplayName("a division the meter does not subdivide by is never chosen")
+        void aTupletDivisionIsNotOffered() {
+            // The same triplet passage tripletsLandOnThirds reads as triplets:
+            // the division that fits it best is exactly the one withheld here.
+            Performance performance = new Performance(fourFour(), 6);
+            performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score(),
+                    QuantizationSettings.READING);
+
+            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g ->
+                    assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse());
+        }
+
+        @Test
+        @DisplayName("what withholding them costs: a real triplet is written duple")
+        void aTripletIsWrittenOnTheNearestDuplePositions() {
+            Performance performance = new Performance(fourFour(), 6);
+            performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
+
+            List<Note> notes = Quantizer.quantize(performance.score(),
+                    QuantizationSettings.READING).score().tracks().get(0).notes();
+
+            // Rounded to the nearest position the floor leaves, rather than
+            // chased down the ladder: without the floor the same thirds print
+            // as a chain of tied thirty-seconds, which reads worse than the
+            // bracket the restriction exists to remove.
+            for (Note note : notes) {
+                double beat = note.onsetBeat().orElseThrow();
+                assertThat(beat * 4).isCloseTo(Math.round(beat * 4), within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("in compound time it is the halves that go, and the plain eighths stay")
+        void compoundTimeKeepsItsOwnDivisions() {
+            // Which divisions are the meter's own is the whole point of asking
+            // per bar: a set of resolutions fixed in simple time names exactly
+            // the three that are duplets here, and would print every beat of a
+            // 6/8 song inside a bracket.
+            TempoMap map = TempoMap.constantPulse(120, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(map, 11, 0);
+            performance.run(60, 0.5, 0, 0.5, 1.0, 1.5, 2.0, 2.5);
+
+            QuantizedScore quantized =
+                    Quantizer.quantize(performance.score(), QuantizationSettings.READING);
+
+            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g ->
+                    assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse());
+            List<Note> notes = quantized.score().tracks().get(0).notes();
+            for (int i = 0; i < notes.size(); i++) {
+                assertThat(notes.get(i).onsetBeat().orElseThrow())
+                        .describedAs("note %d", i)
+                        .isCloseTo(i * 0.5, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("a transcription may still divide as far as the resolutions go")
+        void theDefaultPermitsEverything() {
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT)) {
+                for (GridResolution grid : GridResolution.values()) {
+                    assertThat(QuantizationSettings.DEFAULT.permits(grid, meter))
+                            .describedAs("%s in %s", grid, meter)
+                            .isTrue();
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("the counted beat is always available, whatever the meter calls it")
+        void theCountedBeatIsNeverWithheld() {
+            for (TimeSignature meter : List.of(TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT)) {
+                assertThat(QuantizationSettings.READING.permits(GridResolution.BEAT, meter))
+                        .describedAs("the counted beat in %s", meter)
+                        .isTrue();
+            }
+        }
+
+        @Test
+        @DisplayName("a bar with no onsets of its own is still divided its own meter's way")
+        void aBarATieOnlyPassesThroughKeepsItsOwnMetersDivisions() {
+            // The case the per-bar charge exists for. Bar 2 holds no onset, so
+            // it costs nothing on every division and takes its neighbour's --
+            // and its neighbour is in a meter that subdivides the other way. A
+            // tie is what makes that visible: it is the one way a bar nobody
+            // played in reaches the page.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(2, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(tempoMap, 29, 0);
+            performance.run(60, 0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5);
+            // Bars 0 and 1 are four quarter beats each and bar 2 is three, so
+            // this starts in bar 1 and is released in bar 3.
+            performance.note(62, 7.0, 5.0);
+
+            QuantizedScore quantized =
+                    Quantizer.quantize(performance.score(), QuantizationSettings.READING);
+
+            BarGrid silent = quantized.gridAtBar(2).orElseThrow();
+            assertThat(silent.timeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(QuantizationSettings.READING.permits(silent.resolution(),
+                    silent.timeSignature()))
+                    .describedAs("%s in the silent bar", silent.resolution())
+                    .isTrue();
+            assertThat(quantized.grids()).allSatisfy(g ->
+                    assertThat(QuantizationSettings.READING.permits(g.resolution(),
+                            g.timeSignature()))
+                            .describedAs("%s in %s at bar %d", g.resolution(), g.timeSignature(),
+                                    g.bar())
+                            .isTrue());
+        }
+
+        @Test
+        @DisplayName("a depth floor withholds what is below it, in either meter")
+        void theDepthFloorIsMeterRelative() {
+            QuantizationSettings shallow =
+                    QuantizationSettings.DEFAULT.withLevelsBelowTheBeat(1);
+
+            assertThat(shallow.permits(GridResolution.HALF_BEAT, TimeSignature.FOUR_FOUR)).isTrue();
+            assertThat(shallow.permits(GridResolution.QUARTER_BEAT, TimeSignature.FOUR_FOUR))
+                    .isFalse();
+            assertThat(shallow.permits(GridResolution.THIRD_BEAT, TimeSignature.SIX_EIGHT)).isTrue();
+            assertThat(shallow.permits(GridResolution.SIXTH_BEAT, TimeSignature.SIX_EIGHT))
+                    .isFalse();
+        }
+    }
+
+    @Nested
     @DisplayName("degenerate input")
     class Degenerate {
 
@@ -957,16 +1089,39 @@ class QuantizerTest {
             // quietly resets the overlap tolerance would still quantize, just
             // differently. Nothing in the suite could see three of the four
             // places overlapTolerance had to be carried.
-            QuantizationSettings from = new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true);
+            // Both of the last two differ from the defaults, so a copy method
+            // that dropped either would come back holding a transcription's.
+            // tuplets is true here precisely so that withoutTuplets below has
+            // something to change: asserting it against a receiver that already
+            // withholds them cannot fail.
+            QuantizationSettings from =
+                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, true, 2);
 
             assertThat(from.withGridChangePenalty(0.99))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true,
+                            true, 2));
             assertThat(from.withArticulationRatio(0.75))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true,
+                            true, 2));
             assertThat(from.withOverlapTolerance(0.09))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true,
+                            true, 2));
             assertThat(from.withoutSwingDetection())
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false,
+                            true, 2));
+            assertThat(from.withLevelsBelowTheBeat(1))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
+                            true, 1));
+            assertThat(from.withoutTuplets())
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
+                            false, 2));
+        }
+
+        @Test
+        @DisplayName("a bar cannot be asked to divide above the counted beat")
+        void theDepthIsNotNegative() {
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withLevelsBelowTheBeat(-1))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
     }
 
