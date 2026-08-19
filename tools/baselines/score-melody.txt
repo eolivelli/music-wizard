@@ -2,15 +2,15 @@ Melody, note by note against each package's own MIDI melody track
 (seconds throughout: the beat grid is scored by the chart harnesses)
 (a package with a band under the melody is a control, not a target:
  the tracker is monophonic and reads the loudest periodic line)
-  hiphop-m7vamp-bbm-90: notes=137/99  F1@50ms 0.8%  F1@100ms 0.8%  pitch 0.3%  voiced 30.9%
+  hiphop-m7vamp-bbm-90: notes=137/99  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 30.9%
   melody-level1-c-96: notes=96/96  F1@50ms 88.5%  F1@100ms 100.0%  pitch 96.0%  voiced 99.2%
   melody-level2-g-84: notes=112/113  F1@50ms 88.0%  F1@100ms 99.6%  pitch 96.9%  voiced 99.6%
-  melody-level2pad-g-84: notes=133/113  F1@50ms 72.4%  F1@100ms 86.2%  pitch 91.0%  voiced 98.5%
+  melody-level2pad-g-84: notes=133/113  F1@50ms 72.4%  F1@100ms 87.0%  pitch 91.6%  voiced 98.5%
   melody-level3-am-108: notes=74/74  F1@50ms 97.3%  F1@100ms 100.0%  pitch 97.6%  voiced 99.7%
   melody-level4-f-126: notes=94/95  F1@50ms 94.2%  F1@100ms 98.4%  pitch 95.8%  voiced 98.9%
   pop-add9-g-96: no melody track; not scored
   pop-add9-triads-g-96: no melody track; not scored
-  pop-axis-g-116: notes=151/135  F1@50ms 0.7%  F1@100ms 4.9%  pitch 6.2%  voiced 46.0%
+  pop-axis-g-116: notes=151/135  F1@50ms 0.0%  F1@100ms 1.4%  pitch 1.1%  voiced 46.0%
   pop-deceptive-f-72: no melody track; not scored
   pop-m6-m7b5-gm-100: no melody track; not scored
   pop-maj7-sixth-c-92: no melody track; not scored

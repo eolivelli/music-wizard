@@ -75,6 +75,32 @@ envelope marks the attack where a human marks the sung vowel (#497). One
 more instance of the project's standing rule: what synthetic truth rewards,
 real truth can punish.
 
+Last, notes the tracker read **an octave or two out** are folded back (#596).
+A tracker that locks onto a harmonic reports a multiple of the fundamental,
+so the pitch class survives and the note is recovered by moving it, never by
+dropping it. The octave the melody is in comes from the recording's own notes
+rather than from a fixed compass, so a stretch where the separator left no
+voice cannot state the singer's tessitura and a line that ranges wide is not
+held to a voice's range.
+
+**How far the fold may move a note is bounded**, and that bound is what stops
+it relocating a phrase it should not touch. On a recording where the tracker
+sits in one register for most of the length and in another for the rest — the
+accompaniment and then the melody (#560) — the band's centre belongs to
+whichever sounds longer, and without a bound the other is folded into it a
+correct note at a time. The bound is on the correction rather than on how far
+out the note was, and the bench sweeps it alongside the band.
+
+Two known limits are open: the band's edge is hard, so one gesture can be split
+across octaves (#614), and a line whose wide notes are too rare to widen its own
+band is held to a narrow one (#615). The second is why a recording the tracker
+reads in two registers can still lose the shorter one.
+
+`tools/OctaveSweep.java` is the bench, and its `octaves` mode says what the
+corpora can and cannot show: almost none of what the stage gets wrong on clean
+solo singing is wrong by whole octaves, so this is a defect of mixes and
+separation and the field recordings are what witness it.
+
 ## What comes out
 
 `render --parts lead` engraves a lead sheet (melody, chord symbols, words)
