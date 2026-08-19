@@ -11,7 +11,7 @@ Melody, note by note against each package's own MIDI melody track
   melody-level4-f-126: notes=81/95  F1@50ms 22.7%  F1@100ms 28.4%  pitch 32.2%  voiced 63.6%
   pop-add9-g-96: no melody track; not scored
   pop-add9-triads-g-96: no melody track; not scored
-  pop-axis-g-116: notes=116/135  F1@50ms 13.5%  F1@100ms 23.9%  pitch 32.2%  voiced 52.2%
+  pop-axis-g-116: notes=116/135  F1@50ms 12.7%  F1@100ms 22.3%  pitch 30.9%  voiced 52.2%
   pop-deceptive-f-72: no melody track; not scored
   pop-m6-m7b5-gm-100: no melody track; not scored
   pop-maj7-sixth-c-92: no melody track; not scored

@@ -555,18 +555,27 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("but a line further out than a harmonic can reach is left alone")
+        @DisplayName("but a line too far out to be a harmonic error is left alone")
         void aFurtherRegisterIsLeftAlone() {
-            // The tracker on the accompaniment rather than on the melody
-            // (#560). No harmonic of a fundamental is three octaves from it, so
-            // these are not misread fundamentals and moving them recovers
-            // nothing -- it relocates a correct phrase.
-            NoteTrack melody = MelodyEstimator.estimate(track(
-                    28.0, 40, null, 4, 30.0, 40, null, 4, 28.0, 40, null, 4, 31.0, 40, null, 4,
-                    28.0, 40, null, 4, 30.0, 40, null, 4, 28.0, 40, null, 4, 31.0, 40, null, 8,
-                    88.0, 40, null, 4, 90.0, 40));
+            // The tracker on the accompaniment for most of a recording and on
+            // the melody for the rest (#560). Folding the shorter line into the
+            // longer one's octave relocates a correct phrase rather than
+            // recovering it, so beyond the bound nothing moves. Enough low
+            // notes that the band stays narrow, or they would simply be inside
+            // it and the bound would not be what kept them.
+            double[] line = {28, 30, 28, 31, 28, 30, 28, 31, 28, 30, 28, 31,
+                             28, 30, 28, 31, 28, 30, 28, 31, 88, 90};
+            List<Object> runs = new ArrayList<>();
+            for (int note = 0; note < line.length; note++) {
+                if (note > 0) {
+                    Collections.addAll(runs, null, 4);
+                }
+                Collections.addAll(runs, line[note], 40);
+            }
 
-            assertThat(pitches(melody).subList(8, 10)).containsExactly(88, 90);
+            NoteTrack melody = MelodyEstimator.estimate(track(runs.toArray()));
+
+            assertThat(pitches(melody).subList(20, 22)).containsExactly(88, 90);
         }
 
         @Test
@@ -604,9 +613,6 @@ class MelodyEstimationTest {
             // What --skip-separation gives the stage when the melody is played
             // rather than sung (#560): four octaves, wider than any voice, and
             // the band comes from this line's own spread rather than a voice's.
-            // Long enough that the spread quantile is not simply the widest
-            // note -- below about a dozen notes it is, and then this asserts
-            // nothing.
             double[] line = {36, 48, 60, 72, 84, 72, 60, 48, 36, 48, 60,
                              72, 84, 72, 60, 48, 36, 60, 84, 60, 36};
             List<Object> runs = new ArrayList<>();
@@ -651,13 +657,18 @@ class MelodyEstimationTest {
             PitchTrack pitches = track(with(singing(), null, 4, 86.0, 20));
             OnsetEnvelope silence = new OnsetEnvelope(new double[1200], 172.0);
 
-            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 0, 1)))
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 0, 1, 2)))
                     .as("a band reaching the whole melody folds nothing")
                     .endsWith(86);
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 0)))
+                    .as("and so does a bound admitting no octave at all")
+                    .endsWith(86);
             assertThatIllegalArgumentException().isThrownBy(
-                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9));
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9, 2));
             assertThatIllegalArgumentException().isThrownBy(
-                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 1.5));
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 1.5, 2));
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, -1));
         }
     }
 

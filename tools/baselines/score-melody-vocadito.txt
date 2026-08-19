@@ -2,7 +2,7 @@ Melody, note by note against vocadito's annotations (real solo singing)
 (the annotators column is one musician scored against the other by this
  same rule: it is the ceiling, not a target to pass)
   vocadito_1: notes=60/59  F1@50ms 72.3%  F1@100ms 82.4%  pitch 85.2%  voiced 96.0%  annotators 86.2% (64 notes)
-  vocadito_2: notes=54/76  F1@50ms 60.0%  F1@100ms 66.2%  pitch 91.8%  voiced 99.1%  annotators 69.1% (63 notes)
+  vocadito_2: notes=54/76  F1@50ms 61.5%  F1@100ms 67.7%  pitch 94.2%  voiced 99.1%  annotators 69.1% (63 notes)
   vocadito_3: notes=46/51  F1@50ms 72.2%  F1@100ms 86.6%  pitch 89.5%  voiced 96.9%  annotators 80.4% (46 notes)
   vocadito_4: notes=47/69  F1@50ms 62.1%  F1@100ms 69.0%  pitch 82.7%  voiced 94.1%  annotators 70.0% (51 notes)
   vocadito_5: notes=69/96  F1@50ms 63.0%  F1@100ms 73.9%  pitch 78.4%  voiced 94.7%  annotators 56.0% (72 notes)

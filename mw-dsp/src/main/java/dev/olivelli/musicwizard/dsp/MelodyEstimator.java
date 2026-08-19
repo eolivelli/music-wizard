@@ -174,22 +174,21 @@ public final class MelodyEstimator {
     /**
      * The narrowest half-band an octave may be judged against, in semitones.
      *
-     * <p>Sized so that the widest melody in the corpus keeps its own extremes,
-     * with a little margin: it sits just above the setting at which that
-     * package starts losing them and below the one at which the fold stops
-     * acting. {@code tools/OctaveSweep.java} walks the ladder.
+     * <p>The lowest setting at which no melody package loses its own extremes,
+     * and also the one real singing does best at: a semitone under it a package
+     * whose melody spans two octaves starts having them folded away.
+     * {@code tools/OctaveSweep.java} walks the ladder.
      */
-    private static final double RANGE_FLOOR_SEMITONES = 15;
+    private static final double RANGE_FLOOR_SEMITONES = 14;
 
     /**
      * How many octaves out a note may be and still be treated as an octave
      * error.
      *
-     * <p>A tracker mistaking a harmonic for the fundamental reports the second
-     * or the fourth; nothing further is a misread fundamental, so beyond this a
-     * note is a line in another register rather than a note to recover. Without
-     * the bound the fold moves whole correct phrases across the page wherever
-     * the tracker spent most of a recording in the other register.
+     * <p>Beyond it a note is taken to be a line in another register rather
+     * than a note to recover: without the bound the fold moves whole correct
+     * phrases across the page wherever the tracker spent most of a recording
+     * in the other register. Swept by {@code tools/OctaveSweep.java}.
      */
     private static final int MOST_OCTAVES_OUT = 2;
 
@@ -219,7 +218,7 @@ public final class MelodyEstimator {
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
         return segment(pitches, null, 0, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
     }
 
     /**
@@ -234,7 +233,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         return segment(pitches, envelope, 0, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
     }
 
     /**
@@ -255,7 +254,7 @@ public final class MelodyEstimator {
                     + tuningOffsetSemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
     }
 
     /**
@@ -276,21 +275,23 @@ public final class MelodyEstimator {
                     + " got: " + steadySemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
     }
 
     /**
-     * The same with the octave fold's band chosen too, which is what
+     * The same with the octave fold's band and bound chosen too, which is what
      * {@code tools/OctaveSweep.java} sweeps. The pipeline calls
      * {@link #estimate(PitchTrack, OnsetEnvelope, double)} and gets
-     * {@link #RANGE_FLOOR_SEMITONES} and {@link #RANGE_SPREAD_QUANTILE}.
+     * {@link #RANGE_FLOOR_SEMITONES}, {@link #RANGE_SPREAD_QUANTILE} and
+     * {@link #MOST_OCTAVES_OUT}.
      *
      * <p>A band narrower than an octave folds nothing at all, since no pitch
      * then has a representative inside it.
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
-                                     double rangeFloorSemitones, double rangeSpreadQuantile) {
+                                     double rangeFloorSemitones, double rangeSpreadQuantile,
+                                     int mostOctavesOut) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -309,13 +310,18 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("rangeSpreadQuantile must be within 0..1,"
                     + " got: " + rangeSpreadQuantile);
         }
+        if (mostOctavesOut < 0) {
+            throw new IllegalArgumentException("mostOctavesOut must be non-negative, got: "
+                    + mostOctavesOut);
+        }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                rangeFloorSemitones, rangeSpreadQuantile);
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut);
     }
 
     private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
-                                     double rangeFloorSemitones, double rangeSpreadQuantile) {
+                                     double rangeFloorSemitones, double rangeSpreadQuantile,
+                                     int mostOctavesOut) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -335,7 +341,8 @@ public final class MelodyEstimator {
             notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, steadySemitones));
             frame = end;
         }
-        List<Note> folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile);
+        List<Note> folded =
+                foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut);
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", folded, trackConfidence(folded));
     }
 
@@ -360,7 +367,7 @@ public final class MelodyEstimator {
      * of one would be moved on no evidence.
      */
     private static List<Note> foldOctaves(List<Note> notes, double rangeFloorSemitones,
-                                          double rangeSpreadQuantile) {
+                                          double rangeSpreadQuantile, int mostOctavesOut) {
         if (notes.isEmpty()) {
             return notes;
         }
@@ -382,45 +389,47 @@ public final class MelodyEstimator {
         }
         List<Note> folded = new ArrayList<>(notes.size());
         for (Note note : notes) {
-            int semitones = foldedPitch(note.midiPitch(), centre, half) - note.midiPitch();
+            int semitones =
+                    foldedPitch(note.midiPitch(), centre, half, mostOctavesOut) - note.midiPitch();
             folded.add(semitones == 0 ? note : note.transposedBy(semitones));
         }
         return folded;
     }
 
     /**
-     * A pitch outside the band, moved to the octave of itself nearest the centre.
+     * A pitch outside the band, moved to whichever octave of itself is nearest
+     * the centre <em>and</em> inside the band, within {@code mostOctavesOut}.
      *
-     * <p>The two candidate octaves bracket that centre, so one of them is the
-     * nearest there is. On a tie — an octave and a half out is equally far
-     * either way — the smaller displacement wins, being both the likelier error
-     * and the cheaper mistake.
+     * <p>All three conditions bind at once. Choosing the nearest octave first
+     * and testing the distance afterwards refuses a move the distance allows,
+     * whenever a nearer octave lies beyond it; requiring the landing to be
+     * inside the band is what stops a move that leaves the note as far out as
+     * it started.
      *
-     * <p>A note needing more than {@link #MOST_OCTAVES_OUT} is left alone, and
-     * that refusal is what keeps the rule inside its own diagnosis: no harmonic
-     * of a fundamental is that far from it, so such a note is not a misread
-     * fundamental at all but a line in another register — the tracker on the
-     * accompaniment rather than on the melody (#560). Moving it would not
-     * recover it, and on a recording whose two registers are both present it is
-     * whichever one sounds less that would be moved into the other.
+     * <p>Searched outwards from no move at all, so on a tie — a note an octave
+     * and a half out is equally far from the centre either way — the smaller
+     * displacement wins, and downwards before upwards, a tracker reporting a
+     * harmonic reading high rather than low.
      */
-    private static int foldedPitch(int pitch, double centre, double half) {
+    private static int foldedPitch(int pitch, double centre, double half, int mostOctavesOut) {
         if (Math.abs(pitch - centre) <= half) {
             return pitch;
         }
-        int below = (int) Math.floor((centre - pitch) / 12.0);
-        int lower = pitch + 12 * below;
-        int upper = lower + 12;
-        double toLower = Math.abs(lower - centre);
-        double toUpper = Math.abs(upper - centre);
-        boolean tied = toLower == toUpper;
-        int folded = toLower < toUpper || (tied && Math.abs(below) <= Math.abs(below + 1))
-                ? lower
-                : upper;
-        if (Math.abs(folded - pitch) > 12 * MOST_OCTAVES_OUT) {
-            return pitch;
+        int folded = pitch;
+        double nearest = Double.POSITIVE_INFINITY;
+        for (int octaves = 1; octaves <= mostOctavesOut; octaves++) {
+            for (int candidate : new int[] {pitch - 12 * octaves, pitch + 12 * octaves}) {
+                if (candidate < 0 || candidate > 127) {
+                    continue;
+                }
+                double distance = Math.abs(candidate - centre);
+                if (distance <= half && distance < nearest) {
+                    folded = candidate;
+                    nearest = distance;
+                }
+            }
         }
-        return folded >= 0 && folded <= 127 ? folded : pitch;
+        return folded;
     }
 
     /**

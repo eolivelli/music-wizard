@@ -61,16 +61,18 @@ import javax.sound.midi.Track;
  * caches what the segmenter reads — the pitch track, the onset envelope and the
  * recording's tuning — so a whole grid costs one pass.
  *
- * <p>The two settings are the band the fold judges an octave against: a floor
- * on its half-width, and the share of the melody's own sounding time it
- * reaches out to. A band under an octave wide folds nothing, since no pitch
- * then has a representative inside it; a quantile of one is the fold off.
+ * <p>The three settings are the band the fold judges an octave against — a
+ * floor on its half-width and the share of the melody's own sounding time it
+ * reaches out to — and how many octaves out a note may be and still be folded.
+ * A band under an octave wide folds nothing, since no pitch then has a
+ * representative inside it; a quantile of one is the fold off, and so is a
+ * bound of zero.
  *
  * <pre>
  *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java                # the grid
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java 12 0.9         # one band
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java rows 12 0.9    # its rows
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java octaves 12 0.9 # what it moved
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java 15 0.9 2     # one setting
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java rows 15 0.9 2 # its rows
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java octaves 15 0.9 2 # what it moved
  * </pre>
  *
  * <p><b>Its rows reproduce {@code score-melody.py}'s</b> for both corpora at the
@@ -119,6 +121,9 @@ public final class OctaveSweep {
     /** Spread quantiles the grid walks against each floor; at one the fold is off. */
     private static final double[] QUANTILES = {0, 0.5, 0.75, 0.9, 0.95, 0.99, 1};
 
+    /** How many octaves out the grid lets a note be and still be folded. */
+    private static final double[] BOUNDS = {1, 2, 3, 4};
+
     private OctaveSweep() {
     }
 
@@ -131,13 +136,16 @@ public final class OctaveSweep {
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 && !isNumber(args[0]) ? args[0] : "";
         List<double[]> bands = new ArrayList<>();
-        for (int i = mode.isEmpty() ? 0 : 1; i + 1 < args.length; i += 2) {
-            bands.add(new double[] {Double.parseDouble(args[i]), Double.parseDouble(args[i + 1])});
+        for (int i = mode.isEmpty() ? 0 : 1; i + 2 < args.length; i += 3) {
+            bands.add(new double[] {Double.parseDouble(args[i]), Double.parseDouble(args[i + 1]),
+                    Double.parseDouble(args[i + 2])});
         }
         if (bands.isEmpty()) {
             for (double floor : FLOORS) {
                 for (double quantile : QUANTILES) {
-                    bands.add(new double[] {floor, quantile});
+                    for (double bound : BOUNDS) {
+                        bands.add(new double[] {floor, quantile, bound});
+                    }
                 }
             }
         }
@@ -207,10 +215,10 @@ public final class OctaveSweep {
         if (sounding == 0) {
             return;
         }
-        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f  of the frames both call"
+        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f  of the frames both call"
                         + " sounding: right %.1f%%  wrong by whole octaves %.1f%%"
                         + "  wrong otherwise %.1f%%%n",
-                corpus, band[0], band[1], 100.0 * right / sounding,
+                corpus, band[0], band[1], band[2], 100.0 * right / sounding,
                 100.0 * octave / sounding, 100.0 * other / sounding);
     }
 
@@ -248,9 +256,9 @@ public final class OctaveSweep {
         if (scored == 0) {
             return;
         }
-        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f  benchmarks=%d notes=%d"
+        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f  benchmarks=%d notes=%d"
                         + "  F1@50ms %.2f%%  F1@100ms %.2f%%  pitch %.2f%%  voiced %.2f%%%n",
-                corpus, band[0], band[1], scored, notes,
+                corpus, band[0], band[1], band[2], scored, notes,
                 100 * first / scored, 100 * second / scored,
                 100 * pitch / scored, 100 * voiced / scored);
     }
@@ -396,7 +404,8 @@ public final class OctaveSweep {
 
     private static List<Span> estimate(Front front, double[] band) {
         NoteTrack track = MelodyEstimator.estimate(
-                front.track(), front.envelope(), front.tuning(), STEADY, band[0], band[1]);
+                front.track(), front.envelope(), front.tuning(), STEADY, band[0], band[1],
+                (int) band[2]);
         List<Span> notes = new ArrayList<>(track.size());
         for (Note note : track.notes()) {
             notes.add(new Span(note.onsetSeconds(),

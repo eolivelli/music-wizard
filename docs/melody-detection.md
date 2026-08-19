@@ -83,14 +83,19 @@ rather than from a fixed compass, so a stretch where the separator left no
 voice cannot state the singer's tessitura and a line that ranges wide is not
 held to a voice's range.
 
-**A note further out than a harmonic can reach is left alone**, and that
-refusal is what keeps the rule inside its own diagnosis. Past two octaves a
-note is not a misread fundamental but a line in another register — the tracker
-on the accompaniment rather than the melody (#560) — and on a recording where
-both registers sound, folding would move whichever sounds less into the other,
-a correct phrase at a time. Two known limits are open: the band's edge is hard,
-so one gesture can be split across octaves (#614), and a wide line whose leaps
-are rare is still held to a narrow band (#615).
+**A note too far out is left alone**, and that bound is what stops the fold
+relocating a phrase it should not touch. On a recording where the tracker sits
+in one register for most of the length and in another for the rest — the
+accompaniment and then the melody (#560) — the band's centre belongs to
+whichever sounds longer, and without a bound the other is folded into it a
+correct note at a time. The bench sweeps the bound with the band; a package
+where exactly that happens is what pins it.
+
+Three known limits are open: the band's edge is hard, so one gesture can be
+split across octaves (#614); a wide line whose leaps are rare is still held to
+a narrow band (#615); and the bound trades against that same package, which
+still gives up part of its accidental agreement with the melody it is not
+reading.
 
 `tools/OctaveSweep.java` is the bench, and its `octaves` mode says what the
 corpora can and cannot show: almost none of what the stage gets wrong on clean
