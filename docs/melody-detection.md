@@ -80,12 +80,22 @@ A tracker that locks onto a harmonic reports a multiple of the fundamental,
 so the pitch class survives and the note is recovered by moving it, never by
 dropping it. The octave the melody is in comes from the recording's own notes
 rather than from a fixed compass, so a stretch where the separator left no
-voice cannot state the singer's tessitura and a line that is played rather
-than sung is not held to a voice's range. `tools/OctaveSweep.java` is the
-bench, and its `octaves` mode says what the corpora can and cannot show:
-almost none of what the stage gets wrong on clean solo singing is wrong by
-whole octaves, so this is a defect of mixes and separation and the field
-recordings are what witness it.
+voice cannot state the singer's tessitura and a line that ranges wide is not
+held to a voice's range.
+
+**A note further out than a harmonic can reach is left alone**, and that
+refusal is what keeps the rule inside its own diagnosis. Past two octaves a
+note is not a misread fundamental but a line in another register — the tracker
+on the accompaniment rather than the melody (#560) — and on a recording where
+both registers sound, folding would move whichever sounds less into the other,
+a correct phrase at a time. Two known limits are open: the band's edge is hard,
+so one gesture can be split across octaves (#614), and a wide line whose leaps
+are rare is still held to a narrow band (#615).
+
+`tools/OctaveSweep.java` is the bench, and its `octaves` mode says what the
+corpora can and cannot show: almost none of what the stage gets wrong on clean
+solo singing is wrong by whole octaves, so this is a defect of mixes and
+separation and the field recordings are what witness it.
 
 ## What comes out
 

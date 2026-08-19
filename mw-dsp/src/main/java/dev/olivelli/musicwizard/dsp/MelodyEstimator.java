@@ -174,26 +174,36 @@ public final class MelodyEstimator {
     /**
      * The narrowest half-band an octave may be judged against, in semitones.
      *
-     * <p>What sizes it is that a real melody can span two whole octaves, so a
-     * band an octave either side of the centre sits exactly on such a melody's
-     * own extremes and clips them as soon as the centre is estimated a semitone
-     * off. This sits in the middle of the swept plateau where every melody
-     * package holds; {@code tools/OctaveSweep.java} walks it and the melody
-     * baselines carry what each setting was worth.
+     * <p>Sized so that the widest melody in the corpus keeps its own extremes,
+     * with a little margin: it sits just above the setting at which that
+     * package starts losing them and below the one at which the fold stops
+     * acting. {@code tools/OctaveSweep.java} walks the ladder.
      */
     private static final double RANGE_FLOOR_SEMITONES = 15;
+
+    /**
+     * How many octaves out a note may be and still be treated as an octave
+     * error.
+     *
+     * <p>A tracker mistaking a harmonic for the fundamental reports the second
+     * or the fourth; nothing further is a misread fundamental, so beyond this a
+     * note is a line in another register rather than a note to recover. Without
+     * the bound the fold moves whole correct phrases across the page wherever
+     * the tracker spent most of a recording in the other register.
+     */
+    private static final int MOST_OCTAVES_OUT = 2;
 
     /**
      * The share of the melody's sounding time the band is asked to reach.
      *
      * <p>This is the half that comes from the recording rather than from a
-     * constant, and it is why a melody that is played rather than sung is not
-     * held to a voice's compass: a line that ranges further reaches this share
-     * further out and buys a wider band with it. A quantile rather than a
-     * multiple of the median deviation, because the median of a track with a
-     * handful of notes in it is zero however far apart they are — and a band
-     * estimated from a handful of notes must be the wide one. Swept by
-     * {@code tools/OctaveSweep.java}.
+     * constant: a line that spends this share of its time over a wider compass
+     * buys a wider band with it, which is what keeps a melody played rather
+     * than sung from being held to a voice's. It buys nothing for a line whose
+     * wide notes are rarer than that, and #615 is the limit. A quantile rather
+     * than a multiple of the median deviation, because the median of a track
+     * with a handful of notes in it is zero however far apart they are. Swept
+     * by {@code tools/OctaveSweep.java}.
      */
     private static final double RANGE_SPREAD_QUANTILE = 0.9;
 
@@ -342,10 +352,8 @@ public final class MelodyEstimator {
      * another or a voice from a played line.
      *
      * <p>The band decides <em>whether</em> a note is out; the centre decides
-     * <em>where</em> it goes, which is the octave of its own pitch class
-     * nearest that centre. Landing it merely inside the band instead would
-     * leave a note read two octaves out one octave out, which is the population
-     * #596 was reported from.
+     * <em>where</em> it goes. Landing a note merely inside the band instead
+     * would leave one read two octaves out still an octave out.
      *
      * <p>A band narrower than an octave is refused rather than applied: there
      * would be pitch classes with no representative in it at all, so every note
@@ -387,6 +395,14 @@ public final class MelodyEstimator {
      * nearest there is. On a tie — an octave and a half out is equally far
      * either way — the smaller displacement wins, being both the likelier error
      * and the cheaper mistake.
+     *
+     * <p>A note needing more than {@link #MOST_OCTAVES_OUT} is left alone, and
+     * that refusal is what keeps the rule inside its own diagnosis: no harmonic
+     * of a fundamental is that far from it, so such a note is not a misread
+     * fundamental at all but a line in another register — the tracker on the
+     * accompaniment rather than on the melody (#560). Moving it would not
+     * recover it, and on a recording whose two registers are both present it is
+     * whichever one sounds less that would be moved into the other.
      */
     private static int foldedPitch(int pitch, double centre, double half) {
         if (Math.abs(pitch - centre) <= half) {
@@ -401,6 +417,9 @@ public final class MelodyEstimator {
         int folded = toLower < toUpper || (tied && Math.abs(below) <= Math.abs(below + 1))
                 ? lower
                 : upper;
+        if (Math.abs(folded - pitch) > 12 * MOST_OCTAVES_OUT) {
+            return pitch;
+        }
         return folded >= 0 && folded <= 127 ? folded : pitch;
     }
 
@@ -408,14 +427,11 @@ public final class MelodyEstimator {
      * A weighted quantile of a sample: the first value at which that share of
      * the weight has been passed.
      *
-     * <p>Weighted by how long each note sounds, and a quantile rather than a
-     * mean, because the population it has to survive is the point. A stretch
-     * where the separator left no voice still yields notes — the tracker
-     * follows what the mask left behind — and those are exactly the frames that
-     * carry no evidence about the singer's tessitura (#575). They are few and
-     * short against the singing, so a statistic that reads a share of the
-     * weight ignores them, where an average would be pulled towards them by
-     * every one of them.
+     * <p>A quantile rather than a mean because of what it has to survive: a
+     * stretch the separator left empty still yields notes (#575), and those
+     * carry no evidence about the singer's tessitura. Where they are the
+     * shorter part of the recording a share of the weight passes over them,
+     * where an average would be pulled towards them.
      */
     private static double weightedQuantile(double[] values, double[] weights, double share) {
         Integer[] order = new Integer[values.length];
