@@ -187,6 +187,9 @@ class PlayableLeadSheetTest {
 
         assertThat(source).doesNotContain("\\tuplet");
         List<Note> printed = melodyOf(quantized).notes();
+        // Counted as well as placed: a reduction that collapsed the line would
+        // leave the loop below asserting nothing at all.
+        assertThat(printed).hasSize(12);
         for (int i = 0; i < printed.size(); i++) {
             assertThat(printed.get(i).onsetBeat().orElseThrow())
                     .describedAs("note %d", i)

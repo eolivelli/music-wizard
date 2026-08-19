@@ -74,6 +74,16 @@ public final class PlayablePartCheck {
     private static final double TOLERANCE_SECONDS = 0.25;
 
     /**
+     * How far below the counted beat a bar is divided before {@code deepBars}
+     * counts it. The deepest the resolutions offer, which is the one a
+     * restriction on depth withdraws first.
+     */
+    private static final int DEEP = 3;
+
+    /** The largest denominator exponent a meter event may carry: a 64th note. */
+    private static final int MAX_DENOMINATOR_SHIFT = 6;
+
+    /**
      * The tighter tolerance the vocabulary table is also read at. Below what
      * the melody stage can place a sung onset to (#497), so it says which
      * printing sits nearer the music rather than which one is right.
@@ -199,14 +209,15 @@ public final class PlayablePartCheck {
      * is the sweep {@link QuantizationSettings#READING} was chosen from (#594).
      *
      * <p>Four quantities, because no one of them decides it. {@code tupletBars}
-     * and {@code depth} are what the page costs a reader, and they are separate
-     * because withdrawing a division fixes one by worsening the other: the
-     * brackets go and the same notes come back as chains of tied shorter
-     * values. {@code depth} is the mean of how far below the counted beat the
-     * sounding bars are divided. {@code moved} is what the printing costs in
-     * literalness, in beats, against the part's own onsets. The F1 columns are
-     * the printed onsets against the reference, at a tolerance below what the
-     * melody stage can place (#497) and at one above it.
+     * and {@code deepBars} are the two ways a page gets hard to read, and they
+     * are separate because withdrawing a division fixes one by worsening the
+     * other: the brackets go and the same notes come back as chains of tied
+     * shorter values. Both are counts of bars rather than averages over them --
+     * a handful of unreadable bars in a hundred is the defect, and an average
+     * dilutes it away. {@code moved} is what the printing costs in literalness,
+     * in beats, against the part's own onsets. The F1 columns are the printed
+     * onsets against the reference, at a tolerance below what the melody stage
+     * can place (#497) and at one above it.
      */
     private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
                                      List<Event> reference) {
@@ -220,8 +231,8 @@ public final class PlayablePartCheck {
                 QuantizationSettings.READING);
         ways.put("the counted beat only", all.withLevelsBelowTheBeat(0));
         System.out.println();
-        System.out.printf(Locale.ROOT, "%-46s %8s %8s %8s %10s %6s   %s%n",
-                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "depth",
+        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s %8s   %s%n",
+                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "deepBars",
                 "grids");
         for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
             vocabulary("estimate  " + entry.getKey(), score, estimate,
@@ -248,21 +259,22 @@ public final class PlayablePartCheck {
             moved += Math.abs(beat - map.secondsToBeats(played.notes().get(i).onsetSeconds()));
         }
         int tuplets = 0;
-        double depth = 0;
+        int deep = 0;
         Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
         for (BarGrid grid : quantized.grids()) {
             histogram.merge(grid.resolution(), 1, Integer::sum);
-            depth += grid.resolution().depthIn(grid.timeSignature());
+            if (grid.resolution().depthIn(grid.timeSignature()) >= DEEP) {
+                deep++;
+            }
             if (grid.resolution().isTupletIn(grid.timeSignature())
                     && grid.resolution() != GridResolution.BEAT) {
                 tuplets++;
             }
         }
-        System.out.printf(Locale.ROOT, "%-46s %7.1f%% %7.1f%% %8.4f %10d %6.3f   %s%n",
+        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d %8d   %s%n",
                 label, 100 * f1(events, reference, TIGHT_SECONDS),
                 100 * f1(events, reference, TOLERANCE_SECONDS),
-                moved / Math.max(1, printed.size()), tuplets,
-                depth / Math.max(1, quantized.grids().size()), histogram);
+                moved / Math.max(1, printed.size()), tuplets, deep, histogram);
     }
 
     /** Note F1 at a stated onset tolerance, matched one to one by pitch class. */
@@ -532,8 +544,17 @@ public final class PlayablePartCheck {
             for (int i = 0; i < track.size(); i++) {
                 if (track.get(i).getMessage() instanceof MetaMessage meta
                         && meta.getType() == 0x58 && track.get(i).getTick() < earliest) {
-                    earliest = track.get(i).getTick();
                     byte[] data = meta.getData();
+                    // A shift is taken mod 32 in Java, so an out-of-range one
+                    // does not overflow into a wrong meter loudly -- it returns
+                    // a plausible denominator and a silently wrong bar length.
+                    if (data.length < 2 || (data[1] & 0xff) > MAX_DENOMINATOR_SHIFT) {
+                        System.err.printf(Locale.ROOT,
+                                "warning: a meter event of %d byte(s) is not one this can read,"
+                                        + " reading it as 4/4%n", data.length);
+                        continue;
+                    }
+                    earliest = track.get(i).getTick();
                     numerator = data[0] & 0xff;
                     denominator = 1 << (data[1] & 0xff);
                 }
