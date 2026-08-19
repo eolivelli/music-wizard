@@ -136,7 +136,16 @@ public final class OctaveSweep {
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 && !isNumber(args[0]) ? args[0] : "";
         List<double[]> bands = new ArrayList<>();
-        for (int i = mode.isEmpty() ? 0 : 1; i + 2 < args.length; i += 3) {
+        int first = mode.isEmpty() ? 0 : 1;
+        // Rejected rather than rounded down to what does group: an argument
+        // list one short is the previous release's syntax, and silently
+        // answering the whole grid to it prints a row that reads exactly like
+        // the answer to the question asked.
+        if ((args.length - first) % 3 != 0) {
+            System.err.println("each setting is three numbers: floor, quantile, octaves");
+            System.exit(2);
+        }
+        for (int i = first; i + 2 < args.length; i += 3) {
             bands.add(new double[] {Double.parseDouble(args[i]), Double.parseDouble(args[i + 1]),
                     Double.parseDouble(args[i + 2])});
         }

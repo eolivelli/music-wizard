@@ -555,6 +555,21 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("wherever in the melody's range the true note sits")
+        void theWholeBandIsRecovered() {
+            // The octave nearest the centre is not always one the bound allows,
+            // and where it is not, the allowed one still has to be taken: this
+            // note's nearest is three octaves down, and folding by two is what
+            // recovers it. Testing the chosen octave against the bound instead
+            // of choosing within it left every true note more than a few
+            // semitones from the centre unfolded -- most of a singer's range.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(singing(), null, 4, 96.0, 40)));
+
+            assertThat(pitches(melody).get(10)).isEqualTo(72);
+        }
+
+        @Test
         @DisplayName("but a line too far out to be a harmonic error is left alone")
         void aFurtherRegisterIsLeftAlone() {
             // The tracker on the accompaniment for most of a recording and on

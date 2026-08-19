@@ -83,19 +83,18 @@ rather than from a fixed compass, so a stretch where the separator left no
 voice cannot state the singer's tessitura and a line that ranges wide is not
 held to a voice's range.
 
-**A note too far out is left alone**, and that bound is what stops the fold
-relocating a phrase it should not touch. On a recording where the tracker sits
-in one register for most of the length and in another for the rest — the
+**How far the fold may move a note is bounded**, and that bound is what stops
+it relocating a phrase it should not touch. On a recording where the tracker
+sits in one register for most of the length and in another for the rest — the
 accompaniment and then the melody (#560) — the band's centre belongs to
 whichever sounds longer, and without a bound the other is folded into it a
-correct note at a time. The bench sweeps the bound with the band; a package
-where exactly that happens is what pins it.
+correct note at a time. The bound is on the correction rather than on how far
+out the note was, and the bench sweeps it alongside the band.
 
-Three known limits are open: the band's edge is hard, so one gesture can be
-split across octaves (#614); a wide line whose leaps are rare is still held to
-a narrow band (#615); and the bound trades against that same package, which
-still gives up part of its accidental agreement with the melody it is not
-reading.
+Two known limits are open: the band's edge is hard, so one gesture can be split
+across octaves (#614), and a line whose wide notes are too rare to widen its own
+band is held to a narrow one (#615). The second is why a recording the tracker
+reads in two registers can still lose the shorter one.
 
 `tools/OctaveSweep.java` is the bench, and its `octaves` mode says what the
 corpora can and cannot show: almost none of what the stage gets wrong on clean

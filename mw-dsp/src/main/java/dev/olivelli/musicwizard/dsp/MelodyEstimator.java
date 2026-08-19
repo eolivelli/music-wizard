@@ -174,21 +174,24 @@ public final class MelodyEstimator {
     /**
      * The narrowest half-band an octave may be judged against, in semitones.
      *
-     * <p>The lowest setting at which no melody package loses its own extremes,
-     * and also the one real singing does best at: a semitone under it a package
-     * whose melody spans two octaves starts having them folded away.
-     * {@code tools/OctaveSweep.java} walks the ladder.
+     * <p>The lowest setting at which no melody package has its own extremes
+     * folded away, and the best on real singing among those. It is a trade and
+     * not a plateau: a semitone lower is better on real singing and is where a
+     * package whose melody spans two octaves starts losing its top and bottom
+     * notes, which is the defect this whole rule exists to avoid rather than a
+     * column to optimise. {@code tools/OctaveSweep.java} walks the ladder.
      */
     private static final double RANGE_FLOOR_SEMITONES = 14;
 
     /**
-     * How many octaves out a note may be and still be treated as an octave
-     * error.
+     * The furthest the fold may move a note, in octaves.
      *
-     * <p>Beyond it a note is taken to be a line in another register rather
-     * than a note to recover: without the bound the fold moves whole correct
-     * phrases across the page wherever the tracker spent most of a recording
-     * in the other register. Swept by {@code tools/OctaveSweep.java}.
+     * <p>It bounds the correction, not how far out the note was: a note beyond
+     * this from the centre is still moved if this much brings it inside the
+     * band. What it rules out is the larger correction, which is the one that
+     * relocates a phrase rather than recovering it -- unbounded, the fold moves
+     * whole correct phrases across the page wherever the tracker spent most of
+     * a recording in another register. Swept by {@code tools/OctaveSweep.java}.
      */
     private static final int MOST_OCTAVES_OUT = 2;
 
@@ -400,16 +403,15 @@ public final class MelodyEstimator {
      * A pitch outside the band, moved to whichever octave of itself is nearest
      * the centre <em>and</em> inside the band, within {@code mostOctavesOut}.
      *
-     * <p>All three conditions bind at once. Choosing the nearest octave first
-     * and testing the distance afterwards refuses a move the distance allows,
-     * whenever a nearer octave lies beyond it; requiring the landing to be
-     * inside the band is what stops a move that leaves the note as far out as
-     * it started.
+     * <p>All three conditions bind at once, and the search is over the moves
+     * the bound allows rather than over every octave: the nearest octave of all
+     * may be one the bound forbids, and settling for the nearest allowed one
+     * still recovers the note. Requiring the landing to be inside the band is
+     * what stops a move that leaves the note as far out as it started.
      *
-     * <p>Searched outwards from no move at all, so on a tie — a note an octave
-     * and a half out is equally far from the centre either way — the smaller
-     * displacement wins, and downwards before upwards, a tracker reporting a
-     * harmonic reading high rather than low.
+     * <p>Searched outwards from no move at all, so a note an octave and a half
+     * out — equally far from the centre either way — takes the smaller
+     * displacement.
      */
     private static int foldedPitch(int pitch, double centre, double half, int mostOctavesOut) {
         if (Math.abs(pitch - centre) <= half) {
