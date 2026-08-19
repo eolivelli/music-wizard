@@ -912,16 +912,14 @@ class QuantizerTest {
             List<Note> notes = Quantizer.quantize(performance.score(),
                     QuantizationSettings.READING).score().tracks().get(0).notes();
 
-            // On the deepest duple division there is, which is what a triplet
-            // costs a reader who may not be shown one: the thirds are chased
-            // down the ladder rather than rounded to the nearest eighth.
+            // Rounded to the nearest position the floor leaves, rather than
+            // chased down the ladder: without the floor the same thirds print
+            // as a chain of tied thirty-seconds, which reads worse than the
+            // bracket the restriction exists to remove.
             for (Note note : notes) {
                 double beat = note.onsetBeat().orElseThrow();
-                assertThat(beat * 8).isCloseTo(Math.round(beat * 8), within(1e-9));
+                assertThat(beat * 4).isCloseTo(Math.round(beat * 4), within(1e-9));
             }
-            assertThat(Quantizer.quantize(performance.score(), QuantizationSettings.READING)
-                    .grids()).anySatisfy(g ->
-                            assertThat(g.resolution()).isEqualTo(GridResolution.EIGHTH_BEAT));
         }
 
         @Test
@@ -1093,26 +1091,30 @@ class QuantizerTest {
             // places overlapTolerance had to be carried.
             // Both of the last two differ from the defaults, so a copy method
             // that dropped either would come back holding a transcription's.
+            // tuplets is true here precisely so that withoutTuplets below has
+            // something to change: asserting it against a receiver that already
+            // withholds them cannot fail.
             QuantizationSettings from =
-                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, false, 2);
+                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, true, 2);
 
             assertThat(from.withGridChangePenalty(0.99))
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true,
-                            false, 2));
+                            true, 2));
             assertThat(from.withArticulationRatio(0.75))
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true,
-                            false, 2));
+                            true, 2));
             assertThat(from.withOverlapTolerance(0.09))
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true,
-                            false, 2));
+                            true, 2));
             assertThat(from.withoutSwingDetection())
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false,
-                            false, 2));
+                            true, 2));
             assertThat(from.withLevelsBelowTheBeat(1))
                     .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
-                            false, 1));
-            assertThat(QuantizationSettings.DEFAULT.withoutTuplets())
-                    .isEqualTo(QuantizationSettings.READING);
+                            true, 1));
+            assertThat(from.withoutTuplets())
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
+                            false, 2));
         }
 
         @Test

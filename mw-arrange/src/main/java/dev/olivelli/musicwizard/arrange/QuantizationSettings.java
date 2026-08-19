@@ -98,19 +98,25 @@ public record QuantizationSettings(
             new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true, true, DEEPEST);
 
     /**
-     * The defaults, restricted to the divisions the meter itself subdivides by.
+     * The defaults, restricted to the divisions the meter itself subdivides by
+     * and to the shallow end of them.
      *
      * <p>For {@link PlayableMelody}'s reduction rather than for a
      * transcription, and the difference is what evidence there is (#594). The
      * reduction prints one note-head per sung syllable, so a bar of it holds a
-     * handful of onsets — few enough that some subdivision always fits, and
-     * the one that wins is fitting the segmenter's spread rather than the
-     * singing. Where that lands a triplet in a song in straight time, the
-     * reader is being told something the recording never said.
-     * {@code tools/PlayablePartCheck.java} sweeps both axes and holds each
-     * against an arranger's own reading of the same recording.
+     * handful of onsets — few enough that some division always fits, and the
+     * one that wins is fitting the segmenter's spread rather than the singing.
+     *
+     * <p>Both halves are needed and they fail differently. Offering a division
+     * the meter does not subdivide by puts a triplet in a song in straight
+     * time; offering the deep end instead writes the same handful of syllables
+     * as a chain of tied shorter values, which reads worse than the bracket it
+     * replaced. {@code tools/PlayablePartCheck.java} sweeps both axes, prints
+     * what each does to the depth of the page as well as to its brackets, and
+     * holds both against an arranger's own reading of the same recording.
      */
-    public static final QuantizationSettings READING = DEFAULT.withoutTuplets();
+    public static final QuantizationSettings READING =
+            DEFAULT.withoutTuplets().withLevelsBelowTheBeat(2);
 
     public QuantizationSettings {
         requireNonNegative(levelPenalty, "levelPenalty");
@@ -188,9 +194,7 @@ public record QuantizationSettings(
      * Returns a copy divided no further below the counted beat than the given
      * number of halvings or thirdings.
      *
-     * <p>Exists so that the depth can be measured rather than asserted: the
-     * sweep in {@code tools/PlayablePartCheck.java} is what said that
-     * {@link #READING} should not restrict it.
+     * <p>Exists so that the depth can be measured rather than asserted.
      */
     public QuantizationSettings withLevelsBelowTheBeat(int levels) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,

@@ -20,7 +20,6 @@ import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
-import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Note;
@@ -29,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -198,13 +198,15 @@ public final class PlayablePartCheck {
      * What each way of restricting the divisions makes of the two parts, which
      * is the sweep {@link QuantizationSettings#READING} was chosen from (#594).
      *
-     * <p>Three quantities, because no one of them decides it. {@code tupletBars}
-     * and the histogram are what the page costs a reader. {@code moved} is what
-     * the printing costs in literalness, in beats, against the part's own
-     * onsets. The F1 columns are the printed onsets against the reference, at a
-     * tolerance below what the melody stage can place (#497) and at one above
-     * it: a restriction that reads better and agrees no worse is free, and one
-     * that buys the page by moving notes away from the music shows it here.
+     * <p>Four quantities, because no one of them decides it. {@code tupletBars}
+     * and {@code depth} are what the page costs a reader, and they are separate
+     * because withdrawing a division fixes one by worsening the other: the
+     * brackets go and the same notes come back as chains of tied shorter
+     * values. {@code depth} is the mean of how far below the counted beat the
+     * sounding bars are divided. {@code moved} is what the printing costs in
+     * literalness, in beats, against the part's own onsets. The F1 columns are
+     * the printed onsets against the reference, at a tolerance below what the
+     * melody stage can place (#497) and at one above it.
      */
     private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
                                      List<Event> reference) {
@@ -212,14 +214,15 @@ public final class PlayablePartCheck {
         QuantizationSettings all = QuantizationSettings.DEFAULT;
         ways.put("every division", all);
         ways.put("the meter's own only", all.withoutTuplets());
-        ways.put("the meter's own, one level below the beat",
+        ways.put("the meter's own, one level down",
                 all.withoutTuplets().withLevelsBelowTheBeat(1));
-        ways.put("the meter's own, two levels below the beat",
-                all.withoutTuplets().withLevelsBelowTheBeat(2));
+        ways.put("the meter's own, two levels down (READING)",
+                QuantizationSettings.READING);
         ways.put("the counted beat only", all.withLevelsBelowTheBeat(0));
         System.out.println();
-        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s   %s%n",
-                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
+        System.out.printf(Locale.ROOT, "%-46s %8s %8s %8s %10s %6s   %s%n",
+                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "depth",
+                "grids");
         for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
             vocabulary("estimate  " + entry.getKey(), score, estimate,
                     entry.getValue(), reference);
@@ -245,17 +248,21 @@ public final class PlayablePartCheck {
             moved += Math.abs(beat - map.secondsToBeats(played.notes().get(i).onsetSeconds()));
         }
         int tuplets = 0;
+        double depth = 0;
         Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
         for (BarGrid grid : quantized.grids()) {
             histogram.merge(grid.resolution(), 1, Integer::sum);
-            if (grid.resolution().isTupletIn(grid.timeSignature())) {
+            depth += grid.resolution().depthIn(grid.timeSignature());
+            if (grid.resolution().isTupletIn(grid.timeSignature())
+                    && grid.resolution() != GridResolution.BEAT) {
                 tuplets++;
             }
         }
-        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
+        System.out.printf(Locale.ROOT, "%-46s %7.1f%% %7.1f%% %8.4f %10d %6.3f   %s%n",
                 label, 100 * f1(events, reference, TIGHT_SECONDS),
                 100 * f1(events, reference, TOLERANCE_SECONDS),
-                moved / Math.max(1, printed.size()), tuplets, histogram);
+                moved / Math.max(1, printed.size()), tuplets,
+                depth / Math.max(1, quantized.grids().size()), histogram);
     }
 
     /** Note F1 at a stated onset tolerance, matched one to one by pitch class. */
@@ -532,7 +539,18 @@ public final class PlayablePartCheck {
                 }
             }
         }
-        return new TimeSignature(numerator, denominator);
+        try {
+            return new TimeSignature(numerator, denominator);
+        } catch (IllegalArgumentException e) {
+            // Every reference this reads is third-party MIDI off the web, and a
+            // meter the model refuses would otherwise take the run down before
+            // it printed anything. The meter only labels a row and scales the
+            // bar; common time is the assumption the tool made before it asked.
+            System.err.printf(Locale.ROOT,
+                    "warning: %d/%d is not a meter this can read, reading it as 4/4: %s%n",
+                    numerator, denominator, e.getMessage());
+            return new TimeSignature(4, 4);
+        }
     }
 
     /** The named track's note-ons, in seconds, honouring the file's tempo events. */
