@@ -115,6 +115,13 @@ public final class PlayablePartCheck {
     /** The fold bounds swept, in semitones; the last is no bound at all. */
     private static final int[] MELISMA_FOLDS = {5, 8, 12, 24, 128};
 
+    /**
+     * A run wider than any two note-heads can reach, so nothing is marked.
+     * The row it prints is the reduction with melismas off, whatever marks the
+     * workspace was analysed with.
+     */
+    private static final int MELISMA_OFF = 128;
+
     private static final double EPSILON = 1e-9;
 
     private record Event(double seconds, int pitch) {
@@ -234,8 +241,9 @@ public final class PlayablePartCheck {
      * be to be a run, and how far apart they are instead read as the melody
      * stage's octave fold.
      *
-     * <p>{@code off} is the reduction with nothing marked, which is what every
-     * other table here reports. {@code marked} is how many syllables the
+     * <p>Every row decides afresh from the melody, {@code off} included, so
+     * the sweep reads the same whether or not the workspace was analysed with
+     * melismas on. {@code marked} is how many syllables the
      * setting turns into melismas and {@code heads} what that puts on the
      * page; a setting that marks liberally walks {@code heads} back toward the
      * estimate's own count, which is the reduction undoing itself. {@code
@@ -248,7 +256,7 @@ public final class PlayablePartCheck {
         System.out.printf(Locale.ROOT, "%5s %5s %7s %7s %7s %9s %9s %10s %9s%n",
                 "run", "fold", "marked", "heads", "welded", "widest", "span", "per bar",
                 "F1 loose");
-        melisma(score, estimate, reference, barSeconds, -1, -1);
+        melisma(score, estimate, reference, barSeconds, MELISMA_OFF, MELISMA_OFF);
         for (int run = 0; run <= MELISMA_SEMITONES; run++) {
             melisma(score, estimate, reference, barSeconds, run, MELISMA_FOLD);
         }
@@ -259,13 +267,14 @@ public final class PlayablePartCheck {
 
     private static void melisma(Score score, NoteTrack estimate, List<Event> reference,
                                 double barSeconds, int run, int fold) {
-        Score marked = run < 0 ? score : score.withLyrics(Melismas.marked(score, run, fold));
+        boolean off = run == MELISMA_OFF;
+        Score marked = score.withLyrics(Melismas.marked(score, run, fold));
         NoteTrack reduced = PlayableMelody.reduce(marked);
         Weld weld = welds(estimate, reduced, score.tempoMap());
         List<Event> events = events(reduced);
         System.out.printf(Locale.ROOT, "%5s %5s %7d %7d %7d %9.2f %9.2f %10s %9s%n",
-                run < 0 ? "off" : String.valueOf(run),
-                run < 0 ? "off" : String.valueOf(fold),
+                off ? "off" : String.valueOf(run),
+                off ? "off" : String.valueOf(fold),
                 marked.lyrics().allWords().stream().filter(LyricWord::melisma).count(),
                 reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
                 reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
