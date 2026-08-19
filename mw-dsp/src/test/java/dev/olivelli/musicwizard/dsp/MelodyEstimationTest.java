@@ -570,6 +570,19 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("and takes the smaller move when two octaves are equally near")
+        void aTieTakesTheSmallerMove() {
+            // An octave and a half above the centre: one octave down and two
+            // are the same distance from it, and both are inside the band. The
+            // smaller correction is the likelier error, so nothing here may
+            // decide it by which candidate the search happens to reach last.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(singing(), null, 4, 80.0, 40)));
+
+            assertThat(pitches(melody).get(10)).isEqualTo(68);
+        }
+
+        @Test
         @DisplayName("but a line too far out to be a harmonic error is left alone")
         void aFurtherRegisterIsLeftAlone() {
             // The tracker on the accompaniment for most of a recording and on

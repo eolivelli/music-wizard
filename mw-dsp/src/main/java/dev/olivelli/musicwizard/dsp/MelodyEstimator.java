@@ -177,8 +177,8 @@ public final class MelodyEstimator {
      * <p>The lowest setting at which no melody package has its own extremes
      * folded away, and the best on real singing among those. It is a trade and
      * not a plateau: a semitone lower is better on real singing and is where a
-     * package whose melody spans two octaves starts losing its top and bottom
-     * notes, which is the defect this whole rule exists to avoid rather than a
+     * package whose melody spans two octaves starts having its top notes folded
+     * away, which is the defect this whole rule exists to avoid rather than a
      * column to optimise. {@code tools/OctaveSweep.java} walks the ladder.
      */
     private static final double RANGE_FLOOR_SEMITONES = 14;
@@ -407,7 +407,8 @@ public final class MelodyEstimator {
      * the bound allows rather than over every octave: the nearest octave of all
      * may be one the bound forbids, and settling for the nearest allowed one
      * still recovers the note. Requiring the landing to be inside the band is
-     * what stops a move that leaves the note as far out as it started.
+     * what refuses a note no allowed move brings home, rather than moving it
+     * to the least bad octave of several that are all still out.
      *
      * <p>Searched outwards from no move at all, so a note an octave and a half
      * out — equally far from the centre either way — takes the smaller

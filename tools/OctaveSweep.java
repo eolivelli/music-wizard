@@ -121,6 +121,12 @@ public final class OctaveSweep {
     /** Spread quantiles the grid walks against each floor; at one the fold is off. */
     private static final double[] QUANTILES = {0, 0.5, 0.75, 0.9, 0.95, 0.99, 1};
 
+    /** Print every benchmark's row rather than the corpus mean. */
+    private static final String ROWS = "rows";
+
+    /** Count how the wrong frames are wrong rather than scoring the estimate. */
+    private static final String OCTAVES = "octaves";
+
     /** How many octaves out the grid lets a note be and still be folded. */
     private static final double[] BOUNDS = {1, 2, 3, 4};
 
@@ -135,6 +141,15 @@ public final class OctaveSweep {
 
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 && !isNumber(args[0]) ? args[0] : "";
+        // Checked against the list, not merely for being a word: an unknown
+        // one would otherwise select the score question in silence, so a
+        // mistyped "rows" answers a question nobody asked in the format of an
+        // answer to the one they did.
+        if (!mode.isEmpty() && !mode.equals(ROWS) && !mode.equals(OCTAVES)) {
+            System.err.println("unknown mode: " + mode + " (expected " + ROWS
+                    + " or " + OCTAVES + ")");
+            System.exit(2);
+        }
         List<double[]> bands = new ArrayList<>();
         int first = mode.isEmpty() ? 0 : 1;
         // Rejected rather than rounded down to what does group: an argument
@@ -165,12 +180,12 @@ public final class OctaveSweep {
                     + " to fetch it. Only the synthetic packages are scored.");
         }
         for (double[] band : bands) {
-            if (mode.equals("octaves")) {
+            if (mode.equals(OCTAVES)) {
                 octaves("vocadito ", vocadito, band);
                 octaves("synthetic", synthetic, band);
             } else {
-                score("vocadito ", vocadito, band, mode.equals("rows"));
-                score("synthetic", synthetic, band, mode.equals("rows"));
+                score("vocadito ", vocadito, band, mode.equals(ROWS));
+                score("synthetic", synthetic, band, mode.equals(ROWS));
             }
         }
     }
