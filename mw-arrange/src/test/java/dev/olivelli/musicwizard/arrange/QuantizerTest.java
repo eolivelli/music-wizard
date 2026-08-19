@@ -971,6 +971,39 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("a bar with no onsets of its own is still divided its own meter's way")
+        void aBarATieOnlyPassesThroughKeepsItsOwnMetersDivisions() {
+            // The case the per-bar charge exists for. Bar 2 holds no onset, so
+            // it costs nothing on every division and takes its neighbour's --
+            // and its neighbour is in a meter that subdivides the other way. A
+            // tie is what makes that visible: it is the one way a bar nobody
+            // played in reaches the page.
+            TempoMap tempoMap = TempoMap.constant(BPM, TimeSignature.FOUR_FOUR)
+                    .withMeterChange(2, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(tempoMap, 29, 0);
+            performance.run(60, 0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5);
+            // Bars 0 and 1 are four quarter beats each and bar 2 is three, so
+            // this starts in bar 1 and is released in bar 3.
+            performance.note(62, 7.0, 5.0);
+
+            QuantizedScore quantized =
+                    Quantizer.quantize(performance.score(), QuantizationSettings.READING);
+
+            BarGrid silent = quantized.gridAtBar(2).orElseThrow();
+            assertThat(silent.timeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(QuantizationSettings.READING.permits(silent.resolution(),
+                    silent.timeSignature()))
+                    .describedAs("%s in the silent bar", silent.resolution())
+                    .isTrue();
+            assertThat(quantized.grids()).allSatisfy(g ->
+                    assertThat(QuantizationSettings.READING.permits(g.resolution(),
+                            g.timeSignature()))
+                            .describedAs("%s in %s at bar %d", g.resolution(), g.timeSignature(),
+                                    g.bar())
+                            .isTrue());
+        }
+
+        @Test
         @DisplayName("a depth floor withholds what is below it, in either meter")
         void theDepthFloorIsMeterRelative() {
             QuantizationSettings shallow =

@@ -173,6 +173,27 @@ class PlayableLeadSheetTest {
                         "en", Confidence.CERTAIN));
     }
 
+    @Test
+    @DisplayName("a compound-meter page keeps its plain eighths and gains no bracket")
+    void compoundTimeIsNotBracketed() {
+        // The restriction is on the divisions the meter does not subdivide by,
+        // and which those are inverts here: a rule fixed in simple time would
+        // withhold the plain eighth and bracket every beat of this page.
+        Score score = inSixEight();
+        QuantizedScore quantized = Quantizer.quantize(
+                score.withTrack(PlayableMelody.reduce(score)), QuantizationSettings.READING);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(source).doesNotContain("\\tuplet");
+        List<Note> printed = melodyOf(quantized).notes();
+        for (int i = 0; i < printed.size(); i++) {
+            assertThat(printed.get(i).onsetBeat().orElseThrow())
+                    .describedAs("note %d", i)
+                    .isCloseTo(i * 0.5, org.assertj.core.api.Assertions.within(1e-9));
+        }
+    }
+
     /**
      * Four bars of a sung line whose syllables do not begin on the beat, the
      * shape #594 was reported on: every group is scooped into and every scoop
@@ -206,6 +227,32 @@ class PlayableLeadSheetTest {
                         chord(map, "C4", ChordQuality.MAJOR, 0, 8),
                         chord(map, "G4", ChordQuality.MAJOR, 8, 16)),
                         Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+    }
+
+    /**
+     * A 6/8 tune of plain eighths, one syllable to each, played exactly.
+     *
+     * <p>Exact rather than performed: what is being asserted is that the
+     * division survives, so a jittered onset would leave the test unable to say
+     * whether a moved note was the meter or the dice.
+     */
+    private static Score inSixEight() {
+        TempoMap map = TempoMap.constantPulse(QUARTER_BPM, TimeSignature.SIX_EIGHT);
+        String[] sung = {"one", "two", "three", "four", "five", "six"};
+        List<Note> voice = new ArrayList<>();
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            double at = i * 0.5;
+            voice.add(note(map, at, 0.5, i % 2 == 0 ? "E4" : "G4"));
+            words.add(LyricWord.ofSeconds(sung[i % sung.length], map.beatsToSeconds(at),
+                    map.beatsToSeconds(at + 0.5), Confidence.CERTAIN));
+        }
+        return Score.empty(map, map.beatsToSeconds(12))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voice, Confidence.CERTAIN))
+                .withChords(new ChordProgression(List.of(
+                        chord(map, "C4", ChordQuality.MAJOR, 0, 6)), Confidence.of(0.9)))
                 .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
                         "en", Confidence.CERTAIN));
     }
