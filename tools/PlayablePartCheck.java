@@ -76,7 +76,6 @@ public final class PlayablePartCheck {
     /** The largest denominator exponent this reads. */
     private static final int MAX_DENOMINATOR_SHIFT = 6;
 
-    /** What a file states no meter in. */
     private static final TimeSignature COMMON_TIME = new TimeSignature(4, 4);
 
     private static final int TEMPO = 0x51;
@@ -552,8 +551,7 @@ public final class PlayablePartCheck {
      *
      * <p>Every reference this reads is third-party MIDI off the web, so a
      * truncated event is a thing that happens and must not take down a run that
-     * has printed nothing yet. One reader for all of them: the same check was
-     * wanted in three places, and two of them were missed the first time.
+     * has printed nothing yet. One reader for all of them.
      */
     private static byte[] payload(MetaMessage meta, int minimum) {
         byte[] data = meta.getData();
