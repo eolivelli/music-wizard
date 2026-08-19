@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.cli;
 
+import dev.olivelli.musicwizard.arrange.Melismas;
 import dev.olivelli.musicwizard.core.config.ConfigLoader;
 import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Key;
@@ -374,6 +375,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             List<LyricLine> parsed = lyrics.lines();
             List<LyricLine> aligned = new ArrayList<>(parsed.size());
             List<Confidence> measured = new ArrayList<>();
+            java.util.Set<LyricLine> measuredLines =
+                    java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             double previousEnd = 0;
             int kept = 0;
             for (int i = 0; i < parsed.size(); i++) {
@@ -413,7 +416,11 @@ final class AnalyzeCommand implements Callable<Integer> {
                 // A no-op on every expected path; a path nobody expected is
                 // exactly when the sheet's cursor must still find monotone
                 // lines.
+                boolean fromTheAligner = result != line;
                 result = shiftedAfter(result, previousEnd);
+                if (fromTheAligner) {
+                    measuredLines.add(result);
+                }
                 aligned.add(result);
                 previousEnd = Math.max(previousEnd, result.endSeconds());
             }
@@ -430,8 +437,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                                     weakest.value())
                             : "")
                     + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
-            return score.withLyrics(
+            Score placed = score.withLyrics(
                     new Lyrics(aligned, lyrics.language(), lyrics.confidence()));
+            return placed.withLyrics(withMelismas(placed, measuredLines));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics stay at their parsed times: "
                     + e.getMessage());
@@ -443,6 +451,27 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + " times: " + e.getMessage());
             return score;
         }
+    }
+
+    /**
+     * The score's lyrics with each syllable told whether it is sung over a run
+     * of notes (#597), on the lines whose spans the aligner measured.
+     *
+     * <p>Only those. A line that kept its parsed times has its words
+     * apportioned across it by a syllable count, and a span nobody measured
+     * says nothing about what is sung over it: deciding from one marks several
+     * times the share of the words that a measured line does, and takes the
+     * reduced part most of the way back to the estimate it reduces.
+     */
+    static Lyrics withMelismas(Score score, java.util.Set<LyricLine> measured) {
+        Lyrics placed = score.lyrics();
+        Lyrics decided = Melismas.marked(score);
+        List<LyricLine> out = new ArrayList<>(placed.lines().size());
+        for (int i = 0; i < placed.lines().size(); i++) {
+            out.add(measured.contains(placed.lines().get(i))
+                    ? decided.lines().get(i) : placed.lines().get(i));
+        }
+        return new Lyrics(out, placed.language(), placed.confidence());
     }
 
     /**

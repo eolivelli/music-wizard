@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -147,6 +148,67 @@ public final class PlayableMelody {
         return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, reduced, melody.confidence());
     }
 
+    /** One syllable of the lyrics and the note-heads an uncollapsed reading prints for it. */
+    record SungSyllable(int line, int word, List<Note> heads) {
+    }
+
+    /**
+     * Every syllable some note is claimed for, with the note-heads it would
+     * print if it were not collapsed: its claimed notes, less the ones the
+     * ornament rule absorbs into their successor.
+     *
+     * <p>The reduction's own claim and its own ornament rule, so a stage
+     * deciding what a syllable holds (#597) sees exactly the heads marking it
+     * would produce. Any mark already on the lyrics is ignored, since a marked
+     * syllable claims nothing and reading one would answer from its own
+     * previous answer.
+     */
+    static List<SungSyllable> sungSyllables(Score score) {
+        Objects.requireNonNull(score, "score");
+        Optional<NoteTrack> melody = score.track(PartRole.LEAD_VOCAL);
+        if (melody.isEmpty()) {
+            return List.of();
+        }
+        TempoMap map = score.tempoMap();
+        List<Piece> pieces = new ArrayList<>(melody.get().size());
+        for (Note note : melody.get().notes()) {
+            pieces.add(Piece.of(note, map));
+        }
+        long[] claimed = syllableOf(pieces, unmarked(score.lyrics()), map, CLAIM_BEATS);
+        Map<Long, List<Piece>> bySyllable = new LinkedHashMap<>();
+        for (int i = 0; i < pieces.size(); i++) {
+            if (claimed[i] != UNSUNG) {
+                bySyllable.computeIfAbsent(claimed[i], key -> new ArrayList<>()).add(pieces.get(i));
+            }
+        }
+        List<SungSyllable> out = new ArrayList<>(bySyllable.size());
+        for (var entry : bySyllable.entrySet()) {
+            List<Piece> run = entry.getValue();
+            List<Note> heads = new ArrayList<>(run.size());
+            for (int i = 0; i < run.size(); i++) {
+                if (i + 1 == run.size() || !leadsInto(run.get(i), run.get(i + 1))) {
+                    heads.add(run.get(i).note());
+                }
+            }
+            out.add(new SungSyllable((int) (entry.getKey() >> 32), (int) (long) entry.getKey(),
+                    List.copyOf(heads)));
+        }
+        return List.copyOf(out);
+    }
+
+    /** The same lyrics with every melisma mark taken off. */
+    private static Lyrics unmarked(Lyrics lyrics) {
+        List<LyricLine> lines = new ArrayList<>(lyrics.lines().size());
+        for (LyricLine line : lyrics.lines()) {
+            List<LyricWord> words = new ArrayList<>(line.words().size());
+            for (LyricWord word : line.words()) {
+                words.add(word.melisma() ? word.withMelisma(false) : word);
+            }
+            lines.add(new LyricLine(words, line.confidence()));
+        }
+        return new Lyrics(lines, lyrics.language(), lyrics.confidence());
+    }
+
     /**
      * One note on the beat axis.
      *
@@ -228,8 +290,7 @@ public final class PlayableMelody {
      * distance, so one bound answers both.
      *
      * <p>A syllable some stage has marked as a melisma claims nothing, so its
-     * notes fall to the ornament rule rather than collapsing to one. Nothing
-     * marks one today, which is #597.
+     * notes fall to the ornament rule rather than collapsing to one.
      */
     private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map,
                                      double claimBeats) {

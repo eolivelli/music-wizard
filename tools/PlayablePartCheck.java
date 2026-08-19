@@ -16,6 +16,7 @@
 
 import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
+import dev.olivelli.musicwizard.arrange.Melismas;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
@@ -103,6 +104,17 @@ public final class PlayablePartCheck {
     private static final double[] CLAIM_BOUNDS =
             {Double.MAX_VALUE, 4, 2, 1.5, 1.25, 1, 0.5, 0.25, 0};
 
+    /** The widest run the melisma sweep asks a syllable's heads to reach. */
+    private static final int MELISMA_SEMITONES = 7;
+
+    /** The fold bound the run sweep holds fixed, and the run the fold sweep does. */
+    private static final int MELISMA_FOLD = 12;
+
+    private static final int MELISMA_RUN = 2;
+
+    /** The fold bounds swept, in semitones; the last is no bound at all. */
+    private static final int[] MELISMA_FOLDS = {5, 8, 12, 24, 128};
+
     private static final double EPSILON = 1e-9;
 
     private record Event(double seconds, int pitch) {
@@ -134,6 +146,7 @@ public final class PlayablePartCheck {
             // welds together does not, so a recording nobody has sequenced
             // still gets that table rather than a usage error.
             claims(score, estimate, List.of(), Double.NaN);
+            melismas(score, estimate, List.of(), Double.NaN);
             return;
         }
 
@@ -153,6 +166,7 @@ public final class PlayablePartCheck {
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
         claims(score, estimate, mapped, bar);
+        melismas(score, estimate, mapped, bar);
         subdivisions(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
         vocabularies(score, estimate, reduced, mapped);
 
@@ -212,6 +226,52 @@ public final class PlayablePartCheck {
                     reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
                             100 * f1(events, reference, TOLERANCE_SECONDS)));
         }
+    }
+
+    /**
+     * What marking melismas costs and buys, swept over both intervals a
+     * syllable's note-heads are asked to reach (#597): how far apart they must
+     * be to be a run, and how far apart they are instead read as the melody
+     * stage's octave fold.
+     *
+     * <p>{@code off} is the reduction with nothing marked, which is what every
+     * other table here reports. {@code marked} is how many syllables the
+     * setting turns into melismas and {@code heads} what that puts on the
+     * page; a setting that marks liberally walks {@code heads} back toward the
+     * estimate's own count, which is the reduction undoing itself. {@code
+     * welded} is what it is for: a note-head running across silence because a
+     * syllable the aligner really does hold was collapsed into one.
+     */
+    private static void melismas(Score score, NoteTrack estimate, List<Event> reference,
+                                 double barSeconds) {
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%5s %5s %7s %7s %7s %9s %9s %10s %9s%n",
+                "run", "fold", "marked", "heads", "welded", "widest", "span", "per bar",
+                "F1 loose");
+        melisma(score, estimate, reference, barSeconds, -1, -1);
+        for (int run = 0; run <= MELISMA_SEMITONES; run++) {
+            melisma(score, estimate, reference, barSeconds, run, MELISMA_FOLD);
+        }
+        for (int fold : MELISMA_FOLDS) {
+            melisma(score, estimate, reference, barSeconds, MELISMA_RUN, fold);
+        }
+    }
+
+    private static void melisma(Score score, NoteTrack estimate, List<Event> reference,
+                                double barSeconds, int run, int fold) {
+        Score marked = run < 0 ? score : score.withLyrics(Melismas.marked(score, run, fold));
+        NoteTrack reduced = PlayableMelody.reduce(marked);
+        Weld weld = welds(estimate, reduced, score.tempoMap());
+        List<Event> events = events(reduced);
+        System.out.printf(Locale.ROOT, "%5s %5s %7d %7d %7d %9.2f %9.2f %10s %9s%n",
+                run < 0 ? "off" : String.valueOf(run),
+                run < 0 ? "off" : String.valueOf(fold),
+                marked.lyrics().allWords().stream().filter(LyricWord::melisma).count(),
+                reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
+                reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
+                        countError(events, reference, barSeconds)),
+                reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
+                        100 * f1(events, reference, TOLERANCE_SECONDS)));
     }
 
     /** Silence inside the printed note-heads, in quarter-note beats. */
