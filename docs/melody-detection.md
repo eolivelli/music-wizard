@@ -111,9 +111,16 @@ a literal one.
 `--parts playable` engraves the lead sheet a second time from a **reduced**
 melody (#592): a sung syllable carries one note-head, and the pitch printed
 is the one its group settles on rather than an average of the ones it passed
-through. A syllable sung over several notes gets one note-head like any
-other, because deciding that a held syllable is a melisma is a judgement
-nothing in the pipeline makes yet (#597). That is synthesis rather than transcription,
+through. A syllable **the melody moves under** keeps its notes instead
+(#597): the aligner marks it a melisma, and the reduction then prints the run
+rather than collapsing it. Movement is the evidence, not length — a syllable
+merely held, and one re-articulated on its own pitch, stay collapsed, and so
+does one whose notes are an octave apart, which is the octave fold rather than
+a voice. The decision is taken only on the lines the aligner actually
+measured, because a line left at its parsed times has its words apportioned
+across it by a syllable count and such a span says nothing about what is sung
+over it; `tools/PlayablePartCheck.java` sweeps both intervals and prints what
+each setting marks. That is synthesis rather than transcription,
 so it is written only when asked for and the estimate is untouched — every
 melody baseline scores the estimate, and a page a player reads and a page
 that answers what the singer did are two different correctness conditions.

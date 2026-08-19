@@ -18,14 +18,24 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.model.ChordProgression;
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -298,5 +308,91 @@ class AlignedLyricsTest {
         // Spread times: the line starts where the LRC says.
         assertThat(words.get(0).startSeconds()).isEqualTo(1.0);
         assertThat(words.get(0).confidence().value()).isLessThan(0.97);
+    }
+
+    @Test
+    @DisplayName("analyze marks a syllable the melody moves under")
+    void analyzeMarksAMelisma() throws IOException {
+        // The whole wiring, from --melody to the file: a stepped tone under one
+        // syllable an aligner gave the span of. A run whose melody track never
+        // arrived would pass every other test in this file (#597).
+        int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
+        float[] samples = new float[0];
+        for (int midiPitch : new int[] {57, 60, 57}) {
+            samples = concat(samples, tone(midiPitch, 2.0, rate));
+        }
+        Path source = directory.resolve("melisma.wav");
+        SignalFactory.writeWav(source, samples, rate);
+        Path root = directory.resolve("melisma.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
+                .exitCode()).isZero();
+        Path descriptor = root.resolve("workspace.yaml");
+        Files.writeString(descriptor, Files.readString(descriptor)
+                + "\nconfig:\n  ml:\n    alignmentProvider: sung-fake-cli-alignment\n");
+        Path lrc = directory.resolve("melisma.lrc");
+        Files.writeString(lrc, "[00:00.50]aah\n");
+
+        CliRunner.Result analyze = CliRunner.run("analyze", root.toString(), "--melody",
+                "--lyrics", lrc.toString(), "--lyrics-language", "en");
+
+        assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        assertThat(score.track(PartRole.LEAD_VOCAL)).as(analyze.all()).isPresent();
+        assertThat(score.lyrics().allWords()).extracting(LyricWord::melisma)
+                .as(analyze.all()).containsExactly(true);
+    }
+
+    /** A tone with partials, which the melody stage tracks and a bare sine it does not. */
+    private static float[] tone(int midiPitch, double seconds, int rate) {
+        double hz = SignalFactory.midiToHz(midiPitch);
+        return SignalFactory.chord(new double[] {hz, 2 * hz, 3 * hz, 4 * hz}, seconds, rate);
+    }
+
+    private static float[] concat(float[] first, float[] second) {
+        float[] out = java.util.Arrays.copyOf(first, first.length + second.length);
+        System.arraycopy(second, 0, out, first.length, second.length);
+        return out;
+    }
+
+    @Test
+    @DisplayName("melismas are decided only where the aligner measured the spans")
+    void onlyMeasuredLinesGetMelismas() {
+        // Two lines with the same run of notes under each syllable. The
+        // aligner measured the first; the second kept times apportioned across
+        // it, which say nothing about what is sung over what (#597).
+        LyricLine measured = line(word("aaah", 0.0, 1.2));
+        LyricLine kept = line(word("oooh", 4.0, 5.2));
+        Score score = sung(
+                List.of(note(0.0, 0.4, 60), note(0.4, 0.4, 62), note(0.8, 0.4, 64),
+                        note(4.0, 0.4, 60), note(4.4, 0.4, 62), note(4.8, 0.4, 64)),
+                measured, kept);
+        Set<LyricLine> fromTheAligner =
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        fromTheAligner.add(score.lyrics().lines().get(0));
+
+        Lyrics decided = AnalyzeCommand.withMelismas(score, fromTheAligner);
+
+        assertThat(decided.lines().get(0).words().get(0).melisma()).isTrue();
+        assertThat(decided.lines().get(1).words().get(0).melisma()).isFalse();
+    }
+
+    private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
+        return Note.ofSeconds(onsetSeconds, durationSeconds, midiPitch, Confidence.of(0.7));
+    }
+
+    private static LyricWord word(String text, double startSeconds, double endSeconds) {
+        return LyricWord.ofSeconds(text, startSeconds, endSeconds, Confidence.of(0.8));
+    }
+
+    private static LyricLine line(LyricWord... words) {
+        return new LyricLine(List.of(words), Confidence.of(0.8));
+    }
+
+    private static Score sung(List<Note> notes, LyricLine... lines) {
+        return new Score(Optional.empty(), Optional.empty(), TempoMap.constant(60),
+                Optional.empty(), List.of(), List.of(),
+                List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.of(0.7))),
+                ChordProgression.empty(),
+                new Lyrics(List.of(lines), "it", Confidence.of(0.8)), 30);
     }
 }
