@@ -566,8 +566,8 @@ final class RenderCommand implements Callable<Integer> {
      * print. Nothing else sees it: the workspace's transcription is untouched,
      * and {@code lead.pdf} still carries the estimate.
      *
-     * <p>Written on the reading vocabulary rather than the transcription's,
-     * which is the other half of the same decision (#594).
+     * <p>Divided only the way its meter divides, where the estimate's page may
+     * use any subdivision, which is the other half of the same decision (#594).
      */
     private static Emitted writePlayableLeadSheet(
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
