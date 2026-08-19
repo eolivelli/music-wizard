@@ -73,15 +73,15 @@ public final class PlayablePartCheck {
     /** How far apart two onsets may be and still be called the same note. */
     private static final double TOLERANCE_SECONDS = 0.25;
 
-    /**
-     * How far below the counted beat a bar is divided before {@code deepBars}
-     * counts it. The deepest the resolutions offer, which is the one a
-     * restriction on depth withdraws first.
-     */
-    private static final int DEEP = 3;
-
-    /** The largest denominator exponent a meter event may carry: a 64th note. */
+    /** The largest denominator exponent this reads. */
     private static final int MAX_DENOMINATOR_SHIFT = 6;
+
+    /** What a file states no meter in. */
+    private static final TimeSignature COMMON_TIME = new TimeSignature(4, 4);
+
+    private static final int TEMPO = 0x51;
+
+    private static final int METER = 0x58;
 
     /**
      * The tighter tolerance the vocabulary table is also read at. Below what
@@ -208,16 +208,17 @@ public final class PlayablePartCheck {
      * What each way of restricting the divisions makes of the two parts, which
      * is the sweep {@link QuantizationSettings#READING} was chosen from (#594).
      *
-     * <p>Four quantities, because no one of them decides it. {@code tupletBars}
-     * and {@code deepBars} are the two ways a page gets hard to read, and they
-     * are separate because withdrawing a division fixes one by worsening the
-     * other: the brackets go and the same notes come back as chains of tied
-     * shorter values. Both are counts of bars rather than averages over them --
-     * a handful of unreadable bars in a hundred is the defect, and an average
-     * dilutes it away. {@code moved} is what the printing costs in literalness,
-     * in beats, against the part's own onsets. The F1 columns are the printed
-     * onsets against the reference, at a tolerance below what the melody stage
-     * can place (#497) and at one above it.
+     * <p>A page gets hard to read in two ways, and withdrawing a division fixes
+     * one by worsening the other: the brackets go and the same notes come back
+     * as chains of tied shorter values. {@code tupletBars} counts the first,
+     * which needs counting because whether a division is a tuplet depends on
+     * the meter. The second is read off {@code grids}, which says how many bars
+     * went to each division: a summary of that column loses the handful of bars
+     * the defect lives in, whichever way it is summarised. {@code moved} is
+     * what the printing costs in literalness, in beats, against the part's own
+     * onsets. The F1 columns are the printed onsets against the reference, at a
+     * tolerance below what the melody stage can place (#497) and at one above
+     * it.
      */
     private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
                                      List<Event> reference) {
@@ -231,9 +232,8 @@ public final class PlayablePartCheck {
                 QuantizationSettings.READING);
         ways.put("the counted beat only", all.withLevelsBelowTheBeat(0));
         System.out.println();
-        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s %8s   %s%n",
-                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "deepBars",
-                "grids");
+        System.out.printf(Locale.ROOT, "%-52s %8s %8s %8s %10s   %s%n",
+                "divisions offered", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
         for (Map.Entry<String, QuantizationSettings> entry : ways.entrySet()) {
             vocabulary("estimate  " + entry.getKey(), score, estimate,
                     entry.getValue(), reference);
@@ -259,22 +259,18 @@ public final class PlayablePartCheck {
             moved += Math.abs(beat - map.secondsToBeats(played.notes().get(i).onsetSeconds()));
         }
         int tuplets = 0;
-        int deep = 0;
         Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
         for (BarGrid grid : quantized.grids()) {
             histogram.merge(grid.resolution(), 1, Integer::sum);
-            if (grid.resolution().depthIn(grid.timeSignature()) >= DEEP) {
-                deep++;
-            }
             if (grid.resolution().isTupletIn(grid.timeSignature())
                     && grid.resolution() != GridResolution.BEAT) {
                 tuplets++;
             }
         }
-        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d %8d   %s%n",
+        System.out.printf(Locale.ROOT, "%-52s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
                 label, 100 * f1(events, reference, TIGHT_SECONDS),
                 100 * f1(events, reference, TOLERANCE_SECONDS),
-                moved / Math.max(1, printed.size()), tuplets, deep, histogram);
+                moved / Math.max(1, printed.size()), tuplets, histogram);
     }
 
     /** Note F1 at a stated onset tolerance, matched one to one by pitch class. */
@@ -519,58 +515,86 @@ public final class PlayablePartCheck {
      */
     private static double barSeconds(Path file) throws Exception {
         Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
+        MetaMessage tempo = earliest(sequence, TEMPO);
         double secondsPerQuarter = 0.5;
-        long earliestTempo = Long.MAX_VALUE;
-        for (Track track : sequence.getTracks()) {
-            for (int i = 0; i < track.size(); i++) {
-                if (track.get(i).getMessage() instanceof MetaMessage meta
-                        && meta.getType() == 0x51 && track.get(i).getTick() < earliestTempo) {
-                    earliestTempo = track.get(i).getTick();
-                    byte[] data = meta.getData();
-                    secondsPerQuarter = (((data[0] & 0xff) << 16)
-                            | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
-                }
-            }
+        byte[] data = tempo == null ? null : payload(tempo, 3);
+        if (data != null) {
+            secondsPerQuarter = (((data[0] & 0xff) << 16)
+                    | ((data[1] & 0xff) << 8) | (data[2] & 0xff)) / 1_000_000.0;
         }
         return meterOf(sequence).quarterBeatsPerBar() * secondsPerQuarter;
     }
 
-    /** The file's opening meter, or common time when it states none. */
-    private static TimeSignature meterOf(Sequence sequence) {
-        int numerator = 4;
-        int denominator = 4;
-        long earliest = Long.MAX_VALUE;
+    /**
+     * The earliest event of a meta type in the file, or null.
+     *
+     * <p>Chosen before it is decoded, so that a malformed one is reported as
+     * what was used rather than skipped in favour of a later event the file
+     * does not open with.
+     */
+    private static MetaMessage earliest(Sequence sequence, int type) {
+        MetaMessage found = null;
+        long at = Long.MAX_VALUE;
         for (Track track : sequence.getTracks()) {
             for (int i = 0; i < track.size(); i++) {
                 if (track.get(i).getMessage() instanceof MetaMessage meta
-                        && meta.getType() == 0x58 && track.get(i).getTick() < earliest) {
-                    byte[] data = meta.getData();
-                    // A shift is taken mod 32 in Java, so an out-of-range one
-                    // does not overflow into a wrong meter loudly -- it returns
-                    // a plausible denominator and a silently wrong bar length.
-                    if (data.length < 2 || (data[1] & 0xff) > MAX_DENOMINATOR_SHIFT) {
-                        System.err.printf(Locale.ROOT,
-                                "warning: a meter event of %d byte(s) is not one this can read,"
-                                        + " reading it as 4/4%n", data.length);
-                        continue;
-                    }
-                    earliest = track.get(i).getTick();
-                    numerator = data[0] & 0xff;
-                    denominator = 1 << (data[1] & 0xff);
+                        && meta.getType() == type && track.get(i).getTick() < at) {
+                    at = track.get(i).getTick();
+                    found = meta;
                 }
             }
         }
+        return found;
+    }
+
+    /**
+     * A meta event's bytes, or null with a warning when there are too few.
+     *
+     * <p>Every reference this reads is third-party MIDI off the web, so a
+     * truncated event is a thing that happens and must not take down a run that
+     * has printed nothing yet. One reader for all of them: the same check was
+     * wanted in three places, and two of them were missed the first time.
+     */
+    private static byte[] payload(MetaMessage meta, int minimum) {
+        byte[] data = meta.getData();
+        if (data.length < minimum) {
+            System.err.printf(Locale.ROOT,
+                    "warning: a meta event of type 0x%02x carries %d byte(s) where %d are"
+                            + " needed, so it is ignored%n", meta.getType(), data.length, minimum);
+            return null;
+        }
+        return data;
+    }
+
+    /** The file's opening meter, or common time when it states none this can read. */
+    private static TimeSignature meterOf(Sequence sequence) {
+        MetaMessage event = earliest(sequence, METER);
+        byte[] data = event == null ? null : payload(event, 2);
+        if (data == null) {
+            return COMMON_TIME;
+        }
+        int exponent = data[1] & 0xff;
+        // A shift is taken mod 32 in Java, so an out-of-range one does not
+        // overflow loudly -- it returns a plausible denominator and a silently
+        // wrong bar length.
+        if (exponent > MAX_DENOMINATOR_SHIFT) {
+            System.err.printf(Locale.ROOT,
+                    "warning: the opening meter's denominator exponent is %d, past what this"
+                            + " reads, so it is read as %s%n", exponent, COMMON_TIME);
+            return COMMON_TIME;
+        }
+        int numerator = data[0] & 0xff;
+        int denominator = 1 << exponent;
         try {
             return new TimeSignature(numerator, denominator);
         } catch (IllegalArgumentException e) {
-            // Every reference this reads is third-party MIDI off the web, and a
-            // meter the model refuses would otherwise take the run down before
-            // it printed anything. The meter only labels a row and scales the
-            // bar; common time is the assumption the tool made before it asked.
+            // The meter only labels a row and scales the bar, so a meter the
+            // model refuses is worth a line on stderr rather than a stack trace
+            // in place of the whole report.
             System.err.printf(Locale.ROOT,
-                    "warning: %d/%d is not a meter this can read, reading it as 4/4: %s%n",
-                    numerator, denominator, e.getMessage());
-            return new TimeSignature(4, 4);
+                    "warning: the opening meter %d/%d is not one this can read, so it is read"
+                            + " as %s: %s%n", numerator, denominator, COMMON_TIME, e.getMessage());
+            return COMMON_TIME;
         }
     }
 
@@ -580,8 +604,12 @@ public final class PlayablePartCheck {
         TreeMap<Long, Double> tempo = new TreeMap<>();
         for (Track track : sequence.getTracks()) {
             for (int i = 0; i < track.size(); i++) {
-                if (track.get(i).getMessage() instanceof MetaMessage meta && meta.getType() == 0x51) {
-                    byte[] data = meta.getData();
+                if (track.get(i).getMessage() instanceof MetaMessage meta
+                        && meta.getType() == TEMPO) {
+                    byte[] data = payload(meta, 3);
+                    if (data == null) {
+                        continue;
+                    }
                     int microseconds = ((data[0] & 0xff) << 16)
                             | ((data[1] & 0xff) << 8) | (data[2] & 0xff);
                     tempo.put(track.get(i).getTick(), microseconds / 1_000_000.0);
