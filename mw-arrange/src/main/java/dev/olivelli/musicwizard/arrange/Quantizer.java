@@ -38,13 +38,13 @@ import java.util.function.ToDoubleFunction;
  * missing.
  *
  * <p>The objective is plausibility, not reproduction — a more literal
- * transcription is usually a worse lead sheet. Per bar, each candidate in
- * {@link GridResolution} is scored as total onset deviation plus a complexity
- * penalty charged per note; the per-bar scores are then decoded with a Viterbi
- * pass charging {@link QuantizationSettings#gridChangePenalty()} for changing
- * subdivision between bars, waived at a {@link Section} boundary. One grid per
- * bar for the whole score, so the staves of a system agree about what a beam
- * means.
+ * transcription is usually a worse lead sheet. Per bar, each of
+ * {@link QuantizationSettings#grids()} is scored as total onset deviation plus
+ * a complexity penalty charged per note; the per-bar scores are then decoded
+ * with a Viterbi pass charging {@link QuantizationSettings#gridChangePenalty()}
+ * for changing subdivision between bars, waived at a {@link Section} boundary.
+ * One grid per bar for the whole score, so the staves of a system agree about
+ * what a beam means.
  *
  * <p>Chords, sections and keys go onto the beat axis too — leaving them in
  * seconds would leave two independently rounded answers to where beat three is
@@ -276,7 +276,7 @@ public final class Quantizer {
     private static GridResolution[] chooseGrids(List<Note> notes, List<Section> sections,
                                                 BarTable bars, SwingFeel swing,
                                                 QuantizationSettings settings) {
-        GridResolution[] candidates = GridResolution.values();
+        GridResolution[] candidates = settings.grids().toArray(new GridResolution[0]);
         return decode(costs(notes, bars, swing, settings, candidates), candidates,
                 sectionStarts(sections, bars), settings.gridChangePenalty());
     }

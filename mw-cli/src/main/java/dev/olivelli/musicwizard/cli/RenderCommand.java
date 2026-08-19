@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.cli;
 import dev.olivelli.musicwizard.arrange.ChordSpeller;
 import dev.olivelli.musicwizard.arrange.PitchSpeller;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
+import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.arrange.Transposer;
@@ -553,6 +554,7 @@ final class RenderCommand implements Callable<Integer> {
     private static Emitted writeLeadSheet(
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score, lilypond, "lead",
+                QuantizationSettings.DEFAULT,
                 (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
     }
 
@@ -563,11 +565,14 @@ final class RenderCommand implements Callable<Integer> {
      * melody's own role, because that is how a staff writer is told what to
      * print. Nothing else sees it: the workspace's transcription is untouched,
      * and {@code lead.pdf} still carries the estimate.
+     *
+     * <p>Written on the reading vocabulary rather than the transcription's,
+     * which is the other half of the same decision (#594).
      */
     private static Emitted writePlayableLeadSheet(
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score.withTrack(PlayableMelody.reduce(score)),
-                lilypond, "lead-playable",
+                lilypond, "lead-playable", QuantizationSettings.READING,
                 (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
     }
 
@@ -575,12 +580,13 @@ final class RenderCommand implements Callable<Integer> {
     private static Emitted writeVoicePart(
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score, lilypond, "voice",
+                QuantizationSettings.DEFAULT,
                 (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody));
     }
 
     /** What the melody outputs share: quantize, spell, write, engrave. */
     private static Emitted writeStaffOutput(Workspace workspace, Score score,
-            Optional<Path> lilypond, String name,
+            Optional<Path> lilypond, String name, QuantizationSettings settings,
             BiFunction<QuantizedScore, NoteTrack, String> engraving) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
@@ -588,7 +594,7 @@ final class RenderCommand implements Callable<Integer> {
         try {
             Files.createDirectories(out);
             Score spelled = PitchSpeller.spell(score);
-            QuantizedScore quantized = Quantizer.quantize(spelled);
+            QuantizedScore quantized = Quantizer.quantize(spelled, settings);
             NoteTrack melody = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow(
                     () -> new IllegalStateException(
                             "the melody vanished between the availability check and here"));

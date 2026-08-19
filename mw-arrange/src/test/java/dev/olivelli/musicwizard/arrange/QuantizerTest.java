@@ -31,8 +31,10 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.Section;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -885,6 +887,50 @@ class QuantizerTest {
     }
 
     @Nested
+    @DisplayName("the vocabulary a bar may be written on")
+    class Vocabulary {
+
+        @Test
+        @DisplayName("a resolution left out of the settings is never chosen")
+        void onlyTheOfferedGridsAreUsed() {
+            // The same triplet passage tripletsLandOnThirds reads as triplets:
+            // the grid that fits it best is exactly the one withheld here.
+            Performance performance = new Performance(fourFour(), 6);
+            performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
+
+            QuantizedScore quantized = Quantizer.quantize(performance.score(),
+                    QuantizationSettings.READING);
+
+            assertThat(quantized.grids()).isNotEmpty().allSatisfy(g -> {
+                assertThat(QuantizationSettings.READING.grids()).contains(g.resolution());
+                assertThat(g.resolution().isTupletIn(g.timeSignature())).isFalse();
+            });
+        }
+
+        @Test
+        @DisplayName("what the reading vocabulary costs: a real triplet is written duple")
+        void aTripletIsWrittenOnTheNearestDuplePositions() {
+            Performance performance = new Performance(fourFour(), 6);
+            performance.run(60, 1.0 / 3, Performance.evenly(4, 4.0, 12));
+
+            List<Note> notes = Quantizer.quantize(performance.score(),
+                    QuantizationSettings.READING).score().tracks().get(0).notes();
+
+            for (Note note : notes) {
+                double beat = note.onsetBeat().orElseThrow();
+                assertThat(beat * 4).isCloseTo(Math.round(beat * 4), within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("the transcription's vocabulary is still every resolution there is")
+        void theDefaultOffersEverything() {
+            assertThat(QuantizationSettings.DEFAULT.grids())
+                    .containsExactly(GridResolution.values());
+        }
+    }
+
+    @Nested
     @DisplayName("degenerate input")
     class Degenerate {
 
@@ -957,16 +1003,46 @@ class QuantizerTest {
             // quietly resets the overlap tolerance would still quantize, just
             // differently. Nothing in the suite could see three of the four
             // places overlapTolerance had to be carried.
-            QuantizationSettings from = new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true);
+            // The grids carried here are not the default set, so a copy method
+            // that dropped them would come back holding every resolution.
+            Set<GridResolution> some = EnumSet.of(GridResolution.BEAT, GridResolution.SIXTH_BEAT);
+            QuantizationSettings from =
+                    new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true, some);
 
             assertThat(from.withGridChangePenalty(0.99))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.99, 0.5, 0.04, true, some));
             assertThat(from.withArticulationRatio(0.75))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.75, 0.04, true, some));
             assertThat(from.withOverlapTolerance(0.09))
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.09, true, some));
             assertThat(from.withoutSwingDetection())
-                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false));
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, false, some));
+            assertThat(from.withGrids(EnumSet.of(GridResolution.HALF_BEAT)))
+                    .isEqualTo(new QuantizationSettings(0.01, 0.02, 0.03, 0.5, 0.04, true,
+                            EnumSet.of(GridResolution.HALF_BEAT)));
+        }
+
+        @Test
+        @DisplayName("a settings object cannot be left with no grid to write a bar on")
+        void everySettingsHasSomeGrid() {
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withGrids(List.of()))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> QuantizationSettings.DEFAULT.withGrids(null))
+                    .isInstanceOf(NullPointerException.class);
+        }
+
+        @Test
+        @DisplayName("the grids are copied, so a caller's set cannot be edited afterwards")
+        void gridsAreCopied() {
+            Set<GridResolution> mutable = EnumSet.of(GridResolution.BEAT, GridResolution.THIRD_BEAT);
+            QuantizationSettings settings = QuantizationSettings.DEFAULT.withGrids(mutable);
+
+            mutable.remove(GridResolution.THIRD_BEAT);
+
+            assertThat(settings.grids())
+                    .containsExactly(GridResolution.BEAT, GridResolution.THIRD_BEAT);
+            assertThatThrownBy(() -> settings.grids().add(GridResolution.EIGHTH_BEAT))
+                    .isInstanceOf(UnsupportedOperationException.class);
         }
     }
 

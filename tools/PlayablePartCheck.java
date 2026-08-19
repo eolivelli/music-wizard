@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
+import dev.olivelli.musicwizard.arrange.QuantizationSettings;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Note;
@@ -22,13 +27,18 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
@@ -49,6 +59,11 @@ import javax.sound.midi.Track;
  * is fitted against MW's <em>estimate</em>, so the reduction cannot be scored
  * on an alignment chosen to suit it.
  *
+ * <p>Then rhythm: which subdivisions the arranger themselves used, and what
+ * each candidate grid vocabulary makes of both parts — the page it produces,
+ * what it moves the onsets by, and whether the printed onsets end up nearer
+ * the reference or further from it (#594).
+ *
  * <pre>
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid [TRACK]
  *   java -cp mw-cli/target/mw.jar tools/PlayablePartCheck.java WORKSPACE REFERENCE.mid Melody 11.4 13.0
@@ -58,6 +73,13 @@ public final class PlayablePartCheck {
 
     /** How far apart two onsets may be and still be called the same note. */
     private static final double TOLERANCE_SECONDS = 0.25;
+
+    /**
+     * The tighter tolerance the vocabulary table is also read at. Below what
+     * the melody stage can place a sung onset to (#497), so it says which
+     * printing sits nearer the music rather than which one is right.
+     */
+    private static final double TIGHT_SECONDS = 0.05;
 
     private record Event(double seconds, int pitch) {
     }
@@ -98,6 +120,8 @@ public final class PlayablePartCheck {
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
         chart(score, reduced);
+        subdivisions(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
+        vocabularies(score, estimate, reduced, mapped);
 
         if (args.length >= 5) {
             double from = Double.parseDouble(args[3]);
@@ -118,6 +142,144 @@ public final class PlayablePartCheck {
             }
             System.out.println();
         }
+    }
+
+    /**
+     * Which subdivisions of its own beat the reference arrangement uses.
+     *
+     * <p>Read in the reference's clock rather than the recording's, so it says
+     * what somebody decided a reader should play and not how well the beat
+     * tracker followed it. It is the anchor for the table below: a vocabulary
+     * the arranger never needed is one the reduction is unlikely to need
+     * either.
+     */
+    private static void subdivisions(Path file, String track) throws Exception {
+        Sequence sequence = MidiSystem.getSequence(new File(file.toString()));
+        List<Long> ticks = new ArrayList<>();
+        for (Track candidate : sequence.getTracks()) {
+            if (named(candidate, track)) {
+                for (int i = 0; i < candidate.size(); i++) {
+                    if (candidate.get(i).getMessage() instanceof ShortMessage message
+                            && message.getCommand() == ShortMessage.NOTE_ON
+                            && message.getData2() > 0) {
+                        ticks.add(candidate.get(i).getTick());
+                    }
+                }
+            }
+        }
+        double resolution = sequence.getResolution();
+        StringBuilder line = new StringBuilder();
+        for (GridResolution grid : GridResolution.values()) {
+            double step = resolution / grid.divisionsPerBeat();
+            int on = 0;
+            for (long tick : ticks) {
+                if (Math.abs(tick - Math.round(tick / step) * step) < 1e-6) {
+                    on++;
+                }
+            }
+            line.append(String.format(Locale.ROOT, " %s %d", grid, on));
+        }
+        System.out.printf(Locale.ROOT,
+                "the reference's own reading: %d melody onsets, of which sit exactly on%s%n",
+                ticks.size(), line);
+    }
+
+    private static boolean named(Track track, String wanted) {
+        for (int i = 0; i < track.size(); i++) {
+            if (track.get(i).getMessage() instanceof MetaMessage meta && meta.getType() == 0x03) {
+                return new String(meta.getData()).trim().equalsIgnoreCase(wanted);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * What each grid vocabulary makes of the two parts, which is the sweep
+     * {@link QuantizationSettings#READING} was chosen from (#594).
+     *
+     * <p>Three quantities, because no one of them decides it. {@code tupletBars}
+     * and the histogram are what the page costs a reader. {@code moved} is what
+     * the printing costs in literalness, in beats, against the part's own
+     * onsets. The F1 columns are the printed onsets against the reference, at a
+     * tolerance below what the melody stage can place (#497) and at one above
+     * it: a vocabulary that reads better and agrees no worse is free, and one
+     * that buys the page by moving notes away from the music shows it here.
+     */
+    private static void vocabularies(Score score, NoteTrack estimate, NoteTrack reduced,
+                                     List<Event> reference) {
+        Map<String, Set<GridResolution>> sets = new LinkedHashMap<>();
+        sets.put("all", EnumSet.allOf(GridResolution.class));
+        sets.put("no tuplets", EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT,
+                GridResolution.QUARTER_BEAT, GridResolution.EIGHTH_BEAT));
+        sets.put("no tuplets, floor at the sixteenth", QuantizationSettings.READING.grids());
+        sets.put("no tuplets, floor at the eighth",
+                EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT));
+        sets.put("the counted beat only", EnumSet.of(GridResolution.BEAT));
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%-46s %8s %8s %8s %10s   %s%n",
+                "vocabulary", "F1 tight", "F1 loose", "moved", "tupletBars", "grids");
+        for (Map.Entry<String, Set<GridResolution>> entry : sets.entrySet()) {
+            vocabulary("estimate  " + entry.getKey(), score, estimate,
+                    QuantizationSettings.DEFAULT.withGrids(entry.getValue()), reference);
+        }
+        for (Map.Entry<String, Set<GridResolution>> entry : sets.entrySet()) {
+            vocabulary("reduced   " + entry.getKey(), score.withTrack(reduced), reduced,
+                    QuantizationSettings.DEFAULT.withGrids(entry.getValue()), reference);
+        }
+    }
+
+    private static void vocabulary(String label, Score score, NoteTrack played,
+                                   QuantizationSettings settings, List<Event> reference) {
+        QuantizedScore quantized = Quantizer.quantize(score, settings);
+        NoteTrack printed = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow();
+        TempoMap map = score.tempoMap();
+        List<Event> events = new ArrayList<>(printed.size());
+        double moved = 0;
+        for (int i = 0; i < printed.size(); i++) {
+            Note note = printed.notes().get(i);
+            double beat = note.onsetBeat()
+                    .orElseGet(() -> map.secondsToBeats(note.onsetSeconds()));
+            events.add(new Event(map.beatsToSeconds(beat), note.midiPitch()));
+            moved += Math.abs(beat - map.secondsToBeats(played.notes().get(i).onsetSeconds()));
+        }
+        int tuplets = 0;
+        Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
+        for (BarGrid grid : quantized.grids()) {
+            histogram.merge(grid.resolution(), 1, Integer::sum);
+            if (grid.resolution().isTupletIn(grid.timeSignature())) {
+                tuplets++;
+            }
+        }
+        System.out.printf(Locale.ROOT, "%-46s %7.1f%% %7.1f%% %8.4f %10d   %s%n",
+                label, 100 * f1(events, reference, TIGHT_SECONDS),
+                100 * f1(events, reference, TOLERANCE_SECONDS),
+                moved / Math.max(1, printed.size()), tuplets, histogram);
+    }
+
+    /** Note F1 at a stated onset tolerance, matched one to one by pitch class. */
+    private static double f1(List<Event> mine, List<Event> reference, double tolerance) {
+        boolean[] used = new boolean[mine.size()];
+        int matched = 0;
+        for (Event event : reference) {
+            int best = -1;
+            double nearest = tolerance;
+            for (int i = 0; i < mine.size(); i++) {
+                double distance = Math.abs(mine.get(i).seconds() - event.seconds());
+                if (!used[i] && distance < nearest
+                        && Math.floorMod(mine.get(i).pitch(), 12)
+                        == Math.floorMod(event.pitch(), 12)) {
+                    nearest = distance;
+                    best = i;
+                }
+            }
+            if (best >= 0) {
+                used[best] = true;
+                matched++;
+            }
+        }
+        double precision = mine.isEmpty() ? 0 : matched / (double) mine.size();
+        double recall = reference.isEmpty() ? 0 : matched / (double) reference.size();
+        return matched == 0 ? 0 : 2 * precision * recall / (precision + recall);
     }
 
     private static List<Event> events(NoteTrack track) {

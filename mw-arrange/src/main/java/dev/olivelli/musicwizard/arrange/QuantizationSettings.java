@@ -16,6 +16,12 @@
 
 package dev.olivelli.musicwizard.arrange;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Set;
+
 /**
  * The knobs the quantizer trades readability against literalness with.
  *
@@ -52,6 +58,9 @@ package dev.olivelli.musicwizard.arrange;
  *                          held <em>through</em> its written end rather than
  *                          short of it. 0.0 applies the allowance to everything
  * @param detectSwing       whether to look for a shuffle and write it straight
+ * @param grids             the subdivisions a bar may be written on. The costs
+ *                          above choose among these; a resolution left out
+ *                          cannot be chosen however well it fits
  */
 public record QuantizationSettings(
         double levelPenalty,
@@ -59,7 +68,8 @@ public record QuantizationSettings(
         double gridChangePenalty,
         double articulationRatio,
         double overlapTolerance,
-        boolean detectSwing) {
+        boolean detectSwing,
+        Set<GridResolution> grids) {
 
     /**
      * The calibrated defaults.
@@ -78,7 +88,27 @@ public record QuantizationSettings(
      * Scaling these constants with the tempo was tried and makes it worse.
      */
     public static final QuantizationSettings DEFAULT =
-            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true);
+            new QuantizationSettings(0.035, 0.015, 0.25, 0.9, 0.02, true,
+                    EnumSet.allOf(GridResolution.class));
+
+    /**
+     * The defaults, restricted to the subdivisions a part written to be
+     * <em>read</em> is written in: the meter's own, down to two levels below
+     * the counted beat.
+     *
+     * <p>For {@link PlayableMelody}'s reduction rather than for a
+     * transcription, and the difference is what evidence there is (#594). The
+     * reduction prints one note-head per sung syllable, so a bar of it holds a
+     * handful of onsets — few enough that some subdivision always fits, and
+     * the one that wins is fitting the segmenter's spread rather than the
+     * singing. Where that lands a triplet in a song in straight time, the
+     * reader is being told something the recording never said.
+     * {@code tools/PlayablePartCheck.java} sweeps the vocabularies and holds
+     * each against an arranger's own reading of the same recording.
+     */
+    public static final QuantizationSettings READING = DEFAULT.withGrids(
+            EnumSet.of(GridResolution.BEAT, GridResolution.HALF_BEAT,
+                    GridResolution.QUARTER_BEAT));
 
     /** The narrowest articulation allowance that is not absurd. */
     private static final double MIN_ARTICULATION_RATIO = 0.25;
@@ -93,6 +123,21 @@ public record QuantizationSettings(
                     "articulationRatio must be within " + MIN_ARTICULATION_RATIO
                             + "..1.0, got: " + articulationRatio);
         }
+        grids = copyOf(grids);
+    }
+
+    /**
+     * An unmodifiable copy iterating in {@link GridResolution} declaration
+     * order, which is what makes the quantizer's tie-break — the simplest grid
+     * — depend on the enum rather than on how a caller happened to build the
+     * set.
+     */
+    private static Set<GridResolution> copyOf(Collection<GridResolution> grids) {
+        Objects.requireNonNull(grids, "grids");
+        if (grids.isEmpty()) {
+            throw new IllegalArgumentException("a bar has to be written on some grid");
+        }
+        return Collections.unmodifiableSet(EnumSet.copyOf(grids));
     }
 
     private static void requireNonNegative(double value, String name) {
@@ -105,19 +150,25 @@ public record QuantizationSettings(
     /** Returns a copy with swing detection turned off. */
     public QuantizationSettings withoutSwingDetection() {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, overlapTolerance, false);
+                articulationRatio, overlapTolerance, false, grids);
     }
 
     /** Returns a copy with a different per-section grid-change cost. */
     public QuantizationSettings withGridChangePenalty(double penalty) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, penalty,
-                articulationRatio, overlapTolerance, detectSwing);
+                articulationRatio, overlapTolerance, detectSwing, grids);
     }
 
     /** Returns a copy with a different articulation allowance. */
     public QuantizationSettings withArticulationRatio(double ratio) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                ratio, overlapTolerance, detectSwing);
+                ratio, overlapTolerance, detectSwing, grids);
+    }
+
+    /** Returns a copy written on the given subdivisions and no others. */
+    public QuantizationSettings withGrids(Collection<GridResolution> allowed) {
+        return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
+                articulationRatio, overlapTolerance, detectSwing, copyOf(allowed));
     }
 
     /**
@@ -130,6 +181,6 @@ public record QuantizationSettings(
      */
     public QuantizationSettings withOverlapTolerance(double tolerance) {
         return new QuantizationSettings(levelPenalty, tupletPenalty, gridChangePenalty,
-                articulationRatio, tolerance, detectSwing);
+                articulationRatio, tolerance, detectSwing, grids);
     }
 }
