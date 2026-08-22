@@ -30,9 +30,11 @@ package dev.olivelli.musicwizard.dsp;
  * note is still there.
  *
  * <p><b>Read over the whole mix</b>, though the mass the quality decision gates
- * with it is the chordal register's alone. Summing the residual over that
- * register instead is measured on #544 and is worse: what moves is which of the
- * two thirds removes more residual, and no share of the root repairs a ranking.
+ * with it is the chordal register's alone. Restricting it to that register
+ * moves every gate that divides by the root's own residual, because a root's
+ * evidence is largely in the bass; #544 prices the restriction together with
+ * those gates re-derived, and at its own best the pair buys chord bars on one
+ * benchmark and costs key rows and a false-minor row on others.
  *
  * <p>An interface so {@link ChordEstimator} can be exercised without audio;
  * {@link NnlsAblation} is what the pipeline passes.
