@@ -29,6 +29,12 @@ package dev.olivelli.musicwizard.dsp;
  * standing in for somebody else's partial can go, because that partial's own
  * note is still there.
  *
+ * <p><b>Read over the whole mix</b>, though the mass the quality decision gates
+ * with it is the chordal register's alone. Restricting it to that register
+ * moves every gate that divides by the root's own residual, because a root's
+ * evidence is largely in the bass; #544 prices the restriction with those
+ * gates re-derived.
+ *
  * <p>An interface so {@link ChordEstimator} can be exercised without audio;
  * {@link NnlsAblation} is what the pipeline passes.
  */
