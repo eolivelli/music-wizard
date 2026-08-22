@@ -79,12 +79,8 @@ class TupletBarTest {
         assertThat(TupletBar.of(new BarGrid(0, 0, GridResolution.THIRD_BEAT,
                 TimeSignature.SIX_EIGHT))).isEmpty();
 
-        // The one place this disagrees with GridResolution, and it is a defect
-        // there rather than a judgement here: one position per counted beat in
-        // compound time is the dotted quarter itself, and isTupletIn calls it a
-        // duplet because one is not a multiple of three. A bracket of two over a
-        // beat holding one step has nothing to hold. See #130.
-        assertThat(GridResolution.BEAT.isTupletIn(TimeSignature.SIX_EIGHT)).isTrue();
+        // The counted beat gets no bracket (#618); the notation-side pin of
+        // what GridResolutionTest pins at the source.
         assertThat(TupletBar.of(new BarGrid(0, 0, GridResolution.BEAT,
                 TimeSignature.SIX_EIGHT))).isEmpty();
 

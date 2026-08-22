@@ -196,9 +196,7 @@ class TupletEngravingIT {
         int engraved = 0;
         for (TimeSignature meter : meters) {
             for (GridResolution resolution : GridResolution.values()) {
-                // divisionsPerBeat 1 is #130: reported as a duplet in compound
-                // time, and there is nothing under the bracket to engrave.
-                if (!resolution.isTupletIn(meter) || resolution.divisionsPerBeat() == 1) {
+                if (!resolution.bracketedIn(meter)) {
                     continue;
                 }
                 String name = meter.numerator() + "-" + meter.denominator() + "-" + resolution;

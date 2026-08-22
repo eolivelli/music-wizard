@@ -96,21 +96,11 @@ record TupletBar(double startBeat, TimeSignature meter, double stepQuarters, int
         int actual = tuplet.get().actual();
         int normal = tuplet.get().normal();
         int divisionsPerBeat = grid.resolution().divisionsPerBeat();
-        if (divisionsPerBeat % actual != 0) {
-            // Exactly one grid reaches here, and it is a bracket with nothing to
-            // put in it: GridResolution.BEAT is one position per counted beat,
-            // and in compound time isTupletIn reports it as a duplet because one
-            // is not a multiple of three. It is not one -- a dotted quarter in
-            // 6/8 is the beat itself. Nothing in the bar is subdivided, its
-            // positions are whole 64ths, and the emitter writes it exactly as it
-            // wrote it before. Filed against mw-arrange as #130; not fixed here
-            // because isTupletIn is also what charges the quantizer's tuplet
-            // penalty, and changing that changes which grids it picks.
-            return Optional.empty();
-        }
-        // Whole for everything else the enum offers: simple time tuplets three
-        // or six ways against actual = 3, compound time two, four or eight ways
-        // against actual = 2. TupletBarTest sweeps the pairs.
+        // Whole for every pair a ratio is returned for -- the counted beat,
+        // whose divisions would not be, never gets one (#618): simple time
+        // tuplets three or six ways against actual = 3, compound time two,
+        // four or eight ways against actual = 2. TupletBarTest sweeps the
+        // pairs.
         int bracketsPerBeat = divisionsPerBeat / actual;
         double bracketLength = grid.timeSignature().beatUnitQuarters() / bracketsPerBeat;
         double writtenStep = bracketLength / normal;
