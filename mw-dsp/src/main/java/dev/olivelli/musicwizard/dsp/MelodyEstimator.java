@@ -435,9 +435,8 @@ public final class MelodyEstimator {
     /**
      * Whether two notes following one another are near enough to be one
      * gesture: nearness in pitch and nothing else, so a gesture bridges a
-     * silence of any length, which is #664. Requiring the notes to touch costs
-     * the corpus the whole of what this rule buys — the notes of a phrase in a
-     * mix are parted by unvoiced stretches longer than any note.
+     * silence of any length. What a condition on that silence would cost is
+     * measured on #664.
      */
     private static boolean oneGesture(Note first, Note second, double gestureSemitones) {
         return Math.abs(second.midiPitch() - first.midiPitch()) <= gestureSemitones;

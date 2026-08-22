@@ -236,7 +236,10 @@ public final class OctaveSweep {
         // way through would print rows under a heading that then failed, and
         // the whole grid holds settings this width cannot be asked at.
         for (double[] band : mode.equals(SPLITS) ? bands : List.<double[]>of()) {
-            if (asked <= band[3]) {
+            // Negated rather than asked as a comparison, so a width that is
+            // not a number is refused with the rest: NaN is not greater than
+            // anything, and a count taken at it is the zero this refuses.
+            if (!(asked > band[3])) {
                 System.err.printf(Locale.ROOT, "a width of %.0f is answered by a gesture of"
                         + " %.0f: nothing that near can be split, whatever the fold does%n",
                         asked, band[3]);

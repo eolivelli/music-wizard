@@ -98,11 +98,11 @@ inside the band keeps its octave whole, and one entirely outside moves as a unit
 and keeps its own intervals. A gesture is grouped by pitch alone and so bridges
 a silence of any length (#664).
 
-Two known limits are open. A line whose wide notes are too rare to widen its own
-band is held to a narrow one (#615): a lone leap is its own gesture and is
-folded with the rest. And a recording the tracker reads in two registers can
-still lose the shorter one, because a register lying wholly outside the band is
-folded gesture by gesture — which is the same issue seen from the band's side.
+One known limit is open: a line whose wide notes are too rare to widen its own
+band is held to a narrow one (#615). A lone leap is its own gesture and is
+folded with the rest, and a register lying wholly outside the band is folded
+gesture by gesture — which is why a recording the tracker reads in two registers
+can still lose the shorter one.
 
 `tools/OctaveSweep.java` is the bench. Its `octaves` mode says what the corpora
 can and cannot show — almost none of what the stage gets wrong on clean solo
