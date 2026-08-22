@@ -164,10 +164,9 @@ public final class PlayableMelody {
      * Every syllable some note is claimed for, with the note-heads
      * {@link #reduce} prints for it once it is marked a melisma.
      *
-     * <p>Built by the same claim, the same ornament grouping, the same
-     * collapse and the same onset placement (#616) the reduction uses, so a
-     * stage deciding what a syllable holds (#597) reads the heads marking it
-     * produces rather than a prediction of them.
+     * <p>Built by the machinery the reduction uses, so a stage deciding what
+     * a syllable holds (#597) reads the heads marking it produces rather than
+     * a prediction of them.
      */
     static List<SungSyllable> sungSyllables(Score score) {
         Objects.requireNonNull(score, "score");
@@ -292,13 +291,9 @@ public final class PlayableMelody {
      * <p>The group's first piece is usually the start of a scoop, so a head
      * printed from it sits where the approach began; the aligner's syllable
      * start is a measurement, on the voice itself, of where the same event is
-     * felt. It is taken only when it falls strictly after the group's onset
-     * and inside a piece the group holds, on every axis the notes carry: a
-     * start outside the group, or in the silence between its pieces, says the
-     * two measurements disagree — not that the onset is better — and a head
-     * must never print where the melody holds nothing. Groups that do not
-     * open their syllable — later heads of a melisma, notes no syllable
-     * claims — keep the melody's own onsets.
+     * felt. Groups that do not open their syllable — later heads of a
+     * melisma, notes no syllable claims — keep the melody's own onsets, and
+     * {@link #feltInside} bounds when an opening group's is taken.
      */
     private static Note printed(List<Piece> group, LyricWord sungOn,
                                 ChordProgression chords, TempoMap map) {
@@ -307,9 +302,13 @@ public final class PlayableMelody {
             return note;
         }
         double startSeconds = sungOn.startSeconds();
-        double startBeat = sungOn.startBeat()
-                .orElseGet(() -> map.secondsToBeats(sungOn.startSeconds()));
-        if (!feltInside(group, note, startSeconds, startBeat)) {
+        // One instant on both axes, through the one sanctioned conversion: a
+        // word's own startBeat is beat-snapped, and pairing it with the raw
+        // seconds would print a head whose two axes name different moments.
+        double startBeat = map.secondsToBeats(startSeconds);
+        double endBeat = note.offsetBeat()
+                .orElseGet(() -> map.secondsToBeats(note.offsetSeconds()));
+        if (!feltInside(group, note, startSeconds, startBeat, endBeat)) {
             return note;
         }
         Note moved = new Note(startSeconds, note.offsetSeconds() - startSeconds,
@@ -322,16 +321,30 @@ public final class PlayableMelody {
 
     /**
      * Whether the syllable's measured start is a moment the printed head can
-     * open on: strictly after the group's own onset, and inside a piece the
-     * group holds rather than in the silence between two of them.
+     * open on.
+     *
+     * <p>Three refusals, each a way the two measurements can disagree rather
+     * than re-measure one event. A start at or before the group's onset has
+     * nothing to move. A start leaving less of the head than what this class
+     * already discards as decoration is not the felt beginning of the group —
+     * it is a claim from an onset placed late (#497) or from a syllable
+     * apportioned rather than measured, and taking it would manufacture a
+     * stub the reading quantizer prints on the next head's beat. And a start
+     * in the silence between the group's pieces, or outside them, would print
+     * the head where the melody holds nothing.
+     *
+     * <p>Bounds rather than a gate on measured lines, because which lines the
+     * aligner measured is known only to the run that aligned them — the same
+     * missing fact as #623 — so an apportioned start cannot be told from a
+     * measured one here. What these bounds leave it able to do is shift a
+     * head within the notes its own syllable sounds.
      */
     private static boolean feltInside(List<Piece> group, Note printed,
-                                      double startSeconds, double startBeat) {
+                                      double startSeconds, double startBeat, double endBeat) {
         if (startSeconds <= printed.onsetSeconds() + EPSILON) {
             return false;
         }
-        if (printed.isQuantized()
-                && startBeat <= printed.onsetBeat().orElseThrow() + EPSILON) {
+        if (endBeat - startBeat <= ORNAMENT_BEATS) {
             return false;
         }
         for (Piece piece : group) {

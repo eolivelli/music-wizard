@@ -203,9 +203,8 @@ public final class PlayablePartCheck {
     /**
      * What the printed note-heads run across, and what bounding the claim costs.
      *
-     * <p>A group prints from its first onset to its furthest release, so a claim
-     * that reached over an instrumental gap prints as one note-head across the
-     * silence (#598). Read off the two tracks rather than out of the grouping:
+     * <p>A group prints to its furthest release, so a claim that reached over
+     * an instrumental gap prints as one note-head across the silence (#598). Read off the two tracks rather than out of the grouping:
      * what a reader sees is the estimate's own rests vanishing inside a printed
      * span.
      *
@@ -301,8 +300,8 @@ public final class PlayablePartCheck {
     /**
      * How much of what each printed note-head covers was not sounding.
      *
-     * <p>The estimate's notes that lie inside the printed span, in order, with
-     * the widest hole between consecutive ones taken as that note-head's
+     * <p>The estimate's notes read against the printed span, in order, with
+     * the widest hole in what they cover of it taken as that note-head's
      * silence. Nothing here assumes the estimate is monophonic, which is the
      * same reason {@code collapse} takes the furthest release rather than the
      * last one.
@@ -563,9 +562,9 @@ public final class PlayablePartCheck {
      * What the reduction stopped printing, and whether it was any good.
      *
      * <p>Not the difference of the two matched counts, which is what it looks
-     * like: a group's surviving note carries its <em>first</em> piece's onset
-     * and its <em>settled</em> pitch, so it is a note-head neither side had.
-     * Both directions are therefore counted rather than subtracted.
+     * like: a group's surviving note carries an onset and a <em>settled</em>
+     * pitch of the group's own, so it is a note-head neither side had. Both
+     * directions are therefore counted rather than subtracted.
      */
     private static void removals(List<Event> estimate, List<Event> reduced,
                                  List<Event> reference) {

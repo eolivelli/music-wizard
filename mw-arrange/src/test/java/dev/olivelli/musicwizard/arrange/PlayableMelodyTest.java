@@ -175,13 +175,40 @@ class PlayableMelodyTest {
         void aSyllableStartPastTheGroupMovesNothing() {
             // The claim is by silence, so a note can be sung on a syllable
             // measured entirely after it; printing the head at that start
-            // would put it where the melody holds nothing.
+            // would put it where the melody holds nothing. The first word
+            // only widens the line, so the second really claims the notes.
             Score score = sung(
                     notes(note(1.0, 0.2, 60), note(1.2, 0.5, 64)),
-                    line(word("late", 1.8, 2.2)));
+                    line(word("mm", 0.2, 0.5), word("late", 1.8, 2.2)));
 
             Note only = PlayableMelody.reduce(score).notes().get(0);
             assertThat(only.onsetSeconds()).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("a start leaving only a stub of the head moves nothing")
+        void aStartLeavingOnlyAStubMovesNothing() {
+            // A start that near the group's release is not the felt beginning
+            // of the note: taking it would manufacture a stub the reading
+            // quantizer prints on the next head's beat.
+            Score score = sung(
+                    notes(note(1.0, 2.0, 60)),
+                    line(word("late", 2.8, 3.4)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("a start deep in a long note still moves, when a real note survives")
+        void aStartDeepInALongNoteStillMoves() {
+            Score score = sung(
+                    notes(note(1.0, 2.0, 60)),
+                    line(word("late", 2.0, 3.4)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(2.0);
+            assertThat(only.offsetSeconds()).isEqualTo(3.0);
         }
 
         @Test
