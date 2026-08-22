@@ -48,7 +48,8 @@ import java.util.Optional;
  * so a chart that runs past the last note or a melody that runs past the last
  * chord simply leaves the other context empty rather than sliding it. What is
  * <em>not</em> automatic is where each of them starts: a pickup is a shortened
- * first bar, and the two layouts decide it separately.
+ * first bar, and each layout decides how to open on it — from the one pickup
+ * {@link ScoreAssembly} hands them all (#605).
  * {@code LeadSheetTest} holds a fixture with one for that reason.
  */
 public final class LeadSheet {
@@ -84,21 +85,24 @@ public final class LeadSheet {
                 StaffNotation.staff(quantized, melody, Optional.of(StaffNotation.MELODY_VOICE));
 
         out.append("\\score {\n");
-        out.append("  <<\n");
-        // The chord names give up the tempo mark and the closing bar line here:
-        // the staff below carries both already, and a lead sheet that printed
-        // the tempo twice would be reporting one estimate as two.
-        out.append(ChordChart.chordNamesBlock(score, bars, false, staff.pickup()));
-        out.append(staff.lilyPond());
-        // Under the staff rather than under the chords, so the words sit where a
-        // singer reads them; that is also what decides which way the lane leans.
-        // Naming the staff's voice is what lets a marked melisma draw its
-        // extender line (#625).
-        Optional<String> lyrics = LyricEngraving.block(
-                score, bars, LyricEngraving.Attachment.BELOW_STAFF, staff.pickup(),
-                Optional.of(StaffNotation.MELODY_VOICE));
-        lyrics.ifPresent(out::append);
-        out.append("  >>\n");
+        out.append(new ScoreAssembly(staff.pickup())
+                // The chord names give up the tempo mark and the closing bar
+                // line: the staff below carries both already, and a lead sheet
+                // that printed the tempo twice would be reporting one estimate
+                // as two.
+                .add(pickup -> Optional.of(
+                        ChordChart.chordNamesBlock(score, bars, false, pickup)))
+                // The staff is the pickup's own source, so it is the one
+                // context that ignores its argument.
+                .add(pickup -> Optional.of(staff.lilyPond()))
+                // Under the staff rather than under the chords, so the words
+                // sit where a singer reads them; that is also what decides
+                // which way the lane leans. Naming the staff's voice is what
+                // lets a marked melisma draw its extender line (#625).
+                .add(pickup -> LyricEngraving.block(
+                        score, bars, LyricEngraving.Attachment.BELOW_STAFF, pickup,
+                        Optional.of(StaffNotation.MELODY_VOICE)))
+                .lilyPond());
         out.append("  \\layout { }\n");
         out.append("}\n");
         return out.toString();
