@@ -1,0 +1,25 @@
+title: Pop-rock in C with a borrowed minor iv
+genre: pop
+style: pop-rock
+tempo: 100
+key: C major
+seed: 11
+melody: none
+bars:
+# Intro: I-IV-V-I
+C F G C
+# Verse: I-IV-vi-V twice
+C F Am G
+C F Am G
+# Pre-chorus: IV-V-I
+F G C C
+# Chorus: I-V-iv-I, the borrowed minor fourth. It is never next to the major
+# IV, so it is a run of its own on a root the grid otherwise plays major.
+C G Fm C
+C G Fm C
+# Bridge: IV-V twice
+F G F G
+# Last verse phrase
+C F Am G
+# Chorus cadence closes on the tonic
+C G Fm C

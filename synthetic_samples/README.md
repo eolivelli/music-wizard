@@ -80,6 +80,17 @@ sevenths and so out of the `root+quality` column's reach (#287), which is why
 that column reads lower than the twin's and is not comparable to it; the root
 column is what the package is for.
 
+`pop-borrowed-iv-c-100` states one root both ways, which nothing else in either
+corpus does: a borrowed minor iv, three times, against twice as many bars of
+the major IV on the same root. That is what #583 needed and could not be
+measured without — a rule settling a root's third across all of its runs has a
+true minority minor to lose, and until this package there was no bar anywhere
+that showed it. Each borrowed bar is a run of its own, never next to a major IV
+bar, so it is the count that decides it and not the run grouping (#650). It
+carries no melody: the melody generator draws its non-chord steps from the
+key's scale and so writes a major third over a chord borrowed from outside it
+(#660).
+
 **Four packages, two pairs, and the pairing is what they are for.**
 `pop-sus-a-104` states the suspensions — which *replace* the third rather than
 adding a note to the triad — and `pop-add9-g-96` states the added ninth, which
