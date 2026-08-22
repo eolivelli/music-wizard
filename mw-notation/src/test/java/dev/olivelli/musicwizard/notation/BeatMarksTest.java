@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.Accidental;
@@ -146,6 +147,17 @@ class BeatMarksTest {
                     / Integer.parseInt(matcher.group(4));
         }
         return quarters;
+    }
+
+    @Test
+    @DisplayName("a score with a pickup is refused aloud, not engraved displaced")
+    void aPickupIsRefusedAloud() {
+        Score score = tracked(2, 0.5);
+
+        assertThatThrownBy(() -> BeatMarks.block(score, ChartLayout.of(score),
+                java.util.Optional.of(new StaffNotation.Pickup(1, 4))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("pickup");
     }
 
     @Test
