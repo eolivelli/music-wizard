@@ -150,28 +150,52 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
+#: Every enum constant declared, however it is written. What the readers below
+#: are held to: a constant their own shape cannot read is named here instead of
+#: vanishing, which is what a count guard cannot do -- the constants that still
+#: parse keep the count up for ever.
+JAVA_ENUM_DECLARATION = re.compile(r"^\s+([A-Z][A-Z0-9_]*)\(", re.MULTILINE)
+
+#: ChordQuality's shape: a symbol, whether it carries a seventh, its intervals.
+QUALITY_CONSTANT = re.compile(
+    r"^\s+([A-Z][A-Z0-9_]*)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
+    re.MULTILINE)
+
+#: mw-teacher ChordSymbol.Quality's shape: a grid suffix and its intervals.
+SHORTHAND_CONSTANT = re.compile(
+    r"^\s+([A-Z][A-Z0-9_]*)\(\"([^\"]*)\"((?:,\s*\d+)*)\)", re.MULTILINE)
+
+
+def java_enum_constants(source: str, shape: re.Pattern) -> list[tuple[str, str, str]]:
+    """The enum constants of one Java source, as `shape`'s groups.
+
+    Raises when a declaration `shape` cannot read is found, rather than
+    returning the rest: dropping one silently is how a rule stops covering the
+    constant it was added for."""
+    constants = shape.findall(source)
+    unread = [name for name in JAVA_ENUM_DECLARATION.findall(source)
+              if name not in {read for read, *_ in constants}]
+    if unread or not constants:
+        raise AssertionError(f"declarations this reader cannot parse: {unread}")
+    return constants
+
+
+def java_source(path: str) -> str:
+    return (Path(__file__).resolve().parent.parent / path).read_text(encoding="utf-8")
+
+
 def chord_quality_constants() -> list[tuple[str, str, str]]:
     """ChordQuality's constants, as (name, symbol, the intervals' text)."""
-    source = (Path(__file__).resolve().parent.parent
-              / "mw-core/src/main/java/dev/olivelli/musicwizard/core/model"
-              / "ChordQuality.java").read_text(encoding="utf-8")
-    constants = re.findall(r"^    ([A-Z_]+)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
-                           source, re.MULTILINE)
-    if len(constants) < 10:
-        raise AssertionError("the enum's constants did not parse")
-    return constants
+    return java_enum_constants(java_source(
+        "mw-core/src/main/java/dev/olivelli/musicwizard/core/model/ChordQuality.java"),
+        QUALITY_CONSTANT)
 
 
 def grid_shorthand_qualities() -> list[tuple[str, str, str]]:
     """mw-teacher's ChordSymbol.Quality constants, as (name, suffix, intervals)."""
-    source = (Path(__file__).resolve().parent.parent
-              / "mw-teacher/src/main/java/dev/olivelli/musicwizard/teacher"
-              / "ChordSymbol.java").read_text(encoding="utf-8")
-    constants = re.findall(r"^        ([A-Z_]+)\(\"([^\"]*)\"((?:,\s*\d+)*)\)",
-                           source, re.MULTILINE)
-    if len(constants) < 10:
-        raise AssertionError("the shorthand's constants did not parse")
-    return constants
+    return java_enum_constants(java_source(
+        "mw-teacher/src/main/java/dev/olivelli/musicwizard/teacher/ChordSymbol.java"),
+        SHORTHAND_CONSTANT)
 
 
 def minor_line(spans: list[dict], duration: float = 10.0) -> str:
@@ -245,6 +269,34 @@ class MinorSeconds(unittest.TestCase):
                          samples.TRUTH_SYMBOL)
 
 
+class JavaEnumReading(unittest.TestCase):
+    """The rules below read Java enums out of their source. What they must not
+    do is read all but one and pass."""
+
+    QUALITY = ('    public enum Quality {\n'
+               '        MAJOR("", 0, 4, 7),\n'
+               '        MINOR_ADD9("madd9", 0, 3, 7, 2);\n'
+               '    }\n')
+
+    def test_a_constant_named_with_a_digit_is_read(self):
+        self.assertEqual([("MAJOR", "", ", 0, 4, 7"),
+                          ("MINOR_ADD9", "madd9", ", 0, 3, 7, 2")],
+                         java_enum_constants(self.QUALITY, SHORTHAND_CONSTANT))
+
+    def test_a_declaration_the_shape_cannot_read_names_itself(self):
+        """An interval below the root here; any argument written another way
+        is the same case. A count would still be met by the constants that do
+        parse, so this cannot be a count."""
+        signed = self.QUALITY.replace('MAJOR("", 0, 4, 7),', 'MAJOR("", 0, 4, -5),')
+        with self.assertRaises(AssertionError) as raised:
+            java_enum_constants(signed, SHORTHAND_CONSTANT)
+        self.assertIn("MAJOR", str(raised.exception))
+
+    def test_a_source_holding_no_constant_at_all_is_not_a_clean_read(self):
+        with self.assertRaises(AssertionError):
+            java_enum_constants("class Nothing {}\n", SHORTHAND_CONSTANT)
+
+
 class GridShorthand(unittest.TestCase):
     """#612: a spec states its grid in the shorthand mw-teacher compiles and
     this harness reads back as truth. Two programs, one language."""
@@ -261,9 +313,8 @@ class GridShorthand(unittest.TestCase):
         """The quieter half: a suffix both sides know, naming a quality whose
         notes are not the ones the audio was rendered from, is scored as
         another chord. Compared as pitch classes, which is all a bar's credit
-        rests on. A suffix the table does not hold is the test above, and a
-        corpus-only quality has no constant to compare against (#600) and is
-        held to the enum by its own rule."""
+        rests on; a corpus-only quality has no constant to compare against
+        (#600)."""
         enum_notes = {name: {int(i) % 12 for i in re.findall(r"\d+", intervals)}
                       for name, _, intervals in chord_quality_constants()}
         for name, suffix, intervals in grid_shorthand_qualities():
