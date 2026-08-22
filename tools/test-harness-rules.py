@@ -1426,7 +1426,8 @@ class PremergeSkipAccount(unittest.TestCase):
             "total\tscore-asr.txt\t1\n"
             "skip\tscore-asr.txt\tsere-doltremare.mp3\trun tools/build-sherpa-native.sh\n")
 
-    def account(self, records: str, manifest: str | None = None, printed: int = 2):
+    def account(self, records: str, manifest: str | None = None,
+                printed: int = 2, steps: int = 2):
         with tempfile.TemporaryDirectory() as tmp:
             record_file = Path(tmp) / "records.txt"
             record_file.write_text(records)
@@ -1434,7 +1435,8 @@ class PremergeSkipAccount(unittest.TestCase):
             if manifest is not None:
                 location.write_text(manifest)
             return subprocess.run(
-                [sys.executable, str(self.TOOL), str(record_file), str(printed)],
+                [sys.executable, str(self.TOOL), str(record_file),
+                 str(printed), str(steps)],
                 capture_output=True, text=True,
                 env=dict(os.environ, MW_PREMERGE_SKIPS=str(location)))
 
@@ -1479,18 +1481,21 @@ class PremergeSkipAccount(unittest.TestCase):
     def test_a_run_that_measured_everything_says_so_and_carries_no_summary(self):
         """No SUMMARY line is what premerge reads as a full run, so the clean
         case must not print one."""
-        done = self.account("total\tscore-samples.txt\t3\n", manifest="", printed=0)
+        done = self.account("total\tscore-samples.txt\t3\n", manifest="",
+                            printed=0, steps=1)
         self.assertEqual(0, done.returncode)
         self.assertIn("every one of the 3 baselined rows was measured here.", done.stdout)
         self.assertNotIn("SUMMARY:", done.stdout)
 
-    def test_an_account_with_nothing_to_account_for_fails(self):
-        """A blind account prints what a clean one prints. Both halves are
-        checked against each other rather than trusted: the steps record what
-        they compared, and premerge counts the SKIP lines it printed."""
-        for records, printed in ((self.ROWS, 1), ("", 0),
-                                 ("total\tscore-asr.txt\t1\n", 1)):
-            done = self.account(records, manifest="* *\n", printed=printed)
+    def test_an_account_that_disagrees_with_the_run_fails_rather_than_reporting(self):
+        """A blind account prints what a clean one prints, so it is checked
+        against what premerge saw rather than trusted: a step that recorded
+        nothing, a record file that lost a step, and a skip premerge printed
+        but no step recorded."""
+        for records, printed, steps in (("", 0, 2),
+                                        ("total\tscore-asr.txt\t1\n", 0, 2),
+                                        (self.ROWS, 3, 2)):
+            done = self.account(records, manifest="* *\n", printed=printed, steps=steps)
             self.assertEqual(1, done.returncode, done.stdout)
             self.assertIn("FAIL:", done.stdout)
 

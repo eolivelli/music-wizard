@@ -56,18 +56,18 @@ def read(record_file):
 
 
 def main(argv):
-    if len(argv) != 3:
-        print(f"usage: {argv[0]} <record-file> <skip-lines-premerge-printed>",
+    if len(argv) != 4:
+        print(f"usage: {argv[0]} <record-file> <skip-lines-printed> <steps-run>",
               file=sys.stderr)
         return 2
-    record_file, printed = Path(argv[1]), int(argv[2])
+    record_file, printed, steps = Path(argv[1]), int(argv[2]), int(argv[3])
     totals, skips = read(record_file) if record_file.exists() else ({}, [])
-    # A blind account prints exactly what a clean run prints, so the two
-    # halves are held against each other: premerge counted the SKIP lines it
-    # printed, and every step records what it compared.
-    if not totals:
-        print(f"FAIL: no step recorded what it compared in {record_file}, so "
-              "nothing here says what this run certified.")
+    # A blind account prints exactly what a clean run prints, so it is held
+    # against what premerge saw: every step records what it compared, and
+    # premerge counted both the steps it ran and the SKIP lines it printed.
+    if len(totals) != steps:
+        print(f"FAIL: {len(totals)} of {steps} steps recorded what they compared "
+              f"in {record_file}, so this cannot say what the run certified.")
         return 1
     if len(skips) != printed:
         print(f"FAIL: premerge printed {printed} skipped rows and {len(skips)} "

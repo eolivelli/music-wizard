@@ -30,6 +30,7 @@ REPO_ARGS="${MAVEN_ARGS:-}"
 fail=0
 full=0
 skipped=0
+steps=0
 drift=""
 records=$(mktemp "${TMPDIR:-/tmp}/premerge-records.XXXXXX") \
   || { echo "FAIL: cannot record what this run compares"; exit 1; }
@@ -151,6 +152,7 @@ fi
 
 compare() { # $1 harness  $2 baseline  $3... harness args
   local harness="$1" baseline="$2"; shift 2
+  steps=$((steps + 1))
   local out rc
   out=$(python3 "tools/$harness" ${1+"$@"} 2>&1); rc=$?
   printf '%s\n' "$out"
@@ -234,7 +236,7 @@ step "what this run certified"
 # when it cannot open the script -- so an account that never ran fails the gate
 # rather than reading as an expected skip. Nothing may come between the call
 # and the read: any command, a `local` included, replaces the status.
-account=$(python3 tools/premerge-skips.py "$records" "$skipped"); rc=$?
+account=$(python3 tools/premerge-skips.py "$records" "$skipped" "$steps"); rc=$?
 printf '%s\n' "$account"
 case "$rc" in
   0) ;;   # every skipped row was expected on this machine, or none skipped

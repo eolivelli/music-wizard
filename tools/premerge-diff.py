@@ -40,9 +40,14 @@ def rows(lines):
 
 
 def reason(row):
-    """The cause the harness printed beside its skip, for the verdict to name."""
+    """The cause the harness printed beside its skip, for the verdict to name.
+
+    Whitespace is collapsed because the cause travels as one tab-separated
+    field: a reason carrying a tab of its own would reach the verdict as a row
+    with fields it cannot read.
+    """
     tail = row.split(MARKER, 1)[1].lstrip("; ").rstrip()
-    return tail[:-1] if tail.endswith(")") else tail
+    return " ".join((tail[:-1] if tail.endswith(")") else tail).split())
 
 
 def main(argv):
