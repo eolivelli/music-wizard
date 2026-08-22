@@ -59,8 +59,9 @@ under 100%, which no synthetic package could ever have shown.
 hanno-ucciso-luomo-ragno.mp3
 
 "Hanno ucciso l'uomo ragno" (883), studio version, 4:10. The recording #527,
-#537 and the sweep on #274 are measured against; #538 is this entry having
-been missing. Fetch locally:
+#537 and the sweep on #274 are measured against. Confirmed by ear (#527,
+Enrico, who knows the song): it is in A minor, and no A major occurs in it.
+Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/hanno-ucciso-luomo-ragno.mp3 \
     https://www.youtube.com/watch?v=rl1PU-skys8
@@ -356,12 +357,14 @@ fetched from LRCLIB, whose entry for this song states the same duration as
 the take. The reference chart is ridere-reference.txt, from accordiespartiti
 — a page in A with no capo, a chart and not ground truth.
 
-What MW reads, re-taken 2026-08-22: A major, 117 BPM, 4/4, a D–A–F#m7–E
-verse with B7 and G#m in the turns. The page agrees on the key and holds no
-B7 anywhere; where MW prints a plain G# the page writes E/G#, which is #599's
-shape. The phone's chart of the same audio agrees with the desktop's on key,
-tempo, meter and the verse row, which is what makes this recording a
-loop-closure case rather than only another benchmark.
+Run 2026-08-22. MW read A major, 117 BPM, 4/4, a D–A–F#m7–E verse with B7
+and G#m in the turns. The page agrees on the key and holds no B anywhere, so
+the B7 is MW's own; the page's one E/G# and MW's three G#-rooted spans do
+not line up one to one, and ridere-reference.txt records the #599 reading of
+them as plausible, not confirmed. The phone's chart of the same audio agrees
+with the desktop's on key, tempo, meter and the verse row, and differs in
+some turn bars — two independent renderings of one pipeline, not two
+witnesses.
 
 per-sempre-si.mp3
 
@@ -373,14 +376,17 @@ pop ballad, sung in Italian. Fetch locally:
 The original fetch command was not written down when the file arrived
 (2026-08-18); the URL above is the song's official video, which is what the
 fetching session recorded taking, and its upload matches the local file's
-duration to the second.
+duration to the second. A refetch should still be checked against the
+figures #575 and #596 quote before standing in for the file they were
+measured on.
 
-Words in per-sempre-si.lrc, from LRCLIB, chosen by duration: LRCLIB's default
-entry for this song is a shorter edit whose timestamps would drift across
-this recording, so the candidate stating this file's own length was taken
-instead.
+Words in per-sempre-si.lrc, from LRCLIB. Every LRCLIB entry for this song
+carries the same synced text whatever duration it states, so there was
+nothing to choose between; the last timed line sits at 171.5 s of this 205 s
+recording, and whether those times fit this rendering has not been checked
+by ear — the tail past them may simply be the fade.
 
-What MW reads, 2026-08-22: C minor, 123 BPM, 4/4. No reference chart, and no
+Run 2026-08-22. MW read C minor, 123 BPM, 4/4. No reference chart, and no
 ear has confirmed the changes. What the recording is for: the separator
 empties the vocal stem for the opening stretch of this song while reading
 the choruses cleanly — a within-song control for #575, with the evidence on
