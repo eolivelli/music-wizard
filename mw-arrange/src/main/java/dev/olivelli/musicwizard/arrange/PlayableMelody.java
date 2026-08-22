@@ -302,12 +302,12 @@ public final class PlayableMelody {
             return note;
         }
         double startSeconds = sungOn.startSeconds();
-        // One instant on both axes, through the one sanctioned conversion: a
-        // word's own startBeat is beat-snapped, and pairing it with the raw
-        // seconds would print a head whose two axes name different moments.
+        // Both ends of the moved head go through the one sanctioned
+        // conversion: a word's startBeat and a quantized note's offsetBeat
+        // are snapped values, and pairing either with the raw seconds would
+        // give a head, or a stub guard, whose two axes name different spans.
         double startBeat = map.secondsToBeats(startSeconds);
-        double endBeat = note.offsetBeat()
-                .orElseGet(() -> map.secondsToBeats(note.offsetSeconds()));
+        double endBeat = map.secondsToBeats(note.offsetSeconds());
         if (!feltInside(group, note, startSeconds, startBeat, endBeat)) {
             return note;
         }
@@ -315,7 +315,7 @@ public final class PlayableMelody {
                 note.midiPitch(), note.velocity(), note.spelling(),
                 Optional.empty(), Optional.empty(), note.confidence());
         return note.isQuantized()
-                ? moved.quantizedTo(startBeat, note.offsetBeat().orElseThrow() - startBeat)
+                ? moved.quantizedTo(startBeat, endBeat - startBeat)
                 : moved;
     }
 
@@ -348,12 +348,8 @@ public final class PlayableMelody {
             return false;
         }
         for (Piece piece : group) {
-            boolean insideSeconds = startSeconds >= piece.note().onsetSeconds() - EPSILON
-                    && startSeconds < piece.note().offsetSeconds() - EPSILON;
-            boolean insideBeats = !printed.isQuantized()
-                    || (startBeat >= piece.startBeat() - EPSILON
-                            && startBeat < piece.endBeat() - EPSILON);
-            if (insideSeconds && insideBeats) {
+            if (startSeconds >= piece.note().onsetSeconds() - EPSILON
+                    && startSeconds < piece.note().offsetSeconds() - EPSILON) {
                 return true;
             }
         }

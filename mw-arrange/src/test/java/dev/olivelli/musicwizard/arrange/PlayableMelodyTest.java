@@ -176,13 +176,15 @@ class PlayableMelodyTest {
             // The claim is by silence, so a note can be sung on a syllable
             // measured entirely after it; printing the head at that start
             // would put it where the melody holds nothing. The first word
-            // only widens the line, so the second really claims the notes.
+            // only widens the line: it sits far enough away that the second
+            // is the nearer one for both notes and really claims them.
             Score score = sung(
                     notes(note(1.0, 0.2, 60), note(1.2, 0.5, 64)),
-                    line(word("mm", 0.2, 0.5), word("late", 1.8, 2.2)));
+                    line(word("mm", 0.1, 0.4), word("late", 1.8, 2.2)));
 
-            Note only = PlayableMelody.reduce(score).notes().get(0);
-            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+            NoteTrack reduced = PlayableMelody.reduce(score);
+            assertThat(reduced.notes()).hasSize(1);
+            assertThat(reduced.notes().get(0).onsetSeconds()).isEqualTo(1.0);
         }
 
         @Test

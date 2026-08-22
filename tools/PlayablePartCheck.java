@@ -204,9 +204,9 @@ public final class PlayablePartCheck {
      * What the printed note-heads run across, and what bounding the claim costs.
      *
      * <p>A group prints to its furthest release, so a claim that reached over
-     * an instrumental gap prints as one note-head across the silence (#598). Read off the two tracks rather than out of the grouping:
-     * what a reader sees is the estimate's own rests vanishing inside a printed
-     * span.
+     * an instrumental gap prints as one note-head across the silence (#598).
+     * Read off the two tracks rather than out of the grouping: what a reader
+     * sees is the estimate's own rests vanishing inside a printed span.
      *
      * <p>{@code welded} and {@code widest} are what a note-head runs across,
      * which an unbounded claim is one cause of and a syllable the aligner
