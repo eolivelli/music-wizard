@@ -121,6 +121,41 @@ class MelismasTest {
     }
 
     @Test
+    @DisplayName("a run that covers an octave a step at a time is still a run")
+    void anOctaveCoveredInStepsIsARun() {
+        // The whole reach is an octave but no leap is. A span is not a leap:
+        // reading the reach dismissed this as the fold and threw away real
+        // movement (#624).
+        Score score = sung(
+                notes(note(0.0, 0.4, 60), note(0.4, 0.4, 64),
+                        note(0.8, 0.4, 68), note(1.2, 0.4, 72)),
+                line(word("aaah", 0.0, 1.6)));
+
+        Score marked = score.withLyrics(Melismas.marked(score));
+
+        assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
+        assertThat(pitches(PlayableMelody.reduce(marked)))
+                .containsExactly(60, 64, 68, 72);
+    }
+
+    @Test
+    @DisplayName("the fold bound reads the leap, not the reach, at any setting")
+    void theFoldBoundReadsTheLeap() {
+        // The same shape under a tightened sweep bound: leaps of four, reach
+        // of eight. Read on the reach the bound would dismiss it; read on the
+        // leap it stands.
+        Score score = sung(
+                notes(note(0.0, 0.4, 60), note(0.4, 0.4, 64), note(0.8, 0.4, 68)),
+                line(word("aaah", 0.0, 1.2)));
+
+        Score marked = score.withLyrics(Melismas.marked(score, 2, 5));
+
+        assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
+    }
+
+    @Test
     @DisplayName("a marked syllable prints the heads it was marked for, next to an unclaimed note")
     void theHeadsCountedAreTheHeadsPrinted() {
         // The syllable's last note is an ornament of a note no syllable claims.
