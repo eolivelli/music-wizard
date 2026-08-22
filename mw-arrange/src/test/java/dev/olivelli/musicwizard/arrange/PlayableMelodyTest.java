@@ -187,6 +187,32 @@ class PlayableMelodyTest {
             assertThat(reduced.notes().get(0).onsetSeconds()).isEqualTo(0.0);
             assertThat(reduced.notes().get(0).offsetSeconds()).isEqualTo(6.5);
             assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(10.0);
+            // The claims themselves, so this cannot pass on the last note
+            // being merely unsung: each word holds exactly its own notes.
+            List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+            assertThat(sung).hasSize(2);
+            assertThat(sung.get(0).heads()).extracting(Note::midiPitch)
+                    .containsExactly(60, 64);
+            assertThat(sung.get(1).heads()).extracting(Note::midiPitch)
+                    .containsExactly(67);
+        }
+
+        @Test
+        @DisplayName("among words a note sounds under, the nearest start wins: it is the approach")
+        void theNearestStartWinsAmongSoundingWords() {
+            // Both words sit at no silence from the middle note, so silence
+            // says nothing; the note begins a breath before the second word's
+            // start, which is what that word's own scoop looks like (#497).
+            Score score = sung(
+                    notes(note(0.0, 3.0, 60), note(9.5, 0.7, 64), note(10.6, 0.4, 67)),
+                    line(word("cuo", 0.0, 10.0), word("re", 10.0, 11.0)));
+
+            List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+            assertThat(sung).hasSize(2);
+            assertThat(sung.get(0).heads()).extracting(Note::midiPitch)
+                    .containsExactly(60);
+            assertThat(sung.get(1).heads()).extracting(Note::midiPitch)
+                    .containsExactly(64, 67);
         }
 
         @Test
