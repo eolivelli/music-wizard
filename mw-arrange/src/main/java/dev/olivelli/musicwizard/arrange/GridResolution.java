@@ -95,17 +95,35 @@ public enum GridResolution {
     /**
      * The tuplet ratio to print, as (actual, normal): three in the time of two
      * for a triplet in simple time, two in the time of three for a duplet in
-     * compound time. Empty when the division is the meter's natural one.
+     * compound time. Empty when the division needs no bracket: the meter's
+     * natural one, or the counted beat itself (#618).
      *
      * <p>The ratio is the same at every depth, because a sixteenth triplet is
      * three sixteenths in the time of two, not six in the time of four; the note
      * value the ratio applies to is {@link #depthIn(TimeSignature)}'s business.
      */
     public Optional<Tuplet> tupletIn(TimeSignature timeSignature) {
-        if (!isTupletIn(timeSignature)) {
+        if (!bracketedIn(timeSignature)) {
             return Optional.empty();
         }
         return Optional.of(timeSignature.isCompound() ? new Tuplet(2, 3) : new Tuplet(3, 2));
+    }
+
+    /**
+     * Whether this grid divides the counted beat against the meter's own
+     * subdivision — a run the page must bracket.
+     *
+     * <p>Not {@link #isTupletIn}: that also charges the quantizer's tuplet
+     * penalty, and in compound time it reports {@code BEAT} as a duplet
+     * because one is not a multiple of three (#130) — but one position per
+     * counted beat divides nothing, a dotted quarter in 6/8 being the beat
+     * itself. The exemption was a hand-written copy at every reader before it
+     * was named here (#618); the penalty keeps reading {@code isTupletIn},
+     * because changing that changes which grids the quantizer picks.
+     */
+    public boolean bracketedIn(TimeSignature timeSignature) {
+        Objects.requireNonNull(timeSignature, "timeSignature");
+        return this != BEAT && isTupletIn(timeSignature);
     }
 
     /**
