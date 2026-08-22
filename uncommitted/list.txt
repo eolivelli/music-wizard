@@ -437,3 +437,22 @@ fetched yet; the audio is.
 To confirm by ear before any of them is promoted: that the words sung are the
 words the annotation carries, that the changes are what MW says they are, and
 for the Woodward pair, that the two mixes really are the same take.
+
+
+il-mio-canto-libero.mp3
+
+"Il mio canto libero" (Lucio Battisti / Mogol), 5:09, the 1972 single, official
+audio. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/il-mio-canto-libero.mp3 \
+    https://www.youtube.com/watch?v=UtUHEsPfjjE
+Chosen by Enrico (2026-08-22) as the real major-seventh candidate for #590 —
+a local-only one, so the committable benchmark that issue wants is still
+missing: he states the song holds maj7 chords, and the reference chart
+(il-mio-canto-libero-reference.txt, accordiespartiti, page in A with a
+modulated section in B) writes RE7+ — Dmaj7, the IVmaj7 — closing verse
+phrases, against a plain D in the intro. If both are right, one root carries
+both qualities in one song, which is the found-vs-reported discrimination a
+maj7 benchmark needs (#273). Nothing here is confirmed by ear yet: the full
+grid, the D-vs-Dmaj7 distinction, and the modulation all wait on Enrico
+before any fact is scored.
