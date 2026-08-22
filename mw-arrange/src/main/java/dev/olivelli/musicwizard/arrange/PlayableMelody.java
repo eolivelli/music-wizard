@@ -375,10 +375,14 @@ public final class PlayableMelody {
     /**
      * Which syllable claims each note, or {@link #UNSUNG}.
      *
-     * <p>A note is claimed by the line its own span overlaps most, and inside
-     * that line by the syllable the least silence separates it from — the
-     * quantity the claim bound reads (#620) — with ties broken by the nearest
-     * start. The tie-break is a decision, not a leftover: it governs the
+     * <p>A note is claimed, over every line its own span overlaps (#621), by
+     * the syllable the least silence separates it from — the quantity the
+     * claim bound reads (#620) — with ties broken by the nearest start. Every
+     * such line rather than the most-overlapped one alone, because lines
+     * overlap in time and a hull says nothing about where its words sit: a
+     * note could lose the hull contest to a line it was not sung on while the
+     * losing line's syllable sat squarely under it, and the bound then
+     * dropped it. The tie-break is a decision, not a leftover: it governs the
      * words a note sounds under, where silence says nothing, and there a note
      * beginning near a word's start is usually that word's own approach — a
      * scoop begins a breath before the aligner's word start, and an onset the
@@ -428,34 +432,29 @@ public final class PlayableMelody {
         for (int i = 0; i < pieces.size(); i++) {
             Piece piece = pieces.get(i);
             int line = -1;
-            double widest = 0;
-            for (int l = 0; l < lines.size(); l++) {
-                double overlap = Math.min(piece.endBeat(), lineEnd[l])
-                        - Math.max(piece.startBeat(), lineStart[l]);
-                if (overlap > widest) {
-                    widest = overlap;
-                    line = l;
-                }
-            }
-            if (line < 0) {
-                continue;
-            }
             int word = -1;
             double leastSilence = Double.POSITIVE_INFINITY;
             double nearestStart = Double.POSITIVE_INFINITY;
-            for (int w = 0; w < syllableStart[line].length; w++) {
-                double silence = Math.max(0,
-                        Math.max(piece.startBeat(), syllableStart[line][w])
-                                - Math.min(piece.endBeat(), syllableEnd[line][w]));
-                double distance = Math.abs(syllableStart[line][w] - piece.startBeat());
-                if (silence < leastSilence - EPSILON
-                        || (silence < leastSilence + EPSILON && distance < nearestStart)) {
-                    leastSilence = silence;
-                    nearestStart = distance;
-                    word = w;
+            for (int l = 0; l < lines.size(); l++) {
+                if (Math.min(piece.endBeat(), lineEnd[l])
+                        - Math.max(piece.startBeat(), lineStart[l]) <= 0) {
+                    continue;
+                }
+                for (int w = 0; w < syllableStart[l].length; w++) {
+                    double silence = Math.max(0,
+                            Math.max(piece.startBeat(), syllableStart[l][w])
+                                    - Math.min(piece.endBeat(), syllableEnd[l][w]));
+                    double distance = Math.abs(syllableStart[l][w] - piece.startBeat());
+                    if (silence < leastSilence - EPSILON
+                            || (silence < leastSilence + EPSILON && distance < nearestStart)) {
+                        leastSilence = silence;
+                        nearestStart = distance;
+                        line = l;
+                        word = w;
+                    }
                 }
             }
-            if (leastSilence <= claimBeats) {
+            if (line >= 0 && leastSilence <= claimBeats) {
                 claimed[i] = ((long) line << 32) | word;
             }
         }
