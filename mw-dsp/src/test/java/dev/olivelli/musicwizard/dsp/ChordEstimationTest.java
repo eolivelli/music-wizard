@@ -1476,6 +1476,58 @@ class ChordEstimationTest {
         }
 
         @Test
+        @DisplayName("a residual that measured nothing does not open the gate")
+        void aResidualThatMeasuredNothingDoesNotOpenTheGate() {
+            // The all-zero answer PitchClassAblation gives for spans holding
+            // nothing to fit. Read as a comparison it clears every share, since
+            // the root removes nothing either; read as evidence it is the same
+            // silence as no ablation at all, and that is what it has to be for
+            // a template admitted on the residual alone.
+            assertThat(label(JAZZ_COMBINED, JAZZ_TREBLE, JAZZ_BASS, new double[12]))
+                    .isEqualTo(ChordEstimator.estimate(four(JAZZ_COMBINED),
+                                    four(JAZZ_TREBLE), four(JAZZ_BASS), beatTimes(4))
+                            .chords().get(0).symbol());
+        }
+
+        /** A bass naming C and nothing else, so the prior cannot lose the root. */
+        private static double[] rootedBass() {
+            double[] out = new double[12];
+            java.util.Arrays.fill(out, 0.01);
+            out[0] = 0.89;
+            return out;
+        }
+
+        @Test
+        @DisplayName("the confidence reported is the chord's own fit, not the decoder's gate")
+        void theConfidenceDoesNotCarryTheGate() {
+            // A run the quality decision names a major seventh over beats the
+            // decoder's own gate closed: the two read the same residual at
+            // different shares, so this is the ordinary case rather than a
+            // contrived one. The confidence a caller reads answers how well the
+            // reported chord explains the mix, so it cannot depend on a gate --
+            // and a floor downstream turns on it (PlayableMelody).
+            double[] gated = JAZZ_RESIDUAL.clone();
+            gated[11] = MIDWAY_BETWEEN_THE_TWO_GATES * JAZZ_RESIDUAL[0];
+
+            Chord open = ChordEstimator.estimate(four(JAZZ_COMBINED), four(JAZZ_TREBLE),
+                    four(rootedBass()), ablation(JAZZ_RESIDUAL), beatTimes(4)).chords().get(0);
+            Chord closed = ChordEstimator.estimate(four(JAZZ_COMBINED), four(JAZZ_TREBLE),
+                    four(rootedBass()), ablation(gated), beatTimes(4)).chords().get(0);
+
+            assertThat(open.symbol()).isEqualTo("Cmaj7");
+            assertThat(closed.symbol()).isEqualTo("Cmaj7");
+            assertThat(closed.confidence().value())
+                    .isEqualTo(open.confidence().value(), within(1e-12));
+        }
+
+        /**
+         * A share the quality decision's gate admits and the decoder's does not,
+         * written as a fraction of the root's residual the way both gates read
+         * it. Any value strictly between the two constants does.
+         */
+        private static final double MIDWAY_BETWEEN_THE_TWO_GATES = 1.0;
+
+        @Test
         @DisplayName("the residual alone does not put a seventh on a triad")
         void theResidualAloneIsNotEnough() {
             // The same bar with the degree's residual raised past both gates.

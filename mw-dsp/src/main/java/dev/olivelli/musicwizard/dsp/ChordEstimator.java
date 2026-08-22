@@ -145,8 +145,8 @@ public final class ChordEstimator {
      * at all, and a quality that cannot move a root cannot reach a bar it never
      * got. It is admitted on the fit's residual rather than on the chroma
      * ({@link #DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT}), so an estimate made
-     * without a {@link PitchClassAblation} still decodes the vocabulary above
-     * and nothing more.
+     * without a {@link PitchClassAblation} still decodes the vocabulary it
+     * decoded before this was added.
      */
     private static final ChordQuality[] DECODED = {
             ChordQuality.MAJOR, ChordQuality.MINOR, ChordQuality.DOMINANT_SEVENTH,
@@ -163,15 +163,13 @@ public final class ChordEstimator {
      * {@link #DECODED} is also a candidate of the quality decision, so a gate
      * in one place alone measures the ungated rule.
      *
-     * <p>Above one, which is the measurement rather than a claim that a chord's
-     * seventh outweighs its root: the degree is asked to be load-bearing enough
-     * that a ninth over the relative minor seventh — {@code Abmaj7} is
-     * {@code Fm7} with a G for its F — does not clear it, since a fold cannot
-     * tell those two apart and the bass prior does not carry the difference
-     * (#588). Swept by {@code tools/ChordSweep.java score}: below the band a
-     * minor vamp gives up roots to that confusion and a chart's key turns over
-     * with them, above it the recordings whose truth holds the chord give the
-     * gain back. {@code tools/baselines/} carries both sides.
+     * <p>What sets it is the ninth over the relative minor seventh —
+     * {@code Abmaj7} is {@code Fm7} with a G for its F, and that G is the ninth
+     * a soloist plays over the vamp — which a fold cannot tell from the chord
+     * itself and the bass prior was measured not to separate (#635). The degree
+     * is asked to be load-bearing enough that it does not clear this. Swept by
+     * {@code tools/ChordSweep.java score} and {@code tools/score-samples.py};
+     * {@code tools/baselines/} carries what both sides of the band cost.
      */
     private static final double DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT = 1.5;
 
@@ -411,7 +409,10 @@ public final class ChordEstimator {
      * {@link #estimate(Chroma, Chroma, Chroma, List)}; this adds the one thing
      * no chroma can say, which is whether a pitch class the fit turned on is
      * carrying the spectrum or standing in for the root's own fifth partial
-     * (#537). See {@link #qualityScore} for where it is read.
+     * (#537). It is read by {@link #qualityScore} and, for the one template
+     * admitted on it rather than on the chroma, by {@link #emissions} — so
+     * supplying it decides which roots are decoded and not only which qualities
+     * are reported.
      *
      * @param chroma        beat-synchronous chroma the root and the chord
      *                      boundaries are decoded from
@@ -463,14 +464,15 @@ public final class ChordEstimator {
         }
 
         List<Template> templates = buildTemplates();
-        double[][] similarity = similarities(chroma, templates, ablation);
+        double[][] similarity = similarities(chroma, templates);
+        double[][] emission = emissions(chroma, templates, similarity, ablation);
         double[][] prior = bassRootPrior(bassChroma, similarity.length);
         double[][] logLikelihood = new double[similarity.length][templates.size()];
         for (int frame = 0; frame < similarity.length; frame++) {
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
                 logLikelihood[frame][t] = EMISSION_SHARPNESS
-                        * Math.log(Math.max(1e-9, similarity[frame][t]));
+                        * Math.log(Math.max(1e-9, emission[frame][t]));
                 // No-chord carries no root and so takes no term. That is why the
                 // term below is at most zero: see bassRootPrior.
                 if (prior != null && template.quality() != ChordQuality.NONE) {
@@ -786,10 +788,15 @@ public final class ChordEstimator {
      * handed over. This is the only gated template in {@link #DECODED}, so it
      * is the only one that can move a root — and it is separated from the triad
      * it contains by a degree the root's own fifth partial manufactures, which
-     * is exactly the reading a chroma cannot make.
+     * is exactly the reading a chroma cannot make. Which is why a root the fit
+     * does not need is closed too, and not left to the comparison: against a
+     * root that removes nothing, every share is cleared by every value,
+     * including the all-zero answer {@link PitchClassAblation} gives for spans
+     * holding nothing to fit.
      */
     private static boolean majorSeventhSounds(double[] significance, int root, double share) {
         return significance != null
+                && significance[root] > 0
                 && significance[Math.floorMod(root + 11, 12)] >= share * significance[root];
     }
 
@@ -1099,27 +1106,17 @@ public final class ChordEstimator {
     }
 
     /**
-     * Cosine similarity of every template for every frame, and the one place a
-     * template is scored on less than itself: a major seventh whose own degree
-     * the fit does not need is scored without it
-     * ({@link #DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT}).
-     *
-     * <p><b>The residual is read once per beat here</b>, where
-     * {@link #chooseQualities} reads it once per chord — thirteen fits a beat
-     * rather than thirteen a chord. A run does not exist until this has
-     * decoded one, so there is no cheaper span to ask about; {@code
-     * ChordEstimationTest#theAblationIsAskedOncePerRunAndOncePerBeat} pins what
-     * is asked.
+     * Raw cosine similarity of every template for every frame. What the
+     * confidence a caller reads is taken from, so it stays a statement about
+     * how well the reported chord explains the mix; the decoder scores some of
+     * these templates on less than themselves, and that is {@link #emissions}.
      */
-    private static double[][] similarities(Chroma chroma, List<Template> templates,
-                                           PitchClassAblation ablation) {
+    private static double[][] similarities(Chroma chroma, List<Template> templates) {
         int frames = chroma.frameCount();
         double[][] out = new double[frames][templates.size()];
 
         for (int frame = 0; frame < frames; frame++) {
             double[] vector = chroma.vectors()[frame];
-            double[] significance =
-                    ablation == null ? null : ablation.significanceOver(frame, frame + 1);
             double energy = 0;
             for (double value : vector) {
                 energy += value;
@@ -1134,16 +1131,59 @@ public final class ChordEstimator {
                 } else if (noChord) {
                     // A level to clear, not a shape to match.
                     out[frame][t] = NO_CHORD_SIMILARITY;
-                } else if (statesAMajorSeventh(template.quality())
-                        && !majorSeventhSounds(significance, template.rootPitchClass(),
-                                DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT)) {
-                    out[frame][t] = cosineWithout(vector, template.profile(),
-                            Math.floorMod(template.rootPitchClass() + 11, 12));
                 } else {
                     // Raw cosine, in 0 to 1. Cosine rather than a dot product so
                     // a loud frame is not automatically a better match than a
                     // quiet one. Sharpening happens once, in estimate().
                     out[frame][t] = cosine(vector, template.profile());
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * What the decoder scores each template on: {@link #similarities}, with a
+     * major seventh whose own degree the fit does not need scored without it
+     * ({@link #DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT}).
+     *
+     * <p><b>Separate from the similarity rather than folded into it</b>,
+     * because a caller reads that as the confidence in the chord it was given,
+     * and a template scored on less than itself would report a chord the
+     * estimator is sure of as a doubtful one — reaching, among others, the
+     * chart floor {@code PlayableMelody} breaks melody ties on.
+     *
+     * <p><b>The residual is read once per beat here</b>, where
+     * {@link #chooseQualities} reads it once per chord. A run does not exist
+     * until this has been decoded, so there is no cheaper span to ask about;
+     * {@code ChordEstimationTest#theAblationIsAskedOncePerRunAndOncePerBeat}
+     * pins what is asked.
+     */
+    private static double[][] emissions(Chroma chroma, List<Template> templates,
+                                        double[][] similarity, PitchClassAblation ablation) {
+        double[][] out = new double[similarity.length][];
+        for (int frame = 0; frame < similarity.length; frame++) {
+            out[frame] = similarity[frame].clone();
+            double[] vector = chroma.vectors()[frame];
+            double energy = 0;
+            for (double value : vector) {
+                energy += value;
+            }
+            // A silent frame's similarities are the silence answer rather than
+            // a match to gate, and the ablation is an expensive thing to ask
+            // about nothing.
+            if (energy < SILENCE_THRESHOLD) {
+                continue;
+            }
+            double[] significance =
+                    ablation == null ? null : ablation.significanceOver(frame, frame + 1);
+            for (int t = 0; t < templates.size(); t++) {
+                Template template = templates.get(t);
+                if (statesAMajorSeventh(template.quality())
+                        && !majorSeventhSounds(significance, template.rootPitchClass(),
+                                DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT)) {
+                    out[frame][t] = cosineWithout(vector, template.profile(),
+                            Math.floorMod(template.rootPitchClass() + 11, 12));
                 }
             }
         }
