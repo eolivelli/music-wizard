@@ -91,8 +91,11 @@ public final class LeadSheet {
         out.append(staff.lilyPond());
         // Under the staff rather than under the chords, so the words sit where a
         // singer reads them; that is also what decides which way the lane leans.
+        // Naming the staff's voice is what lets a marked melisma draw its
+        // extender line (#625).
         Optional<String> lyrics = LyricEngraving.block(
-                score, bars, LyricEngraving.Attachment.BELOW_STAFF, staff.pickup());
+                score, bars, LyricEngraving.Attachment.BELOW_STAFF, staff.pickup(),
+                Optional.of(StaffNotation.MELODY_VOICE));
         lyrics.ifPresent(out::append);
         out.append("  >>\n");
         out.append("  \\layout { }\n");
