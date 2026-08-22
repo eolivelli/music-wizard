@@ -29,11 +29,13 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Reduces an estimated melody to a part a player can read.
@@ -144,8 +146,12 @@ public final class PlayableMelody {
             pieces.add(Piece.of(note, map));
         }
         List<Note> reduced = new ArrayList<>(pieces.size());
-        for (List<Piece> group : groups(pieces, score.lyrics(), map, claimBeats)) {
-            reduced.add(collapse(group, score.chords(), map));
+        Set<Long> opened = new HashSet<>();
+        for (Sung group : groups(pieces, score.lyrics(), map, claimBeats)) {
+            boolean opens = group.syllable() != UNSUNG && opened.add(group.syllable());
+            reduced.add(printed(group.pieces(),
+                    opens ? wordOf(score.lyrics(), group.syllable()) : null,
+                    score.chords(), map));
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, reduced, melody.confidence());
     }
@@ -158,10 +164,9 @@ public final class PlayableMelody {
      * Every syllable some note is claimed for, with the note-heads
      * {@link #reduce} prints for it once it is marked a melisma.
      *
-     * <p>Built by the same claim, the same ornament grouping and the same
-     * collapse the reduction uses, so a stage deciding what a syllable holds
-     * (#597) reads the heads marking it produces rather than a prediction of
-     * them.
+     * <p>Built by the machinery the reduction uses, so a stage deciding what
+     * a syllable holds (#597) reads the heads marking it produces rather than
+     * a prediction of them.
      */
     static List<SungSyllable> sungSyllables(Score score) {
         Objects.requireNonNull(score, "score");
@@ -186,7 +191,9 @@ public final class PlayableMelody {
                 List<Note> heads = bySyllable.computeIfAbsent(claimed[from],
                         key -> new ArrayList<>());
                 for (List<Piece> group : ornamentGroups(pieces.subList(from, to + 1))) {
-                    heads.add(collapse(group, score.chords(), map));
+                    heads.add(printed(group, heads.isEmpty()
+                                    ? wordOf(score.lyrics(), claimed[from]) : null,
+                            score.chords(), map));
                 }
             }
             from = to + 1;
@@ -224,10 +231,14 @@ public final class PlayableMelody {
         }
     }
 
-    private static List<List<Piece>> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map,
-                                            double claimBeats) {
+    /** One group of pieces and the syllable that claims it, {@link #UNSUNG} for none. */
+    private record Sung(List<Piece> pieces, long syllable) {
+    }
+
+    private static List<Sung> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map,
+                                     double claimBeats) {
         long[] syllable = syllableOf(pieces, lyrics, map, claimBeats);
-        List<List<Piece>> groups = new ArrayList<>();
+        List<Sung> groups = new ArrayList<>();
         int from = 0;
         while (from < pieces.size()) {
             int to = from;
@@ -236,9 +247,11 @@ public final class PlayableMelody {
             }
             List<Piece> run = pieces.subList(from, to + 1);
             if (syllable[from] != UNSUNG && !isMelisma(lyrics, syllable[from])) {
-                groups.add(run);
+                groups.add(new Sung(run, syllable[from]));
             } else {
-                groups.addAll(ornamentGroups(run));
+                for (List<Piece> group : ornamentGroups(run)) {
+                    groups.add(new Sung(group, syllable[from]));
+                }
             }
             from = to + 1;
         }
@@ -264,7 +277,83 @@ public final class PlayableMelody {
     }
 
     private static boolean isMelisma(Lyrics lyrics, long syllable) {
-        return lyrics.lines().get((int) (syllable >> 32)).words().get((int) syllable).melisma();
+        return wordOf(lyrics, syllable).melisma();
+    }
+
+    private static LyricWord wordOf(Lyrics lyrics, long syllable) {
+        return lyrics.lines().get((int) (syllable >> 32)).words().get((int) syllable);
+    }
+
+    /**
+     * The group's printed note, its onset taken from the syllable it opens
+     * (#616).
+     *
+     * <p>The group's first piece is usually the start of a scoop, so a head
+     * printed from it sits where the approach began; the aligner's syllable
+     * start is a measurement, on the voice itself, of where the same event is
+     * felt. Groups that do not open their syllable — later heads of a
+     * melisma, notes no syllable claims — keep the melody's own onsets, and
+     * {@link #feltInside} bounds when an opening group's is taken.
+     */
+    private static Note printed(List<Piece> group, LyricWord sungOn,
+                                ChordProgression chords, TempoMap map) {
+        Note note = collapse(group, chords, map);
+        if (sungOn == null) {
+            return note;
+        }
+        double startSeconds = sungOn.startSeconds();
+        // Both ends of the moved head go through the one sanctioned
+        // conversion: a word's startBeat and a quantized note's offsetBeat
+        // are snapped values, and pairing either with the raw seconds would
+        // give a head, or a stub guard, whose two axes name different spans.
+        double startBeat = map.secondsToBeats(startSeconds);
+        double endBeat = map.secondsToBeats(note.offsetSeconds());
+        if (!feltInside(group, note, startSeconds, startBeat, endBeat)) {
+            return note;
+        }
+        Note moved = new Note(startSeconds, note.offsetSeconds() - startSeconds,
+                note.midiPitch(), note.velocity(), note.spelling(),
+                Optional.empty(), Optional.empty(), note.confidence());
+        return note.isQuantized()
+                ? moved.quantizedTo(startBeat, endBeat - startBeat)
+                : moved;
+    }
+
+    /**
+     * Whether the syllable's measured start is a moment the printed head can
+     * open on.
+     *
+     * <p>Three refusals, each a way the two measurements can disagree rather
+     * than re-measure one event. A start at or before the group's onset has
+     * nothing to move. A start leaving less of the head than what this class
+     * already discards as decoration is not the felt beginning of the group —
+     * it is a claim from an onset placed late (#497) or from a syllable
+     * apportioned rather than measured, and taking it would manufacture a
+     * stub the reading quantizer prints on the next head's beat. And a start
+     * in the silence between the group's pieces, or outside them, would print
+     * the head where the melody holds nothing.
+     *
+     * <p>Bounds rather than a gate on measured lines, because which lines the
+     * aligner measured is known only to the run that aligned them — the same
+     * missing fact as #623 — so an apportioned start cannot be told from a
+     * measured one here. What these bounds leave it able to do is shift a
+     * head within the notes its own syllable sounds.
+     */
+    private static boolean feltInside(List<Piece> group, Note printed,
+                                      double startSeconds, double startBeat, double endBeat) {
+        if (startSeconds <= printed.onsetSeconds() + EPSILON) {
+            return false;
+        }
+        if (endBeat - startBeat <= ORNAMENT_BEATS) {
+            return false;
+        }
+        for (Piece piece : group) {
+            if (startSeconds >= piece.note().onsetSeconds() - EPSILON
+                    && startSeconds < piece.note().offsetSeconds() - EPSILON) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
