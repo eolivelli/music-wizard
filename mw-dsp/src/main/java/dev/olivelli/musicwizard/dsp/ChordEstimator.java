@@ -890,8 +890,8 @@ public final class ChordEstimator {
      * manufactured. What the minor third is asked instead is whether the fit
      * needs it at all ({@link #MINOR_THIRD_SHARE_OF_ROOT}) — a different
      * question, and the one that keeps a run holding neither third from going
-     * minor on noise. See {@link PitchClassAblation}, and #544 for the register
-     * the residual is read over against the register this chroma is.
+     * minor on noise. See {@link PitchClassAblation} for the register the
+     * residual is read over against the register this chroma is.
      *
      * <p><b>The same residual decides whether a sixth, a diminished fifth or a
      * major seventh is there</b> ({@link #ADDED_NOTE_SHARE_OF_ROOT},

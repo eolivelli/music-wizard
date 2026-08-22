@@ -29,6 +29,11 @@ package dev.olivelli.musicwizard.dsp;
  * standing in for somebody else's partial can go, because that partial's own
  * note is still there.
  *
+ * <p><b>Read over the whole mix</b>, though the mass the quality decision gates
+ * with it is the chordal register's alone. Summing the residual over that
+ * register instead is measured on #544 and is worse: what moves is which of the
+ * two thirds removes more residual, and no share of the root repairs a ranking.
+ *
  * <p>An interface so {@link ChordEstimator} can be exercised without audio;
  * {@link NnlsAblation} is what the pipeline passes.
  */
