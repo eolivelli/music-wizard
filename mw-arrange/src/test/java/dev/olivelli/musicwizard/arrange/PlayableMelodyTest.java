@@ -185,6 +185,22 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a syllable starting in the silence between a group's pieces moves nothing")
+        void aSyllableStartInAGapMovesNothing() {
+            // The claim is by silence, so one group can hold two pieces with a
+            // rest between them; a start measured inside that rest is the two
+            // measurements disagreeing, not a place to print a head. The first
+            // word only widens the line, so the second claims both pieces.
+            Score score = sung(
+                    notes(note(1.0, 0.2, 60), note(1.6, 0.4, 64)),
+                    line(word("mm", 0.2, 0.5), word("held", 1.3, 2.0)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+            assertThat(only.offsetSeconds()).isEqualTo(2.0);
+        }
+
+        @Test
         @DisplayName("a single sung note takes its syllable's start the same way")
         void aSingleNoteTakesItsSyllableStart() {
             Score score = sung(

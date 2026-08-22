@@ -292,11 +292,12 @@ public final class PlayableMelody {
      * <p>The group's first piece is usually the start of a scoop, so a head
      * printed from it sits where the approach began; the aligner's syllable
      * start is a measurement, on the voice itself, of where the same event is
-     * felt. It is taken only when it falls strictly inside the span the note
-     * prints, on every axis the note carries: a measurement outside what the
-     * group sounds says the two disagree, not that the onset is better, and a
-     * head must never print where the melody holds nothing. Groups that do
-     * not open their syllable — later heads of a melisma, notes no syllable
+     * felt. It is taken only when it falls strictly after the group's onset
+     * and inside a piece the group holds, on every axis the notes carry: a
+     * start outside the group, or in the silence between its pieces, says the
+     * two measurements disagree — not that the onset is better — and a head
+     * must never print where the melody holds nothing. Groups that do not
+     * open their syllable — later heads of a melisma, notes no syllable
      * claims — keep the melody's own onsets.
      */
     private static Note printed(List<Piece> group, LyricWord sungOn,
@@ -306,26 +307,44 @@ public final class PlayableMelody {
             return note;
         }
         double startSeconds = sungOn.startSeconds();
-        if (startSeconds <= note.onsetSeconds() + EPSILON
-                || startSeconds >= note.offsetSeconds() - EPSILON) {
-            return note;
-        }
-        if (!note.isQuantized()) {
-            return new Note(startSeconds, note.offsetSeconds() - startSeconds,
-                    note.midiPitch(), note.velocity(), note.spelling(),
-                    Optional.empty(), Optional.empty(), note.confidence());
-        }
         double startBeat = sungOn.startBeat()
-                .orElseGet(() -> map.secondsToBeats(startSeconds));
-        double onsetBeat = note.onsetBeat().orElseThrow();
-        double offsetBeat = note.offsetBeat().orElseThrow();
-        if (startBeat <= onsetBeat + EPSILON || startBeat >= offsetBeat - EPSILON) {
+                .orElseGet(() -> map.secondsToBeats(sungOn.startSeconds()));
+        if (!feltInside(group, note, startSeconds, startBeat)) {
             return note;
         }
-        return new Note(startSeconds, note.offsetSeconds() - startSeconds,
+        Note moved = new Note(startSeconds, note.offsetSeconds() - startSeconds,
                 note.midiPitch(), note.velocity(), note.spelling(),
-                Optional.empty(), Optional.empty(), note.confidence())
-                .quantizedTo(startBeat, offsetBeat - startBeat);
+                Optional.empty(), Optional.empty(), note.confidence());
+        return note.isQuantized()
+                ? moved.quantizedTo(startBeat, note.offsetBeat().orElseThrow() - startBeat)
+                : moved;
+    }
+
+    /**
+     * Whether the syllable's measured start is a moment the printed head can
+     * open on: strictly after the group's own onset, and inside a piece the
+     * group holds rather than in the silence between two of them.
+     */
+    private static boolean feltInside(List<Piece> group, Note printed,
+                                      double startSeconds, double startBeat) {
+        if (startSeconds <= printed.onsetSeconds() + EPSILON) {
+            return false;
+        }
+        if (printed.isQuantized()
+                && startBeat <= printed.onsetBeat().orElseThrow() + EPSILON) {
+            return false;
+        }
+        for (Piece piece : group) {
+            boolean insideSeconds = startSeconds >= piece.note().onsetSeconds() - EPSILON
+                    && startSeconds < piece.note().offsetSeconds() - EPSILON;
+            boolean insideBeats = !printed.isQuantized()
+                    || (startBeat >= piece.startBeat() - EPSILON
+                            && startBeat < piece.endBeat() - EPSILON);
+            if (insideSeconds && insideBeats) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

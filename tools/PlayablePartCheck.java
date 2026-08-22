@@ -320,11 +320,15 @@ public final class PlayablePartCheck {
             for (Note note : estimate.notes()) {
                 double start = map.secondsToBeats(note.onsetSeconds());
                 double end = map.secondsToBeats(note.offsetSeconds());
-                if (start < from - EPSILON || end > to + EPSILON) {
+                // Clamped overlap rather than containment: a head can open or
+                // close inside an estimate note (#616), and that note still
+                // sounds under it -- reading only contained notes counted the
+                // sounding remainder as silence.
+                if (end < from - EPSILON || start > to + EPSILON) {
                     continue;
                 }
-                silence = Math.max(silence, start - reached);
-                reached = Math.max(reached, end);
+                silence = Math.max(silence, Math.max(start, from) - reached);
+                reached = Math.max(reached, Math.min(end, to));
             }
             if (silence > WELD_BEATS) {
                 welded++;
