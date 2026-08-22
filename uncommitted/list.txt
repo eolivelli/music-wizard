@@ -56,6 +56,20 @@ agreement is the ceiling any melody stage is measured against — a number well
 under 100%, which no synthetic package could ever have shown.
 
 
+hanno-ucciso-luomo-ragno.mp3
+
+"Hanno ucciso l'uomo ragno" (883), studio version, 4:10. The recording #527,
+#537 and the sweep on #274 are measured against; #538 is this entry having
+been missing. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/hanno-ucciso-luomo-ragno.mp3 \
+    https://www.youtube.com/watch?v=rl1PU-skys8
+The command the file was originally fetched with was never recorded. The URL
+above is the one Enrico himself supplied for this recording, and its upload —
+the artist's official audio — matches the local file's duration to the
+second; a refetch should still be checked against the figures those issues
+quote before standing in for the file they were measured on.
+
 hanno-ucciso-luomo-ragno-karaoke.mp3
 
 "Hanno ucciso l'uomo ragno" (883), karaoke version, 4:31. Pop, simplified
@@ -325,6 +339,53 @@ listened to nothing:
   - that the intro, the two middle stretches and the outro really are
     instrumental;
   - that it is Italian throughout, which is the gate a dialect entry fails.
+
+ridere.wav
+
+Pinguini Tattici Nucleari, "Ridere", 3:35. Not fetched with a command: it
+arrived as a phone take, imported into the Android app from
+https://www.youtube.com/watch?v=e_oFiNyOgiw on 2026-08-14, whose bundle's
+info file carries `source: youtube` — so it is a commercial recording and
+stays here, whatever it sounds like. The take is the app's own decode, mono
+16-bit PCM at the rate the decoder produced; its provenance sits beside it
+as ridere.info.txt and ridere.notes.txt, and ridere-phone-chart.txt is the
+chart the phone made of the same audio at the time.
+
+Sung in Italian, which the hyphenation patterns cover; words in ridere.lrc,
+fetched from LRCLIB, whose entry for this song states the same duration as
+the take. The reference chart is ridere-reference.txt, from accordiespartiti
+— a page in A with no capo, a chart and not ground truth.
+
+What MW reads, re-taken 2026-08-22: A major, 117 BPM, 4/4, a D–A–F#m7–E
+verse with B7 and G#m in the turns. The page agrees on the key and holds no
+B7 anywhere; where MW prints a plain G# the page writes E/G#, which is #599's
+shape. The phone's chart of the same audio agrees with the desktop's on key,
+tempo, meter and the verse row, which is what makes this recording a
+loop-closure case rather than only another benchmark.
+
+per-sempre-si.mp3
+
+"Per sempre sì" (Sal Da Vinci), 3:25, the official video's audio. Italian
+pop ballad, sung in Italian. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/per-sempre-si.mp3 \
+    https://www.youtube.com/watch?v=4Q4Ga2Pb5MY
+The original fetch command was not written down when the file arrived
+(2026-08-18); the URL above is the song's official video, which is what the
+fetching session recorded taking, and its upload matches the local file's
+duration to the second.
+
+Words in per-sempre-si.lrc, from LRCLIB, chosen by duration: LRCLIB's default
+entry for this song is a shorter edit whose timestamps would drift across
+this recording, so the candidate stating this file's own length was taken
+instead.
+
+What MW reads, 2026-08-22: C minor, 123 BPM, 4/4. No reference chart, and no
+ear has confirmed the changes. What the recording is for: the separator
+empties the vocal stem for the opening stretch of this song while reading
+the choruses cleanly — a within-song control for #575, with the evidence on
+#575 and #596 — so a melody or lyric reading of this file's opening is a
+statement about separation, not about the stages behind it.
 
 --------------------------------------------------------------------------
 
