@@ -625,14 +625,49 @@ class MelodyEstimationTest {
             // judged against. It may then keep its own octave -- what it must
             // not do is take the singing's with it, which is what an average
             // rather than a share of the sounding time would have let it do.
-            // Asserted whole, so that the leakage's own two octaves are on the
-            // page rather than hidden: they are the band's hard edge, #614.
+            // Asserted whole, so that what happens to the leakage is on the
+            // page rather than hidden.
             NoteTrack melody = MelodyEstimator.estimate(
                     track(with(new Object[] {85.0, 30, null, 4, 86.0, 30, null, 4, 85.0, 30,
                             null, 8}, (Object[]) singing())));
 
             assertThat(pitches(melody))
-                    .containsExactly(85, 62, 85, 62, 65, 62, 60, 62, 67, 65, 62, 60, 62);
+                    .containsExactly(85, 86, 85, 62, 65, 62, 60, 62, 67, 65, 62, 60, 62);
+        }
+
+        @Test
+        @DisplayName("and a run stepping past the edge is not cut in half by it")
+        void aRunAcrossTheEdgeIsNotCut() {
+            // The corpus shape behind #614 and #615 both: a phrase in another
+            // register, too short a part of the recording to buy a band of its
+            // own, that the edge lands in the middle of. Its notes are a step
+            // or two apart, so which side of the edge each falls on is a
+            // semitone of tracker noise -- and the same phrase then comes out
+            // in two octaves.
+            Object[] run = {76.0, 20, null, 4, 78.0, 20, null, 4, 79.0, 20, null, 4, 81.0, 20};
+            PitchTrack pitches = track(with(singing(), with(new Object[] {null, 8}, run)));
+            OnsetEnvelope silence = new OnsetEnvelope(new double[1600], 172.0);
+
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 14, 0.9, 2, 0)))
+                    .as("where the quantile leaves the edge, the run is split")
+                    .endsWith(76, 78, 67, 57);
+            assertThat(pitches(MelodyEstimator.estimate(pitches)))
+                    .as("moved out to the gap the recording has, it is one gesture")
+                    .endsWith(76, 78, 79, 81);
+        }
+
+        @Test
+        @DisplayName("but a note alone past the edge is still folded")
+        void aNoteWithNothingNearItIsStillFolded() {
+            // The edge walks out along the notes it can reach, not out from
+            // itself: a note a step or two beyond an edge that no note stands
+            // near is reachable from nothing, and it is exactly the note this
+            // rule exists to move. Real singing is where this is decided --
+            // it is the whole of what the fold does for vocadito.
+            NoteTrack melody = MelodyEstimator.estimate(
+                    track(with(singing(), null, 4, 78.0, 20)));
+
+            assertThat(pitches(melody)).endsWith(66);
         }
 
         @Test
@@ -685,18 +720,23 @@ class MelodyEstimationTest {
             PitchTrack pitches = track(with(singing(), null, 4, 86.0, 20));
             OnsetEnvelope silence = new OnsetEnvelope(new double[1200], 172.0);
 
-            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 0, 1, 2)))
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 0, 1, 2, 0)))
                     .as("a band reaching the whole melody folds nothing")
                     .endsWith(86);
-            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 0)))
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 0, 0)))
                     .as("and so does a bound admitting no octave at all")
                     .endsWith(86);
+            assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 2, 0)))
+                    .as("a gap of nothing leaves the edge where the quantile put it")
+                    .endsWith(62);
             assertThatIllegalArgumentException().isThrownBy(
-                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9, 2));
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9, 2, 5));
             assertThatIllegalArgumentException().isThrownBy(
-                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 1.5, 2));
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 1.5, 2, 5));
             assertThatIllegalArgumentException().isThrownBy(
-                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, -1));
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, -1, 5));
+            assertThatIllegalArgumentException().isThrownBy(
+                    () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 2, -1));
         }
     }
 

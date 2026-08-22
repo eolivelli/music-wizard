@@ -91,15 +91,25 @@ whichever sounds longer, and without a bound the other is folded into it a
 correct note at a time. The bound is on the correction rather than on how far
 out the note was, and the bench sweeps it alongside the band.
 
-Two known limits are open: the band's edge is hard, so one gesture can be split
-across octaves (#614), and a line whose wide notes are too rare to widen its own
-band is held to a narrow one (#615). The second is why a recording the tracker
-reads in two registers can still lose the shorter one.
+**The fold decides a gesture, not a note** (#614). Notes that follow one
+another within a whole tone are one thing being sung or played, and which side
+of the band's edge each of them falls on is a semitone of tracker noise — so a
+gesture with any note inside the band keeps its octave whole, and one entirely
+outside moves as a unit and keeps its own intervals.
 
-`tools/OctaveSweep.java` is the bench, and its `octaves` mode says what the
-corpora can and cannot show: almost none of what the stage gets wrong on clean
-solo singing is wrong by whole octaves, so this is a defect of mixes and
-separation and the field recordings are what witness it.
+One known limit is open: a line whose wide notes are too rare to widen its own
+band is held to a narrow one (#615). A lone leap is its own gesture and is
+folded with the rest, which is also why a recording the tracker reads in two
+registers can still lose the shorter one.
+
+`tools/OctaveSweep.java` is the bench. Its `octaves` mode says what the corpora
+can and cannot show — almost none of what the stage gets wrong on clean solo
+singing is wrong by whole octaves, so this is a defect of mixes and separation
+and the field recordings are what witness it — and its `splits` mode says what
+the fold itself did: what it moved, whether truth called those notes right
+before and after, and how many gestures a setting cut in half. `--separated`
+reads every recording the way `analyze --melody` does, which is what the two
+`--separated` baselines score.
 
 ## What comes out
 

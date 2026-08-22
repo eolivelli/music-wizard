@@ -201,13 +201,23 @@ public final class MelodyEstimator {
      * <p>This is the half that comes from the recording rather than from a
      * constant: a line that spends this share of its time over a wider compass
      * buys a wider band with it, which is what keeps a melody played rather
-     * than sung from being held to a voice's. It buys nothing for a line whose
-     * wide notes are rarer than that, and #615 is the limit. A quantile rather
-     * than a multiple of the median deviation, because the median of a track
-     * with a handful of notes in it is zero however far apart they are. Swept
-     * by {@code tools/OctaveSweep.java}.
+     * than sung from being held to a voice's. A quantile rather than a multiple
+     * of the median deviation, because the median of a track with a handful of
+     * notes in it is zero however far apart they are. Swept by
+     * {@code tools/OctaveSweep.java}.
      */
     private static final double RANGE_SPREAD_QUANTILE = 0.9;
+
+    /**
+     * How far apart two notes running into one another may be and still be one
+     * gesture the fold decides once.
+     *
+     * <p>A whole tone is the widest step a scale takes, so this is the smallest
+     * value that holds a run of neighbouring degrees together, and the sweep
+     * holds flat above it. {@code tools/OctaveSweep.java} walks the ladder and
+     * its {@code splits} mode counts the gestures a setting cuts in half.
+     */
+    private static final double ONE_GESTURE_SEMITONES = 2;
 
     private MelodyEstimator() {
     }
@@ -221,7 +231,8 @@ public final class MelodyEstimator {
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
         return segment(pitches, null, 0, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
+                ONE_GESTURE_SEMITONES);
     }
 
     /**
@@ -236,7 +247,8 @@ public final class MelodyEstimator {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         return segment(pitches, envelope, 0, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
+                ONE_GESTURE_SEMITONES);
     }
 
     /**
@@ -257,7 +269,8 @@ public final class MelodyEstimator {
                     + tuningOffsetSemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
+                ONE_GESTURE_SEMITONES);
     }
 
     /**
@@ -278,23 +291,25 @@ public final class MelodyEstimator {
                     + " got: " + steadySemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT);
+                RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
+                ONE_GESTURE_SEMITONES);
     }
 
     /**
      * The same with the octave fold's band and bound chosen too, which is what
      * {@code tools/OctaveSweep.java} sweeps. The pipeline calls
      * {@link #estimate(PitchTrack, OnsetEnvelope, double)} and gets
-     * {@link #RANGE_FLOOR_SEMITONES}, {@link #RANGE_SPREAD_QUANTILE} and
-     * {@link #MOST_OCTAVES_OUT}.
+     * {@link #RANGE_FLOOR_SEMITONES}, {@link #RANGE_SPREAD_QUANTILE},
+     * {@link #MOST_OCTAVES_OUT} and {@link #ONE_GESTURE_SEMITONES}.
      *
      * <p>A band narrower than an octave folds nothing at all, since no pitch
-     * then has a representative inside it.
+     * then has a representative inside it; a gesture of zero decides every note
+     * alone.
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
-                                     int mostOctavesOut) {
+                                     int mostOctavesOut, double gestureSemitones) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -317,14 +332,18 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("mostOctavesOut must be non-negative, got: "
                     + mostOctavesOut);
         }
+        if (!(gestureSemitones >= 0) || !Double.isFinite(gestureSemitones)) {
+            throw new IllegalArgumentException("gestureSemitones must be finite and"
+                    + " non-negative, got: " + gestureSemitones);
+        }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut);
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones);
     }
 
     private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
-                                     int mostOctavesOut) {
+                                     int mostOctavesOut, double gestureSemitones) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -344,8 +363,8 @@ public final class MelodyEstimator {
             notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, steadySemitones));
             frame = end;
         }
-        List<Note> folded =
-                foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut);
+        List<Note> folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
+                mostOctavesOut, gestureSemitones);
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", folded, trackConfidence(folded));
     }
 
@@ -365,12 +384,18 @@ public final class MelodyEstimator {
      * <em>where</em> it goes. Landing a note merely inside the band instead
      * would leave one read two octaves out still an octave out.
      *
+     * <p>The decision is taken over a gesture rather than a note (#614): notes
+     * that run into one another within {@link #ONE_GESTURE_SEMITONES} are one
+     * thing being sung or played, and which side of the band's edge each of
+     * them falls on is a semitone of tracker noise.
+     *
      * <p>A band narrower than an octave is refused rather than applied: there
      * would be pitch classes with no representative in it at all, so every note
      * of one would be moved on no evidence.
      */
     private static List<Note> foldOctaves(List<Note> notes, double rangeFloorSemitones,
-                                          double rangeSpreadQuantile, int mostOctavesOut) {
+                                          double rangeSpreadQuantile, int mostOctavesOut,
+                                          double gestureSemitones) {
         if (notes.isEmpty()) {
             return notes;
         }
@@ -391,12 +416,55 @@ public final class MelodyEstimator {
             return notes;
         }
         List<Note> folded = new ArrayList<>(notes.size());
-        for (Note note : notes) {
-            int semitones =
-                    foldedPitch(note.midiPitch(), centre, half, mostOctavesOut) - note.midiPitch();
-            folded.add(semitones == 0 ? note : note.transposedBy(semitones));
+        int from = 0;
+        while (from < notes.size()) {
+            int to = from + 1;
+            while (to < notes.size() && oneGesture(notes.get(to - 1), notes.get(to),
+                    gestureSemitones)) {
+                to++;
+            }
+            int semitones = gestureShift(notes.subList(from, to), centre, half, mostOctavesOut);
+            for (Note note : notes.subList(from, to)) {
+                folded.add(semitones == 0 ? note : note.transposedBy(semitones));
+            }
+            from = to;
         }
         return folded;
+    }
+
+    /** Whether two notes following one another are near enough to be one gesture. */
+    private static boolean oneGesture(Note first, Note second, double gestureSemitones) {
+        return Math.abs(second.midiPitch() - first.midiPitch()) <= gestureSemitones;
+    }
+
+    /**
+     * What to move a gesture by: nothing at all where any of it is inside the
+     * band, and otherwise whatever the fold makes of the pitch it spends most
+     * of its time at, applied to every note of it.
+     *
+     * <p>One shift for the gesture rather than one per note, so its own
+     * intervals survive the move; a gesture that reaches into the band is in
+     * the melody's octave whatever the rest of it does.
+     */
+    private static int gestureShift(List<Note> gesture, double centre, double half,
+                                    int mostOctavesOut) {
+        double[] pitches = new double[gesture.size()];
+        double[] weights = new double[gesture.size()];
+        for (int i = 0; i < gesture.size(); i++) {
+            if (Math.abs(gesture.get(i).midiPitch() - centre) <= half) {
+                return 0;
+            }
+            pitches[i] = gesture.get(i).midiPitch();
+            weights[i] = gesture.get(i).durationSeconds();
+        }
+        int held = (int) weightedQuantile(pitches, weights, 0.5);
+        int semitones = foldedPitch(held, centre, half, mostOctavesOut) - held;
+        for (Note note : gesture) {
+            if (note.midiPitch() + semitones < 0 || note.midiPitch() + semitones > 127) {
+                return 0;
+            }
+        }
+        return semitones;
     }
 
     /**
