@@ -206,6 +206,11 @@ public final class ChordEstimator {
      * {@code F#m7} needs evidence about which sounding note the chord is built
      * on rather than about whether a note is sounding (#274).
      *
+     * <p><b>The added ninth is absent for a sharper version of the same
+     * reason</b> (#651). Its degree is the perfect fifth above the chord's own
+     * fifth, so a plain triad manufactures it as that fifth's third partial —
+     * the major seventh's relation to the third, on the louder note.
+     *
      * <p>The two here are decided on the same test where the fit's residual is
      * available ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the
      * diminished fifth. The half-diminished also depends on the root the
@@ -1053,6 +1058,9 @@ public final class ChordEstimator {
      * "C then C7" is one chord whose seventh was audible for part of it, and
      * deciding its quality twice from half the evidence each time is the defect
      * this grouping exists to avoid.
+     *
+     * <p>Its cost is a suspension that resolves onto its own root: it shares a
+     * run with the chord it resolves to, and one run carries one label (#650).
      */
     private static boolean sameChord(Template a, Template b) {
         if (a.quality() == ChordQuality.NONE || b.quality() == ChordQuality.NONE) {
