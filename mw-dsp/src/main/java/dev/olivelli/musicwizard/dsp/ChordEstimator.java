@@ -154,7 +154,7 @@ public final class ChordEstimator {
 
     /**
      * Share of the residual its root removes that a major seventh must remove
-     * before the decoder scores that degree at all. Only {@link #similarities}
+     * before the decoder scores that degree at all. Only {@link #emissions}
      * reads it. Where it does not clear this the template is scored on the
      * triad it contains over its own four-note norm, which the triad wins, so
      * the gate is an admission rather than a penalty.
