@@ -261,9 +261,9 @@ TRUTH_SYMBOL = {**QUALITY_SYMBOL, **CORPUS_ONLY_QUALITY}
 
 
 def missing_line(label: str, where: str = "samples") -> str:
-    """A baselined name this machine cannot measure; premerge.sh skips rows
+    """A baselined name this machine cannot measure; the gate skips rows
     carrying this line's marker, and test-harness-rules.py holds every writer
-    of it, and premerge.sh itself, to one literal.
+    of it, and its reader, to one literal.
 
     `where` is the directory the file belongs in, because its own list.txt is
     what says how to fetch it."""

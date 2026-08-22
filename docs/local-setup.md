@@ -93,14 +93,34 @@ could not — or the reverse.
 
 `samples/` holds what is redistributable; the rest of the corpus is listed in
 `samples/list.txt` and `uncommitted/list.txt` with the command that fetches
-each one. A machine short of them still passes the gate — `tools/premerge.sh`
+each one. A machine short of them still runs the gate — `tools/premerge.sh`
 reports those rows as skipped rather than failing them.
 
-**Read the skip count in the verdict.** A skipped row and a passing row look
-alike at a glance, and a gate that measured nothing still prints `PASS`. Adding
-a column to `tools/score-lyrics.py` once broke a second baseline whose row was
-skipping for want of the sherpa native, and the gate said `PASS` throughout
-(#464).
+A skipped row and a passing row used to look alike, and a gate that measured
+nothing still printed `PASS`: adding a column to `tools/score-lyrics.py` once
+broke a second baseline whose only row was skipping for want of the sherpa
+native, and the gate said `PASS` throughout (#464). It now ends with what it
+could not certify — each skipped row named with the cause its harness printed,
+each step whose every row skipped called out as having certified nothing — and
+says `PASS-WITH-SKIPS` rather than `PASS`.
+
+## Declaring what this machine cannot measure
+
+Which skips are legitimate is a fact about the machine, not about the branch:
+the same skip means "never fetched here" on one machine and "this worktree was
+provisioned without it" on another, and only something outside the worktree
+tells them apart. So the machine declares its own, in
+`$XDG_CONFIG_HOME/music-wizard/premerge-skips.txt` (`~/.config/...` by
+default), one glob per line matched against `<baseline> <row>`:
+
+```
+score-asr.txt *          # no sherpa native built here
+```
+
+With that file present, a row that skips without being covered fails the gate,
+and premerge prints the line to add if the skip is real. Without it, skips are
+named but not gated — which is what a fresh clone gets, and what a machine
+lacking an optional model can stay on.
 
 ## Working in a git worktree
 
