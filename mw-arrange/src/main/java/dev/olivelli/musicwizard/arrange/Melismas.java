@@ -30,20 +30,21 @@ import java.util.Objects;
  * Which sung syllables are melismas (#597).
  *
  * <p><b>Pitch movement, not length.</b> A syllable is marked when the melody
- * moves under it: the notes it is sung on print more than one note-head, and
- * those reach far enough apart to be a run rather than one tracked note
- * wavering — and near enough to be a voice rather than the octave fold. A
- * syllable that is merely held, and one re-articulated on the same pitch, are
- * left unmarked: the first is a long note and the second a repeated one, and
- * neither is a run a reader needs printed separately.
+ * moves under it: the notes it is sung on print more than one note-head, those
+ * reach far enough apart to be a run rather than one tracked note wavering,
+ * and no leap between neighbouring heads is wide enough to be the melody
+ * stage's octave fold. A syllable that is merely held, and one re-articulated
+ * on the same pitch, are left unmarked: the first is a long note and the
+ * second a repeated one, and neither is a run a reader needs printed
+ * separately.
  *
  * <p>The heads are the ones {@link PlayableMelody} prints for the syllable
  * once it is marked, read from that class rather than predicted: a scoop and
  * the note it arrives at count once, so a syllable whose extra notes are all
  * scoop fragments stays collapsed.
  *
- * <p>The decision is a function of the melody alone, so marks already on the
- * lyrics are replaced rather than added to.
+ * <p>The decision reads the score and never the marks already on the lyrics,
+ * so those are replaced rather than added to.
  */
 public final class Melismas {
 
@@ -57,10 +58,10 @@ public final class Melismas {
     private static final int RUN_SEMITONES = 2;
 
     /**
-     * How far apart the heads must reach to be read as the melody stage's
-     * octave fold (#614, #615) rather than as a run. Printing one of those
-     * would put the fold on the page instead of leaving it under a single
-     * head.
+     * How wide a leap between neighbouring heads is read as the melody
+     * stage's octave fold (#614, #615, #624) rather than as the voice moving.
+     * Printing one of those would put the fold on the page instead of leaving
+     * it under a single head.
      *
      * <p>Swept alongside the other.
      */
@@ -84,8 +85,8 @@ public final class Melismas {
      * {@code tools/PlayablePartCheck.java} sweeps.
      *
      * @param runSemitones  how far apart the syllable's note-heads must reach
-     * @param foldSemitones how far apart they reach before they are read as an
-     *                      octave fold instead
+     * @param foldSemitones how wide a leap between neighbouring heads is read
+     *                      as an octave fold instead
      * @throws IllegalArgumentException if either interval is negative
      */
     public static Lyrics marked(Score score, int runSemitones, int foldSemitones) {
@@ -127,11 +128,16 @@ public final class Melismas {
         }
         int lowest = Integer.MAX_VALUE;
         int highest = Integer.MIN_VALUE;
-        for (Note head : heads) {
-            lowest = Math.min(lowest, head.midiPitch());
-            highest = Math.max(highest, head.midiPitch());
+        int widestLeap = 0;
+        for (int i = 0; i < heads.size(); i++) {
+            int pitch = heads.get(i).midiPitch();
+            lowest = Math.min(lowest, pitch);
+            highest = Math.max(highest, pitch);
+            if (i > 0) {
+                widestLeap = Math.max(widestLeap,
+                        Math.abs(pitch - heads.get(i - 1).midiPitch()));
+            }
         }
-        int reach = highest - lowest;
-        return reach >= runSemitones && reach < foldSemitones;
+        return highest - lowest >= runSemitones && widestLeap < foldSemitones;
     }
 }

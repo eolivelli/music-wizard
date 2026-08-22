@@ -238,10 +238,10 @@ public final class PlayablePartCheck {
     }
 
     /**
-     * What marking melismas costs and buys, swept over both intervals a
-     * syllable's note-heads are asked to reach (#597): how far apart they must
-     * be to be a run, and how far apart they are instead read as the melody
-     * stage's octave fold.
+     * What marking melismas costs and buys, swept over both of the decision's
+     * intervals (#597): how far apart a syllable's note-heads must reach to be
+     * a run, and how wide a leap between neighbouring heads is read as the
+     * melody stage's octave fold instead (#624).
      *
      * <p>Every row but the first decides afresh from the melody, {@code off}
      * included, so the sweep reads the same whether or not the workspace was

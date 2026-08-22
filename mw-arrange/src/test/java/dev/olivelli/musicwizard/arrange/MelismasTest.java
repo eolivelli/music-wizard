@@ -108,7 +108,7 @@ class MelismasTest {
     }
 
     @Test
-    @DisplayName("nor is a syllable whose notes are an octave apart")
+    @DisplayName("nor is a syllable whose two notes leap an octave")
     void anOctaveFoldIsNotARun() {
         Score score = sung(
                 notes(note(0.0, 0.5, 60), note(0.5, 0.5, 72)),
@@ -118,6 +118,38 @@ class MelismasTest {
 
         assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
                 .containsExactly(false);
+    }
+
+    @Test
+    @DisplayName("a run that covers an octave a step at a time is still a run")
+    void anOctaveCoveredInStepsIsARun() {
+        // The whole reach is an octave but no leap is (#624).
+        Score score = sung(
+                notes(note(0.0, 0.4, 60), note(0.4, 0.4, 64),
+                        note(0.8, 0.4, 68), note(1.2, 0.4, 72)),
+                line(word("aaah", 0.0, 1.6)));
+
+        Score marked = score.withLyrics(Melismas.marked(score));
+
+        assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
+        assertThat(pitches(PlayableMelody.reduce(marked)))
+                .containsExactly(60, 64, 68, 72);
+    }
+
+    @Test
+    @DisplayName("the fold bound reads the leap, not the reach, at any setting")
+    void theFoldBoundReadsTheLeap() {
+        // A sweep bound sitting between the widest leap and the reach, so the
+        // two readings genuinely disagree about this syllable.
+        Score score = sung(
+                notes(note(0.0, 0.4, 60), note(0.4, 0.4, 64), note(0.8, 0.4, 68)),
+                line(word("aaah", 0.0, 1.2)));
+
+        Score marked = score.withLyrics(Melismas.marked(score, 2, 5));
+
+        assertThat(marked.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
     }
 
     @Test
