@@ -12,6 +12,7 @@ Melody, note by note against each package's own MIDI melody track
   pop-add9-g-96: no melody track; not scored
   pop-add9-triads-g-96: no melody track; not scored
   pop-axis-g-116: notes=116/135  F1@50ms 12.7%  F1@100ms 22.3%  pitch 30.9%  voiced 52.2%
+  pop-borrowed-iv-c-100: no melody track; not scored
   pop-deceptive-f-72: no melody track; not scored
   pop-m6-m7b5-gm-100: no melody track; not scored
   pop-maj7-rootless-c-92: no melody track; not scored

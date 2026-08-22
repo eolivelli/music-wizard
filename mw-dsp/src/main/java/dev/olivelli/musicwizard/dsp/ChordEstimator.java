@@ -566,19 +566,19 @@ public final class ChordEstimator {
      * against {@link #THIRD_MUST_HOLD_FOR}'s count.
      *
      * <p>Read against {@link #qualityScore}, so it is the same cosine the
-     * decision itself is made on and one is the whole of the run's chordal
-     * register being those notes and nothing else. Absolute rather than a
-     * multiple of {@link #flatScore}, because that floor moves with the
-     * template's size and a four-note minor-ish label could then not reach any
-     * bar at all — and #583 is chiefly about those.
+     * decision is made on, and one is the run's chordal register being those
+     * notes and nothing else. Absolute rather than a multiple of
+     * {@link #flatScore}: that floor rises with the template's size, so a
+     * four-note minor-ish label could then reach no bar at all — and that is
+     * where #583 says a guard bites hardest.
      *
-     * <p>Swept by {@code tools/ChordSweep.java score} and by both sample
-     * harnesses: the corpus stands still across a band around it and moves at
-     * either edge, so the rule is not delicate. What it costs, on real audio,
-     * is a false minor that fits its run this well; the baselines carry
-     * whether any does.
+     * <p>Swept on the sample, chart and synthetic harnesses, and the band the
+     * corpus leaves open is narrow: below it a false minor returns on a
+     * recording whose truth has none there, above it the benchmark that states
+     * this case loses its borrowed fourths. This sits between them; the
+     * baselines are what say so.
      */
-    private static final double MINOR_OVERRULES_THE_COUNT = 0.90;
+    private static final double MINOR_OVERRULES_THE_COUNT = 0.907;
 
     /**
      * Withdraws the minor third from every run on a root the recording states a
