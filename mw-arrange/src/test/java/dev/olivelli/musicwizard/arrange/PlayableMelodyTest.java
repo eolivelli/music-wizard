@@ -143,15 +143,69 @@ class PlayableMelodyTest {
         }
 
         @Test
-        @DisplayName("the group runs from its first onset to its last release")
+        @DisplayName("the group runs to its last release, from a syllable that starts before it")
         void theSpanCoversWhatItReplaced() {
+            // The syllable begins before anything sounds, so the onset is the
+            // melody's own (#616) and the release is the furthest one.
+            Score score = sung(
+                    notes(note(1.0, 0.2, 60), note(1.2, 0.5, 64)),
+                    line(word("held", 0.95, 1.6)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+            assertThat(only.offsetSeconds()).isEqualTo(1.7);
+        }
+
+        @Test
+        @DisplayName("a syllable starting inside its group moves the head to where it is felt")
+        void aSyllableStartInsideTheGroupMovesTheHead() {
+            // The group's first piece is the approach; the aligner measured
+            // the syllable itself beginning inside it (#616).
             Score score = sung(
                     notes(note(1.0, 0.2, 60), note(1.2, 0.5, 64)),
                     line(word("held", 1.05, 1.6)));
 
             Note only = PlayableMelody.reduce(score).notes().get(0);
-            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.05);
             assertThat(only.offsetSeconds()).isEqualTo(1.7);
+        }
+
+        @Test
+        @DisplayName("a syllable starting after its group's release moves nothing")
+        void aSyllableStartPastTheGroupMovesNothing() {
+            // The claim is by silence, so a note can be sung on a syllable
+            // measured entirely after it; printing the head at that start
+            // would put it where the melody holds nothing.
+            Score score = sung(
+                    notes(note(1.0, 0.2, 60), note(1.2, 0.5, 64)),
+                    line(word("late", 1.8, 2.2)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("a single sung note takes its syllable's start the same way")
+        void aSingleNoteTakesItsSyllableStart() {
+            Score score = sung(
+                    notes(note(1.0, 1.0, 60)),
+                    line(word("one", 1.25, 2.0)));
+
+            Note only = PlayableMelody.reduce(score).notes().get(0);
+            assertThat(only.onsetSeconds()).isEqualTo(1.25);
+            assertThat(only.offsetSeconds()).isEqualTo(2.0);
+        }
+
+        @Test
+        @DisplayName("only the head that opens a melisma moves; the run keeps its own onsets")
+        void laterHeadsOfAMelismaKeepTheirOnsets() {
+            Score score = sung(
+                    notes(note(1.0, 0.5, 60), note(1.5, 0.5, 64), note(2.0, 0.5, 67)),
+                    line(word("aaah", 1.1, 2.5).withMelisma(true)));
+
+            List<Double> onsets = PlayableMelody.reduce(score).notes().stream()
+                    .map(Note::onsetSeconds).toList();
+            assertThat(onsets).containsExactly(1.1, 1.5, 2.0);
         }
 
         @Test
