@@ -162,6 +162,18 @@ def chord_quality_constants() -> list[tuple[str, str, str]]:
     return constants
 
 
+def grid_shorthand_qualities() -> list[tuple[str, str, str]]:
+    """mw-teacher's ChordSymbol.Quality constants, as (name, suffix, intervals)."""
+    source = (Path(__file__).resolve().parent.parent
+              / "mw-teacher/src/main/java/dev/olivelli/musicwizard/teacher"
+              / "ChordSymbol.java").read_text(encoding="utf-8")
+    constants = re.findall(r"^        ([A-Z_]+)\(\"([^\"]*)\"((?:,\s*\d+)*)\)",
+                           source, re.MULTILINE)
+    if len(constants) < 10:
+        raise AssertionError("the shorthand's constants did not parse")
+    return constants
+
+
 def minor_line(spans: list[dict], duration: float = 10.0) -> str:
     """The one line score_no_minor prints for a recording."""
     out = io.StringIO()
@@ -231,6 +243,35 @@ class MinorSeconds(unittest.TestCase):
         self.assertEqual(set(), constants & set(samples.CORPUS_ONLY_QUALITY))
         self.assertEqual({**samples.QUALITY_SYMBOL, **samples.CORPUS_ONLY_QUALITY},
                          samples.TRUTH_SYMBOL)
+
+
+class GridShorthand(unittest.TestCase):
+    """#612: a spec states its grid in the shorthand mw-teacher compiles and
+    this harness reads back as truth. Two programs, one language."""
+
+    def test_every_quality_a_spec_can_state_is_one_the_harness_reads(self):
+        """A quality added to ChordSymbol.Quality alone compiles a package
+        score-synthetic.py then dies on. The reverse is not required: this
+        table also reads samples/list.txt, whose truth is written by ear and
+        may state a shape no spec generates."""
+        for name, suffix, _ in grid_shorthand_qualities():
+            self.assertIn(suffix, samples.SUFFIX_QUALITY, name)
+
+    def test_a_stated_quality_is_scored_as_the_notes_it_compiled_to(self):
+        """The quieter half: a suffix both sides know, naming a quality whose
+        notes are not the ones the audio was rendered from, is scored as
+        another chord. Compared as pitch classes, which is all a bar's credit
+        rests on. A suffix the table does not hold is the test above, and a
+        corpus-only quality has no constant to compare against (#600) and is
+        held to the enum by its own rule."""
+        enum_notes = {name: {int(i) % 12 for i in re.findall(r"\d+", intervals)}
+                      for name, _, intervals in chord_quality_constants()}
+        for name, suffix, intervals in grid_shorthand_qualities():
+            quality = samples.SUFFIX_QUALITY.get(suffix)
+            if quality is None or quality in samples.CORPUS_ONLY_QUALITY:
+                continue
+            self.assertEqual(enum_notes[quality],
+                             {int(i) % 12 for i in re.findall(r"\d+", intervals)}, name)
 
 
 def vocabulary_line(spans: list[dict], stated: str = "A E D") -> str:

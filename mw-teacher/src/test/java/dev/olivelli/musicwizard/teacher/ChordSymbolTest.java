@@ -65,6 +65,22 @@ class ChordSymbolTest {
     }
 
     /**
+     * The suffixes the enum spells are what a spec may state, and what
+     * {@code tools/test-harness-rules.py} reads off this enum to hold against
+     * the harness's own table (#612). A quality the token pattern does not
+     * list is unreachable, and two sharing a suffix make one of them
+     * unreachable, either of which would make that reading false.
+     */
+    @Test
+    void everyQualityParsesBackFromItsOwnSuffix() {
+        for (ChordSymbol.Quality quality : ChordSymbol.Quality.values()) {
+            assertThat(ChordSymbol.parse("C" + quality.suffix()).quality())
+                    .as("C%s", quality.suffix())
+                    .isEqualTo(quality);
+        }
+    }
+
+    /**
      * A quality the grid cannot spell must fail the token, not fall through to
      * the pattern's empty alternative: a silent fall-through would compile a
      * spec's stated quality into a plain major triad and call it ground truth.
