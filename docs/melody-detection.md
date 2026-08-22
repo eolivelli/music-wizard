@@ -124,9 +124,9 @@ right, rhythm approximate — the quantizer's job is a plausible reading, not
 a literal one.
 
 `--parts playable` engraves the lead sheet a second time from a **reduced**
-melody (#592): a sung syllable carries one note-head, and the pitch printed
-is the one its group settles on rather than an average of the ones it passed
-through. A syllable **the melody moves under** keeps its notes instead
+melody (#592): a sung syllable carries one note-head, and the pitch its group
+prints is the one the group settles on rather than an average of the ones it
+passed through. A syllable **the melody moves under** keeps its notes instead
 (#597): the aligner marks it a melisma, and the reduction then prints the run
 rather than collapsing it. Movement is the evidence, not length — a syllable
 merely held, and one re-articulated on its own pitch, stay collapsed, and so
@@ -145,6 +145,19 @@ Where there are no words the grouping falls back to absorbing an ornament
 into the note it leads into, which is much weaker: what says where a sung
 gesture begins is the onset envelope, and that is audio, which the
 arrangement layer cannot see.
+
+A printed head that **neither the chord under it nor the key signature
+admits** is then read once more (#670). Where it is short, where the melody
+leaves it and comes back to the same place, and where it sits near that
+place, it is an excursion rather than a note and prints the pitch the line
+returned to — so its printed pitch is one the group never sounded, which is
+the one thing the paragraph above does not cover. A head between its
+neighbours is exempt, being what a chromatic passing tone looks like, and a
+held head is never touched: rounding a melody to the harmony was measured and
+rejected (#571), and this refuses a note rather than choosing one. The same
+tool sweeps all three bounds and prints the sounding time the harmony does
+not account for, out of the chord and out of the signature separately, since
+the key layer holds one span per piece (#441).
 
 The reduced page is also written on a **narrower set of divisions** than the
 estimate's (#594), which `QuantizationSettings.READING` defines. A bar of the
