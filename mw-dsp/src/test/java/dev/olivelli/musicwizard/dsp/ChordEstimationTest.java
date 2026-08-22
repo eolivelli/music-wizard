@@ -1377,9 +1377,9 @@ class ChordEstimationTest {
 
     /**
      * #583: a true minor on a root the recording otherwise plays major, which
-     * {@link ChordEstimator} withdraws with the false ones. Pins the defect on
-     * real material rather than a cure; #583 carries why no guard tried so far
-     * separates this run from the false minors the corpus holds.
+     * {@link ChordEstimator} withdraws with the false ones. Pins the defect
+     * rather than a cure; #583 carries why no guard tried so far separates this
+     * run from the false minors the corpus holds.
      *
      * <p>Three runs of {@code synthetic_samples/pop-borrowed-iv-c-100.mp3},
      * whose grid states a borrowed {@code Fm} on a root it otherwise plays
