@@ -85,9 +85,6 @@ public final class LeadSheet {
                 StaffNotation.staff(quantized, melody, Optional.of(StaffNotation.MELODY_VOICE));
 
         out.append("\\score {\n");
-        // Every context is built from the pickup the assembler hands it
-        // (#605); which ones are on the page, and their order, is decided
-        // here and nowhere else.
         out.append(new ScoreAssembly(staff.pickup())
                 // The chord names give up the tempo mark and the closing bar
                 // line: the staff below carries both already, and a lead sheet

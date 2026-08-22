@@ -145,10 +145,6 @@ final class LyricEngraving {
      * @param bars the chart's bars, whose positions this reads rather than
      *             deriving a second time from the tempo map
      */
-    static Optional<String> block(Score score, List<ChartLayout.Bar> bars) {
-        return block(score, bars, Attachment.BELOW_CHORDS, Optional.empty(), Optional.empty());
-    }
-
     /**
      * The same, leaning towards whatever it is written under and opening where
      * the staff beside it opens.

@@ -25,15 +25,10 @@ import java.util.Optional;
  * Assembles the parallel contexts of one {@code \score}, handing each of them
  * the pickup (#605).
  *
- * <p>A {@code \partial} moves the shared timing of the whole {@code \score},
- * so every timed context in it has to open on the pickup — and a context that
- * is not told sits a bar less the pickup behind the music from bar one on,
- * behind a single failed bar check, because LilyPond reports the first
- * mismatch and then resynchronises (#601). While the pickup was a parameter
- * each call site had to remember, a context added later repeated that in
- * silence. Here the assembler carries it and every block is built from it: a
- * context that needs no timing ignores its argument visibly, rather than
- * never being offered it.
+ * <p>A context not told the pickup engraves displaced behind one failed bar
+ * check (#601). Every timed emitter's signature now takes the pickup, so the
+ * question cannot be skipped at any call; this class is where a lead sheet's
+ * one answer comes from.
  */
 final class ScoreAssembly {
 

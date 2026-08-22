@@ -347,10 +347,14 @@ public final class ChordChart {
         boolean tagged = tags.stream().anyMatch(Optional::isPresent);
         // The lyric block is built before anything is written, because whether
         // there is one decides that the score needs a parallel block at all.
+        // Every timed context answers the pickup question at the call
+        // (#605); a chart has no staff, so its answer is always "none".
         Optional<String> lyrics = withLyrics
-                ? LyricEngraving.block(score, bars) : Optional.empty();
+                ? LyricEngraving.block(score, bars, LyricEngraving.Attachment.BELOW_CHORDS,
+                        Optional.empty(), Optional.empty())
+                : Optional.empty();
         Optional<String> beats = options.beatMarks()
-                ? BeatMarks.block(score, bars) : Optional.empty();
+                ? BeatMarks.block(score, bars, Optional.empty()) : Optional.empty();
         boolean parallel = tagged || lyrics.isPresent() || beats.isPresent();
         if (parallel) {
             out.append("  <<\n");
@@ -358,7 +362,7 @@ public final class ChordChart {
         if (tagged) {
             repeatBrackets(out, bars, tags);
         }
-        out.append(chordNamesBlock(score, bars, true));
+        out.append(chordNamesBlock(score, bars, true, Optional.empty()));
         // After the chord names, not before: read top to bottom the staff
         // affinities must not increase, and every lane here points DOWN as the
         // chord names do. Equal affinities do not increase, which is what makes
@@ -389,11 +393,6 @@ public final class ChordChart {
      *     only context there is; false on a lead sheet, where the staff carries
      *     both and a second copy would engrave the tempo twice.
      */
-    static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
-                                  boolean carriesMarks) {
-        return chordNamesBlock(score, bars, carriesMarks, Optional.empty());
-    }
-
     /**
      * The same, in a score whose first bar has been shortened to a pickup.
      *

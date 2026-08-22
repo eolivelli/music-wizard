@@ -62,7 +62,16 @@ final class BeatMarks {
      * @param bars the chart's bars, whose positions this reads rather than
      *             deriving a second time from the tempo map
      */
-    static Optional<String> block(Score score, List<ChartLayout.Bar> bars) {
+    static Optional<String> block(Score score, List<ChartLayout.Bar> bars,
+                                  Optional<StaffNotation.Pickup> pickup) {
+        // Taking the parameter is what #605 asks of every timed context; what
+        // this lane cannot yet do is open on one -- it writes its bars full,
+        // which is #601's displacement -- so a score with a pickup is refused
+        // aloud rather than engraved wrong in silence.
+        if (pickup.isPresent()) {
+            throw new IllegalArgumentException(
+                    "beat marks cannot open on a pickup: the lane writes full bars");
+        }
         if (bars.isEmpty() || score.beatGrid().isEmpty()) {
             return Optional.empty();
         }
