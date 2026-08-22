@@ -35,7 +35,14 @@ def rows(lines):
     keyed = {}
     for line in lines:
         if ".mp3:" in line or re.match(r"^  \S+: ", line):
-            keyed[line.split(":")[0].strip()] = line.rstrip()
+            # Two rows keyed alike would otherwise collapse into one, taking a
+            # row off both sides of the diff and out of the count below with
+            # it -- the count is a claim, so it must not be able to shrink
+            # quietly. tools/baseline-drift.py disambiguates the same way.
+            name = line.split(":")[0].strip()
+            while name in keyed:
+                name += "'"
+            keyed[name] = line.rstrip()
     return keyed
 
 

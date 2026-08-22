@@ -115,7 +115,6 @@ default), one glob per line matched against `<baseline> <row>`:
 
 ```
 score-asr.txt *          # no sherpa native built here
-score-samples.txt gli-anni.mp3
 ```
 
 With that file present, a row that skips without being covered fails the gate,

@@ -18,12 +18,9 @@
 # the diff is reviewed rather than silently absorbed.
 #
 # A benchmark this machine cannot measure is skipped rather than failed, but a
-# skip and a pass are not the same claim (#464): every skipped row is named
-# with its cause in the verdict, a step whose every row skipped is called out
-# as having certified nothing, and the verdict word says PASS-WITH-SKIPS. Which
-# skips are legitimate is a fact about the machine rather than about the
-# branch, so the machine declares them -- see tools/premerge-skips.py -- and an
-# undeclared skip fails the gate.
+# skip and a pass are not the same claim (#464): the verdict names every
+# skipped row and the gate fails on one this machine has not declared. See
+# tools/premerge-skips.py and docs/local-setup.md.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"

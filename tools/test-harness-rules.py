@@ -854,7 +854,7 @@ class VttConversion(unittest.TestCase):
 
 
 class Keying(unittest.TestCase):
-    """premerge.sh keys each line on the text before its first colon, and reads
+    """The gate keys each line on the text before its first colon, and reads
     a line as a row when it carries '.mp3:' or is an indented '  name: '. Both
     halves of that are executed here rather than asserted in a comment; the
     second shape is what the melody harness prints, and PremergeComparison
@@ -893,7 +893,7 @@ class Keying(unittest.TestCase):
         self.assertNotIn(".mp3:", lyrics.adhoc_line("generale.mp3", *self.ARGS))
 
     def test_the_preambles_are_not_gated(self):
-        """The lines main() prints, not the module docstring -- premerge.sh
+        """The lines main() prints, not the module docstring -- the gate
         reads the former, one per source."""
         for preamble in lyrics.PREAMBLES.values():
             self.assertNotIn(".mp3:", preamble)
@@ -911,7 +911,7 @@ class Keying(unittest.TestCase):
     def test_the_report_literals_exist_in_analyze_itself(self):
         """The asr loop's classification reads analyze's printed report, so
         its literals are held against AnalyzeCommand's source the same way
-        the skip marker is held against premerge.sh: a rewording there must
+        the skip marker is held against its reader: a rewording there must
         fail here before the gate starts skipping every row in silence."""
         source = (Path(__file__).resolve().parent.parent
                   / "mw-cli/src/main/java/dev/olivelli/musicwizard/cli"
@@ -1386,6 +1386,16 @@ class PremergeComparison(unittest.TestCase):
         self.assertIn("compared 0 of 1 baselined rows", done.stdout)
         self.assertIn("certified nothing", done.stdout)
 
+    def test_two_rows_keyed_alike_are_both_compared(self):
+        """Collapsing them would take a row off both sides of the diff and out
+        of the count with it, leaving a step that says it compared everything
+        it holds while one of its rows went unread."""
+        pair = self.CHORD_ROW + self.CHORD_ROW.replace("96.3", "12.3")
+        done = self.run_diff(pair, pair)
+        self.assertEqual(0, done.returncode)
+        self.assertIn("compared 2 of 2 baselined rows", done.stdout)
+        self.assertIn("DIFF", self.compare(pair, self.CHORD_ROW * 2))
+
     def test_a_baseline_holding_no_keyable_row_fails_the_step(self):
         """The #494 defect at the gate rather than in a reviewer's eye: a
         baseline whose rows this cannot key compares nothing, and a step that
@@ -1411,14 +1421,7 @@ class PremergeComparison(unittest.TestCase):
 
 
 class PremergeSkipAccount(unittest.TestCase):
-    """Whether a skipped row was expected on this machine (#464).
-
-    The gate cannot certify what it did not measure, and the two ways a row
-    goes unmeasured look identical in the output: a machine that never fetched
-    a benchmark, and a worktree provisioned without one the machine has. Only a
-    statement made outside the worktree tells them apart, which is what the
-    manifest is.
-    """
+    """Whether a skipped row was expected on this machine (#464)."""
 
     TOOL = Path(__file__).resolve().parent / "premerge-skips.py"
     ROWS = ("total\tscore-samples.txt\t3\n"
@@ -1464,6 +1467,25 @@ class PremergeSkipAccount(unittest.TestCase):
         self.assertEqual(3, done.returncode)
         self.assertIn("declares no expected skips", done.stdout)
 
+    def test_the_manifest_is_looked_for_beside_the_config_mw_itself_reads(self):
+        """The one path nothing else pins: get it wrong and every machine falls
+        into the ungated arm, which prints a healthy-looking verdict. Both the
+        XDG variable and the fallback, since MW's own loader honours both."""
+        with tempfile.TemporaryDirectory() as tmp:
+            for under in (Path(tmp), Path(tmp) / ".config"):
+                (under / "music-wizard").mkdir(parents=True)
+                (under / "music-wizard" / "premerge-skips.txt").write_text("* *\n")
+            record_file = Path(tmp) / "records.txt"
+            record_file.write_text(self.ROWS)
+            call = [sys.executable, str(self.TOOL), str(record_file), "2", "2"]
+            clean = {k: v for k, v in os.environ.items()
+                     if k not in ("MW_PREMERGE_SKIPS", "XDG_CONFIG_HOME")}
+            for where in ({"XDG_CONFIG_HOME": tmp}, {"HOME": tmp, "XDG_CONFIG_HOME": ""}):
+                done = subprocess.run(call, capture_output=True, text=True,
+                                      env=clean | where)
+                self.assertEqual(0, done.returncode, done.stdout)
+                self.assertIn("all of them expected", done.stdout)
+
     def test_the_comment_and_the_glob_are_both_read(self):
         done = self.account(self.ROWS,
                             manifest="# why this machine cannot\nscore-*.txt *  # both\n")
@@ -1475,7 +1497,7 @@ class PremergeSkipAccount(unittest.TestCase):
         done = self.account(self.ROWS, manifest="* *\n")
         summary = [line for line in done.stdout.splitlines()
                    if line.startswith("SUMMARY: ")]
-        self.assertEqual(["SUMMARY: 2 of 4 rows not measured, all expected here; "
+        self.assertEqual(["SUMMARY: 2 of 4 rows not compared, all expected here; "
                           "score-asr.txt certified nothing"], summary)
 
     def test_a_run_that_measured_everything_says_so_and_carries_no_summary(self):
@@ -1484,7 +1506,7 @@ class PremergeSkipAccount(unittest.TestCase):
         done = self.account("total\tscore-samples.txt\t3\n", manifest="",
                             printed=0, steps=1)
         self.assertEqual(0, done.returncode)
-        self.assertIn("every one of the 3 baselined rows was measured here.", done.stdout)
+        self.assertIn("every one of the 3 baselined rows was compared here.", done.stdout)
         self.assertNotIn("SUMMARY:", done.stdout)
 
     def test_an_account_that_disagrees_with_the_run_fails_rather_than_reporting(self):
@@ -1526,11 +1548,22 @@ class PremergeVerdict(unittest.TestCase):
 
     def run_gate(self, present: bool, manifest: str | None):
         """The gate over a scratch corpus of one row per baseline, either
-        measured or absent the way a harness reports an absent benchmark."""
+        compared or absent the way a harness reports an absent benchmark.
+
+        The tree is a git repository of its own, because the script this runs
+        looks for `origin/main` and fetches it: without one here, git searches
+        upward and finds whatever repository encloses the temporary directory,
+        and the test moves a ref it does not own.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             tree = Path(tmp) / "repo"
             (tree / "tools" / "baselines").mkdir(parents=True)
             (tree / "bin").mkdir()
+            subprocess.run(["git", "init", "-q", str(tree)], check=True,
+                           env={"GIT_CONFIG_GLOBAL": os.devnull,
+                                "GIT_CONFIG_SYSTEM": os.devnull,
+                                "GIT_CONFIG_NOSYSTEM": "1",
+                                "PATH": os.environ["PATH"]})
             build = tree / "bin" / "mvn"
             build.write_text("#!/bin/sh\nexit 0\n")
             build.chmod(0o755)
@@ -1554,11 +1587,14 @@ class PremergeVerdict(unittest.TestCase):
             return subprocess.run(["bash", str(tree / "tools" / "premerge.sh")],
                                   capture_output=True, text=True, env=environment)
 
-    def test_a_corpus_this_machine_measured_in_full_passes_plainly(self):
+    def test_a_corpus_this_machine_compared_in_full_passes_plainly(self):
         done = self.run_gate(present=True, manifest="")
         self.assertEqual(0, done.returncode, done.stdout)
         self.assertIn("PREMERGE: PASS (build + harnesses)", done.stdout)
-        self.assertIn("baselined rows was measured here", done.stdout)
+        self.assertIn("baselined rows was compared here", done.stdout)
+        # The scratch tree owns the repository the script reads, so nothing
+        # reaches the one this checkout lives in.
+        self.assertNotIn("baseline drift", done.stdout)
 
     def test_a_tree_without_its_benchmarks_fails_where_the_machine_has_them(self):
         """The incident: every row skipped, nothing measured, PASS. A machine
@@ -1580,8 +1616,11 @@ class PremergeVerdict(unittest.TestCase):
         done = self.run_gate(present=False, manifest="* *\n")
         self.assertEqual(0, done.returncode)
         self.assertIn("PREMERGE: PASS-WITH-SKIPS", done.stdout)
-        self.assertIn("rows not measured, all expected here", done.stdout)
+        self.assertIn("rows not compared, all expected here", done.stdout)
         self.assertNotIn("PREMERGE: PASS (", done.stdout)
+        # Naming each of nine blind steps in the one line people paste says
+        # less than the fact that none of them certified anything.
+        self.assertIn("no step certified anything", done.stdout)
 
 
 class PremergeShellContract(unittest.TestCase):

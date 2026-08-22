@@ -152,9 +152,9 @@ QUALITY = {
 
 
 def missing_line(label: str) -> str:
-    """A baselined name this machine cannot measure; premerge.sh skips rows
+    """A baselined name this machine cannot measure; the gate skips rows
     carrying this line's marker, and test-harness-rules.py holds every writer
-    of it, and premerge.sh itself, to one literal."""
+    of it, and its reader, to one literal."""
     return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
 
 

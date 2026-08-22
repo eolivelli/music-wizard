@@ -2,25 +2,22 @@
 """What a premerge run could not certify, and whether that was expected here.
 
 Reads the records tools/premerge-diff.py wrote for the run and turns them into
-the verdict's account of the rows this machine did not measure: each named with
-the cause its harness printed, each step whose every row skipped called out as
-having certified nothing, and each row checked against this machine's
-expected-skip manifest (#464, #466).
+the verdict's account of the rows it did not compare: each named with the cause
+its harness printed, each step whose every row skipped called out as having
+certified nothing, and each row checked against this machine's expected-skip
+manifest (#464, #466).
 
-The manifest is per machine rather than per checkout, because that is what the
-question is about: a worktree that was provisioned without its local-only audio
-skips rows the machine can measure, and only something outside that worktree
-can tell the two apart. It sits beside MW's own config --
-$XDG_CONFIG_HOME/music-wizard/premerge-skips.txt, or $MW_PREMERGE_SKIPS -- and
-holds one glob per line, matched against "<baseline> <row>", with # comments.
+The manifest is a fact about the machine, not about the checkout, and so lives
+beside MW's own config -- $XDG_CONFIG_HOME/music-wizard/premerge-skips.txt, or
+$MW_PREMERGE_SKIPS. It holds one glob per line, matched against
+"<baseline> <row>", with # comments; docs/local-setup.md says why it sits
+outside the tree and what to write in it.
 
-It is absent by default, and then the skips are named but not gated: a fresh
-clone short of the corpus must not fail the gate on every branch (#365), and a
-machine that cannot reach an optional model must be able to say so without
-editing anything under version control (#487).
+It is absent by default, and then the skips are named but not gated, which is
+what keeps a fresh clone from failing the gate on every branch (#365).
 
-Exits 0 when every skipped row was expected here, 3 when this machine declares
-nothing, and 1 when a row skipped that the manifest does not cover.
+Exits 0 when every skipped row was expected here and 3 when this machine
+declares nothing; premerge fails the gate on any other status.
 """
 
 import fnmatch
@@ -76,10 +73,10 @@ def main(argv):
 
     total = sum(totals.values())
     if not skips:
-        print(f"every one of the {total} baselined rows was measured here.")
+        print(f"every one of the {total} baselined rows was compared here.")
         return 0
 
-    print(f"{len(skips)} of {total} baselined rows were not measured here:")
+    print(f"{len(skips)} of {total} baselined rows were not compared here:")
     for baseline, row, why in skips:
         print(f"  {baseline} {row} — {why}")
     for baseline in blind(totals, skips):
@@ -121,10 +118,12 @@ def blind(totals, skips):
 def summarise(skips, totals, verdict):
     """The fragment premerge.sh splices into the verdict line, which is what
     gets pasted into a pull request: it must not read as a full run."""
-    line = (f"SUMMARY: {len(skips)} of {sum(totals.values())} rows not measured, "
+    line = (f"SUMMARY: {len(skips)} of {sum(totals.values())} rows not compared, "
             f"{verdict}")
     nothing = blind(totals, skips)
-    if nothing:
+    if len(nothing) == len(totals):
+        line += "; no step certified anything"
+    elif nothing:
         line += f"; {', '.join(nothing)} certified nothing"
     print(line)
 
