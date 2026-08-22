@@ -121,7 +121,7 @@ def summarise(skips, totals, verdict):
     line = (f"SUMMARY: {len(skips)} of {sum(totals.values())} rows not compared, "
             f"{verdict}")
     nothing = blind(totals, skips)
-    if len(nothing) == len(totals):
+    if nothing and len(nothing) == len(totals):
         line += "; no step certified anything"
     elif nothing:
         line += f"; {', '.join(nothing)} certified nothing"

@@ -36,6 +36,14 @@ separation = import_module("measure-separation-cost")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
+# Git reading none of the machine's config files. Written once because the
+# fixture and the code under test must stand behind the same shield: a subject
+# that spawns git of its own would otherwise read the ambient configuration
+# while the fixture reads none.
+OWN_GIT_CONFIG = {"GIT_CONFIG_GLOBAL": os.devnull,
+                  "GIT_CONFIG_SYSTEM": os.devnull,
+                  "GIT_CONFIG_NOSYSTEM": "1"}
+
 C = (0, "MAJOR")
 G = (7, "MAJOR")
 F = (5, "MAJOR")
@@ -990,8 +998,7 @@ def scratch_repo():
     local-only, which is where this file is most often run.
     """
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env |= {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1"}
+    env |= OWN_GIT_CONFIG
     with tempfile.TemporaryDirectory() as tmp, \
             mock.patch.dict(os.environ, env, clear=True):
         def git(*args):
@@ -1480,7 +1487,8 @@ class PremergeSkipAccount(unittest.TestCase):
             call = [sys.executable, str(self.TOOL), str(record_file), "2", "2"]
             clean = {k: v for k, v in os.environ.items()
                      if k not in ("MW_PREMERGE_SKIPS", "XDG_CONFIG_HOME")}
-            for where in ({"XDG_CONFIG_HOME": tmp}, {"HOME": tmp, "XDG_CONFIG_HOME": ""}):
+            for where in ({"HOME": os.devnull, "XDG_CONFIG_HOME": tmp},
+                          {"HOME": tmp, "XDG_CONFIG_HOME": ""}):
                 done = subprocess.run(call, capture_output=True, text=True,
                                       env=clean | where)
                 self.assertEqual(0, done.returncode, done.stdout)
@@ -1560,10 +1568,14 @@ class PremergeVerdict(unittest.TestCase):
             (tree / "tools" / "baselines").mkdir(parents=True)
             (tree / "bin").mkdir()
             subprocess.run(["git", "init", "-q", str(tree)], check=True,
-                           env={"GIT_CONFIG_GLOBAL": os.devnull,
-                                "GIT_CONFIG_SYSTEM": os.devnull,
-                                "GIT_CONFIG_NOSYSTEM": "1",
-                                "PATH": os.environ["PATH"]})
+                           env=OWN_GIT_CONFIG | {"PATH": os.environ["PATH"]})
+            # Asserted here rather than on the output, because the arm that
+            # bites prints nothing at all: an enclosing repository whose HEAD
+            # is behind its origin/main has the ref fetched and moved before
+            # the drift prompt has said a word.
+            root = subprocess.run(["git", "-C", str(tree), "rev-parse", "--show-toplevel"],
+                                  capture_output=True, text=True, check=True)
+            self.assertEqual(tree.resolve(), Path(root.stdout.strip()).resolve())
             build = tree / "bin" / "mvn"
             build.write_text("#!/bin/sh\nexit 0\n")
             build.chmod(0o755)
@@ -1582,8 +1594,9 @@ class PremergeVerdict(unittest.TestCase):
             if manifest is not None:
                 location.write_text(manifest)
             environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-            environment |= {"PATH": f"{tree / 'bin'}{os.pathsep}{os.environ['PATH']}",
-                            "MW_PREMERGE_SKIPS": str(location)}
+            environment |= OWN_GIT_CONFIG | {
+                "PATH": f"{tree / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                "MW_PREMERGE_SKIPS": str(location)}
             return subprocess.run(["bash", str(tree / "tools" / "premerge.sh")],
                                   capture_output=True, text=True, env=environment)
 
@@ -1592,9 +1605,6 @@ class PremergeVerdict(unittest.TestCase):
         self.assertEqual(0, done.returncode, done.stdout)
         self.assertIn("PREMERGE: PASS (build + harnesses)", done.stdout)
         self.assertIn("baselined rows was compared here", done.stdout)
-        # The scratch tree owns the repository the script reads, so nothing
-        # reaches the one this checkout lives in.
-        self.assertNotIn("baseline drift", done.stdout)
 
     def test_a_tree_without_its_benchmarks_fails_where_the_machine_has_them(self):
         """The incident: every row skipped, nothing measured, PASS. A machine
@@ -1651,7 +1661,7 @@ class PremergeShellContract(unittest.TestCase):
         """The seam between the two: premerge fails a step whose output lacks
         this line, so the tool's wording and the grep are one literal."""
         self.assertIn("grep -q '^compared '", self.SCRIPT)
-        self.assertIn('f"compared ',
+        self.assertIn('account = f"compared ',
                       (Path(__file__).resolve().parent / "premerge-diff.py")
                       .read_text(encoding="utf-8"))
 

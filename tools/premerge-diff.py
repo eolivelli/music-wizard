@@ -78,9 +78,11 @@ def main(argv):
             # The diff can only compare what this machine can measure. Only the
             # CURRENT side may say so: a committed baseline that certifies
             # absence is a defect, and where this machine can measure the file
-            # it falls through to DIFF below.
-            skips.append((row, reason(current[row])))
-            out.append(f"SKIP {row}: {skips[-1][1]}")
+            # it falls through to DIFF below. Reported under the name the row
+            # itself carries rather than its key, since the verdict quotes that
+            # back as a line to write in a manifest.
+            skips.append((current[row].split(":")[0].strip(), reason(current[row])))
+            out.append(f"SKIP {skips[-1][0]}: {skips[-1][1]}")
         else:
             compared += 1
             if current[row] != base:

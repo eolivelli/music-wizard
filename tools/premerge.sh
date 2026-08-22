@@ -19,8 +19,9 @@
 #
 # A benchmark this machine cannot measure is skipped rather than failed, but a
 # skip and a pass are not the same claim (#464): the verdict names every
-# skipped row and the gate fails on one this machine has not declared. See
-# tools/premerge-skips.py and docs/local-setup.md.
+# skipped row, and where the machine has declared which skips it expects, an
+# undeclared one fails the gate. See tools/premerge-skips.py and
+# docs/local-setup.md.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"
