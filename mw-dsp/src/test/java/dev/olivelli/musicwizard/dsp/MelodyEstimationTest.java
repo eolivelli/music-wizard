@@ -727,7 +727,7 @@ class MelodyEstimationTest {
                     .as("and so does a bound admitting no octave at all")
                     .endsWith(86);
             assertThat(pitches(MelodyEstimator.estimate(pitches, silence, 0, 0.7, 15, 0.9, 2, 0)))
-                    .as("a gap of nothing leaves the edge where the quantile put it")
+                    .as("a gesture of nothing decides every note alone")
                     .endsWith(62);
             assertThatIllegalArgumentException().isThrownBy(
                     () -> MelodyEstimator.estimate(pitches, silence, 0, 0.7, -1, 0.9, 2, 5));

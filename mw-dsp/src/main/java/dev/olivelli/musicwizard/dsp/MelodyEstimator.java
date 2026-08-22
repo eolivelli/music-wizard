@@ -209,7 +209,7 @@ public final class MelodyEstimator {
     private static final double RANGE_SPREAD_QUANTILE = 0.9;
 
     /**
-     * How far apart two notes running into one another may be and still be one
+     * How far apart two notes following one another may be and still be one
      * gesture the fold decides once.
      *
      * <p>A whole tone is the widest step a scale takes, so this is the smallest
@@ -385,9 +385,9 @@ public final class MelodyEstimator {
      * would leave one read two octaves out still an octave out.
      *
      * <p>The decision is taken over a gesture rather than a note (#614): notes
-     * that run into one another within {@link #ONE_GESTURE_SEMITONES} are one
-     * thing being sung or played, and which side of the band's edge each of
-     * them falls on is a semitone of tracker noise.
+     * following one another within {@link #ONE_GESTURE_SEMITONES} are one line
+     * moving, and which side of the band's edge each of them falls on is a
+     * semitone of tracker noise.
      *
      * <p>A band narrower than an octave is refused rather than applied: there
      * would be pitch classes with no representative in it at all, so every note
@@ -432,7 +432,13 @@ public final class MelodyEstimator {
         return folded;
     }
 
-    /** Whether two notes following one another are near enough to be one gesture. */
+    /**
+     * Whether two notes following one another are near enough to be one
+     * gesture: nearness in pitch and nothing else, so a gesture bridges a
+     * silence of any length, which is #664. Requiring the notes to touch costs
+     * the corpus the whole of what this rule buys — the notes of a phrase in a
+     * mix are parted by unvoiced stretches longer than any note.
+     */
     private static boolean oneGesture(Note first, Note second, double gestureSemitones) {
         return Math.abs(second.midiPitch() - first.midiPitch()) <= gestureSemitones;
     }

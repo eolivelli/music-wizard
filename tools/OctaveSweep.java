@@ -78,7 +78,7 @@ import javax.sound.midi.Track;
  *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java 14 0.9 2 2       # one setting
  *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java rows 14 0.9 2 2    # its rows
  *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java octaves 14 0.9 2 2 # how it is wrong
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java splits 14 0.9 2 2  # what it moved
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java splits 4 14 0.9 2 2 # what it moved
  *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java --separated rows 14 0.9 2 2
  * </pre>
  *
@@ -101,7 +101,8 @@ import javax.sound.midi.Track;
  * wrong semitone, how often the two agree on the pitch class, which is what an
  * octave error looks like and what a random misreading does not. The second
  * counts what the fold itself did: the notes it moved, whether truth called them
- * right before and after, and the gestures it cut in half (#614).
+ * right before and after, and how many pairs of notes within a width the caller
+ * names it left an octave or more apart (#614).
  *
  * <p><b>The cache cannot go stale silently.</b> Its key is a digest of the
  * recording's bytes and of every class on the classpath except the segmenter's
@@ -154,13 +155,6 @@ public final class OctaveSweep {
     /** Gesture widths the grid walks; at zero every note is decided alone. */
     private static final double[] GESTURES = {0, 1, 2, 3, 4, 5, 6, 7, 9, 12};
 
-    /**
-     * How far apart two notes may be and still be one gesture, for the {@code
-     * splits} count only -- the stage has no such notion, and this is the
-     * question being asked of it rather than a setting it is asked at.
-     */
-    private static final int ONE_GESTURE_SEMITONES = 2;
-
     private OctaveSweep() {
     }
 
@@ -194,6 +188,21 @@ public final class OctaveSweep {
         }
         List<double[]> bands = new ArrayList<>();
         int first = mode.isEmpty() ? 0 : 1;
+        // The width the splits count asks at, named rather than assumed: the
+        // fold cannot separate two notes closer together than the setting it
+        // is run at, so a count taken at that width or under is zero however
+        // the fold behaves, and a mode that answered it would print what a
+        // perfect result prints.
+        double asked = 0;
+        if (mode.equals(SPLITS)) {
+            if (args.length < 2 || !isNumber(args[1])) {
+                System.err.println("splits takes the width it counts at, then the settings:"
+                        + " splits <semitones> <floor> <quantile> <octaves> <gesture>");
+                System.exit(2);
+            }
+            asked = Double.parseDouble(args[1]);
+            first = 2;
+        }
         // Rejected rather than rounded down to what does group: an argument
         // list one short is the previous release's syntax, and silently
         // answering the whole grid to it prints a row that reads exactly like
@@ -225,8 +234,14 @@ public final class OctaveSweep {
         }
         for (double[] band : bands) {
             if (mode.equals(SPLITS)) {
-                splits("vocadito ", vocadito, band, separated);
-                splits("synthetic", synthetic, band, separated);
+                if (asked <= band[3]) {
+                    System.err.printf(Locale.ROOT, "a width of %.0f is answered by a gesture of"
+                            + " %.0f: nothing that near can be split, whatever the fold does%n",
+                            asked, band[3]);
+                    System.exit(2);
+                }
+                splits("vocadito ", vocadito, band, separated, asked);
+                splits("synthetic", synthetic, band, separated, asked);
             } else if (mode.equals(OCTAVES)) {
                 octaves("vocadito ", vocadito, band, separated);
                 octaves("synthetic", synthetic, band, separated);
@@ -297,21 +312,23 @@ public final class OctaveSweep {
      * What the fold moved and what it cut: for each benchmark, how many notes
      * the fold moved, how many of them were right before the move and are right
      * after it, and how many pairs of notes next to each other in time and
-     * within {@link #ONE_GESTURE_SEMITONES} of each other it left an octave or
-     * more apart.
+     * within a width the caller names it left an octave or more apart.
      *
-     * <p>That last count is #614 measured rather than argued: two notes a
-     * semitone apart are one gesture whatever else is true of them, and a rule
-     * that puts them in different octaves has cut a gesture in half. Right and
-     * wrong are read at each note's midpoint against the same truth the columns
-     * use, so a benchmark with none says nothing about the moves and prints
-     * zeroes.
+     * <p>That last count is #614 measured rather than argued, and the width it
+     * is asked at is the caller's: notes that near are one gesture whatever
+     * else is true of them, and a rule that puts them in different octaves has
+     * cut a gesture in half. It has to be wider than the setting, which is
+     * refused rather than answered — the fold gives a gesture one shift, so it
+     * cannot separate two notes the setting already holds together, and a count
+     * within that width is zero however the fold behaves. Right and wrong are
+     * read at each note's midpoint against the same truth the columns use, so a
+     * benchmark with none says nothing about the moves and prints zeroes.
      *
      * <p>The fold does not move onsets, so the estimate at a setting and the
      * estimate with the fold off run note for note.
      */
     private static void splits(String corpus, Map<String, Path> benchmarks, double[] band,
-                               boolean separated) throws Exception {
+                               boolean separated, double asked) throws Exception {
         for (Map.Entry<String, Path> benchmark : benchmarks.entrySet()) {
             Front front = front(benchmark.getValue(), separated);
             List<Span> unfolded = estimate(front, new double[] {band[0], band[1], 0, band[3]});
@@ -330,17 +347,16 @@ public final class OctaveSweep {
                     rightAfter += want == folded.get(i).pitch() ? 1 : 0;
                 }
                 if (i + 1 < unfolded.size()
-                        && Math.abs(unfolded.get(i).pitch() - unfolded.get(i + 1).pitch())
-                                <= ONE_GESTURE_SEMITONES
+                        && Math.abs(unfolded.get(i).pitch() - unfolded.get(i + 1).pitch()) <= asked
                         && Math.abs(folded.get(i).pitch() - folded.get(i + 1).pitch()) >= 12) {
                     cut++;
                 }
             }
             System.out.printf(Locale.ROOT,
                     "%s floor=%.0f quantile=%.2f octaves=%.0f gesture=%.0f  %s: notes=%d moved=%d"
-                            + "  right before %d after %d  gestures cut %d%n",
+                            + "  right before %d after %d  pairs within %.0f cut %d%n",
                     corpus, band[0], band[1], band[2], band[3], benchmark.getKey(),
-                    unfolded.size(), moved, rightBefore, rightAfter, cut);
+                    unfolded.size(), moved, rightBefore, rightAfter, asked, cut);
         }
     }
 
