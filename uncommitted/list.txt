@@ -446,8 +446,9 @@ audio. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/il-mio-canto-libero.mp3 \
     https://www.youtube.com/watch?v=UtUHEsPfjjE
-Chosen by Enrico (2026-08-22) as the real major-seventh recording #590 asks
-for: he states the song holds maj7 chords, and the reference chart
+Chosen by Enrico (2026-08-22) as the real major-seventh candidate for #590 —
+a local-only one, so the committable benchmark that issue wants is still
+missing: he states the song holds maj7 chords, and the reference chart
 (il-mio-canto-libero-reference.txt, accordiespartiti, page in A with a
 modulated section in B) writes RE7+ — Dmaj7, the IVmaj7 — closing verse
 phrases, against a plain D in the intro. If both are right, one root carries
