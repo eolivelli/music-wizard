@@ -90,7 +90,7 @@ def main(argv):
         print(f"This machine declares no expected skips ({location} is absent), so "
               "the rows above are named but not gated. Write one glob per line, "
               "matched against '<baseline> <row>', to make an unexpected skip fail.")
-        summarise(skips, total, totals, "not gated on this machine")
+        summarise(skips, totals, "not gated on this machine")
         return 3
 
     expected = patterns(location)
@@ -99,14 +99,14 @@ def main(argv):
                              for pattern in expected)]
     if not unexpected:
         print(f"all of them expected per {location}.")
-        summarise(skips, total, totals, "all expected here")
+        summarise(skips, totals, "all expected here")
         return 0
     print(f"{len(unexpected)} of them undeclared on this machine. Provision this "
           f"tree, or -- if this machine genuinely cannot measure them -- add to "
           f"{location}:")
     for key in unexpected:
         print(f"  {key}")
-    summarise(skips, total, totals, f"{len(unexpected)} unexpected here")
+    summarise(skips, totals, f"{len(unexpected)} unexpected here")
     return 1
 
 
@@ -118,10 +118,11 @@ def blind(totals, skips):
                                              if skip[0] == baseline))
 
 
-def summarise(skips, total, totals, verdict):
+def summarise(skips, totals, verdict):
     """The fragment premerge.sh splices into the verdict line, which is what
     gets pasted into a pull request: it must not read as a full run."""
-    line = f"SUMMARY: {len(skips)} of {total} rows not measured, {verdict}"
+    line = (f"SUMMARY: {len(skips)} of {sum(totals.values())} rows not measured, "
+            f"{verdict}")
     nothing = blind(totals, skips)
     if nothing:
         line += f"; {', '.join(nothing)} certified nothing"

@@ -1612,13 +1612,13 @@ class PremergeShellContract(unittest.TestCase):
         """The seam between the two: premerge fails a step whose output lacks
         this line, so the tool's wording and the grep are one literal."""
         self.assertIn("grep -q '^compared '", self.SCRIPT)
-        self.assertIn('account = f"compared ',
+        self.assertIn('f"compared ',
                       (Path(__file__).resolve().parent / "premerge-diff.py")
                       .read_text(encoding="utf-8"))
 
     def test_the_summary_the_script_splices_is_the_one_the_account_prints(self):
         self.assertIn("s/^SUMMARY: //p", self.SCRIPT)
-        self.assertIn('line = f"SUMMARY: ',
+        self.assertIn('f"SUMMARY: ',
                       (Path(__file__).resolve().parent / "premerge-skips.py")
                       .read_text(encoding="utf-8"))
 
