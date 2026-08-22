@@ -381,20 +381,13 @@ public final class ChordChart {
     }
 
     /**
-     * The {@code \new ChordNames} expression alone, indented two spaces.
+     * The {@code \new ChordNames} expression alone, indented two spaces,
+     * opening on the pickup where the score has one.
      *
      * <p>Shared with {@link LeadSheet}, which places the same chord names over a
      * melody staff. The bars come in rather than being taken here, so that the
      * two engravings of one score cannot come to disagree about where a bar is
      * — which is the failure {@link ChartLayout}'s own javadoc is about.
-     *
-     * @param carriesMarks whether this context also carries the tempo mark and
-     *     the closing bar line. True on a chart, where the chord names are the
-     *     only context there is; false on a lead sheet, where the staff carries
-     *     both and a second copy would engrave the tempo twice.
-     */
-    /**
-     * The same, in a score whose first bar has been shortened to a pickup.
      *
      * <p>A {@code \partial} is a claim about the score's shared timing, not
      * about the staff that wrote it, so a chord context that still opened with a
@@ -405,6 +398,11 @@ public final class ChordChart {
      * writes bar zero full and leads in with a rest. Both are right for a page
      * that holds only one of them, and on a lead sheet the staff's convention is
      * the one the reader counts by, so the chord names give theirs up here.
+     *
+     * @param carriesMarks whether this context also carries the tempo mark and
+     *     the closing bar line. True on a chart, where the chord names are the
+     *     only context there is; false on a lead sheet, where the staff carries
+     *     both and a second copy would engrave the tempo twice.
      */
     static String chordNamesBlock(Score score, List<ChartLayout.Bar> bars,
                                   boolean carriesMarks,

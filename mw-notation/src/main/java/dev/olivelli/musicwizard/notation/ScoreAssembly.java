@@ -26,9 +26,9 @@ import java.util.Optional;
  * the pickup (#605).
  *
  * <p>A context not told the pickup engraves displaced behind one failed bar
- * check (#601). Every timed emitter's signature now takes the pickup, so the
- * question cannot be skipped at any call; this class is where a lead sheet's
- * one answer comes from.
+ * check (#601). Every context this assembles takes the pickup in its
+ * signature, so the question cannot be skipped at those calls; this class is
+ * where a lead sheet's one answer comes from.
  */
 final class ScoreAssembly {
 

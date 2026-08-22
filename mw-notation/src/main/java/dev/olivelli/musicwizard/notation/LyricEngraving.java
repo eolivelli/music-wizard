@@ -139,15 +139,10 @@ final class LyricEngraving {
     }
 
     /**
-     * The {@code \new Lyrics} blocks for this score, one per lane, or empty when
-     * there is nothing to place under the bars.
-     *
-     * @param bars the chart's bars, whose positions this reads rather than
-     *             deriving a second time from the tempo map
-     */
-    /**
-     * The same, leaning towards whatever it is written under and opening where
-     * the staff beside it opens.
+     * The {@code \new Lyrics} blocks for this score, one per lane, or empty
+     * when there is nothing to place under the bars — leaning towards
+     * whatever they are written under, and opening where the staff beside
+     * them opens.
      *
      * <p>A {@code \partial} is a claim about the score's shared timing, so a
      * lane that still wrote bar zero full sits one bar less the pickup behind
@@ -155,6 +150,9 @@ final class LyricEngraving {
      * resynchronises, so the whole lane is displaced behind a single failed bar
      * check (#601).
      *
+     * @param bars            the chart's bars, whose positions this reads
+     *                        rather than deriving a second time from the
+     *                        tempo map
      * @param associatedVoice the melody voice each lane names, where the score
      *                        engraves one; the class javadoc says what naming
      *                        it draws
