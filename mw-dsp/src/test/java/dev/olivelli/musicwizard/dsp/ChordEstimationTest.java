@@ -1376,6 +1376,114 @@ class ChordEstimationTest {
     }
 
     /**
+     * #583: a true minor on a root the recording otherwise plays major, which
+     * {@link ChordEstimator} withdraws with the false ones. Pins the defect
+     * rather than a cure; #583 carries why no guard tried so far separates this
+     * run from the false minors the corpus holds.
+     *
+     * <p>Three runs of {@code synthetic_samples/pop-borrowed-iv-c-100.mp3},
+     * whose grid states a borrowed {@code Fm} on a root it otherwise plays
+     * major: the {@code F} bar of its intro, the {@code C} bar before the
+     * borrowed one, and one of the borrowed fourths. Chroma and residual are
+     * what the estimator was given there.
+     */
+    @Nested
+    @DisplayName("a borrowed minor fourth (#583)")
+    class BorrowedMinor {
+
+        private static final double[] MAJOR_COMBINED = {
+                0.2309, 0.0226, 0.0246, 0.0058, 0.0491, 0.2989,
+                0.0188, 0.0953, 0.0270, 0.1813, 0.0185, 0.0272};
+        private static final double[] MAJOR_TREBLE = {
+                0.2402, 0.0313, 0.0195, 0.0070, 0.0600, 0.2239,
+                0.0191, 0.1172, 0.0247, 0.2275, 0.0027, 0.0269};
+        private static final double[] MAJOR_BASS = {
+                0.2104, 0.0036, 0.0357, 0.0029, 0.0254, 0.4630,
+                0.0180, 0.0482, 0.0319, 0.0807, 0.0532, 0.0269};
+        private static final double[] MAJOR_RESIDUAL = {
+                0.6146, 0.0119, 0.0027, 0.0000, 0.0595, 0.7474,
+                0.0049, 0.1504, 0.0076, 0.6340, 0.0016, 0.0218};
+
+        private static final double[] MINOR_COMBINED = {
+                0.2491, 0.0024, 0.0076, 0.0667, 0.0669, 0.2912,
+                0.0128, 0.0732, 0.1482, 0.0520, 0.0123, 0.0176};
+        private static final double[] MINOR_TREBLE = {
+                0.2385, 0.0025, 0.0061, 0.0951, 0.0889, 0.2045,
+                0.0094, 0.0971, 0.2051, 0.0362, 0.0024, 0.0143};
+        private static final double[] MINOR_BASS = {
+                0.2733, 0.0023, 0.0110, 0.0017, 0.0169, 0.4897,
+                0.0205, 0.0185, 0.0177, 0.0883, 0.0348, 0.0253};
+        private static final double[] MINOR_RESIDUAL = {
+                0.5679, 0.0000, 0.0000, 0.0728, 0.0854, 0.5962,
+                0.0029, 0.0852, 0.2598, 0.0149, 0.0021, 0.0021};
+
+        private static final double[] C_COMBINED = {
+                0.3759, 0.0130, 0.0431, 0.0026, 0.1671, 0.0285,
+                0.0065, 0.2078, 0.0233, 0.0430, 0.0112, 0.0780};
+        private static final double[] C_TREBLE = {
+                0.2601, 0.0084, 0.0560, 0.0008, 0.2366, 0.0189,
+                0.0023, 0.2770, 0.0235, 0.0243, 0.0012, 0.0909};
+        private static final double[] C_BASS = {
+                0.6504, 0.0243, 0.0121, 0.0066, 0.0033, 0.0491,
+                0.0157, 0.0462, 0.0222, 0.0887, 0.0338, 0.0476};
+        private static final double[] C_RESIDUAL = {
+                1.8496, 0.0005, 0.0642, 0.0000, 0.6193, 0.0035,
+                0.0000, 0.7766, 0.0080, 0.0135, 0.0014, 0.3943};
+
+        /**
+         * {@code majorBeats} beats of the F run, four of the C run that
+         * separates them, then four of the borrowed fourth, each span answering
+         * with its own residual.
+         */
+        private static List<Chord> chords(int majorBeats) {
+            int total = majorBeats + 8;
+            double[][] combined = new double[total][];
+            double[][] treble = new double[total][];
+            double[][] bass = new double[total][];
+            for (int beat = 0; beat < total; beat++) {
+                boolean minor = beat >= majorBeats + 4;
+                boolean onC = !minor && beat >= majorBeats;
+                combined[beat] = onC ? C_COMBINED : minor ? MINOR_COMBINED : MAJOR_COMBINED;
+                treble[beat] = onC ? C_TREBLE : minor ? MINOR_TREBLE : MAJOR_TREBLE;
+                bass[beat] = onC ? C_BASS : minor ? MINOR_BASS : MAJOR_BASS;
+            }
+            PitchClassAblation residual = new PitchClassAblation() {
+                @Override
+                public int spanCount() {
+                    return total;
+                }
+
+                @Override
+                public double[] significanceOver(int fromSpan, int toSpan) {
+                    return fromSpan >= majorBeats + 4 ? MINOR_RESIDUAL
+                            : fromSpan >= majorBeats ? C_RESIDUAL : MAJOR_RESIDUAL;
+                }
+            };
+            return ChordEstimator.estimate(beats(combined), beats(treble), beats(bass),
+                    residual, beatTimes(total)).chords();
+        }
+
+        @Test
+        @DisplayName("a borrowed fourth is withdrawn with the false minors (#583)")
+        void aBorrowedFourthGoesWithTheCount() {
+            // Eight beats of F against four of the borrowed fourth. The run's
+            // own chroma and residual both state the minor third and neither
+            // states the major one, and the count withdraws it anyway.
+            assertThat(chords(8)).extracting(Chord::symbol)
+                    .containsExactly("F", "C", "F7");
+        }
+
+        @Test
+        @DisplayName("the same run keeps its third where the count does not fire")
+        void aBorrowedFourthOnItsOwnStands() {
+            // The major run cut to three beats, so the minor third holds most
+            // of the root's: what the run says is read as it is.
+            assertThat(chords(3)).extracting(Chord::symbol)
+                    .containsExactly("F", "C", "Fm");
+        }
+    }
+
+    /**
      * Both readings are of real recordings: a {@code Cmaj7} run of {@code
      * samples/jazz-251-c-140.mp3}, whose guitar leaves the root to the bass, and
      * a {@code C} bar of {@code samples/pop-c-g-am-f-120.mp3}, the plain-triad

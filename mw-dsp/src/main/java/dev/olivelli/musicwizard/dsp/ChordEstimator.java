@@ -596,9 +596,11 @@ public final class ChordEstimator {
      * other, and that is a weak guard here: a major triad is scored on the root
      * and the fifth, which clear the floor between them with no third in the run
      * at all. So the cost is a chord where the seventh's is a colour — a minor
-     * chord a recording states once on a root it otherwise plays major goes with
-     * the false ones — and #583 carries it, unpriced for want of a benchmark
-     * whose grid holds a root played both ways.
+     * chord a recording states on a root it otherwise plays major goes with the
+     * false ones, which {@code synthetic_samples/pop-borrowed-iv-c-100} states
+     * and {@code ChordEstimationTest.BorrowedMinor} pins. #583 carries why the
+     * guards tried for it do not separate that run from the false minors the
+     * corpus holds.
      */
     private static void decideThirdsPerRoot(int[] path, int[] out, List<Template> templates,
                                             Chroma qualityChroma, double[][] significance) {
