@@ -12,6 +12,7 @@ onset for the lyric one. Run it directly:
 import array
 import contextlib
 import io
+import json
 import math
 import os
 import re
@@ -1492,6 +1493,90 @@ class PremergeSkipAccount(unittest.TestCase):
             done = self.account(records, manifest="* *\n", printed=printed)
             self.assertEqual(1, done.returncode, done.stdout)
             self.assertIn("FAIL:", done.stdout)
+
+
+class PremergeVerdict(unittest.TestCase):
+    """The gate's own verdict, run rather than read.
+
+    The incident is a tree, not a row: a worktree provisioned without the
+    local-only benchmarks skips every row that needs them, and the run said
+    PASS. Reproducing that needs the whole script, so it runs here over stub
+    harnesses and a stub build, against a scratch copy of the corpus it
+    compares -- everything real except how long it takes.
+    """
+
+    SCRIPT = Path(__file__).resolve().parent / "premerge.sh"
+    STUB = ('import json, os, sys\n'
+            'here = os.path.dirname(os.path.abspath(__file__))\n'
+            'plan = json.load(open(os.path.join(here, "plan.json")))\n'
+            'sys.stdout.write(plan[" ".join([os.path.basename(sys.argv[0])] + sys.argv[1:])])\n')
+
+    def steps(self):
+        """Which harness call premerge makes for which baseline, read off the
+        script so a step added or retired reaches this without being retyped."""
+        calls = re.findall(r"^compare (\S+\.py) (tools/baselines/\S+\.txt)([^|]*)",
+                           self.SCRIPT.read_text(encoding="utf-8"), re.M)
+        self.assertGreater(len(calls), 1, "premerge.sh no longer calls compare this way")
+        return [(harness, baseline, args.split()) for harness, baseline, args in calls]
+
+    def run_gate(self, present: bool, manifest: str | None):
+        """The gate over a scratch corpus of one row per baseline, either
+        measured or absent the way a harness reports an absent benchmark."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp) / "repo"
+            (tree / "tools" / "baselines").mkdir(parents=True)
+            (tree / "bin").mkdir()
+            build = tree / "bin" / "mvn"
+            build.write_text("#!/bin/sh\nexit 0\n")
+            build.chmod(0o755)
+            for tool in ("premerge.sh", "premerge-diff.py", "premerge-skips.py"):
+                shutil.copy(self.SCRIPT.parent / tool, tree / "tools" / tool)
+            plan = {}
+            for harness, baseline, args in self.steps():
+                name = Path(baseline).stem
+                row = f"  {name}.mp3: bars=8  root 50.0%"
+                (tree / baseline).write_text(row + "\n")
+                (tree / "tools" / harness).write_text(self.STUB)
+                plan[" ".join([harness] + args)] = (
+                    row if present else samples.missing_line(f"{name}.mp3")) + "\n"
+            (tree / "tools" / "plan.json").write_text(json.dumps(plan))
+            location = Path(tmp) / "premerge-skips.txt"
+            if manifest is not None:
+                location.write_text(manifest)
+            environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            environment |= {"PATH": f"{tree / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                            "MW_PREMERGE_SKIPS": str(location)}
+            return subprocess.run(["bash", str(tree / "tools" / "premerge.sh")],
+                                  capture_output=True, text=True, env=environment)
+
+    def test_a_corpus_this_machine_measured_in_full_passes_plainly(self):
+        done = self.run_gate(present=True, manifest="")
+        self.assertEqual(0, done.returncode, done.stdout)
+        self.assertIn("PREMERGE: PASS (build + harnesses)", done.stdout)
+        self.assertIn("baselined rows was measured here", done.stdout)
+
+    def test_a_tree_without_its_benchmarks_fails_where_the_machine_has_them(self):
+        """The incident: every row skipped, nothing measured, PASS. A machine
+        that declares its expected skips gets a red gate for this tree."""
+        done = self.run_gate(present=False, manifest="score-asr.txt *\n")
+        self.assertEqual(1, done.returncode)
+        self.assertIn("PREMERGE: FAIL", done.stdout)
+        self.assertIn("undeclared on this machine", done.stdout)
+        self.assertIn("score-samples.txt score-samples.mp3", done.stdout)
+
+    def test_the_same_tree_on_a_machine_that_declares_nothing_is_told_so(self):
+        done = self.run_gate(present=False, manifest=None)
+        self.assertEqual(0, done.returncode)
+        self.assertIn("PREMERGE: PASS-WITH-SKIPS", done.stdout)
+        self.assertIn("declares no expected skips", done.stdout)
+        self.assertIn("certified nothing", done.stdout)
+
+    def test_a_declared_skip_passes_with_the_word_that_says_so(self):
+        done = self.run_gate(present=False, manifest="* *\n")
+        self.assertEqual(0, done.returncode)
+        self.assertIn("PREMERGE: PASS-WITH-SKIPS", done.stdout)
+        self.assertIn("rows not measured, all expected here", done.stdout)
+        self.assertNotIn("PREMERGE: PASS (", done.stdout)
 
 
 class PremergeShellContract(unittest.TestCase):
