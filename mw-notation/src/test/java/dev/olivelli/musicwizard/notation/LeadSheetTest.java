@@ -243,7 +243,9 @@ class LeadSheetTest {
     private static String context(String source, String opening) {
         int from = source.indexOf(opening);
         assertThat(from).as("no %s in the source", opening).isNotNegative();
-        int next = source.indexOf("  \\new ", from + opening.length());
+        // Anchored to the line so the staff's own \new Voice, indented deeper,
+        // does not end the context early.
+        int next = source.indexOf("\n  \\new ", from + opening.length());
         int end = next >= 0 ? next : source.indexOf("  >>", from);
         return source.substring(from, end < 0 ? source.length() : end);
     }
@@ -358,6 +360,88 @@ class LeadSheetTest {
         assertThat(context(source, "\\new Lyrics"))
                 .contains("\\override VerticalAxisGroup.staff-affinity = #UP");
         assertThat(source).contains("\\lyricmode");
+    }
+
+    /** The lyric fixture with one word altered, the rest of the page as it was. */
+    private static QuantizedScore withWord(int index,
+            java.util.function.UnaryOperator<LyricWord> change) {
+        QuantizedScore quantized = withLyrics();
+        Score score = quantized.score();
+        List<LyricWord> words = new ArrayList<>(score.lyrics().lines().get(0).words());
+        words.set(index, change.apply(words.get(index)));
+        Score marked = score.withLyrics(new Lyrics(
+                List.of(new LyricLine(words, Confidence.CERTAIN)), "en", Confidence.CERTAIN));
+        return new QuantizedScore(marked, quantized.grids(), quantized.swing());
+    }
+
+    @Test
+    @DisplayName("a marked melisma draws its extender towards the next syllable")
+    void aMelismaDrawsItsExtender() {
+        QuantizedScore quantized = withWord(1, word -> word.withMelisma(true));
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        // The extender only exists where the lane can read the melody, so the
+        // staff names its voice and the lane names the same one.
+        assertThat(context(source, "\\new Staff"))
+                .contains("\\new Voice = \"" + StaffNotation.MELODY_VOICE + "\" {");
+        assertThat(context(source, "\\new Lyrics"))
+                .contains("\\set associatedVoice = \"" + StaffNotation.MELODY_VOICE + "\"")
+                .contains("\"two\"2 __");
+    }
+
+    @Test
+    @DisplayName("a melisma on the last word is closed the same way")
+    void aTrailingMelismaIsClosed() {
+        QuantizedScore quantized = withWord(3, word -> word.withMelisma(true));
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        // No written syllable terminates that extender, and LilyPond draws an
+        // unterminated one to the end of the piece without a word of
+        // complaint -- so an invisible one must.
+        assertThat(context(source, "\\new Lyrics")).contains("__").contains("\"\"");
+    }
+
+    @Test
+    @DisplayName("a melisma ending before the next syllable is closed at its recorded end")
+    void aMelismaIntoAGapIsClosedAtItsEnd() {
+        // "two" still marked, but now sung only to beat three, a beat short of
+        // the next word: the extender is drawn to the next syllable however
+        // far away that is, which would claim notes the model never said are
+        // sung on it.
+        QuantizedScore quantized = withWord(1, word -> new LyricWord(word.text(),
+                word.startSeconds(), word.startSeconds() + 0.5,
+                word.startBeat(), java.util.Optional.of(3.0),
+                false, true, Confidence.CERTAIN));
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Lyrics")).contains("\"two\"4 __ \"\"4");
+    }
+
+    @Test
+    @DisplayName("a melisma piece that continues into the next word keeps its hyphen")
+    void aHyphenatedMelismaKeepsItsHyphen() {
+        QuantizedScore quantized = withWord(2,
+                word -> word.withMelisma(true).withHyphenToNext(true));
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Lyrics"))
+                .contains("\"three\"1 --")
+                .doesNotContain("__");
+    }
+
+    @Test
+    @DisplayName("the chart draws no extender: it has no staff to read one against")
+    void theChartDrawsNoExtender() {
+        QuantizedScore quantized = withWord(1, word -> word.withMelisma(true));
+
+        String chart = LyricSheet.toLilyPond(quantized.score(), ChartOptions.defaults());
+
+        assertThat(chart).doesNotContain("__").doesNotContain("associatedVoice")
+                .doesNotContain("\"\"");
     }
 
     @Test

@@ -23,14 +23,16 @@
   \new Staff \with { instrumentName = "Voice" } {
     \clef "treble"
     \key c \major
-    \time #'(1 1 1 1) 4/4
-    \tempo \markup { \italic "ca." } 4 = 120
-    \partial 4
-    g'4 |
-    c''1 |
-    e''1 |
-    d''1 |
-    \bar "|."
+    \new Voice = "melody" {
+      \time #'(1 1 1 1) 4/4
+      \tempo \markup { \italic "ca." } 4 = 120
+      \partial 4
+      g'4 |
+      c''1 |
+      e''1 |
+      d''1 |
+      \bar "|."
+    }
   }
   \new Lyrics \with {
     \override VerticalAxisGroup.staff-affinity = #UP
@@ -38,6 +40,7 @@
     \override LyricText.self-alignment-X = #LEFT
     \override LyricHyphen.minimum-distance = #0.8
   } \lyricmode {
+    \set associatedVoice = "melody"
     "one"4 |
     "two"1 |
     "three"1 |

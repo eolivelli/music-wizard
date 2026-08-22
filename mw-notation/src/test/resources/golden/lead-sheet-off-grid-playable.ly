@@ -23,13 +23,15 @@
   \new Staff \with { instrumentName = "Voice (playable)" } {
     \clef "treble"
     \key c \major
-    \time #'(1 1 1 1) 4/4
-    \tempo \markup { \italic "ca." } 4 = 120
-    e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
-    e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
-    e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
-    e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
-    \bar "|."
+    \new Voice = "melody" {
+      \time #'(1 1 1 1) 4/4
+      \tempo \markup { \italic "ca." } 4 = 120
+      e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
+      e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
+      e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
+      e'4~ e'16 g'8.~ g'8 r16 b'16~ b'4 |
+      \bar "|."
+    }
   }
   \new Lyrics \with {
     \override VerticalAxisGroup.staff-affinity = #UP
@@ -37,6 +39,7 @@
     \override LyricText.self-alignment-X = #LEFT
     \override LyricHyphen.minimum-distance = #0.8
   } \lyricmode {
+    \set associatedVoice = "melody"
     \skip 64 "la"1*19/64 "di"4. "da"1*5/16 |
     \skip 64 "la"1*19/64 "di"4. "da"1*5/16 |
     \skip 64 "la"1*19/64 "di"4. "da"1*5/16 |
