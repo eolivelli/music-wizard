@@ -67,6 +67,19 @@ can show here is the rest of the grid: in particular the `Am7` bars, which
 carry the same four pitch classes as the `C6` ones and are nameable, and the
 plain `Em` triad.
 
+`pop-maj7-rootless-c-92` is its minimal pair, and the one thing it varies is
+the voicing rather than the chord (#589): the guitar leaves the root of
+`Cmaj7` to the bass and plays third, fifth and seventh, which is the `Em`
+triad, so the two registers name different roots and only the bass prior
+(#448) can settle it. Its grid is the twin's first section, its seed and style
+are the twin's, and its comping is note-for-note the twin's wherever the chord
+is not a major seventh — the spec's `voicing: rootless-maj7` header
+substitutes those bars without moving the hand the next chord is voiced from,
+which is what keeps #611 out of the comparison. Half its bars are major
+sevenths and so out of the `root+quality` column's reach (#287), which is why
+that column reads lower than the twin's and is not comparable to it; the root
+column is what the package is for.
+
 **Four packages, two pairs, and the pairing is what they are for.**
 `pop-sus-a-104` states the suspensions — which *replace* the third rather than
 adding a note to the triad — and `pop-add9-g-96` states the added ninth, which
