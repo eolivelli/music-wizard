@@ -244,6 +244,9 @@ public final class StaffNotation {
          */
         private String wholeBarRest;
 
+        /** Whether the next whole-bar rest opens an unread-melody stretch. */
+        private boolean unread;
+
         @Override
         public void startStaff(String name, StaffClef clef, Optional<Key> key) {
             out.append("  \\new Staff \\with { instrumentName = \"")
@@ -265,6 +268,7 @@ public final class StaffNotation {
         public void startBar(int index, TimeSignature meter, boolean meterChanged) {
             tokens.clear();
             wholeBarRest = null;
+            unread = false;
             if (meterChanged) {
                 appendMeter(meter);
             }
@@ -310,7 +314,14 @@ public final class StaffNotation {
         @Override
         public void wholeBarRest(long wholeNotesNumerator, long wholeNotesDenominator) {
             wholeBarRest = "R"
-                    + LilyPondDuration.scaled(wholeNotesNumerator, wholeNotesDenominator);
+                    + LilyPondDuration.scaled(wholeNotesNumerator, wholeNotesDenominator)
+                    + (unread
+                            ? "^\\markup { \\italic \"" + UNREAD_MELODY + "\" }" : "");
+        }
+
+        @Override
+        public void unreadMelody() {
+            unread = true;
         }
 
         @Override
