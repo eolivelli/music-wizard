@@ -80,7 +80,8 @@ public final class LeadSheet {
         // The staff first, though it is printed second: it decides whether the
         // score opens with a pickup, and the chord names above it have to be
         // told before they can write their own first bar.
-        StaffNotation.Staff staff = StaffNotation.staff(quantized, melody);
+        StaffNotation.Staff staff =
+                StaffNotation.staff(quantized, melody, Optional.of(StaffNotation.MELODY_VOICE));
 
         out.append("\\score {\n");
         out.append("  <<\n");

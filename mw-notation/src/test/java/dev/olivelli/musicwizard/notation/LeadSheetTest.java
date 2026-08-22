@@ -391,15 +391,33 @@ class LeadSheetTest {
     }
 
     @Test
-    @DisplayName("a melisma on the last word is left undrawn")
-    void aTrailingMelismaDrawsNothing() {
+    @DisplayName("a melisma on the last word is closed the same way")
+    void aTrailingMelismaIsClosed() {
         QuantizedScore quantized = withWord(3, word -> word.withMelisma(true));
 
         String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
 
-        // No syllable terminates that extender, and LilyPond draws an
-        // unterminated one to the end of the piece without a word of complaint.
-        assertThat(source).doesNotContain("__");
+        // No written syllable terminates that extender, and LilyPond draws an
+        // unterminated one to the end of the piece without a word of
+        // complaint -- so an invisible one must.
+        assertThat(context(source, "\\new Lyrics")).contains("__").contains("\"\"");
+    }
+
+    @Test
+    @DisplayName("a melisma ending before the next syllable is closed at its recorded end")
+    void aMelismaIntoAGapIsClosedAtItsEnd() {
+        // "two" still marked, but now sung only to beat three, a beat short of
+        // the next word: the extender is drawn to the next syllable however
+        // far away that is, which would claim notes the model never said are
+        // sung on it.
+        QuantizedScore quantized = withWord(1, word -> new LyricWord(word.text(),
+                word.startSeconds(), word.startSeconds() + 0.5,
+                word.startBeat(), java.util.Optional.of(3.0),
+                false, true, Confidence.CERTAIN));
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        assertThat(context(source, "\\new Lyrics")).contains("\"two\"4 __ \"\"4");
     }
 
     @Test
@@ -422,7 +440,8 @@ class LeadSheetTest {
 
         String chart = LyricSheet.toLilyPond(quantized.score(), ChartOptions.defaults());
 
-        assertThat(chart).doesNotContain("__").doesNotContain("associatedVoice");
+        assertThat(chart).doesNotContain("__").doesNotContain("associatedVoice")
+                .doesNotContain("\"\"");
     }
 
     @Test

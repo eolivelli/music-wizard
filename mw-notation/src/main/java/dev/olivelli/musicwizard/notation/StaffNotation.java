@@ -65,9 +65,10 @@ public final class StaffNotation {
     static final String LILYPOND_VERSION = "2.24.0";
 
     /**
-     * The name {@link #staff} engraves the melody voice under, so that a lyric
-     * lane in the same score can name it as its {@code associatedVoice} — the
-     * one condition under which {@code \lyricmode} draws extender lines (#625).
+     * The name {@link LeadSheet} has {@link #staff} engrave the melody voice
+     * under, so that a lyric lane in the same score can name it as its
+     * {@code associatedVoice} — the one condition under which
+     * {@code \lyricmode} draws extender lines (#625).
      */
     static final String MELODY_VOICE = "melody";
 
@@ -142,7 +143,7 @@ public final class StaffNotation {
 
     /** The same, with the quantizer's per-bar grid honoured. */
     static String staffBlock(QuantizedScore quantized, NoteTrack track) {
-        return staff(quantized, track).lilyPond();
+        return staff(quantized, track, Optional.empty()).lilyPond();
     }
 
     /**
@@ -180,11 +181,16 @@ public final class StaffNotation {
      * it is told. {@link LeadSheet} is that other context. Asking StaffLayout a
      * second time would be a second derivation of one fact, which is the failure
      * {@link StaffWriter}'s own javadoc is about.
+     *
+     * @param voiceName a name to open the notes' {@code \new Voice} under, for
+     *                  a caller whose {@code Lyrics} contexts must refer to
+     *                  this staff; empty leaves the staff's implicit voice
+     *                  alone
      */
-    static Staff staff(QuantizedScore quantized, NoteTrack track) {
+    static Staff staff(QuantizedScore quantized, NoteTrack track, Optional<String> voiceName) {
         Objects.requireNonNull(quantized, "quantized");
         Objects.requireNonNull(track, "track");
-        LilyPondStaffWriter writer = new LilyPondStaffWriter(Optional.of(MELODY_VOICE));
+        LilyPondStaffWriter writer = new LilyPondStaffWriter(voiceName);
         StaffLayout.write(quantized.score(), track, TupletPlan.of(quantized), writer);
         return new Staff(writer.toString(), writer.pickup());
     }
@@ -207,13 +213,15 @@ public final class StaffNotation {
         private final StringBuilder out = new StringBuilder();
 
         /**
-         * The name to open a {@code \new Voice} under, when the notes need one
-         * a {@code Lyrics} context can refer to. A page with no lyrics leaves
-         * the staff's implicit voice alone.
+         * The name to open a {@code \new Voice} under, when the caller needs
+         * one a {@code Lyrics} context can refer to.
          */
         private final Optional<String> voiceName;
 
-        /** What every line inside the staff is indented by. */
+        /**
+         * What the music's lines are indented by: one level deeper inside a
+         * named voice. The clef and key sit above it, at the staff's own level.
+         */
         private final String indent;
 
         private Optional<Pickup> pickup = Optional.empty();
@@ -315,7 +323,9 @@ public final class StaffNotation {
         @Override
         public void endStaff() {
             out.append(indent).append("\\bar \"|.\"\n");
-            voiceName.ifPresent(voice -> out.append("    }\n"));
+            if (voiceName.isPresent()) {
+                out.append("    }\n");
+            }
             out.append("  }\n");
         }
 
