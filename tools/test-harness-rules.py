@@ -36,10 +36,6 @@ separation = import_module("measure-separation-cost")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
-# Git reading none of the machine's config files. Written once because the
-# fixture and the code under test must stand behind the same shield: a subject
-# that spawns git of its own would otherwise read the ambient configuration
-# while the fixture reads none.
 OWN_GIT_CONFIG = {"GIT_CONFIG_GLOBAL": os.devnull,
                   "GIT_CONFIG_SYSTEM": os.devnull,
                   "GIT_CONFIG_NOSYSTEM": "1"}
