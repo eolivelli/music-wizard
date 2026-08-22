@@ -16,6 +16,10 @@
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
+import dev.olivelli.musicwizard.audio.Resampler;
+import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
+import dev.olivelli.musicwizard.core.ml.MlProviders;
+import dev.olivelli.musicwizard.core.ml.SeparationProvider;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.dsp.Chroma;
@@ -61,32 +65,44 @@ import javax.sound.midi.Track;
  * caches what the segmenter reads — the pitch track, the onset envelope and the
  * recording's tuning — so a whole grid costs one pass.
  *
- * <p>The three settings are the band the fold judges an octave against — a
- * floor on its half-width and the share of the melody's own sounding time it
- * reaches out to — and how many octaves out a note may be and still be folded.
- * A band under an octave wide folds nothing, since no pitch then has a
- * representative inside it; a quantile of one is the fold off, and so is a
- * bound of zero.
+ * <p>The four settings are the band the fold judges an octave against — a floor
+ * on its half-width and the share of the melody's own sounding time it reaches
+ * out to — how many octaves out a note may be and still be folded, and how far
+ * apart two notes may be and still be one gesture the fold decides once. A band
+ * under an octave wide folds nothing, since no pitch then has a representative
+ * inside it; a quantile of one is the fold off, and so is a bound of zero; a
+ * gesture of zero decides every note alone.
  *
  * <pre>
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java                # the grid
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java 15 0.9 2     # one setting
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java rows 15 0.9 2 # its rows
- *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java octaves 15 0.9 2 # what it moved
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java                    # the grid
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java 14 0.9 2 2       # one setting
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java rows 14 0.9 2 2    # its rows
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java octaves 14 0.9 2 2 # how it is wrong
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java splits 4 14 0.9 2 2 # what it moved
+ *   java -cp mw-cli/target/mw.jar tools/OctaveSweep.java --separated rows 14 0.9 2 2
  * </pre>
  *
  * <p><b>Its rows reproduce {@code score-melody.py}'s</b> for both corpora at the
  * shipped constants — that agreement is the only reason to trust the grid, and
  * {@code rows} is what re-checks it against {@code tools/baselines/}. A figure
  * landing exactly half way is the one thing that will not match, and never will:
- * Java rounds a tie up where Python rounds it to even. It scores what the pinned
- * harness rows score — the audio as given, with no separation — so the two
- * {@code --separated} baselines are outside its reach.
+ * Java rounds a tie up where Python rounds it to even.
  *
- * <p>{@code octaves} answers the diagnosis rather than the setting: for every
- * reference note the estimate reads at the wrong semitone, it counts how often
- * the two agree on the pitch class, which is what an octave error looks like
- * and what a random misreading does not.
+ * <p>{@code --separated} reads each recording through the separated vocal, which
+ * is what {@code analyze --melody} does (#559) and what the two
+ * {@code --separated} baselines score. It separates with whatever provider this
+ * machine has and caches the stem's front end like any other, so the first run
+ * costs a separation per recording and later ones cost nothing. The tuning still
+ * comes from the mix, and the envelope from the stem, exactly as the pipeline
+ * has it.
+ *
+ * <p>{@code octaves} and {@code splits} answer the diagnosis rather than the
+ * setting. The first counts, for every reference note the estimate reads at the
+ * wrong semitone, how often the two agree on the pitch class, which is what an
+ * octave error looks like and what a random misreading does not. The second
+ * counts what the fold itself did: the notes it moved, whether truth called them
+ * right before and after, and how many pairs of notes within a width the caller
+ * names it left an octave or more apart (#614).
  *
  * <p><b>The cache cannot go stale silently.</b> Its key is a digest of the
  * recording's bytes and of every class on the classpath except the segmenter's
@@ -127,8 +143,17 @@ public final class OctaveSweep {
     /** Count how the wrong frames are wrong rather than scoring the estimate. */
     private static final String OCTAVES = "octaves";
 
+    /** Read every recording through its separated vocal rather than as given. */
+    private static final String SEPARATED = "--separated";
+
+    /** Count the gestures the fold cut in half rather than scoring the estimate. */
+    private static final String SPLITS = "splits";
+
     /** How many octaves out the grid lets a note be and still be folded. */
     private static final double[] BOUNDS = {1, 2, 3, 4};
+
+    /** Gesture widths the grid walks; at zero every note is decided alone. */
+    private static final double[] GESTURES = {0, 1, 2, 3, 4, 5, 6, 7, 9, 12};
 
     private OctaveSweep() {
     }
@@ -139,36 +164,64 @@ public final class OctaveSweep {
     /** What the segmenter reads, cached: everything upstream of it. */
     private record Front(PitchTrack track, OnsetEnvelope envelope, double tuning) {}
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] commandLine) throws Exception {
+        List<String> rest = new ArrayList<>();
+        boolean separated = false;
+        for (String argument : commandLine) {
+            if (argument.equals(SEPARATED)) {
+                separated = true;
+            } else {
+                rest.add(argument);
+            }
+        }
+        String[] args = rest.toArray(new String[0]);
         String mode = args.length > 0 && !isNumber(args[0]) ? args[0] : "";
         // Checked against the list, not merely for being a word: an unknown
         // one would otherwise select the score question in silence, so a
         // mistyped "rows" answers a question nobody asked in the format of an
         // answer to the one they did.
-        if (!mode.isEmpty() && !mode.equals(ROWS) && !mode.equals(OCTAVES)) {
-            System.err.println("unknown mode: " + mode + " (expected " + ROWS
-                    + " or " + OCTAVES + ")");
+        if (!mode.isEmpty() && !mode.equals(ROWS) && !mode.equals(OCTAVES)
+                && !mode.equals(SPLITS)) {
+            System.err.println("unknown mode: " + mode + " (expected " + ROWS + ", " + OCTAVES
+                    + " or " + SPLITS + ")");
             System.exit(2);
         }
         List<double[]> bands = new ArrayList<>();
         int first = mode.isEmpty() ? 0 : 1;
+        // The width the splits count asks at, named rather than assumed: the
+        // fold cannot separate two notes closer together than the setting it
+        // is run at, so a count taken at that width or under is zero however
+        // the fold behaves, and a mode that answered it would print what a
+        // perfect result prints.
+        double asked = 0;
+        if (mode.equals(SPLITS)) {
+            if (args.length < 2 || !isNumber(args[1])) {
+                System.err.println("splits takes the width it counts at, then the settings:"
+                        + " splits <semitones> <floor> <quantile> <octaves> <gesture>");
+                System.exit(2);
+            }
+            asked = Double.parseDouble(args[1]);
+            first = 2;
+        }
         // Rejected rather than rounded down to what does group: an argument
         // list one short is the previous release's syntax, and silently
         // answering the whole grid to it prints a row that reads exactly like
         // the answer to the question asked.
-        if ((args.length - first) % 3 != 0) {
-            System.err.println("each setting is three numbers: floor, quantile, octaves");
+        if ((args.length - first) % 4 != 0) {
+            System.err.println("each setting is four numbers: floor, quantile, octaves, gesture");
             System.exit(2);
         }
-        for (int i = first; i + 2 < args.length; i += 3) {
+        for (int i = first; i + 3 < args.length; i += 4) {
             bands.add(new double[] {Double.parseDouble(args[i]), Double.parseDouble(args[i + 1]),
-                    Double.parseDouble(args[i + 2])});
+                    Double.parseDouble(args[i + 2]), Double.parseDouble(args[i + 3])});
         }
         if (bands.isEmpty()) {
             for (double floor : FLOORS) {
                 for (double quantile : QUANTILES) {
                     for (double bound : BOUNDS) {
-                        bands.add(new double[] {floor, quantile, bound});
+                        for (double gesture : GESTURES) {
+                            bands.add(new double[] {floor, quantile, bound, gesture});
+                        }
                     }
                 }
             }
@@ -179,13 +232,30 @@ public final class OctaveSweep {
             System.out.println("vocadito is not on this machine; see uncommitted/list.txt"
                     + " to fetch it. Only the synthetic packages are scored.");
         }
+        // Every setting checked before any of them is answered: refusing part
+        // way through would print rows under a heading that then failed, and
+        // the whole grid holds settings this width cannot be asked at.
+        for (double[] band : mode.equals(SPLITS) ? bands : List.<double[]>of()) {
+            // Negated rather than asked as a comparison, so a width that is
+            // not a number is refused with the rest: NaN is not greater than
+            // anything, and a count taken at it is the zero this refuses.
+            if (!(asked > band[3])) {
+                System.err.printf(Locale.ROOT, "a width of %.0f is answered by a gesture of"
+                        + " %.0f: nothing that near can be split, whatever the fold does%n",
+                        asked, band[3]);
+                System.exit(2);
+            }
+        }
         for (double[] band : bands) {
-            if (mode.equals(OCTAVES)) {
-                octaves("vocadito ", vocadito, band);
-                octaves("synthetic", synthetic, band);
+            if (mode.equals(SPLITS)) {
+                splits("vocadito ", vocadito, band, separated, asked);
+                splits("synthetic", synthetic, band, separated, asked);
+            } else if (mode.equals(OCTAVES)) {
+                octaves("vocadito ", vocadito, band, separated);
+                octaves("synthetic", synthetic, band, separated);
             } else {
-                score("vocadito ", vocadito, band, mode.equals(ROWS));
-                score("synthetic", synthetic, band, mode.equals(ROWS));
+                score("vocadito ", vocadito, band, mode.equals(ROWS), separated);
+                score("synthetic", synthetic, band, mode.equals(ROWS), separated);
             }
         }
     }
@@ -208,8 +278,8 @@ public final class OctaveSweep {
      * assumed: a factor error keeps the pitch class and a random misreading does
      * not, so the two columns say which population the wrong frames belong to.
      */
-    private static void octaves(String corpus, Map<String, Path> benchmarks, double[] band)
-            throws Exception {
+    private static void octaves(String corpus, Map<String, Path> benchmarks, double[] band,
+                                boolean separated) throws Exception {
         long octave = 0;
         long other = 0;
         long right = 0;
@@ -218,7 +288,7 @@ public final class OctaveSweep {
             if (reference.isEmpty()) {
                 continue;
             }
-            List<Span> estimate = estimate(front(benchmark.getValue()), band);
+            List<Span> estimate = estimate(front(benchmark.getValue(), separated), band);
             int frames = (int) (reference.get(reference.size() - 1).end() / FRAME_SECONDS);
             for (int frame = 0; frame < frames; frame++) {
                 int want = soundingAt(reference, frame * FRAME_SECONDS);
@@ -239,16 +309,68 @@ public final class OctaveSweep {
         if (sounding == 0) {
             return;
         }
-        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f  of the frames both call"
+        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f gesture=%.0f  of the frames both call"
                         + " sounding: right %.1f%%  wrong by whole octaves %.1f%%"
                         + "  wrong otherwise %.1f%%%n",
-                corpus, band[0], band[1], band[2], 100.0 * right / sounding,
+                corpus, band[0], band[1], band[2], band[3], 100.0 * right / sounding,
                 100.0 * octave / sounding, 100.0 * other / sounding);
+    }
+
+    /**
+     * What the fold moved and what it cut: for each benchmark, how many notes
+     * the fold moved, how many of them were right before the move and are right
+     * after it, and how many pairs of notes next to each other in time and
+     * within a width the caller names it left an octave or more apart.
+     *
+     * <p>That last count is #614 measured rather than argued, and the width it
+     * is asked at is the caller's: notes that near are one gesture whatever
+     * else is true of them, and a rule that puts them in different octaves has
+     * cut a gesture in half. It has to be wider than the setting, which is
+     * refused rather than answered — the fold gives a gesture one shift, so it
+     * cannot separate two notes the setting already holds together, and a count
+     * within that width is zero however the fold behaves. Right and wrong are
+     * read at each note's midpoint against the same truth the columns use, so a
+     * benchmark with none says nothing about the moves and prints zeroes.
+     *
+     * <p>The fold does not move onsets, so the estimate at a setting and the
+     * estimate with the fold off run note for note.
+     */
+    private static void splits(String corpus, Map<String, Path> benchmarks, double[] band,
+                               boolean separated, double asked) throws Exception {
+        for (Map.Entry<String, Path> benchmark : benchmarks.entrySet()) {
+            Front front = front(benchmark.getValue(), separated);
+            List<Span> unfolded = estimate(front, new double[] {band[0], band[1], 0, band[3]});
+            List<Span> folded = estimate(front, band);
+            List<Span> reference = truth(benchmark.getValue());
+            int moved = 0;
+            int rightBefore = 0;
+            int rightAfter = 0;
+            int cut = 0;
+            for (int i = 0; i < unfolded.size(); i++) {
+                if (unfolded.get(i).pitch() != folded.get(i).pitch()) {
+                    moved++;
+                    int want = reference.isEmpty() ? -1 : soundingAt(reference,
+                            (unfolded.get(i).onset() + unfolded.get(i).end()) / 2);
+                    rightBefore += want == unfolded.get(i).pitch() ? 1 : 0;
+                    rightAfter += want == folded.get(i).pitch() ? 1 : 0;
+                }
+                if (i + 1 < unfolded.size()
+                        && Math.abs(unfolded.get(i).pitch() - unfolded.get(i + 1).pitch()) <= asked
+                        && Math.abs(folded.get(i).pitch() - folded.get(i + 1).pitch()) >= 12) {
+                    cut++;
+                }
+            }
+            System.out.printf(Locale.ROOT,
+                    "%s floor=%.0f quantile=%.2f octaves=%.0f gesture=%.0f  %s: notes=%d moved=%d"
+                            + "  right before %d after %d  pairs within %.0f cut %d%n",
+                    corpus, band[0], band[1], band[2], band[3], benchmark.getKey(),
+                    unfolded.size(), moved, rightBefore, rightAfter, asked, cut);
+        }
     }
 
     /** Scores one corpus at one setting, printing a mean row and optionally its rows. */
     private static void score(String corpus, Map<String, Path> benchmarks, double[] band,
-                              boolean rows) throws Exception {
+                              boolean rows, boolean separated) throws Exception {
         double first = 0;
         double second = 0;
         double pitch = 0;
@@ -260,7 +382,7 @@ public final class OctaveSweep {
             if (reference.isEmpty()) {
                 continue;
             }
-            List<Span> estimate = estimate(front(benchmark.getValue()), band);
+            List<Span> estimate = estimate(front(benchmark.getValue(), separated), band);
             double at50 = noteF1(estimate, reference, TOLERANCES[0]);
             double at100 = noteF1(estimate, reference, TOLERANCES[1]);
             double[] framewise = framewise(estimate, reference);
@@ -280,9 +402,9 @@ public final class OctaveSweep {
         if (scored == 0) {
             return;
         }
-        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f  benchmarks=%d notes=%d"
+        System.out.printf(Locale.ROOT, "%s floor=%.0f quantile=%.2f octaves=%.0f gesture=%.0f  benchmarks=%d notes=%d"
                         + "  F1@50ms %.2f%%  F1@100ms %.2f%%  pitch %.2f%%  voiced %.2f%%%n",
-                corpus, band[0], band[1], band[2], scored, notes,
+                corpus, band[0], band[1], band[2], band[3], scored, notes,
                 100 * first / scored, 100 * second / scored,
                 100 * pitch / scored, 100 * voiced / scored);
     }
@@ -429,7 +551,7 @@ public final class OctaveSweep {
     private static List<Span> estimate(Front front, double[] band) {
         NoteTrack track = MelodyEstimator.estimate(
                 front.track(), front.envelope(), front.tuning(), STEADY, band[0], band[1],
-                (int) band[2]);
+                (int) band[2], band[3]);
         List<Span> notes = new ArrayList<>(track.size());
         for (Note note : track.notes()) {
             notes.add(new Span(note.onsetSeconds(),
@@ -442,12 +564,17 @@ public final class OctaveSweep {
     /**
      * Everything the segmenter reads, computed once and cached.
      *
-     * <p>The tuning comes from the recording being tracked, which is what the
-     * pipeline hands the stage when nothing has been separated — the
-     * configuration score-melody.py pins its committed rows to.
+     * <p>Read as given, the tuning comes from the recording being tracked,
+     * which is what the pipeline hands the stage when nothing has been
+     * separated — the configuration score-melody.py pins its committed rows to.
+     * Read through a stem, the pitch and the envelope come from the stem and
+     * the tuning still from the mix, which is what {@code analyze --melody}
+     * does: a lead sheet whose chords and whose melody were rounded on
+     * different grids can name one sounding pitch two ways.
      */
-    private static Front front(Path audio) throws Exception {
-        Path cached = CACHE.resolve(audio.getFileName() + "-" + key(audio) + ".bin");
+    private static Front front(Path audio, boolean separated) throws Exception {
+        Path cached = CACHE.resolve(audio.getFileName() + (separated ? "-separated-" : "-")
+                + key(audio) + ".bin");
         if (Files.isRegularFile(cached)) {
             try (DataInputStream in = new DataInputStream(
                     new BufferedInputStream(Files.newInputStream(cached)))) {
@@ -455,7 +582,8 @@ public final class OctaveSweep {
             }
         }
         AudioBuffer buffer = AudioDecoder.decode(audio);
-        Front front = new Front(PitchTracker.track(buffer), OnsetEnvelope.fromAudio(buffer),
+        AudioBuffer tracked = separated ? vocalStem(audio, buffer.sampleRate()) : buffer;
+        Front front = new Front(PitchTracker.track(tracked), OnsetEnvelope.fromAudio(tracked),
                 Chroma.estimateTuning(NnlsChroma.transform(buffer)));
         Files.createDirectories(CACHE);
         Path partial = cached.resolveSibling(cached.getFileName() + ".partial");
@@ -465,6 +593,32 @@ public final class OctaveSweep {
         }
         Files.move(partial, cached, StandardCopyOption.REPLACE_EXISTING);
         return front;
+    }
+
+    /**
+     * The vocal, separated by whatever provider this machine has and resampled
+     * to the analysis rate — the two steps {@code VocalStem} and the melody
+     * stage take between them, which is why the separator's own preferred rate
+     * is decoded at rather than resampled up to.
+     */
+    private static AudioBuffer vocalStem(Path audio, int analysisRate) throws IOException {
+        // The default provider rather than this machine's configured one, for
+        // score-melody.py's reason for running against an empty config home: a
+        // local ml.separationProvider must not decide what a baseline is
+        // compared with.
+        String id = MusicWizardConfig.DEFAULTS.ml().separationProvider();
+        SeparationProvider provider = MlProviders.separation(id).orElseThrow(
+                () -> new IllegalStateException(id + " cannot be had here;"
+                        + " see docs/local-setup.md"));
+        int preferred = provider.preferredSampleRate();
+        AudioBuffer mix = preferred > 0
+                ? AudioDecoder.decode(audio, preferred) : AudioDecoder.decode(audio);
+        float[] voice = provider.separate(new float[][] {mix.samples()}, mix.sampleRate())
+                .vocals()[0];
+        return mix.sampleRate() == analysisRate
+                ? new AudioBuffer(voice, analysisRate)
+                : new AudioBuffer(Resampler.resample(voice, mix.sampleRate(), analysisRate),
+                        analysisRate);
     }
 
     private static Front read(DataInputStream in) throws IOException {

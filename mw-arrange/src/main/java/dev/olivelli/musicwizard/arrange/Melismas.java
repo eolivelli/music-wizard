@@ -59,7 +59,7 @@ public final class Melismas {
 
     /**
      * How wide a leap between neighbouring heads is read as the melody
-     * stage's octave fold (#614, #615, #624) rather than as the voice moving.
+     * stage's octave fold (#615, #624) rather than as the voice moving.
      * Printing one of those would put the fold on the page instead of leaving
      * it under a single head.
      *
