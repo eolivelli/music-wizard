@@ -1,0 +1,36 @@
+title: Soft pop in C - the major seventh played rootless
+genre: pop
+style: pop-rock
+tempo: 92
+key: C major
+seed: 29
+melody: none
+accompaniment: full
+voicing: rootless-maj7
+bars:
+# The twin of pop-maj7-sixth-c-92's first section: same tempo, key, seed and
+# style, and one thing changed. The guitar leaves the root of Cmaj7 to the
+# bass and plays third, fifth and seventh, which is the Em triad exactly -
+# the way the chord is actually fingered, and the way #588's recordings state
+# it. The bass is on C throughout those bars, so the two registers disagree
+# about the root and only the bass prior (#448) can settle it.
+#
+# That is what this package asks (#589): whether a root the treble states
+# another triad on survives, or whether the decoder needs the four-note
+# template to reach it. The twin's block voicing is the only answer measurable
+# before this, and it puts the root in the treble too, so it cannot separate
+# the voicing from the vocabulary.
+#
+# The comping is note-for-note the twin's wherever the chord is not a major
+# seventh: the voicing directive substitutes the chord's own bars and leaves
+# the hand where the close voicing would have left it, so the chords after it
+# are voiced from the same history (#611). The major seventh is not in the
+# estimator's vocabulary (#287), so read the root column here.
+Cmaj7 Cmaj7 F F
+Cmaj7 Cmaj7 G7 C
+Cmaj7 Cmaj7 F F
+Cmaj7 Cmaj7 G7 C
+Cmaj7 Cmaj7 F F
+Cmaj7 Cmaj7 G7 C
+Cmaj7 Cmaj7 F F
+Cmaj7 Cmaj7 G7 C

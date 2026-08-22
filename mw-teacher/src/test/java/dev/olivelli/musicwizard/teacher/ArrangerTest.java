@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import javax.sound.midi.MidiEvent;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
@@ -100,6 +102,59 @@ class ArrangerTest {
         }
     }
 
+    private static final String MAJ7_GRID = """
+            title: maj7
+            style: pop-rock
+            tempo: 92
+            key: C major
+            seed: 29
+            melody: none
+            %s
+            bars:
+            Cmaj7 Cmaj7 F F
+            Cmaj7 Cmaj7 G7 C
+            """;
+
+    @Test
+    void aRootlessMajorSeventhIsTheMediantTriadOverTheRootBass() {
+        Sequence sequence = Arranger.arrange(SpecParser.parse(MAJ7_GRID.formatted(
+                "voicing: rootless-maj7")));
+        // E4 G4 B4 in the comp, C2 in the bass, on every major seventh bar.
+        for (int bar : new int[] {0, 1, 4, 5}) {
+            assertThat(pitchesInBar(sequence.getTracks()[1], bar))
+                    .as("comp bar %d", bar)
+                    .containsExactly(64, 67, 71);
+            assertThat(pitchesInBar(sequence.getTracks()[2], bar))
+                    .as("bass bar %d", bar)
+                    .allMatch(pitch -> pitch % 12 == 0);
+        }
+    }
+
+    @Test
+    void theRootlessVoicingChangesNothingButTheMajorSeventhBars() {
+        Sequence close = Arranger.arrange(SpecParser.parse(MAJ7_GRID.formatted("")));
+        Sequence rootless = Arranger.arrange(SpecParser.parse(MAJ7_GRID.formatted(
+                "voicing: rootless-maj7")));
+        // Bass and drums are untouched, and so is the comp wherever the chord
+        // is not a major seventh: the pair differs in one thing (#589).
+        for (int track : new int[] {2, 3}) {
+            assertThat(events(rootless.getTracks()[track]))
+                    .isEqualTo(events(close.getTracks()[track]));
+        }
+        for (int bar : new int[] {2, 3, 6, 7}) {
+            assertThat(eventsInBar(rootless.getTracks()[1], bar))
+                    .as("comp bar %d", bar)
+                    .isEqualTo(eventsInBar(close.getTracks()[1], bar));
+        }
+    }
+
+    @Test
+    void anUnknownVoicingIsAnError() {
+        assertThatThrownBy(() -> SpecParser.parse(MAJ7_GRID.formatted("voicing: drop2")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("drop2");
+    }
+
     @Test
     void compoundMeterIsRefusedNotMangled() {
         assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse("""
@@ -114,6 +169,45 @@ class ArrangerTest {
                 """)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("4/4");
+    }
+
+    private static final long BAR_TICKS = 4L * 480;
+
+    /** Every note-on of a track as tick, pitch and velocity, in order. */
+    private static List<String> events(Track track) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < track.size(); i++) {
+            MidiEvent event = track.get(i);
+            if (event.getMessage() instanceof ShortMessage message
+                    && message.getCommand() == ShortMessage.NOTE_ON) {
+                out.add(event.getTick() + "/" + message.getData1() + "/" + message.getData2());
+            }
+        }
+        return out;
+    }
+
+    private static List<String> eventsInBar(Track track, int bar) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < track.size(); i++) {
+            MidiEvent event = track.get(i);
+            if (event.getTick() / BAR_TICKS == bar
+                    && event.getMessage() instanceof ShortMessage message
+                    && message.getCommand() == ShortMessage.NOTE_ON) {
+                out.add(event.getTick() % BAR_TICKS + "/" + message.getData1()
+                        + "/" + message.getData2());
+            }
+        }
+        return out;
+    }
+
+    private static List<Integer> pitchesInBar(Track track, int bar) {
+        return events(track).stream()
+                .map(e -> e.split("/"))
+                .filter(e -> Long.parseLong(e[0]) / BAR_TICKS == bar)
+                .map(e -> Integer.valueOf(e[1]))
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private static int noteCount(Track track) {

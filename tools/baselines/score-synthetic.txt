@@ -11,6 +11,7 @@ Synthetic corpus, bar-by-bar against each package's own spec
   pop-axis-g-116.mp3: bars=44/44  tempo 116.0/116 (x1.00)  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
   pop-deceptive-f-72.mp3: bars=31/32  tempo 72.0/72 (x1.00)  root 31.0/32 (96.9%)  root+quality 29.0/32 (90.6%)  split 1  key OK
   pop-m6-m7b5-gm-100.mp3: bars=32/32  tempo 100.0/100 (x1.00)  root 32.0/32 (100.0%)  root+quality 32.0/32 (100.0%)  split 0  key OK
+  pop-maj7-rootless-c-92.mp3: bars=31/32  tempo 92.0/92 (x1.00)  root 31.0/32 (96.9%)  root+quality 15.0/32 (46.9%)  split 0  key OK
   pop-maj7-sixth-c-92.mp3: bars=31/32  tempo 92.0/92 (x1.00)  root 31.0/32 (96.9%)  root+quality 19.0/32 (59.4%)  split 0  key OK
   pop-sus-a-104.mp3: bars=31/32  tempo 104.0/104 (x1.00)  root 31.0/32 (96.9%)  root+quality 19.0/32 (59.4%)  split 0  key OK
   pop-sus-triads-a-104.mp3: bars=31/32  tempo 104.0/104 (x1.00)  root 31.0/32 (96.9%)  root+quality 27.0/32 (84.4%)  split 0  key OK
