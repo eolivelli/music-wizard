@@ -64,6 +64,14 @@ public final class StaffNotation {
     /** The LilyPond language version the emitted source declares. */
     static final String LILYPOND_VERSION = "2.24.0";
 
+    /**
+     * The name {@link LeadSheet} has {@link #staff} engrave the melody voice
+     * under, so that a lyric lane in the same score can name it as its
+     * {@code associatedVoice} — the one condition under which
+     * {@code \lyricmode} draws extender lines (#625).
+     */
+    static final String MELODY_VOICE = "melody";
+
     private StaffNotation() {
     }
 
@@ -135,7 +143,7 @@ public final class StaffNotation {
 
     /** The same, with the quantizer's per-bar grid honoured. */
     static String staffBlock(QuantizedScore quantized, NoteTrack track) {
-        return staff(quantized, track).lilyPond();
+        return staff(quantized, track, Optional.empty()).lilyPond();
     }
 
     /**
@@ -173,17 +181,22 @@ public final class StaffNotation {
      * it is told. {@link LeadSheet} is that other context. Asking StaffLayout a
      * second time would be a second derivation of one fact, which is the failure
      * {@link StaffWriter}'s own javadoc is about.
+     *
+     * @param voiceName a name to open the notes' {@code \new Voice} under, for
+     *                  a caller whose {@code Lyrics} contexts must refer to
+     *                  this staff; empty leaves the staff's implicit voice
+     *                  alone
      */
-    static Staff staff(QuantizedScore quantized, NoteTrack track) {
+    static Staff staff(QuantizedScore quantized, NoteTrack track, Optional<String> voiceName) {
         Objects.requireNonNull(quantized, "quantized");
         Objects.requireNonNull(track, "track");
-        LilyPondStaffWriter writer = new LilyPondStaffWriter();
+        LilyPondStaffWriter writer = new LilyPondStaffWriter(voiceName);
         StaffLayout.write(quantized.score(), track, TupletPlan.of(quantized), writer);
         return new Staff(writer.toString(), writer.pickup());
     }
 
     private static String staffBlock(Score score, NoteTrack track, TupletPlan tuplets) {
-        LilyPondStaffWriter writer = new LilyPondStaffWriter();
+        LilyPondStaffWriter writer = new LilyPondStaffWriter(Optional.empty());
         StaffLayout.write(score, track, tuplets, writer);
         return writer.toString();
     }
@@ -199,7 +212,24 @@ public final class StaffNotation {
 
         private final StringBuilder out = new StringBuilder();
 
+        /**
+         * The name to open a {@code \new Voice} under, when the caller needs
+         * one a {@code Lyrics} context can refer to.
+         */
+        private final Optional<String> voiceName;
+
+        /**
+         * What the music's lines are indented by: one level deeper inside a
+         * named voice. The clef and key sit above it, at the staff's own level.
+         */
+        private final String indent;
+
         private Optional<Pickup> pickup = Optional.empty();
+
+        LilyPondStaffWriter(Optional<String> voiceName) {
+            this.voiceName = voiceName;
+            this.indent = voiceName.isPresent() ? "      " : "    ";
+        }
 
         /** The current bar's tokens, joined and flushed by {@link #endBar}. */
         private final List<String> tokens = new ArrayList<>();
@@ -227,6 +257,8 @@ public final class StaffNotation {
                     .append(key.map(k -> k.tonic().lilyPondName() + " \\" + k.mode().lilyPondName())
                             .orElse("c \\major"))
                     .append('\n');
+            voiceName.ifPresent(voice ->
+                    out.append("    \\new Voice = \"").append(voice).append("\" {\n"));
         }
 
         @Override
@@ -244,13 +276,13 @@ public final class StaffNotation {
             // from: the figure is an estimate and says so, and one page saying
             // "ca." while the other does not would be the same fact stated two
             // ways.
-            out.append("    ").append(new TempoMark(unit, perMinute).lilyPond()).append('\n');
+            out.append(indent).append(new TempoMark(unit, perMinute).lilyPond()).append('\n');
         }
 
         @Override
         public void pickup(long wholeNotesNumerator, long wholeNotesDenominator) {
             pickup = Optional.of(new Pickup(wholeNotesNumerator, wholeNotesDenominator));
-            out.append("    \\partial ")
+            out.append(indent).append("\\partial ")
                     .append(LilyPondDuration.scaled(wholeNotesNumerator, wholeNotesDenominator))
                     .append('\n');
         }
@@ -283,14 +315,17 @@ public final class StaffNotation {
 
         @Override
         public void endBar() {
-            out.append("    ")
+            out.append(indent)
                     .append(wholeBarRest != null ? wholeBarRest : String.join(" ", tokens))
                     .append(" |\n");
         }
 
         @Override
         public void endStaff() {
-            out.append("    \\bar \"|.\"\n");
+            out.append(indent).append("\\bar \"|.\"\n");
+            if (voiceName.isPresent()) {
+                out.append("    }\n");
+            }
             out.append("  }\n");
         }
 
@@ -304,7 +339,7 @@ public final class StaffNotation {
          * part and a chord chart of the same piece cannot state it differently.
          */
         private void appendMeter(TimeSignature meter) {
-            out.append("    ").append(LilyPondMeter.time(meter)).append('\n');
+            out.append(indent).append(LilyPondMeter.time(meter)).append('\n');
         }
 
         /** What a token is written on: a rest, a pitch, or a chord. */

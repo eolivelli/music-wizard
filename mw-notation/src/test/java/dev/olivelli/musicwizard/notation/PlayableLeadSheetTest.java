@@ -297,7 +297,9 @@ class PlayableLeadSheetTest {
     private static String context(String source, String opening) {
         int from = source.indexOf(opening);
         assertThat(from).as("no %s in the source", opening).isNotNegative();
-        int next = source.indexOf("  \\new ", from + opening.length());
+        // Anchored to the line so the staff's own \new Voice, indented deeper,
+        // does not end the context early.
+        int next = source.indexOf("\n  \\new ", from + opening.length());
         int end = next >= 0 ? next : source.indexOf("  >>", from);
         return source.substring(from, end < 0 ? source.length() : end);
     }

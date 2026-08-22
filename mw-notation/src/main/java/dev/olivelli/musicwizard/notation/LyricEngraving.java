@@ -46,9 +46,16 @@ import java.util.Optional;
  *       over the generated text would pass on a wrong page.
  * </ul>
  *
- * <p>The cost is extender lines: {@code __} is discarded in this mode, so a
- * held syllable draws no line. A chart with no melody has no melisma to draw one
- * over, which is why the trade is worth taking here and would not be on a staff.
+ * <p>Extender lines survive the mode only beside a staff. {@code __} is
+ * discarded unless the lane names an {@code associatedVoice}, so a lane under a
+ * melody staff names its voice and writes {@code __} after each syllable marked
+ * as a melisma (#625). LilyPond draws the line to the next syllable however far
+ * away that is, and draws one nothing terminates to the end of the piece, both
+ * in silence — and either would claim the singer holds notes the model never
+ * said are sung. So a melisma whose recorded extent ends before the next
+ * syllable is closed by a syllable of empty text on its ending unit, which
+ * prints nothing. A chart has no staff to name, so a held syllable there still
+ * draws nothing.
  *
  * <p>Two mechanics of the mode decide how this is written. <b>A digit terminates
  * a syllable</b>, because durations are digits: {@code 1999} is a hard error and
@@ -81,8 +88,17 @@ final class LyricEngraving {
     private LyricEngraving() {
     }
 
-    /** One syllable, on the chart's own grid. */
-    private record Syllable(long unit, String text, boolean hyphenated) {
+    /**
+     * One syllable, on the chart's own grid. A melisma is a syllable whose
+     * {@code heldTo} reaches past its own unit — the marked word's recorded
+     * extent (#597), which is where the extender drawn after it must stop
+     * unless another syllable stops it sooner.
+     */
+    private record Syllable(long unit, String text, boolean hyphenated, long heldTo) {
+
+        boolean melisma() {
+            return heldTo > unit;
+        }
     }
 
     /**
@@ -130,7 +146,7 @@ final class LyricEngraving {
      *             deriving a second time from the tempo map
      */
     static Optional<String> block(Score score, List<ChartLayout.Bar> bars) {
-        return block(score, bars, Attachment.BELOW_CHORDS, Optional.empty());
+        return block(score, bars, Attachment.BELOW_CHORDS, Optional.empty(), Optional.empty());
     }
 
     /**
@@ -142,10 +158,15 @@ final class LyricEngraving {
      * the music from bar one onwards. LilyPond reports that once and then
      * resynchronises, so the whole lane is displaced behind a single failed bar
      * check (#601).
+     *
+     * @param associatedVoice the melody voice each lane names, where the score
+     *                        engraves one; the class javadoc says what naming
+     *                        it draws
      */
     static Optional<String> block(Score score, List<ChartLayout.Bar> bars,
                                   Attachment attachment,
-                                  Optional<StaffNotation.Pickup> pickup) {
+                                  Optional<StaffNotation.Pickup> pickup,
+                                  Optional<String> associatedVoice) {
         if (score.lyrics().isEmpty() || bars.isEmpty()) {
             return Optional.empty();
         }
@@ -155,10 +176,13 @@ final class LyricEngraving {
         if (lanes.isEmpty()) {
             return Optional.empty();
         }
+        if (associatedVoice.isPresent()) {
+            lanes = lanes.stream().map(LyricEngraving::terminated).toList();
+        }
 
         StringBuilder out = new StringBuilder();
         for (List<Syllable> syllables : lanes) {
-            lane(out, syllables, bars, barStart, attachment, opening);
+            lane(out, syllables, bars, barStart, attachment, opening, associatedVoice);
         }
         return Optional.of(out.toString());
     }
@@ -236,6 +260,32 @@ final class LyricEngraving {
     }
 
     /**
+     * The lane with a syllable of empty text closing each melisma no written
+     * syllable closes.
+     *
+     * <p>The extender is drawn to whatever syllable comes next, so a melisma
+     * whose extent reaches the next syllable needs nothing — and one whose
+     * extent ends first, or that has no next syllable at all, gets one put on
+     * its ending unit. Empty text prints nothing, takes the units the melisma's
+     * tail already occupied, and stops the line. After this pass every melisma
+     * has a syllable after it, which is what lets {@link #lane} write {@code
+     * __} unconditionally.
+     */
+    private static List<Syllable> terminated(List<Syllable> syllables) {
+        List<Syllable> out = new ArrayList<>(syllables.size());
+        for (int i = 0; i < syllables.size(); i++) {
+            Syllable syllable = syllables.get(i);
+            out.add(syllable);
+            long next = i + 1 < syllables.size()
+                    ? syllables.get(i + 1).unit() : Long.MAX_VALUE;
+            if (syllable.melisma() && syllable.heldTo() < next) {
+                out.add(new Syllable(syllable.heldTo(), "", false, syllable.heldTo()));
+            }
+        }
+        return out;
+    }
+
+    /**
      * One lane's {@code \new Lyrics} block, bar by bar.
      *
      * <p>Every lane spans the whole chart — a lane holding nothing in a bar
@@ -244,7 +294,8 @@ final class LyricEngraving {
      */
     private static void lane(StringBuilder out, List<Syllable> syllables,
                              List<ChartLayout.Bar> bars, long[] barStart,
-                             Attachment attachment, Opening opening) {
+                             Attachment attachment, Opening opening,
+                             Optional<String> associatedVoice) {
         out.append("  \\new Lyrics \\with {\n");
         // Which way is not this lane's choice; see Attachment.
         out.append("    \\override VerticalAxisGroup.staff-affinity = ")
@@ -261,6 +312,8 @@ final class LyricEngraving {
         // gap it will make room for rather than drop the hyphen.
         out.append("    \\override LyricHyphen.minimum-distance = #0.8\n");
         out.append("  } \\lyricmode {\n");
+        associatedVoice.ifPresent(voice ->
+                out.append("    \\set associatedVoice = \"").append(voice).append("\"\n"));
 
         int at = 0;
         for (int i = 0; i < bars.size(); i++) {
@@ -288,7 +341,12 @@ final class LyricEngraving {
                 // reports an unterminated hyphen -- into the output this tool
                 // reads to decide whether engraving went well.
                 boolean joins = syllable.hyphenated() && at + 1 < syllables.size();
-                line.append(joins ? " -- " : " ");
+                // No next-syllable guard on the extender: terminated() has
+                // already put one after every melisma, precisely because an
+                // extender nothing terminates is drawn to the end of the
+                // piece without a word of complaint.
+                boolean extender = syllable.melisma() && associatedVoice.isPresent();
+                line.append(joins ? " -- " : extender ? " __ " : " ");
                 cursor = until;
                 at++;
             }
@@ -488,7 +546,19 @@ final class LyricEngraving {
             String text = parts.get(i).text();
             boolean joins = (i + 1 < parts.size() || word.hyphenatedToNext())
                     && hyphenator.map(h -> !h.endsAtItsOwnBreak(text)).orElse(true);
-            placed.add(new Syllable(unit, text, joins));
+            // The extent lands on the last piece only: the model marks the
+            // word, the line is drawn after the syllable the word ends on, and
+            // a piece that continues into the next word is joined by its
+            // hyphen instead. Clamped inside the chart, and to its own unit --
+            // no melisma at all -- where the extent has no room to reach past
+            // it.
+            boolean marked = word.melisma() && !word.hyphenatedToNext()
+                    && i == parts.size() - 1;
+            long heldTo = marked
+                    ? Math.max(unit, Math.min(chartEnd - 1,
+                            ChartGrid.unitOf(word.endSeconds(), bars, barStart)))
+                    : unit;
+            placed.add(new Syllable(unit, text, joins, heldTo));
             cursor = unit;
         }
         return placed;

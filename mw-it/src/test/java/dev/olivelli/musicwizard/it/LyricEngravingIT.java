@@ -285,6 +285,49 @@ class LyricEngravingIT {
         return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
     }
 
+    /**
+     * Four sung words, three of them melismas, one of each shape: held to the
+     * next word, ending a gap before it, and trailing the last word. The unit
+     * tests read the emitted text; what only engraving can say is that
+     * LilyPond accepts the page in silence, because its extender defects are
+     * drawn in silence too (#625).
+     */
+    private static QuantizedScore sungWithMelismas() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        List<Note> notes = new ArrayList<>();
+        for (int beat = 0; beat < 16; beat += 2) {
+            notes.add(sungNote(map, beat, 2));
+        }
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
+                List.copyOf(notes), Confidence.CERTAIN);
+        List<LyricWord> words = List.of(
+                LyricWord.ofSeconds("one", map.beatsToSeconds(0),
+                        map.beatsToSeconds(2), Confidence.CERTAIN),
+                LyricWord.ofSeconds("two", map.beatsToSeconds(2),
+                        map.beatsToSeconds(4), Confidence.CERTAIN).withMelisma(true),
+                LyricWord.ofSeconds("three", map.beatsToSeconds(4),
+                        map.beatsToSeconds(6), Confidence.CERTAIN).withMelisma(true),
+                LyricWord.ofSeconds("four", map.beatsToSeconds(8),
+                        map.beatsToSeconds(10), Confidence.CERTAIN).withMelisma(true));
+        List<Chord> chords = new ArrayList<>();
+        NoteLetter[] roots = {NoteLetter.C, NoteLetter.F, NoteLetter.G, NoteLetter.C};
+        for (int i = 0; i < 4; i++) {
+            chords.add(Chord.ofSeconds(root(roots[i]), ChordQuality.MAJOR,
+                    map.beatsToSeconds(i * 4), map.beatsToSeconds(i * 4 + 4), Confidence.of(0.9)));
+        }
+        Score score = Score.empty(map, map.beatsToSeconds(16))
+                .withTrack(voice)
+                .withChords(new ChordProgression(chords, Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN))
+                .withMetadata("Melismas", "Tester");
+        List<BarGrid> grids = new ArrayList<>();
+        for (int bar = 0; bar < 4; bar++) {
+            grids.add(new BarGrid(bar, bar * 4.0, GridResolution.BEAT, TimeSignature.FOUR_FOUR));
+        }
+        return new QuantizedScore(score, grids, SwingFeel.STRAIGHT);
+    }
+
     private static Note sungNote(TempoMap map, double onsetBeat, double beats) {
         return Note.ofSeconds(map.beatsToSeconds(onsetBeat),
                         map.beatsToSeconds(onsetBeat + beats) - map.beatsToSeconds(onsetBeat),
@@ -307,7 +350,9 @@ class LyricEngravingIT {
                 // hyphen unterminated.
                 Arguments.of("words-before-the-pickup",
                         sungFromAPickup(3.5, new double[] {0.5, 1.5, 2.5, 3.5},
-                                GridResolution.HALF_BEAT)));
+                                GridResolution.HALF_BEAT)),
+                // Extenders, each terminated a different way; see the fixture.
+                Arguments.of("melismas", sungWithMelismas()));
     }
 
     @ParameterizedTest(name = "{0}")
