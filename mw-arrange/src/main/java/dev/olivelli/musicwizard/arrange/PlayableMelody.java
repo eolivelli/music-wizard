@@ -638,20 +638,20 @@ public final class PlayableMelody {
      *
      * <p>A head neither the chord under it nor the key signature accounts for
      * is not a note a reader should meet as an accidental unless the melody
-     * really went there. Four things have to hold before this decides it did
-     * not: nothing in the harmony admits the pitch, the head is too short to
-     * be a note held on purpose, the nearest supported heads on either side
-     * are near enough each other that the line came back to where it left, and
-     * the head is near enough to that place for the move to have been a wobble
-     * rather than somewhere the line went. A head <em>between</em> its two
-     * neighbours is left alone whatever the harmony says, because that is what
-     * a chromatic passing tone looks like.
+     * really went there. This decides it did not only where nothing in the
+     * harmony admits the pitch, the head is too short to be a note held on
+     * purpose, the nearest supported heads on either side are near enough each
+     * other that the line came back to where it left, and the head is near
+     * enough to that place for the move to have been a wobble rather than
+     * somewhere the line went. A head <em>between</em> its two neighbours is
+     * left alone whatever the harmony says, because that is what a chromatic
+     * passing tone looks like.
      *
-     * <p>The pass reads a monophonic sequence of heads, and a head sounding at
-     * the same time as another stands aside rather than being read as the side
-     * the line returned to. Nothing here changes how many heads are printed or
-     * when: a syllable keeps the head it was given, at its own onset and
-     * length.
+     * <p>The pass reads a monophonic sequence of heads. One sounding at the
+     * same time as another is neither moved nor read as a side the line
+     * returned to, since nothing left. Nothing here changes how many heads are
+     * printed or when: a syllable keeps the head it was given, at its own onset
+     * and length.
      */
     private static List<Note> returned(List<Note> heads, Score score, Excursion excursion) {
         TempoMap map = score.tempoMap();

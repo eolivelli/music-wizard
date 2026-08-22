@@ -698,7 +698,7 @@ public final class PlayablePartCheck {
     }
 
     /**
-     * The two excursion bounds swept around the shipped pair (#670).
+     * The excursion bounds swept around the shipped ones (#670).
      *
      * <p>{@code moved} is how many printed pitches the rule changes, which is
      * the cost side: every one of them asserts a pitch the melody stage did not
