@@ -95,16 +95,24 @@ decisions that real recordings forced:
 The vocabulary today: major and minor triads, dominant and minor sevenths,
 and — since the quality decision can ask the NNLS fit whether a candidate's
 distinguishing note is really there (#537, #543) — minor sixths and
-half-diminished sevenths (#547). The two exclusions have two different
-reasons (#287 carries the tables). The major seventh *can* be gated on the
-residual as a share of what the root removes, and in this vocabulary it reaches
-almost nothing: on the scored recordings whose truth holds a major seventh those
-bars are named on the wrong root, and a quality decision cannot move one.
-Reaching them means the template in the decoder too, which #588 measures and
-prices. The plain sixth's problem is a
-different one — a boogie shuffle really plays its sixth, so no test of whether
-the note is sounding can help, and telling `A6` from `F#m7` needs evidence
-about which sounding note the chord is built on. The
+half-diminished sevenths (#547), and major sevenths (#588).
+
+The major seventh is the one that had to go into the **decoder** as well, and
+it is worth knowing why: on the scored recordings whose truth holds one, those
+bars were not decoded onto their own root at all, and a quality decision can
+only relabel a root the decoder found. So the template competes across roots,
+which is the risk the two vocabularies exist to separate — and it is admitted
+only where the fit's residual needs the degree, in the decoder and in the
+quality decision both, since a quality in the decoder's list is a candidate of
+the quality decision too. Its price is the same relative-pair confusion one
+layer up: `Abmaj7` is `Fm7` with a G for its F, so a minor-seventh vamp gives
+up roots to it, and the bass prior was measured and does not carry the
+difference.
+
+The plain sixth is still out, for a different reason — a boogie shuffle really
+plays its sixth, so no test of whether the note is sounding can help, and
+telling `A6` from `F#m7` needs evidence about which sounding note the chord is
+built on (#287, #274 carry the tables). The
 constants' sweeps are re-derivable with `tools/ChordSweep.java`; current
 readings live in `tools/baselines/`.
 

@@ -82,13 +82,16 @@ it catches a tracker that lost the beat and says nothing about one that is
 merely jittery (#429).
 
 Then: the residual gate of #543 admitted the minor sixth and the
-half-diminished (#547). The vocabulary still has no major seventh or plain
-sixth, for two different reasons. The major seventh *can* be residual-gated and
-in this vocabulary reaches almost nothing: on the scored recordings whose truth
-holds one, those bars are named on the wrong root, and a quality decision cannot
-move a root. What reaches them is the same template in the decoder, at the price
-#588 measures. The sixth really is sounding, so it needs root evidence rather
-than presence evidence (#287, #274).
+half-diminished (#547), and the major seventh (#588) — which had to go into the
+*decoder* rather than beside them, because on the recordings whose truth holds
+one those bars were not decoded onto their own root at all, and a quality that
+cannot move a root cannot reach a bar it never got. It is the one decoded
+template admitted on the fit's residual instead of the chroma, and the price is
+the same relative-pair confusion one layer up: `Abmaj7` is `Fm7` with a G for
+its F, so a minor-seventh vamp gives up roots to it and the bass prior, measured,
+does not carry the difference. The plain sixth is still out, and for the other
+reason: it really is sounding, so it needs root evidence rather than presence
+evidence (#287, #274).
 
 **A third is settled across every run on a root, not run by run** (#558). That
 gate leaves the third weakest exactly where a run holds no third at all: the

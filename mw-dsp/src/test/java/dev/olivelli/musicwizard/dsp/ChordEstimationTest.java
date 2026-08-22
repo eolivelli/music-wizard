@@ -892,10 +892,14 @@ class ChordEstimationTest {
         }
 
         @Test
-        @DisplayName("the residual is read once per chord, over the chord's own beats")
-        void theAblationIsAskedOncePerRun() {
-            // Not per beat: thirteen solves a beat is a different price, and a
-            // third that sounds on some beats of a chord is the chord's third.
+        @DisplayName("the residual is read once a beat to decode and once a chord to label")
+        void theAblationIsAskedOncePerRunAndOncePerBeat() {
+            // Two cadences, and the split is the whole shape of the decision: a
+            // third that sounds on some beats of a chord is the chord's third,
+            // so the quality decision asks over the chord; the decoder has no
+            // chord yet, so its own gate (#588) asks over the beat. Thirteen
+            // fits a beat is the price of that, and it is why nothing else here
+            // reads the residual per beat.
             List<int[]> asked = new java.util.ArrayList<>();
             PitchClassAblation recorder = over(8, (from, to) -> {
                 asked.add(new int[] {from, to});
@@ -906,7 +910,8 @@ class ChordEstimationTest {
 
             assertThat(ChordEstimator.estimate(both, both, both, recorder, beatTimes(8))
                     .chords()).extracting(Chord::symbol).containsExactly("Am", "D");
-            assertThat(asked).extracting(a -> a[0] + "-" + a[1]).containsExactly("0-4", "4-8");
+            assertThat(asked).extracting(a -> a[0] + "-" + a[1]).containsExactly(
+                    "0-1", "1-2", "2-3", "3-4", "4-5", "5-6", "6-7", "7-8", "0-4", "4-8");
         }
 
         @Test
@@ -1367,6 +1372,119 @@ class ChordEstimationTest {
             // chord is wrong -- only that this recording does not state one.
             assertThat(chords(3)).extracting(Chord::symbol)
                     .containsExactly("A", "D", "Am");
+        }
+    }
+
+    /**
+     * Both readings are of real recordings: a {@code Cmaj7} run of {@code
+     * samples/jazz-251-c-140.mp3}, whose guitar leaves the root to the bass, and
+     * a {@code C} bar of {@code samples/pop-c-g-am-f-120.mp3}, the plain-triad
+     * control. Chroma and residual are what the estimator was given there.
+     */
+    @Nested
+    @DisplayName("the major seventh in the decoder (#588)")
+    class MajorSeventh {
+
+        private static final double[] JAZZ_COMBINED = {
+                0.1161, 0.0104, 0.1296, 0.0306, 0.1632, 0.0152,
+                0.0151, 0.1746, 0.0130, 0.0547, 0.0053, 0.2723};
+        private static final double[] JAZZ_TREBLE = {
+                0.0067, 0.0104, 0.1744, 0.0347, 0.2218, 0.0078,
+                0.0202, 0.1220, 0.0149, 0.0347, 0.0075, 0.3449};
+        private static final double[] JAZZ_BASS = {
+                0.3231, 0.0110, 0.0453, 0.0235, 0.0595, 0.0291,
+                0.0063, 0.2554, 0.0095, 0.0900, 0.0009, 0.1464};
+
+        /**
+         * The seventh removes several times the residual the root does, where the
+         * chroma has it merely as the loudest pitch class of an {@code Em} triad.
+         */
+        private static final double[] JAZZ_RESIDUAL = {
+                0.2109, 0.0002, 0.1764, 0.0068, 0.2642, 0.0003,
+                0.0043, 0.3062, 0.0062, 0.0175, 0.0000, 0.9081};
+
+        private static final double[] POP_COMBINED = {
+                0.3433, 0.0135, 0.0655, 0.0301, 0.1301, 0.0467,
+                0.0150, 0.2057, 0.0265, 0.0342, 0.0137, 0.0756};
+        private static final double[] POP_TREBLE = {
+                0.2860, 0.0008, 0.0542, 0.0077, 0.1946, 0.0641,
+                0.0231, 0.2841, 0.0030, 0.0164, 0.0061, 0.0599};
+        private static final double[] POP_BASS = {
+                0.4418, 0.0351, 0.0869, 0.0690, 0.0218, 0.0184,
+                0.0015, 0.0720, 0.0630, 0.0648, 0.0259, 0.0998};
+
+        /** The same degree, on a bar whose chord is a plain triad. */
+        private static final double[] POP_RESIDUAL = {
+                1.0237, 0.0000, 0.0205, 0.0026, 0.2650, 0.0158,
+                0.0141, 0.3651, 0.0063, 0.0017, 0.0008, 0.0943};
+
+        private static Chroma four(double[] vector) {
+            return beats(vector, vector, vector, vector);
+        }
+
+        private static PitchClassAblation ablation(double[] residual) {
+            return new PitchClassAblation() {
+                @Override
+                public int spanCount() {
+                    return 4;
+                }
+
+                @Override
+                public double[] significanceOver(int fromSpan, int toSpan) {
+                    return residual;
+                }
+            };
+        }
+
+        private static String label(double[] combined, double[] treble, double[] bass,
+                                    double[] residual) {
+            return ChordEstimator.estimate(four(combined), four(treble), four(bass),
+                            ablation(residual), beatTimes(4))
+                    .chords().get(0).symbol();
+        }
+
+        /** {@code residual} with the major seventh above C cut to a tenth of the root's. */
+        private static double[] withoutTheSeventh(double[] residual) {
+            double[] out = residual.clone();
+            out[11] = 0.1 * residual[0];
+            return out;
+        }
+
+        @Test
+        @DisplayName("names a major seventh whose root only the bass states")
+        void reportsAMajorSeventh() {
+            assertThat(label(JAZZ_COMBINED, JAZZ_TREBLE, JAZZ_BASS, JAZZ_RESIDUAL))
+                    .isEqualTo("Cmaj7");
+        }
+
+        @Test
+        @DisplayName("the seventh's residual is what reaches the root, not its chroma")
+        void withoutTheResidualTheRootIsLostToo() {
+            // Same chroma, the same B still its loudest pitch class: with the
+            // fit no longer needing that pitch class the run is not on C at all,
+            // which is why a relabelling of the decoder's answer could not have
+            // reached these bars.
+            assertThat(label(JAZZ_COMBINED, JAZZ_TREBLE, JAZZ_BASS,
+                    withoutTheSeventh(JAZZ_RESIDUAL))).isEqualTo("G");
+        }
+
+        @Test
+        @DisplayName("a seventh the fit does not need is not reported")
+        void aSeventhTheFitDoesNotNeedIsNotReported() {
+            assertThat(label(POP_COMBINED, POP_TREBLE, POP_BASS, POP_RESIDUAL))
+                    .isEqualTo("C");
+        }
+
+        @Test
+        @DisplayName("the residual alone does not put a seventh on a triad")
+        void theResidualAloneIsNotEnough() {
+            // The same bar with the degree's residual raised past both gates.
+            // Neither is a claim that the chord has four notes: the chroma has
+            // to carry it too, and a four-note template scored over its own
+            // larger norm loses to the triad it contains.
+            double[] loud = POP_RESIDUAL.clone();
+            loud[11] = 2 * POP_RESIDUAL[0];
+            assertThat(label(POP_COMBINED, POP_TREBLE, POP_BASS, loud)).isEqualTo("C");
         }
     }
 }
