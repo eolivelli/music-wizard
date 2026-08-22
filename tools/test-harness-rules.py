@@ -150,16 +150,60 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
+QUALITY_CONSTANT = re.compile(
+    r"\s*([A-Z][A-Z0-9_]*)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)\s*[,;]")
+
+SHORTHAND_CONSTANT = re.compile(
+    r"\s*([A-Z][A-Z0-9_]*)\(\"([^\"]*)\"((?:,\s*\d+)*)\)\s*[,;]")
+
+
+def java_enum_body(source: str, name: str) -> str:
+    """The constant list of `enum name`, comments removed, up to its ';'."""
+    text = re.sub(r"//[^\n]*|/\*.*?\*/", " ", source, flags=re.DOTALL)
+    opened = re.search(rf"\benum\s+{name}\s*{{", text)
+    if not opened:
+        raise AssertionError(f"no enum {name} here")
+    end = text.find(";", opened.end())
+    if end < 0:
+        raise AssertionError(f"enum {name}'s constant list does not end")
+    return text[opened.end():end + 1]
+
+
+def java_enum_constants(source: str, name: str,
+                        shape: re.Pattern) -> list[tuple[str, str, str]]:
+    """`enum name`'s constants, as `shape`'s groups.
+
+    The whole constant list is consumed, so a constant this shape cannot read
+    raises quoting it rather than being dropped — reading all but one and
+    passing is the failure a rule like this exists to prevent (#612)."""
+    body = java_enum_body(source, name)
+    constants = []
+    at = 0
+    while at < len(body):
+        found = shape.match(body, at)
+        if not found:
+            raise AssertionError(f"enum {name}: cannot read {body[at:at + 60].strip()!r}")
+        constants.append(found.groups())
+        at = found.end()
+    return constants
+
+
+def java_source(path: str) -> str:
+    return (Path(__file__).resolve().parent.parent / path).read_text(encoding="utf-8")
+
+
 def chord_quality_constants() -> list[tuple[str, str, str]]:
     """ChordQuality's constants, as (name, symbol, the intervals' text)."""
-    source = (Path(__file__).resolve().parent.parent
-              / "mw-core/src/main/java/dev/olivelli/musicwizard/core/model"
-              / "ChordQuality.java").read_text(encoding="utf-8")
-    constants = re.findall(r"^    ([A-Z_]+)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)",
-                           source, re.MULTILINE)
-    if len(constants) < 10:
-        raise AssertionError("the enum's constants did not parse")
-    return constants
+    return java_enum_constants(java_source(
+        "mw-core/src/main/java/dev/olivelli/musicwizard/core/model/ChordQuality.java"),
+        "ChordQuality", QUALITY_CONSTANT)
+
+
+def grid_shorthand_qualities() -> list[tuple[str, str, str]]:
+    """mw-teacher's ChordSymbol.Quality constants, as (name, suffix, intervals)."""
+    return java_enum_constants(java_source(
+        "mw-teacher/src/main/java/dev/olivelli/musicwizard/teacher/ChordSymbol.java"),
+        "Quality", SHORTHAND_CONSTANT)
 
 
 def minor_line(spans: list[dict], duration: float = 10.0) -> str:
@@ -231,6 +275,80 @@ class MinorSeconds(unittest.TestCase):
         self.assertEqual(set(), constants & set(samples.CORPUS_ONLY_QUALITY))
         self.assertEqual({**samples.QUALITY_SYMBOL, **samples.CORPUS_ONLY_QUALITY},
                          samples.TRUTH_SYMBOL)
+
+
+class JavaEnumReading(unittest.TestCase):
+    """The rules that read a Java enum out of its source. What they must not do
+    is read all but one constant and pass."""
+
+    QUALITY = ('    /** One chord. */\n'
+               '    public enum Quality {\n'
+               '        MAJOR("", 0, 4, 7),\n'
+               '        MINOR_ADD9("madd9", 0, 3, 7, 2);\n'
+               '\n'
+               '        private final String suffix;\n'
+               '    }\n')
+
+    READ = [("MAJOR", "", ", 0, 4, 7"), ("MINOR_ADD9", "madd9", ", 0, 3, 7, 2")]
+
+    def read(self, source: str) -> list[tuple[str, str, str]]:
+        return java_enum_constants(source, "Quality", SHORTHAND_CONSTANT)
+
+    def test_a_constant_named_with_a_digit_is_read(self):
+        self.assertEqual(self.READ, self.read(self.QUALITY))
+
+    def test_where_a_constant_sits_on_its_line_does_not_hide_it(self):
+        """Two to a line, one behind a comment, one on the enum's own line.
+        All three compile, so where a constant sits cannot be what decides
+        whether a rule covers it."""
+        for written in (self.QUALITY.replace('7),\n        MINOR', '7), MINOR'),
+                        self.QUALITY.replace("        MINOR", "        /* ninth */ MINOR"),
+                        self.QUALITY.replace("Quality {\n        MAJOR", "Quality { MAJOR")):
+            self.assertEqual(self.READ, self.read(written), written)
+
+    def test_a_constant_the_shape_cannot_read_is_quoted_back(self):
+        """An interval below the root here, and an argument written any other
+        way is the same case."""
+        signed = self.QUALITY.replace('MAJOR("", 0, 4, 7),', 'MAJOR("", 0, 4, -5),')
+        with self.assertRaises(AssertionError) as raised:
+            self.read(signed)
+        self.assertIn("MAJOR", str(raised.exception))
+
+    def test_another_enum_beside_it_is_neither_read_nor_mistaken_for_a_defect(self):
+        beside = self.QUALITY + '    enum Register { BASS(1), TREBLE(2); }\n'
+        self.assertEqual(self.READ, self.read(beside))
+
+    def test_a_source_holding_no_such_enum_is_not_a_clean_read(self):
+        with self.assertRaises(AssertionError):
+            self.read("class Nothing {}\n")
+
+
+class GridShorthand(unittest.TestCase):
+    """#612: a spec states its grid in the shorthand mw-teacher compiles and
+    this harness reads back as truth. Two programs, one language."""
+
+    def test_every_quality_a_spec_can_state_is_one_the_harness_reads(self):
+        """A quality added to ChordSymbol.Quality alone compiles a package
+        score-synthetic.py then dies on. The reverse is not required: this
+        table also reads samples/list.txt, whose truth is written by ear and
+        may state a shape no spec generates."""
+        for name, suffix, _ in grid_shorthand_qualities():
+            self.assertIn(suffix, samples.SUFFIX_QUALITY, name)
+
+    def test_a_stated_quality_is_scored_as_the_notes_it_compiled_to(self):
+        """The quieter half: a suffix both sides know, naming a quality whose
+        notes are not the ones the audio was rendered from, is scored as
+        another chord. Compared as pitch classes, which is all a bar's credit
+        rests on; a corpus-only quality has no constant to compare against
+        (#600)."""
+        enum_notes = {name: {int(i) % 12 for i in re.findall(r"\d+", intervals)}
+                      for name, _, intervals in chord_quality_constants()}
+        for name, suffix, intervals in grid_shorthand_qualities():
+            quality = samples.SUFFIX_QUALITY.get(suffix)
+            if quality is None or quality in samples.CORPUS_ONLY_QUALITY:
+                continue
+            self.assertEqual(enum_notes[quality],
+                             {int(i) % 12 for i in re.findall(r"\d+", intervals)}, name)
 
 
 def vocabulary_line(spans: list[dict], stated: str = "A E D") -> str:
