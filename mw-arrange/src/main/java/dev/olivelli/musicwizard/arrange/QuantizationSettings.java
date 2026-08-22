@@ -140,15 +140,14 @@ public record QuantizationSettings(
      * <p>Asked per bar, because both halves of the answer depend on the meter
      * it is asked about: simple time subdivides by two and compound time by
      * three, so the very divisions that are tuplets in one are the natural ones
-     * in the other. The counted beat itself is always allowed — it is not a
-     * subdivision at all, and {@link GridResolution#isTupletIn} answers about
-     * it as though it were (#130).
+     * in the other. The counted beat itself is always allowed;
+     * {@link GridResolution#bracketedIn} carries that judgement, once (#618).
      */
     public boolean permits(GridResolution grid, TimeSignature meter) {
         if (grid.depthIn(meter) > levelsBelowTheBeat) {
             return false;
         }
-        return tuplets || grid == GridResolution.BEAT || !grid.isTupletIn(meter);
+        return tuplets || !grid.bracketedIn(meter);
     }
 
     private static int deepest() {

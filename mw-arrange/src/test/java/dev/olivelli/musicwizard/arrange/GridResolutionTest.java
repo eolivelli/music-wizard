@@ -161,13 +161,26 @@ class GridResolutionTest {
 
     @ParameterizedTest
     @EnumSource(GridResolution.class)
-    @DisplayName("a tuplet ratio is present exactly when the division is a tuplet")
-    void tupletAgreesWithIsTuplet(GridResolution resolution) {
+    @DisplayName("a tuplet ratio is present exactly when the division is bracketed")
+    void tupletAgreesWithBracketed(GridResolution resolution) {
         for (TimeSignature meter : new TimeSignature[] {
                 TimeSignature.FOUR_FOUR, TimeSignature.SIX_EIGHT, TWELVE_EIGHT}) {
             Optional<GridResolution.Tuplet> tuplet = resolution.tupletIn(meter);
-            assertThat(tuplet.isPresent()).isEqualTo(resolution.isTupletIn(meter));
+            assertThat(tuplet.isPresent()).isEqualTo(resolution.bracketedIn(meter));
         }
+    }
+
+    @Test
+    @DisplayName("the counted beat is charged as a tuplet in compound time, and bracketed never")
+    void theCountedBeatDivergesTheTwoQuestions() {
+        // The one pair the two predicates disagree on, pinned so the
+        // divergence stays a decision (#618, #130): the penalty's question
+        // keeps its wrong answer on purpose, and the page's question does not
+        // inherit it.
+        assertThat(GridResolution.BEAT.isTupletIn(TimeSignature.SIX_EIGHT)).isTrue();
+        assertThat(GridResolution.BEAT.bracketedIn(TimeSignature.SIX_EIGHT)).isFalse();
+        assertThat(GridResolution.BEAT.tupletIn(TimeSignature.SIX_EIGHT)).isEmpty();
+        assertThat(GridResolution.BEAT.bracketedIn(TimeSignature.FOUR_FOUR)).isFalse();
     }
 
     @Test
@@ -185,6 +198,8 @@ class GridResolutionTest {
         assertThatThrownBy(() -> GridResolution.BEAT.depthIn(null))
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> GridResolution.BEAT.isTupletIn(null))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> GridResolution.BEAT.bracketedIn(null))
                 .isInstanceOf(NullPointerException.class);
     }
 }

@@ -483,8 +483,7 @@ public final class PlayablePartCheck {
         Map<GridResolution, Integer> histogram = new EnumMap<>(GridResolution.class);
         for (BarGrid grid : quantized.grids()) {
             histogram.merge(grid.resolution(), 1, Integer::sum);
-            if (grid.resolution().isTupletIn(grid.timeSignature())
-                    && grid.resolution() != GridResolution.BEAT) {
+            if (grid.resolution().bracketedIn(grid.timeSignature())) {
                 tuplets++;
             }
         }
