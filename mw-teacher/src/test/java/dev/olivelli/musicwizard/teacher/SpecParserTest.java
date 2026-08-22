@@ -95,6 +95,15 @@ class SpecParserTest {
     }
 
     @Test
+    void compingIsCloseVoicedUnlessTheSpecSaysOtherwise() {
+        assertThat(SpecParser.parse(SPEC).compVoicing())
+                .isEqualTo(SampleSpec.CompVoicing.CLOSE);
+        assertThat(SpecParser.parse(SPEC.replace("seed: 7", "seed: 7\nvoicing: rootless-maj7"))
+                .compVoicing())
+                .isEqualTo(SampleSpec.CompVoicing.ROOTLESS_MAJ7);
+    }
+
+    @Test
     void minorKeysCarryTheirSignature() {
         SampleSpec spec = SpecParser.parse(SPEC
                 .replace("key: C major", "key: B minor"));

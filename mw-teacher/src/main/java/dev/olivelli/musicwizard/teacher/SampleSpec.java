@@ -43,6 +43,7 @@ public record SampleSpec(
         Integer melodyProgram,
         Integer melodyLevel,
         Accompaniment accompaniment,
+        CompVoicing compVoicing,
         List<Bar> bars) {
 
     /** The difficulty levels a spec may ask its melody for. */
@@ -53,6 +54,7 @@ public record SampleSpec(
 
     public SampleSpec {
         Objects.requireNonNull(accompaniment, "accompaniment");
+        Objects.requireNonNull(compVoicing, "compVoicing");
         if (melodyLevel != null
                 && (melodyLevel < MIN_MELODY_LEVEL || melodyLevel > MAX_MELODY_LEVEL)) {
             throw new IllegalArgumentException("melody level out of range: " + melodyLevel);
@@ -99,6 +101,40 @@ public record SampleSpec(
                 }
             }
             throw new IllegalArgumentException("unknown accompaniment: '" + id + "'");
+        }
+    }
+
+    /**
+     * How the comping states a chord.
+     *
+     * <p>{@link #CLOSE} is the default: every chord tone in the comping
+     * register, root included. {@link #ROOTLESS_MAJ7} leaves the root of a
+     * major seventh to the bass and plays third, fifth and seventh — which is
+     * the mediant triad, and is the whole point of the packages that ask for
+     * it (#589). It changes major seventh chords and nothing else, so a
+     * package stating it can be a minimal pair against a close-voiced twin.
+     */
+    public enum CompVoicing {
+        CLOSE("close"),
+        ROOTLESS_MAJ7("rootless-maj7");
+
+        private final String id;
+
+        CompVoicing(String id) {
+            this.id = id;
+        }
+
+        public String id() {
+            return id;
+        }
+
+        public static CompVoicing byId(String id) {
+            for (CompVoicing value : values()) {
+                if (value.id.equals(id)) {
+                    return value;
+                }
+            }
+            throw new IllegalArgumentException("unknown voicing: '" + id + "'");
         }
     }
 

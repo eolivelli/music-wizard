@@ -43,8 +43,9 @@ import java.util.Map;
  * {@code seed} are required; {@code genre}, {@code meter} (default 4/4) and
  * {@code melody} (an instrument name, or {@code none}; default is the style's
  * choice) are optional. So are {@code accompaniment} ({@code full}, the
- * default, {@code pad} or {@code none}) and {@code melody-level} (1 to 4, a
- * difficulty ramp; the default is the style's own rhythms). Unknown headers are
+ * default, {@code pad} or {@code none}), {@code melody-level} (1 to 4, a
+ * difficulty ramp; the default is the style's own rhythms) and {@code voicing}
+ * ({@code close}, the default, or {@code rootless-maj7}). Unknown headers are
  * an error, not a warning — a typoed header silently ignored would generate a
  * package that quietly ignores its spec.
  */
@@ -108,12 +109,13 @@ public final class SpecParser {
         Integer melodyLevel = parseMelodyLevel(remaining.remove("melody-level"));
         SampleSpec.Accompaniment accompaniment =
                 parseAccompaniment(remaining.remove("accompaniment"));
+        SampleSpec.CompVoicing voicing = parseVoicing(remaining.remove("voicing"));
         if (!remaining.isEmpty()) {
             throw new IllegalArgumentException("unknown headers: " + remaining.keySet());
         }
         return new SampleSpec(title, genre == null ? "" : genre, style, tempo, meter,
                 key[0], key[1].equals("minor") ? Mode.MINOR : Mode.MAJOR, seed, melody,
-                melodyLevel, accompaniment, bars);
+                melodyLevel, accompaniment, voicing, bars);
     }
 
     private static String require(Map<String, String> headers, String name) {
@@ -184,6 +186,12 @@ public final class SpecParser {
         return value == null
                 ? SampleSpec.Accompaniment.FULL
                 : SampleSpec.Accompaniment.byId(value);
+    }
+
+    private static SampleSpec.CompVoicing parseVoicing(String value) {
+        return value == null
+                ? SampleSpec.CompVoicing.CLOSE
+                : SampleSpec.CompVoicing.byId(value);
     }
 
     private static SampleSpec.Bar parseBar(String token) {
