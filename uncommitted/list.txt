@@ -380,11 +380,11 @@ duration to the second. A refetch should still be checked against the
 figures #575 and #596 quote before standing in for the file they were
 measured on.
 
-Words in per-sempre-si.lrc, from LRCLIB. Every LRCLIB entry for this song
-carries the same synced text whatever duration it states, so there was
-nothing to choose between; the last timed line sits at 171.5 s of this 205 s
-recording, and whether those times fit this rendering has not been checked
-by ear — the tail past them may simply be the fade.
+Words in per-sempre-si.lrc, from LRCLIB. No LRCLIB candidate for this song
+runs past about 172 s, so none reaches the last half-minute of this 205 s
+recording and there is nothing better to swap in; the local file's last
+timed line sits at 171.5 s, and whether its times fit this rendering has not
+been checked by ear.
 
 Run 2026-08-22. MW read C minor, 123 BPM, 4/4. No reference chart, and no
 ear has confirmed the changes. What the recording is for: the separator
