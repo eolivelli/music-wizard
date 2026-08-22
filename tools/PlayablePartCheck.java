@@ -149,6 +149,7 @@ public final class PlayablePartCheck {
                 score.lyrics().lines().stream().mapToInt(l -> l.words().size()).sum(),
                 score.lyrics().lines().size(),
                 score.lyrics().allWords().stream().filter(LyricWord::melisma).count());
+        splitClaims(score);
         chart(score, reduced);
         if (args.length < 2) {
             // Everything below reads the reference arrangement. What the part
@@ -198,6 +199,42 @@ public final class PlayablePartCheck {
             }
             System.out.println();
         }
+    }
+
+    /**
+     * How many syllables hold their notes in more than one run: another
+     * syllable's head sounds between two of theirs. Claiming across
+     * overlapping lines (#621) is what makes this reachable with disjoint
+     * word spans, and it is the statistic #646 turns on, so it is counted
+     * here rather than assumed.
+     */
+    private static void splitClaims(Score score) {
+        List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+        long split = 0;
+        for (PlayableMelody.SungSyllable syllable : sung) {
+            boolean interleaved = false;
+            for (int i = 0; !interleaved && i + 1 < syllable.heads().size(); i++) {
+                double from = syllable.heads().get(i).onsetSeconds();
+                double to = syllable.heads().get(i + 1).onsetSeconds();
+                for (PlayableMelody.SungSyllable other : sung) {
+                    if (other == syllable) {
+                        continue;
+                    }
+                    for (Note head : other.heads()) {
+                        if (head.onsetSeconds() > from && head.onsetSeconds() < to) {
+                            interleaved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (interleaved) {
+                split++;
+            }
+        }
+        System.out.printf(Locale.ROOT,
+                "split claims: %d of %d claimed syllables hold their notes in more"
+                        + " than one run%n", split, sung.size());
     }
 
     /**

@@ -198,6 +198,27 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a note under an overlapping line's syllable belongs to that line")
+        void anOverlappingLinesSyllableClaimsItsNote() {
+            // The first line's hull overlaps the note more, but the second
+            // line's syllable sits squarely under it. Chosen by hull alone
+            // the note lost to a line it was not sung on, and the claim
+            // bound then dropped it (#621).
+            Score score = sung(
+                    notes(note(0.0, 0.4, 60), note(10.0, 0.3, 67), note(20.0, 0.4, 64)),
+                    line(word("a1", 0.0, 0.4), word("a2", 20.0, 20.4)),
+                    line(word("b", 9.8, 10.2)));
+
+            List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+            assertThat(sung).hasSize(3);
+            assertThat(sung).anySatisfy(syllable -> {
+                assertThat(syllable.line()).isEqualTo(1);
+                assertThat(syllable.heads()).extracting(Note::midiPitch)
+                        .containsExactly(67);
+            });
+        }
+
+        @Test
         @DisplayName("among words a note sounds under, the nearest start wins: it is the approach")
         void theNearestStartWinsAmongSoundingWords() {
             // Both words sit at no silence from the middle note, so silence
