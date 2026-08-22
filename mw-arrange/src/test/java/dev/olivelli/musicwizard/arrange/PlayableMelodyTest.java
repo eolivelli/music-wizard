@@ -533,7 +533,7 @@ class PlayableMelodyTest {
         @DisplayName("a head held long enough to be meant is printed as it was heard")
         void aHeldNoteIsNotSecondGuessed() {
             List<Note> held = notes(note(0.0, 1.0, 60),
-                    note(1.0, PlayableMelody.EXCURSION_BEATS + 0.1, 61), note(3.0, 1.0, 60));
+                    note(1.0, PlayableMelody.EXCURSION.beats() + 0.1, 61), note(3.0, 1.0, 60));
 
             assertThat(pitches(PlayableMelody.reduce(inC(held))))
                     .containsExactly(60, 61, 60);
@@ -586,23 +586,57 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a head too far from what it would take keeps its own pitch")
+        void aDistantHeadIsNotAWobble() {
+            // An F sharp a tritone above the C the line sits on: outside the
+            // chord and outside the signature, so the harmony refuses it, and
+            // further from that C than the shipped bound calls a wobble.
+            int tritone = 6;
+            assertThat(PlayableMelody.EXCURSION.departureSemitones()).isLessThan(tritone);
+
+            assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 60 + tritone)))))
+                    .containsExactly(60, 60 + tritone, 60);
+            assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 60 + tritone)),
+                    PlayableMelody.CLAIM_BEATS, PlayableMelody.ORNAMENT_BEATS,
+                    new PlayableMelody.Excursion(PlayableMelody.EXCURSION.beats(),
+                            PlayableMelody.EXCURSION.returnSemitones(), tritone))))
+                    .containsExactly(60, 60, 60);
+        }
+
+        @Test
+        @DisplayName("a head sounding under another one stands aside")
+        void aSimultaneousHeadIsNotASide() {
+            // Two heads at one onset, which the melody track does not promise
+            // it will not hold. Neither is a side the line returned from,
+            // because nothing left.
+            List<Note> together = notes(note(0.0, 1.0, 59), note(1.0, 0.5, 61),
+                    note(1.0, 0.5, 60), note(1.5, 1.0, 59));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(together))))
+                    .containsExactly(59, 61, 60, 59);
+        }
+
+        @Test
         @DisplayName("the bounds are the sweep's to move, and the defaults are the shipped ones")
         void theBoundsAreSweepable() {
             Score score = inC(notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 1.0, 62)));
 
             assertThat(pitches(PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                    PlayableMelody.ORNAMENT_BEATS, 0, PlayableMelody.RETURN_SEMITONES)))
+                    PlayableMelody.ORNAMENT_BEATS, new PlayableMelody.Excursion(0,
+                            PlayableMelody.EXCURSION.returnSemitones(),
+                            PlayableMelody.EXCURSION.departureSemitones()))))
                     .containsExactly(60, 61, 62);
             assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 61)),
                     PlayableMelody.CLAIM_BEATS, PlayableMelody.ORNAMENT_BEATS,
-                    PlayableMelody.EXCURSION_BEATS, 0)))
+                    new PlayableMelody.Excursion(PlayableMelody.EXCURSION.beats(), 0,
+                            PlayableMelody.EXCURSION.departureSemitones()))))
                     .containsExactly(60, 60, 60);
         }
 
         @Test
         @DisplayName("a run of them looks past each other for the heads that bracket it")
         void aRunResolvesToOnePitch() {
-            List<Note> run = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 0.5, 68),
+            List<Note> run = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 0.5, 63),
                     note(2.0, 1.0, 60));
 
             assertThat(pitches(PlayableMelody.reduce(inC(run))))
@@ -622,8 +656,26 @@ class PlayableMelodyTest {
             assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(1.0);
             assertThat(reduced.notes().get(1).offsetSeconds()).isEqualTo(1.5);
             assertThat(reduced.notes().get(1).midiPitch()).isEqualTo(60);
-            assertThat(reduced.notes().get(1).spelling())
-                    .isEqualTo(reduced.notes().get(0).spelling());
+        }
+
+        @Test
+        @DisplayName("the written spelling moves with the pitch")
+        void theSpellingFollows() {
+            // A spelled fixture, because a moved head that kept the spelling it
+            // was read with would name a pitch it no longer sounds -- the
+            // failure PitchSpelling exists to prevent.
+            List<Note> spelled = notes(
+                    spelledAs(note(0.0, 1.0, 60), NoteLetter.C, Accidental.NATURAL),
+                    spelledAs(note(1.0, 0.5, 61), NoteLetter.C, Accidental.SHARP),
+                    spelledAs(note(1.5, 1.0, 60), NoteLetter.C, Accidental.NATURAL));
+
+            Note moved = PlayableMelody.reduce(inC(spelled)).notes().get(1);
+
+            assertThat(moved.midiPitch()).isEqualTo(60);
+            assertThat(moved.spelling()).isPresent();
+            assertThat(moved.spelling().orElseThrow().midiPitch()).isEqualTo(60);
+            assertThat(moved.spelling().orElseThrow().accidental())
+                    .isEqualTo(Accidental.NATURAL);
         }
 
         /** Two notes on one pitch with a head of its own between them. */
@@ -658,6 +710,10 @@ class PlayableMelodyTest {
                 java.util.Optional.empty(), 0.0, 4.0,
                 java.util.Optional.empty(), java.util.Optional.empty(),
                 Confidence.of(confidence))), Confidence.of(confidence));
+    }
+
+    private static Note spelledAs(Note note, NoteLetter letter, Accidental accidental) {
+        return note.spelledAs(new PitchSpelling(letter, accidental, note.midiPitch() / 12 - 1));
     }
 
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {

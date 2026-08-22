@@ -117,15 +117,23 @@ public final class PlayablePartCheck {
         PlayableMelody.ORNAMENT_BEATS, 2 * PlayableMelody.ORNAMENT_BEATS, 0.5, 1};
 
     /**
-     * The excursion bounds swept, in quarter-note beats; the first is the
-     * shipped one, and the last is wide enough that no head is held for it.
+     * The excursion lengths swept, in quarter-note beats; the first is the
+     * shipped one and the second is no bound at all.
      */
-    private static final double[] EXCURSION_BOUNDS =
-            {PlayableMelody.EXCURSION_BEATS, 0.25, 0.5, 0.75, 1.5, 2};
+    private static final double[] EXCURSION_BOUNDS = {PlayableMelody.EXCURSION.beats(),
+        Double.MAX_VALUE, 0.25, 0.5, 0.75, 1.5, 2, 4};
 
     /** The return bounds swept, in semitones; the first is the shipped one. */
     private static final int[] RETURN_BOUNDS =
-            {PlayableMelody.RETURN_SEMITONES, 0, 1, 3, 4, 5, 7};
+            {PlayableMelody.EXCURSION.returnSemitones(), 0, 1, 3, 4, 5, 7};
+
+    /**
+     * The departure bounds swept, in semitones; the first is the shipped one
+     * and the second is no bound at all, which is what leaves the head's own
+     * distance from the line unconstrained.
+     */
+    private static final int[] DEPARTURE_BOUNDS =
+            {PlayableMelody.EXCURSION.departureSemitones(), 127, 1, 2, 3, 5, 7, 12};
 
     /** The widest run the melisma sweep asks a syllable's heads to reach. */
     private static final int MELISMA_SEMITONES = 7;
@@ -203,7 +211,8 @@ public final class PlayablePartCheck {
         agreement("reduced", score, reduced, mapped);
         agreement("with the excursion rule off", score,
                 PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                        PlayableMelody.ORNAMENT_BEATS, 0, 0), mapped);
+                        PlayableMelody.ORNAMENT_BEATS,
+                        new PlayableMelody.Excursion(0, 0, 0)), mapped);
         removals(events(estimate), events(reduced), mapped);
         excursions(score, estimate, mapped, bar);
         claims(score, estimate, mapped, bar);
@@ -699,26 +708,48 @@ public final class PlayablePartCheck {
     private static void excursions(Score score, NoteTrack estimate, List<Event> reference,
                                    double barSeconds) {
         System.out.println();
-        System.out.printf(Locale.ROOT, "%9s %8s %8s %10s %12s %10s %9s%n",
-                "excursion", "return", "moved", "foreign", "out-of-chord", "per bar",
-                "F1 loose");
+        System.out.printf(Locale.ROOT, "%9s %8s %10s %8s %10s %12s %10s %9s%n",
+                "excursion", "return", "departure", "moved", "foreign", "out-of-chord",
+                "per bar", "F1 loose");
+        PlayableMelody.Excursion shipped = PlayableMelody.EXCURSION;
         NoteTrack asRead = PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                PlayableMelody.ORNAMENT_BEATS, 0, 0);
-        excursion(score, estimate, asRead, asRead, "off", "off", reference, barSeconds);
+                PlayableMelody.ORNAMENT_BEATS, new PlayableMelody.Excursion(0, 0, 0));
+        excursion(score, estimate, asRead, asRead, "off", "off", "off", reference, barSeconds);
+        // One bound at a time around the shipped triple: a cross product prints
+        // more rows than anybody reads, and what each bound is worth is the
+        // question.
         for (double beats : EXCURSION_BOUNDS) {
-            for (int semitones : RETURN_BOUNDS) {
-                excursion(score, estimate, asRead,
-                        PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                                PlayableMelody.ORNAMENT_BEATS, beats, semitones),
-                        String.format(Locale.ROOT, "%.2f", beats), String.valueOf(semitones),
-                        reference, barSeconds);
-            }
+            excursion(score, estimate, asRead, new PlayableMelody.Excursion(beats,
+                    shipped.returnSemitones(), shipped.departureSemitones()),
+                    reference, barSeconds);
+        }
+        for (int semitones : RETURN_BOUNDS) {
+            excursion(score, estimate, asRead, new PlayableMelody.Excursion(shipped.beats(),
+                    semitones, shipped.departureSemitones()), reference, barSeconds);
+        }
+        for (int departure : DEPARTURE_BOUNDS) {
+            excursion(score, estimate, asRead, new PlayableMelody.Excursion(shipped.beats(),
+                    shipped.returnSemitones(), departure), reference, barSeconds);
         }
     }
 
     private static void excursion(Score score, NoteTrack estimate, NoteTrack asRead,
+                                  PlayableMelody.Excursion bounds, List<Event> reference,
+                                  double barSeconds) {
+        excursion(score, estimate, asRead,
+                PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
+                        PlayableMelody.ORNAMENT_BEATS, bounds),
+                bounds.beats() == Double.MAX_VALUE ? "none"
+                        : String.format(Locale.ROOT, "%.2f", bounds.beats()),
+                String.valueOf(bounds.returnSemitones()),
+                bounds.departureSemitones() >= 127 ? "none"
+                        : String.valueOf(bounds.departureSemitones()),
+                reference, barSeconds);
+    }
+
+    private static void excursion(Score score, NoteTrack estimate, NoteTrack asRead,
                                   NoteTrack reduced, String beats, String semitones,
-                                  List<Event> reference, double barSeconds) {
+                                  String departure, List<Event> reference, double barSeconds) {
         int moved = 0;
         for (int i = 0; i < reduced.size(); i++) {
             if (reduced.notes().get(i).midiPitch() != asRead.notes().get(i).midiPitch()) {
@@ -727,8 +758,8 @@ public final class PlayablePartCheck {
         }
         Harmony harmony = harmonyOf(score, reduced, estimate);
         List<Event> events = events(reduced);
-        System.out.printf(Locale.ROOT, "%9s %8s %8d %9.1f%% %11.1f%% %10s %9s%n",
-                beats, semitones, moved, share(harmony.foreign(), harmony.beats()),
+        System.out.printf(Locale.ROOT, "%9s %8s %10s %8d %9.1f%% %11.1f%% %10s %9s%n",
+                beats, semitones, departure, moved, share(harmony.foreign(), harmony.beats()),
                 share(harmony.outOfChord(), harmony.beats()),
                 reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
                         countError(events, reference, barSeconds)),
@@ -764,7 +795,8 @@ public final class PlayablePartCheck {
             if (classes.isEmpty()) {
                 continue;
             }
-            int[] tally = accounted(score, head) ? supported : foreign;
+            int[] tally = PlayableMelody.accountedFor(score, head)
+                    ? supported : foreign;
             tally[0]++;
             if (classes.contains(Math.floorMod(head.midiPitch(), 12))) {
                 tally[1]++;
@@ -783,15 +815,6 @@ public final class PlayablePartCheck {
                         + " not; %d of the reference's own %d notes leave the key signature%n",
                 label, supported[1], supported[0], foreign[1], foreign[0],
                 outside, reference.size());
-    }
-
-    /** Whether the chord under a head or the key signature over it admits its pitch. */
-    private static boolean accounted(Score score, Note head) {
-        int pitchClass = Math.floorMod(head.midiPitch(), 12);
-        boolean inSignature = signatureOf(score, head).map(
-                set -> set.contains(pitchClass)).orElse(true);
-        Chord chord = soundingChord(score, head).orElse(null);
-        return inSignature || chord == null || sounds(chord, pitchClass);
     }
 
     /** Sounding time in quarter-note beats, and how it splits. */
@@ -836,7 +859,7 @@ public final class PlayablePartCheck {
             if (!inSignature) {
                 outOfSignature += held;
             }
-            if (accounted(score, note)) {
+            if (PlayableMelody.accountedFor(score, note)) {
                 continue;
             }
             foreign += held;

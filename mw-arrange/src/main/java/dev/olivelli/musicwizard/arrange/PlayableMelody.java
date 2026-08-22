@@ -111,23 +111,11 @@ public final class PlayableMelody {
     public static final double CLAIM_BEATS = 2.0;
 
     /**
-     * How long a head nothing in the harmony accounts for may last, in
-     * quarter-note beats, and still be read as an excursion (#670).
-     *
-     * <p>A held note is a decision and is printed as it was heard, whatever the
-     * harmony says about it. Swept by {@code tools/PlayablePartCheck.java},
-     * which reads this value so the shipped bound has one writer.
+     * What {@link #reduce(Score)} decides an excursion by;
+     * {@code tools/PlayablePartCheck.java} sweeps around it, so the shipped
+     * bounds have one writer.
      */
-    public static final double EXCURSION_BEATS = 1.0;
-
-    /**
-     * How near the supported heads on either side must be to each other, in
-     * semitones, for the melody to count as having returned.
-     *
-     * <p>A step, so the excursion is a neighbour figure rather than a move to
-     * somewhere else. Swept alongside {@link #EXCURSION_BEATS}.
-     */
-    public static final int RETURN_SEMITONES = 2;
+    public static final Excursion EXCURSION = new Excursion(1.0, 2, 4);
 
     /** The degrees of each mode's key signature, in semitones above the tonic. */
     private static final int[] MAJOR_DEGREES = {0, 2, 4, 5, 7, 9, 11};
@@ -140,6 +128,30 @@ public final class PlayableMelody {
     private static final double EPSILON = 1e-9;
 
     private PlayableMelody() {
+    }
+
+    /**
+     * The three bounds {@link #reduce(Score)} reads a head as an excursion by
+     * (#670), each of which turns the rule off when it is zero.
+     *
+     * @param beats how long a head nothing in the harmony accounts for may
+     *              last and still be an excursion rather than a note held on
+     *              purpose, in quarter-note beats
+     * @param returnSemitones how near the supported heads on either side must
+     *              be to each other for the melody to have returned to where
+     *              it left
+     * @param departureSemitones how far the head may be from the pitch it
+     *              would take. Past this the line did not wobble, it went
+     *              somewhere, and printing what was heard is the honest answer
+     *              even where the harmony refuses it
+     */
+    public record Excursion(double beats, int returnSemitones, int departureSemitones) {
+
+        public Excursion {
+            if (!Double.isFinite(beats)) {
+                throw new IllegalArgumentException("beats must be finite, got: " + beats);
+            }
+        }
     }
 
     /**
@@ -182,27 +194,24 @@ public final class PlayableMelody {
      *                                  either bound is not a finite number
      */
     public static NoteTrack reduce(Score score, double claimBeats, double ornamentBeats) {
-        return reduce(score, claimBeats, ornamentBeats, EXCURSION_BEATS, RETURN_SEMITONES);
+        return reduce(score, claimBeats, ornamentBeats, EXCURSION);
     }
 
     /**
      * The same at chosen excursion bounds too, which is the other thing
      * {@code tools/PlayablePartCheck.java} sweeps (#670).
      *
-     * @param excursionBeats how long a head nothing in the harmony accounts for
-     *                       may last and still be read as an excursion
-     * @param returnSemitones how near the supported heads on either side must
-     *                        be for the melody to have returned
+     * @param excursion what a head is read as an excursion by
      * @throws IllegalArgumentException if the score holds no melody part, or
-     *                                  any bound is not a finite number
+     *                                  either bound is not a finite number
      */
     public static NoteTrack reduce(Score score, double claimBeats, double ornamentBeats,
-                                   double excursionBeats, int returnSemitones) {
+                                   Excursion excursion) {
         Objects.requireNonNull(score, "score");
-        if (!Double.isFinite(claimBeats) || !Double.isFinite(ornamentBeats)
-                || !Double.isFinite(excursionBeats)) {
+        Objects.requireNonNull(excursion, "excursion");
+        if (!Double.isFinite(claimBeats) || !Double.isFinite(ornamentBeats)) {
             throw new IllegalArgumentException("the bounds must be finite, got: "
-                    + claimBeats + ", " + ornamentBeats + " and " + excursionBeats);
+                    + claimBeats + " and " + ornamentBeats);
         }
         NoteTrack melody = score.track(PartRole.LEAD_VOCAL).orElseThrow(
                 () -> new IllegalArgumentException("the score holds no melody to reduce"));
@@ -220,7 +229,7 @@ public final class PlayableMelody {
                     score.chords(), map));
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME,
-                returned(reduced, score, excursionBeats, returnSemitones), melody.confidence());
+                returned(reduced, score, excursion), melody.confidence());
     }
 
     /** One syllable of the lyrics and the note-heads it prints when it is a melisma. */
@@ -619,37 +628,41 @@ public final class PlayableMelody {
      *
      * <p>A head neither the chord under it nor the key signature accounts for
      * is not a note a reader should meet as an accidental unless the melody
-     * really went there. Three things have to hold before this decides it did
-     * not: nothing in the harmony admits the pitch, the head is too short to be
-     * a note held on purpose, and the nearest supported heads on either side
-     * are within a step of each other — so the line left one place and came
-     * back to it. A head <em>between</em> those two is left alone whatever the
-     * harmony says, because that is what a chromatic passing tone looks like,
-     * and the packages whose melody is exact by construction lose one when this
-     * exemption is off.
+     * really went there. Four things have to hold before this decides it did
+     * not: nothing in the harmony admits the pitch, the head is too short to
+     * be a note held on purpose, the nearest supported heads on either side
+     * are near enough each other that the line came back to where it left, and
+     * the head is near enough to that place for the move to have been a wobble
+     * rather than somewhere the line went. A head <em>between</em> its two
+     * neighbours is left alone whatever the harmony says, because that is what
+     * a chromatic passing tone looks like.
      *
-     * <p>Nothing here changes how many heads are printed or when: a syllable
-     * keeps the head it was given, at its own onset and length.
+     * <p>The pass reads a monophonic sequence of heads, and a head sounding at
+     * the same time as another stands aside rather than being read as the side
+     * the line returned to. Nothing here changes how many heads are printed or
+     * when: a syllable keeps the head it was given, at its own onset and
+     * length.
      */
-    private static List<Note> returned(List<Note> heads, Score score, double excursionBeats,
-                                       int returnSemitones) {
+    private static List<Note> returned(List<Note> heads, Score score, Excursion excursion) {
         TempoMap map = score.tempoMap();
         boolean[] supported = new boolean[heads.size()];
+        boolean[] alone = new boolean[heads.size()];
         for (int i = 0; i < heads.size(); i++) {
-            supported[i] = supported(heads.get(i), score, map);
+            supported[i] = accountedFor(score, heads.get(i));
+            alone[i] = alone(heads, i);
         }
         List<Note> out = new ArrayList<>(heads);
         for (int i = 0; i < heads.size(); i++) {
             Note head = heads.get(i);
-            if (supported[i] || beatsOf(head, map) > excursionBeats) {
+            if (supported[i] || !alone[i] || beatsOf(head, map) > excursion.beats()) {
                 continue;
             }
             int before = i - 1;
-            while (before >= 0 && !supported[before]) {
+            while (before >= 0 && !(supported[before] && alone[before])) {
                 before--;
             }
             int after = i + 1;
-            while (after < heads.size() && !supported[after]) {
+            while (after < heads.size() && !(supported[after] && alone[after])) {
                 after++;
             }
             if (before < 0 || after >= heads.size()) {
@@ -657,13 +670,16 @@ public final class PlayableMelody {
             }
             int left = heads.get(before).midiPitch();
             int right = heads.get(after).midiPitch();
-            if (Math.abs(left - right) > returnSemitones
+            if (Math.abs(left - right) > excursion.returnSemitones()
                     || (head.midiPitch() > Math.min(left, right)
                         && head.midiPitch() < Math.max(left, right))) {
                 continue;
             }
             Note home = Math.abs(left - head.midiPitch()) <= Math.abs(right - head.midiPitch())
                     ? heads.get(before) : heads.get(after);
+            if (Math.abs(home.midiPitch() - head.midiPitch()) > excursion.departureSemitones()) {
+                continue;
+            }
             out.set(i, new Note(head.onsetSeconds(), head.durationSeconds(), home.midiPitch(),
                     head.velocity(), home.spelling(), head.onsetBeat(), head.durationBeats(),
                     head.confidence()));
@@ -671,18 +687,36 @@ public final class PlayableMelody {
         return out;
     }
 
+    /** Whether no other head sounds while this one does. */
+    private static boolean alone(List<Note> heads, int index) {
+        Note head = heads.get(index);
+        for (int i = 0; i < heads.size(); i++) {
+            if (i != index && heads.get(i).onsetSeconds() < head.offsetSeconds() - EPSILON
+                    && head.onsetSeconds() < heads.get(i).offsetSeconds() - EPSILON) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
-     * Whether anything in the harmony admits the head's pitch.
+     * Whether anything in the harmony admits a note's pitch, which is what
+     * {@link #reduce(Score)} refuses an excursion by (#670).
      *
      * <p>Both references have to be there and both have to refuse it. The
      * chord is stated per span, so it survives a piece that changes key; the
      * key layer holds one span (#441), so it is the coarser of the two and
      * cannot answer alone.
+     *
+     * <p>Public so that {@code tools/PlayablePartCheck.java} measures the
+     * decision the reduction makes rather than a second transcription of it.
      */
-    private static boolean supported(Note head, Score score, TempoMap map) {
-        Optional<Chord> chord = chordOver(map.secondsToBeats(head.onsetSeconds()),
-                map.secondsToBeats(head.offsetSeconds()), score.chords(), map)
-                .filter(c -> !c.isNoChord());
+    public static boolean accountedFor(Score score, Note head) {
+        Objects.requireNonNull(score, "score");
+        Objects.requireNonNull(head, "head");
+        TempoMap map = score.tempoMap();
+        Optional<Chord> chord = chordOver(startBeat(head, map), endBeat(head, map),
+                score.chords(), map).filter(c -> !c.isNoChord());
         Optional<Key> key = score.keyAt((head.onsetSeconds() + head.offsetSeconds()) / 2);
         if (chord.isEmpty() || key.isEmpty()) {
             return true;
@@ -702,9 +736,17 @@ public final class PlayableMelody {
     }
 
     private static double beatsOf(Note note, TempoMap map) {
-        return note.durationBeats().orElseGet(
-                () -> map.secondsToBeats(note.offsetSeconds())
-                        - map.secondsToBeats(note.onsetSeconds()));
+        return endBeat(note, map) - startBeat(note, map);
+    }
+
+    // A quantized note's own beats, like Piece's, so that the length this
+    // measures and the span it looks the chord up over are the same one.
+    private static double startBeat(Note note, TempoMap map) {
+        return note.onsetBeat().orElseGet(() -> map.secondsToBeats(note.onsetSeconds()));
+    }
+
+    private static double endBeat(Note note, TempoMap map) {
+        return note.offsetBeat().orElseGet(() -> map.secondsToBeats(note.offsetSeconds()));
     }
 
     /** The chord span covering most of the group, if any covers it at all. */
