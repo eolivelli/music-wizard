@@ -117,11 +117,10 @@ public record SampleSpec(
      * register, root included. {@link #ROOTLESS_MAJ7} leaves the root of a
      * major seventh to the bass and plays third, fifth and seventh — which is
      * the mediant triad, and is the whole point of the packages that ask for
-     * it (#589). Only the pop-rock comp with full accompaniment honours it
-     * while changing major seventh chords and nothing else; the other comps
-     * either ignore it or draw from the shared random stream once per pitch,
-     * which un-minimals the pair the header exists to build, so every other
-     * combination is rejected outright (#631).
+     * it (#589). The pop-rock comp with full accompaniment is the one
+     * combination verified to change major seventh chords and nothing else;
+     * every other combination is rejected outright, and #631 tracks widening
+     * that.
      */
     public enum CompVoicing {
         CLOSE("close"),
