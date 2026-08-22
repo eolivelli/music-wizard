@@ -316,30 +316,53 @@ class AlignedLyricsTest {
         // The whole wiring, from --melody to the file: a stepped tone under one
         // syllable an aligner gave the span of. A run whose melody track never
         // arrived would pass every other test in this file (#597).
+        Path root = markedWorkspace("melisma");
+
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        assertThat(score.track(PartRole.LEAD_VOCAL)).isPresent();
+        assertThat(score.lyrics().allWords()).extracting(LyricWord::melisma)
+                .containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("a plain re-analysis keeps the marks: the cached melody still earns them")
+    void marksSurviveAPlainReanalysis() throws IOException {
+        // The end of the chain nothing else pins: the melody served from the
+        // cache and the one score.json holds are two serializations of one
+        // transcription, and the carried marks must survive meeting it (#623).
+        // A drop here would look perfectly healthy on every other output.
+        Path root = markedWorkspace("remelisma");
+
+        CliRunner.Result again = CliRunner.run("analyze", root.toString(), "--melody");
+
+        assertThat(again.exitCode()).as(again.all()).isZero();
+        assertThat(again.out()).doesNotContain("melisma marks dropped");
+        Score score = Workspace.open(root).readScore().orElseThrow();
+        assertThat(score.lyrics().allWords()).extracting(LyricWord::melisma)
+                .as(again.all()).containsExactly(true);
+    }
+
+    /** A workspace analysed with {@code --melody} and one aligned melisma line. */
+    private Path markedWorkspace(String name) throws IOException {
         int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
         float[] samples = new float[0];
         for (int midiPitch : new int[] {57, 60, 57}) {
             samples = concat(samples, tone(midiPitch, 2.0, rate));
         }
-        Path source = directory.resolve("melisma.wav");
+        Path source = directory.resolve(name + ".wav");
         SignalFactory.writeWav(source, samples, rate);
-        Path root = directory.resolve("melisma.mwz");
+        Path root = directory.resolve(name + ".mwz");
         assertThat(CliRunner.run("init", source.toString(), "-w", root.toString())
                 .exitCode()).isZero();
         Path descriptor = root.resolve("workspace.yaml");
         Files.writeString(descriptor, Files.readString(descriptor)
                 + "\nconfig:\n  ml:\n    alignmentProvider: sung-fake-cli-alignment\n");
-        Path lrc = directory.resolve("melisma.lrc");
+        Path lrc = directory.resolve(name + ".lrc");
         Files.writeString(lrc, "[00:00.50]aah\n");
-
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(), "--melody",
                 "--lyrics", lrc.toString(), "--lyrics-language", "en");
-
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
-        Score score = Workspace.open(root).readScore().orElseThrow();
-        assertThat(score.track(PartRole.LEAD_VOCAL)).as(analyze.all()).isPresent();
-        assertThat(score.lyrics().allWords()).extracting(LyricWord::melisma)
-                .as(analyze.all()).containsExactly(true);
+        return root;
     }
 
     /** A tone with partials, which the melody stage tracks and a bare sine it does not. */
@@ -376,6 +399,81 @@ class AlignedLyricsTest {
         assertThat(decided.lines().get(1).words().get(0).melisma()).isFalse();
     }
 
+    @Test
+    @DisplayName("carried marks survive while this run's own decision still makes them")
+    void carriedMarksSurviveAnUnchangedScore() {
+        List<Note> run = List.of(note(0.0, 0.4, 60), note(0.4, 0.4, 62), note(0.8, 0.4, 64));
+        Lyrics existing = lyricsOf(line(word("aaah", 0.0, 1.2).withMelisma(true)));
+
+        Score carried = AnalyzeCommand.withCarriedLyrics(existing, sung(run));
+
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("a recomputed melody drops the carried marks, and only the marks")
+    void aChangedMelodyDropsCarriedMarks() {
+        // Under a melody this run recomputed, a carried mark can say a
+        // syllable is sung over a run the score no longer holds (#623). The
+        // words themselves are supplied, not derived, so everything else about
+        // them is kept.
+        Lyrics existing = lyricsOf(line(word("aaah", 0.0, 1.2).withMelisma(true),
+                word("oh", 1.2, 1.4).withHyphenToNext(true)));
+
+        Score carried = AnalyzeCommand.withCarriedLyrics(
+                existing, sung(List.of(note(0.0, 0.8, 60))));
+
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(false, false);
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::text).containsExactly("aaah", "oh");
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::hyphenatedToNext).containsExactly(false, true);
+    }
+
+    @Test
+    @DisplayName("a changed tempo map drops a mark the same notes no longer earn")
+    void aChangedTempoMapDropsCarriedMarks() {
+        // The mark is a function of the tempo map too: the ornament thresholds
+        // are in beats, so the same notes-in-seconds group into different
+        // heads at different tempi. This is the input a melody-track
+        // comparison would have missed (#623), and re-running a workspace
+        // with a corrected tempo is the tool's most recommended action.
+        List<Note> run = List.of(note(0.0, 0.05, 60), note(0.05, 0.15, 62),
+                note(0.20, 1.0, 65));
+        Lyrics existing = lyricsOf(line(word("aaah", 0.0, 1.2).withMelisma(true)));
+
+        Score fast = sungAt(TempoMap.constant(240), run);
+        Score slow = sungAt(TempoMap.constant(60), run);
+
+        assertThat(AnalyzeCommand.withCarriedLyrics(existing, fast).lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(true);
+        assertThat(AnalyzeCommand.withCarriedLyrics(existing, slow).lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(false);
+    }
+
+    @Test
+    @DisplayName("marks wait out a run with no melody, and are checked when one is back")
+    void marksWaitOutAMissingMelody() {
+        Lyrics existing = lyricsOf(line(word("aaah", 0.0, 1.2).withMelisma(true)));
+        Score withoutMelody = Score.empty(TempoMap.constant(60), 30);
+
+        // No melody, no decision: the marks are inert on a score no lead
+        // sheet can be rendered from, and dropping them here would lose them
+        // to a run that computed nothing to check against.
+        Score waiting = AnalyzeCommand.withCarriedLyrics(existing, withoutMelody);
+        assertThat(waiting.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(true);
+
+        // The melody that comes back is not the one the marks described, and
+        // now there is something to check against.
+        Score checked = AnalyzeCommand.withCarriedLyrics(
+                waiting.lyrics(), sung(List.of(note(0.0, 0.8, 60))));
+        assertThat(checked.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(false);
+    }
+
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
         return Note.ofSeconds(onsetSeconds, durationSeconds, midiPitch, Confidence.of(0.7));
     }
@@ -389,10 +487,18 @@ class AlignedLyricsTest {
     }
 
     private static Score sung(List<Note> notes, LyricLine... lines) {
-        return new Score(Optional.empty(), Optional.empty(), TempoMap.constant(60),
+        return sungAt(TempoMap.constant(60), notes, lines);
+    }
+
+    private static Score sungAt(TempoMap map, List<Note> notes, LyricLine... lines) {
+        return new Score(Optional.empty(), Optional.empty(), map,
                 Optional.empty(), List.of(), List.of(),
                 List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.of(0.7))),
                 ChordProgression.empty(),
                 new Lyrics(List.of(lines), "it", Confidence.of(0.8)), 30);
+    }
+
+    private static Lyrics lyricsOf(LyricLine... lines) {
+        return new Lyrics(List.of(lines), "it", Confidence.of(0.8));
     }
 }
