@@ -72,9 +72,10 @@ public final class PlayableMelody {
      *
      * <p>Strictly below the triplet eighth, which is the shortest value this
      * expects a reader to want: anything finer inside a single beat is
-     * decoration.
+     * decoration. Public because {@code tools/PlayablePartCheck.java} sweeps
+     * around it, so the shipped bound has one writer.
      */
-    private static final double ORNAMENT_BEATS = 1.0 / 3;
+    public static final double ORNAMENT_BEATS = 1.0 / 3;
 
     /** What fraction of the note it leads into an ornament may last. */
     private static final double ORNAMENT_RATIO = 0.5;
@@ -98,9 +99,10 @@ public final class PlayableMelody {
      * <p>Silence between the two spans rather than distance between their
      * starts: a note sounding under a syllable is at no distance from it,
      * however late in it the note begins (#598). Swept by
-     * {@code tools/PlayablePartCheck.java}.
+     * {@code tools/PlayablePartCheck.java}, which also reads this value so
+     * the shipped bound has one writer.
      */
-    private static final double CLAIM_BEATS = 2.0;
+    public static final double CLAIM_BEATS = 2.0;
 
     /** No syllable claims this note. */
     private static final long UNSUNG = Long.MIN_VALUE;
@@ -134,9 +136,26 @@ public final class PlayableMelody {
      *                                  the bound is not a finite number
      */
     public static NoteTrack reduce(Score score, double claimBeats) {
+        return reduce(score, claimBeats, ORNAMENT_BEATS);
+    }
+
+    /**
+     * The same at a chosen ornament bound too, for the sweep the double-rate
+     * question needs (#595): the bound is stated in beats, and on a grid
+     * tracked at double rate (#378) only moving it can say what the rate
+     * costs.
+     *
+     * @param ornamentBeats how long a note may be, in quarter-note beats, and
+     *                      still be absorbed as an ornament of the note after
+     *                      it
+     * @throws IllegalArgumentException if the score holds no melody part, or
+     *                                  either bound is not a finite number
+     */
+    public static NoteTrack reduce(Score score, double claimBeats, double ornamentBeats) {
         Objects.requireNonNull(score, "score");
-        if (!Double.isFinite(claimBeats)) {
-            throw new IllegalArgumentException("claimBeats must be finite, got: " + claimBeats);
+        if (!Double.isFinite(claimBeats) || !Double.isFinite(ornamentBeats)) {
+            throw new IllegalArgumentException("the bounds must be finite, got: "
+                    + claimBeats + " and " + ornamentBeats);
         }
         NoteTrack melody = score.track(PartRole.LEAD_VOCAL).orElseThrow(
                 () -> new IllegalArgumentException("the score holds no melody to reduce"));
@@ -147,7 +166,7 @@ public final class PlayableMelody {
         }
         List<Note> reduced = new ArrayList<>(pieces.size());
         Set<Long> opened = new HashSet<>();
-        for (Sung group : groups(pieces, score.lyrics(), map, claimBeats)) {
+        for (Sung group : groups(pieces, score.lyrics(), map, claimBeats, ornamentBeats)) {
             boolean opens = group.syllable() != UNSUNG && opened.add(group.syllable());
             reduced.add(printed(group.pieces(),
                     opens ? wordOf(score.lyrics(), group.syllable()) : null,
@@ -192,7 +211,8 @@ public final class PlayableMelody {
             if (claimed[from] != UNSUNG) {
                 List<Note> heads = bySyllable.computeIfAbsent(claimed[from],
                         key -> new ArrayList<>());
-                for (List<Piece> group : ornamentGroups(pieces.subList(from, to + 1))) {
+                for (List<Piece> group : ornamentGroups(pieces.subList(from, to + 1),
+                        ORNAMENT_BEATS)) {
                     heads.add(printed(group, heads.isEmpty()
                                     ? wordOf(score.lyrics(), claimed[from]) : null,
                             score.chords(), map));
@@ -238,7 +258,7 @@ public final class PlayableMelody {
     }
 
     private static List<Sung> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map,
-                                     double claimBeats) {
+                                     double claimBeats, double ornamentBeats) {
         long[] syllable = syllableOf(pieces, lyrics, map, claimBeats);
         List<Sung> groups = new ArrayList<>();
         int from = 0;
@@ -251,7 +271,7 @@ public final class PlayableMelody {
             if (syllable[from] != UNSUNG && !isMelisma(lyrics, syllable[from])) {
                 groups.add(new Sung(run, syllable[from]));
             } else {
-                for (List<Piece> group : ornamentGroups(run)) {
+                for (List<Piece> group : ornamentGroups(run, ornamentBeats)) {
                     groups.add(new Sung(group, syllable[from]));
                 }
             }
@@ -264,12 +284,12 @@ public final class PlayableMelody {
      * The run split into the note-heads the ornament rule leaves: an ornament
      * joins the note it leads into, and anything else stands on its own.
      */
-    private static List<List<Piece>> ornamentGroups(List<Piece> run) {
+    private static List<List<Piece>> ornamentGroups(List<Piece> run, double ornamentBeats) {
         List<List<Piece>> groups = new ArrayList<>();
         int from = 0;
         while (from < run.size()) {
             int to = from;
-            while (to + 1 < run.size() && leadsInto(run.get(to), run.get(to + 1))) {
+            while (to + 1 < run.size() && leadsInto(run.get(to), run.get(to + 1), ornamentBeats)) {
                 to++;
             }
             groups.add(run.subList(from, to + 1));
@@ -368,8 +388,8 @@ public final class PlayableMelody {
      * played separately — a note too short to be worth a note-head, glued to a
      * much longer one — and leaves every legible rhythm alone.
      */
-    private static boolean leadsInto(Piece ornament, Piece target) {
-        return ornament.durationBeats() < ORNAMENT_BEATS
+    private static boolean leadsInto(Piece ornament, Piece target, double ornamentBeats) {
+        return ornament.durationBeats() < ornamentBeats
                 && ornament.durationBeats() <= ORNAMENT_RATIO * target.durationBeats()
                 && target.startBeat() <= ornament.endBeat() + EPSILON;
     }
