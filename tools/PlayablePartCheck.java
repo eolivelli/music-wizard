@@ -21,8 +21,11 @@ import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
@@ -113,6 +116,17 @@ public final class PlayablePartCheck {
     private static final double[] ORNAMENT_BOUNDS = {
         PlayableMelody.ORNAMENT_BEATS, 2 * PlayableMelody.ORNAMENT_BEATS, 0.5, 1};
 
+    /**
+     * The excursion bounds swept, in quarter-note beats; the first is the
+     * shipped one, and the last is wide enough that no head is held for it.
+     */
+    private static final double[] EXCURSION_BOUNDS =
+            {PlayableMelody.EXCURSION_BEATS, 0.25, 0.5, 0.75, 1.5, 2};
+
+    /** The return bounds swept, in semitones; the first is the shipped one. */
+    private static final int[] RETURN_BOUNDS =
+            {PlayableMelody.RETURN_SEMITONES, 0, 1, 3, 4, 5, 7};
+
     /** The widest run the melisma sweep asks a syllable's heads to reach. */
     private static final int MELISMA_SEMITONES = 7;
 
@@ -160,10 +174,12 @@ public final class PlayablePartCheck {
                 score.lyrics().allWords().stream().filter(LyricWord::melisma).count());
         splitClaims(score);
         chart(score, reduced);
+        harmony(score, estimate, reduced);
         if (args.length < 2) {
             // Everything below reads the reference arrangement. What the part
             // welds together does not, so a recording nobody has sequenced
             // still gets that table rather than a usage error.
+            excursions(score, estimate, List.of(), Double.NaN);
             claims(score, estimate, List.of(), Double.NaN);
             ornaments(score, estimate, List.of(), Double.NaN);
             melismas(score, estimate, List.of(), Double.NaN);
@@ -185,6 +201,7 @@ public final class PlayablePartCheck {
         report("estimate", events(estimate), mapped, bar);
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
+        excursions(score, estimate, mapped, bar);
         claims(score, estimate, mapped, bar);
         ornaments(score, estimate, mapped, bar);
         melismas(score, estimate, mapped, bar);
@@ -614,8 +631,10 @@ public final class PlayablePartCheck {
      *
      * <p>Measured by reducing the same score with its progression removed,
      * which is the one input the chart reaches: grouping never asks about
-     * harmony, so every difference between the two runs is a tie the chart
-     * broke. #571 is why this wants stating rather than assuming.
+     * harmony, so every difference between the two runs is a decision the
+     * chart took part in — a tie it broke, or an excursion it and the key
+     * signature together refused (#670). #571 is why this wants stating rather
+     * than assuming.
      */
     private static void chart(Score score, NoteTrack reduced) {
         NoteTrack without = PlayableMelody.reduce(
@@ -630,6 +649,237 @@ public final class PlayablePartCheck {
                 "chart: reducing without the progression gives %d note-heads and moves %d"
                         + " of the printed pitches%n",
                 without.size(), moved + Math.abs(reduced.size() - without.size()));
+    }
+
+    /**
+     * How much of each part's sounding time a reader meets as an accidental,
+     * and how much of that the harmony does not account for (#670).
+     *
+     * <p>Two references, because neither answers alone. The chord sounding
+     * under the note is modulation-proof — it is stated per span, so a piece
+     * that changes key mid-way is still read against its own harmony — but it
+     * is MW's own estimate, and a diatonic passing tone is outside it and
+     * perfectly readable. The key signature is one span per piece (#441), so
+     * on a piece that really modulates it counts the second key's own notes as
+     * foreign, and it counts a minor key's raised seventh too, which is an
+     * accidental every reader expects. So {@code foreign} is the intersection:
+     * sounding time on a pitch class that is neither in the signature nor in
+     * the chord under it. That is what a player reads as a wrong note.
+     *
+     * <p>For the reduced part the foreign time is split by what the
+     * arrangement could do about it. {@code recoverable} is foreign time whose
+     * own printed head covers an estimate note that is not foreign, so the
+     * group held a better pitch and the reduction chose against it.
+     * {@code stepwise} is foreign time a step from both neighbouring heads,
+     * which is what a real chromatic approach looks like. The rest is
+     * asserted: the estimate is foreign throughout the head, so nothing in
+     * mw-arrange can recover it.
+     */
+    private static void harmony(Score score, NoteTrack estimate, NoteTrack reduced) {
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%-10s %9s %12s %12s %10s %12s %10s %10s%n",
+                "harmony", "beats", "out-of-chord", "out-of-sig", "foreign",
+                "recoverable", "stepwise", "asserted");
+        harmonyRow("estimate", score, estimate, estimate);
+        harmonyRow("reduced", score, reduced, estimate);
+    }
+
+    /**
+     * The two excursion bounds swept around the shipped pair (#670).
+     *
+     * <p>{@code moved} is how many printed pitches the rule changes, which is
+     * the cost side: every one of them asserts a pitch the melody stage did not
+     * read there. The foreign column is what it buys. A setting that moves many
+     * heads for little is flattening the line rather than correcting it.
+     */
+    private static void excursions(Score score, NoteTrack estimate, List<Event> reference,
+                                   double barSeconds) {
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%9s %8s %8s %10s %12s %10s %9s%n",
+                "excursion", "return", "moved", "foreign", "out-of-chord", "per bar",
+                "F1 loose");
+        NoteTrack asRead = PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
+                PlayableMelody.ORNAMENT_BEATS, 0, 0);
+        excursion(score, estimate, asRead, asRead, "off", "off", reference, barSeconds);
+        for (double beats : EXCURSION_BOUNDS) {
+            for (int semitones : RETURN_BOUNDS) {
+                excursion(score, estimate, asRead,
+                        PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
+                                PlayableMelody.ORNAMENT_BEATS, beats, semitones),
+                        String.format(Locale.ROOT, "%.2f", beats), String.valueOf(semitones),
+                        reference, barSeconds);
+            }
+        }
+    }
+
+    private static void excursion(Score score, NoteTrack estimate, NoteTrack asRead,
+                                  NoteTrack reduced, String beats, String semitones,
+                                  List<Event> reference, double barSeconds) {
+        int moved = 0;
+        for (int i = 0; i < reduced.size(); i++) {
+            if (reduced.notes().get(i).midiPitch() != asRead.notes().get(i).midiPitch()) {
+                moved++;
+            }
+        }
+        Harmony harmony = harmonyOf(score, reduced, estimate);
+        List<Event> events = events(reduced);
+        System.out.printf(Locale.ROOT, "%9s %8s %8d %9.1f%% %11.1f%% %10s %9s%n",
+                beats, semitones, moved, share(harmony.foreign(), harmony.beats()),
+                share(harmony.outOfChord(), harmony.beats()),
+                reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
+                        countError(events, reference, barSeconds)),
+                reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
+                        100 * f1(events, reference, TOLERANCE_SECONDS)));
+    }
+
+    /** Sounding time in quarter-note beats, and how it splits. */
+    private record Harmony(double beats, double outOfChord, double outOfSignature,
+                           double foreign, double recoverable, double stepwise) {
+    }
+
+    private static void harmonyRow(String label, Score score, NoteTrack part,
+                                   NoteTrack estimate) {
+        Harmony h = harmonyOf(score, part, estimate);
+        System.out.printf(Locale.ROOT,
+                "%-10s %9.1f %11.1f%% %11.1f%% %9.1f%% %11.1f%% %9.1f%% %9.1f%%%n",
+                label, h.beats(), share(h.outOfChord(), h.beats()),
+                share(h.outOfSignature(), h.beats()), share(h.foreign(), h.beats()),
+                share(h.recoverable(), h.beats()), share(h.stepwise(), h.beats()),
+                share(h.foreign() - h.recoverable() - h.stepwise(), h.beats()));
+    }
+
+    private static Harmony harmonyOf(Score score, NoteTrack part, NoteTrack estimate) {
+        TempoMap map = score.tempoMap();
+        double beats = 0;
+        double outOfChord = 0;
+        double outOfSignature = 0;
+        double foreign = 0;
+        double recoverable = 0;
+        double stepwise = 0;
+        List<Note> notes = part.notes();
+        for (int i = 0; i < notes.size(); i++) {
+            Note note = notes.get(i);
+            double from = map.secondsToBeats(note.onsetSeconds());
+            double to = map.secondsToBeats(note.offsetSeconds());
+            double held = Math.max(0, to - from);
+            beats += held;
+            int pitchClass = Math.floorMod(note.midiPitch(), 12);
+            boolean inSignature = signatureOf(score, note).map(
+                    set -> set.contains(pitchClass)).orElse(true);
+            Chord chord = soundingChord(score, note).orElse(null);
+            boolean inChord = chord == null || sounds(chord, pitchClass);
+            if (!inChord) {
+                outOfChord += held;
+            }
+            if (!inSignature) {
+                outOfSignature += held;
+            }
+            if (inSignature || inChord) {
+                continue;
+            }
+            foreign += held;
+            if (better(score, estimate, note, chord)) {
+                recoverable += held;
+            } else if (approached(notes, i)) {
+                stepwise += held;
+            }
+        }
+        return new Harmony(beats, outOfChord, outOfSignature, foreign, recoverable, stepwise);
+    }
+
+    private static double share(double part, double whole) {
+        return whole <= 0 ? 0 : 100 * part / whole;
+    }
+
+    /**
+     * Whether the head's own span covers an estimate note this would not have
+     * called foreign, so the group the head was chosen from held a better
+     * pitch. Overlap rather than containment, for {@link #welds}'s reason.
+     */
+    private static boolean better(Score score, NoteTrack estimate, Note printed, Chord chord) {
+        for (Note note : estimate.notes()) {
+            if (note.offsetSeconds() <= printed.onsetSeconds() + EPSILON
+                    || note.onsetSeconds() >= printed.offsetSeconds() - EPSILON) {
+                continue;
+            }
+            int pitchClass = Math.floorMod(note.midiPitch(), 12);
+            boolean inSignature = signatureOf(score, printed).map(
+                    set -> set.contains(pitchClass)).orElse(true);
+            if (inSignature || (chord != null && sounds(chord, pitchClass))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether both neighbouring heads are a step from this one. */
+    private static boolean approached(List<Note> notes, int i) {
+        if (i == 0 || i + 1 >= notes.size()) {
+            return false;
+        }
+        return step(notes.get(i - 1), notes.get(i)) && step(notes.get(i), notes.get(i + 1));
+    }
+
+    private static boolean step(Note one, Note other) {
+        int interval = Math.abs(one.midiPitch() - other.midiPitch());
+        return interval >= 1 && interval <= 2;
+    }
+
+    /**
+     * The pitch classes the key signature in force at the note carries, or
+     * empty when the score states no key there.
+     */
+    private static java.util.Set<Integer> signature(Key key) {
+        int[] degrees = key.mode() == Mode.MINOR
+                ? new int[] {0, 2, 3, 5, 7, 8, 10}
+                : new int[] {0, 2, 4, 5, 7, 9, 11};
+        java.util.Set<Integer> classes = new java.util.HashSet<>();
+        for (int degree : degrees) {
+            classes.add(Math.floorMod(key.tonic().pitchClass() + degree, 12));
+        }
+        return classes;
+    }
+
+    private static java.util.Optional<java.util.Set<Integer>> signatureOf(Score score,
+                                                                         Note note) {
+        return score.keyAt(midpoint(note)).map(PlayablePartCheck::signature);
+    }
+
+    /**
+     * The chord span covering most of the note, unless that span states no
+     * chord — the reduction's own reading, so the statistic and the rule it
+     * measures agree on what the harmony says.
+     */
+    private static java.util.Optional<Chord> soundingChord(Score score, Note note) {
+        TempoMap map = score.tempoMap();
+        double from = map.secondsToBeats(note.onsetSeconds());
+        double to = map.secondsToBeats(note.offsetSeconds());
+        Chord best = null;
+        double widest = 0;
+        for (Chord chord : score.chords().chords()) {
+            double start = chord.startBeat()
+                    .orElseGet(() -> map.secondsToBeats(chord.startSeconds()));
+            double end = chord.endBeat().orElseGet(() -> map.secondsToBeats(chord.endSeconds()));
+            double overlap = Math.min(to, end) - Math.max(from, start);
+            if (overlap > widest) {
+                widest = overlap;
+                best = chord;
+            }
+        }
+        return java.util.Optional.ofNullable(best).filter(chord -> !chord.isNoChord());
+    }
+
+    private static double midpoint(Note note) {
+        return (note.onsetSeconds() + note.offsetSeconds()) / 2;
+    }
+
+    private static boolean sounds(Chord chord, int pitchClass) {
+        for (int tone : chord.pitchClasses()) {
+            if (tone == pitchClass) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

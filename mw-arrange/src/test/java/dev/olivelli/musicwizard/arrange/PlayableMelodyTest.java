@@ -24,9 +24,11 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
+import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -514,6 +516,132 @@ class PlayableMelodyTest {
             assertThat(pitches(PlayableMelody.reduce(atTempo(pair, 240))))
                     .containsExactly(62, 64);
         }
+    }
+
+    @Nested
+    @DisplayName("an excursion the harmony refuses")
+    class Excursions {
+
+        @Test
+        @DisplayName("a short head nothing accounts for prints the pitch the melody returned to")
+        void theExcursionTakesItsNeighboursPitch() {
+            assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 61)))))
+                    .containsExactly(60, 60, 60);
+        }
+
+        @Test
+        @DisplayName("a head held long enough to be meant is printed as it was heard")
+        void aHeldNoteIsNotSecondGuessed() {
+            List<Note> held = notes(note(0.0, 1.0, 60),
+                    note(1.0, PlayableMelody.EXCURSION_BEATS + 0.1, 61), note(3.0, 1.0, 60));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(held))))
+                    .containsExactly(60, 61, 60);
+        }
+
+        @Test
+        @DisplayName("a chromatic passing tone between its neighbours is left alone")
+        void passingMotionSurvives() {
+            // C to D through C sharp: the head is inside the interval its
+            // neighbours span, which is what a passing tone looks like and what
+            // an excursion never does.
+            List<Note> run = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 1.0, 62));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(run))))
+                    .containsExactly(60, 61, 62);
+        }
+
+        @Test
+        @DisplayName("a head the melody does not come back from keeps its own pitch")
+        void aMoveIsNotAnExcursion() {
+            List<Note> away = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 1.0, 67));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(away))))
+                    .containsExactly(60, 61, 67);
+        }
+
+        @Test
+        @DisplayName("a chord tone outside the key signature is accounted for and stays")
+        void aBorrowedChordToneStays() {
+            // A flat under an F minor borrowed into C major: outside the
+            // signature, and exactly the note the chord is there for.
+            Score score = withKey(played(wobble(0.5, 68), new ChordProgression(
+                    List.of(new Chord(new PitchSpelling(NoteLetter.F, Accidental.NATURAL, 4),
+                            ChordQuality.MINOR, java.util.Optional.empty(), 0.0, 4.0,
+                            java.util.Optional.empty(), java.util.Optional.empty(),
+                            Confidence.CERTAIN)), Confidence.CERTAIN)));
+
+            assertThat(pitches(PlayableMelody.reduce(score))).containsExactly(60, 68, 60);
+        }
+
+        @Test
+        @DisplayName("with no chart, or no key, nothing is refused")
+        void bothReferencesAreNeeded() {
+            assertThat(pitches(PlayableMelody.reduce(
+                    withKey(played(wobble(0.5, 61), ChordProgression.empty())))))
+                    .containsExactly(60, 61, 60);
+            assertThat(pitches(PlayableMelody.reduce(
+                    played(wobble(0.5, 61), chart(ChordQuality.MAJOR, 1.0)))))
+                    .containsExactly(60, 61, 60);
+        }
+
+        @Test
+        @DisplayName("the bounds are the sweep's to move, and the defaults are the shipped ones")
+        void theBoundsAreSweepable() {
+            Score score = inC(notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 1.0, 62)));
+
+            assertThat(pitches(PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
+                    PlayableMelody.ORNAMENT_BEATS, 0, PlayableMelody.RETURN_SEMITONES)))
+                    .containsExactly(60, 61, 62);
+            assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 61)),
+                    PlayableMelody.CLAIM_BEATS, PlayableMelody.ORNAMENT_BEATS,
+                    PlayableMelody.EXCURSION_BEATS, 0)))
+                    .containsExactly(60, 60, 60);
+        }
+
+        @Test
+        @DisplayName("a run of them looks past each other for the heads that bracket it")
+        void aRunResolvesToOnePitch() {
+            List<Note> run = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 0.5, 68),
+                    note(2.0, 1.0, 60));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(run))))
+                    .containsExactly(60, 60, 60, 60);
+        }
+
+        @Test
+        @DisplayName("the head keeps its onset, its length and the words under it")
+        void onlyThePitchMoves() {
+            Score score = withKey(score(wobble(0.5, 61), chart(ChordQuality.MAJOR, 1.0),
+                    new Lyrics(List.of(line(word("one", 0.0, 1.0), word("two", 1.0, 1.5),
+                            word("three", 1.5, 2.5))), "en", Confidence.of(0.8))));
+
+            NoteTrack reduced = PlayableMelody.reduce(score);
+
+            assertThat(reduced.notes()).hasSize(3);
+            assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(1.0);
+            assertThat(reduced.notes().get(1).offsetSeconds()).isEqualTo(1.5);
+            assertThat(reduced.notes().get(1).midiPitch()).isEqualTo(60);
+            assertThat(reduced.notes().get(1).spelling())
+                    .isEqualTo(reduced.notes().get(0).spelling());
+        }
+
+        /** Two notes on one pitch with a head of its own between them. */
+        private List<Note> wobble(double durationSeconds, int midiPitch) {
+            return notes(note(0.0, 1.0, 60), note(1.0, durationSeconds, midiPitch),
+                    note(1.0 + durationSeconds, 1.0, 60));
+        }
+
+        /** The notes under a C major chart, in C major, with no words. */
+        private Score inC(List<Note> notes) {
+            return withKey(played(notes, chart(ChordQuality.MAJOR, 1.0)));
+        }
+    }
+
+    private static Score withKey(Score score) {
+        return score.withKeys(List.of(Key.ofSeconds(
+                new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4), Mode.MAJOR,
+                0.0, score.durationSeconds(), Confidence.CERTAIN)));
     }
 
     /** One syllable held over the whole of a short group, so the chart has a tie to break. */
