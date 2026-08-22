@@ -1083,13 +1083,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         // already said so in its progress line.
         score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack -> {
             lines.add("Melody  " + melodyTrack.size() + " notes");
-            // The fact the page marks (#602), stated where the run reports:
-            // words placed with no melody note under them are the stage having
-            // looked and found nothing, not the singer resting.
-            double unread = unreadSeconds(score, melodyTrack);
+            // Stated where the run reports (#602): every second of placed
+            // words with no note under it, which is a wider count than the
+            // page's bar-level marks. Guarded on the figure printed, so the
+            // row cannot assert a gap of zero.
+            long unread = Math.round(unreadSeconds(score, melodyTrack));
             if (unread > 0) {
-                lines.add(String.format(java.util.Locale.ROOT,
-                        "        no notes under %.0f s of placed words", unread));
+                lines.add("        no notes under " + unread + " s of placed words");
             }
         });
         return List.copyOf(lines);
@@ -1115,9 +1115,17 @@ final class AnalyzeCommand implements Callable<Integer> {
                 continue;
             }
             double covered = 0;
+            // A frontier over the notes as well as the words: notes may
+            // overlap (#93), and summing raw overlaps would count one moment
+            // twice and report a gap as covered.
+            double noteReached = from;
             for (var note : melody.notes()) {
-                covered += Math.max(0, Math.min(note.offsetSeconds(), span[1])
-                        - Math.max(note.onsetSeconds(), from));
+                double start = Math.max(note.onsetSeconds(), noteReached);
+                double end = Math.min(note.offsetSeconds(), span[1]);
+                if (end > start) {
+                    covered += end - start;
+                    noteReached = end;
+                }
             }
             unread += Math.max(0, span[1] - from - covered);
             reached = Math.max(reached, span[1]);

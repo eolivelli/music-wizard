@@ -154,8 +154,10 @@ interface StaffWriter {
      * over them: the melody stage looked there and found nothing (#602).
      *
      * <p>A rest under sung words and a rest where nobody sings are different
-     * facts, and a page that draws them identically cannot be read — the
-     * standing failure shape, landing in notation. The mark's text is
+     * facts, and a page that draws them identically cannot be read. The mark
+     * goes wherever the staff is engraved, words on that page or not: it
+     * states the stage's own gap, and the words are how the layout knows,
+     * not what the reader needs beside it. The mark's text is
      * {@link #UNREAD_MELODY} in both formats, for the reason
      * {@link TempoMark#ESTIMATE} is shared: two spellings of one page must
      * not disagree about what they admit to. Called once per stretch, before

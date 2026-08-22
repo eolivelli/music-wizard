@@ -157,11 +157,8 @@ final class StaffLayout {
      * The placed words' spans in beats, merged, for the staff of the part they
      * are sung on.
      *
-     * <p>What they are for: a bar of rest under placed words is the melody
-     * stage having looked and found nothing, which is a different fact from
-     * nobody singing, and a page that draws the two identically cannot be
-     * read (#602). The words are the honest witness — their placement is the
-     * aligner's own measurement, taken on the voice itself.
+     * <p>What they are for: deciding which whole-rest bars open with
+     * {@link StaffWriter#unreadMelody}'s mark (#602).
      */
     private static double[][] sungSpans(Score score) {
         List<double[]> spans = new ArrayList<>();
@@ -554,10 +551,9 @@ final class StaffLayout {
                 // is not a dotted half rest. No bracket either: a bar of silence
                 // has no rhythm to bracket, and the quantizer does not publish a
                 // grid for one.
-                // A whole-rest bar with placed words over it is marked, once
-                // per stretch of them (#602); a bar partly played is not, since
-                // the reader sees melody there. Decided here, once, so the two
-                // writers cannot dedupe the stretch differently.
+                // Marked once per stretch, decided here so the two writers
+                // cannot dedupe it differently; a bar partly played is not
+                // marked, since the reader sees melody there (#602).
                 boolean unread = sungWithin(sungSpans, barStart, barEnd);
                 if (unread && !unreadStretch[0]) {
                     writer.unreadMelody();

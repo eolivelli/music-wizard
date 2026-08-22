@@ -489,6 +489,19 @@ class AlignedLyricsTest {
                 .isCloseTo(2.0, within(1e-9));
     }
 
+    @Test
+    @DisplayName("notes that overlap each other cover a moment once, not twice")
+    void overlappingNotesDoNotHideAGap() {
+        // Two notes over the word's first half; summing their raw overlaps
+        // would report the uncovered second half as covered.
+        Score score = sung(List.of(note(0.0, 1.0, 60), note(0.0, 1.0, 64)),
+                line(word("one", 0.0, 2.0)));
+
+        assertThat(AnalyzeCommand.unreadSeconds(score,
+                score.track(PartRole.LEAD_VOCAL).orElseThrow()))
+                .isCloseTo(1.0, within(1e-9));
+    }
+
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
         return Note.ofSeconds(onsetSeconds, durationSeconds, midiPitch, Confidence.of(0.7));
     }

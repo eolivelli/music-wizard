@@ -179,6 +179,10 @@ class MusicXmlExportTest {
 
     /** A position or length of {@code steps} triplet eighths, in quarter beats. */
 
+    private static double thirds(double steps) {
+        return steps / 3.0;
+    }
+
     @Test
     @DisplayName("a rest stretch under placed words carries the same mark as the page")
     void aRestStretchUnderWordsIsMarked() {
@@ -196,13 +200,11 @@ class MusicXmlExportTest {
 
         String xml = MusicXmlExport.toMusicXml(sung, voice);
 
+        assertValidMusicXml("a rest stretch under placed words", xml);
         assertThat(xml).contains("melody not read");
         assertThat(xml.split("melody not read", -1).length - 1).isEqualTo(1);
     }
 
-    private static double thirds(double steps) {
-        return steps / 3.0;
-    }
 
     // --------------------------------------------------------------- golden
 

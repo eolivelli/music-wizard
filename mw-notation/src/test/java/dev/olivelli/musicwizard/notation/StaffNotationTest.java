@@ -105,10 +105,14 @@ class StaffNotationTest {
         return built;
     }
 
-    /** One placed word spanning the given beats, whatever it holds under it. */
+    /**
+     * One placed word spanning the given beats, carried in seconds only: no
+     * main-source path snaps a lyric word, so the fixture must take the
+     * conversion the product takes.
+     */
     private static Lyrics wordsOver(double fromBeat, double toBeat) {
-        LyricWord word = new LyricWord("ah", fromBeat / 2 + 0.5, toBeat / 2 + 0.5,
-                Optional.of(fromBeat), Optional.of(toBeat), false, false, Confidence.CERTAIN);
+        LyricWord word = LyricWord.ofSeconds("ah", fromBeat / 2, toBeat / 2,
+                Confidence.CERTAIN);
         return new Lyrics(List.of(new LyricLine(List.of(word), Confidence.CERTAIN)),
                 "en", Confidence.CERTAIN);
     }
