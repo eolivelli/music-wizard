@@ -524,6 +524,18 @@ public final class MusicXmlExport {
         }
 
         @Override
+        public void unreadMelody() {
+            DirectionType directionType = factory.createDirectionType();
+            FormattedTextId words = factory.createFormattedTextId();
+            words.setValue(UNREAD_MELODY);
+            directionType.getWordsOrSymbol().add(words);
+            Direction direction = factory.createDirection();
+            direction.getDirectionType().add(directionType);
+            direction.setPlacement(org.audiveris.proxymusic.AboveBelow.ABOVE);
+            measure.getNoteOrBackupOrForward().add(direction);
+        }
+
+        @Override
         public void pickup(long wholeNotesNumerator, long wholeNotesDenominator) {
             pickupBar = true;
             measure.setNumber("0");

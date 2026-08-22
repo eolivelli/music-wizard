@@ -27,6 +27,9 @@ import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -102,6 +105,14 @@ class StaffNotationTest {
         return built;
     }
 
+    /** One placed word spanning the given beats, whatever it holds under it. */
+    private static Lyrics wordsOver(double fromBeat, double toBeat) {
+        LyricWord word = new LyricWord("ah", fromBeat / 2 + 0.5, toBeat / 2 + 0.5,
+                Optional.of(fromBeat), Optional.of(toBeat), false, false, Confidence.CERTAIN);
+        return new Lyrics(List.of(new LyricLine(List.of(word), Confidence.CERTAIN)),
+                "en", Confidence.CERTAIN);
+    }
+
     private static Key key(String tonic, Mode mode) {
         return Key.ofSeconds(pitch(tonic), mode, 0, 60, Confidence.CERTAIN);
     }
@@ -129,6 +140,53 @@ class StaffNotationTest {
     /** A position or length of {@code steps} triplet eighths, in quarter beats. */
     private static double thirds(double steps) {
         return steps / 3.0;
+    }
+
+
+    @Test
+    @DisplayName("a rest stretch under placed words is marked once, where it opens")
+    void aRestStretchUnderWordsIsMarked() {
+        // Notes in the first and last bar, words across the whole span: the
+        // two rest bars between them are the melody stage having looked and
+        // found nothing (#602), and the page has to say which they are.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C4"), note(12, 4, "C4"));
+        Score sung = score(TimeSignature.FOUR_FOUR, 120, voice)
+                .withLyrics(wordsOver(0, 16));
+
+        String source = StaffNotation.toLilyPond(sung, voice);
+
+        assertThat(source)
+                .contains("R1^\\markup { \\italic \"melody not read\" }");
+        assertThat(source.split("melody not read", -1).length - 1)
+                .as("one mark for the stretch, not one per bar")
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("a rest nobody sings under stays a plain rest")
+    void aRestNobodySingsUnderStaysPlain() {
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C4"), note(12, 4, "C4"));
+        Score silent = score(TimeSignature.FOUR_FOUR, 120, voice)
+                .withLyrics(wordsOver(0, 4));
+
+        assertThat(StaffNotation.toLilyPond(silent, voice))
+                .doesNotContain("melody not read");
+    }
+
+    @Test
+    @DisplayName("only the sung part carries the mark")
+    void aBassPartIsNeverMarked() {
+        // The words are sung over the melody; a bass resting under them is
+        // resting, not unread.
+        NoteTrack bass = track(PartRole.BASS, "Bass",
+                note(0, 4, "C2"), note(12, 4, "C2"));
+        Score sung = score(TimeSignature.FOUR_FOUR, 120, bass)
+                .withLyrics(wordsOver(0, 16));
+
+        assertThat(StaffNotation.toLilyPond(sung, bass))
+                .doesNotContain("melody not read");
     }
 
     // --------------------------------------------------------------- golden

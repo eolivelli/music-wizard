@@ -148,8 +148,52 @@ final class StaffLayout {
                 .flatMap(event -> event.pitches().stream())
                 .toList();
         writer.startStaff(track.name(), StaffClef.of(track.role(), engraved), score.primaryKey());
-        writeBars(writer, score, track.name(), events, music, tuplets);
+        writeBars(writer, score, track.name(), events, music, tuplets,
+                track.role() == PartRole.LEAD_VOCAL ? sungSpans(score) : new double[0][]);
         writer.endStaff();
+    }
+
+    /**
+     * The placed words' spans in beats, merged, for the staff of the part they
+     * are sung on.
+     *
+     * <p>What they are for: a bar of rest under placed words is the melody
+     * stage having looked and found nothing, which is a different fact from
+     * nobody singing, and a page that draws the two identically cannot be
+     * read (#602). The words are the honest witness — their placement is the
+     * aligner's own measurement, taken on the voice itself.
+     */
+    private static double[][] sungSpans(Score score) {
+        List<double[]> spans = new ArrayList<>();
+        for (var line : score.lyrics().lines()) {
+            for (var word : line.words()) {
+                spans.add(new double[] {
+                        word.startBeat().orElseGet(
+                                () -> score.tempoMap().secondsToBeats(word.startSeconds())),
+                        word.endBeat().orElseGet(
+                                () -> score.tempoMap().secondsToBeats(word.endSeconds()))});
+            }
+        }
+        spans.sort(Comparator.comparingDouble(span -> span[0]));
+        List<double[]> merged = new ArrayList<>();
+        for (double[] span : spans) {
+            if (!merged.isEmpty() && span[0] <= merged.get(merged.size() - 1)[1]) {
+                merged.get(merged.size() - 1)[1] =
+                        Math.max(merged.get(merged.size() - 1)[1], span[1]);
+            } else {
+                merged.add(span);
+            }
+        }
+        return merged.toArray(new double[0][]);
+    }
+
+    private static boolean sungWithin(double[][] spans, double fromBeat, double toBeat) {
+        for (double[] span : spans) {
+            if (Math.min(toBeat, span[1]) - Math.max(fromBeat, span[0]) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Rejects a track the notation layer cannot honestly engrave. */
@@ -395,7 +439,8 @@ final class StaffLayout {
     }
 
     private static void writeBars(StaffWriter writer, Score score, String name,
-                                  List<Event> events, Span music, TupletPlan tuplets) {
+                                  List<Event> events, Span music, TupletPlan tuplets,
+                                  double[][] sungSpans) {
         double pickupStart = music.startBeat();
         double musicEnd = music.endBeat();
 
@@ -404,6 +449,7 @@ final class StaffLayout {
         int bar = 0;
         int eventIndex = 0;
         boolean tempoWritten = false;
+        boolean[] unreadStretch = {false};
         while (bar < MAX_BARS) {
             TimeSignature meter = score.tempoMap().timeSignatureAtBar(bar);
             double barEnd = barStart + meter.quarterBeatsPerBar();
@@ -427,7 +473,7 @@ final class StaffLayout {
                 writer.pickup(length[0], length[1]);
             }
             eventIndex = writeBar(writer, meter, barStart, barEnd, contentStart, events, eventIndex,
-                    tupletBar);
+                    tupletBar, sungSpans, unreadStretch);
             writer.endBar();
             barStart = barEnd;
             bar++;
@@ -477,7 +523,8 @@ final class StaffLayout {
      */
     private static int writeBar(StaffWriter writer, TimeSignature meter, double barStart,
                                 double barEnd, double contentStart, List<Event> events,
-                                int firstEvent, TupletBar tuplets) {
+                                int firstEvent, TupletBar tuplets, double[][] sungSpans,
+                                boolean[] unreadStretch) {
         List<Piece> pieces = new ArrayList<>();
         double position = contentStart;
         int index = firstEvent;
@@ -507,12 +554,22 @@ final class StaffLayout {
                 // is not a dotted half rest. No bracket either: a bar of silence
                 // has no rhythm to bracket, and the quantizer does not publish a
                 // grid for one.
+                // A whole-rest bar with placed words over it is marked, once
+                // per stretch of them (#602); a bar partly played is not, since
+                // the reader sees melody there. Decided here, once, so the two
+                // writers cannot dedupe the stretch differently.
+                boolean unread = sungWithin(sungSpans, barStart, barEnd);
+                if (unread && !unreadStretch[0]) {
+                    writer.unreadMelody();
+                }
+                unreadStretch[0] = unread;
                 long[] length = LilyPondDuration.wholeNoteFraction(barEnd - barStart);
                 writer.wholeBarRest(length[0], length[1]);
                 return index;
             }
             pieces.add(new Piece(position, barEnd, List.of(), false));
         }
+        unreadStretch[0] = false;
 
         if (tuplets == null) {
             for (Piece piece : pieces) {

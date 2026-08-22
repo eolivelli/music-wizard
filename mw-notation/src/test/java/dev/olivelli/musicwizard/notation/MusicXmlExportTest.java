@@ -26,6 +26,9 @@ import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -175,6 +178,28 @@ class MusicXmlExportTest {
     }
 
     /** A position or length of {@code steps} triplet eighths, in quarter beats. */
+
+    @Test
+    @DisplayName("a rest stretch under placed words carries the same mark as the page")
+    void aRestStretchUnderWordsIsMarked() {
+        // One fact, two spellings (#602): the .ly and this file must agree
+        // about where the melody stage found nothing.
+        NoteTrack voice = track(PartRole.LEAD_VOCAL, "Voice",
+                note(0, 4, "C4"), note(12, 4, "C4"));
+        LyricWord word = new LyricWord("ah", 0.5, 8.5,
+                java.util.Optional.of(0.0), java.util.Optional.of(16.0),
+                false, false, Confidence.CERTAIN);
+        Score sung = score(TimeSignature.FOUR_FOUR, 120, voice)
+                .withLyrics(new Lyrics(
+                        List.of(new LyricLine(List.of(word), Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+
+        String xml = MusicXmlExport.toMusicXml(sung, voice);
+
+        assertThat(xml).contains("melody not read");
+        assertThat(xml.split("melody not read", -1).length - 1).isEqualTo(1);
+    }
+
     private static double thirds(double steps) {
         return steps / 3.0;
     }

@@ -1081,9 +1081,48 @@ final class AnalyzeCommand implements Callable<Integer> {
         // asked for and its having heard nothing: the transcriber adds no empty
         // track, so this row cannot read zero. The run that heard nothing has
         // already said so in its progress line.
-        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack ->
-                lines.add("Melody  " + melodyTrack.size() + " notes"));
+        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack -> {
+            lines.add("Melody  " + melodyTrack.size() + " notes");
+            // The fact the page marks (#602), stated where the run reports:
+            // words placed with no melody note under them are the stage having
+            // looked and found nothing, not the singer resting.
+            double unread = unreadSeconds(score, melodyTrack);
+            if (unread > 0) {
+                lines.add(String.format(java.util.Locale.ROOT,
+                        "        no notes under %.0f s of placed words", unread));
+            }
+        });
         return List.copyOf(lines);
+    }
+
+    /**
+     * How much of the placed words' time holds no melody note at all, in
+     * seconds.
+     */
+    static double unreadSeconds(Score score, NoteTrack melody) {
+        List<double[]> spans = new ArrayList<>();
+        for (LyricLine line : score.lyrics().lines()) {
+            for (LyricWord word : line.words()) {
+                spans.add(new double[] {word.startSeconds(), word.endSeconds()});
+            }
+        }
+        spans.sort(java.util.Comparator.comparingDouble(span -> span[0]));
+        double unread = 0;
+        double reached = Double.NEGATIVE_INFINITY;
+        for (double[] span : spans) {
+            double from = Math.max(span[0], reached);
+            if (span[1] <= from) {
+                continue;
+            }
+            double covered = 0;
+            for (var note : melody.notes()) {
+                covered += Math.max(0, Math.min(note.offsetSeconds(), span[1])
+                        - Math.max(note.onsetSeconds(), from));
+            }
+            unread += Math.max(0, span[1] - from - covered);
+            reached = Math.max(reached, span[1]);
+        }
+        return unread;
     }
 
     /**

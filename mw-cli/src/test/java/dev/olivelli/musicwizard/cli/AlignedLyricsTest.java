@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
@@ -472,6 +473,20 @@ class AlignedLyricsTest {
                 waiting.lyrics(), sung(List.of(note(0.0, 0.8, 60))));
         assertThat(checked.lyrics().allWords())
                 .extracting(LyricWord::melisma).containsExactly(false);
+    }
+
+
+    @Test
+    @DisplayName("the summary's unread count is the placed words' time the melody never covered")
+    void unreadSecondsCountsWordsOverNothing() {
+        // The first word is fully covered; the second has no note under any
+        // of it. What the count holds is the second word's whole span (#602).
+        Score score = sung(List.of(note(0.0, 1.0, 60)),
+                line(word("one", 0.0, 1.0), word("two", 4.0, 6.0)));
+
+        assertThat(AnalyzeCommand.unreadSeconds(score,
+                score.track(PartRole.LEAD_VOCAL).orElseThrow()))
+                .isCloseTo(2.0, within(1e-9));
     }
 
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
