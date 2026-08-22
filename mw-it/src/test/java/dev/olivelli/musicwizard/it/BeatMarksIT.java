@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
+import dev.olivelli.musicwizard.notation.LyricSheet;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,12 +51,13 @@ import org.junit.jupiter.params.provider.MethodSource;
  * LilyPond engraving the beat-mark lane (#433).
  *
  * <p>{@code BeatMarksTest} reads the lane's text; what only engraving can say
- * is that the lane's own overrides — the grey, the small font, the centred
- * anchor — are vocabulary LilyPond accepts, in a lane that is also passing
- * the same bar checks as the chords. The grids here are the ones checked by
- * hand when the lane landed and never gated since: one that drifts off any
- * constant bar, the same under words, and one whose downbeats were never
- * decided, which prints ticks rather than numbers.
+ * is that the lane's own overrides are vocabulary LilyPond accepts, in a
+ * lane that is also passing the same bar checks as the chords. The grids
+ * here are the ones checked by hand when the lane landed and never gated
+ * since: one that drifts off any
+ * constant bar, the same under words — which is the route where three
+ * contexts stack — and one whose downbeats were never decided, which prints
+ * ticks rather than numbers.
  */
 class BeatMarksIT {
 
@@ -111,22 +113,39 @@ class BeatMarksIT {
 
     static Stream<Arguments> charts() {
         return Stream.of(
-                Arguments.of("drifting", drifting(8)),
-                Arguments.of("drifting-under-words", driftingUnderWords(8)),
-                Arguments.of("unphased-ticks", unphased(4)));
+                // The chart route for the bare grids; the lyric sheet's own
+                // route for the worded one, because that is where the words
+                // actually engrave and the three contexts stack.
+                Arguments.of("drifting",
+                        ChordChart.toLilyPond(drifting(8), MARKED), false),
+                Arguments.of("drifting-under-words",
+                        LyricSheet.toLilyPond(driftingUnderWords(8), MARKED), false),
+                Arguments.of("unphased-ticks",
+                        ChordChart.toLilyPond(unphased(4), MARKED), true));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("charts")
     @DisplayName("the beat-mark lane engraves without complaint, and its bars sum")
-    void theLaneEngravesCleanly(String name, Score score) {
+    void theLaneEngravesCleanly(String name, String source, boolean ticks) {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
-        String source = ChordChart.toLilyPond(score, MARKED);
         // The case must hold what it is named for before LilyPond is asked
-        // about it, or a fixture rotting towards the phased shape would keep
-        // this green while gating nothing.
-        assertThat(source).contains(name.equals("unphased-ticks") ? "\".\"" : "\"1\"");
+        // about it. A quoted digit appears only in the marks lane, and a
+        // drifting mark lands off the grid, so some mark carries a scaled
+        // duration -- which is what a fixture rotting towards the phased
+        // shape would lose. The overrides the lane styles itself with are
+        // asserted by name, since dropping one engraves in silence.
+        if (ticks) {
+            assertThat(source).contains("\".\"");
+        } else {
+            assertThat(source.lines()
+                    .filter(line -> line.matches(".*\"\\d+\".*"))
+                    .anyMatch(line -> line.contains("*")))
+                    .as("no scaled mark duration in:%n%s", source).isTrue();
+        }
+        assertThat(source).contains("grey50").contains("font-size")
+                .contains("self-alignment-X");
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve(name + "/chart.ly"), source);
