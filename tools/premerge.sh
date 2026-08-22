@@ -17,9 +17,13 @@
 # (tools/score-*.py > tools/baselines/...) and commit it with the change, so
 # the diff is reviewed rather than silently absorbed.
 #
-# Benchmarks missing locally are reported and skipped, never failed, and the
-# verdict says how many rows were skipped: the gate can only vouch for what
-# this machine could measure.
+# A benchmark this machine cannot measure is skipped rather than failed, but a
+# skip and a pass are not the same claim (#464): every skipped row is named
+# with its cause in the verdict, a step whose every row skipped is called out
+# as having certified nothing, and the verdict word says PASS-WITH-SKIPS. Which
+# skips are legitimate is a fact about the machine rather than about the
+# branch, so the machine declares them -- see tools/premerge-skips.py -- and an
+# undeclared skip fails the gate.
 set -u
 cd "$(dirname "$0")/.."
 REPO_ARGS="${MAVEN_ARGS:-}"
@@ -27,6 +31,9 @@ fail=0
 full=0
 skipped=0
 drift=""
+records=$(mktemp "${TMPDIR:-/tmp}/premerge-records.XXXXXX") \
+  || { echo "FAIL: cannot record what this run compares"; exit 1; }
+trap 'rm -f "$records"' EXIT
 
 usage() {
   cat <<'EOF'
@@ -153,55 +160,22 @@ compare() { # $1 harness  $2 baseline  $3... harness args
     echo "FAIL: $harness exited $rc"
     return 1
   fi
+  # The comparison lives in tools/premerge-diff.py, where CI's harness-rule
+  # tests can reach it. Its status is what fails the step, not a grep for DIFF:
+  # a comparison that died on its way printed no DIFF either. `local diffs` is
+  # declared above rather than here, because a `local` between the call and the
+  # read replaces the status being read.
   local diffs
-  diffs=$(python3 - "$baseline" <<'PY' "$out"
-import re, sys
-# A row is a line naming one benchmark. Two shapes qualify: anything carrying
-# "<file>.mp3:", which is what the chord and lyric harnesses print, and an
-# indented "  <name>: ", which is what the melody harness prints -- its
-# benchmarks are packages and clips rather than files, so they carry no
-# extension and were keyed by nothing at all. That is not a cosmetic gap: with
-# no key, a harness's every row was absent from both sides of this diff, the
-# loop below had nothing to compare, and the step passed however far the
-# numbers had moved. It was added in #494 and blind from the first run; CI's
-# own plain diff of the same baseline is what was actually defending it.
-def rows(lines):
-    keyed = {}
-    for line in lines:
-        if ".mp3:" in line or re.match(r"^  \S+: ", line):
-            keyed[line.split(":")[0].strip()] = line.rstrip()
-    return keyed
-
-baseline = rows(open(sys.argv[1]))
-current  = rows(sys.argv[2].splitlines())
-for name, base in sorted(baseline.items()):
-    if name not in current:
-        # The harness ran to completion and still printed nothing for this
-        # baselined name: harness and baseline disagree about the corpus --
-        # a benchmark retired without regenerating the baseline. Fetching a
-        # file cannot fix that, so it fails rather than skips.
-        print(f"DIFF {name}\n  baseline: {base}\n  current:  (no row printed)")
-    elif ": not present (local-only" in current[name]:
-        # The diff can only compare what this machine can measure, and each
-        # skip is printed -- and counted in the verdict -- so a subset run
-        # cannot read as a corpus run. Only the CURRENT side may say so: a
-        # committed baseline that certifies absence is a defect, and where
-        # this machine can measure the file it falls through to DIFF below.
-        print(f"SKIP {name}: not measurable here (the row above says how)")
-    elif current[name] != base:
-        print(f"DIFF {name}\n  baseline: {base}\n  current:  {current[name]}")
-for name, row in sorted(current.items()):
-    if name not in baseline:
-        # The reverse disagreement: the harness printed a row the baseline
-        # never recorded -- a benchmark added without regenerating the
-        # baseline. The synthetic corpus grows a package per music-teacher
-        # run, so this direction is the common one there.
-        print(f"DIFF {name}\n  baseline: (no row recorded)\n  current:  {row}")
-PY
-)
+  diffs=$(printf '%s\n' "$out" | python3 tools/premerge-diff.py "$baseline" "$records"); rc=$?
   printf '%s\n' "$diffs"
   skipped=$((skipped + $(grep -c '^SKIP' <<<"$diffs")))
-  grep -q '^DIFF' <<<"$diffs" && return 1 || return 0
+  # Every run of the comparison ends by saying how many rows it compared. Its
+  # absence means the step vouched for nothing, whatever the status says.
+  grep -q '^compared ' <<<"$diffs" \
+    || { echo "FAIL: nothing says what $baseline compared"; return 1; }
+  [ "$rc" -eq 0 ] && return 0
+  [ "$rc" -eq 3 ] || echo "FAIL: premerge-diff.py exited $rc"
+  return 1
 }
 
 step "2/10 model harness vs baseline"
@@ -253,14 +227,38 @@ compare score-melody.py tools/baselines/score-melody-separated.txt --separated |
 step "10/10 melody harness vs baseline, real singing through the separated vocal"
 compare score-melody.py tools/baselines/score-melody-vocadito-separated.txt --source vocadito --separated || { echo "FAIL: score-melody --source vocadito --separated moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
+step "what this run certified"
+# Named rather than counted (#464), and checked against what this machine says
+# it cannot measure. The quiet arms are keyed on statuses python cannot produce
+# by accident -- it exits 1 on an uncaught exception and 2 of its own accord
+# when it cannot open the script -- so an account that never ran fails the gate
+# rather than reading as an expected skip. Nothing may come between the call
+# and the read: any command, a `local` included, replaces the status.
+account=$(python3 tools/premerge-skips.py "$records" "$skipped"); rc=$?
+printf '%s\n' "$account"
+case "$rc" in
+  0) ;;   # every skipped row was expected on this machine, or none skipped
+  3) ;;   # this machine declares nothing, so the skips are named, not gated
+  *) fail=1 ;;
+esac
+
 step "verdict"
 # Say which of the two it was, so a pasted verdict cannot be read as covering
 # suites that were never run here.
 [ "$full" -eq 1 ] && scope="build + suites + harnesses" || scope="build + harnesses"
-[ "$skipped" -gt 0 ] && scope="$scope; $skipped harness rows skipped"
-# The verdict is the line that gets pasted into a PR, so the drift prompt is
-# named here too -- a reader of the pasted line is exactly who needs to know
-# that a figure in the body around it may predate a baseline main regenerated.
+# The one line most likely to be pasted on its own, so what the run could not
+# certify travels with it rather than staying in the block above.
+summary=$(sed -n 's/^SUMMARY: //p' <<<"$account")
+[ -n "$summary" ] && scope="$scope; $summary"
+# The drift prompt is named here for the same reason -- a reader of the pasted
+# line is exactly who needs to know that a figure in the body around it may
+# predate a baseline main regenerated.
 [ -n "$drift" ] && scope="$scope; $drift"
-[ "$fail" -eq 0 ] && echo "PREMERGE: PASS ($scope)" || echo "PREMERGE: FAIL ($scope)"
+if [ "$fail" -ne 0 ]; then
+  echo "PREMERGE: FAIL ($scope)"
+elif [ -n "$summary" ]; then
+  echo "PREMERGE: PASS-WITH-SKIPS ($scope)"
+else
+  echo "PREMERGE: PASS ($scope)"
+fi
 exit "$fail"

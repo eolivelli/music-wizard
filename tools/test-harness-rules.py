@@ -942,13 +942,13 @@ class Keying(unittest.TestCase):
     MARKER = ": not present (local-only"
 
     def test_every_harness_marks_an_absent_file_the_same_way(self):
-        """premerge.sh turns a row carrying this marker into a SKIP. All three
+        """The gate turns a row carrying this marker into a SKIP. All three
         harnesses must produce it through their missing_line, or a fresh
         worktree fails the gate for every branch again (#365). The reader is
-        held to the same literal as the writers: if premerge.sh's copy of the
-        marker drifts, this fails before the gate does."""
+        held to the same literal as the writers: if the comparison's copy of
+        the marker drifts, this fails before the gate does."""
         self.assertIn(self.MARKER,
-                      (Path(__file__).resolve().parent / "premerge.sh").read_text())
+                      (Path(__file__).resolve().parent / "premerge-diff.py").read_text())
         for line in (samples.missing_line("x.mp3"),
                      samples.missing_line("key x.mp3"),
                      samples.missing_line("phase x.mp3"),
@@ -1299,9 +1299,9 @@ class BaselineDrift(unittest.TestCase):
 
 
 class PremergeComparison(unittest.TestCase):
-    """The comparison premerge.sh embeds, executed rather than described.
+    """The comparison premerge.sh runs per step, executed rather than described.
 
-    It is extracted from the script instead of copied here, because a copy is
+    It is the tool the script calls rather than a copy of it, because a copy is
     what let the defect this class exists for survive: the melody harness names
     its benchmarks after packages and clips, which carry no file extension, so
     every one of its rows was keyed by nothing, absent from both sides of the
@@ -1310,24 +1310,28 @@ class PremergeComparison(unittest.TestCase):
     the baseline.
     """
 
-    @staticmethod
-    def compare(baseline_text: str, current_text: str) -> str:
-        script = (Path(__file__).resolve().parent / "premerge.sh").read_text()
-        marker = 'diffs=$(python3 - "$baseline" <<\'PY\' "$out"\n'
-        self_test = script.split(marker, 1)
-        if len(self_test) != 2:
-            raise AssertionError("premerge.sh no longer embeds the comparison this way")
-        body = self_test[1].split("\nPY\n", 1)[0]
+    TOOL = Path(__file__).resolve().parent / "premerge-diff.py"
+
+    @classmethod
+    def run_diff(cls, baseline_text: str, current_text: str,
+                 records: Path | None = None):
         with tempfile.TemporaryDirectory() as tmp:
             baseline = Path(tmp) / "baseline.txt"
             baseline.write_text(baseline_text)
-            program = Path(tmp) / "compare.py"
-            program.write_text(body)
-            done = subprocess.run([sys.executable, str(program), str(baseline), current_text],
-                                  capture_output=True, text=True)
-            if done.returncode != 0:
-                raise AssertionError(done.stderr)
-            return done.stdout
+            return subprocess.run(
+                [sys.executable, str(cls.TOOL), str(baseline),
+                 str(records or Path(tmp) / "records.txt")],
+                input=current_text, capture_output=True, text=True)
+
+    @classmethod
+    def compare(cls, baseline_text: str, current_text: str) -> str:
+        done = cls.run_diff(baseline_text, current_text)
+        if done.returncode not in (0, 3, 4):
+            raise AssertionError(done.stderr or done.stdout)
+        # What the run accounted for is asserted on its own below; every other
+        # test here is about the rows.
+        return "\n".join(line for line in done.stdout.splitlines()
+                         if not line.startswith(("compared ", "NOTHING COMPARED")))
 
     MELODY_ROW = "  melody-level1-c-96: notes=96/96  F1@50ms 88.5%  pitch 96.0%\n"
     CHORD_ROW = "  gmajorblues.mp3: bars=136  root 96.3%\n"
@@ -1366,6 +1370,167 @@ class PremergeComparison(unittest.TestCase):
         self.assertIn("vocadito_1", row.split(":")[0])
         skipped = self.compare(row + "\n", row + "\n")
         self.assertIn("SKIP", skipped)
+
+    def test_a_step_ends_by_saying_what_it_compared(self):
+        """The positive claim a step makes, which premerge fails without: a
+        comparison that died on its way prints no DIFF either, so its silence
+        must not be readable as agreement."""
+        done = self.run_diff(self.CHORD_ROW, self.CHORD_ROW)
+        self.assertEqual(0, done.returncode)
+        self.assertIn("compared 1 of 1 baselined rows", done.stdout)
+
+    def test_a_step_whose_every_row_skipped_says_it_certified_nothing(self):
+        row = melody.missing_clip_line(1)
+        done = self.run_diff(row + "\n", row + "\n")
+        self.assertIn("compared 0 of 1 baselined rows", done.stdout)
+        self.assertIn("certified nothing", done.stdout)
+
+    def test_a_baseline_holding_no_keyable_row_fails_the_step(self):
+        """The #494 defect at the gate rather than in a reviewer's eye: a
+        baseline whose rows this cannot key compares nothing, and a step that
+        compared nothing must not report agreement."""
+        done = self.run_diff("some prose, no rows\n", "some prose, no rows\n")
+        self.assertEqual(4, done.returncode)
+        self.assertIn("NOTHING COMPARED", done.stdout)
+
+    def test_a_skipped_row_is_recorded_with_the_cause_its_harness_printed(self):
+        """The verdict names each skip and why, so the record carries the
+        harness's own reason rather than a count."""
+        with tempfile.TemporaryDirectory() as tmp:
+            records = Path(tmp) / "records.txt"
+            row = lyrics.native_missing_line("sere-doltremare.mp3")
+            self.run_diff(row + "\n", row + "\n", records)
+            written = records.read_text().splitlines()
+        self.assertIn("total\tbaseline.txt\t1", written)
+        skip = [line for line in written if line.startswith("skip\t")]
+        self.assertEqual(1, len(skip))
+        kind, baseline, name, why = skip[0].split("\t")
+        self.assertEqual(("baseline.txt", "sere-doltremare.mp3"), (baseline, name))
+        self.assertIn("build-sherpa-native.sh", why)
+
+
+class PremergeSkipAccount(unittest.TestCase):
+    """Whether a skipped row was expected on this machine (#464).
+
+    The gate cannot certify what it did not measure, and the two ways a row
+    goes unmeasured look identical in the output: a machine that never fetched
+    a benchmark, and a worktree provisioned without one the machine has. Only a
+    statement made outside the worktree tells them apart, which is what the
+    manifest is.
+    """
+
+    TOOL = Path(__file__).resolve().parent / "premerge-skips.py"
+    ROWS = ("total\tscore-samples.txt\t3\n"
+            "skip\tscore-samples.txt\tgli-anni.mp3\tsee uncommitted/list.txt to fetch\n"
+            "total\tscore-asr.txt\t1\n"
+            "skip\tscore-asr.txt\tsere-doltremare.mp3\trun tools/build-sherpa-native.sh\n")
+
+    def account(self, records: str, manifest: str | None = None, printed: int = 2):
+        with tempfile.TemporaryDirectory() as tmp:
+            record_file = Path(tmp) / "records.txt"
+            record_file.write_text(records)
+            location = Path(tmp) / "premerge-skips.txt"
+            if manifest is not None:
+                location.write_text(manifest)
+            return subprocess.run(
+                [sys.executable, str(self.TOOL), str(record_file), str(printed)],
+                capture_output=True, text=True,
+                env=dict(os.environ, MW_PREMERGE_SKIPS=str(location)))
+
+    def test_a_row_this_machine_does_not_expect_to_skip_fails_the_gate(self):
+        """The incident this exists for: a worktree provisioned without
+        uncommitted/ skips every row that needs it, and the run passed."""
+        done = self.account(self.ROWS, manifest="score-asr.txt *\n")
+        self.assertEqual(1, done.returncode)
+        self.assertIn("score-samples.txt gli-anni.mp3", done.stdout)
+        self.assertIn("undeclared on this machine", done.stdout)
+
+    def test_a_declared_skip_passes_and_is_still_named(self):
+        done = self.account(self.ROWS, manifest="* *\n")
+        self.assertEqual(0, done.returncode)
+        self.assertIn("all of them expected", done.stdout)
+        for named in ("gli-anni.mp3", "sere-doltremare.mp3",
+                      "run tools/build-sherpa-native.sh"):
+            self.assertIn(named, done.stdout)
+
+    def test_a_machine_that_declares_nothing_is_told_rather_than_failed(self):
+        """A fresh clone short of the corpus must not fail the gate on every
+        branch (#365), and a machine that cannot reach an optional model must
+        be able to say so without editing anything committed (#487)."""
+        done = self.account(self.ROWS)
+        self.assertEqual(3, done.returncode)
+        self.assertIn("declares no expected skips", done.stdout)
+
+    def test_the_comment_and_the_glob_are_both_read(self):
+        done = self.account(self.ROWS,
+                            manifest="# why this machine cannot\nscore-*.txt *  # both\n")
+        self.assertEqual(0, done.returncode)
+
+    def test_a_step_whose_every_row_skipped_is_named_in_the_verdict(self):
+        """#466: the step that certified nothing, rather than a count of rows.
+        score-samples kept two of its three, so only the other is named."""
+        done = self.account(self.ROWS, manifest="* *\n")
+        summary = [line for line in done.stdout.splitlines()
+                   if line.startswith("SUMMARY: ")]
+        self.assertEqual(["SUMMARY: 2 of 4 rows not measured, all expected here; "
+                          "score-asr.txt certified nothing"], summary)
+
+    def test_a_run_that_measured_everything_says_so_and_carries_no_summary(self):
+        """No SUMMARY line is what premerge reads as a full run, so the clean
+        case must not print one."""
+        done = self.account("total\tscore-samples.txt\t3\n", manifest="", printed=0)
+        self.assertEqual(0, done.returncode)
+        self.assertIn("every one of the 3 baselined rows was measured here.", done.stdout)
+        self.assertNotIn("SUMMARY:", done.stdout)
+
+    def test_an_account_with_nothing_to_account_for_fails(self):
+        """A blind account prints what a clean one prints. Both halves are
+        checked against each other rather than trusted: the steps record what
+        they compared, and premerge counts the SKIP lines it printed."""
+        for records, printed in ((self.ROWS, 1), ("", 0),
+                                 ("total\tscore-asr.txt\t1\n", 1)):
+            done = self.account(records, manifest="* *\n", printed=printed)
+            self.assertEqual(1, done.returncode, done.stdout)
+            self.assertIn("FAIL:", done.stdout)
+
+
+class PremergeShellContract(unittest.TestCase):
+    """The statuses premerge.sh reads, held to the tools that return them.
+
+    Nothing else pins the shell half: renumber an arm and a run that could not
+    account for itself reads as one with nothing to report (#472).
+    """
+
+    SCRIPT = (Path(__file__).resolve().parent / "premerge.sh").read_text(encoding="utf-8")
+
+    def test_the_verdict_word_says_when_rows_were_not_measured(self):
+        self.assertIn("PREMERGE: PASS-WITH-SKIPS", self.SCRIPT)
+        self.assertIn("PREMERGE: PASS (", self.SCRIPT)
+
+    def test_the_account_is_read_for_the_statuses_its_tool_returns(self):
+        """0 and 3 are quiet; everything else, an uncaught exception included,
+        fails the gate."""
+        for arm in ("  0) ;;", "  3) ;;", "  *) fail=1 ;;"):
+            self.assertIn(arm, self.SCRIPT)
+
+    def test_both_tools_are_called_by_the_names_they_have(self):
+        for tool in ("tools/premerge-diff.py", "tools/premerge-skips.py"):
+            self.assertIn(tool, self.SCRIPT)
+            self.assertTrue((Path(__file__).resolve().parent.parent / tool).exists())
+
+    def test_the_accounting_line_the_script_greps_for_is_the_one_printed(self):
+        """The seam between the two: premerge fails a step whose output lacks
+        this line, so the tool's wording and the grep are one literal."""
+        self.assertIn("grep -q '^compared '", self.SCRIPT)
+        self.assertIn('account = f"compared ',
+                      (Path(__file__).resolve().parent / "premerge-diff.py")
+                      .read_text(encoding="utf-8"))
+
+    def test_the_summary_the_script_splices_is_the_one_the_account_prints(self):
+        self.assertIn("s/^SUMMARY: //p", self.SCRIPT)
+        self.assertIn('line = f"SUMMARY: ',
+                      (Path(__file__).resolve().parent / "premerge-skips.py")
+                      .read_text(encoding="utf-8"))
 
 
 class MelodyRules(unittest.TestCase):
