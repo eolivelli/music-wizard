@@ -171,6 +171,25 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a note in the middle of a long held word stays under it")
+        void aHeldWordKeepsItsMiddleNotes() {
+            // Selected by nearest start, the middle note was nearer the next
+            // word's start, and the silence bound then rejected the claim the
+            // word really holds (#620): the stride to the next word opened a
+            // gap the word's own length never did.
+            Score score = sung(
+                    notes(note(0.0, 3.0, 60), note(6.0, 0.5, 64), note(10.0, 0.4, 67)),
+                    line(word("cuo", 0.0, 10.0), word("re", 10.0, 10.4)));
+
+            NoteTrack reduced = PlayableMelody.reduce(score);
+
+            assertThat(reduced.notes()).hasSize(2);
+            assertThat(reduced.notes().get(0).onsetSeconds()).isEqualTo(0.0);
+            assertThat(reduced.notes().get(0).offsetSeconds()).isEqualTo(6.5);
+            assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(10.0);
+        }
+
+        @Test
         @DisplayName("a syllable starting after its group's release moves nothing")
         void aSyllableStartPastTheGroupMovesNothing() {
             // The claim is by silence, so a note can be sung on a syllable
