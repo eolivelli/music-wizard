@@ -273,7 +273,9 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static Score carriedForward(Workspace workspace, Score score) {
         try {
             return workspace.readScore()
-                    .map(previous -> withCarriedLyrics(previous, score))
+                    .map(Score::lyrics)
+                    .filter(existing -> !existing.isEmpty())
+                    .map(existing -> withCarriedLyrics(existing, score))
                     .orElse(score);
         } catch (RuntimeException e) {
             System.err.println("warning: the score already in this workspace could not be"
@@ -284,40 +286,43 @@ final class AnalyzeCommand implements Callable<Integer> {
     }
 
     /**
-     * The new score with the previous analysis's lyrics on it, or unchanged
-     * when that analysis had none.
+     * The new score with the previous analysis's lyrics on it, keeping each
+     * melisma mark only where this run's own decision still makes it.
      *
-     * <p>Melisma marks describe the melody they were decided against (#597), so
-     * carried under a melody this run changed they would say a syllable is sung
-     * over a run the score no longer holds, and they are dropped instead
-     * (#623). Re-deciding them here is not available: which lines the aligner
-     * measured was known only to the run that aligned them — see
-     * {@link #withMelismas}.
+     * <p>A mark is a function of the melody, the tempo map and the chords
+     * (#597), so carried under a score any of those moved on, it can say a
+     * syllable is sung over a run the score no longer holds (#623) — and
+     * comparing the inputs one by one is an enumeration the next input would
+     * silently break. So the decision is re-made against this run's score and
+     * intersected with the carried marks. Intersecting only removes, which is
+     * what keeps #597's rule intact: a line the aligner never measured cannot
+     * gain a mark here — see {@link #withMelismas} — and a score with no
+     * melody leaves the decision alone, so carried marks wait for a melody to
+     * be checked against rather than being lost to a run that computed none.
      */
-    static Score withCarriedLyrics(Score previous, Score score) {
-        Lyrics existing = previous.lyrics();
-        if (existing.isEmpty()) {
-            return score;
+    static Score withCarriedLyrics(Lyrics existing, Score score) {
+        Lyrics decided = Melismas.marked(score.withLyrics(existing));
+        List<LyricLine> lines = new ArrayList<>(existing.lines().size());
+        boolean dropped = false;
+        for (int i = 0; i < existing.lines().size(); i++) {
+            LyricLine carried = existing.lines().get(i);
+            LyricLine checked = decided.lines().get(i);
+            List<LyricWord> words = new ArrayList<>(carried.words().size());
+            for (int at = 0; at < carried.words().size(); at++) {
+                boolean keep = carried.words().get(at).melisma()
+                        && checked.words().get(at).melisma();
+                dropped |= carried.words().get(at).melisma() && !keep;
+                words.add(carried.words().get(at).withMelisma(keep));
+            }
+            lines.add(new LyricLine(words, carried.confidence()));
         }
-        if (previous.track(PartRole.LEAD_VOCAL).equals(score.track(PartRole.LEAD_VOCAL))) {
+        if (!dropped) {
             return score.withLyrics(existing);
         }
-        Lyrics unmarked = withoutMelismas(existing);
-        if (!unmarked.equals(existing)) {
-            System.out.println("  melisma marks dropped: they described the"
-                    + " melody of the previous analysis");
-        }
-        return score.withLyrics(unmarked);
-    }
-
-    /** The same lyrics with every melisma mark taken off. */
-    private static Lyrics withoutMelismas(Lyrics lyrics) {
-        List<LyricLine> lines = lyrics.lines().stream()
-                .map(line -> new LyricLine(
-                        line.words().stream().map(word -> word.withMelisma(false)).toList(),
-                        line.confidence()))
-                .toList();
-        return new Lyrics(lines, lyrics.language(), lyrics.confidence());
+        System.out.println("  melisma marks dropped: this analysis no longer"
+                + " finds a run under them");
+        return score.withLyrics(
+                new Lyrics(lines, existing.language(), existing.confidence()));
     }
 
     /**
