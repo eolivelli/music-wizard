@@ -199,5 +199,7 @@ class GridResolutionTest {
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> GridResolution.BEAT.isTupletIn(null))
                 .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> GridResolution.BEAT.bracketedIn(null))
+                .isInstanceOf(NullPointerException.class);
     }
 }

@@ -117,9 +117,8 @@ public enum GridResolution {
      * penalty, and in compound time it reports {@code BEAT} as a duplet
      * because one is not a multiple of three (#130) — but one position per
      * counted beat divides nothing, a dotted quarter in 6/8 being the beat
-     * itself. The exemption was a hand-written copy at every reader before it
-     * was named here (#618); the penalty keeps reading {@code isTupletIn},
-     * because changing that changes which grids the quantizer picks.
+     * itself (#618). The penalty keeps reading {@code isTupletIn}, because
+     * changing that changes which grids the quantizer picks.
      */
     public boolean bracketedIn(TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
