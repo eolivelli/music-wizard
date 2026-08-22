@@ -376,17 +376,21 @@ public final class PlayableMelody {
      * Which syllable claims each note, or {@link #UNSUNG}.
      *
      * <p>A note is claimed by the line its own span overlaps most, and inside
-     * that line by the syllable whose start is nearest its onset. Nearest
-     * rather than containing: the two measurements are independent, so a scoop
-     * that begins a breath before the aligner's word start, or an onset the
-     * analysis window placed late (#497), still belongs to the syllable it is
-     * sung on.
+     * that line by the syllable the least silence separates it from — the
+     * quantity the claim bound reads (#620) — with ties broken by the nearest
+     * start. The tie-break is a decision, not a leftover: it governs the
+     * words a note sounds under, where silence says nothing, and there a note
+     * beginning near a word's start is usually that word's own approach — a
+     * scoop begins a breath before the aligner's word start, and an onset the
+     * analysis window placed late (#497) lands just after it. Ordering that
+     * regime by overlap instead was measured and costs the scored recording's
+     * reduced part; {@code tools/PlayablePartCheck.java} is the instrument.
      *
      * <p>A line's hull covers whatever instrumental gap sits inside it, so
      * without the claim bound both a note in such a gap and a note simply far
-     * from every syllable of its line would be claimed by the nearest one and
+     * from every syllable of its line would still be claimed by some word and
      * welded to whatever it sang (#598). Both present here as the same
-     * distance, so one bound answers both.
+     * silence, so one bound answers both.
      *
      * <p>A syllable marked as a melisma claims its notes like any other; what
      * changes is that {@link #groups} then splits its run by the ornament rule
@@ -436,27 +440,26 @@ public final class PlayableMelody {
             if (line < 0) {
                 continue;
             }
-            int word = nearest(syllableStart[line], piece.startBeat());
-            double silence = Math.max(0, Math.max(piece.startBeat(), syllableStart[line][word])
-                    - Math.min(piece.endBeat(), syllableEnd[line][word]));
-            if (silence <= claimBeats) {
+            int word = -1;
+            double leastSilence = Double.POSITIVE_INFINITY;
+            double nearestStart = Double.POSITIVE_INFINITY;
+            for (int w = 0; w < syllableStart[line].length; w++) {
+                double silence = Math.max(0,
+                        Math.max(piece.startBeat(), syllableStart[line][w])
+                                - Math.min(piece.endBeat(), syllableEnd[line][w]));
+                double distance = Math.abs(syllableStart[line][w] - piece.startBeat());
+                if (silence < leastSilence - EPSILON
+                        || (silence < leastSilence + EPSILON && distance < nearestStart)) {
+                    leastSilence = silence;
+                    nearestStart = distance;
+                    word = w;
+                }
+            }
+            if (leastSilence <= claimBeats) {
                 claimed[i] = ((long) line << 32) | word;
             }
         }
         return claimed;
-    }
-
-    private static int nearest(double[] starts, double beat) {
-        int best = 0;
-        double distance = Math.abs(starts[0] - beat);
-        for (int i = 1; i < starts.length; i++) {
-            double candidate = Math.abs(starts[i] - beat);
-            if (candidate < distance) {
-                distance = candidate;
-                best = i;
-            }
-        }
-        return best;
     }
 
     /** The group as the one note it prints, running from its first onset to its last release. */

@@ -171,6 +171,51 @@ class PlayableMelodyTest {
         }
 
         @Test
+        @DisplayName("a note in the middle of a long held word stays under it")
+        void aHeldWordKeepsItsMiddleNotes() {
+            // Selected by nearest start, the middle note was nearer the next
+            // word's start, and the silence bound then rejected the claim the
+            // word really holds (#620): the stride to the next word opened a
+            // gap the word's own length never did.
+            Score score = sung(
+                    notes(note(0.0, 3.0, 60), note(6.0, 0.5, 64), note(10.0, 0.4, 67)),
+                    line(word("cuo", 0.0, 10.0), word("re", 10.0, 10.4)));
+
+            NoteTrack reduced = PlayableMelody.reduce(score);
+
+            assertThat(reduced.notes()).hasSize(2);
+            assertThat(reduced.notes().get(0).onsetSeconds()).isEqualTo(0.0);
+            assertThat(reduced.notes().get(0).offsetSeconds()).isEqualTo(6.5);
+            assertThat(reduced.notes().get(1).onsetSeconds()).isEqualTo(10.0);
+            // The claims themselves, so this cannot pass on the last note
+            // being merely unsung: each word holds exactly its own notes.
+            List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+            assertThat(sung).hasSize(2);
+            assertThat(sung.get(0).heads()).extracting(Note::midiPitch)
+                    .containsExactly(60, 64);
+            assertThat(sung.get(1).heads()).extracting(Note::midiPitch)
+                    .containsExactly(67);
+        }
+
+        @Test
+        @DisplayName("among words a note sounds under, the nearest start wins: it is the approach")
+        void theNearestStartWinsAmongSoundingWords() {
+            // Both words sit at no silence from the middle note, so silence
+            // says nothing; the note begins a breath before the second word's
+            // start, which is what that word's own scoop looks like (#497).
+            Score score = sung(
+                    notes(note(0.0, 3.0, 60), note(9.5, 0.7, 64), note(10.6, 0.4, 67)),
+                    line(word("cuo", 0.0, 10.0), word("re", 10.0, 11.0)));
+
+            List<PlayableMelody.SungSyllable> sung = PlayableMelody.sungSyllables(score);
+            assertThat(sung).hasSize(2);
+            assertThat(sung.get(0).heads()).extracting(Note::midiPitch)
+                    .containsExactly(60);
+            assertThat(sung.get(1).heads()).extracting(Note::midiPitch)
+                    .containsExactly(64, 67);
+        }
+
+        @Test
         @DisplayName("a syllable starting after its group's release moves nothing")
         void aSyllableStartPastTheGroupMovesNothing() {
             // The claim is by silence, so a note can be sung on a syllable
