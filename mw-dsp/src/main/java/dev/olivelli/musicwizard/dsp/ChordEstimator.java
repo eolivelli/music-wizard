@@ -137,9 +137,57 @@ public final class ChordEstimator {
      * so a minor seventh in this list moves roots wherever the sixth degree
      * sounds, measured as a collapse of root accuracy. {@link #QUALITY_ONLY}
      * is where the seventh goes instead, and it cannot move a root.
+     *
+     * <p><b>The major seventh is here rather than there</b> (#588), and it is
+     * the exception that shows what the list is for: {@code Cmaj7} is
+     * {@code Em} with a C, so it carries the same risk — but the recordings
+     * whose truth holds one do not have those bars decoded onto their own root
+     * at all, and a quality that cannot move a root cannot reach a bar it never
+     * got. It is admitted on the fit's residual rather than on the chroma
+     * ({@link #DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT}), so an estimate made
+     * without a {@link PitchClassAblation} still decodes the vocabulary it
+     * decoded before this was added.
      */
     private static final ChordQuality[] DECODED = {
-            ChordQuality.MAJOR, ChordQuality.MINOR, ChordQuality.DOMINANT_SEVENTH};
+            ChordQuality.MAJOR, ChordQuality.MINOR, ChordQuality.DOMINANT_SEVENTH,
+            ChordQuality.MAJOR_SEVENTH};
+
+    /**
+     * Share of the residual its root removes that a major seventh must remove
+     * before the decoder scores that degree at all. Only {@link #emissions}
+     * reads it. Where it does not clear this the template is scored on the
+     * triad it contains over its own four-note norm, which the triad wins, so
+     * the gate is an admission rather than a penalty.
+     *
+     * <p><b>Gated here and in {@link #qualityScore} together</b>: a quality in
+     * {@link #DECODED} is also a candidate of the quality decision, so a gate
+     * in one place alone measures the ungated rule.
+     *
+     * <p>What sets it is the ninth over the relative minor seventh —
+     * {@code Abmaj7} is {@code Fm7} with a G for its F, and that G is the ninth
+     * a soloist plays over the vamp — which a fold cannot tell from the chord
+     * itself and the bass prior was measured not to separate (#635). The degree
+     * is asked to be load-bearing enough that it does not clear this. Swept by
+     * {@code tools/ChordSweep.java score} and {@code tools/score-samples.py};
+     * {@code tools/baselines/} carries what both sides of the band cost.
+     */
+    private static final double DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT = 1.5;
+
+    /**
+     * Share of the residual its root removes that a major seventh must remove
+     * to be counted in the quality decision. Only {@link #qualityScore} reads
+     * it, and only where a {@link PitchClassAblation} is available.
+     *
+     * <p>{@link #ADDED_NOTE_SHARE_OF_ROOT}'s rule applied to the one degree
+     * that is manufactured rather than merely shared: the major seventh is the
+     * perfect fifth above the chord's own major third, so a plain triad carries
+     * it as that third's third partial. It is asked for more than the sixth and
+     * the diminished fifth are, and that is measured — swept by {@code
+     * tools/ChordSweep.java score} against the plain-triad control of #273,
+     * below this band that recording is named with sevenths it does not hold,
+     * and above it the recordings whose truth holds them lose bars.
+     */
+    private static final double MAJOR_SEVENTH_SHARE_OF_ROOT = 0.5;
 
     /**
      * Qualities the quality decision may report but the decoder may not
@@ -149,16 +197,14 @@ public final class ChordEstimator {
      * reported wherever a dominant one is right, and #274 for the
      * false-seventh rate on plain-triad material.
      *
-     * <p><b>The major seventh and the sixth are deliberately absent</b> (#287).
-     * Both add a note to a triad, where a binary template only asks the note to
-     * carry 2/sqrt(3) - 1 of the triad's mass — and both notes are ones the mix
-     * carries without them being played: the major seventh is the perfect fifth
-     * above the chord's own major third, so a plain triad manufactures it as
-     * that third's third partial, and the sixth is what a boogie shuffle plays
-     * under a dominant. Measured with the residual test below applied to each,
-     * the major seventh reaches almost no real bar — the recordings whose truth
-     * holds one do not name those bars on their own root (#588) — and the sixth
-     * still takes the dominant-seventh benchmarks; #287 carries both tables.
+     * <p><b>The plain sixth is deliberately absent</b> (#287). It adds a note
+     * to a triad, where a binary template only asks the note to carry
+     * 2/sqrt(3) - 1 of the triad's mass, and it is a note the mix carries
+     * without it being played — a boogie shuffle plays it under a dominant — so
+     * with the residual test below applied it still takes the dominant-seventh
+     * benchmarks; #287 carries the table. Telling {@code A6} from
+     * {@code F#m7} needs evidence about which sounding note the chord is built
+     * on rather than about whether a note is sounding (#274).
      *
      * <p>The two here are decided on the same test where the fit's residual is
      * available ({@link #ADDED_NOTE_SHARE_OF_ROOT}), on the sixth and on the
@@ -363,7 +409,10 @@ public final class ChordEstimator {
      * {@link #estimate(Chroma, Chroma, Chroma, List)}; this adds the one thing
      * no chroma can say, which is whether a pitch class the fit turned on is
      * carrying the spectrum or standing in for the root's own fifth partial
-     * (#537). See {@link #qualityScore} for where it is read.
+     * (#537). It is read by {@link #qualityScore} and, for the one template
+     * admitted on it rather than on the chroma, by {@link #emissions} — so
+     * supplying it decides which roots are decoded and not only which qualities
+     * are reported.
      *
      * @param chroma        beat-synchronous chroma the root and the chord
      *                      boundaries are decoded from
@@ -416,13 +465,14 @@ public final class ChordEstimator {
 
         List<Template> templates = buildTemplates();
         double[][] similarity = similarities(chroma, templates);
+        double[][] emission = emissions(chroma, templates, similarity, ablation);
         double[][] prior = bassRootPrior(bassChroma, similarity.length);
         double[][] logLikelihood = new double[similarity.length][templates.size()];
         for (int frame = 0; frame < similarity.length; frame++) {
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
                 logLikelihood[frame][t] = EMISSION_SHARPNESS
-                        * Math.log(Math.max(1e-9, similarity[frame][t]));
+                        * Math.log(Math.max(1e-9, emission[frame][t]));
                 // No-chord carries no root and so takes no term. That is why the
                 // term below is at most zero: see bassRootPrior.
                 if (prior != null && template.quality() != ChordQuality.NONE) {
@@ -718,6 +768,38 @@ public final class ChordEstimator {
         return !quality.hasSeventh() && quality.intervals().length == 4;
     }
 
+    /** Whether {@code quality} states a major seventh, eleven semitones up. */
+    private static boolean statesAMajorSeventh(ChordQuality quality) {
+        for (int interval : quality.intervals()) {
+            if (interval == 11) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a candidate's major seventh is evidence here: its own degree
+     * removes {@code share} of the residual the root removes, and there is a
+     * residual to read at all.
+     *
+     * <p><b>Closed where nothing measured it</b>, unlike the other residual
+     * tests, which credit a note the chroma carries when no ablation was
+     * handed over. This is the only gated template in {@link #DECODED}, so it
+     * is the only one that can move a root — and it is separated from the triad
+     * it contains by a degree the root's own fifth partial manufactures, which
+     * is exactly the reading a chroma cannot make. Which is why a root the fit
+     * does not need is closed too, and not left to the comparison: against a
+     * root that removes nothing, every share is cleared by every value,
+     * including the all-zero answer {@link PitchClassAblation} gives for spans
+     * holding nothing to fit.
+     */
+    private static boolean majorSeventhSounds(double[] significance, int root, double share) {
+        return significance != null
+                && significance[root] > 0
+                && significance[Math.floorMod(root + 11, 12)] >= share * significance[root];
+    }
+
     /** The template for {@code quality} on {@code root}. */
     private static int indexOf(List<Template> templates, int root, ChordQuality quality) {
         for (int t = 0; t < templates.size(); t++) {
@@ -749,7 +831,10 @@ public final class ChordEstimator {
             Template candidate = templates.get(t);
             if (candidate.quality() == ChordQuality.NONE
                     || candidate.rootPitchClass() != root
-                    || !admissible.test(candidate.quality())) {
+                    || !admissible.test(candidate.quality())
+                    // Reported only on the residual's evidence, like the
+                    // decoder's own choice of it: see majorSeventhSounds.
+                    || (significance == null && statesAMajorSeventh(candidate.quality()))) {
                 continue;
             }
             double score = qualityScore(summed, candidate, significance);
@@ -803,12 +888,13 @@ public final class ChordEstimator {
      * minor on noise. See {@link PitchClassAblation}, and #544 for the register
      * the residual is read over against the register this chroma is.
      *
-     * <p><b>The same residual decides whether a sixth or a diminished fifth is
-     * there</b> ({@link #ADDED_NOTE_SHARE_OF_ROOT}), and one that is not counts
-     * for nothing — which leaves the candidate scored on the triad's own notes
-     * over a larger norm, so the chord it competes with wins. That is what
-     * ranks the qualities #287 adds on evidence rather than on which extra note
-     * is louder.
+     * <p><b>The same residual decides whether a sixth, a diminished fifth or a
+     * major seventh is there</b> ({@link #ADDED_NOTE_SHARE_OF_ROOT},
+     * {@link #MAJOR_SEVENTH_SHARE_OF_ROOT}), and one that is not counts for
+     * nothing — which leaves the candidate scored on the triad's own notes over
+     * a larger norm, so the chord it competes with wins. That is what ranks the
+     * qualities #287 adds on evidence rather than on which extra note is
+     * louder.
      */
     private static double qualityScore(double[] chroma, Template template,
                                        double[] significance) {
@@ -828,6 +914,8 @@ public final class ChordEstimator {
         int sixth = statesASixth(template.quality()) ? Math.floorMod(root + 9, 12) : -1;
         int diminishedFifth = Math.floorMod(root + 6, 12);
         int minorThird = Math.floorMod(root + 3, 12);
+        int majorSeventh = statesAMajorSeventh(template.quality())
+                ? Math.floorMod(root + 11, 12) : -1;
         double mass = 0;
         double energy = 0;
         for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
@@ -843,6 +931,11 @@ public final class ChordEstimator {
                 if (significance != null && pitchClass == minorThird
                         && significance[minorThird]
                                 < MINOR_THIRD_SHARE_OF_ROOT * significance[root]) {
+                    value = 0;
+                }
+                if (significance != null && pitchClass == majorSeventh
+                        && !majorSeventhSounds(significance, root,
+                                MAJOR_SEVENTH_SHARE_OF_ROOT)) {
                     value = 0;
                 }
                 mass += value;
@@ -969,9 +1062,8 @@ public final class ChordEstimator {
     }
 
     /**
-     * Major and minor triads and dominant sevenths on all twelve roots, plus a
-     * no-chord state, and after them the templates only the quality decision
-     * may choose.
+     * {@link #DECODED} on all twelve roots, plus a no-chord state, and after
+     * them the templates only the quality decision may choose.
      *
      * <p>The sevenths are not a luxury: a triad-only vocabulary asked to
      * explain a seventh chord with three notes prefers an unrelated root
@@ -1013,7 +1105,10 @@ public final class ChordEstimator {
         }
     }
 
-    /** Raw cosine similarity of every template for every frame. */
+    /**
+     * Raw cosine similarity of every template for every frame. Not what the
+     * decoder scores on, which is {@link #emissions}.
+     */
     private static double[][] similarities(Chroma chroma, List<Template> templates) {
         int frames = chroma.frameCount();
         double[][] out = new double[frames][templates.size()];
@@ -1039,6 +1134,54 @@ public final class ChordEstimator {
                     // a loud frame is not automatically a better match than a
                     // quiet one. Sharpening happens once, in estimate().
                     out[frame][t] = cosine(vector, template.profile());
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * What the decoder scores each template on: {@link #similarities}, with a
+     * major seventh whose own degree the fit does not need scored without it
+     * ({@link #DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT}).
+     *
+     * <p><b>Separate from the similarity rather than folded into it</b>,
+     * because a caller reads that as the confidence in the chord it was given,
+     * and a template scored on less than itself would report a chord the
+     * estimator is sure of as a doubtful one — reaching, among others, the
+     * chart floor {@code PlayableMelody} breaks melody ties on.
+     *
+     * <p><b>The residual is read once per beat here</b>, where
+     * {@link #chooseQualities} reads it once per chord. A run does not exist
+     * until this has been decoded, so there is no cheaper span to ask about;
+     * {@code ChordEstimationTest#theAblationIsAskedOncePerRunAndOncePerBeat}
+     * pins what is asked.
+     */
+    private static double[][] emissions(Chroma chroma, List<Template> templates,
+                                        double[][] similarity, PitchClassAblation ablation) {
+        double[][] out = new double[similarity.length][];
+        for (int frame = 0; frame < similarity.length; frame++) {
+            out[frame] = similarity[frame].clone();
+            double[] vector = chroma.vectors()[frame];
+            double energy = 0;
+            for (double value : vector) {
+                energy += value;
+            }
+            // A silent frame's similarities are the silence answer rather than
+            // a match to gate, and the ablation is an expensive thing to ask
+            // about nothing.
+            if (energy < SILENCE_THRESHOLD) {
+                continue;
+            }
+            double[] significance =
+                    ablation == null ? null : ablation.significanceOver(frame, frame + 1);
+            for (int t = 0; t < templates.size(); t++) {
+                Template template = templates.get(t);
+                if (statesAMajorSeventh(template.quality())
+                        && !majorSeventhSounds(significance, template.rootPitchClass(),
+                                DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT)) {
+                    out[frame][t] = cosineWithout(vector, template.profile(),
+                            Math.floorMod(template.rootPitchClass() + 11, 12));
                 }
             }
         }
@@ -1174,6 +1317,26 @@ public final class ChordEstimator {
         int index = Math.floorMod(pitchClass, 12);
         return new PitchSpelling(letters[index],
                 sharp[index] ? Accidental.SHARP : Accidental.NATURAL, 4);
+    }
+
+    /**
+     * The cosine of {@code a} against {@code b} with one pitch class left out of
+     * the numerator and both norms kept whole, so a template scored this way is
+     * being asked how well the rest of it fits over its own full size.
+     */
+    private static double cosineWithout(double[] a, double[] b, int skip) {
+        double dot = 0;
+        double normA = 0;
+        double normB = 0;
+        for (int i = 0; i < a.length; i++) {
+            if (i != skip) {
+                dot += a[i] * b[i];
+            }
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        double denominator = Math.sqrt(normA) * Math.sqrt(normB);
+        return denominator > 0 ? dot / denominator : 0;
     }
 
     private static double cosine(double[] a, double[] b) {
