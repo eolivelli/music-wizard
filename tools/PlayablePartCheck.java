@@ -200,6 +200,10 @@ public final class PlayablePartCheck {
         }
         report("estimate", events(estimate), mapped, bar);
         report("reduced ", events(reduced), mapped, bar);
+        agreement("reduced", score, reduced, mapped);
+        agreement("with the excursion rule off", score,
+                PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
+                        PlayableMelody.ORNAMENT_BEATS, 0, 0), mapped);
         removals(events(estimate), events(reduced), mapped);
         excursions(score, estimate, mapped, bar);
         claims(score, estimate, mapped, bar);
@@ -732,6 +736,64 @@ public final class PlayablePartCheck {
                         100 * f1(events, reference, TOLERANCE_SECONDS)));
     }
 
+    /**
+     * How often the reference holds what the reduced part prints, split by
+     * whether the harmony accounts for the printed pitch (#670).
+     *
+     * <p>Read against the reference's own chromaticism, printed beside it,
+     * because that is what decides how the pair may be used. An arrangement
+     * whose melody never leaves the key signature cannot agree with a foreign
+     * head whatever the singer did, so on such a reference the pair says
+     * whether a correction lands on the right note and not whether the head
+     * needed correcting. The supported column is the control: it is the same
+     * part, the same reference and the same rule, on the heads the harmony
+     * does account for.
+     */
+    private static void agreement(String label, Score score, NoteTrack reduced,
+                                  List<Event> reference) {
+        int[] supported = new int[2];
+        int[] foreign = new int[2];
+        for (Note head : reduced.notes()) {
+            List<Integer> classes = new ArrayList<>();
+            for (Event event : reference) {
+                if (event.seconds() > head.onsetSeconds() - TOLERANCE_SECONDS
+                        && event.seconds() < head.offsetSeconds() + TOLERANCE_SECONDS) {
+                    classes.add(Math.floorMod(event.pitch(), 12));
+                }
+            }
+            if (classes.isEmpty()) {
+                continue;
+            }
+            int[] tally = accounted(score, head) ? supported : foreign;
+            tally[0]++;
+            if (classes.contains(Math.floorMod(head.midiPitch(), 12))) {
+                tally[1]++;
+            }
+        }
+        int outside = 0;
+        for (Event event : reference) {
+            if (score.keyAt(event.seconds()).map(key -> !signature(key)
+                    .contains(Math.floorMod(event.pitch(), 12))).orElse(false)) {
+                outside++;
+            }
+        }
+        System.out.printf(Locale.ROOT,
+                "agreement (%s): of the heads the reference covers it holds the printed pitch"
+                        + " class for %d of %d the harmony accounts for and %d of %d it does"
+                        + " not; %d of the reference's own %d notes leave the key signature%n",
+                label, supported[1], supported[0], foreign[1], foreign[0],
+                outside, reference.size());
+    }
+
+    /** Whether the chord under a head or the key signature over it admits its pitch. */
+    private static boolean accounted(Score score, Note head) {
+        int pitchClass = Math.floorMod(head.midiPitch(), 12);
+        boolean inSignature = signatureOf(score, head).map(
+                set -> set.contains(pitchClass)).orElse(true);
+        Chord chord = soundingChord(score, head).orElse(null);
+        return inSignature || chord == null || sounds(chord, pitchClass);
+    }
+
     /** Sounding time in quarter-note beats, and how it splits. */
     private record Harmony(double beats, double outOfChord, double outOfSignature,
                            double foreign, double recoverable, double stepwise) {
@@ -774,7 +836,7 @@ public final class PlayablePartCheck {
             if (!inSignature) {
                 outOfSignature += held;
             }
-            if (inSignature || inChord) {
+            if (accounted(score, note)) {
                 continue;
             }
             foreign += held;
