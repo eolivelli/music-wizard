@@ -232,14 +232,19 @@ public final class OctaveSweep {
             System.out.println("vocadito is not on this machine; see uncommitted/list.txt"
                     + " to fetch it. Only the synthetic packages are scored.");
         }
+        // Every setting checked before any of them is answered: refusing part
+        // way through would print rows under a heading that then failed, and
+        // the whole grid holds settings this width cannot be asked at.
+        for (double[] band : mode.equals(SPLITS) ? bands : List.<double[]>of()) {
+            if (asked <= band[3]) {
+                System.err.printf(Locale.ROOT, "a width of %.0f is answered by a gesture of"
+                        + " %.0f: nothing that near can be split, whatever the fold does%n",
+                        asked, band[3]);
+                System.exit(2);
+            }
+        }
         for (double[] band : bands) {
             if (mode.equals(SPLITS)) {
-                if (asked <= band[3]) {
-                    System.err.printf(Locale.ROOT, "a width of %.0f is answered by a gesture of"
-                            + " %.0f: nothing that near can be split, whatever the fold does%n",
-                            asked, band[3]);
-                    System.exit(2);
-                }
                 splits("vocadito ", vocadito, band, separated, asked);
                 splits("synthetic", synthetic, band, separated, asked);
             } else if (mode.equals(OCTAVES)) {
