@@ -66,7 +66,7 @@ Ad-hoc use, against any recording and LRC without touching the baseline:
     tools/score-lyrics.py --file uncommitted/generale.mp3 \\
         --lrc uncommitted/generale.lrc --language it
 
-That line is keyed so `premerge.sh` cannot see it, because an ad-hoc run is a
+That line is keyed so the gate cannot see it, because an ad-hoc run is a
 one-off reading and a baseline row is a standing claim that everyone's premerge
 has to reproduce. Add a row below when a recording is meant to be scored on
 every run.
@@ -109,7 +109,7 @@ LYRICS = {
 }
 
 # The line main() prints above the rows, per source. Neither holds ".mp3:",
-# which is what keeps premerge.sh from reading it as a row; the Keying tests
+# which is what keeps the gate from reading it as a row; the Keying tests
 # execute that.
 PREAMBLES = {
     "lrc": ("lyric words MW carries, against the file they were read from"
@@ -491,7 +491,7 @@ def columns(truth: Truth, heard: Heard) -> str:
 
 
 def score_line(name: str, truth: Truth, heard: Heard) -> str:
-    """A baselined row. Keyed `<name>.mp3:`, which is what premerge.sh gates on."""
+    """A baselined row. Keyed `<name>.mp3:`, which is what the gate gates on."""
     return f"  {name}: {columns(truth, heard)}"
 
 
@@ -519,14 +519,14 @@ def adhoc_unavailable_line(name: str, reason: str) -> str:
 def unavailable_line(name: str, reason: str) -> str:
     """A row the environment could not measure, in the same skip key, with
     analyze's own first line of explanation beside it. Never baselined: a
-    committed baseline that certifies absence is a defect (premerge.sh says
-    so), and this text exists only on the current side of the diff."""
+    committed baseline that certifies absence is a defect (the gate says so),
+    and this text exists only on the current side of the diff."""
     return f"  {name}: not present (local-only; {reason[:160]})"
 
 
 def adhoc_line(name: str, truth: Truth, heard: Heard) -> str:
     """A row for a file that is not ground truth. Deliberately keyed so it holds
-    no `.mp3:` -- premerge.sh filters on that substring, so this cannot drift
+    no `.mp3:` -- the gate filters on that substring, so this cannot drift
     into looking gated when nothing gates it."""
     return (f"  ad-hoc {name} (not ground truth, not baselined): "
             f"{columns(truth, heard)}")

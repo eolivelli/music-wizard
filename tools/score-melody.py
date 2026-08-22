@@ -376,8 +376,8 @@ def vocadito_notes(csv_file: Path) -> list[tuple[float, float, int]]:
 def missing_clip_line(clip: int) -> str:
     """The row for a clip this machine cannot measure.
 
-    Its wording is what premerge.sh turns into a SKIP rather than a failure, so
-    it is written once here and held to that script by a test — the lyric
+    Its wording is what the gate turns into a SKIP rather than a failure, so
+    it is written once here and held to its reader by a test — the lyric
     harness's own skip marker is pinned the same way, for the same reason.
     """
     return (f"  vocadito_{clip}: not present (local-only;"
@@ -456,7 +456,7 @@ def shortened(reason: str) -> str:
 
 
 def unavailable_line(name: str, reason: str) -> str:
-    """A row this machine could not measure, in the marker premerge.sh turns
+    """A row this machine could not measure, in the marker the gate turns
     into a SKIP -- with analyze's own reason beside it. Never baselined: a
     committed baseline that certifies absence is a defect, and this text lives
     only on the current side of the diff."""
