@@ -71,6 +71,12 @@ public record SampleSpec(
             throw new IllegalArgumentException(
                     "melody 'none' with accompaniment 'none' would generate silence");
         }
+        if (compVoicing != CompVoicing.CLOSE
+                && (style != Style.POP_ROCK || accompaniment != Accompaniment.FULL)) {
+            throw new IllegalArgumentException(
+                    "voicing '" + compVoicing.id() + "' is honoured only by pop-rock"
+                            + " comping with full accompaniment (#631)");
+        }
     }
 
     /**
@@ -111,8 +117,11 @@ public record SampleSpec(
      * register, root included. {@link #ROOTLESS_MAJ7} leaves the root of a
      * major seventh to the bass and plays third, fifth and seventh — which is
      * the mediant triad, and is the whole point of the packages that ask for
-     * it (#589). It changes major seventh chords and nothing else, so a
-     * package stating it can be a minimal pair against a close-voiced twin.
+     * it (#589). Only the pop-rock comp with full accompaniment honours it
+     * while changing major seventh chords and nothing else; the other comps
+     * either ignore it or draw from the shared random stream once per pitch,
+     * which un-minimals the pair the header exists to build, so every other
+     * combination is rejected outright (#631).
      */
     public enum CompVoicing {
         CLOSE("close"),

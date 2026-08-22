@@ -90,7 +90,7 @@ reported because nothing said not to, which is what #273 records the
 plain-triad benchmark being needed for. #600 is the gap they were built to
 decide, and #606 to #609 carry what MW names for each.
 
-**Only the add9 pair is a minimal pair.** Both pairs share their drums and
+**The sus pair is not a minimal pair.** Both pairs share their drums and
 bass note for note, and the add9 twins' comping is the same voicing bar for
 bar with the ninth taken out. The sus twins' is not: the arranger voices each
 chord nearest the one before it, so the register a package reaches depends on

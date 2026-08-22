@@ -104,6 +104,20 @@ class SpecParserTest {
     }
 
     @Test
+    @DisplayName("refuses the rootless voicing where the comp would not honour it")
+    void refusesTheRootlessVoicingOutsidePopRockFull() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SpecParser.parse(SPEC
+                        .replace("style: pop-rock", "style: rocknroll-shuffle")
+                        .replace("seed: 7", "seed: 7\nvoicing: rootless-maj7")))
+                .withMessageContaining("rootless-maj7");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SpecParser.parse(SPEC
+                        .replace("seed: 7", "seed: 7\nvoicing: rootless-maj7\naccompaniment: pad")))
+                .withMessageContaining("rootless-maj7");
+    }
+
+    @Test
     void minorKeysCarryTheirSignature() {
         SampleSpec spec = SpecParser.parse(SPEC
                 .replace("key: C major", "key: B minor"));
