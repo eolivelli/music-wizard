@@ -47,7 +47,7 @@ import java.util.Optional;
  *     per bar:  startBar
  *               [tempo]        -- once, in the first bar emitted
  *               [pickup]       -- bar 0 only, when the music starts late
- *               body:  wholeBarRest
+ *               body:  [unreadMelody] wholeBarRest
  *                      | ( [openTuplet] symbol+ [closeTuplet] )+
  *               endBar
  *   endStaff
@@ -148,6 +148,26 @@ interface StaffWriter {
      * of silence is one rest of three quarters, not a dotted half rest.
      */
     void wholeBarRest(long wholeNotesNumerator, long wholeNotesDenominator);
+
+    /**
+     * The rest that follows opens a stretch of rest bars with placed words
+     * over them: the melody stage looked there and found nothing (#602).
+     *
+     * <p>A rest under sung words and a rest where nobody sings are different
+     * facts, and a page that draws them identically cannot be read. The mark
+     * goes wherever the staff is engraved, words on that page or not: it
+     * states the stage's own gap, and the words are how the layout knows,
+     * not what the reader needs beside it. The mark's text is
+     * {@link #UNREAD_MELODY} in both formats, for the reason
+     * {@link TempoMark#ESTIMATE} is shared: two spellings of one page must
+     * not disagree about what they admit to. Called once per stretch, before
+     * the {@code wholeBarRest} that opens it; the layout decides the
+     * stretches, so the writers cannot dedupe them differently.
+     */
+    void unreadMelody();
+
+    /** What {@link #unreadMelody}'s mark says, in every format. */
+    String UNREAD_MELODY = "melody not read";
 
     /** Closes the bar. */
     void endBar();

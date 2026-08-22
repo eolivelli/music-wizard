@@ -1081,9 +1081,56 @@ final class AnalyzeCommand implements Callable<Integer> {
         // asked for and its having heard nothing: the transcriber adds no empty
         // track, so this row cannot read zero. The run that heard nothing has
         // already said so in its progress line.
-        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack ->
-                lines.add("Melody  " + melodyTrack.size() + " notes"));
+        score.track(PartRole.LEAD_VOCAL).ifPresent(melodyTrack -> {
+            lines.add("Melody  " + melodyTrack.size() + " notes");
+            // Stated where the run reports (#602): every second of placed
+            // words with no note under it, which is a wider count than the
+            // page's bar-level marks. Guarded on the figure printed, so the
+            // row cannot assert a gap of zero.
+            long unread = Math.round(unreadSeconds(score, melodyTrack));
+            if (unread > 0) {
+                lines.add("        no notes under " + unread + " s of placed words");
+            }
+        });
         return List.copyOf(lines);
+    }
+
+    /**
+     * How much of the placed words' time holds no melody note at all, in
+     * seconds.
+     */
+    static double unreadSeconds(Score score, NoteTrack melody) {
+        List<double[]> spans = new ArrayList<>();
+        for (LyricLine line : score.lyrics().lines()) {
+            for (LyricWord word : line.words()) {
+                spans.add(new double[] {word.startSeconds(), word.endSeconds()});
+            }
+        }
+        spans.sort(java.util.Comparator.comparingDouble(span -> span[0]));
+        double unread = 0;
+        double reached = Double.NEGATIVE_INFINITY;
+        for (double[] span : spans) {
+            double from = Math.max(span[0], reached);
+            if (span[1] <= from) {
+                continue;
+            }
+            double covered = 0;
+            // A frontier over the notes as well as the words: notes may
+            // overlap (#93), and summing raw overlaps would count one moment
+            // twice and report a gap as covered.
+            double noteReached = from;
+            for (var note : melody.notes()) {
+                double start = Math.max(note.onsetSeconds(), noteReached);
+                double end = Math.min(note.offsetSeconds(), span[1]);
+                if (end > start) {
+                    covered += end - start;
+                    noteReached = end;
+                }
+            }
+            unread += Math.max(0, span[1] - from - covered);
+            reached = Math.max(reached, span[1]);
+        }
+        return unread;
     }
 
     /**
