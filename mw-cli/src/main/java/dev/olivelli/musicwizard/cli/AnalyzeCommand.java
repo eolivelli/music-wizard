@@ -273,9 +273,7 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static Score carriedForward(Workspace workspace, Score score) {
         try {
             return workspace.readScore()
-                    .map(Score::lyrics)
-                    .filter(existing -> !existing.isEmpty())
-                    .map(score::withLyrics)
+                    .map(previous -> withCarriedLyrics(previous, score))
                     .orElse(score);
         } catch (RuntimeException e) {
             System.err.println("warning: the score already in this workspace could not be"
@@ -283,6 +281,43 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + " replaced: " + e.getMessage());
             return score;
         }
+    }
+
+    /**
+     * The new score with the previous analysis's lyrics on it, or unchanged
+     * when that analysis had none.
+     *
+     * <p>Melisma marks describe the melody they were decided against (#597), so
+     * carried under a melody this run changed they would say a syllable is sung
+     * over a run the score no longer holds, and they are dropped instead
+     * (#623). Re-deciding them here is not available: which lines the aligner
+     * measured was known only to the run that aligned them — see
+     * {@link #withMelismas}.
+     */
+    static Score withCarriedLyrics(Score previous, Score score) {
+        Lyrics existing = previous.lyrics();
+        if (existing.isEmpty()) {
+            return score;
+        }
+        if (previous.track(PartRole.LEAD_VOCAL).equals(score.track(PartRole.LEAD_VOCAL))) {
+            return score.withLyrics(existing);
+        }
+        Lyrics unmarked = withoutMelismas(existing);
+        if (!unmarked.equals(existing)) {
+            System.out.println("  melisma marks dropped: they described the"
+                    + " melody of the previous analysis");
+        }
+        return score.withLyrics(unmarked);
+    }
+
+    /** The same lyrics with every melisma mark taken off. */
+    private static Lyrics withoutMelismas(Lyrics lyrics) {
+        List<LyricLine> lines = lyrics.lines().stream()
+                .map(line -> new LyricLine(
+                        line.words().stream().map(word -> word.withMelisma(false)).toList(),
+                        line.confidence()))
+                .toList();
+        return new Lyrics(lines, lyrics.language(), lyrics.confidence());
     }
 
     /**

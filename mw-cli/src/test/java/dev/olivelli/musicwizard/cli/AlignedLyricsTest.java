@@ -376,6 +376,53 @@ class AlignedLyricsTest {
         assertThat(decided.lines().get(1).words().get(0).melisma()).isFalse();
     }
 
+    @Test
+    @DisplayName("carried lyrics keep their marks while the melody is the one they described")
+    void carriedMarksSurviveAnUnchangedMelody() {
+        List<Note> melody = List.of(note(0.0, 0.4, 60), note(0.4, 0.4, 64));
+        Score previous = sung(melody, line(word("aaah", 0.0, 1.2).withMelisma(true)));
+
+        Score carried = AnalyzeCommand.withCarriedLyrics(previous, sung(melody));
+
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("a recomputed melody drops the carried marks, and only the marks")
+    void aChangedMelodyDropsCarriedMarks() {
+        // The marks were decided against the previous melody (#597); under a
+        // melody this run recomputed they would say a syllable is sung over a
+        // run the score no longer holds (#623). The words themselves are
+        // supplied, not derived, so everything else about them is kept.
+        Score previous = sung(List.of(note(0.0, 0.4, 60), note(0.4, 0.4, 64)),
+                line(word("aaah", 0.0, 1.2).withMelisma(true),
+                        word("oh", 1.2, 1.4).withHyphenToNext(true)));
+
+        Score carried = AnalyzeCommand.withCarriedLyrics(
+                previous, sung(List.of(note(0.0, 0.8, 60))));
+
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(false, false);
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::text).containsExactly("aaah", "oh");
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::hyphenatedToNext).containsExactly(false, true);
+    }
+
+    @Test
+    @DisplayName("a melody that is gone entirely drops the carried marks too")
+    void aVanishedMelodyDropsCarriedMarks() {
+        Score previous = sung(List.of(note(0.0, 0.4, 60), note(0.4, 0.4, 64)),
+                line(word("aaah", 0.0, 1.2).withMelisma(true)));
+        Score withoutMelody = Score.empty(TempoMap.constant(60), 30);
+
+        Score carried = AnalyzeCommand.withCarriedLyrics(previous, withoutMelody);
+
+        assertThat(carried.lyrics().allWords())
+                .extracting(LyricWord::melisma).containsExactly(false);
+    }
+
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
         return Note.ofSeconds(onsetSeconds, durationSeconds, midiPitch, Confidence.of(0.7));
     }
