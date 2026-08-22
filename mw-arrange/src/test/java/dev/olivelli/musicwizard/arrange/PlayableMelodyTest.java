@@ -641,16 +641,16 @@ class PlayableMelodyTest {
         }
 
         @Test
-        @DisplayName("a head sounding under another is not the side either, and is looked past")
+        @DisplayName("a head sounding under another is no side on either hand, and is looked past")
         void aSimultaneousHeadIsNotASideEither() {
-            // The pair sounding together would bracket the D sharp too far
-            // from the line for it to be a wobble; the C the line really left
-            // and came back to is one head further out.
-            List<Note> under = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 64),
-                    note(1.0, 0.5, 62), note(1.5, 0.5, 63), note(2.0, 1.0, 60));
+            List<Note> under = notes(note(0.0, 1.0, 60),
+                    note(1.0, 0.5, 64), note(1.0, 0.5, 62),
+                    note(1.5, 0.5, 63),
+                    note(2.0, 0.5, 64), note(2.0, 0.5, 62),
+                    note(2.5, 1.0, 60));
 
             assertThat(pitches(PlayableMelody.reduce(inC(under))))
-                    .containsExactly(60, 64, 62, 60, 60);
+                    .containsExactly(60, 64, 62, 60, 64, 62, 60);
         }
 
         @Test
