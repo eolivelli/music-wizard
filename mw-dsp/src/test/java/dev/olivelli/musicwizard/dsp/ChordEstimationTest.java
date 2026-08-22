@@ -1376,16 +1376,19 @@ class ChordEstimationTest {
     }
 
     /**
-     * #583: a true minor on a root the recording otherwise plays major.
+     * #583: a true minor on a root the recording otherwise plays major, which
+     * {@link ChordEstimator} withdraws with the false ones. Pins the defect on
+     * real material rather than a cure; #583 carries why no guard tried so far
+     * separates this run from the false minors the corpus holds.
      *
      * <p>Three runs of {@code synthetic_samples/pop-borrowed-iv-c-100.mp3},
-     * whose grid states a borrowed {@code Fm} against twice as many bars of
-     * {@code F} on the same root: the {@code F} bar of its intro, the {@code C}
-     * bar before it, and one of the borrowed fourths. Chroma and residual are
+     * whose grid states a borrowed {@code Fm} on a root it otherwise plays
+     * major: the {@code F} bar of its intro, the {@code C} bar before the
+     * borrowed one, and one of the borrowed fourths. Chroma and residual are
      * what the estimator was given there.
      */
     @Nested
-    @DisplayName("a minor third the run states plainly (#583)")
+    @DisplayName("a borrowed minor fourth (#583)")
     class BorrowedMinor {
 
         private static final double[] MAJOR_COMBINED = {
@@ -1430,17 +1433,10 @@ class ChordEstimationTest {
         /**
          * {@code majorBeats} beats of the F run, four of the C run that
          * separates them, then four of the borrowed fourth, each span answering
-         * with its own residual. {@code blur} mixes the borrowed fourth's treble
-         * toward a chroma carrying no information, which is the one thing the
-         * count is allowed to overrule.
+         * with its own residual.
          */
-        private static List<Chord> chords(int majorBeats, double blur) {
+        private static List<Chord> chords(int majorBeats) {
             int total = majorBeats + 8;
-            double[] blurred = new double[12];
-            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
-                blurred[pitchClass] =
-                        (1 - blur) * MINOR_TREBLE[pitchClass] + blur / 12;
-            }
             double[][] combined = new double[total][];
             double[][] treble = new double[total][];
             double[][] bass = new double[total][];
@@ -1448,7 +1444,7 @@ class ChordEstimationTest {
                 boolean minor = beat >= majorBeats + 4;
                 boolean onC = !minor && beat >= majorBeats;
                 combined[beat] = onC ? C_COMBINED : minor ? MINOR_COMBINED : MAJOR_COMBINED;
-                treble[beat] = onC ? C_TREBLE : minor ? blurred : MAJOR_TREBLE;
+                treble[beat] = onC ? C_TREBLE : minor ? MINOR_TREBLE : MAJOR_TREBLE;
                 bass[beat] = onC ? C_BASS : minor ? MINOR_BASS : MAJOR_BASS;
             }
             PitchClassAblation residual = new PitchClassAblation() {
@@ -1468,22 +1464,22 @@ class ChordEstimationTest {
         }
 
         @Test
-        @DisplayName("a minority minor third the run states plainly survives the count")
-        void aPlainMinorThirdOverrulesTheCount() {
-            // Eight beats of F against four of the borrowed fourth: the count
-            // says withdraw, and the run's chordal register is this chord and
-            // little else, so it stands.
-            assertThat(chords(8, 0)).extracting(Chord::symbol)
-                    .containsExactly("F", "C", "Fm");
+        @DisplayName("a borrowed fourth is withdrawn with the false minors (#583)")
+        void aBorrowedFourthGoesWithTheCount() {
+            // Eight beats of F against four of the borrowed fourth. The run's
+            // own chroma and residual both state the minor third and neither
+            // states the major one, and the count withdraws it anyway.
+            assertThat(chords(8)).extracting(Chord::symbol)
+                    .containsExactly("F", "C", "F7");
         }
 
         @Test
-        @DisplayName("the same run, stated less plainly, goes with the count")
-        void aBlurredMinorThirdIsStillWithdrawn() {
-            // Everything else is the run's own: the same residual, the same
-            // bass, the same count against it.
-            assertThat(chords(8, 0.3)).extracting(Chord::symbol)
-                    .containsExactly("F", "C", "F7");
+        @DisplayName("the same run keeps its third where the count does not fire")
+        void aBorrowedFourthOnItsOwnStands() {
+            // The major run cut to three beats, so the minor third holds most
+            // of the root's: what the run says is read as it is.
+            assertThat(chords(3)).extracting(Chord::symbol)
+                    .containsExactly("F", "C", "Fm");
         }
     }
 

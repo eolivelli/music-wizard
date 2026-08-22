@@ -562,25 +562,6 @@ public final class ChordEstimator {
     private static final double THIRD_MUST_HOLD_FOR = 0.5;
 
     /**
-     * How well a run has to fit its own minor-ish candidate to keep its third
-     * against {@link #THIRD_MUST_HOLD_FOR}'s count.
-     *
-     * <p>Read against {@link #qualityScore}, so it is the same cosine the
-     * decision is made on, and one is the run's chordal register being those
-     * notes and nothing else. Absolute rather than a multiple of
-     * {@link #flatScore}: that floor rises with the template's size, so a
-     * four-note minor-ish label could then reach no bar at all — and that is
-     * where #583 says a guard bites hardest.
-     *
-     * <p>Swept on the sample, chart and synthetic harnesses, and the band the
-     * corpus leaves open is narrow: below it a false minor returns on a
-     * recording whose truth has none there, above it the benchmark that states
-     * this case loses its borrowed fourths. This sits between them; the
-     * baselines are what say so.
-     */
-    private static final double MINOR_OVERRULES_THE_COUNT = 0.907;
-
-    /**
      * Withdraws the minor third from every run on a root the recording states a
      * major third on, in place.
      *
@@ -612,15 +593,14 @@ public final class ChordEstimator {
      * carries no claim that rule has made.
      *
      * <p>The re-decision is held to {@link #bestQuality}'s floor like every
-     * other, and that floor is a weak guard here: a major triad is scored on the
-     * root and the fifth, which clear it between them with no third in the run at
-     * all. So the count is overruled where the run states its minor third
-     * plainly ({@link #MINOR_OVERRULES_THE_COUNT}, #583) — the cost of this rule
-     * is a whole chord where the seventh's is a colour, and a borrowed minor
-     * fourth is ordinary in pop. It is the run's own fit that says so and not
-     * the residual: measured over the corpus, the share of the root's residual
-     * a withdrawn run's minor third holds does not separate the true minors from
-     * the false, in either direction.
+     * other, and that is a weak guard here: a major triad is scored on the root
+     * and the fifth, which clear the floor between them with no third in the run
+     * at all. So the cost is a chord where the seventh's is a colour — a minor
+     * chord a recording states on a root it otherwise plays major goes with the
+     * false ones, which {@code synthetic_samples/pop-borrowed-iv-c-100} states
+     * and {@code ChordEstimationTest.BorrowedMinor} pins. #583 carries why the
+     * guards tried for it do not separate that run from the false minors the
+     * corpus holds.
      */
     private static void decideThirdsPerRoot(int[] path, int[] out, List<Template> templates,
                                             Chroma qualityChroma, double[][] significance) {
@@ -645,12 +625,9 @@ public final class ChordEstimator {
                 j++;
             }
             int root = templates.get(out[i]).rootPitchClass();
-            double[] run = sum(qualityChroma, i, j);
             if (templates.get(out[i]).quality().isMinorish()
-                    && minorThirds[root] < THIRD_MUST_HOLD_FOR * beats[root]
-                    && qualityScore(run, templates.get(out[i]), significance[i])
-                            < MINOR_OVERRULES_THE_COUNT) {
-                int major = bestQuality(run, templates, root,
+                    && minorThirds[root] < THIRD_MUST_HOLD_FOR * beats[root]) {
+                int major = bestQuality(sum(qualityChroma, i, j), templates, root,
                         quality -> !quality.isMinorish(), significance[i]);
                 if (major >= 0) {
                     for (int frame = i; frame < j; frame++) {

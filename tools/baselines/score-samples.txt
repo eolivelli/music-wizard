@@ -40,8 +40,8 @@ keys, against the expected key for each file:
   key bm-blues-slow.mp3: B minor at 80%  want B minor  OK
   key cm-blues-68-95.mp3: C minor at 32%  want C minor  OK
   key waltz-am-e7-160.mp3: A minor at 56%  want A minor  OK
-  key f-blues-swing-170.mp3: F major at 6%  want F major  OK
-  key jazz-251-c-140.mp3: A minor at 58%  want C major  WRONG
+  key f-blues-swing-170.mp3: F major at 5%  want F major  OK
+  key jazz-251-c-140.mp3: A minor at 60%  want C major  WRONG
   key ballad-wine-roses-65.mp3: F major at 5%  want F major  OK
   key footprints-200.mp3: C minor at 23%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
