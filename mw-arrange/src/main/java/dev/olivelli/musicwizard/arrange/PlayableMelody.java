@@ -157,7 +157,7 @@ public final class PlayableMelody {
     }
 
     /** One syllable of the lyrics and the note-heads it prints when it is a melisma. */
-    record SungSyllable(int line, int word, List<Note> heads) {
+    public record SungSyllable(int line, int word, List<Note> heads) {
     }
 
     /**
@@ -166,9 +166,11 @@ public final class PlayableMelody {
      *
      * <p>Built by the machinery the reduction uses, so a stage deciding what
      * a syllable holds (#597) reads the heads marking it produces rather than
-     * a prediction of them.
+     * a prediction of them. Public for {@code tools/PlayablePartCheck.java},
+     * which reads the claims off it the way the melisma sweep reads the
+     * marks.
      */
-    static List<SungSyllable> sungSyllables(Score score) {
+    public static List<SungSyllable> sungSyllables(Score score) {
         Objects.requireNonNull(score, "score");
         Optional<NoteTrack> melody = score.track(PartRole.LEAD_VOCAL);
         if (melody.isEmpty()) {
@@ -377,12 +379,10 @@ public final class PlayableMelody {
      *
      * <p>A note is claimed, over every line its own span overlaps (#621), by
      * the syllable the least silence separates it from — the quantity the
-     * claim bound reads (#620) — with ties broken by the nearest start. Every
-     * such line rather than the most-overlapped one alone, because lines
-     * overlap in time and a hull says nothing about where its words sit: a
-     * note could lose the hull contest to a line it was not sung on while the
-     * losing line's syllable sat squarely under it, and the bound then
-     * dropped it. The tie-break is a decision, not a leftover: it governs the
+     * claim bound reads (#620) — with ties broken by the nearest start. A
+     * line whose hull misses the note offers nothing, however near its words
+     * sit: that gate is geometric rather than the bound (#648). The
+     * tie-break is a decision, not a leftover: it governs the
      * words a note sounds under, where silence says nothing, and there a note
      * beginning near a word's start is usually that word's own approach — a
      * scoop begins a breath before the aligner's word start, and an onset the
