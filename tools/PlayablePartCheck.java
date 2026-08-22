@@ -104,6 +104,14 @@ public final class PlayablePartCheck {
     private static final double[] CLAIM_BOUNDS =
             {Double.MAX_VALUE, 4, 2, 1.5, 1.25, 1, 0.5, 0.25, 0};
 
+    /**
+     * The ornament bounds swept, in quarter-note beats. The first is the
+     * shipped bound; the second is the same bound on a grid tracked at double
+     * rate (#378), where a piece measures half its counted length — which is
+     * the question #595 asks of a recording with no words.
+     */
+    private static final double[] ORNAMENT_BOUNDS = {1.0 / 3, 2.0 / 3, 0.5, 1};
+
     /** The widest run the melisma sweep asks a syllable's heads to reach. */
     private static final int MELISMA_SEMITONES = 7;
 
@@ -265,6 +273,32 @@ public final class PlayablePartCheck {
             System.out.printf(Locale.ROOT, "%14s %7d %7d %9.2f %9.2f %10s %9s%n",
                     bound == Double.MAX_VALUE ? "none"
                             : String.format(Locale.ROOT, "%.2f", bound),
+                    reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
+                    reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
+                            countError(events, reference, barSeconds)),
+                    reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
+                            100 * f1(events, reference, TOLERANCE_SECONDS)));
+        }
+        ornaments(score, estimate, reference, barSeconds);
+    }
+
+    /**
+     * The ornament bound swept at the shipped claim bound (#595). On a
+     * wordless score this is the whole of the grouping evidence, and the
+     * bound is in beats, so a double-rate grid (#378) halves what it absorbs;
+     * the doubled row is what the shipped bound would do at the true rate.
+     */
+    private static void ornaments(Score score, NoteTrack estimate, List<Event> reference,
+                                  double barSeconds) {
+        System.out.println();
+        System.out.printf(Locale.ROOT, "%14s %7s %7s %9s %9s %10s %9s%n",
+                "ornament bound", "heads", "welded", "widest", "span", "per bar", "F1 loose");
+        for (double bound : ORNAMENT_BOUNDS) {
+            NoteTrack reduced = PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS, bound);
+            Weld weld = welds(estimate, reduced, score.tempoMap());
+            List<Event> events = events(reduced);
+            System.out.printf(Locale.ROOT, "%14s %7d %7d %9.2f %9.2f %10s %9s%n",
+                    String.format(Locale.ROOT, "%.2f", bound),
                     reduced.size(), weld.welded(), weld.widestSilence(), weld.widestSpan(),
                     reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.2f",
                             countError(events, reference, barSeconds)),
