@@ -72,9 +72,10 @@ public final class PlayableMelody {
      *
      * <p>Strictly below the triplet eighth, which is the shortest value this
      * expects a reader to want: anything finer inside a single beat is
-     * decoration.
+     * decoration. Public because {@code tools/PlayablePartCheck.java} sweeps
+     * around it, so the shipped bound has one writer.
      */
-    private static final double ORNAMENT_BEATS = 1.0 / 3;
+    public static final double ORNAMENT_BEATS = 1.0 / 3;
 
     /** What fraction of the note it leads into an ornament may last. */
     private static final double ORNAMENT_RATIO = 0.5;
@@ -140,9 +141,9 @@ public final class PlayableMelody {
 
     /**
      * The same at a chosen ornament bound too, for the sweep the double-rate
-     * question needs (#595): the bound is stated in beats, so on a grid
-     * tracked at double rate (#378) a piece measures half its counted length,
-     * and only moving the bound can say how much that costs.
+     * question needs (#595): the bound is stated in beats, and on a grid
+     * tracked at double rate (#378) only moving it can say what the rate
+     * costs.
      *
      * @param ornamentBeats how long a note may be, in quarter-note beats, and
      *                      still be absorbed as an ornament of the note after

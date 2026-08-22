@@ -105,12 +105,13 @@ public final class PlayablePartCheck {
             {Double.MAX_VALUE, 4, 2, 1.5, 1.25, 1, 0.5, 0.25, 0};
 
     /**
-     * The ornament bounds swept, in quarter-note beats. The first is the
-     * shipped bound; the second is the same bound on a grid tracked at double
-     * rate (#378), where a piece measures half its counted length — which is
-     * the question #595 asks of a recording with no words.
+     * The ornament bounds swept, in quarter-note beats: the shipped bound,
+     * its double — which is what the shipped bound absorbs once a double-rate
+     * grid (#378) is corrected for, the question #595 asks of a recording
+     * with no words — and two more around them.
      */
-    private static final double[] ORNAMENT_BOUNDS = {1.0 / 3, 2.0 / 3, 0.5, 1};
+    private static final double[] ORNAMENT_BOUNDS = {
+        PlayableMelody.ORNAMENT_BEATS, 2 * PlayableMelody.ORNAMENT_BEATS, 0.5, 1};
 
     /** The widest run the melisma sweep asks a syllable's heads to reach. */
     private static final int MELISMA_SEMITONES = 7;
@@ -164,6 +165,7 @@ public final class PlayablePartCheck {
             // welds together does not, so a recording nobody has sequenced
             // still gets that table rather than a usage error.
             claims(score, estimate, List.of(), Double.NaN);
+            ornaments(score, estimate, List.of(), Double.NaN);
             melismas(score, estimate, List.of(), Double.NaN);
             return;
         }
@@ -184,6 +186,7 @@ public final class PlayablePartCheck {
         report("reduced ", events(reduced), mapped, bar);
         removals(events(estimate), events(reduced), mapped);
         claims(score, estimate, mapped, bar);
+        ornaments(score, estimate, mapped, bar);
         melismas(score, estimate, mapped, bar);
         subdivisions(Path.of(args[1]), args.length > 2 ? args[2] : "Melody");
         vocabularies(score, estimate, reduced, mapped);
@@ -279,14 +282,15 @@ public final class PlayablePartCheck {
                     reference.isEmpty() ? "-" : String.format(Locale.ROOT, "%.1f%%",
                             100 * f1(events, reference, TOLERANCE_SECONDS)));
         }
-        ornaments(score, estimate, reference, barSeconds);
     }
 
     /**
      * The ornament bound swept at the shipped claim bound (#595). On a
      * wordless score this is the whole of the grouping evidence, and the
      * bound is in beats, so a double-rate grid (#378) halves what it absorbs;
-     * the doubled row is what the shipped bound would do at the true rate.
+     * there, the doubled row is what the shipped bound would do at the true
+     * rate. On a worded score the other beat-stated bounds stay shipped, so
+     * the doubled row is only the ornament rule's own half of the correction.
      */
     private static void ornaments(Score score, NoteTrack estimate, List<Event> reference,
                                   double barSeconds) {

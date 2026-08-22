@@ -445,6 +445,21 @@ class PlayableMelodyTest {
     class TheFallback {
 
         @Test
+        @DisplayName("the ornament bound is the sweep's to move, and the default is the shipped one")
+        void theOrnamentBoundIsSweepable() {
+            // Wordless, so the ornament rule is the whole grouping (#595): a
+            // note the shipped bound leaves standing is absorbed once the
+            // bound passes its length, which is what a double-rate grid
+            // (#378) denies it.
+            Score score = sung(notes(note(0.0, 0.4, 57), note(0.4, 1.2, 64)));
+
+            assertThat(PlayableMelody.reduce(score).notes()).hasSize(2);
+            assertThat(PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS, 0.5).notes())
+                    .hasSize(1);
+        }
+
+
+        @Test
         @DisplayName("an ornament joins the note it leads into")
         void theOrnamentIsAbsorbed() {
             Score score = played(notes(note(0.0, 0.2, 62), note(0.2, 0.8, 64)),
@@ -515,19 +530,6 @@ class PlayableMelodyTest {
                 java.util.Optional.empty(), 0.0, 4.0,
                 java.util.Optional.empty(), java.util.Optional.empty(),
                 Confidence.of(confidence))), Confidence.of(confidence));
-    }
-
-    @org.junit.jupiter.api.Test
-    @DisplayName("the ornament bound is the sweep's to move, and the default is the shipped one")
-    void theOrnamentBoundIsSweepable() {
-        // Wordless, so the ornament rule is the whole grouping (#595): a note
-        // the shipped bound leaves standing is absorbed once the bound passes
-        // its length, which is what a double-rate grid (#378) denies it.
-        Score score = sung(notes(note(0.0, 0.4, 57), note(0.4, 1.2, 64)));
-
-        assertThat(PlayableMelody.reduce(score).notes()).hasSize(2);
-        assertThat(PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS, 0.5).notes())
-                .hasSize(1);
     }
 
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {
