@@ -131,21 +131,25 @@ class BeatMarksIT {
         Path lilypond = ConfigLoader.findLilyPond(null).orElse(null);
         assumeThat(lilypond).as("LilyPond is not installed").isNotNull();
         // The case must hold what it is named for before LilyPond is asked
-        // about it. A quoted digit appears only in the marks lane, and a
-        // drifting mark lands off the grid, so some mark carries a scaled
-        // duration -- which is what a fixture rotting towards the phased
-        // shape would lose. The overrides the lane styles itself with are
-        // asserted by name, since dropping one engraves in silence.
+        // about it, read off the marks lane alone -- on the worded page the
+        // words lane carries the same override names and can carry digits,
+        // so a whole-file read would let it answer for the lane under test.
+        // A drifting mark lands off the grid, so some mark carries a scaled
+        // duration, which is what a fixture rotting towards the phased shape
+        // would lose; and the lane's own overrides are pinned whole, since a
+        // dropped or inherited one engraves in silence.
+        String lane = marksLane(source);
         if (ticks) {
-            assertThat(source).contains("\".\"");
+            assertThat(lane).contains("\".\"");
         } else {
-            assertThat(source.lines()
+            assertThat(lane.lines()
                     .filter(line -> line.matches(".*\"\\d+\".*"))
                     .anyMatch(line -> line.contains("*")))
-                    .as("no scaled mark duration in:%n%s", source).isTrue();
+                    .as("no scaled mark duration in:%n%s", lane).isTrue();
         }
-        assertThat(source).contains("grey50").contains("font-size")
-                .contains("self-alignment-X");
+        assertThat(lane).contains("x11-color 'grey50")
+                .contains("font-size = #-4")
+                .contains("self-alignment-X = #LEFT");
 
         LilyPondRenderer.Result result = new LilyPondRenderer(lilypond)
                 .renderSource(tempDirectory.resolve(name + "/chart.ly"), source);
@@ -153,5 +157,13 @@ class BeatMarksIT {
         assertThat(result.failedBarChecks()).as("%s", result.output()).isEmpty();
         assertEngravedCleanly(name, result);
         assertThat(result.pdf()).isPresent();
+    }
+
+    /** The marks lane alone: the first {@code \new Lyrics} block of the page. */
+    private static String marksLane(String source) {
+        int from = source.indexOf("\\new Lyrics");
+        assertThat(from).as("no lane in:%n%s", source).isNotNegative();
+        int next = source.indexOf("\\new Lyrics", from + 1);
+        return next < 0 ? source.substring(from) : source.substring(from, next);
     }
 }
