@@ -132,7 +132,7 @@ public final class PlayableMelody {
 
     /**
      * The three bounds {@link #reduce(Score)} reads a head as an excursion by
-     * (#670), each of which turns the rule off when it is zero.
+     * (#670).
      *
      * @param beats how long a head nothing in the harmony accounts for may
      *              last and still be an excursion rather than a note held on
@@ -146,6 +146,16 @@ public final class PlayableMelody {
      *              even where the harmony refuses it
      */
     public record Excursion(double beats, int returnSemitones, int departureSemitones) {
+
+        /**
+         * Bounds that refuse nothing, so the part prints as its heads were
+         * chosen.
+         *
+         * <p>Named once because which of the three zeros does it is not
+         * guessable: a return bound of zero is the rule's strictest setting,
+         * asking that the line come back to the very pitch it left.
+         */
+        public static final Excursion NONE = new Excursion(0, 0, 0);
 
         public Excursion {
             if (!Double.isFinite(beats)) {

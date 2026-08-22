@@ -212,7 +212,7 @@ public final class PlayablePartCheck {
         agreement("with the excursion rule off", score,
                 PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
                         PlayableMelody.ORNAMENT_BEATS,
-                        new PlayableMelody.Excursion(0, 0, 0)), mapped);
+                        PlayableMelody.Excursion.NONE), mapped);
         removals(events(estimate), events(reduced), mapped);
         excursions(score, estimate, mapped, bar);
         claims(score, estimate, mapped, bar);
@@ -713,7 +713,7 @@ public final class PlayablePartCheck {
                 "per bar", "F1 loose");
         PlayableMelody.Excursion shipped = PlayableMelody.EXCURSION;
         NoteTrack asRead = PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                PlayableMelody.ORNAMENT_BEATS, new PlayableMelody.Excursion(0, 0, 0));
+                PlayableMelody.ORNAMENT_BEATS, PlayableMelody.Excursion.NONE);
         excursion(score, estimate, asRead, asRead, "off", "off", "off", reference, barSeconds);
         // One bound at a time around the shipped triple: a cross product prints
         // more rows than anybody reads, and what each bound is worth is the

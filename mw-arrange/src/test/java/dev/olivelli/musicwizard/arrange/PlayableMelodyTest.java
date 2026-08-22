@@ -617,20 +617,40 @@ class PlayableMelodyTest {
         }
 
         @Test
-        @DisplayName("the bounds are the sweep's to move, and the defaults are the shipped ones")
+        @DisplayName("each bound is the sweep's to move, on a fixture the shipped one decides")
         void theBoundsAreSweepable() {
-            Score score = inC(notes(note(0.0, 1.0, 60), note(1.0, 0.5, 61), note(1.5, 1.0, 62)));
-
-            assertThat(pitches(PlayableMelody.reduce(score, PlayableMelody.CLAIM_BEATS,
-                    PlayableMelody.ORNAMENT_BEATS, new PlayableMelody.Excursion(0,
-                            PlayableMelody.EXCURSION.returnSemitones(),
-                            PlayableMelody.EXCURSION.departureSemitones()))))
-                    .containsExactly(60, 61, 62);
+            // Each half moves one bound away from the shipped triple on a
+            // fixture the shipped triple answers the other way, so a reduce
+            // that ignored its argument would fail both.
             assertThat(pitches(PlayableMelody.reduce(inC(wobble(0.5, 61)),
                     PlayableMelody.CLAIM_BEATS, PlayableMelody.ORNAMENT_BEATS,
-                    new PlayableMelody.Excursion(PlayableMelody.EXCURSION.beats(), 0,
-                            PlayableMelody.EXCURSION.departureSemitones()))))
-                    .containsExactly(60, 60, 60);
+                    at(shipped -> new PlayableMelody.Excursion(0, shipped.returnSemitones(),
+                            shipped.departureSemitones())))))
+                    .containsExactly(60, 61, 60);
+
+            // Sides a step apart rather than the same pitch, so that asking
+            // the line to come back to what it left refuses what a step admits.
+            List<Note> away = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 63), note(1.5, 1.0, 62));
+            assertThat(pitches(PlayableMelody.reduce(inC(away))))
+                    .containsExactly(60, 62, 62);
+            assertThat(pitches(PlayableMelody.reduce(inC(away), PlayableMelody.CLAIM_BEATS,
+                    PlayableMelody.ORNAMENT_BEATS,
+                    at(shipped -> new PlayableMelody.Excursion(shipped.beats(), 0,
+                            shipped.departureSemitones())))))
+                    .containsExactly(60, 63, 62);
+        }
+
+        @Test
+        @DisplayName("a head sounding under another is not the side either, and is looked past")
+        void aSimultaneousHeadIsNotASideEither() {
+            // The pair sounding together would bracket the D sharp too far
+            // from the line for it to be a wobble; the C the line really left
+            // and came back to is one head further out.
+            List<Note> under = notes(note(0.0, 1.0, 60), note(1.0, 0.5, 64),
+                    note(1.0, 0.5, 62), note(1.5, 0.5, 63), note(2.0, 1.0, 60));
+
+            assertThat(pitches(PlayableMelody.reduce(inC(under))))
+                    .containsExactly(60, 64, 62, 60, 60);
         }
 
         @Test
@@ -676,6 +696,12 @@ class PlayableMelodyTest {
             assertThat(moved.spelling().orElseThrow().midiPitch()).isEqualTo(60);
             assertThat(moved.spelling().orElseThrow().accidental())
                     .isEqualTo(Accidental.NATURAL);
+        }
+
+        /** The shipped bounds with one of them moved. */
+        private PlayableMelody.Excursion at(
+                java.util.function.UnaryOperator<PlayableMelody.Excursion> moved) {
+            return moved.apply(PlayableMelody.EXCURSION);
         }
 
         /** Two notes on one pitch with a head of its own between them. */
