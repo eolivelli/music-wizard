@@ -1106,10 +1106,8 @@ public final class ChordEstimator {
     }
 
     /**
-     * Raw cosine similarity of every template for every frame. What the
-     * confidence a caller reads is taken from, so it stays a statement about
-     * how well the reported chord explains the mix; the decoder scores some of
-     * these templates on less than themselves, and that is {@link #emissions}.
+     * Raw cosine similarity of every template for every frame. Not what the
+     * decoder scores on, which is {@link #emissions}.
      */
     private static double[][] similarities(Chroma chroma, List<Template> templates) {
         int frames = chroma.frameCount();
