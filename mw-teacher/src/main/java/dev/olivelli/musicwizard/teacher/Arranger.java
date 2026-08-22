@@ -54,7 +54,7 @@ public final class Arranger {
 
     private final SampleSpec spec;
     private final Random rng;
-    private final Voicing voicing = new Voicing();
+    private final Voicing voicing;
     private final int formLength;
 
     private PartBuilder melody;
@@ -69,6 +69,7 @@ public final class Arranger {
         }
         this.spec = spec;
         this.rng = new Random(spec.seed());
+        this.voicing = new Voicing(spec.compVoicing());
         // Crash placement and fills follow the form: 12-bar for grids built of
         // 12-bar choruses, 8-bar phrases otherwise.
         this.formLength = spec.bars().size() % 12 == 0 ? 12 : 8;
@@ -428,12 +429,46 @@ public final class Arranger {
     /**
      * Places chord tones in the comping register with minimal movement from the
      * previous chord, which is what a player's hand does.
+     *
+     * <p>A spec asking for {@link SampleSpec.CompVoicing#ROOTLESS_MAJ7} gets
+     * third-fifth-seventh above middle C on its major sevenths, and the hand
+     * still moves as the close voicing would have moved it: the substitution
+     * is what the pair under test varies, so it must not also displace the
+     * chords after it, which are voiced from history rather than from
+     * themselves (#589, #611).
      */
     private static final class Voicing {
 
+        private final SampleSpec.CompVoicing mode;
         private double center = 64;
 
+        Voicing(SampleSpec.CompVoicing mode) {
+            this.mode = mode;
+        }
+
         int[] of(ChordSymbol chord) {
+            int[] close = close(chord);
+            if (mode == SampleSpec.CompVoicing.ROOTLESS_MAJ7
+                    && chord.quality() == ChordSymbol.Quality.MAJOR_SEVENTH) {
+                return rootless(chord);
+            }
+            return close;
+        }
+
+        private static int[] rootless(ChordSymbol chord) {
+            int[] intervals = chord.quality().intervals();
+            int third = (chord.rootPitchClass() + intervals[1]) % 12;
+            while (third < 60) {
+                third += 12;
+            }
+            return new int[] {
+                third,
+                third - intervals[1] + intervals[2],
+                third - intervals[1] + intervals[3],
+            };
+        }
+
+        private int[] close(ChordSymbol chord) {
             int[] pitchClasses = chord.pitchClasses();
             int[] pitches = new int[pitchClasses.length];
             double sum = 0;

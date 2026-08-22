@@ -47,6 +47,8 @@ seed: 3                    # vary it; same seed + same spec = same MIDI bytes
 melody: flute              # optional; 'none' for comping-only packages
 melody-level: 2            # optional; 1-4 difficulty ramp, else the style's own rhythms
 accompaniment: full        # optional; full (default) | pad | none
+voicing: close             # optional; close (default) | rootless-maj7 — the
+                           # latter only with pop-rock + full accompaniment (#631)
 bars:
 Eb Cm Ab Bb                # one token per bar, X-Y a split bar
 ...
