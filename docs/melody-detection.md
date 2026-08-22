@@ -115,8 +115,10 @@ through. A syllable **the melody moves under** keeps its notes instead
 (#597): the aligner marks it a melisma, and the reduction then prints the run
 rather than collapsing it. Movement is the evidence, not length — a syllable
 merely held, and one re-articulated on its own pitch, stay collapsed, and so
-does one whose notes are an octave apart, which is the octave fold rather than
-a voice. The decision is taken only on the lines the aligner actually
+does one whose neighbouring notes leap an octave, which is the octave fold
+rather than a voice — the leap, not the syllable's whole reach, since a real
+run can cover an octave a step at a time (#624). The decision is taken only on
+the lines the aligner actually
 measured, because a line left at its parsed times has its words apportioned
 across it by a syllable count and such a span says nothing about what is sung
 over it; `tools/PlayablePartCheck.java` sweeps both intervals and prints what

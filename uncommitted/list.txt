@@ -56,6 +56,21 @@ agreement is the ceiling any melody stage is measured against — a number well
 under 100%, which no synthetic package could ever have shown.
 
 
+hanno-ucciso-luomo-ragno.mp3
+
+"Hanno ucciso l'uomo ragno" (883), studio version, 4:10. The recording #527,
+#537 and the sweep on #274 are measured against. Confirmed by ear (#527,
+Enrico, who knows the song): it is in A minor, and no A major occurs in it.
+Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/hanno-ucciso-luomo-ragno.mp3 \
+    https://www.youtube.com/watch?v=rl1PU-skys8
+The command the file was originally fetched with was never recorded. The URL
+above is the one Enrico himself supplied for this recording, and its upload —
+the artist's official audio — matches the local file's duration to the
+second; a refetch should still be checked against the figures those issues
+quote before standing in for the file they were measured on.
+
 hanno-ucciso-luomo-ragno-karaoke.mp3
 
 "Hanno ucciso l'uomo ragno" (883), karaoke version, 4:31. Pop, simplified
@@ -325,6 +340,58 @@ listened to nothing:
   - that the intro, the two middle stretches and the outro really are
     instrumental;
   - that it is Italian throughout, which is the gate a dialect entry fails.
+
+ridere.wav
+
+Pinguini Tattici Nucleari, "Ridere", 3:35. Not fetched with a command: it
+arrived as a phone take, imported into the Android app from
+https://www.youtube.com/watch?v=e_oFiNyOgiw on 2026-08-14, whose bundle's
+info file carries `source: youtube` — so it is a commercial recording and
+stays here, whatever it sounds like. The take is the app's own decode, mono
+16-bit PCM at the rate the decoder produced; its provenance sits beside it
+as ridere.info.txt and ridere.notes.txt, and ridere-phone-chart.txt is the
+chart the phone made of the same audio at the time.
+
+Sung in Italian, which the hyphenation patterns cover; words in ridere.lrc,
+fetched from LRCLIB, whose entry for this song states the same duration as
+the take. The reference chart is ridere-reference.txt, from accordiespartiti
+— a page in A with no capo, a chart and not ground truth.
+
+Run 2026-08-22. MW read A major, 117 BPM, 4/4, a D–A–F#m7–E verse with B7
+and G#m in the turns. The page agrees on the key and holds no B anywhere, so
+the B7 is MW's own; the page's one E/G# and MW's three G#-rooted spans do
+not line up one to one, and ridere-reference.txt records the #599 reading of
+them as plausible, not confirmed. The phone's chart of the same audio agrees
+with the desktop's on key, tempo, meter and the verse row, and differs in
+some turn bars — two independent renderings of one pipeline, not two
+witnesses.
+
+per-sempre-si.mp3
+
+"Per sempre sì" (Sal Da Vinci), 3:25, the official video's audio. Italian
+pop ballad, sung in Italian. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/per-sempre-si.mp3 \
+    https://www.youtube.com/watch?v=4Q4Ga2Pb5MY
+The original fetch command was not written down when the file arrived
+(2026-08-18); the URL above is the song's official video, which is what the
+fetching session recorded taking, and its upload matches the local file's
+duration to the second. A refetch should still be checked against the
+figures #575 and #596 quote before standing in for the file they were
+measured on.
+
+Words in per-sempre-si.lrc, from LRCLIB. No LRCLIB candidate for this song
+runs past about 172 s, so none reaches the last half-minute of this 205 s
+recording and there is nothing better to swap in; the local file's last
+timed line sits at 171.5 s, and whether its times fit this rendering has not
+been checked by ear.
+
+Run 2026-08-22. MW read C minor, 123 BPM, 4/4. No reference chart, and no
+ear has confirmed the changes. What the recording is for: the separator
+empties the vocal stem for the opening stretch of this song while reading
+the choruses cleanly — a within-song control for #575, with the evidence on
+#575 and #596 — so a melody or lyric reading of this file's opening is a
+statement about separation, not about the stages behind it.
 
 --------------------------------------------------------------------------
 
