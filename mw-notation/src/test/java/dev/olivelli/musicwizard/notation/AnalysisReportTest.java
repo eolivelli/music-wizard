@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -103,6 +104,64 @@ class AnalysisReportTest {
 
         assertThat(blank).contains("This workspace does not hold what the tracker weighed");
         assertThat(blank).doesNotContain("What the tracker chose between");
+    }
+
+    @Test
+    @DisplayName("what the chroma front end read is drawn, or its absence stated")
+    void theChromaTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(weighed).contains("What the front end read",
+                // The tuning, the model behind it, and the readings themselves.
+                "3.8 cents sharp of A440", "A0 to C7", "bass at and below A2",
+                "Every chord span, and what it was read from",
+                // The chord span the fit needed F most to explain.
+                "<td class=\"symbol\">Fmaj7</td>", "F 1.31, C 0.58, E 0.44");
+        assertThat(weighed).doesNotContain("Nothing in this workspace holds what the front end");
+
+        assertThat(blank).contains("Nothing in this workspace holds what the front end read",
+                "(#676)");
+        assertThat(blank).doesNotContain("What the front end read");
+    }
+
+    @Test
+    @DisplayName("a front end that folded nothing onto spans says so and draws nothing")
+    void aChromaTraceWithNoSpansIsStated() {
+        // What a recording with no trackable pulse leaves: the fit ran over
+        // frames and no beat folded them onto a chord.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.chromaWithoutSpans()));
+
+        assertThat(page).contains("No span was summarised",
+                "the spectrum held no peaks to read one from");
+        assertThat(page).doesNotContain("Every chord span, and what it was read from");
+    }
+
+    @Test
+    @DisplayName("a residual that was never measured is not drawn as a blank one")
+    void anUnmeasuredResidualIsNotDrawn() {
+        // A reading of no width is what a run with no ablation records, and an
+        // empty figure would read as a fit that needed no pitch class at all.
+        ChromaTrace withoutResidual = new ChromaTrace(0.0375, true, null,
+                ReportFixtures.chroma().spans().stream()
+                        .map(span -> new ChromaTrace.Span(span.fromSeconds(), span.toSeconds(),
+                                span.fromBeat(), span.toBeat(), span.chord(), span.combined(),
+                                span.treble(), span.bass(), List.of()))
+                        .toList());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(withoutResidual));
+
+        assertThat(page).contains("What the front end read", "<td>nothing</td>",
+                "No residual was measured over these spans");
+        assertThat(page).doesNotContain("How much of each span's spectrum",
+                // The fit itself is absent here too, and an absent model is not
+                // described as one.
+                "Notes the dictionary models");
     }
 
     @Test

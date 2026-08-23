@@ -187,6 +187,15 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
           border: 1px solid rgba(0, 0, 0, .15); }
 
+.pc-grid { margin: .3rem 0 .9rem; }
+.pc-columns { display: flex; align-items: stretch; gap: 1px; }
+.pc-names { display: flex; flex-direction: column; flex: 0 0 auto;
+            margin-right: .3rem; }
+.pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
+.pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
+.pc-cell { height: 9px; background: var(--accent); }
+.pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
@@ -318,7 +327,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>the recording's tuning, and how the fit divides between the registers</dd>
 <dt>Out</dt><dd>beat-synchronous chroma, and the fit's residual</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>Nothing in this workspace holds what the front end read: not the tuning, not the model it fitted with, not the residual the chord gates rank on. Re-analysing it records them (#676).</p>
 </article>
 <article class="phase absent" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">nothing in the score</span></h3>
 <p class="what">On a recording, a decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat; the two vocabularies are not the same one, since a quality the decoder may choose competes across roots. A score read from a MIDI file has its chords named from the notes the file declares instead.</p>

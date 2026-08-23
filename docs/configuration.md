@@ -43,7 +43,9 @@ reads one says so rather than failing, and re-analysing writes one.
 A line is one label to one value, which a candidate ranking or a per-frame
 reading is not. `run/traces.json` holds those, under the stage's own name, in
 whatever shape that stage records — the beat tracker's is its tempo candidates
-per analysis window and how the bass register read the octave. It travels with
+per analysis window and how the bass register read the octave; the chroma front
+end's is its tuning, the model it fitted with, and what each chord span was read
+from. It travels with
 the cached score under the same key the lines do, since a trace is a function
 of that key exactly as the score is.
 

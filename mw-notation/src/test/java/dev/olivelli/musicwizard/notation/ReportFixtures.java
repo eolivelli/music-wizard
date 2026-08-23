@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -116,14 +117,24 @@ final class ReportFixtures {
     /**
      * What that run's stages weighed: a tracker whose two windows disagreed
      * about the octave, with the bass register halving the pulse they settled
-     * on, and one stage this build's page has no phase for.
+     * on, a chroma front end that read a tuning and summarised the same spans
+     * the chords name, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true));
+        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma());
     }
 
     /** The same, with a register reading of the caller's choosing. */
     static RunTraces weighed(BeatTrace.Octave octave) {
+        return weighed(octave, chroma());
+    }
+
+    /** The same, with a chroma trace of the caller's choosing. */
+    static RunTraces weighed(ChromaTrace chroma) {
+        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma);
+    }
+
+    private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
@@ -135,8 +146,62 @@ final class ReportFixtures {
                                         new BeatTrace.Candidate(60.0, 0.28, false)))));
         Map<String, Object> collected = new LinkedHashMap<>();
         collected.put(BeatTrace.STAGE, beats);
+        collected.put(ChromaTrace.STAGE, chroma);
         collected.put("hummed-bass", Map.of("hummed", true));
         return RunTraceJson.of(collected);
+    }
+
+    /** What the front end read, over the same spans {@link #chords()} names. */
+    static ChromaTrace chroma() {
+        return new ChromaTrace(0.0375, true, fit(),
+                List.of(
+                        chromaSpan(0, 1, 0, 2, "N.C.",
+                                reading(".08 .08 .09 .08 .1 .08 .08 .09 .08 .08 .08 .08"),
+                                reading(".08 .08 .08 .08 .1 .08 .08 .08 .08 .08 .09 .09"),
+                                reading(".1 .08 .08 .08 .08 .08 .08 .08 .08 .08 .09 .09"),
+                                reading(".01 0 .01 0 .02 0 0 .01 0 0 0 .01")),
+                        chromaSpan(1, 2, 2, 4, "C",
+                                reading(".37 .01 .06 .02 .2 .04 .02 .19 .02 .03 .01 .03"),
+                                reading(".31 .01 .05 .01 .25 .04 .02 .25 .01 .02 .01 .02"),
+                                reading(".52 .03 .07 .04 .06 .04 .01 .12 .03 .04 .02 .02"),
+                                reading("1.04 0 .02 0 .31 .01 0 .28 0 .01 0 .02")),
+                        chromaSpan(2, 4, 4, 8, "Am",
+                                reading(".17 .01 .03 .01 .23 .02 .01 .02 .01 .33 .01 .15"),
+                                reading(".12 .01 .02 .01 .26 .02 .01 .02 .01 .35 .01 .16"),
+                                reading(".09 .02 .04 .02 .12 .03 .02 .03 .02 .48 .03 .1"),
+                                reading(".21 0 .01 0 .74 0 0 .02 0 1.12 0 .35")),
+                        chromaSpan(4, 6, 8, 12, "Fmaj7",
+                                reading(".22 .01 .02 .01 .17 .29 .01 .03 .01 .1 .01 .12"),
+                                reading(".24 .01 .02 .01 .19 .26 .01 .03 .01 .09 .01 .12"),
+                                reading(".12 .02 .03 .02 .09 .44 .02 .04 .02 .08 .02 .1"),
+                                reading(".58 0 0 0 .44 1.31 0 .03 0 .12 0 .29")),
+                        chromaSpan(6, 8, 12, 16, "G7",
+                                reading(".04 .01 .26 .01 .03 .15 .01 .28 .01 .04 .01 .15"),
+                                reading(".03 .01 .29 .01 .03 .13 .01 .31 .01 .03 .01 .13"),
+                                reading(".06 .02 .18 .02 .04 .09 .02 .45 .02 .05 .02 .03"),
+                                reading(".05 0 .71 0 .02 .34 0 1.18 0 .03 0 .4"))));
+    }
+
+    /** A front end that ran and folded nothing onto spans, which is what no tracked beat leaves. */
+    static ChromaTrace chromaWithoutSpans() {
+        return new ChromaTrace(0, false, fit(), List.of());
+    }
+
+    private static ChromaTrace.Fit fit() {
+        return new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 172, 3, 21, 96, 45, 57);
+    }
+
+    private static ChromaTrace.Span chromaSpan(double fromSeconds, double toSeconds, int fromBeat,
+                                         int toBeat, String chord, List<Double> combined,
+                                         List<Double> treble, List<Double> bass,
+                                         List<Double> significance) {
+        return new ChromaTrace.Span(fromSeconds, toSeconds, fromBeat, toBeat, chord,
+                combined, treble, bass, significance);
+    }
+
+    /** Twelve readings, C first, written as a row so a fixture stays legible. */
+    private static List<Double> reading(String values) {
+        return Arrays.stream(values.split(" ")).map(Double::valueOf).toList();
     }
 
     private static RunManifest.StageRun stage(

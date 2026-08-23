@@ -28,10 +28,12 @@ import dev.olivelli.musicwizard.core.model.LyricLine;
 import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 
 /**
  * The phase-by-phase half of {@link AnalysisReport}.
@@ -83,6 +86,12 @@ final class ReportPhases {
 
     /** The tallest tick of a tempo-candidate lane, in pixels. */
     private static final int LANE_HEIGHT = 14;
+
+    /** How many pitch classes of a reading the span table names. */
+    private static final int STRONGEST_SHOWN = 3;
+
+    /** MIDI middle C, which {@link #pitchClassName} spells a pitch class through. */
+    private static final int MIDDLE_C = 60;
 
     private final Score score;
     private final NoteTrack melody;
@@ -306,7 +315,7 @@ final class ReportPhases {
     }
 
     private void chroma() {
-        open("chroma", "Chroma", Status.UNTRACED,
+        open(ChromaTrace.STAGE, "Chroma", Status.UNTRACED,
                 "An NNLS fit over the spectrum gives the energy on each of the twelve pitch"
                         + " classes, tuning-corrected, in a bass register and a treble one."
                         + " It is taken from the full mix and never from a stem, and it is"
@@ -315,10 +324,78 @@ final class ReportPhases {
         inOut("the decoded mix, and the tracked beats to average over",
                 "the recording's tuning, and how the fit divides between the registers",
                 "beat-synchronous chroma, and the fit's residual");
-        gap("None of it is written to the workspace: not the tuning, not the frames, not"
-                + " the residual. So the page can show what the chroma was used for but"
-                + " not what it looked like (#676).");
+        Optional<ChromaTrace> trace = traces == null
+                ? Optional.empty() : traces.trace(ChromaTrace.STAGE, ChromaTrace.class);
+        trace.ifPresentOrElse(this::whatTheFitRead,
+                () -> gap("Nothing in this workspace holds what the front end read: not the"
+                        + " tuning, not the model it fitted with, not the residual the chord"
+                        + " gates rank on. Re-analysing it records them (#676)."));
         close();
+    }
+
+    /** The tuning, the model behind it, and what each chord span was read from (#676). */
+    private void whatTheFitRead(ChromaTrace trace) {
+        out.element("h4", "What the front end read").line("");
+        List<Fact> table = new ArrayList<>();
+        table.add(fact("Tuning", tuningRead(trace)));
+        ChromaTrace.Fit fit = trace.fit();
+        if (fit != null) {
+            table.add(fact("Analysis window", fit.windowSize() + " samples  ("
+                    + HtmlWriter.number(seconds(fit.windowSize(), fit.sampleRate()), 3) + "s)"));
+            table.add(fact("Hop", fit.hopSize() + " samples  ("
+                    + HtmlWriter.number(seconds(fit.hopSize(), fit.sampleRate()), 3) + "s)"));
+            table.add(fact("Frames", fit.frames() + " at "
+                    + HtmlWriter.number(fit.frameRate(), 1) + " a second"));
+            table.add(fact("Grid the spectrum is resampled onto",
+                    fit.binsPerSemitone() + " bins a semitone"));
+            table.add(fact("Notes the dictionary models",
+                    noteName(fit.lowestNoteMidi()) + " to " + noteName(fit.highestNoteMidi())));
+            table.add(fact("Registers", "bass at and below " + noteName(fit.bassBelowMidi())
+                    + ", treble at and above " + noteName(fit.trebleAboveMidi())
+                    + ", cross-faded between"));
+        }
+        table.add(fact("Chord spans summarised", String.valueOf(trace.spans().size())));
+        facts(table.toArray(new Fact[0]));
+        if (trace.spans().isEmpty()) {
+            note("No span was summarised, which is what a recording with no tracked beats"
+                    + " leaves: the fit ran over frames and nothing folded them onto a chord.");
+            return;
+        }
+        pitchClassGrid("What each chord span holds on each pitch class, in the chroma the"
+                        + " root is decoded from. Shaded against the strongest reading on"
+                        + " this figure, so a column says what stands out within the piece"
+                        + " rather than how loud the span was.",
+                trace.spans(), ChromaTrace.Span::combined);
+        if (trace.spans().stream().anyMatch(span -> !span.significance().isEmpty())) {
+            pitchClassGrid("How much of each span's spectrum only that pitch class can explain:"
+                            + " delete its notes from the dictionary, fit the span again, and"
+                            + " read what that costs. This is what the quality gates rank on,"
+                            + " and a pitch class the chroma carries but this leaves blank is"
+                            + " one the fit did not need.",
+                    trace.spans(), ChromaTrace.Span::significance);
+        } else {
+            note("No residual was measured over these spans, so what only one pitch class"
+                    + " could explain is not shown.");
+        }
+        spanTable(trace.spans());
+        note("Summarised over the chord spans and not the beats inside them, so a chord whose"
+                + " own beats disagree reads here as their average. Which of these readings"
+                + " each gate compared, and against what, is the decoder's and is not"
+                + " recorded (#677).");
+    }
+
+    private static double seconds(int samples, int sampleRate) {
+        return sampleRate > 0 ? (double) samples / sampleRate : 0;
+    }
+
+    private static String tuningRead(ChromaTrace trace) {
+        if (!trace.tuningMeasured()) {
+            return "not measured — the spectrum held no peaks to read one from, so concert"
+                    + " pitch was assumed";
+        }
+        double cents = 100 * trace.tuningOffsetSemitones();
+        return HtmlWriter.number(Math.abs(cents), 1) + " cents "
+                + (cents < 0 ? "flat" : "sharp") + " of A440";
     }
 
     private void chords() {
@@ -844,6 +921,107 @@ final class ReportPhases {
         }
         out.line("</tbody></table>");
         out.line("</details>");
+    }
+
+    /**
+     * One column per chord span, twelve cells tall, shaded by the reading
+     * (#676).
+     *
+     * <p>Against the strongest cell on the figure rather than per column: a
+     * column scaled to itself would show every span as equally decided. The
+     * span the numbers belong to is in the table below, which is why a cell
+     * carries no reading of its own — one per cell is what a long recording
+     * pays for in page weight.
+     */
+    private void pitchClassGrid(String caption, List<ChromaTrace.Span> spans,
+                                Function<ChromaTrace.Span, List<Double>> reading) {
+        double strongest = spans.stream()
+                .flatMap(span -> reading.apply(span).stream())
+                .mapToDouble(Double::doubleValue)
+                .filter(Double::isFinite)
+                .max().orElse(0);
+        if (!(strongest > 0)) {
+            return;
+        }
+        out.line("<figure class=\"pc-grid\">");
+        out.open("div", "class", "pc-columns");
+        out.open("div", "class", "pc-names");
+        for (int pitchClass = 11; pitchClass >= 0; pitchClass--) {
+            out.element("span", pitchClassName(pitchClass), "class", "pc-name");
+        }
+        out.line("</div>");
+        for (ChromaTrace.Span span : spans) {
+            List<Double> values = reading.apply(span);
+            out.open("div", "class", "pc-column",
+                    "title", span.chord() + " at " + ReportTimeline.clock(span.fromSeconds()));
+            for (int pitchClass = 11; pitchClass >= 0; pitchClass--) {
+                double value = pitchClass < values.size() ? values.get(pitchClass) : 0;
+                double share = Double.isFinite(value) ? value / strongest : 0;
+                out.empty("span", "class", "pc-cell",
+                        "style", "opacity:" + HtmlWriter.number(Math.clamp(share, 0, 1), 2));
+            }
+            out.line("</div>");
+        }
+        out.line("</div>");
+        out.element("figcaption", caption);
+        out.line("</figure>");
+    }
+
+    /** What each chord span was read from, as the strongest few of each reading. */
+    private void spanTable(List<ChromaTrace.Span> spans) {
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every chord span, and what it was read from");
+        out.line("<table><thead><tr><th>#</th><th>Chord</th><th>From</th><th>Beats</th>"
+                + "<th>Chroma</th><th>Treble</th><th>Bass</th><th>Residual</th>"
+                + "</tr></thead><tbody>");
+        for (int i = 0; i < spans.size(); i++) {
+            ChromaTrace.Span span = spans.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", span.chord(), "class", "symbol");
+            out.element("td", ReportTimeline.clock(span.fromSeconds()));
+            out.element("td", String.valueOf(span.toBeat() - span.fromBeat()));
+            out.element("td", strongest(span.combined(), true));
+            out.element("td", strongest(span.treble(), true));
+            out.element("td", strongest(span.bass(), true));
+            out.element("td", strongest(span.significance(), false));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+    }
+
+    /**
+     * The pitch classes carrying most of a reading, largest first. Shares are
+     * written as percentages and the residual as the ratio it is.
+     */
+    private static String strongest(List<Double> values, boolean asShare) {
+        List<Integer> order = new ArrayList<>();
+        for (int pitchClass = 0; pitchClass < values.size(); pitchClass++) {
+            if (Double.isFinite(values.get(pitchClass)) && values.get(pitchClass) > 0) {
+                order.add(pitchClass);
+            }
+        }
+        order.sort((a, b) -> Double.compare(values.get(b), values.get(a)));
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < Math.min(STRONGEST_SHOWN, order.size()); i++) {
+            int pitchClass = order.get(i);
+            text.append(text.isEmpty() ? "" : ", ").append(pitchClassName(pitchClass)).append(' ')
+                    .append(asShare
+                            ? HtmlWriter.number(100 * values.get(pitchClass), 0) + "%"
+                            : HtmlWriter.number(values.get(pitchClass), 2));
+        }
+        return text.isEmpty() ? "nothing" : text.toString();
+    }
+
+    /** How a pitch class is written where nothing has spelled it. */
+    private static String pitchClassName(int pitchClass) {
+        PitchSpelling spelling = PitchSpelling.ofMidiPitchSharp(MIDDLE_C + pitchClass);
+        return spelling.letter().name() + spelling.accidental().displaySuffix();
+    }
+
+    private static String noteName(int midi) {
+        return PitchSpelling.ofMidiPitchSharp(midi).displayName();
     }
 
     private void beatIntervalHistogram(BeatGrid grid) {
