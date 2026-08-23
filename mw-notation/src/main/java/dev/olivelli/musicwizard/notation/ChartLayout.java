@@ -587,14 +587,14 @@ final class ChartLayout {
      * bar lines (#187). Nothing is predicted and nothing is repaired: #421
      * measured every way of mending a faulty sequence worse than the constant
      * rate, so a sequence is taken whole or not at all
-     * ({@link #evenThroughout}). Where it is not taken, the chart is one bar
+     * ({@link #unevenBecause}). Where it is not taken, the chart is one bar
      * length hung on the phase the downbeats agree on (#233).
      *
      * <p>A tempo the user supplied is spaced uniformly at that tempo — the
      * correction that matters most is the one where the grid is what the user
      * is disagreeing with — so the sequence is followed only while the chart's
      * quarter is the grid's own ({@link BeatGrid#steadyTempo}). That guard is
-     * not a corollary of {@link #evenThroughout};
+     * not a corollary of {@link #unevenBecause};
      * {@code ChordChartTest.aCorrectedTempoKeepsItsOwnBars} holds it.
      *
      * <p>Compared as quarter lengths for exact equality, and both halves are
@@ -610,7 +610,7 @@ final class ChartLayout {
 
         /**
          * How far a bar may sit from the sequence's own rate and still be a
-         * bar. #421's, with its sweep behind it; see {@link #evenThroughout}.
+         * bar. #421's, with its sweep behind it; see {@link #unevenBecause}.
          */
         private static final double EVEN_ENOUGH = 0.25;
 
@@ -724,8 +724,8 @@ final class ChartLayout {
             if (downbeats.isEmpty() || !(barSeconds > 0)) {
                 return new BarLines(new double[0], 0, firstChord, quarterSeconds, barQuarters);
             }
-            if (!atTheGridsOwnRate(grid.orElseThrow(), meter, quarterSeconds)
-                    || !evenThroughout(downbeats, barSeconds)) {
+            if (refusedBecause(grid.orElseThrow(), downbeats, meter, quarterSeconds,
+                    barSeconds) != null) {
                 // The phase is asked for here and nowhere else: a followed
                 // sequence hangs on its own downbeats and has none to choose.
                 return new BarLines(new double[0], 0,
@@ -764,7 +764,23 @@ final class ChartLayout {
         }
 
         /**
-         * Whether every bar the grid marks is a bar, so the sequence can be
+         * Why the grid's downbeats are not the bar lines, or null where they
+         * are. The one place the two arms are chosen between, so that the
+         * report can state the same verdict the chart acted on rather than a
+         * second opinion (#675).
+         */
+        private static String refusedBecause(BeatGrid grid, List<Double> downbeats,
+                                             TimeSignature meter, double quarterSeconds,
+                                             double barSeconds) {
+            return atTheGridsOwnRate(grid, meter, quarterSeconds)
+                    ? unevenBecause(downbeats, barSeconds)
+                    : "the chart is counted at a tempo the grid did not run at, so its bars"
+                            + " are spaced as that tempo asks rather than fitted back onto"
+                            + " beats it disagrees with";
+        }
+
+        /**
+         * Why every bar the grid marks is not a bar, so the sequence cannot be
          * followed at all. A chart cannot tell from the downbeats alone where
          * the tracker lost the beat, so one bar that is not a bar refuses the
          * whole sequence — #421's sweep found every way of repairing part of
@@ -780,9 +796,10 @@ final class ChartLayout {
          * downbeats is refused too — three gaps give nothing to take a median
          * of.
          */
-        private static boolean evenThroughout(List<Double> downbeats, double barSeconds) {
+        private static String unevenBecause(List<Double> downbeats, double barSeconds) {
             if (downbeats.size() < 4) {
-                return false;
+                return "the grid marks fewer than four downbeats, and three gaps give"
+                        + " nothing to take a median of";
             }
             double[] gaps = new double[downbeats.size() - 1];
             for (int i = 0; i < gaps.length; i++) {
@@ -804,12 +821,18 @@ final class ChartLayout {
             }
             double rate = total / counted;
             for (double gap : gaps) {
-                if (Math.abs(gap - rate) > EVEN_ENOUGH * rate
-                        || gap < barSeconds * SHORTEST_BAR || gap > barSeconds * LONGEST_BAR) {
-                    return false;
+                if (Math.abs(gap - rate) > EVEN_ENOUGH * rate) {
+                    return "a bar the grid marks sits too far from the rate the rest of"
+                            + " them keep, and a sequence with one bar that is not a bar is"
+                            + " refused whole";
+                }
+                if (gap < barSeconds * SHORTEST_BAR || gap > barSeconds * LONGEST_BAR) {
+                    return "a bar the grid marks is not the length the stated tempo gives"
+                            + " one, and a sequence with one bar that is not a bar is"
+                            + " refused whole";
                 }
             }
-            return true;
+            return null;
         }
 
         /**
@@ -827,7 +850,7 @@ final class ChartLayout {
         /**
          * The tracked downbeats, with whole bars of the stated length added at
          * each end until they cover {@code [from, to]}. The bar lines
-         * <em>are</em> the downbeats — {@link #evenThroughout} has already
+         * <em>are</em> the downbeats — {@link #unevenBecause} has already
          * vetoed any sequence with a bar that is not one — and the extensions
          * are the stated bar because nothing was measured out there.
          */
@@ -899,6 +922,18 @@ final class ChartLayout {
      * ({@code ChordChartTest.headerAndBarsCannotDisagree}).
      */
     private static double barPhase(List<Double> downbeats, double barSeconds, double beatSeconds) {
+        return phaseOf(downbeats, barSeconds, beatSeconds).seconds();
+    }
+
+    /**
+     * The same, with whether the downbeats agreed on an offset at all: they
+     * did not when the best fit is further than half a counted beat, and the
+     * first downbeat stands in for it.
+     */
+    private record Phase(double seconds, boolean agreed) {
+    }
+
+    private static Phase phaseOf(List<Double> downbeats, double barSeconds, double beatSeconds) {
         double nominated = downbeats.get(0);
         double[] around = new double[downbeats.size()];
         for (int i = 0; i < around.length; i++) {
@@ -916,7 +951,65 @@ final class ChartLayout {
                 agreed = candidate;
             }
         }
-        return Math.abs(agreed) <= beatSeconds / 2 ? nominated + agreed : nominated;
+        return Math.abs(agreed) <= beatSeconds / 2
+                ? new Phase(nominated + agreed, true)
+                : new Phase(nominated, false);
+    }
+
+    /**
+     * How the chart hung its bar axis, or empty for a chart with no bar axis
+     * to hang — no harmony, a progression that states its own rhythm, or a
+     * tempo the chart cannot divide by.
+     *
+     * <p>For the analysis report (#675), which recomputes it rather than
+     * reading it back: this is decided from the score, so the page can state
+     * the verdict the chart acted on rather than a second opinion.
+     *
+     * @param hungOn         what the chart's bar lines were placed on
+     * @param refusedBecause why the grid's downbeats are not the bar lines, or
+     *                       null where they are
+     * @param downbeats      how many the grid marks
+     */
+    record Axis(HungOn hungOn, String refusedBecause, int downbeats) {
+    }
+
+    /** Where a chart's bar lines came from. */
+    enum HungOn {
+        /** The grid's downbeats are the bar lines themselves (#187). */
+        DOWNBEATS,
+        /** One bar length, on the offset the downbeats agree on (#233). */
+        AGREED_OFFSET,
+        /** One bar length, on the first downbeat, the rest agreeing on no offset. */
+        FIRST_DOWNBEAT,
+        /** One bar length, on the harmony, the grid marking no bar to hang on. */
+        FIRST_CHORD
+    }
+
+    static Optional<Axis> axis(Score score) {
+        if (score.chords().chords().isEmpty() || score.chords().isQuantized()) {
+            return Optional.empty();
+        }
+        double quarterSeconds = quarterNoteSeconds(score, harmonyStarts(score));
+        if (!(quarterSeconds > 0) || !Double.isFinite(quarterSeconds)) {
+            return Optional.empty();
+        }
+        TimeSignature meter = score.tempoMap().initialTimeSignature();
+        double barSeconds = meter.quarterBeatsPerBar() * quarterSeconds;
+        List<Double> downbeats = score.beatGrid().map(BeatGrid::downbeatTimes).orElse(List.of());
+        if (downbeats.isEmpty() || !(barSeconds > 0)) {
+            // What BarLines.of does here, which is not #233's phase: with no
+            // downbeat there is no offset to agree on, and the axis opens on
+            // the harmony.
+            return Optional.of(new Axis(HungOn.FIRST_CHORD, null, downbeats.size()));
+        }
+        String refused = BarLines.refusedBecause(score.beatGrid().orElseThrow(), downbeats,
+                meter, quarterSeconds, barSeconds);
+        if (refused == null) {
+            return Optional.of(new Axis(HungOn.DOWNBEATS, null, downbeats.size()));
+        }
+        HungOn hungOn = phaseOf(downbeats, barSeconds, barSeconds / meter.beatsPerBar()).agreed()
+                ? HungOn.AGREED_OFFSET : HungOn.FIRST_DOWNBEAT;
+        return Optional.of(new Axis(hungOn, refused, downbeats.size()));
     }
 
     /**

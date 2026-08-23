@@ -191,16 +191,31 @@ public final class MarkedPulse {
      */
     static double resolveOctave(double rate, OnsetEnvelope envelope, OnsetEnvelope register,
                                 List<int[]> windows) {
+        return resolve(rate, envelope, register, windows).rate();
+    }
+
+    /**
+     * The same decision with the reading behind it, for a caller recording what
+     * the octave was decided on (#675). The reading is null exactly where
+     * {@link #resolveOctave} returns without taking one.
+     */
+    record Octave(double rate, boolean halved, Reading reading) {
+    }
+
+    static Octave resolve(double rate, OnsetEnvelope envelope, OnsetEnvelope register,
+                          List<int[]> windows) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(windows, "windows");
         if (register == null || register.length() != envelope.length()) {
-            return rate;
+            return new Octave(rate, false, null);
         }
         double halved = rate / 2;
         if (!(halved >= TempoEstimator.MIN_TEMPO) || !(rate <= TempoEstimator.MAX_TEMPO)) {
-            return rate;
+            return new Octave(rate, false, null);
         }
-        return read(envelope, register, rate, windows).callsForHalving() ? halved : rate;
+        Reading reading = read(envelope, register, rate, windows);
+        boolean halve = reading.callsForHalving();
+        return new Octave(halve ? halved : rate, halve, reading);
     }
 
     /**
@@ -259,11 +274,7 @@ public final class MarkedPulse {
      * How much stronger the register is on the beats than at the midpoints
      * between them. One means it is saying nothing about this grid.
      *
-     * <p>Unbounded where the register is silent between the beats, which is
-     * the strongest a grid can be stated rather than a degenerate case: the
-     * caller has already established that the stated half is stated at its
-     * median, so there is something there for the silence to be a contrast
-     * with.
+     * <p>Unbounded where the register is silent between the beats.
      */
     private static double contrast(OnsetEnvelope register, int[] frames, double periodFrames) {
         double onBeats = 0;

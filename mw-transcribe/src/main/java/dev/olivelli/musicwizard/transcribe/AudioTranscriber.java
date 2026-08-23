@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
@@ -268,7 +269,7 @@ public final class AudioTranscriber {
         BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, onsets.pulseRegister());
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
-            runLog.stage("beats").computed("no pulse was found");
+            runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
             for (String unreached : List.of("chords", "key", "melody")) {
                 runLog.stage(unreached).skipped("no beats were tracked, so the run stopped here");
             }
@@ -397,7 +398,7 @@ public final class AudioTranscriber {
                     downbeat.phase(), pulsesPerBar);
         }
 
-        runLog.stage("beats").computed();
+        recordBeats(beats);
 
         progress.accept("estimating chords");
         ChordProgression chords =
@@ -469,6 +470,36 @@ public final class AudioTranscriber {
             }
         }
         return score;
+    }
+
+    /**
+     * What the tracker chose between, for the run's record (#675).
+     *
+     * <p>The line carries the one decision a reader would want without opening
+     * the trace: whether the bass register moved the pulse the windows had
+     * agreed on, which is the halving or doubling a user most often corrects
+     * by hand.
+     */
+    private void recordBeats(BeatTracker.Result beats) {
+        BeatTrace trace = beats.trace();
+        RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
+        if (trace == null) {
+            stage.computed();
+            return;
+        }
+        stage.fact("analysis windows", trace.windows().size())
+                .fact("pulse the windows agreed on", perMinute(trace.agreedPulse()));
+        if (trace.octaveMoved()) {
+            stage.fact("pulse tracked", perMinute(trace.referencePulse()))
+                    .computed("the bass register states only every second beat of the pulse"
+                            + " the windows agreed on, so it was halved");
+        } else {
+            stage.computed();
+        }
+    }
+
+    private static String perMinute(double rate) {
+        return String.format(Locale.ROOT, "%.1f a minute", rate);
     }
 
     /** What the file was and what it became, for the run's record. */

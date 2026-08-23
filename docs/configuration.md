@@ -12,6 +12,7 @@ song.mwz/
   cache/             analysis results, keyed by their inputs
   score/score.json   the transcription
   run/manifest.json  what the last analysis actually ran
+  run/traces.json    the evidence its stages weighed
   out/               .txt, .ly and .pdf per part (staff parts: no .txt)
 ```
 
@@ -36,6 +37,18 @@ served that answer reports what those stages did rather than going blank.
 
 A workspace analysed before there was a manifest has none. Everything that
 reads one says so rather than failing, and re-analysing writes one.
+
+## What the stages weighed
+
+A line is one label to one value, which a candidate ranking or a per-frame
+reading is not. `run/traces.json` holds those, under the stage's own name, in
+whatever shape that stage records — the beat tracker's is its tempo candidates
+per analysis window and how the bass register read the octave. It travels with
+the cached score under the same key the lines do, since a trace is a function
+of that key exactly as the score is.
+
+Same rules as the manifest: a record, never an input, and a trace this build
+cannot parse costs that stage's picture and nothing else.
 
 ## Configuration layers
 

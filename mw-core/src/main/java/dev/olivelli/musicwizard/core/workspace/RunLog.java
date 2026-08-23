@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.core.workspace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.StageRun;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,10 @@ import java.util.Objects;
 /**
  * Collects what the stages of one run report about themselves, in the order
  * they report it.
+ *
+ * <p>And, for a stage that has more to show than a line, the structured trace
+ * behind it — see {@link RunTraces}. The two are recorded together and travel
+ * together.
  *
  * <p>Handed down the pipeline so that a stage can record its own line without
  * returning it: what a stage did is not part of what it computed, and threading
@@ -40,6 +45,7 @@ import java.util.Objects;
 public final class RunLog {
 
     private final List<StageRun> stages = new ArrayList<>();
+    private final Map<String, Object> traces = new LinkedHashMap<>();
     private final RunLog parent;
 
     public RunLog() {
@@ -67,6 +73,7 @@ public final class RunLog {
 
         private final String name;
         private final Map<String, String> facts = new LinkedHashMap<>();
+        private Object trace;
 
         private Stage(String name) {
             this.name = name;
@@ -83,6 +90,15 @@ public final class RunLog {
             if (text != null && !text.isBlank()) {
                 facts.put(name, text);
             }
+            return this;
+        }
+
+        /**
+         * The structured evidence behind the line, for the one reader that
+         * draws it — see {@link RunTraces}.
+         */
+        public Stage trace(Object evidence) {
+            this.trace = evidence;
             return this;
         }
 
@@ -113,6 +129,10 @@ public final class RunLog {
 
         private void record(Outcome outcome, String reason) {
             put(new StageRun(name, outcome, reason, facts));
+            // With the line and not before it, so that a stage reporting twice
+            // replaces both together: a second line with no trace behind it
+            // leaves none, rather than leaving the first line's.
+            putTrace(name, trace);
         }
     }
 
@@ -124,6 +144,15 @@ public final class RunLog {
     /** Adds entries another log collected, keeping their order. */
     public void recordAll(List<StageRun> entries) {
         entries.forEach(this::put);
+    }
+
+    /**
+     * Adds traces another log collected, which is how a run served a cached
+     * answer replays the traces stored with it. A trace read back from a file
+     * is added exactly as one recorded here is.
+     */
+    public void recordAllTraces(Map<String, ?> collected) {
+        collected.forEach(this::putTrace);
     }
 
     /**
@@ -145,8 +174,25 @@ public final class RunLog {
         stages.add(entry);
     }
 
+    /** One trace per stage, under the same last-line-wins rule as {@link #put}. */
+    private void putTrace(String stage, Object trace) {
+        if (parent != null) {
+            parent.putTrace(stage, trace);
+        }
+        if (trace == null) {
+            traces.remove(stage);
+        } else {
+            traces.put(stage, trace);
+        }
+    }
+
     /** What has been recorded so far. */
     public List<StageRun> stages() {
         return List.copyOf(stages);
+    }
+
+    /** The traces recorded so far, in the order the stages recorded them. */
+    public Map<String, Object> traces() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(traces));
     }
 }

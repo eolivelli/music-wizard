@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
@@ -85,6 +86,22 @@ class RunManifestCliTest {
         return manifest().stage(name).orElseThrow(() ->
                 new AssertionError("the run recorded no stage named " + name
                         + "; it named " + manifest().stages()));
+    }
+
+    private BeatTrace beatTrace() {
+        return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(BeatTrace.STAGE, BeatTrace.class)
+                .orElseThrow(() -> new AssertionError("this run recorded no beat trace"));
+    }
+
+    /** Strips one kind of sidecar out of the cache, as an older build's would be. */
+    private void deleteCacheEntries(String extension) throws IOException {
+        try (var entries = Files.walk(workspaceDirectory.resolve("cache"))) {
+            for (Path path : entries.filter(path ->
+                    path.getFileName().toString().endsWith(extension)).toList()) {
+                Files.delete(path);
+            }
+        }
     }
 
     private void analyze(String... options) {
@@ -161,18 +178,60 @@ class RunManifestCliTest {
         analyze();
         // What every workspace analysed by an older build holds: the score
         // under the key, and nothing about the stages that made it.
-        try (var entries = Files.walk(workspaceDirectory.resolve("cache"))) {
-            for (Path path : entries.filter(path ->
-                    path.getFileName().toString().endsWith(".stages.json")).toList()) {
-                Files.delete(path);
-            }
-        }
+        deleteCacheEntries(".stages.json");
 
         analyze();
 
         assertThat(stage("analysis").outcome()).isEqualTo(Outcome.CACHED);
         assertThat(stage("analysis").reason()).contains("no record of what its stages did");
         assertThat(manifest().stage("decode")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the beat tracker writes down what it chose between")
+    void theBeatTraceIsWritten() {
+        analyze();
+
+        BeatTrace trace = beatTrace();
+        assertThat(trace.windows()).isNotEmpty();
+        // Every window weighed a rate and one of them is the seed it took.
+        assertThat(trace.windows()).allSatisfy(window -> {
+            assertThat(window.candidates()).isNotEmpty();
+            assertThat(window.candidates()).filteredOn(BeatTrace.Candidate::chosen)
+                    .singleElement()
+                    .extracting(BeatTrace.Candidate::beatsPerMinute)
+                    .isEqualTo(window.seedPulse());
+        });
+        assertThat(trace.agreedPulse()).isPositive();
+        assertThat(stage("beats").facts()).containsKey("pulse the windows agreed on");
+    }
+
+    @Test
+    @DisplayName("what the stages weighed travels with the cached answer")
+    void theTraceIsServedWithTheCachedAnalysis() {
+        analyze();
+        BeatTrace computed = beatTrace();
+
+        // A trace is a function of the cache key exactly as the score is, so a
+        // run served the score has to be served the trace: without that, the
+        // second analysis of an unchanged file renders a blank picture.
+        analyze();
+
+        assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
+        assertThat(beatTrace()).isEqualTo(computed);
+    }
+
+    @Test
+    @DisplayName("a cached analysis from before the trace leaves the page to say so")
+    void aCacheEntryWithNoTraceIsNotInvented() throws IOException {
+        analyze();
+        deleteCacheEntries(".traces.json");
+
+        analyze();
+
+        assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
+        assertThat(Workspace.open(workspaceDirectory).readRunTraces().orElseThrow().traces())
+                .doesNotContainKey("beats");
     }
 
     @Test

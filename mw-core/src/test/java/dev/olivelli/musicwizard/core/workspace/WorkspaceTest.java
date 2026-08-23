@@ -334,6 +334,40 @@ class WorkspaceTest {
             assertThat(read.stage("decode")).isEmpty();
             assertThat(read.stage("read-midi")).isPresent();
         }
+
+        @Test
+        @DisplayName("what the stages weighed is absent until an analysis writes it")
+        void tracesAreAbsentUntilWritten() {
+            assertThat(newWorkspace().readRunTraces()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("what the stages weighed survives being written and read back")
+        void tracesRoundTripThroughTheWorkspace() {
+            Workspace workspace = newWorkspace();
+            BeatTrace beats = new BeatTrace(120.25, 120.25, null,
+                    List.of(new BeatTrace.Window(0, 25, true, 120.25, 0.6, 0.9, 120.25,
+                            List.of(new BeatTrace.Candidate(120.25, 0.47, true)))));
+
+            workspace.writeRunTraces(RunTraceJson.of(Map.of(BeatTrace.STAGE, beats)));
+
+            assertThat(reopen(workspace.root()).readRunTraces().orElseThrow()
+                    .trace(BeatTrace.STAGE, BeatTrace.class)).contains(beats);
+        }
+
+        @Test
+        @DisplayName("a run that weighed nothing clears what the previous run weighed")
+        void emptyTracesReplaceThePreviousRun() {
+            // The record is of this run. A stage that traced last time and not
+            // this time must not leave evidence describing a run that is gone.
+            Workspace workspace = newWorkspace();
+            workspace.writeRunTraces(RunTraceJson.of(
+                    Map.of(BeatTrace.STAGE, new BeatTrace(120, 120, null, List.of()))));
+
+            workspace.writeRunTraces(RunTraces.empty());
+
+            assertThat(workspace.readRunTraces().orElseThrow().traces()).isEmpty();
+        }
     }
 
     @Nested
