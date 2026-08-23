@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
+import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -76,6 +78,66 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("a workspace whose stages recorded what they weighed")
+    void withStageTraces() {
+        Goldens.assertGolden("report-with-traces", ".html", AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run(),
+                ReportFixtures.weighed()));
+    }
+
+    @Test
+    @DisplayName("the beat trace is drawn, and its absence is stated rather than filled")
+    void theBeatTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        // The two rivals the fixture's first window weighed, the octave the
+        // register moved, and the window that did not vote.
+        assertThat(weighed).contains("What the tracker chose between",
+                "Pulse the windows agreed on", "so it was halved to 120.3 a minute",
+                "puts the halved rate above it", "Every analysis window");
+        assertThat(weighed).doesNotContain("This workspace does not hold what the tracker");
+
+        assertThat(blank).contains("This workspace does not hold what the tracker weighed");
+        assertThat(blank).doesNotContain("What the tracker chose between");
+    }
+
+    @Test
+    @DisplayName("a trace this build cannot read is an absent trace, not a broken page")
+    void anUnreadableTraceIsStatedAsAbsent() {
+        // What a workspace written by a build whose beat trace has moved on
+        // looks like. The page has to say the same thing it says for a
+        // workspace that traced nothing.
+        RunTraces unreadable = RunTraceJson.fromJson(
+                "{\"schemaVersion\":1,\"traces\":{\"beats\":\"a sentence, not a trace\"}}");
+
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run(), unreadable);
+
+        assertThat(page).contains("This workspace does not hold what the tracker weighed");
+        assertThat(page).doesNotContain("What the tracker chose between");
+    }
+
+    @Test
+    @DisplayName("the chart's bar-line veto is stated with the reason it gave")
+    void theBarAxisVetoStatesItsReason() {
+        // The fixture's grid is exact, so its downbeats are the bar lines. A
+        // grid with one bar of the wrong length is refused whole, and the page
+        // has to say which of the veto's two conditions refused it rather than
+        // only that something did.
+        String followed = AnalysisReport.toHtml(ReportFixtures.evenGrid(), RECORDING);
+        String refused = AnalysisReport.toHtml(ReportFixtures.jitteredGrid(), RECORDING);
+
+        assertThat(followed).contains("How the chart hangs its bar lines",
+                "the tracked downbeats are the bar lines");
+        assertThat(refused).contains(
+                "a bar the grid marks sits too far from the rate the rest of them keep",
+                "one bar length throughout");
+    }
+
+    @Test
     @DisplayName("a workspace with no record of its run says so rather than inventing one")
     void withoutARunManifest() {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING);
@@ -113,7 +175,7 @@ class AnalysisReportTest {
         assertThat(page).doesNotContain(
                 "Nothing in this workspace says whether the words were supplied");
         // Every gap the record does not fill is still stated.
-        assertThat(page).contains("(#675)", "(#676)", "(#677)", "(#678)", "(#679)",
+        assertThat(page).contains("(#676)", "(#677)", "(#678)", "(#679)",
                 "(#680)", "(#684)");
     }
 

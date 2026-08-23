@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -69,7 +70,12 @@ public final class AnalysisReport {
      * produced it, which is every workspace analysed before it did (#674).
      */
     public static String toHtml(Score score, Recording recording) {
-        return toHtml(score, recording, null);
+        return toHtml(score, recording, null, null);
+    }
+
+    /** The report for a score whose run recorded itself but weighed nothing (#675). */
+    public static String toHtml(Score score, Recording recording, RunManifest manifest) {
+        return toHtml(score, recording, manifest, null);
     }
 
     /**
@@ -81,8 +87,10 @@ public final class AnalysisReport {
      * @param manifest what the last analysis recorded about itself, or null
      *                 where the workspace holds no record. The page states the
      *                 absence rather than describing a run it cannot see.
+     * @param traces   the evidence its stages weighed, under the same rule
      */
-    public static String toHtml(Score score, Recording recording, RunManifest manifest) {
+    public static String toHtml(Score score, Recording recording, RunManifest manifest,
+                                RunTraces traces) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(recording, "recording");
 
@@ -125,7 +133,8 @@ public final class AnalysisReport {
                                 : " What each stage did in the last analysis is above and"
                                         + " repeated under the stage it belongs to."))
                 .line("</p>");
-        out.raw(new ReportPhases(score, melody, playable, quantized, manifest).render());
+        out.raw(new ReportPhases(score, melody, playable, quantized, manifest, traces)
+                .render());
         out.line("</section>");
         footer(out, manifest);
         out.open("script").raw(resource("report.js")).line("</script>");

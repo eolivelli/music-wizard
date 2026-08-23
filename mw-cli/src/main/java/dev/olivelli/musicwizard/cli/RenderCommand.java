@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.AnalysisReport;
 import dev.olivelli.musicwizard.notation.ChartOptions;
@@ -633,7 +634,7 @@ final class RenderCommand implements Callable<Integer> {
             Files.writeString(html, AnalysisReport.toHtml(asAnalysed,
                     new AnalysisReport.Recording(descriptor.sourceFileName(),
                             descriptor.sourceSha256(), descriptor.createdAt()),
-                    runManifest(workspace)));
+                    runManifest(workspace), runTraces(workspace)));
             return new Emitted(List.of(html), List.of());
         } catch (IOException e) {
             throw new UncheckedIOException("could not write output", e);
@@ -654,6 +655,21 @@ final class RenderCommand implements Callable<Integer> {
         } catch (RuntimeException e) {
             System.err.println("warning: this workspace's record of its last analysis could"
                     + " not be read, so the report cannot say what ran: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * The evidence that analysis's stages weighed, or nothing. Guarded like
+     * {@link #runManifest}, and for the same reason (#675).
+     */
+    private static RunTraces runTraces(Workspace workspace) {
+        try {
+            return workspace.readRunTraces().orElse(null);
+        } catch (RuntimeException e) {
+            System.err.println("warning: this workspace's record of what its last analysis"
+                    + " weighed could not be read, so the report cannot show it: "
+                    + e.getMessage());
             return null;
         }
     }

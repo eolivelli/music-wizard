@@ -35,11 +35,17 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
+import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The scores the analysis report's golden files are written from.
@@ -107,6 +113,28 @@ final class ReportFixtures {
                         stage("hummed-bass", RunManifest.Outcome.COMPUTED, null)));
     }
 
+    /**
+     * What that run's stages weighed: a tracker whose two windows disagreed
+     * about the octave, with the bass register halving the pulse they settled
+     * on, and one stage this build's page has no phase for.
+     */
+    static RunTraces weighed() {
+        BeatTrace beats = new BeatTrace(240.5, 120.25,
+                new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true),
+                List.of(
+                        new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
+                                List.of(new BeatTrace.Candidate(240.5, 0.47, true),
+                                        new BeatTrace.Candidate(120.25, 0.31, false),
+                                        new BeatTrace.Candidate(80.5, 0.09, false))),
+                        new BeatTrace.Window(12.5, 30, false, 120.25, 0.55, 0.9, 120.25,
+                                List.of(new BeatTrace.Candidate(120.25, 0.44, true),
+                                        new BeatTrace.Candidate(60.0, 0.28, false)))));
+        Map<String, Object> collected = new LinkedHashMap<>();
+        collected.put(BeatTrace.STAGE, beats);
+        collected.put("hummed-bass", Map.of("hummed", true));
+        return RunTraceJson.of(collected);
+    }
+
     private static RunManifest.StageRun stage(
             String name, RunManifest.Outcome outcome, String reason, String... facts) {
         Map<String, String> table = new LinkedHashMap<>();
@@ -133,6 +161,33 @@ final class ReportFixtures {
                 .withKeys(List.of(Key.estimated(
                         new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4), Mode.MAJOR,
                         0, DURATION, Confidence.of(0.7), Confidence.of(0.4))));
+    }
+
+    /**
+     * A grid whose pulse is exact and whose bar phase wanders — a tracker that
+     * kept the beat and lost the bar, which is what the chart's bar-line veto
+     * refuses whole.
+     */
+    static Score jitteredGrid() {
+        return gridded(0, 4, 10, 12);
+    }
+
+    /** The same grid barred as the pulse implies, which the veto admits. */
+    static Score evenGrid() {
+        return gridded(0, 4, 8, 12);
+    }
+
+    private static Score gridded(int... downbeats) {
+        Set<Integer> marked = Arrays.stream(downbeats).boxed().collect(Collectors.toSet());
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        int position = 0;
+        for (int beat = 0; beat < BARS * 4; beat++) {
+            boolean downbeat = marked.contains(beat);
+            position = downbeat ? 0 : position + 1;
+            beats.add(new BeatGrid.Beat(beat * SECONDS_PER_BEAT, downbeat, position));
+        }
+        return withHarmony().withBeatGrid(
+                new BeatGrid(beats, Confidence.of(0.8), Confidence.of(0.5)));
     }
 
     private static BeatGrid beats() {

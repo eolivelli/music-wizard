@@ -42,6 +42,8 @@ header { padding-top: 2.5rem; }
 h1 { font-size: 2rem; line-height: 1.2; margin: 0; }
 h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
 h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
+h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint);
+     margin: 1.1rem 0 .3rem; }
 .artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
 .lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
 
@@ -163,6 +165,20 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .histogram .axis { display: flex; justify-content: space-between; font-size: .7rem;
                    color: var(--faint); font-variant-numeric: tabular-nums; }
 .histogram figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
+.tempo-lanes { margin: .3rem 0 .9rem; }
+.tempo-lane { display: flex; align-items: flex-end; gap: .6rem; height: 16px; }
+.tempo-time { flex: 0 0 3.2rem; font-size: .68rem; color: var(--faint);
+              font-variant-numeric: tabular-nums; }
+.tempo-track { position: relative; flex: 1 1 0; height: 100%;
+               border-bottom: 1px solid var(--rule); }
+.tempo-tick { position: absolute; bottom: 0; width: 2px; margin-left: -1px;
+              background: var(--faint); }
+.tempo-tick.chosen { background: var(--accent); width: 3px; margin-left: -1.5px; }
+.tempo-lanes .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                     color: var(--faint); font-variant-numeric: tabular-nums;
+                     margin-left: 3.8rem; }
+.tempo-lanes figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
           margin: .3rem 0 .9rem; font-size: .8rem; }
@@ -336,7 +352,12 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:22.5px" title="3 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="8 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:30px" title="4 of them"></span></div>
 <div class="axis"><span>0.48</span><span>0.52</span></div>
 <figcaption>How far apart the tracked beats are, in seconds</figcaption></figure>
-<p class="gap"><span class="gap-label">Not recorded</span>The tempo candidates the tracker weighed against each other, and whether the grid was believed or vetoed (#429), are decided inside the stage and not recorded (#675).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace does not hold what the tracker weighed: the tempo candidates, and whether the bass register moved the octave. Re-analysing it records them.</p>
+<h4>How the chart hangs its bar lines</h4>
+<p class="note">The grid's downbeats are not the bar lines: the chart is counted at a tempo the grid did not run at, so its bars are spaced as that tempo asks rather than fitted back onto beats it disagrees with. The chart is one bar length throughout, hung on the offset within the bar that leaves the smallest total distance to every downbeat (#233).</p>
+<dl class="facts">
+<dt>Downbeats the grid marks</dt><dd>4</dd>
+</dl>
 </article>
 <article class="phase untraced" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">no trace kept</span></h3>
 <p class="what">An NNLS fit over the spectrum gives the energy on each of the twelve pitch classes, tuning-corrected, in a bass register and a treble one. It is taken from the full mix and never from a stem, and it is what both the beat tracker's harmonic rhythm and every chord decision below are read from.</p>

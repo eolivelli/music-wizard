@@ -36,6 +36,8 @@ header { padding-top: 2.5rem; }
 h1 { font-size: 2rem; line-height: 1.2; margin: 0; }
 h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
 h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
+h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint);
+     margin: 1.1rem 0 .3rem; }
 .artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
 .lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
 
@@ -157,6 +159,20 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .histogram .axis { display: flex; justify-content: space-between; font-size: .7rem;
                    color: var(--faint); font-variant-numeric: tabular-nums; }
 .histogram figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
+.tempo-lanes { margin: .3rem 0 .9rem; }
+.tempo-lane { display: flex; align-items: flex-end; gap: .6rem; height: 16px; }
+.tempo-time { flex: 0 0 3.2rem; font-size: .68rem; color: var(--faint);
+              font-variant-numeric: tabular-nums; }
+.tempo-track { position: relative; flex: 1 1 0; height: 100%;
+               border-bottom: 1px solid var(--rule); }
+.tempo-tick { position: absolute; bottom: 0; width: 2px; margin-left: -1px;
+              background: var(--faint); }
+.tempo-tick.chosen { background: var(--accent); width: 3px; margin-left: -1.5px; }
+.tempo-lanes .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                     color: var(--faint); font-variant-numeric: tabular-nums;
+                     margin-left: 3.8rem; }
+.tempo-lanes figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
           margin: .3rem 0 .9rem; font-size: .8rem; }

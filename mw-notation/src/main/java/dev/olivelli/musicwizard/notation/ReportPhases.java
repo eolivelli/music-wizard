@@ -31,7 +31,9 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -79,22 +81,27 @@ final class ReportPhases {
     /** The tallest column of a histogram, in pixels. */
     private static final int HISTOGRAM_HEIGHT = 60;
 
+    /** The tallest tick of a tempo-candidate lane, in pixels. */
+    private static final int LANE_HEIGHT = 14;
+
     private final Score score;
     private final NoteTrack melody;
     private final NoteTrack playable;
     private final QuantizedScore quantized;
     private final RunManifest manifest;
+    private final RunTraces traces;
     private final HtmlWriter out = new HtmlWriter();
     private int number;
     private String phase;
 
     ReportPhases(Score score, NoteTrack melody, NoteTrack playable, QuantizedScore quantized,
-                 RunManifest manifest) {
+                 RunManifest manifest, RunTraces traces) {
         this.score = score;
         this.melody = melody;
         this.playable = playable;
         this.quantized = quantized;
         this.manifest = manifest;
+        this.traces = traces;
     }
 
     String render() {
@@ -204,10 +211,87 @@ final class ReportPhases {
                 .orElse(List.of()));
         provenance(tempoMap);
         score.beatGrid().ifPresent(this::beatIntervalHistogram);
-        gap("The tempo candidates the tracker weighed against each other, and whether the"
-                + " grid was believed or vetoed (#429), are decided inside the stage and not"
-                + " recorded (#675).");
+        Optional<BeatTrace> trace = traces == null
+                ? Optional.empty() : traces.trace(BeatTrace.STAGE, BeatTrace.class);
+        // Only where a tracker ran: a score with no grid was read from a MIDI
+        // file or found no pulse, and neither is a missing record.
+        trace.ifPresentOrElse(this::howThePulseWasChosen, () -> {
+            if (tracked) {
+                gap("This workspace does not hold what the tracker weighed: the tempo"
+                        + " candidates, and whether the bass register moved the octave."
+                        + " Re-analysing it records them.");
+            }
+        });
+        barAxis();
         close();
+    }
+
+    /**
+     * What the tracker chose between, from the trace the run left (#675).
+     *
+     * <p>Not the same question as how good the grid is: a window can weigh its
+     * rivals and still be wrong, and the confidences above are what say so.
+     */
+    private void howThePulseWasChosen(BeatTrace trace) {
+        out.element("h4", "What the tracker chose between").line("");
+        List<Fact> table = new ArrayList<>();
+        table.add(fact("Analysis windows", String.valueOf(trace.windows().size())));
+        table.add(fact("Pulse the windows agreed on",
+                ReportTimeline.bpm(trace.agreedPulse()) + " a minute"));
+        BeatTrace.Octave octave = trace.octave();
+        if (octave == null) {
+            table.add(fact("Bass register", "not read, so the octave is where the envelope"
+                    + " and the tempo prior put it"));
+        } else {
+            table.add(fact("Bass register", octave.halved()
+                    ? "states only every second beat of that pulse, so it was halved to "
+                            + ReportTimeline.bpm(trace.referencePulse()) + " a minute"
+                    : "leaves that pulse where it is"));
+            table.add(fact("Windows the register was read over",
+                    octave.windowsRead() + ", of which " + octave.windowsRefused()
+                            + " marked too few beats to read"));
+            table.add(fact("Marked-beat contrast", HtmlWriter.number(octave.contrast(), 2)));
+            table.add(fact("Evenness of the two half-beats",
+                    HtmlWriter.number(octave.parity(), 2)));
+            table.add(fact("Share of the louder half the register marks",
+                    HtmlWriter.number(100 * octave.statedShare(), 0) + "%"));
+            table.add(fact("The envelope's own ranking", octave.envelopePrefersHalf()
+                    ? "puts the halved rate above it" : "keeps that pulse above the halved rate"));
+        }
+        facts(table.toArray(new Fact[0]));
+        candidateLanes(trace);
+        windowTable(trace);
+    }
+
+    /**
+     * How the chart hangs its bar lines, recomputed here (#675).
+     *
+     * <p>Recomputed rather than read back, because it is decided from the score
+     * at engraving time and this page holds the same score.
+     */
+    private void barAxis() {
+        Optional<ChartLayout.Axis> axis = ChartLayout.axis(score);
+        if (axis.isEmpty()) {
+            return;
+        }
+        ChartLayout.Axis reading = axis.get();
+        out.element("h4", "How the chart hangs its bar lines").line("");
+        if (reading.followsDownbeats()) {
+            note("Every bar the grid marks is a plausible bar, so the tracked downbeats are"
+                    + " the bar lines and the chart is not uniform in seconds (#187). What"
+                    + " the bar lines are wrong by is what the grid is wrong by, and"
+                    + " nothing else.");
+        } else {
+            note("The grid's downbeats are not the bar lines: " + reading.refusedBecause()
+                    + ". The chart is one bar length throughout, hung on "
+                    + (reading.phaseAgreed()
+                            ? "the offset within the bar that leaves the smallest total"
+                                    + " distance to every downbeat"
+                            : "the first downbeat, the downbeats having agreed on no offset"
+                                    + " within a counted beat")
+                    + " (#233).");
+        }
+        facts(fact("Downbeats the grid marks", String.valueOf(reading.downbeats())));
     }
 
     private void chroma() {
@@ -675,6 +759,81 @@ final class ReportPhases {
                             + grid.resolution().divisionsPerBeat() + " per beat");
         }
         out.line("</div>");
+    }
+
+    /**
+     * One lane per analysis window, with a tick at every rate its sweep
+     * weighed.
+     *
+     * <p>Each lane is scaled to its own strongest candidate, because a score is
+     * a share of that window's own energy and two windows' scores are two
+     * different fractions.
+     */
+    private void candidateLanes(BeatTrace trace) {
+        List<BeatTrace.Candidate> every = trace.everyCandidate();
+        double low = every.stream().mapToDouble(BeatTrace.Candidate::beatsPerMinute)
+                .min().orElse(0);
+        double high = every.stream().mapToDouble(BeatTrace.Candidate::beatsPerMinute)
+                .max().orElse(0);
+        if (!(high > low)) {
+            return;
+        }
+        out.line("<figure class=\"tempo-lanes\">");
+        for (BeatTrace.Window window : trace.windows()) {
+            double strongest = window.candidates().stream()
+                    .mapToDouble(BeatTrace.Candidate::score).max().orElse(0);
+            out.open("div", "class", "tempo-lane");
+            out.element("span", ReportTimeline.clock(window.fromSeconds()),
+                    "class", "tempo-time");
+            out.open("span", "class", "tempo-track");
+            for (BeatTrace.Candidate candidate : window.candidates()) {
+                double height = strongest > 0
+                        ? LANE_HEIGHT * candidate.score() / strongest : 0;
+                out.empty("span", "class", candidate.chosen() ? "tempo-tick chosen" : "tempo-tick",
+                        "style", "left:" + HtmlWriter.number(
+                                100 * (candidate.beatsPerMinute() - low) / (high - low), 2) + "%"
+                                + ";height:" + HtmlWriter.number(height, 2) + "px",
+                        "title", ReportTimeline.bpm(candidate.beatsPerMinute()) + " a minute"
+                                + (candidate.chosen() ? ", this window's seed" : ""));
+            }
+            out.line("</span>");
+            out.line("</div>");
+        }
+        out.open("div", "class", "axis");
+        out.element("span", ReportTimeline.bpm(low));
+        out.element("span", ReportTimeline.bpm(high));
+        out.line("</div>");
+        out.element("figcaption", "The rates each window's sweep weighed, one lane per window"
+                + " down the recording; the taller tick is the stronger candidate within its"
+                + " own lane, and the marked one is the rate that window was seeded with."
+                + " A rival at half or double the seed is the reading a listener is most"
+                + " likely to disagree with.");
+        out.line("</figure>");
+    }
+
+    /** Every window's seed, and the rate it was folded onto. */
+    private void windowTable(BeatTrace trace) {
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every analysis window");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Seeded at</th>"
+                + "<th>Tracked at</th><th>Periodicity</th><th>Peakiness</th>"
+                + "<th>Voted</th></tr></thead><tbody>");
+        List<BeatTrace.Window> windows = trace.windows();
+        for (int i = 0; i < windows.size(); i++) {
+            BeatTrace.Window window = windows.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.clock(window.fromSeconds()));
+            out.element("td", ReportTimeline.clock(window.toSeconds()));
+            out.element("td", ReportTimeline.bpm(window.seedPulse()));
+            out.element("td", ReportTimeline.bpm(window.trackedPulse()));
+            out.element("td", HtmlWriter.number(window.periodicity(), 3));
+            out.element("td", HtmlWriter.number(window.peakiness(), 3));
+            out.element("td", window.voted() ? "yes" : "no");
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
     }
 
     private void beatIntervalHistogram(BeatGrid grid) {

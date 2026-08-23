@@ -344,32 +344,71 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </section>
 <section id="run">
 <h2>What ran</h2>
-<p class="lede">This workspace was analysed by a build that recorded nothing about its own run, so this page cannot say which stages ran, what the recording decoded to, or which options steered it. Analysing it again writes that record (#674).</p>
+<p class="lede">The last analysis of this workspace, as it recorded itself: what each stage did, and the settings it was given. A stage that did not run says so, and one served from the cache says that instead of claiming to have run.</p>
+<dl class="facts">
+<dt>Music Wizard</dt><dd>1.2.3-test</dd>
+<dt>Analysed</dt><dd>2026-01-01T00:00:00Z</dd>
+<dt>Finished</dt><dd>2026-01-01T00:02:03Z</dd>
+</dl>
+<h3>What it was told to do</h3>
+<dl class="facts">
+<dt>source</dt><dd>audio</dd>
+</dl>
+<h3>Stage by stage</h3>
+<div class="run-stages">
+<div class="run-stage recorded"><span class="run-stage-name">decode</span><span class="status">ran</span><dl class="facts">
+<dt>format</dt><dd>MPEG-1, Layer 3</dd>
+<dt>sample rate as stored</dt><dd>44100 Hz</dd>
+<dt>read as</dt><dd>mono at 22050 Hz</dd>
+</dl>
+</div>
+<div class="run-stage failed"><span class="run-stage-name">separation</span><span class="status">failed</span><p class="run-stage-reason">the model could not be reached</p><dl class="facts">
+<dt>provider</dt><dd>spleeter-2stems</dd>
+</dl>
+</div>
+<div class="run-stage recorded"><span class="run-stage-name">beats</span><span class="status">from the cache</span></div>
+<div class="run-stage absent"><span class="run-stage-name">melody</span><span class="status">did not run</span><p class="run-stage-reason">not asked for; analyze --melody reads one</p></div>
+<div class="run-stage recorded"><span class="run-stage-name">lyrics</span><span class="status">ran</span><dl class="facts">
+<dt>words from</dt><dd>the file song.lrc</dd>
+<dt>language</dt><dd>en</dd>
+</dl>
+</div>
+<div class="run-stage absent"><span class="run-stage-name">lyric alignment</span><span class="status">did not run</span><p class="run-stage-reason">no alignment provider is configured (ml.alignmentProvider)</p></div>
+<div class="run-stage recorded"><span class="run-stage-name">hummed bass</span><span class="status">ran</span></div>
+</div>
 </section>
 <section id="phases">
 <h2>Phase by phase</h2>
 <p class="lede">Each stage below answers the same three questions from the workspace and from nothing else: what reached it, what it decided, and what it left behind. Where it decided something the workspace does not keep, it says so.</p>
-<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where some of them have nothing to do and the rest work by other means. This workspace does not record which path produced it, so each stage describes what it does rather than asserting that it ran.</p>
-<article class="phase untraced" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">no trace kept</span></h3>
+<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where some of them have nothing to do and the rest work by other means. What each stage did in the last analysis is above and repeated under the stage it belongs to.</p>
+<article class="phase recorded" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">ran</span></h3>
 <p class="what">A recording is read to mono samples at the analysis rate, and everything after this point works from those samples. A score read from a MIDI file is read symbolically instead and decodes nothing.</p>
 <dl class="io">
 <dt>In</dt><dd>the source file in the workspace</dd>
 <dt>Decided</dt><dd>nothing — neither arm has a choice to make</dd>
 <dt>Out</dt><dd>one signal, and how long the recording is</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>decode: ran</p>
+<dl class="facts">
+<dt>format</dt><dd>MPEG-1, Layer 3</dd>
+<dt>sample rate as stored</dt><dd>44100 Hz</dd>
+<dt>read as</dt><dd>mono at 22050 Hz</dd>
+</dl>
 <dl class="facts">
 <dt>Length</dt><dd>0:08  (8s)</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Nothing in this workspace says what this file held, or the rate it was read at (#674).</p>
 </article>
-<article class="phase untraced" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">no trace kept</span></h3>
+<article class="phase failed" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">failed</span></h3>
 <p class="what">A separator splits the mix into a vocal and an accompaniment. Only the melody stage reads it. Chords are always estimated from the full mix, because separation artifacts destroy the partial structure chroma estimation depends on.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix</dd>
 <dt>Decided</dt><dd>whether a separator could be reached at all</dd>
 <dt>Out</dt><dd>a vocal stem, held in memory and never written to the workspace</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Nothing in this workspace says whether a separator ran, or which provider it was (#674).</p>
+<p class="ran"><span class="ran-label">Last run</span>separation: failed — the model could not be reached</p>
+<dl class="facts">
+<dt>provider</dt><dd>spleeter-2stems</dd>
+</dl>
 </article>
 <article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">output on disk</span></h3>
 <p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
@@ -378,6 +417,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>the pulse, which pulse begins a bar, and the rate to hold</dd>
 <dt>Out</dt><dd>a beat grid and a tempo map</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>beats: from the cache</p>
 <dl class="facts">
 <dt>Beats tracked</dt><dd>16</dd>
 <dt>Downbeats</dt><dd>4</dd>
@@ -404,7 +444,30 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:22.5px" title="3 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="8 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:30px" title="4 of them"></span></div>
 <div class="axis"><span>0.48</span><span>0.52</span></div>
 <figcaption>How far apart the tracked beats are, in seconds</figcaption></figure>
-<p class="gap"><span class="gap-label">Not recorded</span>This workspace does not hold what the tracker weighed: the tempo candidates, and whether the bass register moved the octave. Re-analysing it records them.</p>
+<h4>What the tracker chose between</h4>
+<dl class="facts">
+<dt>Analysis windows</dt><dd>2</dd>
+<dt>Pulse the windows agreed on</dt><dd>240.5 a minute</dd>
+<dt>Bass register</dt><dd>states only every second beat of that pulse, so it was halved to 120.3 a minute</dd>
+<dt>Windows the register was read over</dt><dd>2, of which 1 marked too few beats to read</dd>
+<dt>Marked-beat contrast</dt><dd>6.5</dd>
+<dt>Evenness of the two half-beats</dt><dd>0.04</dd>
+<dt>Share of the louder half the register marks</dt><dd>82%</dd>
+<dt>The envelope's own ranking</dt><dd>puts the halved rate above it</dd>
+</dl>
+<figure class="tempo-lanes">
+<div class="tempo-lane"><span class="tempo-time">0:00</span><span class="tempo-track"><span class="tempo-tick chosen" style="left:100%;height:14px" title="240.5 a minute, this window&#39;s seed"></span><span class="tempo-tick" style="left:33.38%;height:9.23px" title="120.3 a minute"></span><span class="tempo-tick" style="left:11.36%;height:2.68px" title="80.5 a minute"></span></span>
+</div>
+<div class="tempo-lane"><span class="tempo-time">0:12</span><span class="tempo-track"><span class="tempo-tick chosen" style="left:33.38%;height:14px" title="120.3 a minute, this window&#39;s seed"></span><span class="tempo-tick" style="left:0%;height:8.91px" title="60 a minute"></span></span>
+</div>
+<div class="axis"><span>60</span><span>240.5</span></div>
+<figcaption>The rates each window's sweep weighed, one lane per window down the recording; the taller tick is the stronger candidate within its own lane, and the marked one is the rate that window was seeded with. A rival at half or double the seed is the reading a listener is most likely to disagree with.</figcaption></figure>
+<details class="table">
+<summary>Every analysis window</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Seeded at</th><th>Tracked at</th><th>Periodicity</th><th>Peakiness</th><th>Voted</th></tr></thead><tbody>
+<tr><td>1</td><td>0:00</td><td>0:25</td><td>240.5</td><td>120.3</td><td>0.61</td><td>0.88</td><td>yes</td></tr>
+<tr><td>2</td><td>0:12</td><td>0:30</td><td>120.3</td><td>120.3</td><td>0.55</td><td>0.9</td><td>no</td></tr>
+</tbody></table>
+</details>
 <h4>How the chart hangs its bar lines</h4>
 <p class="note">The grid's downbeats are not the bar lines: the chart is counted at a tempo the grid did not run at, so its bars are spaced as that tempo asks rather than fitted back onto beats it disagrees with. The chart is one bar length throughout, hung on the offset within the bar that leaves the smallest total distance to every downbeat (#233).</p>
 <dl class="facts">
@@ -496,6 +559,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>where one note ends and the next begins</dd>
 <dt>Out</dt><dd>a note track, in seconds</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>melody: did not run — not asked for; analyze --melody reads one</p>
 <dl class="facts">
 <dt>Notes</dt><dd>8</dd>
 <dt>Range</dt><dd>B4..F5</dd>
@@ -511,7 +575,6 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:20px" title="2 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="6 of them"></span></div>
 <div class="axis"><span>0.125</span><span>0.5</span></div>
 <figcaption>How long the notes are, in seconds</figcaption></figure>
-<p class="gap"><span class="gap-label">Not recorded</span>Nothing in this workspace says which signal these notes were read from (#674).</p>
 <p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
 </article>
 <article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
@@ -521,6 +584,12 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>where each syllable is sung, and which syllable the melody moves under</dd>
 <dt>Out</dt><dd>lines of timed syllables</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>lyrics: ran</p>
+<dl class="facts">
+<dt>words from</dt><dd>the file song.lrc</dd>
+<dt>language</dt><dd>en</dd>
+</dl>
+<p class="ran"><span class="ran-label">Last run</span>lyric alignment: did not run — no alignment provider is configured (ml.alignmentProvider)</p>
 <dl class="facts">
 <dt>Language</dt><dd>en</dd>
 <dt>Lines</dt><dd>2</dd>
@@ -540,7 +609,6 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <tr><td>2</td><td>0:04</td><td class="words">it did</td><td>2</td></tr>
 </tbody></table>
 </details>
-<p class="gap"><span class="gap-label">Not recorded</span>Nothing in this workspace says whether the words were supplied or transcribed (#674).</p>
 <p class="gap"><span class="gap-label">Not recorded</span>What the aligner did inside a line — the window it searched, and why a line kept its parsed times instead of being measured — is not recorded (#684).</p>
 </article>
 <article class="phase recomputed" id="phase-quantization"><h3><span class="phase-number">9</span>Quantization<span class="status">recomputed here</span></h3>
@@ -579,7 +647,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </article>
 </section>
 <footer>
-<p>This page is a reading of one workspace: its saved score, the grid and the reduction that the engraver recomputes from it, and nothing about the run that produced them. A stage that decided something the workspace does not keep is marked as such above rather than reconstructed. A transposition asked for on the command line moves the engraved parts and not this page, which is about the recording rather than about what is being played from.</p>
+<p>This page is a reading of one workspace: its saved score, the grid and the reduction that the engraver recomputes from it, and what the last analysis recorded about its own run. A stage that decided something the workspace does not keep is marked as such above rather than reconstructed. A transposition asked for on the command line moves the engraved parts and not this page, which is about the recording rather than about what is being played from.</p>
 <p>Generated by Music Wizard. Everything it needs is in this file.</p>
 </footer>
 <script>/*
