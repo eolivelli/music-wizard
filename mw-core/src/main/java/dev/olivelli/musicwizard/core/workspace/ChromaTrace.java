@@ -58,13 +58,6 @@ public record ChromaTrace(
         spans = spans == null ? List.of() : List.copyOf(spans);
     }
 
-    /**
-     * Whether a fit is a model at all, as opposed to a record this build reads
-     * every field of as nothing.
-     *
-     * <p>{@code frames} is the one figure this cannot speak for, since a
-     * recording shorter than one analysis window really does give none.
-     */
     private static boolean describesAModel(Fit fit) {
         return fit != null
                 && fit.sampleRate() > 0 && fit.windowSize() > 0 && fit.hopSize() > 0
@@ -109,7 +102,6 @@ public record ChromaTrace(
             int crossfadeLowMidi,
             int crossfadeHighMidi,
             int trebleRollOffMidi) {
-
     }
 
     /**

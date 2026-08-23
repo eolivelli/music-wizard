@@ -88,8 +88,8 @@ class ChromaTraceTest {
     @DisplayName("a fit whose fields a later build renamed is dropped, not stated")
     void aFitThatDescribesNoModelIsDropped() {
         // Unknown properties are ignored and missing ones are zero, so a record
-        // from a build that named these differently parses as a model whose
-        // every figure reads as nothing -- which the page would state.
+        // from a build that named these differently parses cleanly -- and the
+        // page would state what it read.
         String renamedRegisters = "{\"fit\":{\"sampleRate\":22050,\"windowSize\":8192,"
                 + "\"hopSize\":1024,\"frameRate\":21.5,\"frames\":172,"
                 + "\"binsPerSemitone\":3,\"lowestNoteMidi\":21,\"highestNoteMidi\":96,"
