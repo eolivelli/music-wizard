@@ -85,6 +85,19 @@ class ChromaTraceTest {
     }
 
     @Test
+    @DisplayName("a fit whose register fields were named differently reads as absent")
+    void aFitThatDoesNotDivideTheNoteRangeIsRefused() {
+        // Unknown properties are ignored and missing ones are zero, so a record
+        // from a build that named these differently would otherwise parse as a
+        // model with every register boundary at the bottom of the range.
+        RunTraces stale = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":{\"chroma\":"
+                + "{\"fit\":{\"lowestNoteMidi\":21,\"highestNoteMidi\":96,"
+                + "\"bassBelowMidi\":45,\"trebleAboveMidi\":57}}}}");
+
+        assertThat(stale.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
+    }
+
+    @Test
     @DisplayName("a trace written by a build whose shape has moved on reads as absent")
     void anUnreadableTraceIsAbsent() {
         RunTraces narrow = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"

@@ -69,7 +69,7 @@ public record ChromaTrace(
      *                           no column of its own, and the treble fold has
      *                           faded to nothing by it
      * @param crossfadeLowMidi   at and below this a note is all bass
-     * @param crossfadeHighMidi  at and above this it is all treble, the two
+     * @param crossfadeHighMidi  at and above this it carries no bass, the two
      *                           registers cross-fading between
      * @param trebleRollOffMidi  where the treble fold starts fading out again
      */
@@ -86,6 +86,19 @@ public record ChromaTrace(
             int crossfadeLowMidi,
             int crossfadeHighMidi,
             int trebleRollOffMidi) {
+
+        public Fit {
+            // A record whose register fields a build named differently parses
+            // as zeros, and the page states them as a measurement. Refused for
+            // the reason a reading of the wrong width is.
+            if (!(lowestNoteMidi < crossfadeLowMidi && crossfadeLowMidi < crossfadeHighMidi
+                    && crossfadeHighMidi <= trebleRollOffMidi
+                    && trebleRollOffMidi < highestNoteMidi)) {
+                throw new IllegalArgumentException("the registers do not divide the note range: "
+                        + lowestNoteMidi + ", " + crossfadeLowMidi + ", " + crossfadeHighMidi
+                        + ", " + trebleRollOffMidi + ", " + highestNoteMidi);
+            }
+        }
     }
 
     /**
@@ -122,9 +135,8 @@ public record ChromaTrace(
             List<Double> significance) {
 
         public Span {
-            // Guarded here for the same reason a reading's width is: a span
-            // whose label a later build renamed is a span this one cannot
-            // draw, and refusing it costs the picture rather than the render.
+            // The page prints this label, so a span without one is a span this
+            // build cannot draw.
             Objects.requireNonNull(chord, "chord");
             combined = pitchClasses(combined, "combined");
             treble = pitchClasses(treble, "treble");

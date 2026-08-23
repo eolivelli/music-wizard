@@ -124,10 +124,13 @@ class AnalysisReportTest {
                 "Every chord span, and what it was read from",
                 // The chord span the fit needed F most to explain.
                 "<td class=\"symbol\">Fmaj7</td>", "F 1.31, C 0.58, E 0.44");
-        assertThat(weighed).doesNotContain("Nothing in this workspace holds what the front end");
+        assertThat(weighed).doesNotContain("This workspace does not hold what the front end");
 
-        assertThat(blank).contains("Nothing in this workspace holds what the front end read",
+        assertThat(blank).contains("This workspace does not hold what the front end read",
                 "(#676)");
+        // And the gap does not deny the tuning, which the run's own line above
+        // it prints.
+        assertThat(blank).contains("<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>");
         assertThat(blank).doesNotContain("What the front end read");
     }
 
@@ -140,7 +143,7 @@ class AnalysisReportTest {
                 ReportFixtures.run(), ReportFixtures.weighed(
                         ReportFixtures.chromaWithoutSpans()));
 
-        assertThat(page).contains("no chord span was summarised over them",
+        assertThat(page).contains("No chord span was summarised.",
                 "the spectrum held no peaks to read one from");
         assertThat(page).doesNotContain("Every chord span, and what it was read from");
     }
@@ -158,7 +161,7 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(withoutResidual));
 
-        assertThat(page).contains("What the front end read", "<td>nothing</td>",
+        assertThat(page).contains("What the front end read", "<td>not measured</td>",
                 "No residual was measured over these spans");
         assertThat(page).doesNotContain("How much of each span's spectrum",
                 // The fit itself is absent here too, and an absent model is not
@@ -180,7 +183,9 @@ class AnalysisReportTest {
                         new ChromaTrace(0.0375, true, null, spans)));
 
         assertThat(page).contains("How much of each span's spectrum",
-                "<div class=\"pc-column unmeasured\" title=\"C at 0:01: not measured\">");
+                "<div class=\"pc-column unmeasured\" title=\"C at 0:01: not measured\">",
+                // And the table beneath it separates the two absences too.
+                "<td>not measured</td>");
         assertThat(page).doesNotContain("No residual was measured over these spans");
     }
 
@@ -201,8 +206,8 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(flat));
 
-        assertThat(page).contains(
-                "The fit left no residual any one pitch class was the only explanation of");
+        assertThat(page).contains("Where the residual was measured, no pitch class was the"
+                + " only explanation of anything");
         assertThat(page).doesNotContain("No residual was measured over these spans",
                 "How much of each span's spectrum");
     }
@@ -218,7 +223,7 @@ class AnalysisReportTest {
         assertThat(renamed.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
         String page = AnalysisReport.toHtml(
                 ReportFixtures.everything(), RECORDING, ReportFixtures.run(), renamed);
-        assertThat(page).contains("Nothing in this workspace holds what the front end read");
+        assertThat(page).contains("This workspace does not hold what the front end read");
     }
 
     private static ChromaTrace.Span withResidual(ChromaTrace.Span span, List<Double> residual) {

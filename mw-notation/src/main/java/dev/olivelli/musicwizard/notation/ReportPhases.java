@@ -327,9 +327,9 @@ final class ReportPhases {
         Optional<ChromaTrace> trace = traces == null
                 ? Optional.empty() : traces.trace(ChromaTrace.STAGE, ChromaTrace.class);
         trace.ifPresentOrElse(this::whatTheFitRead,
-                () -> gap("Nothing in this workspace holds what the front end read: not the"
-                        + " tuning, not the model it fitted with, not the fit's own"
-                        + " residual (#676)."));
+                () -> gap("This workspace does not hold what the front end read: not the model"
+                        + " it fitted with, not the fit's own residual, not what any chord span"
+                        + " was read from (#676)."));
         close();
     }
 
@@ -350,10 +350,10 @@ final class ReportPhases {
                     fit.binsPerSemitone() + " bins a semitone"));
             table.add(fact("Notes the dictionary models",
                     noteName(fit.lowestNoteMidi()) + " to " + noteName(fit.highestNoteMidi())));
-            table.add(fact("Bass register", "everything at and below "
+            table.add(fact("Bass fold", "everything at and below "
                     + noteName(fit.crossfadeLowMidi()) + ", fading out to nothing at "
                     + noteName(fit.crossfadeHighMidi())));
-            table.add(fact("Treble register", "nothing at and below "
+            table.add(fact("Treble fold", "nothing at and below "
                     + noteName(fit.crossfadeLowMidi()) + ", everything from "
                     + noteName(fit.crossfadeHighMidi()) + " to "
                     + noteName(fit.trebleRollOffMidi()) + ", fading out again to nothing at "
@@ -362,7 +362,7 @@ final class ReportPhases {
         table.add(fact("Chord spans summarised", String.valueOf(trace.spans().size())));
         facts(table.toArray(new Fact[0]));
         if (trace.spans().isEmpty()) {
-            note("The fit ran over frames, and no chord span was summarised over them.");
+            note("No chord span was summarised.");
             return;
         }
         pitchClassGrid("What each chord span holds on each pitch class, in the chroma the"
@@ -370,7 +370,7 @@ final class ReportPhases {
                         + " this figure, so a column says what stands out within the piece"
                         + " rather than how loud the span was.",
                 "No chroma was recorded for these spans.",
-                "No span carried anything on any pitch class.",
+                "Where a chroma was recorded, no pitch class carried anything.",
                 trace.spans(), ChromaTrace.Span::combined);
         pitchClassGrid("How much of each span's spectrum only that pitch class can explain:"
                         + " delete its notes from the dictionary, fit the span again, and read"
@@ -378,7 +378,8 @@ final class ReportPhases {
                         + " blank is one the fit did not need.",
                 "No residual was measured over these spans, so what only one pitch class could"
                         + " explain is not shown.",
-                "The fit left no residual any one pitch class was the only explanation of.",
+                "Where the residual was measured, no pitch class was the only explanation"
+                        + " of anything.",
                 trace.spans(), ChromaTrace.Span::significance);
         spanTable(trace.spans());
         note("Summarised over the chord spans and not the beats inside them, so a chord whose"
@@ -938,8 +939,7 @@ final class ReportPhases {
      *
      * <p>A span that left no reading is drawn as a column of its own kind and
      * never as a column of zeros, which would be a measurement read off an
-     * absence. Where no span left one, or where every reading is zero, the
-     * figure is not drawn and the caller's words say which of the two it was.
+     * absence.
      */
     private void pitchClassGrid(String caption, String unmeasured, String nothing,
                                 List<ChromaTrace.Span> spans,
@@ -1016,9 +1016,13 @@ final class ReportPhases {
 
     /**
      * The pitch classes carrying most of a reading, largest first. Shares are
-     * written as percentages and the residual as the ratio it is.
+     * written as percentages and the residual as the ratio it is, and a reading
+     * that was never taken is said to be missing rather than empty-handed.
      */
     private static String strongest(List<Double> values, boolean asShare) {
+        if (values.isEmpty()) {
+            return "not measured";
+        }
         List<Integer> order = new ArrayList<>();
         for (int pitchClass = 0; pitchClass < values.size(); pitchClass++) {
             if (Double.isFinite(values.get(pitchClass)) && values.get(pitchClass) > 0) {
