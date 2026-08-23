@@ -50,6 +50,7 @@ import java.util.Optional;
  *     cache/             per-stage intermediate results, including LLM responses
  *     score/score.json   the composed transcription
  *     run/manifest.json  what the last analysis actually ran
+ *     run/traces.json    the evidence its stages weighed
  *     out/               generated .ly, .musicxml, .midi and .pdf files
  *     logs/
  * </pre>
@@ -68,6 +69,7 @@ public final class Workspace {
     private static final String LOG_DIRECTORY = "logs";
     private static final String SCORE_FILE = "score.json";
     private static final String RUN_MANIFEST_FILE = "manifest.json";
+    private static final String RUN_TRACES_FILE = "traces.json";
 
     /**
      * What {@code workspace.yaml} holds.
@@ -284,6 +286,10 @@ public final class Workspace {
         return runDirectory().resolve(RUN_MANIFEST_FILE);
     }
 
+    public Path runTracesFile() {
+        return runDirectory().resolve(RUN_TRACES_FILE);
+    }
+
     public Path outputDirectory() {
         return root.resolve(OUTPUT_DIRECTORY);
     }
@@ -463,6 +469,41 @@ public final class Workspace {
         try {
             Files.createDirectories(file.getParent());
             Files.writeString(file, RunManifestJson.toJson(manifest));
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write " + file, e);
+        }
+    }
+
+    /**
+     * The evidence the last analysis's stages weighed, absent under the same
+     * conditions as {@link #readRunManifest()} and read as optional for the
+     * same reason.
+     */
+    public Optional<RunTraces> readRunTraces() {
+        Path file = runTracesFile();
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(RunTraceJson.fromJson(Files.readString(file)));
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not read " + file, e);
+        }
+    }
+
+    /**
+     * Records what a run's stages weighed, replacing the previous run's.
+     *
+     * <p>Written even when it holds nothing, so that a stage that traced last
+     * time and not this time leaves no trace behind describing a run that is
+     * gone.
+     */
+    public void writeRunTraces(RunTraces traces) {
+        Objects.requireNonNull(traces, "traces");
+        Path file = runTracesFile();
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, RunTraceJson.toJson(traces));
         } catch (IOException e) {
             throw new UncheckedIOException("could not write " + file, e);
         }

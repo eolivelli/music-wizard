@@ -16,6 +16,9 @@
 
 package dev.olivelli.musicwizard.dsp;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -75,7 +78,19 @@ public final class TempoEstimator {
      */
     private static final double NOISE_KURTOSIS = 3.0;
 
+    /** How many of a sweep's peaks are worth carrying into a run's record (#675). */
+    private static final int KEPT_CANDIDATES = 6;
+
     private TempoEstimator() {
+    }
+
+    /**
+     * One rate the sweep weighed, and what it weighed at. Scores are comparable
+     * within a sweep and not between sweeps: the correlation is normalised by
+     * the envelope's own energy, so two windows' scores are two different
+     * fractions.
+     */
+    public record Candidate(double beatsPerMinute, double score, boolean chosen) {
     }
 
     /**
@@ -104,9 +119,22 @@ public final class TempoEstimator {
      *                       isolated attacks. Nearly independent of tempo and of
      *                       clip length, so it reads as a property of the
      *                       material rather than of the reading.
+     * @param candidates     the peaks the sweep passed over, strongest first,
+     *                       for a caller recording what the reading chose
+     *                       between (#675). Empty for a reading with nothing
+     *                       to choose between, and never read by the estimate
+     *                       itself.
      */
-    public record Estimate(double beatsPerMinute, double periodicity, double peakiness) {
+    public record Estimate(double beatsPerMinute, double periodicity, double peakiness,
+                           List<Candidate> candidates) {
+
+        /** A reading whose candidates were not kept, which is most of them. */
+        public Estimate(double beatsPerMinute, double periodicity, double peakiness) {
+            this(beatsPerMinute, periodicity, peakiness, List.of());
+        }
+
         public Estimate {
+            candidates = candidates == null ? List.of() : List.copyOf(candidates);
             if (!(beatsPerMinute > 0)) {
                 throw new IllegalArgumentException(
                         "beatsPerMinute must be positive, got: " + beatsPerMinute);
@@ -198,6 +226,14 @@ public final class TempoEstimator {
         double bestTempo = PREFERRED_TEMPO;
         double bestRawCorrelation = 0;
 
+        // The sweep's own shape, kept as it passes: the winner is the running
+        // maximum below and is not read from this, so recording it cannot move
+        // an estimate.
+        List<Candidate> peaks = new ArrayList<>();
+        double behind = Double.NEGATIVE_INFINITY;
+        double justBehind = Double.NEGATIVE_INFINITY;
+        double justBehindTempo = 0;
+
         double step = 0.25;
         for (double tempo = MIN_TEMPO; tempo <= MAX_TEMPO; tempo += step) {
             double lag = frameRate * 60.0 / tempo;
@@ -224,7 +260,14 @@ public final class TempoEstimator {
                 // for it is a measurement of that envelope.
                 bestRawCorrelation = interpolate(correlation, lag);
             }
+            if (justBehind > 0 && justBehind > behind && justBehind >= score) {
+                peaks.add(new Candidate(justBehindTempo, justBehind, false));
+            }
+            behind = justBehind;
+            justBehind = score;
+            justBehindTempo = tempo;
         }
+        List<Candidate> candidates = ranked(peaks, bestTempo, bestScore);
 
         // The fraction of the envelope's energy explained by the winning period.
         // Necessary for a trustworthy reading but nowhere near sufficient: a
@@ -243,7 +286,28 @@ public final class TempoEstimator {
             periodicity = 0;
         }
         return new Estimate(bestTempo, Math.clamp(periodicity, 0, 1),
-                peakiness(envelope.strength()));
+                peakiness(envelope.strength()), candidates);
+    }
+
+    /**
+     * The peaks worth keeping, strongest first, with the winner among them.
+     *
+     * <p>The winner is added rather than assumed: it is a peak wherever the
+     * sweep has one, and at the edge of the tempo range it is not.
+     */
+    private static List<Candidate> ranked(List<Candidate> peaks, double winner, double score) {
+        if (!(score > 0)) {
+            return List.of();
+        }
+        List<Candidate> ranked = new ArrayList<>(peaks.size() + 1);
+        for (Candidate peak : peaks) {
+            if (peak.beatsPerMinute() != winner) {
+                ranked.add(peak);
+            }
+        }
+        ranked.add(new Candidate(winner, score, true));
+        ranked.sort(Comparator.comparingDouble(Candidate::score).reversed());
+        return List.copyOf(ranked.subList(0, Math.min(KEPT_CANDIDATES, ranked.size())));
     }
 
     /**

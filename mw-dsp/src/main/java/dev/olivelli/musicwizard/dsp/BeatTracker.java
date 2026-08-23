@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -70,8 +71,21 @@ public final class BeatTracker {
     private BeatTracker() {
     }
 
-    /** Tracked beats and the tempo they imply. */
-    public record Result(List<Double> beatTimes, double beatsPerMinute, Confidence confidence) {
+    /**
+     * Tracked beats and the tempo they imply.
+     *
+     * @param trace what the tracking chose between, for a caller that records
+     *              it (#675), or null where a result was assembled rather than
+     *              tracked
+     */
+    public record Result(List<Double> beatTimes, double beatsPerMinute, Confidence confidence,
+                         BeatTrace trace) {
+
+        /** A result with no record of how it was arrived at. */
+        public Result(List<Double> beatTimes, double beatsPerMinute, Confidence confidence) {
+            this(beatTimes, beatsPerMinute, confidence, null);
+        }
+
         public Result {
             beatTimes = List.copyOf(Objects.requireNonNull(beatTimes, "beatTimes"));
             Objects.requireNonNull(confidence, "confidence");
@@ -118,11 +132,14 @@ public final class BeatTracker {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
             TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope, rhythm);
-            double rate = MarkedPulse.resolveOctave(tempo.beatsPerMinute(), envelope,
+            MarkedPulse.Octave octave = MarkedPulse.resolve(tempo.beatsPerMinute(), envelope,
                     pulseRegister, votingWindows(envelope));
+            double rate = octave.rate();
             List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
             return new Result(beats, tempoOf(beats, rate),
-                    Confidence.clamped(tempo.strength()));
+                    Confidence.clamped(tempo.strength()),
+                    new BeatTrace(tempo.beatsPerMinute(), rate, traced(octave),
+                            List.of(traced(envelope, 0, envelope.length(), true, tempo, rate))));
         }
 
         int step = stepFrames(envelope);
@@ -147,9 +164,11 @@ public final class BeatTracker {
 
         // The register is read over the same windows that voted, and for the
         // same reason: a sliver measures a phrase rather than the recording.
-        double reference =
-                MarkedPulse.resolveOctave(pulseReference(voters), envelope, pulseRegister,
-                        votingWindows(envelope));
+        double agreed = pulseReference(voters);
+        MarkedPulse.Octave octave =
+                MarkedPulse.resolve(agreed, envelope, pulseRegister, votingWindows(envelope));
+        double reference = octave.rate();
+        List<BeatTrace.Window> traced = new ArrayList<>();
 
         List<Double> beats = new ArrayList<>();
         double tempoSum = 0;
@@ -176,11 +195,34 @@ public final class BeatTracker {
             }
             tempoSum += beatsPerMinute;
             strengthSum += seed.strength();
+            traced.add(traced(envelope, start, end, votes(bounds.get(w), step), seed,
+                    beatsPerMinute));
         }
 
         double meanStrength = windows > 0 ? strengthSum / windows : 0;
         double fallback = windows > 0 ? tempoSum / windows : TempoEstimator.PREFERRED_TEMPO;
-        return new Result(beats, tempoOf(beats, fallback), Confidence.clamped(meanStrength));
+        return new Result(beats, tempoOf(beats, fallback), Confidence.clamped(meanStrength),
+                new BeatTrace(agreed, reference, traced(octave), traced));
+    }
+
+    private static BeatTrace.Window traced(OnsetEnvelope envelope, int start, int end,
+                                           boolean voted, TempoEstimator.Estimate seed,
+                                           double trackedPulse) {
+        List<BeatTrace.Candidate> candidates = seed.candidates().stream()
+                .map(candidate -> new BeatTrace.Candidate(candidate.beatsPerMinute(),
+                        candidate.score(), candidate.chosen()))
+                .toList();
+        return new BeatTrace.Window(start / envelope.frameRate(), end / envelope.frameRate(),
+                voted, seed.beatsPerMinute(), seed.periodicity(), seed.peakiness(),
+                trackedPulse, candidates);
+    }
+
+    private static BeatTrace.Octave traced(MarkedPulse.Octave octave) {
+        MarkedPulse.Reading reading = octave.reading();
+        return reading == null ? null
+                : new BeatTrace.Octave(octave.halved(), reading.contrast(), reading.parity(),
+                        reading.statedShare(), reading.windowsRead(), reading.windowsRefused(),
+                        reading.envelopePrefersHalf());
     }
 
     /**

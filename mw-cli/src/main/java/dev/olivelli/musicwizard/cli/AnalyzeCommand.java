@@ -42,6 +42,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifestJson;
+import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.StageCache;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
@@ -81,6 +82,9 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     /** Where the cache keeps what the stages under a key recorded (#674). */
     private static final String STAGES_EXTENSION = ".stages.json";
+
+    /** And the evidence behind those lines (#675). */
+    private static final String TRACES_EXTENSION = ".traces.json";
 
     /**
      * What the MIDI path's figures are, exactly. The heading names both
@@ -234,7 +238,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (!result.fromCache() && !melodyFellBackToTheMix) {
             // The transcription, not the titled score — the key says nothing
             // about metadata, and titled() runs on the way out of the cache.
-            storeQuietly(workspace.cache(), result.key(), result.score(), result.stages());
+            storeQuietly(workspace.cache(), result.key(), result.score(), result.stages(),
+                    result.traces());
         } else if (melodyFellBackToTheMix) {
             System.err.println("warning: this analysis is not cached, so the next run"
                     + " reads the melody from the stem if the separator works then.");
@@ -965,7 +970,7 @@ final class AnalyzeCommand implements Callable<Integer> {
      * cache, since those entries came with it.
      */
     private record Transcription(Score score, StageCache.Key key, boolean fromCache,
-                                 List<RunManifest.StageRun> stages) {
+                                 List<RunManifest.StageRun> stages, Map<String, ?> traces) {
     }
 
     /**
@@ -1005,7 +1010,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 System.out.println("  reusing the cached analysis of this file;"
                         + " --force recomputes it");
                 recordCachedStages(cache, key);
-                return new Transcription(cached, key, true, List.of());
+                return new Transcription(cached, key, true, List.of(), Map.of());
             }
         }
 
@@ -1020,7 +1025,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .transcribe(source, options, melodySupplier(stem));
             case MIDI -> new MidiTranscriber(AnalyzeCommand::report, keyed).transcribe(source);
         };
-        return new Transcription(score, key, false, keyed.stages());
+        return new Transcription(score, key, false, keyed.stages(), keyed.traces());
     }
 
     /**
@@ -1041,6 +1046,17 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .orElse(List.of());
         } catch (RuntimeException e) {
             stages = List.of();
+        }
+        try {
+            cache.readText(key, TRACES_EXTENSION)
+                    .map(RunTraceJson::fromJson)
+                    .ifPresent(traces -> runLog.recordAllTraces(traces.traces()));
+        } catch (RuntimeException e) {
+            // The lines still stand without the evidence behind them, and the
+            // page states an absent trace, so this costs the picture and not
+            // the record.
+            System.err.println("warning: what these stages weighed could not be read from"
+                    + " the cache: " + e.getMessage());
         }
         if (stages.isEmpty()) {
             runLog.stage("analysis").cached("no record of what its stages did is stored"
@@ -1117,7 +1133,7 @@ final class AnalyzeCommand implements Callable<Integer> {
      * succeeded.
      */
     private static void storeQuietly(StageCache cache, StageCache.Key key, Score score,
-                                     List<RunManifest.StageRun> stages) {
+                                     List<RunManifest.StageRun> stages, Map<String, ?> traces) {
         try {
             cache.writeText(key, ".json", ScoreJson.toJson(score));
         } catch (RuntimeException e) {
@@ -1133,6 +1149,17 @@ final class AnalyzeCommand implements Callable<Integer> {
         } catch (RuntimeException e) {
             System.err.println("warning: what these stages did was not cached with the"
                     + " analysis, so a run served it will not be able to say: "
+                    + e.getMessage());
+        }
+        try {
+            // The same, for the evidence behind those lines. A trace is a
+            // function of the key exactly as the score is, so it has to travel
+            // with it or a re-analysis of an unchanged file goes blank (#675).
+            cache.writeText(key, TRACES_EXTENSION,
+                    RunTraceJson.toJson(RunTraceJson.of(traces)));
+        } catch (RuntimeException e) {
+            System.err.println("warning: what these stages weighed was not cached with the"
+                    + " analysis, so a run served it will not be able to show it: "
                     + e.getMessage());
         }
     }
@@ -1234,6 +1261,15 @@ final class AnalyzeCommand implements Callable<Integer> {
         } catch (RuntimeException e) {
             System.err.println("warning: this run could not be recorded, so the analysis"
                     + " report will not be able to say what it did: " + e.getMessage());
+        }
+        try {
+            // Written whether or not anything traced, so that a previous run's
+            // evidence cannot outlive the run it describes.
+            workspace.writeRunTraces(RunTraceJson.of(runLog.traces()));
+        } catch (RuntimeException e) {
+            System.err.println("warning: what this run's stages weighed could not be"
+                    + " recorded, so the analysis report will not be able to show it: "
+                    + e.getMessage());
         }
     }
 
