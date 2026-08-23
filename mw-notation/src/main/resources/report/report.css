@@ -1,0 +1,179 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ * Licensed under the Apache License, Version 2.0.
+ *
+ * The whole style sheet of the analysis report, inlined into every page it
+ * writes. Nothing here may reference a file: the page has to open with no
+ * network at all.
+ */
+
+:root {
+  --ink: #16181d;
+  --muted: #5d6470;
+  --faint: #8a919d;
+  --rule: #dfe3ea;
+  --panel: #f6f7fa;
+  --accent: #2f6feb;
+  --warn: #b4530a;
+  --page: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 0 4rem;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+header, section, footer { max-width: 62rem; margin: 0 auto; padding: 0 1.25rem; }
+section { margin-top: 3rem; }
+
+header { padding-top: 2.5rem; }
+h1 { font-size: 2rem; line-height: 1.2; margin: 0; }
+h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
+h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
+.artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
+.lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
+
+dl.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: .6rem 1.25rem;
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  border-radius: .5rem;
+}
+dl.summary dt { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em;
+                color: var(--faint); }
+dl.summary dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.caveat { color: var(--warn); font-size: .9rem; margin: .8rem 0 0; }
+
+/* ---------------------------------------------------------------- timeline */
+
+.overview-frame { border: 1px solid var(--rule); border-radius: .5rem; padding: .4rem;
+                  background: var(--page); }
+.overview-frame svg { display: block; width: 100%; height: auto; }
+
+.timeline-frame { display: flex; border: 1px solid var(--rule); border-radius: .5rem;
+                  overflow: hidden; background: var(--page); }
+.lane-labels { flex: 0 0 9.5rem; border-right: 1px solid var(--rule); background: var(--panel); }
+.lane-label { display: flex; flex-direction: column; justify-content: center;
+              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden;
+              line-height: 1.2; }
+.lane-label:last-child { border-bottom: 0; }
+.lane-name { font-size: .78rem; font-weight: 600; }
+.lane-note { font-size: .68rem; color: var(--faint); }
+.strip-scroll { flex: 1 1 auto; overflow-x: auto; overflow-y: hidden; }
+.strip-scroll svg { display: block; }
+
+.readout { min-height: 1.4rem; margin: .5rem 0 0; font-size: .85rem; color: var(--muted);
+           font-variant-numeric: tabular-nums; }
+
+.bar-line { stroke: #c9cfda; stroke-width: 1; }
+.mw-overview .bar-line { stroke: #e9edf3; }
+.mw-overview .beat { stroke: #d3d9e2; }
+.mw-overview .beat.downbeat { stroke: #aab2bf; stroke-width: 1; }
+.beat { stroke: #9aa3b2; stroke-width: 1; }
+.beat.downbeat { stroke: #4b5361; stroke-width: 1.6; }
+.bar-number { font-size: 9px; fill: var(--faint); }
+.time-tick { font-size: 9px; fill: var(--muted); }
+.scale-mark { font-size: 9px; fill: var(--faint); }
+.tempo-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.chord { stroke: rgba(0, 0, 0, .18); stroke-width: .5; }
+.chord.no-chord { stroke-dasharray: 2 2; }
+.chord-name { font-size: 11px; font-weight: 600; fill: #10131a; }
+.key { fill: #e5ecfb; stroke: #b9c9ee; stroke-width: .5; }
+.key-name { font-size: 9px; fill: #2a3a5c; }
+.roll .note { fill: #2f6feb; }
+.roll.playable .note { fill: #17916b; }
+.syllable-tick { stroke: #8a919d; stroke-width: 1; }
+.syllable { font-size: 9px; fill: var(--ink); }
+.melisma .syllable { fill: var(--warn); font-style: italic; }
+.melisma .syllable-tick { stroke: var(--warn); }
+svg .span:hover .chord, svg .span:hover .note { stroke: #000; stroke-width: 1.2; }
+
+/* ------------------------------------------------------------------ phases */
+
+.phase { border: 1px solid var(--rule); border-left-width: 4px; border-radius: .4rem;
+         padding: 1rem 1.1rem; margin: 0 0 1rem; }
+.phase.recorded { border-left-color: #17916b; }
+.phase.recomputed { border-left-color: #3f7fd0; }
+.phase.untraced { border-left-color: #d8a33a; }
+.phase.absent { border-left-color: #b3bac6; }
+.phase-number { display: inline-flex; align-items: center; justify-content: center;
+                width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--panel);
+                color: var(--muted); font-size: .8rem; flex: 0 0 auto; }
+.status { margin-left: auto; font-size: .7rem; text-transform: uppercase;
+          letter-spacing: .05em; color: var(--faint); white-space: nowrap; }
+.what { margin: 0 0 .8rem; color: var(--muted); font-size: .92rem; }
+
+dl.io { display: grid; grid-template-columns: 4.5rem 1fr; gap: .2rem .8rem; margin: 0 0 .9rem;
+        font-size: .88rem; }
+dl.io dt { font-weight: 600; color: var(--faint); font-size: .72rem; text-transform: uppercase;
+           letter-spacing: .04em; padding-top: .15rem; }
+dl.io dd { margin: 0; }
+
+dl.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+           gap: .5rem 1.1rem; margin: 0 0 .9rem; }
+dl.facts dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+              color: var(--faint); }
+dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.readings { margin: 0 0 .9rem; }
+.reading, .tally-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem;
+                       margin-bottom: .3rem; }
+.reading-name, .tally-name { flex: 0 0 14rem; color: var(--muted); }
+.bar { flex: 1 1 auto; height: .55rem; background: var(--rule); border-radius: .3rem;
+       overflow: hidden; }
+.bar .fill { display: block; height: 100%; background: var(--accent); }
+.reading-value, .tally-value { flex: 0 0 3rem; text-align: right;
+                               font-variant-numeric: tabular-nums; }
+
+.histogram { margin: .3rem 0 .9rem; }
+.histogram .columns { display: flex; align-items: flex-end; gap: 1px; height: 60px;
+                      border-bottom: 1px solid var(--rule); }
+.histogram .column { flex: 1 1 0; background: var(--accent); min-height: 1px; }
+.histogram .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                   color: var(--faint); font-variant-numeric: tabular-nums; }
+.histogram figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
+          margin: .3rem 0 .9rem; font-size: .8rem; }
+.legend-lead { color: var(--faint); }
+.chip { display: inline-flex; align-items: center; gap: .3rem; }
+.swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
+          border: 1px solid rgba(0, 0, 0, .15); }
+
+.strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
+.strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
+
+details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
+details.table summary { cursor: pointer; color: var(--accent); }
+details.table table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+details.table th, details.table td { text-align: left; padding: .18rem .5rem;
+                                     border-bottom: 1px solid var(--rule);
+                                     font-variant-numeric: tabular-nums; }
+details.table th { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+                   color: var(--faint); }
+details.table td.symbol { font-weight: 600; }
+details.table td.words { font-variant-numeric: normal; }
+
+.note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
+.gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
+.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+             border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
+             text-transform: uppercase; letter-spacing: .05em; }
+
+footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
+         color: var(--faint); font-size: .82rem; }
+
+@media (max-width: 40rem) {
+  .lane-labels { flex-basis: 6.5rem; }
+  .reading-name, .tally-name { flex-basis: 8rem; }
+}

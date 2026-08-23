@@ -420,6 +420,113 @@ class RenderPartsTest {
     }
 
     @Nested
+    @DisplayName("the analysis report")
+    class Report {
+
+        @Test
+        @DisplayName("is not written unless it is asked for")
+        void optInOnly() {
+            Path workspace = audioWorkspace("no-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/report.html")).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("is one self-contained file, written without an engraver")
+        void writesOneFile() throws java.io.IOException {
+            Path workspace = audioWorkspace("report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            Path page = workspace.resolve("out/report.html");
+            assertThat(page).exists();
+            String html = java.nio.file.Files.readString(page);
+            assertThat(html).startsWith("<!DOCTYPE html>").endsWith("</html>\n");
+            assertThat(html).contains("<style>", "<script>");
+        }
+
+        @Test
+        @DisplayName("is written for a workspace where most stages never ran")
+        void needsNothingInParticular() {
+            // Every other part names a reason and writes nothing. This one is
+            // the page that explains the absences, so refusing to write it for a
+            // score that has them would withhold it from its own audience.
+            Path workspace = audioWorkspace("thin", ChordProgression.empty());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/report.html")).exists();
+        }
+
+        @Test
+        @DisplayName("shows what MW read, not what --transpose moved the chart to")
+        void ignoresTheTransposition() throws java.io.IOException {
+            Path workspace = audioWorkspace("shifted", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "chords,report", "--transpose", "3", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            // The chart moves; the page about the recording does not, and says so.
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/chords.txt")))
+                    .contains("Eb").doesNotContain("| C ");
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("<td class=\"symbol\">C</td>")
+                    .doesNotContain("<td class=\"symbol\">Eb</td>")
+                    .contains("moves the engraved parts and not this page");
+        }
+
+        @Test
+        @DisplayName("a shift that reaches nothing written is named rather than left in the header")
+        void saysWhenTheTranspositionMovedNothing() {
+            Path workspace = audioWorkspace("only-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--transpose", "5", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.out()).contains("Transpose  +5 semitones");
+            assertThat(render.err())
+                    .contains("nothing that was written moves with a transposition");
+        }
+
+        @Test
+        @DisplayName("a shift the chart honours is not reported as reaching nothing")
+        void staysQuietWhenSomethingMoved() {
+            Path workspace = audioWorkspace("chart-and-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "chords,report", "--transpose", "5", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err())
+                    .doesNotContain("nothing that was written moves with a transposition");
+        }
+
+        @Test
+        @DisplayName("names the recording the workspace was made from")
+        void carriesTheWorkspaceIdentity() throws java.io.IOException {
+            Path workspace = audioWorkspace("named", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("named.wav");
+        }
+    }
+
+
+    @Nested
     @DisplayName("a score with no harmony")
     class NoHarmony {
 

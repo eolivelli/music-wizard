@@ -27,7 +27,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Generated LilyPond against its committed golden file.
+ * Generated text against its committed golden file.
  *
  * <p>{@code -Dmw.golden.update=true} rewrites the file from the source tree
  * Maven passes as {@code -Dbasedir}, and the run that does it is expected to
@@ -45,11 +45,16 @@ final class Goldens {
     }
 
     static void assertGolden(String name, String actual) {
+        assertGolden(name, ".ly", actual);
+    }
+
+    /** The same for a golden that is not LilyPond. */
+    static void assertGolden(String name, String extension, String actual) {
         if (Boolean.getBoolean(UPDATE_PROPERTY)) {
             Path target = directory()
                     .orElseThrow(() -> new AssertionError(UPDATE_PROPERTY
                             + " needs the module directory, which Maven passes as -Dbasedir"))
-                    .resolve(name + ".ly");
+                    .resolve(name + extension);
             try {
                 Files.writeString(target, actual);
             } catch (IOException e) {
@@ -57,7 +62,7 @@ final class Goldens {
             }
             System.err.println("updated golden file " + target);
         }
-        assertThat(actual).isEqualTo(read(name));
+        assertThat(actual).isEqualTo(read(name, extension));
     }
 
     /**
@@ -68,8 +73,8 @@ final class Goldens {
      * there made the update mode a trap: every file was rewritten and then
      * compared against what {@code process-test-resources} had already staged.
      */
-    private static String read(String name) {
-        Optional<Path> onDisk = directory().map(dir -> dir.resolve(name + ".ly"))
+    private static String read(String name, String extension) {
+        Optional<Path> onDisk = directory().map(dir -> dir.resolve(name + extension))
                 .filter(Files::isRegularFile);
         if (onDisk.isPresent()) {
             try {
@@ -78,7 +83,8 @@ final class Goldens {
                 throw new UncheckedIOException("could not read golden " + name, e);
             }
         }
-        try (InputStream in = Goldens.class.getResourceAsStream("/golden/" + name + ".ly")) {
+        try (InputStream in =
+                     Goldens.class.getResourceAsStream("/golden/" + name + extension)) {
             if (in == null) {
                 throw new AssertionError("no golden file for " + name);
             }

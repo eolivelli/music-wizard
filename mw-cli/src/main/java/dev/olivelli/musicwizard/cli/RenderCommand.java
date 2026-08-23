@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.notation.AnalysisReport;
 import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LeadSheet;
@@ -123,6 +124,10 @@ final class RenderCommand implements Callable<Integer> {
         // estimate rather than a reading of the recording (#592), so a run that
         // did not ask for one gets the same files it always did.
         PLAYABLE("playable", null, RenderCommand::writePlayableLeadSheet, false),
+        // Asked for by name too. It is a page about the analysis rather than a
+        // part to play from, and a run that wanted a chart should not pay for
+        // it (#673).
+        REPORT("report", null, RenderCommand::writeReport, false, false),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
 
@@ -130,16 +135,23 @@ final class RenderCommand implements Callable<Integer> {
         private final String notImplemented;
         private final Emitter emitter;
         private final boolean writtenByDefault;
+        private final boolean movesWithTheKey;
 
         Part(String partName, String notImplemented, Emitter emitter) {
             this(partName, notImplemented, emitter, true);
         }
 
         Part(String partName, String notImplemented, Emitter emitter, boolean writtenByDefault) {
+            this(partName, notImplemented, emitter, writtenByDefault, true);
+        }
+
+        Part(String partName, String notImplemented, Emitter emitter, boolean writtenByDefault,
+             boolean movesWithTheKey) {
             this.partName = partName;
             this.notImplemented = notImplemented;
             this.emitter = emitter;
             this.writtenByDefault = writtenByDefault;
+            this.movesWithTheKey = movesWithTheKey;
         }
 
         String partName() {
@@ -241,6 +253,16 @@ final class RenderCommand implements Callable<Integer> {
             return java.util.Arrays.stream(values()).filter(Part::isImplemented).toList();
         }
 
+        /**
+         * Whether {@code --transpose} reaches this part.
+         *
+         * <p>Recorded so that a run whose shift reaches nothing written can say
+         * so, under the rule {@link #warnAboutOptionsThatDoNothing} states.
+         */
+        boolean movesWithTheKey() {
+            return movesWithTheKey;
+        }
+
         /** What an unqualified run writes: everything implemented that is not opt-in. */
         static List<Part> byDefault() {
             return implemented().stream().filter(part -> part.writtenByDefault).toList();
@@ -281,12 +303,12 @@ final class RenderCommand implements Callable<Integer> {
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
             description = "Which parts to render: chords, lyrics, lead, voice, playable, "
-                    + "bass, piano. The lead sheet, the voice staff and the playable lead "
-                    + "sheet need a score analysed with --melody; bass and piano cannot be "
-                    + "produced at all yet, and naming any part reports why it cannot be "
-                    + "produced. Defaults to every part that is implemented except "
-                    + "playable, which is an arrangement of the melody rather than a "
-                    + "reading of it and is written only when asked for.")
+                    + "report, bass, piano. The lead sheet, the voice staff and the playable "
+                    + "lead sheet need a score analysed with --melody; report is a "
+                    + "self-contained HTML page showing what every analysis stage did; bass "
+                    + "and piano cannot be produced at all yet, and naming any part reports "
+                    + "why it cannot be produced. Defaults to every part that is implemented "
+                    + "except playable and report, which are written only when asked for.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
@@ -397,6 +419,13 @@ final class RenderCommand implements Callable<Integer> {
                 warnings.addAll(emitted.warnings());
                 chartWritten |= part == Part.CHORDS;
             }
+        }
+
+        if (semitones != 0 && !producible.isEmpty()
+                && producible.stream().noneMatch(Part::movesWithTheKey)) {
+            warnings.add("nothing that was written moves with a transposition: the analysis"
+                    + " report shows the recording as MW read it, so the " + semitones
+                    + "-semitone shift applies to none of them");
         }
 
         if (!written.isEmpty()) {
@@ -575,6 +604,38 @@ final class RenderCommand implements Callable<Integer> {
         return writeStaffOutput(workspace, score.withTrack(PlayableMelody.reduce(score)),
                 lilypond, "lead-playable", QuantizationSettings.READING,
                 (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+    }
+
+    /**
+     * Writes the analysis report — one HTML file, no engraver involved.
+     *
+     * <p>Named no reason by {@link Part#unavailableReason}, and that is the
+     * point of it: a workspace where only some stages ran gets a page saying so
+     * for each, which is exactly the workspace whose owner wants to know why.
+     *
+     * <p>It reads the workspace's own score rather than the one this run is
+     * engraving, which {@code --transpose} may have moved: a chart in E flat
+     * would otherwise come with a page saying MW heard E flat, under the
+     * analysed confidences. It is spelled here rather than sharing the spelling
+     * every other part uses, for the same reason — the spelling follows the key,
+     * and this page is in a different one.
+     */
+    private static Emitted writeReport(Workspace workspace, Score beingEngraved,
+                                       Optional<Path> lilypond, ChartOptions options) {
+        Path out = workspace.outputDirectory();
+        try {
+            Files.createDirectories(out);
+            Score asAnalysed = ChordSpeller.respell(workspace.readScore().orElseThrow(
+                    () -> new IllegalStateException("the transcription vanished mid-render")));
+            Workspace.Descriptor descriptor = workspace.readDescriptor();
+            Path html = out.resolve("report.html");
+            Files.writeString(html, AnalysisReport.toHtml(asAnalysed,
+                    new AnalysisReport.Recording(descriptor.sourceFileName(),
+                            descriptor.sourceSha256(), descriptor.createdAt())));
+            return new Emitted(List.of(html), List.of());
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write output", e);
+        }
     }
 
     /** Writes the melody on a staff of its own, with no chords and no words. */

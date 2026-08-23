@@ -62,7 +62,10 @@ chords-and-lyrics sheet, the lead sheet and the melody staff — and names the
 ones it could not produce, with the reason. `--parts playable`
 adds a second lead sheet whose melody has been reduced to what a player
 reads; it is written only when named, being an arrangement of MW's estimate
-rather than a reading of the recording. Ask for a part that is not
+rather than a reading of the recording. `--parts report` writes
+`out/report.html`, one self-contained page showing what each analysis stage
+took in, decided and produced — including, for the stages whose reasoning the
+workspace does not keep, that it does not keep it. Ask for a part that is not
 implemented (`--parts piano`) and it says so and why rather than listing it
 and writing nothing.
 
