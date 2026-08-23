@@ -216,14 +216,15 @@ public final class AudioTranscriber {
         Options settings = options != null ? options : Options.defaults();
 
         progress.accept("decoding " + file.getFileName());
-        AudioBuffer audio = AudioDecoder.decode(file);
+        AudioDecoder.Decoded decoded = AudioDecoder.decodeAndDescribe(file);
+        AudioBuffer audio = decoded.audio();
         if (audio.isEffectivelySilent()) {
             throw new IllegalArgumentException(
                     "the recording is silent, so there is nothing to transcribe: " + file);
         }
         progress.accept(String.format(Locale.ROOT, "decoded %.1fs at %d Hz",
                 audio.durationSeconds(), audio.sampleRate()));
-        recordDecode(file, audio);
+        recordDecode(decoded);
 
         return transcribe(audio, settings, vocalStem);
     }
@@ -471,18 +472,16 @@ public final class AudioTranscriber {
     }
 
     /** What the file was and what it became, for the run's record. */
-    private void recordDecode(Path file, AudioBuffer audio) {
-        RunLog.Stage stage = runLog.stage("decode");
-        AudioDecoder.describe(file).ifPresent(format -> {
-            stage.fact("format", format.type().equals(format.encoding())
-                    ? format.type() : format.type() + ", " + format.encoding());
-            if (format.sampleRate() > 0) {
-                stage.fact("sample rate as stored", format.sampleRate() + " Hz");
-            }
-            if (format.channels() > 0) {
-                stage.fact("channels as stored", format.channels());
-            }
-        });
+    private void recordDecode(AudioDecoder.Decoded decoded) {
+        AudioDecoder.SourceFormat source = decoded.source();
+        AudioBuffer audio = decoded.audio();
+        RunLog.Stage stage = runLog.stage("decode").fact("format", source.encoding());
+        if (source.sampleRate() > 0) {
+            stage.fact("sample rate as stored", source.sampleRate() + " Hz");
+        }
+        if (source.channels() > 0) {
+            stage.fact("channels as stored", source.channels());
+        }
         stage.fact("read as", "mono at " + audio.sampleRate() + " Hz")
                 .fact("duration as decoded",
                         String.format(Locale.ROOT, "%.2f s", audio.durationSeconds()))

@@ -602,6 +602,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             // already means "recompute what you kept", so it reaches here too.
             System.out.println("  lyrics kept from the previous analysis;"
                     + " pass --lyrics to replace them or --force to re-transcribe");
+            runLog.stage("lyric-transcription").skipped("the words the previous analysis"
+                    + " placed were kept; --force re-transcribes");
             return score;
         }
         MusicWizardConfig.MlConfig ml = config.ml();
@@ -619,7 +621,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         String wanted = ml == null ? null : ml.asrProvider();
         var provider = MlProviders.asr(wanted);
         if (provider.isEmpty()) {
-            runLog.stage("lyrics").skipped("no ASR provider"
+            runLog.stage("lyric-transcription").skipped("no ASR provider"
                     + (wanted == null || wanted.isBlank()
                             ? " is configured (ml.asrProvider)"
                             : " named '" + wanted + "' is on this classpath"));
@@ -637,7 +639,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             System.out.println("  lyrics not transcribed: " + provider.get().id()
                     + " speaks " + provider.get().languages()
                     + ", asked for '" + lyricsLanguage + "'");
-            runLog.stage("lyrics").fact("provider", provider.get().id())
+            runLog.stage("lyric-transcription").fact("provider", provider.get().id())
                     .skipped(provider.get().id() + " speaks " + provider.get().languages()
                             + ", asked for '" + lyricsLanguage + "'");
             return score;
@@ -647,7 +649,7 @@ final class AnalyzeCommand implements Callable<Integer> {
             var segments = VocalSegments.split(voice.samples(), voice.sampleRate());
             if (segments.isEmpty()) {
                 System.out.println("  lyrics not transcribed: no sung stretches found");
-                runLog.stage("lyrics").fact("provider", provider.get().id())
+                runLog.stage("lyric-transcription").fact("provider", provider.get().id())
                         .skipped("no sung stretches were found to transcribe");
                 return score;
             }
@@ -675,9 +677,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                 System.out.println("  lyrics not transcribed: " + provider.get().id()
                         + " heard no words in " + counted(segments.size(),
                                 "sung stretch", "sung stretches"));
-                runLog.stage("lyrics").fact("provider", provider.get().id())
-                        .computed(provider.get().id() + " heard no words in "
-                                + counted(segments.size(), "sung stretch", "sung stretches"));
+                runLog.stage("lyric-transcription").fact("provider", provider.get().id())
+                        .fact("sung stretches", segments.size())
+                        .computed(provider.get().id() + " heard no words in them");
                 return score;
             }
             System.out.println("  transcribed " + counted(lyrics.lines().size(),
@@ -685,28 +687,31 @@ final class AnalyzeCommand implements Callable<Integer> {
                     "sung stretch", "sung stretches") + " with " + provider.get().id()
                     + (failed > 0 ? "; " + counted(failed, "stretch", "stretches")
                             + " failed" : ""));
+            runLog.stage("lyric-transcription")
+                    .fact("provider", provider.get().id())
+                    .fact("sung stretches", segments.size())
+                    .computed(failed > 0
+                            ? counted(failed, "stretch", "stretches") + " failed" : null);
             runLog.stage("lyrics")
                     .fact("words from", "the recording, transcribed with "
                             + provider.get().id())
                     .fact("language", lyrics.language())
                     .fact("lines", lyrics.lines().size())
-                    .fact("sung stretches", segments.size())
-                    .computed(failed > 0
-                            ? counted(failed, "stretch", "stretches") + " failed" : null);
+                    .computed();
             // The recognizer knows the words but not their times; the aligner
             // measures onsets, and only for lyrics transcribed in this run.
             return withAlignedLyrics(workspace, score.withLyrics(lyrics));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics not transcribed: " + e.getMessage());
-            runLog.stage("lyrics").fact("provider", provider.get().id())
-                    .failed("lyrics not transcribed: " + e.getMessage());
+            runLog.stage("lyric-transcription").fact("provider", provider.get().id())
+                    .failed(e.getMessage());
             return score;
         } catch (RuntimeException e) {
             // A transcriber defect must not take down an analysis that already
             // succeeded; without it the score is simply what it always was.
             System.err.println("warning: lyric transcription failed: " + e.getMessage());
-            runLog.stage("lyrics").fact("provider", provider.get().id())
-                    .failed("lyric transcription failed: " + e.getMessage());
+            runLog.stage("lyric-transcription").fact("provider", provider.get().id())
+                    .failed(e.getMessage());
             return score;
         }
     }
@@ -1024,8 +1029,9 @@ final class AnalyzeCommand implements Callable<Integer> {
      *
      * <p>They are facts about the input and the options, which is exactly what
      * the key is made of, so a run served the answer is served the record with
-     * it. An entry written before there was one leaves the single line that
-     * says so, rather than leaving the page to imply that no stage ran.
+     * it — and the outcome says which run they describe. A cache entry stored
+     * without them leaves the single line saying so, rather than leaving the
+     * page to imply that no stage ran.
      */
     private void recordCachedStages(StageCache cache, StageCache.Key key) {
         List<RunManifest.StageRun> stages;
@@ -1037,8 +1043,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             stages = List.of();
         }
         if (stages.isEmpty()) {
-            runLog.stage("analysis").cached("this file's cached analysis was computed"
-                    + " before runs were recorded, so what its stages did is not known");
+            runLog.stage("analysis").cached("no record of what its stages did is stored"
+                    + " with this file's cached analysis");
             return;
         }
         runLog.recordAll(stages.stream().map(RunManifest.StageRun::asCached).toList());
@@ -1195,6 +1201,10 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (!recorded("lyrics")) {
             runLog.stage("lyrics")
                     .skipped("no words were supplied to this run and none were transcribed");
+        }
+        if (!recorded("lyric-transcription")) {
+            runLog.stage("lyric-transcription")
+                    .skipped("no words were transcribed from the recording in this run");
         }
         if (!recorded("lyric-alignment")) {
             runLog.stage("lyric-alignment").skipped("this run placed no new words to align");

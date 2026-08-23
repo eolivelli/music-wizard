@@ -135,6 +135,20 @@ class RunManifestTest {
         }
 
         @Test
+        @DisplayName("replays as served from the cache only where there was an answer")
+        void onlyAnAnswerComesFromTheCache() {
+            // A stage that did not run, or that failed, has nothing the cache
+            // could have held; saying it came from there would put it in the
+            // colour a stage that ran is drawn in.
+            assertThat(new StageRun("decode", Outcome.COMPUTED, null, Map.of())
+                    .asCached().outcome()).isEqualTo(Outcome.CACHED);
+            assertThat(new StageRun("melody", Outcome.SKIPPED, "not asked for", Map.of())
+                    .asCached().outcome()).isEqualTo(Outcome.SKIPPED);
+            assertThat(new StageRun("separation", Outcome.FAILED, "no model", Map.of())
+                    .asCached().outcome()).isEqualTo(Outcome.FAILED);
+        }
+
+        @Test
         @DisplayName("keeps its facts in the order the stage wrote them")
         void keepsFactOrder() {
             Map<String, String> facts = new LinkedHashMap<>();

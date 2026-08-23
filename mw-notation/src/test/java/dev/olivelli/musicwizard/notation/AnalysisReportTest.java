@@ -81,38 +81,45 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING);
 
         assertThat(page).contains("recorded nothing about its own run");
-        // The three the record would answer keep saying they are unanswered.
-        assertThat(page).contains("neither are the sample rate, the channel count",
-                "Whether a separator ran, which provider it was",
-                "the workspace holds the result and not its provenance");
+        // The four the record would answer keep saying they are unanswered.
+        assertThat(page).contains(
+                "does not say which of the two happened",
+                "does not say whether a separator ran",
+                "does not say which signal these notes were read from",
+                "does not say whether the words were supplied or transcribed");
         assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
+        assertThat(page).doesNotContain("Last run");
     }
 
     @Test
-    @DisplayName("the run's own outcomes outrank what the score alone can say")
-    void theRunsOutcomesAreWhatThePageShows() {
+    @DisplayName("what the run did and what the score holds are two statements, not one")
+    void theRunAndTheScoreAreStatedSeparately() {
         String page = AnalysisReport.toHtml(
                 ReportFixtures.everything(), RECORDING, ReportFixtures.run());
 
+        // Where the score cannot speak for a stage, the run's outcome is what
+        // the page has.
         assertThat(statusOf(page, "decode")).isEqualTo("ran");
         assertThat(statusOf(page, "separation")).isEqualTo("failed");
-        assertThat(statusOf(page, "beats"))
-                .as("a stage served from the cache did not run in this run")
-                .isEqualTo("from the cache");
-        assertThat(statusOf(page, "melody")).isEqualTo("did not run");
-        assertThat(page).doesNotContain("the workspace holds the result and not its"
-                + " provenance");
+        // Where it can, the badge stays the score's, because the phase goes on
+        // to draw what the score holds -- and the run's line says what the run
+        // did with it, which is a different question and here a different
+        // answer.
+        assertThat(statusOf(page, "beats")).isEqualTo("output on disk");
+        assertThat(statusOf(page, "melody")).isEqualTo("output on disk");
+        assertThat(page).contains("Last run</span>beats: from the cache");
+        assertThat(page).contains("Last run</span>melody: did not run — not asked for");
         // Every gap the record does not fill is still stated.
         assertThat(page).contains("(#675)", "(#676)", "(#677)", "(#678)", "(#679)",
                 "(#680)", "(#684)");
     }
 
     @Test
-    @DisplayName("a stage the run did not reach is a fact about the run, not about MW")
+    @DisplayName("a stage the run did not reach is stated, and not as a missing record")
     void aStageTheRunNeverReachedIsWordedAsThat() {
         // A MIDI workspace decodes nothing, so its record names no decode. The
-        // page may not answer that with the sentence it uses for a workspace
-        // that records nothing at all, which would now be false.
+        // page has to say the question is unanswered without claiming the
+        // workspace records nothing, which is no longer true of it.
         RunManifest readSymbolically = new RunManifest(
                 RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
                 "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
@@ -122,8 +129,9 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(
                 ReportFixtures.chordsOnly(), RECORDING, readSymbolically);
 
-        assertThat(page).contains("did not reach this stage");
-        assertThat(page).doesNotContain("neither are the sample rate, the channel count");
+        assertThat(page).contains("does not say which of the two happened");
+        assertThat(page).doesNotContain("recorded nothing about its own run");
+        assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
     }
 
     @Test

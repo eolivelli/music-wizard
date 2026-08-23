@@ -181,9 +181,11 @@ details.table td.words { font-variant-numeric: normal; }
 
 .note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
 .gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
-.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+.ran { font-size: .85rem; color: var(--ink); margin: .3rem 0 .6rem; }
+.gap-label, .ran-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
              border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
              text-transform: uppercase; letter-spacing: .05em; }
+.ran-label { color: var(--faint); }
 
 footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
          color: var(--faint); font-size: .82rem; }

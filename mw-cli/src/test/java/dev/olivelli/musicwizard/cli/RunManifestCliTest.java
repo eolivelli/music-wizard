@@ -64,9 +64,17 @@ class RunManifestCliTest {
 
     /** Points the workspace at one separation provider by id. */
     private void configureSeparation(String id) throws IOException {
+        configureMl("separationProvider: " + id);
+    }
+
+    /** Writes one ml block into the workspace's own config layer. */
+    private void configureMl(String... keys) throws IOException {
         Path descriptor = workspaceDirectory.resolve("workspace.yaml");
-        Files.writeString(descriptor, Files.readString(descriptor)
-                + "\nconfig:\n  ml:\n    separationProvider: " + id + "\n");
+        StringBuilder block = new StringBuilder("\nconfig:\n  ml:\n");
+        for (String key : keys) {
+            block.append("    ").append(key).append('\n');
+        }
+        Files.writeString(descriptor, Files.readString(descriptor) + block);
     }
 
     private RunManifest manifest() {
@@ -140,6 +148,8 @@ class RunManifestCliTest {
         assertThat(stage("decode").outcome()).isEqualTo(Outcome.CACHED);
         assertThat(stage("decode").facts()).containsKey("format");
         assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
+        // A stage that did not run has no answer the cache could have held.
+        assertThat(stage("melody").outcome()).isEqualTo(Outcome.SKIPPED);
         // Separation is not under the cache key: a cached run separates nothing
         // and must not claim the previous run's answer.
         assertThat(stage("separation").outcome()).isEqualTo(Outcome.SKIPPED);
@@ -161,7 +171,7 @@ class RunManifestCliTest {
         analyze();
 
         assertThat(stage("analysis").outcome()).isEqualTo(Outcome.CACHED);
-        assertThat(stage("analysis").reason()).contains("before runs were recorded");
+        assertThat(stage("analysis").reason()).contains("no record of what its stages did");
         assertThat(manifest().stage("decode")).isEmpty();
     }
 
@@ -201,6 +211,29 @@ class RunManifestCliTest {
         assertThat(stage("separation").outcome()).isEqualTo(Outcome.SKIPPED);
         assertThat(stage("separation").reason()).isEqualTo("--skip-separation");
         assertThat(stage("melody").facts()).containsEntry("read from", "the full mix");
+    }
+
+    @Test
+    @DisplayName("words kept from a previous analysis are still named as their own source")
+    void keptWordsKeepTheirProvenance() throws IOException {
+        // --force re-transcribes over carried words, so both the line saying
+        // where the score's words came from and the line saying what the
+        // recognizer did are written in one run. The recognizer's failure is
+        // not a statement about words it never replaced.
+        Path lrc = directory.resolve("band.lrc");
+        Files.writeString(lrc, "[00:01.00]hello there\n[00:03.00]my old friend\n");
+        analyze("--lyrics", lrc.toString(), "--lyrics-language", "en");
+        assertThat(stage("lyrics").facts()).containsEntry("words from", "the file band.lrc");
+        configureMl("asrProvider: no-such-asr");
+
+        analyze("--force", "--lyrics-language", "en");
+
+        assertThat(stage("lyrics").outcome()).isEqualTo(Outcome.COMPUTED);
+        assertThat(stage("lyrics").facts())
+                .containsEntry("words from", "the previous analysis of this workspace")
+                .containsEntry("lines", "2");
+        assertThat(stage("lyric-transcription").outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(stage("lyric-transcription").reason()).contains("no-such-asr");
     }
 
     @Test

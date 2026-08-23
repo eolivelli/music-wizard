@@ -187,9 +187,11 @@ details.table td.words { font-variant-numeric: normal; }
 
 .note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
 .gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
-.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+.ran { font-size: .85rem; color: var(--ink); margin: .3rem 0 .6rem; }
+.gap-label, .ran-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
              border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
              text-transform: uppercase; letter-spacing: .05em; }
+.ran-label { color: var(--faint); }
 
 footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
          color: var(--faint); font-size: .82rem; }
@@ -370,6 +372,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>nothing — a decode has no choices to make</dd>
 <dt>Out</dt><dd>one signal, and how long the recording is</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>decode: ran</p>
 <dl class="facts">
 <dt>format</dt><dd>MP3, MPEG-1, Layer 3</dd>
 <dt>sample rate as stored</dt><dd>44100 Hz</dd>
@@ -386,18 +389,19 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>whether a separator could be reached at all</dd>
 <dt>Out</dt><dd>a vocal stem, held in memory and never written to the workspace</dd>
 </dl>
-<p class="note">the model could not be reached</p>
+<p class="ran"><span class="ran-label">Last run</span>separation: failed — the model could not be reached</p>
 <dl class="facts">
 <dt>provider</dt><dd>spleeter-2stems</dd>
 </dl>
 </article>
-<article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">from the cache</span></h3>
+<article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">output on disk</span></h3>
 <p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and frame-level chroma for the harmonic rhythm</dd>
 <dt>Decided</dt><dd>the pulse, which pulse begins a bar, and the rate to hold</dd>
 <dt>Out</dt><dd>a beat grid and a tempo map</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>beats: from the cache</p>
 <dl class="facts">
 <dt>Beats tracked</dt><dd>16</dd>
 <dt>Downbeats</dt><dd>4</dd>
@@ -504,14 +508,14 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </div>
 <p class="gap"><span class="gap-label">Not recorded</span>The chord evidence each of the two decisions weighed is not recorded, so the page can show that they disagree but not why (#678).</p>
 </article>
-<article class="phase absent" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">did not run</span></h3>
+<article class="phase recorded" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">output on disk</span></h3>
 <p class="what">A monophonic pitch tracker follows the loudest periodic line in whatever signal it is handed, and the result is segmented into notes. On a full mix that line is usually not the singer, which is why the stage is off unless it is asked for.</p>
 <dl class="io">
 <dt>In</dt><dd>the vocal stem where a separator could be had, and the mix otherwise</dd>
 <dt>Decided</dt><dd>where one note ends and the next begins</dd>
 <dt>Out</dt><dd>a note track, in seconds</dd>
 </dl>
-<p class="note">not asked for; analyze --melody reads one</p>
+<p class="ran"><span class="ran-label">Last run</span>melody: did not run — not asked for; analyze --melody reads one</p>
 <dl class="facts">
 <dt>Notes</dt><dd>8</dd>
 <dt>Range</dt><dd>B4..F5</dd>
@@ -529,18 +533,19 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <figcaption>How long the notes are, in seconds</figcaption></figure>
 <p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
 </article>
-<article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">ran</span></h3>
+<article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
 <p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>
 <dl class="io">
 <dt>In</dt><dd>a vocal stem, and either supplied words or transcribed ones</dd>
 <dt>Decided</dt><dd>where each syllable is sung, and which syllable the melody moves under</dd>
 <dt>Out</dt><dd>lines of timed syllables</dd>
 </dl>
+<p class="ran"><span class="ran-label">Last run</span>lyrics: ran</p>
 <dl class="facts">
 <dt>words from</dt><dd>the file song.lrc</dd>
 <dt>language</dt><dd>en</dd>
 </dl>
-<p class="note">no alignment provider is configured (ml.alignmentProvider)</p>
+<p class="ran"><span class="ran-label">Last run</span>lyric alignment: did not run — no alignment provider is configured (ml.alignmentProvider)</p>
 <dl class="facts">
 <dt>Language</dt><dd>en</dd>
 <dt>Lines</dt><dd>2</dd>

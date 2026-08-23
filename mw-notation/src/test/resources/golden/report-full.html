@@ -187,9 +187,11 @@ details.table td.words { font-variant-numeric: normal; }
 
 .note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
 .gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
-.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+.ran { font-size: .85rem; color: var(--ink); margin: .3rem 0 .6rem; }
+.gap-label, .ran-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
              border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
              text-transform: uppercase; letter-spacing: .05em; }
+.ran-label { color: var(--faint); }
 
 footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
          color: var(--faint); font-size: .82rem; }
@@ -342,7 +344,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dl class="facts">
 <dt>Length</dt><dd>0:08  (8s)</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Which of the two happened is not written to the workspace, and neither are the sample rate, the channel count and the decoder that read the file (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace's record of its run does not say which of the two happened, nor what the file was, nor what it was read as (#674).</p>
 </article>
 <article class="phase untraced" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">no trace kept</span></h3>
 <p class="what">A separator splits the mix into a vocal and an accompaniment. Only the melody stage reads it. Chords are always estimated from the full mix, because separation artifacts destroy the partial structure chroma estimation depends on.</p>
@@ -351,7 +353,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Decided</dt><dd>whether a separator could be reached at all</dd>
 <dt>Out</dt><dd>a vocal stem, held in memory and never written to the workspace</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Whether a separator ran, which provider it was, and whether the melody stage read its stem or fell back to the mix are not recorded — so this page cannot tell you which signal the melody below was read from (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace's record of its run does not say whether a separator ran, or which provider it was (#674).</p>
 </article>
 <article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">output on disk</span></h3>
 <p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
@@ -488,6 +490,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:20px" title="2 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="6 of them"></span></div>
 <div class="axis"><span>0.125</span><span>0.5</span></div>
 <figcaption>How long the notes are, in seconds</figcaption></figure>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace's record of its run does not say which signal these notes were read from (#674).</p>
 <p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
 </article>
 <article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
@@ -516,7 +519,8 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <tr><td>2</td><td>0:04</td><td class="words">it did</td><td>2</td></tr>
 </tbody></table>
 </details>
-<p class="gap"><span class="gap-label">Not recorded</span>Whether the words were supplied or transcribed, and the path the aligner took through them, are not recorded — the workspace holds the result and not its provenance (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace's record of its run does not say whether the words were supplied or transcribed (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>What the aligner did inside a line — the window it searched, and why a line kept its parsed times instead of being measured — is not recorded (#684).</p>
 </article>
 <article class="phase recomputed" id="phase-quantization"><h3><span class="phase-number">9</span>Quantization<span class="status">recomputed here</span></h3>
 <p class="what">Every sounding thing is put on a grid of beat subdivisions, chosen per bar, because a page has to name a duration. Three onsets a third of a beat apart and three a half beat apart are both legal on the underlying grid, so the subdivision is a decision and not a rounding.</p>

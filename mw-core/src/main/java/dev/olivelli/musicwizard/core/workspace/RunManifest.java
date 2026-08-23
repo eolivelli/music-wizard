@@ -31,11 +31,16 @@ import java.util.Optional;
  * cache key is computed from it, so writing it cannot change what a workspace
  * would otherwise hold.
  *
- * <p>Stages are listed in the order they ran, and each names itself. Nothing
- * here enumerates the stages there are, so a stage begins reporting by
+ * <p>Stages are listed in the order they reported, and each names itself.
+ * Nothing here enumerates the stages there are, so a stage begins reporting by
  * recording an entry and a reader shows what it finds — which is what lets a
  * page describe a manifest written by a build that knew more stages than it
  * does.
+ *
+ * <p>An entry says what the run did with a stage, which is not the same
+ * question as whether the stage's output is in the score: a run served a
+ * cached answer, or one that kept the words a previous analysis placed, did
+ * not run the stage that produced what the score holds.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record RunManifest(
@@ -97,9 +102,17 @@ public record RunManifest(
                     ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(facts));
         }
 
-        /** The same entry as it is reported by a run that was served the cached answer. */
+        /**
+         * The same entry as it is reported by a run that was served the cached
+         * answer.
+         *
+         * <p>Only a computed stage has an answer to be served, so that is the
+         * only outcome this changes: a stage that did not run, or that failed,
+         * replays as what it was.
+         */
         public StageRun asCached() {
-            return new StageRun(stage, Outcome.CACHED, reason, facts);
+            return outcome == Outcome.COMPUTED
+                    ? new StageRun(stage, Outcome.CACHED, reason, facts) : this;
         }
     }
 
