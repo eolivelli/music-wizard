@@ -217,11 +217,14 @@ final class ReportPhases {
         boolean any = !score.chords().isEmpty();
         open("chords", "Chord decoding and the quality decision",
                 any ? Status.RECORDED : Status.ABSENT,
-                "A decoder reads a root out of both registers with the bass as a prior over"
-                        + " roots, and the quality out of the treble once per chord rather"
-                        + " than once per beat. The two vocabularies are not the same one:"
-                        + " a quality the decoder may choose competes across roots.");
-        inOut("beat-synchronous chroma, its residual, and the tracked beats",
+                "On a recording, a decoder reads a root out of both registers with the bass"
+                        + " as a prior over roots, and the quality out of the treble once per"
+                        + " chord rather than once per beat; the two vocabularies are not the"
+                        + " same one, since a quality the decoder may choose competes across"
+                        + " roots. A score read from a MIDI file has its chords named from"
+                        + " the notes the file declares instead.");
+        inOut("beat-synchronous chroma, its residual and the tracked beats on a recording;"
+                        + " the declared notes on a MIDI file",
                 "where a chord changes, its root, and its quality",
                 "one labelled span per chord");
         if (!any) {
@@ -253,10 +256,9 @@ final class ReportPhases {
         qualityChart();
         rootLegend(spans);
         chordTable(spans);
-        note("The chord symbols on this page are spelled for the key the piece is being"
-                + " written in, which is a decision taken when the page is rendered rather"
-                + " than when the recording was analysed: the estimator writes every black"
-                + " key as a sharp.");
+        note("The chord symbols on this page are spelled for the key MW read, which is a"
+                + " decision taken when the page is written rather than when the recording"
+                + " was analysed: the estimator writes every black key as a sharp.");
         gap("Which candidate roots lost, what the residual gate admitted or refused, how"
                 + " the third was settled across the run, and what the bass prior"
                 + " contributed are all decided inside the estimator and none of it is"
@@ -267,11 +269,14 @@ final class ReportPhases {
     private void key() {
         boolean any = !score.keys().isEmpty();
         open("key", "Key", any ? Status.RECORDED : Status.ABSENT,
-                "The key is read from the estimated chords rather than from chroma, and it"
-                        + " is two decisions of very different reliability: which key"
-                        + " signature the piece is written in, and which of a relative pair"
-                        + " is home. The second is the one that fails.");
-        inOut("the chord spans", "a key signature, and a tonic within it",
+                "On a recording the key is read from the estimated chords rather than from"
+                        + " chroma, and it is two decisions of very different reliability:"
+                        + " which key signature the piece is written in, and which of a"
+                        + " relative pair is home. The second is the one that fails. A score"
+                        + " read from a MIDI file takes the key its own meta event declares,"
+                        + " and is certain of it because the file said so.");
+        inOut("the chord spans on a recording; a declared key signature on a MIDI file",
+                "a key signature, and a tonic within it",
                 "one key span, with a confidence for each decision");
         if (!any) {
             note("No key was estimated, which is what happens when no chord sounds.");

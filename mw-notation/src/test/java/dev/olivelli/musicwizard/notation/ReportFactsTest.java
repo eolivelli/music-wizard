@@ -183,6 +183,22 @@ class ReportFactsTest {
     }
 
     @Test
+    @DisplayName("a tempo whose beat is no binary fraction of a second counts the same")
+    void barsAreCountedAtAnyTempo() {
+        // The end is a beat converted from seconds converted from beats, and at
+        // 120 every step is exact. At 100 the round trip lands a few ulps past
+        // the closing bar line, which used to be counted as a bar of its own.
+        TempoMap map = TempoMap.constant(100, TimeSignature.FOUR_FOUR);
+        for (int bars : new int[] {7, 14, 28, 56, 61}) {
+            double end = map.beatsToSeconds(bars * 4.0);
+            assertThat(ReportFacts.barCount(map, end))
+                    .as("%d bars at 100 beats a minute", bars).isEqualTo(bars);
+        }
+        // And a genuinely part-filled last bar is still counted.
+        assertThat(ReportFacts.barCount(map, map.beatsToSeconds(26.0))).isEqualTo(7);
+    }
+
+    @Test
     @DisplayName("the bar count is the tempo map's, never the number of lines drawn")
     void theBarCountIgnoresTheDrawingCap() {
         // Far more bars than the axis draws: the count must not report the cap.

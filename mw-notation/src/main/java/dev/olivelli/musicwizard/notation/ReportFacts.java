@@ -53,6 +53,14 @@ final class ReportFacts {
      */
     static final int MAX_BAR_LINES = 4000;
 
+    /**
+     * How far past a bar line a position may sit and still be on it.
+     *
+     * <p>Relative to the position, because the error of the round trip that
+     * produced it grows with how far into the piece it is.
+     */
+    private static final double ON_THE_LINE = 1e-9;
+
     private ReportFacts() {
     }
 
@@ -105,8 +113,15 @@ final class ReportFacts {
             return 0;
         }
         MusicalTime end = tempoMap.toMusicalTime(lastBeat);
-        return end.beatInBar() > 0 ? end.bar() + 1 : end.bar();
+        // Compared against a tolerance rather than against zero. The end is a
+        // beat converted from seconds that were converted from beats, and at
+        // any tempo whose beat is not an exact binary fraction of a second the
+        // round trip lands a few ulps past the bar line -- which read as a bar
+        // of its own, beside the quantizer's correct count on the same page.
+        return end.beatInBar() > ON_THE_LINE * Math.max(1, lastBeat)
+                ? end.bar() + 1 : end.bar();
     }
+
 
     /** How many spans each quality was named on, in the vocabulary's own order. */
     static Map<ChordQuality, Integer> chordQualities(ChordProgression chords) {

@@ -233,7 +233,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <section id="phases">
 <h2>Phase by phase</h2>
 <p class="lede">Each stage below answers the same three questions from the workspace and from nothing else: what reached it, what it decided, and what it left behind. Where it decided something the workspace does not keep, it says so.</p>
-<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where the first of them have nothing to do — and the workspace does not record which path produced this one, so each stage describes what it does rather than asserting that it ran.</p>
+<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where some of them have nothing to do and the rest work by other means — and the workspace does not record which path produced this one, so each stage describes what it does rather than asserting that it ran.</p>
 <article class="phase untraced" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">no trace kept</span></h3>
 <p class="what">A recording is read to mono samples at the analysis rate, and everything after this point works from those samples. A score read from a MIDI file is read symbolically instead and decodes nothing.</p>
 <dl class="io">
@@ -285,18 +285,18 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
 </article>
 <article class="phase absent" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">did not run</span></h3>
-<p class="what">A decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat. The two vocabularies are not the same one: a quality the decoder may choose competes across roots.</p>
+<p class="what">On a recording, a decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat; the two vocabularies are not the same one, since a quality the decoder may choose competes across roots. A score read from a MIDI file has its chords named from the notes the file declares instead.</p>
 <dl class="io">
-<dt>In</dt><dd>beat-synchronous chroma, its residual, and the tracked beats</dd>
+<dt>In</dt><dd>beat-synchronous chroma, its residual and the tracked beats on a recording; the declared notes on a MIDI file</dd>
 <dt>Decided</dt><dd>where a chord changes, its root, and its quality</dd>
 <dt>Out</dt><dd>one labelled span per chord</dd>
 </dl>
 <p class="note">This score holds no chord progression.</p>
 </article>
 <article class="phase absent" id="phase-key"><h3><span class="phase-number">6</span>Key<span class="status">did not run</span></h3>
-<p class="what">The key is read from the estimated chords rather than from chroma, and it is two decisions of very different reliability: which key signature the piece is written in, and which of a relative pair is home. The second is the one that fails.</p>
+<p class="what">On a recording the key is read from the estimated chords rather than from chroma, and it is two decisions of very different reliability: which key signature the piece is written in, and which of a relative pair is home. The second is the one that fails. A score read from a MIDI file takes the key its own meta event declares, and is certain of it because the file said so.</p>
 <dl class="io">
-<dt>In</dt><dd>the chord spans</dd>
+<dt>In</dt><dd>the chord spans on a recording; a declared key signature on a MIDI file</dd>
 <dt>Decided</dt><dd>a key signature, and a tonic within it</dd>
 <dt>Out</dt><dd>one key span, with a confidence for each decision</dd>
 </dl>

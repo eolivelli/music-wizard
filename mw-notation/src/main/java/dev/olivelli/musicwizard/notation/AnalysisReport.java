@@ -66,9 +66,8 @@ public final class AnalysisReport {
     /**
      * The report for a score, as a whole HTML document.
      *
-     * <p>The score is the workspace's own, spelled for the page but otherwise
-     * untouched. A caller that hands in a score it has moved gets a page saying
-     * MW read the moved chords, with the analysed confidences beside them.
+     * <p>A caller that hands in a score it has moved gets a page saying MW read
+     * the moved chords, with the analysed confidences beside them.
      */
     public static String toHtml(Score score, Recording recording) {
         Objects.requireNonNull(score, "score");
@@ -103,10 +102,11 @@ public final class AnalysisReport {
                 .line("</p>");
         out.open("p", "class", "lede")
                 .text("These are the stages of the audio pipeline, in the order it runs them."
-                        + " A score can also be read symbolically from a MIDI file, where the"
-                        + " first of them have nothing to do — and the workspace does not"
-                        + " record which path produced this one, so each stage describes what"
-                        + " it does rather than asserting that it ran.")
+                        + " A score can also be read symbolically from a MIDI file, where some"
+                        + " of them have nothing to do and the rest work by other means — and"
+                        + " the workspace does not record which path produced this one, so"
+                        + " each stage describes what it does rather than asserting that it"
+                        + " ran.")
                 .line("</p>");
         out.raw(new ReportPhases(score, melody, playable, quantized).render());
         out.line("</section>");

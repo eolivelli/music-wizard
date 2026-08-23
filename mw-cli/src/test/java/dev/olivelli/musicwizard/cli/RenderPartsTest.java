@@ -485,6 +485,33 @@ class RenderPartsTest {
         }
 
         @Test
+        @DisplayName("a shift that reaches nothing written is named rather than left in the header")
+        void saysWhenTheTranspositionMovedNothing() {
+            Path workspace = audioWorkspace("only-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--transpose", "5", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.out()).contains("Transpose  +5 semitones");
+            assertThat(render.err())
+                    .contains("nothing that was written moves with a transposition");
+        }
+
+        @Test
+        @DisplayName("a shift the chart honours is not reported as reaching nothing")
+        void staysQuietWhenSomethingMoved() {
+            Path workspace = audioWorkspace("chart-and-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "chords,report", "--transpose", "5", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err())
+                    .doesNotContain("nothing that was written moves with a transposition");
+        }
+
+        @Test
         @DisplayName("names the recording the workspace was made from")
         void carriesTheWorkspaceIdentity() throws java.io.IOException {
             Path workspace = audioWorkspace("named", fourChords());
