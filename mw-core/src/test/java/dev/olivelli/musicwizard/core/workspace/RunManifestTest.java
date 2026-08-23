@@ -100,6 +100,25 @@ class RunManifestTest {
                     .containsExactly("separation", "decode");
             assertThat(run.stages().get(1).outcome()).isEqualTo(Outcome.CACHED);
         }
+
+        @Test
+        @DisplayName("a branch keeps its own lines and puts them where they happened")
+        void aBranchRecordsIntoBoth() {
+            // The stages under a cache key are collected on their own and
+            // stored with what they computed, while a stage that is not keyed
+            // runs in among them -- so a branch that only merged at the end
+            // would report them out of the order they ran in.
+            RunLog run = new RunLog();
+            RunLog keyed = run.branch();
+            keyed.stage("decode").computed();
+            run.stage("separation").computed();
+            keyed.stage("melody").computed();
+
+            assertThat(keyed.stages()).extracting(StageRun::stage)
+                    .containsExactly("decode", "melody");
+            assertThat(run.stages()).extracting(StageRun::stage)
+                    .containsExactly("decode", "separation", "melody");
+        }
     }
 
     @Nested

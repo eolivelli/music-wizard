@@ -40,6 +40,27 @@ import java.util.Objects;
 public final class RunLog {
 
     private final List<StageRun> stages = new ArrayList<>();
+    private final RunLog parent;
+
+    public RunLog() {
+        this(null);
+    }
+
+    private RunLog(RunLog parent) {
+        this.parent = parent;
+    }
+
+    /**
+     * A log of its own whose entries are this one's as well, recorded here as
+     * they happen.
+     *
+     * <p>For a set of stages that has to be kept separately — the ones under a
+     * cache key travel with what they computed — without their lines arriving
+     * in this run's record out of the order they ran in.
+     */
+    public RunLog branch() {
+        return new RunLog(this);
+    }
 
     /** A stage about to record what it did. */
     public final class Stage {
@@ -112,6 +133,9 @@ public final class RunLog {
      * last.
      */
     private void put(StageRun entry) {
+        if (parent != null) {
+            parent.put(entry);
+        }
         for (int i = 0; i < stages.size(); i++) {
             if (stages.get(i).stage().equals(entry.stage())) {
                 stages.set(i, entry);

@@ -1004,16 +1004,17 @@ final class AnalyzeCommand implements Callable<Integer> {
             }
         }
 
-        // A log of its own for the stages under the cache key, because they
-        // are stored with the score and replayed for the run that is served
-        // it; the rest of this run's stages are not a function of the key.
-        RunLog keyed = new RunLog();
+        // A branch for the stages under the cache key, because they are stored
+        // with the score and replayed for the run that is served it; the rest
+        // of this run's stages are not a function of the key. A branch rather
+        // than a log of its own so that separating, which happens inside this
+        // call and is not keyed, is recorded in this run where it ran.
+        RunLog keyed = runLog.branch();
         Score score = switch (kind) {
             case AUDIO -> new AudioTranscriber(AnalyzeCommand::report, keyed)
                     .transcribe(source, options, melodySupplier(stem));
             case MIDI -> new MidiTranscriber(AnalyzeCommand::report, keyed).transcribe(source);
         };
-        runLog.recordAll(keyed.stages());
         return new Transcription(score, key, false, keyed.stages());
     }
 
