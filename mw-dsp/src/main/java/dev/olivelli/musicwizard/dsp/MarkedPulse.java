@@ -274,11 +274,7 @@ public final class MarkedPulse {
      * How much stronger the register is on the beats than at the midpoints
      * between them. One means it is saying nothing about this grid.
      *
-     * <p>Unbounded where the register is silent between the beats, which is
-     * the strongest a grid can be stated rather than a degenerate case: the
-     * caller has already established that the stated half is stated at its
-     * median, so there is something there for the silence to be a contrast
-     * with.
+     * <p>Unbounded where the register is silent between the beats.
      */
     private static double contrast(OnsetEnvelope register, int[] frames, double periodFrames) {
         double onBeats = 0;
