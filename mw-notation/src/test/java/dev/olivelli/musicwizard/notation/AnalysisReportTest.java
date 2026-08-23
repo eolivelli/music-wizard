@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -116,7 +117,10 @@ class AnalysisReportTest {
 
         assertThat(weighed).contains("What the front end read",
                 // The tuning, the model behind it, and the readings themselves.
-                "3.8 cents sharp of A440", "A0 to C7", "bass at and below A2",
+                "3.8 cents sharp of A440", "A0 to C7",
+                // The treble fold is full over a range and fades either side of
+                // it, and the page says so rather than naming one edge.
+                "everything from A3 to C6, fading out again to nothing at C7",
                 "Every chord span, and what it was read from",
                 // The chord span the fit needed F most to explain.
                 "<td class=\"symbol\">Fmaj7</td>", "F 1.31, C 0.58, E 0.44");
@@ -136,7 +140,7 @@ class AnalysisReportTest {
                 ReportFixtures.run(), ReportFixtures.weighed(
                         ReportFixtures.chromaWithoutSpans()));
 
-        assertThat(page).contains("No span was summarised",
+        assertThat(page).contains("no chord span was summarised over them",
                 "the spectrum held no peaks to read one from");
         assertThat(page).doesNotContain("Every chord span, and what it was read from");
     }
@@ -148,9 +152,7 @@ class AnalysisReportTest {
         // empty figure would read as a fit that needed no pitch class at all.
         ChromaTrace withoutResidual = new ChromaTrace(0.0375, true, null,
                 ReportFixtures.chroma().spans().stream()
-                        .map(span -> new ChromaTrace.Span(span.fromSeconds(), span.toSeconds(),
-                                span.fromBeat(), span.toBeat(), span.chord(), span.combined(),
-                                span.treble(), span.bass(), List.of()))
+                        .map(span -> withResidual(span, List.of()))
                         .toList());
 
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
@@ -162,6 +164,67 @@ class AnalysisReportTest {
                 // The fit itself is absent here too, and an absent model is not
                 // described as one.
                 "Notes the dictionary models");
+    }
+
+    @Test
+    @DisplayName("one span with no residual among spans that have one is drawn as unmeasured")
+    void aSpanWithNoResidualIsNotDrawnAsZero() {
+        // Twelve cells at no opacity are what a fit that needed nothing looks
+        // like, so a span that was never measured has to look like neither
+        // that nor a reading.
+        List<ChromaTrace.Span> spans = new ArrayList<>(ReportFixtures.chroma().spans());
+        spans.set(1, withResidual(spans.get(1), List.of()));
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        new ChromaTrace(0.0375, true, null, spans)));
+
+        assertThat(page).contains("How much of each span's spectrum",
+                "<div class=\"pc-column unmeasured\" title=\"C at 0:01: not measured\">");
+        assertThat(page).doesNotContain("No residual was measured over these spans");
+    }
+
+    @Test
+    @DisplayName("a residual measured over every span and zero on all of them says so")
+    void aResidualThatFoundNothingIsStated() {
+        // Measured and empty-handed is a different statement from not measured,
+        // and an undrawn figure says neither on its own.
+        List<Double> nothing = new ArrayList<>();
+        while (nothing.size() < 12) {
+            nothing.add(0.0);
+        }
+        ChromaTrace flat = new ChromaTrace(0.0375, true, null,
+                ReportFixtures.chroma().spans().stream()
+                        .map(span -> withResidual(span, nothing))
+                        .toList());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(flat));
+
+        assertThat(page).contains(
+                "The fit left no residual any one pitch class was the only explanation of");
+        assertThat(page).doesNotContain("No residual was measured over these spans",
+                "How much of each span's spectrum");
+    }
+
+    @Test
+    @DisplayName("a span whose chord label a later build dropped is an absent trace")
+    void aSpanWithNoChordIsRefused() {
+        // The page prints the label, so a null one would abort the render --
+        // and a render that throws takes the engraving with it.
+        RunTraces renamed = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"chroma\":{\"tuningMeasured\":true,\"spans\":[{\"symbol\":\"C\"}]}}}");
+
+        assertThat(renamed.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run(), renamed);
+        assertThat(page).contains("Nothing in this workspace holds what the front end read");
+    }
+
+    private static ChromaTrace.Span withResidual(ChromaTrace.Span span, List<Double> residual) {
+        return new ChromaTrace.Span(span.fromSeconds(), span.toSeconds(), span.fromBeat(),
+                span.toBeat(), span.chord(), span.combined(), span.treble(), span.bass(),
+                residual);
     }
 
     @Test

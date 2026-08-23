@@ -28,11 +28,10 @@ import java.util.List;
 /**
  * Assembles the chroma front end's record of itself (#676).
  *
- * <p>Summarised over the chord spans rather than over the beats they hold:
- * that is where the quality gates decide, and it is the span a reader is
- * looking at when a chord is wrong. What each beat of a span held, and which
- * of these readings each gate compared against which, stay with the decoder
- * that already computes them (#677).
+ * <p>Summarised over the chord spans rather than over the beats they hold,
+ * which is the span a reader is looking at when a chord is wrong. What each
+ * beat of a span held, and which reading each gate compared against which,
+ * stay with the decoder that already computes them (#677).
  */
 final class ChromaTracing {
 
@@ -91,14 +90,13 @@ final class ChromaTracing {
         return tuningOffsetSemitones != 0;
     }
 
-    /** The beat-synchronous span an instant falls in, by the beat nearest it. */
     private static int beatAt(List<Double> beatTimes, double seconds, int highest) {
         int found = Collections.binarySearch(beatTimes, seconds);
         int index = found >= 0 ? found : -(found + 1);
         return Math.clamp(index, 0, Math.max(0, highest));
     }
 
-    /** A register's mass over a span, as the share each pitch class holds of it. */
+    /** What share of a register's reading each pitch class holds over a span. */
     private static List<Double> shares(Chroma chroma, int from, int to) {
         double[] summed = new double[12];
         double total = 0;

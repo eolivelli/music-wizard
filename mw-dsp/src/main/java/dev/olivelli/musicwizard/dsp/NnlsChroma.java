@@ -250,7 +250,7 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
         return new ChromaTrace.Fit(spectrogram.sampleRate(), spectrogram.windowSize(),
                 spectrogram.hopSize(), spectrogram.frameRate(), spectrogram.frameCount(),
                 BINS_PER_SEMITONE, LOWEST_MIDI, HIGHEST_NOTE_MIDI,
-                CROSSFADE_LOW_MIDI, CROSSFADE_HIGH_MIDI);
+                CROSSFADE_LOW_MIDI, CROSSFADE_HIGH_MIDI, TREBLE_ROLL_OFF_MIDI);
     }
 
     /**

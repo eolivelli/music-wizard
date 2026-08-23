@@ -328,8 +328,8 @@ final class ReportPhases {
                 ? Optional.empty() : traces.trace(ChromaTrace.STAGE, ChromaTrace.class);
         trace.ifPresentOrElse(this::whatTheFitRead,
                 () -> gap("Nothing in this workspace holds what the front end read: not the"
-                        + " tuning, not the model it fitted with, not the residual the chord"
-                        + " gates rank on. Re-analysing it records them (#676)."));
+                        + " tuning, not the model it fitted with, not the fit's own"
+                        + " residual (#676)."));
         close();
     }
 
@@ -350,33 +350,36 @@ final class ReportPhases {
                     fit.binsPerSemitone() + " bins a semitone"));
             table.add(fact("Notes the dictionary models",
                     noteName(fit.lowestNoteMidi()) + " to " + noteName(fit.highestNoteMidi())));
-            table.add(fact("Registers", "bass at and below " + noteName(fit.bassBelowMidi())
-                    + ", treble at and above " + noteName(fit.trebleAboveMidi())
-                    + ", cross-faded between"));
+            table.add(fact("Bass register", "everything at and below "
+                    + noteName(fit.crossfadeLowMidi()) + ", fading out to nothing at "
+                    + noteName(fit.crossfadeHighMidi())));
+            table.add(fact("Treble register", "nothing at and below "
+                    + noteName(fit.crossfadeLowMidi()) + ", everything from "
+                    + noteName(fit.crossfadeHighMidi()) + " to "
+                    + noteName(fit.trebleRollOffMidi()) + ", fading out again to nothing at "
+                    + noteName(fit.highestNoteMidi())));
         }
         table.add(fact("Chord spans summarised", String.valueOf(trace.spans().size())));
         facts(table.toArray(new Fact[0]));
         if (trace.spans().isEmpty()) {
-            note("No span was summarised, which is what a recording with no tracked beats"
-                    + " leaves: the fit ran over frames and nothing folded them onto a chord.");
+            note("The fit ran over frames, and no chord span was summarised over them.");
             return;
         }
         pitchClassGrid("What each chord span holds on each pitch class, in the chroma the"
                         + " root is decoded from. Shaded against the strongest reading on"
                         + " this figure, so a column says what stands out within the piece"
                         + " rather than how loud the span was.",
+                "No chroma was recorded for these spans.",
+                "No span carried anything on any pitch class.",
                 trace.spans(), ChromaTrace.Span::combined);
-        if (trace.spans().stream().anyMatch(span -> !span.significance().isEmpty())) {
-            pitchClassGrid("How much of each span's spectrum only that pitch class can explain:"
-                            + " delete its notes from the dictionary, fit the span again, and"
-                            + " read what that costs. This is what the quality gates rank on,"
-                            + " and a pitch class the chroma carries but this leaves blank is"
-                            + " one the fit did not need.",
-                    trace.spans(), ChromaTrace.Span::significance);
-        } else {
-            note("No residual was measured over these spans, so what only one pitch class"
-                    + " could explain is not shown.");
-        }
+        pitchClassGrid("How much of each span's spectrum only that pitch class can explain:"
+                        + " delete its notes from the dictionary, fit the span again, and read"
+                        + " what that costs. A pitch class the chroma carries but this leaves"
+                        + " blank is one the fit did not need.",
+                "No residual was measured over these spans, so what only one pitch class could"
+                        + " explain is not shown.",
+                "The fit left no residual any one pitch class was the only explanation of.",
+                trace.spans(), ChromaTrace.Span::significance);
         spanTable(trace.spans());
         note("Summarised over the chord spans and not the beats inside them, so a chord whose"
                 + " own beats disagree reads here as their average. Which of these readings"
@@ -932,15 +935,26 @@ final class ReportPhases {
      * span the numbers belong to is in the table below, which is why a cell
      * carries no reading of its own — one per cell is what a long recording
      * pays for in page weight.
+     *
+     * <p>A span that left no reading is drawn as a column of its own kind and
+     * never as a column of zeros, which would be a measurement read off an
+     * absence. Where no span left one, or where every reading is zero, the
+     * figure is not drawn and the caller's words say which of the two it was.
      */
-    private void pitchClassGrid(String caption, List<ChromaTrace.Span> spans,
+    private void pitchClassGrid(String caption, String unmeasured, String nothing,
+                                List<ChromaTrace.Span> spans,
                                 Function<ChromaTrace.Span, List<Double>> reading) {
+        if (spans.stream().allMatch(span -> reading.apply(span).isEmpty())) {
+            note(unmeasured);
+            return;
+        }
         double strongest = spans.stream()
                 .flatMap(span -> reading.apply(span).stream())
                 .mapToDouble(Double::doubleValue)
                 .filter(Double::isFinite)
                 .max().orElse(0);
         if (!(strongest > 0)) {
+            note(nothing);
             return;
         }
         out.line("<figure class=\"pc-grid\">");
@@ -952,9 +966,18 @@ final class ReportPhases {
         out.line("</div>");
         for (ChromaTrace.Span span : spans) {
             List<Double> values = reading.apply(span);
-            out.open("div", "class", "pc-column",
-                    "title", span.chord() + " at " + ReportTimeline.clock(span.fromSeconds()));
+            String where = span.chord() + " at " + ReportTimeline.clock(span.fromSeconds());
+            if (values.isEmpty()) {
+                out.open("div", "class", "pc-column unmeasured",
+                        "title", where + ": not measured");
+            } else {
+                out.open("div", "class", "pc-column", "title", where);
+            }
             for (int pitchClass = 11; pitchClass >= 0; pitchClass--) {
+                if (values.isEmpty()) {
+                    out.empty("span", "class", "pc-cell");
+                    continue;
+                }
                 double value = pitchClass < values.size() ? values.get(pitchClass) : 0;
                 double share = Double.isFinite(value) ? value / strongest : 0;
                 out.empty("span", "class", "pc-cell",

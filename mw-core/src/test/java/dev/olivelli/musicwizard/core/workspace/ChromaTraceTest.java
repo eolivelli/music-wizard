@@ -39,7 +39,7 @@ class ChromaTraceTest {
 
     private static ChromaTrace trace() {
         return new ChromaTrace(-0.0625, true,
-                new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 172, 3, 21, 96, 45, 57),
+                new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 172, 3, 21, 96, 45, 57, 84),
                 List.of(new ChromaTrace.Span(0, 2, 0, 4, "Cm7",
                         reading(0.41), reading(0.38), reading(0.52), reading(1.07))));
     }
@@ -75,11 +75,24 @@ class ChromaTraceTest {
     }
 
     @Test
+    @DisplayName("a span with no chord to name it is refused")
+    void aSpanNamesItsChord() {
+        // The page prints the label, so an unnamed span would abort the render
+        // rather than cost a picture.
+        assertThatThrownBy(() -> new ChromaTrace.Span(0, 1, 0, 2, null,
+                reading(0.4), reading(0.4), reading(0.4), reading(0.4)))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     @DisplayName("a trace written by a build whose shape has moved on reads as absent")
     void anUnreadableTraceIsAbsent() {
-        RunTraces read = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
-                + "{\"chroma\":{\"spans\":[{\"combined\":[1.0]}]}}}");
+        RunTraces narrow = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"chroma\":{\"spans\":[{\"chord\":\"C\",\"combined\":[1.0]}]}}}");
+        RunTraces renamed = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"chroma\":{\"spans\":[{\"symbol\":\"C\"}]}}}");
 
-        assertThat(read.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
+        assertThat(narrow.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
+        assertThat(renamed.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
     }
 }

@@ -194,6 +194,8 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
 .pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
 .pc-cell { height: 9px; background: var(--accent); }
+.pc-column.unmeasured .pc-cell { background: none;
+                                 border-bottom: 1px dotted var(--faint); }
 .pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
@@ -375,6 +377,11 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>provider</dt><dd>spleeter-2stems</dd>
 </dl>
 </div>
+<div class="run-stage recorded"><span class="run-stage-name">chroma</span><span class="status">ran</span><dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
+</dl>
+</div>
 <div class="run-stage recorded"><span class="run-stage-name">beats</span><span class="status">from the cache</span></div>
 <div class="run-stage absent"><span class="run-stage-name">melody</span><span class="status">did not run</span><p class="run-stage-reason">not asked for; analyze --melody reads one</p></div>
 <div class="run-stage recorded"><span class="run-stage-name">lyrics</span><span class="status">ran</span><dl class="facts">
@@ -483,12 +490,17 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Downbeats the grid marks</dt><dd>4</dd>
 </dl>
 </article>
-<article class="phase untraced" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">no trace kept</span></h3>
+<article class="phase recorded" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">ran</span></h3>
 <p class="what">An NNLS fit over the spectrum gives the energy on each of the twelve pitch classes, tuning-corrected, in a bass register and a treble one. It is taken from the full mix and never from a stem, and it is what both the beat tracker's harmonic rhythm and every chord decision below are read from.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and the tracked beats to average over</dd>
 <dt>Decided</dt><dd>the recording's tuning, and how the fit divides between the registers</dd>
 <dt>Out</dt><dd>beat-synchronous chroma, and the fit's residual</dd>
+</dl>
+<p class="ran"><span class="ran-label">Last run</span>chroma: ran</p>
+<dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
 </dl>
 <h4>What the front end read</h4>
 <dl class="facts">
@@ -498,7 +510,8 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Frames</dt><dd>172 at 21.5 a second</dd>
 <dt>Grid the spectrum is resampled onto</dt><dd>3 bins a semitone</dd>
 <dt>Notes the dictionary models</dt><dd>A0 to C7</dd>
-<dt>Registers</dt><dd>bass at and below A2, treble at and above A3, cross-faded between</dd>
+<dt>Bass register</dt><dd>everything at and below A2, fading out to nothing at A3</dd>
+<dt>Treble register</dt><dd>nothing at and below A2, everything from A3 to C6, fading out again to nothing at C7</dd>
 <dt>Chord spans summarised</dt><dd>5</dd>
 </dl>
 <figure class="pc-grid">
@@ -518,7 +531,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="pc-column" title="Fmaj7 at 0:04"><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.09"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:1"></span><span class="pc-cell" style="opacity:0.34"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.44"></span></div>
 <div class="pc-column" title="G7 at 0:06"><span class="pc-cell" style="opacity:0.31"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.9"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.26"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.54"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.04"></span></div>
 </div>
-<figcaption>How much of each span's spectrum only that pitch class can explain: delete its notes from the dictionary, fit the span again, and read what that costs. This is what the quality gates rank on, and a pitch class the chroma carries but this leaves blank is one the fit did not need.</figcaption></figure>
+<figcaption>How much of each span's spectrum only that pitch class can explain: delete its notes from the dictionary, fit the span again, and read what that costs. A pitch class the chroma carries but this leaves blank is one the fit did not need.</figcaption></figure>
 <details class="table">
 <summary>Every chord span, and what it was read from</summary><table><thead><tr><th>#</th><th>Chord</th><th>From</th><th>Beats</th><th>Chroma</th><th>Treble</th><th>Bass</th><th>Residual</th></tr></thead><tbody>
 <tr><td>1</td><td class="symbol">N.C.</td><td>0:00</td><td>2</td><td>E 10%, D 9%, G 9%</td><td>E 10%, A# 9%, B 9%</td><td>C 10%, A# 9%, B 9%</td><td>E 0.02, C 0.01, D 0.01</td></tr>

@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.core.workspace;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * What the chroma front end read, as opposed to the twelve numbers a beat came
@@ -65,10 +66,12 @@ public record ChromaTrace(
      *                           onto
      * @param lowestNoteMidi     lowest note the dictionary models
      * @param highestNoteMidi    highest note it models; a partial above this has
-     *                           no column of its own
-     * @param bassBelowMidi      at and below this every note counts as bass
-     * @param trebleAboveMidi    at and above this every note counts as treble,
-     *                           the two registers cross-fading between
+     *                           no column of its own, and the treble fold has
+     *                           faded to nothing by it
+     * @param crossfadeLowMidi   at and below this a note is all bass
+     * @param crossfadeHighMidi  at and above this it is all treble, the two
+     *                           registers cross-fading between
+     * @param trebleRollOffMidi  where the treble fold starts fading out again
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Fit(
@@ -80,8 +83,9 @@ public record ChromaTrace(
             int binsPerSemitone,
             int lowestNoteMidi,
             int highestNoteMidi,
-            int bassBelowMidi,
-            int trebleAboveMidi) {
+            int crossfadeLowMidi,
+            int crossfadeHighMidi,
+            int trebleRollOffMidi) {
     }
 
     /**
@@ -89,9 +93,8 @@ public record ChromaTrace(
      * below reads, and how much of the spectrum only one pitch class can
      * explain.
      *
-     * <p>The span is the chord span as it was finally named, which is where the
-     * quality gates decide. Within it the beats can disagree, and this cannot
-     * show that.
+     * <p>The span is the chord span as it was finally named. Within it the beats
+     * can disagree, and this cannot show that.
      *
      * @param fromSeconds   where the span starts
      * @param toSeconds     where it ends
@@ -119,6 +122,10 @@ public record ChromaTrace(
             List<Double> significance) {
 
         public Span {
+            // Guarded here for the same reason a reading's width is: a span
+            // whose label a later build renamed is a span this one cannot
+            // draw, and refusing it costs the picture rather than the render.
+            Objects.requireNonNull(chord, "chord");
             combined = pitchClasses(combined, "combined");
             treble = pitchClasses(treble, "treble");
             bass = pitchClasses(bass, "bass");

@@ -188,6 +188,8 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
 .pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
 .pc-cell { height: 9px; background: var(--accent); }
+.pc-column.unmeasured .pc-cell { background: none;
+                                 border-bottom: 1px dotted var(--faint); }
 .pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }

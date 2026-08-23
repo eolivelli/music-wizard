@@ -102,6 +102,9 @@ final class ReportFixtures {
                                 "read as", "mono at 22050 Hz"),
                         stage("separation", RunManifest.Outcome.FAILED,
                                 "the model could not be reached", "provider", "spleeter-2stems"),
+                        stage("chroma", RunManifest.Outcome.COMPUTED, null,
+                                "tuning", "3.8 cents sharp of A440",
+                                "spans summarised", "5"),
                         stage("beats", RunManifest.Outcome.CACHED, null),
                         stage("melody", RunManifest.Outcome.SKIPPED,
                                 "not asked for; analyze --melody reads one"),
@@ -188,7 +191,7 @@ final class ReportFixtures {
     }
 
     private static ChromaTrace.Fit fit() {
-        return new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 172, 3, 21, 96, 45, 57);
+        return new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 172, 3, 21, 96, 45, 57, 84);
     }
 
     private static ChromaTrace.Span chromaSpan(double fromSeconds, double toSeconds, int fromBeat,
