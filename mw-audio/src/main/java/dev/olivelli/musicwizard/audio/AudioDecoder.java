@@ -61,6 +61,44 @@ public final class AudioDecoder {
      * @throws UnsupportedAudioException when no provider can read the format
      */
     public static AudioBuffer decode(Path file, int targetSampleRate) {
+        return read(file, targetSampleRate).audio();
+    }
+
+    /**
+     * The same decode, with what the file said it was.
+     *
+     * <p>For a caller recording what was read rather than reading it. Taken
+     * from the decode that happened rather than from a second look at the
+     * header, so the description cannot describe a different reading of the
+     * file from the one whose samples came back.
+     */
+    public static Decoded decodeAndDescribe(Path file) {
+        return read(file, ANALYSIS_SAMPLE_RATE);
+    }
+
+    /**
+     * A decoded recording, and what the file said it was before it was
+     * decoded.
+     */
+    public record Decoded(AudioBuffer audio, SourceFormat source) {
+    }
+
+    /**
+     * What the file states about itself.
+     *
+     * <p>{@code javax.sound.sampled} does not name the provider that served a
+     * stream, so the encoding is as close to "which decoder read it" as the
+     * platform gets.
+     *
+     * @param encoding   how the samples are coded in the file
+     * @param sampleRate the rate the file is stored at, or non-positive where
+     *                   the provider does not state one
+     * @param channels   the same for the channel count
+     */
+    public record SourceFormat(String encoding, int sampleRate, int channels) {
+    }
+
+    private static Decoded read(Path file, int targetSampleRate) {
         if (!Files.isRegularFile(file)) {
             throw new IllegalArgumentException("not a readable file: " + file);
         }
@@ -90,7 +128,11 @@ public final class AudioDecoder {
                 float[] resampled = decodedRate == targetSampleRate
                         ? mono
                         : Resampler.resample(mono, decodedRate, targetSampleRate);
-                return new AudioBuffer(resampled, targetSampleRate);
+                return new Decoded(new AudioBuffer(resampled, targetSampleRate),
+                        new SourceFormat(source.getEncoding().toString(),
+                                source.getSampleRate() > 0
+                                        ? Math.round(source.getSampleRate()) : -1,
+                                source.getChannels() > 0 ? source.getChannels() : -1));
             }
         } catch (UnsupportedAudioFileException e) {
             throw new UnsupportedAudioException(

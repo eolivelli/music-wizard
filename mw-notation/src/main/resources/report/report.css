@@ -98,6 +98,20 @@ dl.summary dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: an
 .melisma .syllable-tick { stroke: var(--warn); }
 svg .span:hover .chord, svg .span:hover .note { stroke: #000; stroke-width: 1.2; }
 
+/* ----------------------------------------------------------------- what ran */
+
+.run-stages { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+              gap: .6rem; }
+.run-stage { border: 1px solid var(--rule); border-left-width: 4px; border-radius: .4rem;
+             padding: .7rem .8rem; display: flex; flex-wrap: wrap; align-items: baseline;
+             gap: .4rem; }
+.run-stage.recorded { border-left-color: #17916b; }
+.run-stage.absent { border-left-color: #b3bac6; }
+.run-stage.failed { border-left-color: #c2432f; }
+.run-stage-name { font-weight: 600; font-size: .95rem; }
+.run-stage-reason { flex: 1 1 100%; margin: 0; color: var(--muted); font-size: .85rem; }
+.run-stage dl.facts { flex: 1 1 100%; margin: 0; grid-template-columns: 1fr; gap: .25rem; }
+
 /* ------------------------------------------------------------------ phases */
 
 .phase { border: 1px solid var(--rule); border-left-width: 4px; border-radius: .4rem;
@@ -106,6 +120,7 @@ svg .span:hover .chord, svg .span:hover .note { stroke: #000; stroke-width: 1.2;
 .phase.recomputed { border-left-color: #3f7fd0; }
 .phase.untraced { border-left-color: #d8a33a; }
 .phase.absent { border-left-color: #b3bac6; }
+.phase.failed { border-left-color: #c2432f; }
 .phase-number { display: inline-flex; align-items: center; justify-content: center;
                 width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--panel);
                 color: var(--muted); font-size: .8rem; flex: 0 0 auto; }
@@ -166,9 +181,11 @@ details.table td.words { font-variant-numeric: normal; }
 
 .note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
 .gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
-.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+.ran { font-size: .85rem; color: var(--ink); margin: .3rem 0 .6rem; }
+.gap-label, .ran-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
              border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
              text-transform: uppercase; letter-spacing: .05em; }
+.ran-label { color: var(--faint); }
 
 footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
          color: var(--faint); font-size: .82rem; }

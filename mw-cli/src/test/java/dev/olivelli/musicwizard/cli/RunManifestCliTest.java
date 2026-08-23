@@ -1,0 +1,257 @@
+/*
+ * Copyright 2026 Music Wizard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package dev.olivelli.musicwizard.cli;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
+import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.testkit.MidiFixtures;
+import dev.olivelli.musicwizard.testkit.SignalFactory;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * What {@code analyze} records about its own run (#674).
+ *
+ * <p>The fixture is the one {@code MelodyFromTheStemTest} uses — clicks with a
+ * bass note under them — because the pipeline has to reach every stage for the
+ * record to name them: a signal with no trackable pulse returns an empty score
+ * and stops at the beat tracker.
+ */
+@DisplayName("the run manifest an analysis writes")
+class RunManifestCliTest {
+
+    @TempDir
+    Path directory;
+
+    private Path workspaceDirectory;
+
+    @BeforeEach
+    void importFixture() throws IOException {
+        int rate = SignalFactory.DEFAULT_SAMPLE_RATE;
+        float[] samples = SignalFactory.clickTrack(120, 8.0, rate);
+        float[] bass = SignalFactory.sine(SignalFactory.midiToHz(45), 8.0, rate);
+        for (int i = 0; i < samples.length; i++) {
+            samples[i] = 0.5f * samples[i] + 0.5f * bass[i];
+        }
+        Path source = directory.resolve("band.wav");
+        SignalFactory.writeWav(source, samples, rate);
+        workspaceDirectory = directory.resolve("band.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w",
+                workspaceDirectory.toString()).exitCode()).isZero();
+    }
+
+    /** Points the workspace at one separation provider by id. */
+    private void configureSeparation(String id) throws IOException {
+        configureMl("separationProvider: " + id);
+    }
+
+    /** Writes one ml block into the workspace's own config layer. */
+    private void configureMl(String... keys) throws IOException {
+        Path descriptor = workspaceDirectory.resolve("workspace.yaml");
+        StringBuilder block = new StringBuilder("\nconfig:\n  ml:\n");
+        for (String key : keys) {
+            block.append("    ").append(key).append('\n');
+        }
+        Files.writeString(descriptor, Files.readString(descriptor) + block);
+    }
+
+    private RunManifest manifest() {
+        return Workspace.open(workspaceDirectory).readRunManifest().orElseThrow();
+    }
+
+    private RunManifest.StageRun stage(String name) {
+        return manifest().stage(name).orElseThrow(() ->
+                new AssertionError("the run recorded no stage named " + name
+                        + "; it named " + manifest().stages()));
+    }
+
+    private void analyze(String... options) {
+        String[] arguments = new String[options.length + 2];
+        arguments[0] = "analyze";
+        arguments[1] = workspaceDirectory.toString();
+        System.arraycopy(options, 0, arguments, 2, options.length);
+        CliRunner.Result result = CliRunner.run(arguments);
+        assertThat(result.exitCode()).as(result.all()).isZero();
+    }
+
+    @Test
+    @DisplayName("names every stage of the run, and what the recording decoded to")
+    void namesEveryStage() {
+        analyze();
+
+        RunManifest manifest = manifest();
+        assertThat(manifest.schemaVersion()).isEqualTo(RunManifest.CURRENT_SCHEMA_VERSION);
+        assertThat(manifest.musicWizardVersion()).isNotBlank();
+        assertThat(manifest.startedAt()).isNotBlank();
+        assertThat(manifest.finishedAt()).isNotBlank();
+        assertThat(manifest.stages()).extracting(RunManifest.StageRun::stage)
+                .contains("decode", "chroma", "beats", "chords", "key", "melody",
+                        "separation", "lyrics", "lyric-alignment");
+        assertThat(stage("decode").outcome()).isEqualTo(Outcome.COMPUTED);
+        assertThat(stage("decode").facts())
+                .containsEntry("read as", "mono at 22050 Hz")
+                .containsKeys("format", "sample rate as stored", "channels as stored",
+                        "duration as decoded");
+        assertThat(stage("chords").outcome()).isEqualTo(Outcome.COMPUTED);
+        // Off is a decision the page has to be able to show, not an omission.
+        assertThat(stage("melody").outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(manifest.settings())
+                .containsEntry("source", "audio")
+                .containsEntry("melody", "not read");
+    }
+
+    @Test
+    @DisplayName("says which options steered the run, and only those it acted on")
+    void namesTheSettingsItActedOn() {
+        analyze("--tempo", "90", "--time-signature", "3/4");
+
+        assertThat(manifest().settings())
+                .containsEntry("tempo forced to", "90.0 counted beats a minute")
+                .containsEntry("meter forced to", "3/4")
+                .doesNotContainKey("first downbeat forced to")
+                .doesNotContainKey("lyrics language");
+    }
+
+    @Test
+    @DisplayName("a run served the cached analysis reports the cache, not a fresh run")
+    void aCachedRunSaysSo() {
+        analyze();
+        assertThat(stage("decode").outcome()).isEqualTo(Outcome.COMPUTED);
+
+        analyze();
+
+        // The stages under the key are replayed with the answer they produced,
+        // so a cached run is as descriptive as the run that computed it -- and
+        // says which it was.
+        assertThat(stage("decode").outcome()).isEqualTo(Outcome.CACHED);
+        assertThat(stage("decode").facts()).containsKey("format");
+        assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
+        // A stage that did not run has no answer the cache could have held.
+        assertThat(stage("melody").outcome()).isEqualTo(Outcome.SKIPPED);
+        // Separation is not under the cache key: a cached run separates nothing
+        // and must not claim the previous run's answer.
+        assertThat(stage("separation").outcome()).isEqualTo(Outcome.SKIPPED);
+    }
+
+    @Test
+    @DisplayName("a cached analysis from before the record says that rather than nothing")
+    void aCacheEntryWithNoRecordIsNamed() throws IOException {
+        analyze();
+        // What every workspace analysed by an older build holds: the score
+        // under the key, and nothing about the stages that made it.
+        try (var entries = Files.walk(workspaceDirectory.resolve("cache"))) {
+            for (Path path : entries.filter(path ->
+                    path.getFileName().toString().endsWith(".stages.json")).toList()) {
+                Files.delete(path);
+            }
+        }
+
+        analyze();
+
+        assertThat(stage("analysis").outcome()).isEqualTo(Outcome.CACHED);
+        assertThat(stage("analysis").reason()).contains("no record of what its stages did");
+        assertThat(manifest().stage("decode")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("names the separator that ran and the signal the melody was read from")
+    void namesTheSeparatorAndTheSignal() throws IOException {
+        configureSeparation("fake-cli-voice");
+
+        analyze("--melody");
+
+        assertThat(stage("separation").outcome()).isEqualTo(Outcome.COMPUTED);
+        assertThat(stage("separation").facts()).containsEntry("provider", "fake-cli-voice");
+        assertThat(stage("melody").facts())
+                .containsEntry("read from", "the separated vocal");
+    }
+
+    @Test
+    @DisplayName("names a separator that could not run, and that the melody heard the mix")
+    void namesASeparatorThatFailed() throws IOException {
+        configureSeparation("fake-cli-unavailable-separation");
+
+        analyze("--melody");
+
+        assertThat(stage("separation").outcome()).isEqualTo(Outcome.FAILED);
+        assertThat(stage("separation").reason())
+                .contains(FailingSeparationProvider.REASON);
+        assertThat(stage("melody").facts()).containsEntry("read from", "the full mix");
+    }
+
+    @Test
+    @DisplayName("says a separator was skipped when it was asked to skip one")
+    void namesASkippedSeparation() throws IOException {
+        configureSeparation("fake-cli-voice");
+
+        analyze("--melody", "--skip-separation");
+
+        assertThat(stage("separation").outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(stage("separation").reason()).isEqualTo("--skip-separation");
+        assertThat(stage("melody").facts()).containsEntry("read from", "the full mix");
+    }
+
+    @Test
+    @DisplayName("words kept from a previous analysis are still named as their own source")
+    void keptWordsKeepTheirProvenance() throws IOException {
+        // --force re-transcribes over carried words, so both the line saying
+        // where the score's words came from and the line saying what the
+        // recognizer did are written in one run. The recognizer's failure is
+        // not a statement about words it never replaced.
+        Path lrc = directory.resolve("band.lrc");
+        Files.writeString(lrc, "[00:01.00]hello there\n[00:03.00]my old friend\n");
+        analyze("--lyrics", lrc.toString(), "--lyrics-language", "en");
+        assertThat(stage("lyrics").facts()).containsEntry("words from", "the file band.lrc");
+        configureMl("asrProvider: no-such-asr");
+
+        analyze("--force", "--lyrics-language", "en");
+
+        assertThat(stage("lyrics").outcome()).isEqualTo(Outcome.COMPUTED);
+        assertThat(stage("lyrics").facts())
+                .containsEntry("words from", "the previous analysis of this workspace")
+                .containsEntry("lines", "2");
+        assertThat(stage("lyric-transcription").outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(stage("lyric-transcription").reason()).contains("no-such-asr");
+    }
+
+    @Test
+    @DisplayName("a MIDI workspace records the path it was read by, and no decode")
+    void aMidiWorkspaceRecordsItsOwnPath() {
+        Path source = MidiFixtures.write(
+                MidiFixtures.fourChordSong(), directory.resolve("four.mid"));
+        workspaceDirectory = directory.resolve("four.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w",
+                workspaceDirectory.toString()).exitCode()).isZero();
+
+        analyze();
+
+        assertThat(stage("read-midi").outcome()).isEqualTo(Outcome.COMPUTED);
+        assertThat(stage("read-midi").facts()).containsKeys("tracks", "ticks per quarter");
+        assertThat(manifest().stage("decode"))
+                .as("a MIDI file is read symbolically and decodes nothing")
+                .isEmpty();
+        assertThat(manifest().settings()).containsEntry("source", "Standard MIDI File");
+    }
+}

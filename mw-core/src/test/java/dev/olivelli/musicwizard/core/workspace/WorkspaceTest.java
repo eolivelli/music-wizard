@@ -27,6 +27,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -77,6 +79,7 @@ class WorkspaceTest {
             assertThat(workspace.sourceDirectory()).isDirectory();
             assertThat(workspace.cacheDirectory()).isDirectory();
             assertThat(workspace.scoreDirectory()).isDirectory();
+            assertThat(workspace.runDirectory()).isDirectory();
             assertThat(workspace.outputDirectory()).isDirectory();
             assertThat(workspace.logDirectory()).isDirectory();
             assertThat(workspace.descriptorFile()).isRegularFile();
@@ -269,6 +272,67 @@ class WorkspaceTest {
             // Untouched keys must still fall back to their defaults.
             assertThat(effective.notation().transposeSemitones()).isZero();
             assertThat(effective.arrangement().maxNotesPerHand()).isEqualTo(4);
+        }
+    }
+
+    @Nested
+    @DisplayName("the record of a run")
+    class RunRecord {
+
+        @Test
+        @DisplayName("is absent until an analysis writes one")
+        void isAbsentUntilWritten() {
+            // Every workspace analysed before there was a record, which is
+            // what a reader must handle rather than fail on.
+            assertThat(newWorkspace().readRunManifest()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("survives being written and read back")
+        void roundTripsThroughTheWorkspace() {
+            Workspace workspace = newWorkspace();
+            RunManifest manifest = new RunManifest(RunManifest.CURRENT_SCHEMA_VERSION,
+                    "1.2.3", "2026-01-01T00:00:00Z", "2026-01-01T00:00:09Z",
+                    Map.of("source", "audio"),
+                    List.of(new RunManifest.StageRun("decode",
+                            RunManifest.Outcome.COMPUTED, null,
+                            Map.of("read as", "mono at 22050 Hz"))));
+
+            workspace.writeRunManifest(manifest);
+
+            assertThat(reopen(workspace.root()).readRunManifest()).contains(manifest);
+        }
+
+        @Test
+        @DisplayName("is written into a workspace created before the directory existed")
+        void writesIntoAnOlderWorkspace() throws IOException {
+            Workspace workspace = newWorkspace();
+            Files.delete(workspace.runDirectory());
+
+            workspace.writeRunManifest(new RunManifest(
+                    RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3", null, null,
+                    Map.of(), List.of()));
+
+            assertThat(workspace.runManifestFile()).isRegularFile();
+        }
+
+        @Test
+        @DisplayName("replaces the previous run's, rather than accumulating")
+        void replacesThePreviousRun() {
+            Workspace workspace = newWorkspace();
+            workspace.writeRunManifest(new RunManifest(
+                    RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3", null, null, Map.of(),
+                    List.of(new RunManifest.StageRun("decode",
+                            RunManifest.Outcome.COMPUTED, null, Map.of()))));
+
+            workspace.writeRunManifest(new RunManifest(
+                    RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3", null, null, Map.of(),
+                    List.of(new RunManifest.StageRun("read-midi",
+                            RunManifest.Outcome.COMPUTED, null, Map.of()))));
+
+            RunManifest read = workspace.readRunManifest().orElseThrow();
+            assertThat(read.stage("decode")).isEmpty();
+            assertThat(read.stage("read-midi")).isPresent();
         }
     }
 

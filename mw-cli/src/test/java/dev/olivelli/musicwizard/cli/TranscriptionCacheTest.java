@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.core.workspace.StageCache;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
@@ -82,12 +83,12 @@ class TranscriptionCacheTest {
         assertThat(MELODY_OFF).isEqualTo("off");
         assertThat(AnalyzeCommand.melodySignal(on, Optional.empty())).isEqualTo("mix");
         assertThat(AnalyzeCommand.melodySignal(on,
-                VocalStem.forRun(source, configNaming("fake-cli-separation"))))
+                VocalStem.forRun(source, configNaming("fake-cli-separation"), new RunLog())))
                 .isEqualTo("stem:fake-cli-separation");
         // A configured provider nothing on the classpath supplies is the mix,
         // which is what the run will actually read.
         assertThat(AnalyzeCommand.melodySignal(on,
-                VocalStem.forRun(source, configNaming("no-such-separation"))))
+                VocalStem.forRun(source, configNaming("no-such-separation"), new RunLog())))
                 .isEqualTo("mix");
     }
 

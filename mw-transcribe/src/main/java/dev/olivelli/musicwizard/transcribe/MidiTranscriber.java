@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.RunLog;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -146,13 +147,20 @@ public final class MidiTranscriber {
     private static final int MAX_METER_DENOMINATOR_LOG2 = 6;
 
     private final Consumer<String> progress;
+    private final RunLog runLog;
+
+    /** See {@link AudioTranscriber#AudioTranscriber(Consumer, RunLog)} for both sinks. */
+    public MidiTranscriber(Consumer<String> progress, RunLog runLog) {
+        this.progress = progress != null ? progress : message -> { };
+        this.runLog = runLog != null ? runLog : new RunLog();
+    }
 
     public MidiTranscriber(Consumer<String> progress) {
-        this.progress = progress != null ? progress : message -> { };
+        this(progress, null);
     }
 
     public MidiTranscriber() {
-        this(null);
+        this(null, null);
     }
 
     /**
@@ -243,6 +251,11 @@ public final class MidiTranscriber {
         progress.accept(String.format(Locale.ROOT,
                 "read %d track(s), %.3f beats, %.2fs at %d ticks per quarter",
                 tracks.length, endBeat, durationSeconds, ticksPerQuarter));
+        runLog.stage("read-midi")
+                .fact("tracks", tracks.length)
+                .fact("ticks per quarter", ticksPerQuarter)
+                .fact("duration as read", String.format(Locale.ROOT, "%.2f s", durationSeconds))
+                .computed();
         if (tempoMap.segments().size() > 1) {
             progress.accept("the tempo changes " + (tempoMap.segments().size() - 1)
                     + " time(s) during the piece");
@@ -257,6 +270,12 @@ public final class MidiTranscriber {
         progress.accept(chords.isEmpty()
                 ? "no harmony to chart: nothing here states a chord"
                 : "estimated " + chords.size() + " chord span(s)");
+        runLog.stage("chords").computed(chords.isEmpty()
+                ? "nothing in the file states a chord"
+                : "named from the notes the file declares");
+        runLog.stage("key").computed(keys.isEmpty()
+                ? "the file declares no key signature"
+                : "read from the file's own key signature");
 
         return new Score(
                 Optional.ofNullable(title),

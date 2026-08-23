@@ -11,6 +11,7 @@ song.mwz/
   source/            the untouched recording
   cache/             analysis results, keyed by their inputs
   score/score.json   the transcription
+  run/manifest.json  what the last analysis actually ran
   out/               .txt, .ly and .pdf per part (staff parts: no .txt)
 ```
 
@@ -18,6 +19,23 @@ The cache is keyed on the recording's digest and the options that shaped
 the listening — today one entry, the whole transcription — so a changed
 source or option recomputes without being asked. Lyrics live outside it:
 correcting a lyric file must not recompute the DSP.
+
+## The run manifest
+
+`run/manifest.json` is what one `analyze` recorded about itself: the build,
+when it ran, the settings it acted on, and a line per stage saying whether the
+stage ran, was served from the cache, did not run, or failed and was carried
+past — with the reason it printed at the time and whatever facts it chose to
+write down. It is a record and never an input: no stage reads it and no cache
+key is computed from it.
+
+A stage adds its line by writing one, and nothing enumerates the stages there
+are, so the analysis report renders what it finds and states what it does not.
+Lines computed under a cache key are stored beside the cached score, so a run
+served that answer reports what those stages did rather than going blank.
+
+A workspace analysed before there was a manifest has none. Everything that
+reads one says so rather than failing, and re-analysing writes one.
 
 ## Configuration layers
 

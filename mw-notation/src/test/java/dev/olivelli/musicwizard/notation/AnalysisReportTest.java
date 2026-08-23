@@ -20,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -63,6 +66,109 @@ class AnalysisReportTest {
     void bare() {
         Goldens.assertGolden("report-bare", ".html",
                 AnalysisReport.toHtml(ReportFixtures.bare(), AnalysisReport.Recording.unknown()));
+    }
+
+    @Test
+    @DisplayName("a workspace whose run recorded itself")
+    void withARunManifest() {
+        Goldens.assertGolden("report-with-manifest", ".html", AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run()));
+    }
+
+    @Test
+    @DisplayName("a workspace with no record of its run says so rather than inventing one")
+    void withoutARunManifest() {
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING);
+
+        assertThat(page).contains("recorded nothing about its own run");
+        // The four the record would answer keep saying they are unanswered.
+        assertThat(page).contains(
+                "Nothing in this workspace says what this file held",
+                "Nothing in this workspace says whether a separator ran",
+                "Nothing in this workspace says which signal these notes were read from",
+                "Nothing in this workspace says whether the words were supplied");
+        assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
+        assertThat(page).doesNotContain("Last run");
+    }
+
+    @Test
+    @DisplayName("what the run did and what the score holds are two statements, not one")
+    void theRunAndTheScoreAreStatedSeparately() {
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        // Where the score cannot speak for a stage, the run's outcome is what
+        // the page has.
+        assertThat(statusOf(page, "decode")).isEqualTo("ran");
+        assertThat(statusOf(page, "separation")).isEqualTo("failed");
+        // Where it can, the badge stays the score's, because the phase goes on
+        // to draw what the score holds -- and the run's line says what the run
+        // did with it, which is a different question and here a different
+        // answer.
+        assertThat(statusOf(page, "beats")).isEqualTo("output on disk");
+        assertThat(statusOf(page, "melody")).isEqualTo("output on disk");
+        assertThat(page).contains("Last run</span>beats: from the cache");
+        assertThat(page).contains("Last run</span>melody: did not run — not asked for");
+        // A question the record answers is not also asked.
+        assertThat(page).doesNotContain(
+                "Nothing in this workspace says whether the words were supplied");
+        // Every gap the record does not fill is still stated.
+        assertThat(page).contains("(#675)", "(#676)", "(#677)", "(#678)", "(#679)",
+                "(#680)", "(#684)");
+    }
+
+    @Test
+    @DisplayName("reading a MIDI file symbolically is what the decode phase says happened")
+    void theSymbolicPathAnswersTheDecodePhase() {
+        // A MIDI workspace decodes nothing and its record names no decode, so
+        // the phase has to take the other stage as its answer: describing the
+        // arm that did not run is what the page is for not doing.
+        RunManifest readSymbolically = new RunManifest(
+                RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
+                "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
+                List.of(new RunManifest.StageRun("read-midi",
+                        RunManifest.Outcome.COMPUTED, null, Map.of("tracks", "4"))));
+
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.chordsOnly(), RECORDING, readSymbolically);
+
+        assertThat(statusOf(page, "decode")).isEqualTo("ran");
+        assertThat(page).contains("Last run</span>read midi: ran");
+        // And the phase describes the arm that ran, not the other one.
+        assertThat(page).contains("the events the file declares, and how long it plays");
+        assertThat(page).doesNotContain("one signal, and how long the recording is");
+        assertThat(page).doesNotContain("Nothing in this workspace says what this file held");
+        assertThat(page).doesNotContain("recorded nothing about its own run");
+    }
+
+    @Test
+    @DisplayName("a stage that ran and found nothing is not badged as one that did not run")
+    void aStageThatRanAndFoundNothingIsNotCalledSkipped() {
+        // The badge is the score's statement and the line under it is the
+        // run's, so the two must be worded on their own axes: a tracker that
+        // ran and found no pulse leaves a score with no grid, and neither
+        // sentence may deny the other.
+        RunManifest foundNothing = new RunManifest(
+                RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
+                "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
+                List.of(new RunManifest.StageRun("beats", RunManifest.Outcome.COMPUTED,
+                        "no pulse was found", Map.of())));
+
+        String page = AnalysisReport.toHtml(ReportFixtures.bare(), RECORDING, foundNothing);
+
+        assertThat(statusOf(page, "beats")).isEqualTo("nothing in the score");
+        assertThat(page).contains("Last run</span>beats: ran — no pulse was found");
+        assertThat(page).doesNotContain("<span class=\"status\">did not run</span>");
+    }
+
+    @Test
+    @DisplayName("a stage this build has no phase for is still reported")
+    void anUnknownStageIsNotDropped() {
+        // What a workspace analysed by a newer build looks like. The page has
+        // no phase to put it under and must not swallow it.
+        assertThat(AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run()))
+                .contains("hummed bass");
     }
 
     @Test

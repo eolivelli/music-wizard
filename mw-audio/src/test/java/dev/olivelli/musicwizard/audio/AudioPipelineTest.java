@@ -129,6 +129,23 @@ class AudioPipelineTest {
             assertThatThrownBy(() -> AudioDecoder.decode(tempDirectory.resolve("absent.wav")))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+
+        @Test
+        @DisplayName("reports what the file said it was, alongside what it was read as")
+        void describesWhatItDecoded() {
+            Path file = writeWav(SignalFactory.sine(440, 0.25, 44_100), 44_100);
+
+            AudioDecoder.Decoded decoded = AudioDecoder.decodeAndDescribe(file);
+
+            assertThat(decoded.audio().sampleRate())
+                    .as("what analysis reads")
+                    .isEqualTo(AudioDecoder.ANALYSIS_SAMPLE_RATE);
+            assertThat(decoded.source().sampleRate())
+                    .as("what the file holds")
+                    .isEqualTo(44_100);
+            assertThat(decoded.source().encoding()).isEqualTo("PCM_SIGNED");
+            assertThat(decoded.source().channels()).isEqualTo(1);
+        }
     }
 
     @Nested
