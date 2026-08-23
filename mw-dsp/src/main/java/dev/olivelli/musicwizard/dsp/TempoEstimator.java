@@ -228,7 +228,6 @@ public final class TempoEstimator {
         double behind = Double.NEGATIVE_INFINITY;
         double justBehind = Double.NEGATIVE_INFINITY;
         double justBehindTempo = 0;
-        boolean swept = false;
 
         double step = 0.25;
         for (double tempo = MIN_TEMPO; tempo <= MAX_TEMPO; tempo += step) {
@@ -256,18 +255,17 @@ public final class TempoEstimator {
                 // for it is a measurement of that envelope.
                 bestRawCorrelation = interpolate(correlation, lag);
             }
-            if (swept && justBehind > behind && justBehind >= score) {
+            if (justBehind > behind && justBehind >= score) {
                 peak(peaks, justBehindTempo, justBehind);
             }
             behind = justBehind;
             justBehind = score;
             justBehindTempo = tempo;
-            swept = true;
         }
-        // The end of the range is a candidate on the same terms as the start,
-        // which has no left neighbour either: the double of a mid-range seed
-        // sits at that end, and it is the rival a reader most wants to see.
-        if (swept && justBehind > behind) {
+        // The end of the range on the same terms as the start, which has no
+        // left neighbour either: the double of a mid-range seed sits at that
+        // end, and it is the rival a reader most wants to see.
+        if (justBehind > behind) {
             peak(peaks, justBehindTempo, justBehind);
         }
         List<Candidate> candidates = ranked(peaks, bestTempo, bestScore);
@@ -292,7 +290,7 @@ public final class TempoEstimator {
                 peakiness(envelope.strength()), candidates);
     }
 
-    /** A rate the sweep rose to and fell from. Only a positive score is a rival. */
+    /** Only a positive score is a rival. */
     private static void peak(List<Candidate> peaks, double tempo, double score) {
         if (score > 0) {
             peaks.add(new Candidate(tempo, score, false));

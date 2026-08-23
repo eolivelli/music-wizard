@@ -971,13 +971,9 @@ final class ChartLayout {
      * @param downbeats      how many the grid marks
      */
     record Axis(HungOn hungOn, String refusedBecause, int downbeats) {
-
-        boolean followsDownbeats() {
-            return hungOn == HungOn.DOWNBEATS;
-        }
     }
 
-    /** Where a chart's bar lines came from, which is three different decisions. */
+    /** Where a chart's bar lines came from. */
     enum HungOn {
         /** The grid's downbeats are the bar lines themselves (#187). */
         DOWNBEATS,
@@ -1004,7 +1000,7 @@ final class ChartLayout {
             // What BarLines.of does here, which is not #233's phase: with no
             // downbeat there is no offset to agree on, and the axis opens on
             // the harmony.
-            return Optional.of(new Axis(HungOn.FIRST_CHORD, null, 0));
+            return Optional.of(new Axis(HungOn.FIRST_CHORD, null, downbeats.size()));
         }
         String refused = BarLines.refusedBecause(score.beatGrid().orElseThrow(), downbeats,
                 meter, quarterSeconds, barSeconds);

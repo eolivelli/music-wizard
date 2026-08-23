@@ -259,8 +259,7 @@ final class ReportPhases {
                             + " marked too few beats to read"));
             table.add(fact("Marked-beat contrast", Double.isFinite(octave.contrast())
                     ? HtmlWriter.number(octave.contrast(), 2)
-                    : "unbounded — the register is silent between the beats, which is"
-                            + " as strongly as a grid can be stated"));
+                    : "unbounded — the register is silent between the beats"));
             table.add(fact("Evenness of the two half-beats",
                     HtmlWriter.number(octave.parity(), 2)));
             table.add(fact("Share of the louder half the register marks",
