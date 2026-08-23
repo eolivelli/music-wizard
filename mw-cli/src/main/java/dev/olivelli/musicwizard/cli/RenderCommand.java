@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
+import dev.olivelli.musicwizard.notation.AnalysisReport;
 import dev.olivelli.musicwizard.notation.ChartOptions;
 import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LeadSheet;
@@ -123,6 +124,10 @@ final class RenderCommand implements Callable<Integer> {
         // estimate rather than a reading of the recording (#592), so a run that
         // did not ask for one gets the same files it always did.
         PLAYABLE("playable", null, RenderCommand::writePlayableLeadSheet, false),
+        // Asked for by name too. It is a page about the analysis rather than a
+        // part to play from, and a run that wanted a chart should not pay for
+        // it (#673).
+        REPORT("report", null, RenderCommand::writeReport, false),
         BASS("bass", "bass transcription is not implemented yet (#8)", null),
         PIANO("piano", "the piano reduction is not implemented yet (#10)", null);
 
@@ -281,12 +286,12 @@ final class RenderCommand implements Callable<Integer> {
 
     @Option(names = "--parts", split = ",", paramLabel = "PART",
             description = "Which parts to render: chords, lyrics, lead, voice, playable, "
-                    + "bass, piano. The lead sheet, the voice staff and the playable lead "
-                    + "sheet need a score analysed with --melody; bass and piano cannot be "
-                    + "produced at all yet, and naming any part reports why it cannot be "
-                    + "produced. Defaults to every part that is implemented except "
-                    + "playable, which is an arrangement of the melody rather than a "
-                    + "reading of it and is written only when asked for.")
+                    + "report, bass, piano. The lead sheet, the voice staff and the playable "
+                    + "lead sheet need a score analysed with --melody; report is a "
+                    + "self-contained HTML page showing what every analysis stage did; bass "
+                    + "and piano cannot be produced at all yet, and naming any part reports "
+                    + "why it cannot be produced. Defaults to every part that is implemented "
+                    + "except playable and report, which are written only when asked for.")
     List<String> parts;
 
     @Option(names = "--transpose", paramLabel = "SEMITONES",
@@ -575,6 +580,29 @@ final class RenderCommand implements Callable<Integer> {
         return writeStaffOutput(workspace, score.withTrack(PlayableMelody.reduce(score)),
                 lilypond, "lead-playable", QuantizationSettings.READING,
                 (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+    }
+
+    /**
+     * Writes the analysis report — one HTML file, no engraver involved.
+     *
+     * <p>Named no reason by {@link Part#unavailableReason}, and that is the
+     * point of it: a workspace where only some stages ran gets a page saying so
+     * for each, which is exactly the workspace whose owner wants to know why.
+     */
+    private static Emitted writeReport(
+            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
+        Path out = workspace.outputDirectory();
+        try {
+            Files.createDirectories(out);
+            Workspace.Descriptor descriptor = workspace.readDescriptor();
+            Path html = out.resolve("report.html");
+            Files.writeString(html, AnalysisReport.toHtml(score, new AnalysisReport.Recording(
+                    descriptor.sourceFileName(), descriptor.sourceSha256(),
+                    descriptor.createdAt())));
+            return new Emitted(List.of(html), List.of());
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write output", e);
+        }
     }
 
     /** Writes the melody on a staff of its own, with no chords and no words. */

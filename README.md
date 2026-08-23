@@ -45,6 +45,10 @@ drive, and read by the pipeline unaided.
   it.
 - **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — with
   `--transpose`, `--beat-marks` and `--repeat-tags`.
+- **An analysis report**: `render --parts report` writes one self-contained
+  HTML page — the whole piece on a shared time axis, then each stage's inputs,
+  decisions and outputs, saying plainly where a stage decided something the
+  workspace does not record.
 - **Standard MIDI File input**, read symbolically, with its declared tempo
   and meter kept apart from anything estimated.
 - **A workspace per song** with the analysis cached against its inputs, so

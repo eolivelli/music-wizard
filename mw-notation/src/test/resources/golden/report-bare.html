@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silence — what Music Wizard did</title>
+<style>/*
+ * Copyright 2026 Music Wizard contributors
+ * Licensed under the Apache License, Version 2.0.
+ *
+ * The whole style sheet of the analysis report, inlined into every page it
+ * writes. Nothing here may reference a file: the page has to open with no
+ * network at all.
+ */
+
+:root {
+  --ink: #16181d;
+  --muted: #5d6470;
+  --faint: #8a919d;
+  --rule: #dfe3ea;
+  --panel: #f6f7fa;
+  --accent: #2f6feb;
+  --warn: #b4530a;
+  --page: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 0 4rem;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+header, section, footer { max-width: 62rem; margin: 0 auto; padding: 0 1.25rem; }
+section { margin-top: 3rem; }
+
+header { padding-top: 2.5rem; }
+h1 { font-size: 2rem; line-height: 1.2; margin: 0; }
+h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
+h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
+.artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
+.lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
+
+dl.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: .6rem 1.25rem;
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  border-radius: .5rem;
+}
+dl.summary dt { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em;
+                color: var(--faint); }
+dl.summary dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.caveat { color: var(--warn); font-size: .9rem; margin: .8rem 0 0; }
+
+/* ---------------------------------------------------------------- timeline */
+
+.overview-frame { border: 1px solid var(--rule); border-radius: .5rem; padding: .4rem;
+                  background: var(--page); }
+.overview-frame svg { display: block; width: 100%; height: auto; }
+
+.timeline-frame { display: flex; border: 1px solid var(--rule); border-radius: .5rem;
+                  overflow: hidden; background: var(--page); }
+.lane-labels { flex: 0 0 9.5rem; border-right: 1px solid var(--rule); background: var(--panel); }
+.lane-label { display: flex; flex-direction: column; justify-content: center;
+              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden; }
+.lane-label:last-child { border-bottom: 0; }
+.lane-name { font-size: .78rem; font-weight: 600; }
+.lane-note { font-size: .68rem; color: var(--faint); }
+.strip-scroll { flex: 1 1 auto; overflow-x: auto; overflow-y: hidden; }
+.strip-scroll svg { display: block; }
+
+.readout { min-height: 1.4rem; margin: .5rem 0 0; font-size: .85rem; color: var(--muted);
+           font-variant-numeric: tabular-nums; }
+
+.bar-line { stroke: #c9cfda; stroke-width: 1; }
+.mw-overview .bar-line { stroke: #e9edf3; }
+.mw-overview .beat { stroke: #d3d9e2; }
+.mw-overview .beat.downbeat { stroke: #aab2bf; stroke-width: 1; }
+.beat { stroke: #9aa3b2; stroke-width: 1; }
+.beat.downbeat { stroke: #4b5361; stroke-width: 1.6; }
+.bar-number { font-size: 9px; fill: var(--faint); }
+.time-tick { font-size: 9px; fill: var(--muted); }
+.scale-mark { font-size: 9px; fill: var(--faint); }
+.tempo-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.chord { stroke: rgba(0, 0, 0, .18); stroke-width: .5; }
+.chord.no-chord { stroke-dasharray: 2 2; }
+.chord-name { font-size: 11px; font-weight: 600; fill: #10131a; }
+.key { fill: #e5ecfb; stroke: #b9c9ee; stroke-width: .5; }
+.key-name { font-size: 9px; fill: #2a3a5c; }
+.roll .note { fill: #2f6feb; }
+.roll.playable .note { fill: #17916b; }
+.syllable-tick { stroke: #8a919d; stroke-width: 1; }
+.syllable { font-size: 9px; fill: var(--ink); }
+.melisma .syllable { fill: var(--warn); font-style: italic; }
+.melisma .syllable-tick { stroke: var(--warn); }
+svg .span:hover .chord, svg .span:hover .note { stroke: #000; stroke-width: 1.2; }
+
+/* ------------------------------------------------------------------ phases */
+
+.phase { border: 1px solid var(--rule); border-left-width: 4px; border-radius: .4rem;
+         padding: 1rem 1.1rem; margin: 0 0 1rem; }
+.phase.recorded { border-left-color: #17916b; }
+.phase.recomputed { border-left-color: #3f7fd0; }
+.phase.untraced { border-left-color: #d8a33a; }
+.phase.absent { border-left-color: #b3bac6; }
+.phase-number { display: inline-flex; align-items: center; justify-content: center;
+                width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--panel);
+                color: var(--muted); font-size: .8rem; flex: 0 0 auto; }
+.status { margin-left: auto; font-size: .7rem; text-transform: uppercase;
+          letter-spacing: .05em; color: var(--faint); white-space: nowrap; }
+.what { margin: 0 0 .8rem; color: var(--muted); font-size: .92rem; }
+
+dl.io { display: grid; grid-template-columns: 4.5rem 1fr; gap: .2rem .8rem; margin: 0 0 .9rem;
+        font-size: .88rem; }
+dl.io dt { font-weight: 600; color: var(--faint); font-size: .72rem; text-transform: uppercase;
+           letter-spacing: .04em; padding-top: .15rem; }
+dl.io dd { margin: 0; }
+
+dl.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+           gap: .5rem 1.1rem; margin: 0 0 .9rem; }
+dl.facts dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+              color: var(--faint); }
+dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.readings { margin: 0 0 .9rem; }
+.reading, .tally-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem;
+                       margin-bottom: .3rem; }
+.reading-name, .tally-name { flex: 0 0 14rem; color: var(--muted); }
+.bar { flex: 1 1 auto; height: .55rem; background: var(--rule); border-radius: .3rem;
+       overflow: hidden; }
+.bar .fill { display: block; height: 100%; background: var(--accent); }
+.reading-value, .tally-value { flex: 0 0 3rem; text-align: right;
+                               font-variant-numeric: tabular-nums; }
+
+.histogram { margin: .3rem 0 .9rem; }
+.histogram .columns { display: flex; align-items: flex-end; gap: 1px; height: 60px;
+                      border-bottom: 1px solid var(--rule); }
+.histogram .column { flex: 1 1 0; background: var(--accent); min-height: 1px; }
+.histogram .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                   color: var(--faint); font-variant-numeric: tabular-nums; }
+.histogram figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
+          margin: .3rem 0 .9rem; font-size: .8rem; }
+.legend-lead { color: var(--faint); }
+.chip { display: inline-flex; align-items: center; gap: .3rem; }
+.swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
+          border: 1px solid rgba(0, 0, 0, .15); }
+
+.strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
+.strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
+
+details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
+details.table summary { cursor: pointer; color: var(--accent); }
+details.table table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+details.table th, details.table td { text-align: left; padding: .18rem .5rem;
+                                     border-bottom: 1px solid var(--rule);
+                                     font-variant-numeric: tabular-nums; }
+details.table th { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+                   color: var(--faint); }
+details.table td.symbol { font-weight: 600; }
+details.table td.words { font-variant-numeric: normal; }
+
+.note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
+.gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }
+.gap-label { display: inline-block; margin-right: .4rem; padding: .05rem .4rem;
+             border: 1px solid currentColor; border-radius: .25rem; font-size: .68rem;
+             text-transform: uppercase; letter-spacing: .05em; }
+
+footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
+         color: var(--faint); font-size: .82rem; }
+
+@media (max-width: 40rem) {
+  .lane-labels { flex-basis: 6.5rem; }
+  .reading-name, .tally-name { flex-basis: 8rem; }
+}
+</style>
+</head>
+<body>
+<header>
+<h1>Silence</h1>
+<p class="lede">Everything Music Wizard did to turn this recording into a chart and a playable part, in the order it did it.</p>
+<dl class="summary">
+<dt>Length</dt><dd>0:08</dd>
+<dt>Tempo</dt><dd>120 quarter notes a minute</dd>
+<dt>Meter</dt><dd>4/4</dd>
+<dt>Chord spans</dt><dd>0</dd>
+</dl>
+</header>
+<section id="overview">
+<h2>The whole piece</h2>
+<p class="lede">The recording end to end, at a scale that fits the page. Bar lines and beats are drawn only where they are far enough apart to be seen; the strip below has all of them.</p>
+<div class="overview-frame"><svg class="mw-overview" viewBox="0 0 720 80" width="720" height="80" xmlns="http://www.w3.org/2000/svg" role="img">
+<g class="grid">
+<line class="bar-line" x1="0" y1="0" x2="0" y2="80"></line><line class="bar-line" x1="180" y1="0" x2="180" y2="80"></line><line class="bar-line" x1="360" y1="0" x2="360" y2="80"></line><line class="bar-line" x1="540" y1="0" x2="540" y2="80"></line><line class="bar-line" x1="720" y1="0" x2="720" y2="80"></line>
+<text class="time-tick" x="3" y="32">0:00</text><text class="time-tick" x="183" y="32">0:02</text><text class="time-tick" x="363" y="32">0:04</text><text class="time-tick" x="543" y="32">0:06</text><text class="time-tick" x="723" y="32">0:08</text>
+</g>
+<g class="lane tempo"><path class="tempo-line" d="M0 72L720 72"></path></g>
+</svg>
+</div>
+</section>
+<section id="timeline">
+<h2>The timeline</h2>
+<p class="lede">Everything MW read out of the recording on one time axis. Scroll it sideways; hover or tap anything on it to read what it is.</p>
+<div class="timeline-frame">
+<div class="lane-labels">
+<div class="lane-label" style="height:34px"><span class="lane-name">Bars and beats</span><span class="lane-note">from the tempo map</span></div>
+<div class="lane-label" style="height:46px"><span class="lane-name">Tempo</span><span class="lane-note">quarter notes a minute</span></div>
+</div>
+<div class="strip-scroll" id="mw-scroll">
+<svg class="mw-strip" viewBox="0 0 720 80" width="720" height="80" xmlns="http://www.w3.org/2000/svg" role="img">
+<g class="grid">
+<line class="bar-line" x1="0" y1="0" x2="0" y2="80"></line><line class="bar-line" x1="180" y1="0" x2="180" y2="80"></line><line class="bar-line" x1="360" y1="0" x2="360" y2="80"></line><line class="bar-line" x1="540" y1="0" x2="540" y2="80"></line><line class="bar-line" x1="720" y1="0" x2="720" y2="80"></line>
+<text class="time-tick" x="3" y="32">0:00</text><text class="time-tick" x="183" y="32">0:02</text><text class="time-tick" x="363" y="32">0:04</text><text class="time-tick" x="543" y="32">0:06</text><text class="time-tick" x="723" y="32">0:08</text>
+<text class="bar-number" x="3" y="11">1</text><text class="bar-number" x="183" y="11">2</text><text class="bar-number" x="363" y="11">3</text><text class="bar-number" x="543" y="11">4</text><text class="bar-number" x="723" y="11">5</text>
+</g>
+<g class="lane tempo"><path class="tempo-line" d="M0 72L720 72"></path><text class="scale-mark" x="3" y="48">120</text><text class="scale-mark" x="3" y="72">120</text></g>
+</svg>
+</div>
+</div>
+<p class="readout" id="mw-readout"></p>
+<p class="note">No lane was drawn for: Chords, Key, Melody, Playable part, Syllables. The phases below say why for each.</p>
+</section>
+<section id="phases">
+<h2>Phase by phase</h2>
+<p class="lede">Each stage below answers the same three questions from the workspace and from nothing else: what reached it, what it decided, and what it left behind. Where it decided something the workspace does not keep, it says so.</p>
+<article class="phase recorded" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">output on disk</span></h3>
+<p class="what">The recording is read to mono samples at the analysis rate. Everything after this point works from those samples.</p>
+<dl class="io">
+<dt>In</dt><dd>the source file in the workspace</dd>
+<dt>Decided</dt><dd>nothing — a decode has no choices to make</dd>
+<dt>Out</dt><dd>one signal, and how long the recording is</dd>
+</dl>
+<dl class="facts">
+<dt>Length</dt><dd>0:08  (8s)</dd>
+</dl>
+<p class="gap"><span class="gap-label">Not recorded</span>The sample rate, the channel count and the decoder that read the file are not written to the workspace, so this page cannot show them (#674).</p>
+</article>
+<article class="phase untraced" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">no trace kept</span></h3>
+<p class="what">A separator splits the mix into a vocal and an accompaniment. Only the melody stage reads it. Chords are always estimated from the full mix, because separation artifacts destroy the partial structure chroma estimation depends on.</p>
+<dl class="io">
+<dt>In</dt><dd>the decoded mix</dd>
+<dt>Decided</dt><dd>whether a separator could be reached at all</dd>
+<dt>Out</dt><dd>a vocal stem, held in memory and never written to the workspace</dd>
+</dl>
+<p class="gap"><span class="gap-label">Not recorded</span>Whether a separator ran, which provider it was, and whether the melody stage read its stem or fell back to the mix are not recorded — so this page cannot tell you which signal the melody below was read from (#674).</p>
+</article>
+<article class="phase absent" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">did not run</span></h3>
+<p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
+<dl class="io">
+<dt>In</dt><dd>the decoded mix, and frame-level chroma for the harmonic rhythm</dd>
+<dt>Decided</dt><dd>the pulse, which pulse begins a bar, and the rate to hold</dd>
+<dt>Out</dt><dd>a beat grid and a tempo map</dd>
+</dl>
+<p class="note">This score carries no beat grid. That is what every score read from a MIDI file looks like, where the beats are declared rather than heard; on the audio path it means the tracker found no pulse.</p>
+<dl class="facts">
+<dt>Meter</dt><dd>4/4</dd>
+<dt>Meter changes</dt><dd>0</dd>
+<dt>Tempo segments</dt><dd>1</dd>
+<dt>Tempo at the start</dt><dd>120 quarter notes a minute</dd>
+<dt>Average tempo past the lead-in</dt><dd>120 quarter notes a minute</dd>
+</dl>
+<dl class="facts">
+<dt>Tempo segments of unrecorded origin</dt><dd>1</dd>
+</dl>
+<p class="gap"><span class="gap-label">Not recorded</span>The tempo candidates the tracker weighed against each other, and whether the grid was believed or vetoed (#429), are decided inside the stage and not recorded (#675).</p>
+</article>
+<article class="phase untraced" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">no trace kept</span></h3>
+<p class="what">An NNLS fit over the spectrum gives the energy on each of the twelve pitch classes, tuning-corrected, in a bass register and a treble one. It is taken from the full mix and never from a stem, and it is what both the beat tracker's harmonic rhythm and every chord decision below are read from.</p>
+<dl class="io">
+<dt>In</dt><dd>the decoded mix, and the tracked beats to average over</dd>
+<dt>Decided</dt><dd>the recording's tuning, and how the fit divides between the registers</dd>
+<dt>Out</dt><dd>beat-synchronous chroma, and the fit's residual</dd>
+</dl>
+<p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
+</article>
+<article class="phase absent" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">did not run</span></h3>
+<p class="what">A decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat. The two vocabularies are not the same one: a quality the decoder may choose competes across roots.</p>
+<dl class="io">
+<dt>In</dt><dd>beat-synchronous chroma, its residual, and the tracked beats</dd>
+<dt>Decided</dt><dd>where a chord changes, its root, and its quality</dd>
+<dt>Out</dt><dd>one labelled span per chord</dd>
+</dl>
+<p class="note">This score holds no chord progression.</p>
+</article>
+<article class="phase absent" id="phase-key"><h3><span class="phase-number">6</span>Key<span class="status">did not run</span></h3>
+<p class="what">The key is read from the estimated chords rather than from chroma, and it is two decisions of very different reliability: which key signature the piece is written in, and which of a relative pair is home. The second is the one that fails.</p>
+<dl class="io">
+<dt>In</dt><dd>the chord spans</dd>
+<dt>Decided</dt><dd>a key signature, and a tonic within it</dd>
+<dt>Out</dt><dd>one key span, with a confidence for each decision</dd>
+</dl>
+<p class="note">No key was estimated, which is what happens when no chord sounds.</p>
+</article>
+<article class="phase absent" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">did not run</span></h3>
+<p class="what">A monophonic pitch tracker follows the loudest periodic line in whatever signal it is handed, and the result is segmented into notes. On a full mix that line is usually not the singer, which is why the stage is off unless it is asked for.</p>
+<dl class="io">
+<dt>In</dt><dd>the vocal stem where a separator could be had, and the mix otherwise</dd>
+<dt>Decided</dt><dd>where one note ends and the next begins</dd>
+<dt>Out</dt><dd>a note track, in seconds</dd>
+</dl>
+<p class="note">This score holds no melody. Analysing with --melody is what writes one.</p>
+</article>
+<article class="phase absent" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">did not run</span></h3>
+<p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>
+<dl class="io">
+<dt>In</dt><dd>a vocal stem, and either supplied words or transcribed ones</dd>
+<dt>Decided</dt><dd>where each syllable is sung, and which syllable the melody moves under</dd>
+<dt>Out</dt><dd>lines of timed syllables</dd>
+</dl>
+<p class="note">This score holds no lyrics.</p>
+</article>
+<article class="phase recomputed" id="phase-quantization"><h3><span class="phase-number">9</span>Quantization<span class="status">recomputed here</span></h3>
+<p class="what">Every sounding thing is put on a grid of beat subdivisions, chosen per bar, because a page has to name a duration. Three onsets a third of a beat apart and three a half beat apart are both legal on the underlying grid, so the subdivision is a decision and not a rounding.</p>
+<dl class="io">
+<dt>In</dt><dd>the score's notes, chords, keys and sections, and the tempo map</dd>
+<dt>Decided</dt><dd>a subdivision per bar, and a swing feel</dd>
+<dt>Out</dt><dd>the same music on the beat axis</dd>
+</dl>
+<p class="note">The grid below was recomputed for this page exactly as the engraver recomputes it. It is not persisted: the workspace keeps the snapped positions, and the chosen subdivision cannot be read back off them.</p>
+<dl class="facts">
+<dt>Bars on the tempo map's axis</dt><dd>5</dd>
+<dt>Bars with a chosen subdivision</dt><dd>0</dd>
+<dt>Swing</dt><dd>straight</dd>
+<dt>Chords placed on the beat axis</dt><dd>0</dd>
+</dl>
+<p class="note">No subdivision was chosen for any bar, which is the ordinary case for a score with no notes in it: chords are put on the beat axis without needing one.</p>
+</article>
+<article class="phase absent" id="phase-reduction"><h3><span class="phase-number">10</span>Reduction to the playable part<span class="status">did not run</span></h3>
+<p class="what">The estimate is reduced to one note per sung syllable, so a player reads a line rather than every pitch the tracker returned. It is an arrangement of MW's own estimate rather than a reading of the recording, which is why it is written only when it is asked for.</p>
+<dl class="io">
+<dt>In</dt><dd>the melody notes, the syllables, the chords and the tempo map</dd>
+<dt>Decided</dt><dd>which notes belong to one syllable, and which head that syllable prints</dd>
+<dt>Out</dt><dd>a second note track, drawn under the estimate on the timeline above</dd>
+</dl>
+<p class="note">There is no melody to reduce.</p>
+</article>
+</section>
+<footer>
+<p>This page is a reading of one workspace: its saved score, plus the grid and the reduction that the engraver recomputes from it. It is not a log of the run — a stage that decided something the workspace does not keep is marked as such above rather than reconstructed.</p>
+<p>Generated by Music Wizard. Everything it needs is in this file.</p>
+</footer>
+<script>/*
+ * Copyright 2026 Music Wizard contributors
+ * Licensed under the Apache License, Version 2.0.
+ *
+ * The whole script of the analysis report. It only adds two things a phone
+ * cannot get otherwise -- the overview as a way to move the strip, and a tap
+ * as a substitute for a hover -- so a browser that runs none of it still gets
+ * the complete page.
+ */
+
+(function () {
+  'use strict';
+
+  var scroller = document.getElementById('mw-scroll');
+  var readout = document.getElementById('mw-readout');
+  var overview = document.querySelector('#overview svg');
+
+  function stripWidth() {
+    var strip = scroller ? scroller.querySelector('svg') : null;
+    return strip ? strip.getBoundingClientRect().width : 0;
+  }
+
+  function say(text) {
+    if (readout) {
+      readout.textContent = text;
+    }
+  }
+
+  if (overview && scroller) {
+    overview.style.cursor = 'crosshair';
+    overview.addEventListener('click', function (event) {
+      var box = overview.getBoundingClientRect();
+      if (box.width <= 0) {
+        return;
+      }
+      var fraction = (event.clientX - box.left) / box.width;
+      scroller.scrollLeft = fraction * stripWidth() - scroller.clientWidth / 2;
+    });
+  }
+
+  if (scroller) {
+    scroller.addEventListener('click', function (event) {
+      var target = event.target;
+      var span = target && target.closest ? target.closest('.span') : null;
+      var title = span ? span.querySelector('title') : null;
+      say(title ? title.textContent : '');
+    });
+  }
+}());
+</script>
+</body>
+</html>

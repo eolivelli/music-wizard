@@ -420,6 +420,68 @@ class RenderPartsTest {
     }
 
     @Nested
+    @DisplayName("the analysis report")
+    class Report {
+
+        @Test
+        @DisplayName("is not written unless it is asked for")
+        void optInOnly() {
+            Path workspace = audioWorkspace("no-report", fourChords());
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/report.html")).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("is one self-contained file, written without an engraver")
+        void writesOneFile() throws java.io.IOException {
+            Path workspace = audioWorkspace("report", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            Path page = workspace.resolve("out/report.html");
+            assertThat(page).exists();
+            String html = java.nio.file.Files.readString(page);
+            assertThat(html).startsWith("<!DOCTYPE html>").endsWith("</html>\n");
+            assertThat(html).contains("<style>", "<script>");
+        }
+
+        @Test
+        @DisplayName("is written for a workspace where most stages never ran")
+        void needsNothingInParticular() {
+            // Every other part names a reason and writes nothing. This one is
+            // the page that explains the absences, so refusing to write it for a
+            // score that has them would withhold it from its own audience.
+            Path workspace = audioWorkspace("thin", ChordProgression.empty());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/report.html")).exists();
+        }
+
+        @Test
+        @DisplayName("names the recording the workspace was made from")
+        void carriesTheWorkspaceIdentity() throws java.io.IOException {
+            Path workspace = audioWorkspace("named", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("named.wav");
+        }
+    }
+
+
+    @Nested
     @DisplayName("a score with no harmony")
     class NoHarmony {
 
