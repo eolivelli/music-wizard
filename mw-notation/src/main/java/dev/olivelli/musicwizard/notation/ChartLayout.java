@@ -965,18 +965,28 @@ final class ChartLayout {
      * reading it back: this is decided from the score, so the page can state
      * the verdict the chart acted on rather than a second opinion.
      *
+     * @param hungOn         what the chart's bar lines were placed on
      * @param refusedBecause why the grid's downbeats are not the bar lines, or
      *                       null where they are
      * @param downbeats      how many the grid marks
-     * @param phaseAgreed    whether the downbeats agreed on an offset within
-     *                       the bar, which is only asked where they were
-     *                       refused
      */
-    record Axis(String refusedBecause, int downbeats, boolean phaseAgreed) {
+    record Axis(HungOn hungOn, String refusedBecause, int downbeats) {
 
         boolean followsDownbeats() {
-            return refusedBecause == null;
+            return hungOn == HungOn.DOWNBEATS;
         }
+    }
+
+    /** Where a chart's bar lines came from, which is three different decisions. */
+    enum HungOn {
+        /** The grid's downbeats are the bar lines themselves (#187). */
+        DOWNBEATS,
+        /** One bar length, on the offset the downbeats agree on (#233). */
+        AGREED_OFFSET,
+        /** One bar length, on the first downbeat, the rest agreeing on no offset. */
+        FIRST_DOWNBEAT,
+        /** One bar length, on the harmony, the grid marking no bar to hang on. */
+        FIRST_CHORD
     }
 
     static Optional<Axis> axis(Score score) {
@@ -991,12 +1001,19 @@ final class ChartLayout {
         double barSeconds = meter.quarterBeatsPerBar() * quarterSeconds;
         List<Double> downbeats = score.beatGrid().map(BeatGrid::downbeatTimes).orElse(List.of());
         if (downbeats.isEmpty() || !(barSeconds > 0)) {
-            return Optional.of(new Axis("this score carries no tracked downbeats", 0, false));
+            // What BarLines.of does here, which is not #233's phase: with no
+            // downbeat there is no offset to agree on, and the axis opens on
+            // the harmony.
+            return Optional.of(new Axis(HungOn.FIRST_CHORD, null, 0));
         }
         String refused = BarLines.refusedBecause(score.beatGrid().orElseThrow(), downbeats,
                 meter, quarterSeconds, barSeconds);
-        return Optional.of(new Axis(refused, downbeats.size(),
-                phaseOf(downbeats, barSeconds, barSeconds / meter.beatsPerBar()).agreed()));
+        if (refused == null) {
+            return Optional.of(new Axis(HungOn.DOWNBEATS, null, downbeats.size()));
+        }
+        HungOn hungOn = phaseOf(downbeats, barSeconds, barSeconds / meter.beatsPerBar()).agreed()
+                ? HungOn.AGREED_OFFSET : HungOn.FIRST_DOWNBEAT;
+        return Optional.of(new Axis(hungOn, refused, downbeats.size()));
     }
 
     /**

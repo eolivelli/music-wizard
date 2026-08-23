@@ -269,7 +269,7 @@ public final class AudioTranscriber {
         BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, onsets.pulseRegister());
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
-            runLog.stage("beats").trace(beats.trace()).computed("no pulse was found");
+            runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
             for (String unreached : List.of("chords", "key", "melody")) {
                 runLog.stage(unreached).skipped("no beats were tracked, so the run stopped here");
             }
@@ -482,7 +482,7 @@ public final class AudioTranscriber {
      */
     private void recordBeats(BeatTracker.Result beats) {
         BeatTrace trace = beats.trace();
-        RunLog.Stage stage = runLog.stage("beats").trace(trace);
+        RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
         if (trace == null) {
             stage.computed();
             return;

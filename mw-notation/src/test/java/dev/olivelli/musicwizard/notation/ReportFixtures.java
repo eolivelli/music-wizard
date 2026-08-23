@@ -119,8 +119,12 @@ final class ReportFixtures {
      * on, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        BeatTrace beats = new BeatTrace(240.5, 120.25,
-                new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true),
+        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true));
+    }
+
+    /** The same, with a register reading of the caller's choosing. */
+    static RunTraces weighed(BeatTrace.Octave octave) {
+        BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
                                 List.of(new BeatTrace.Candidate(240.5, 0.47, true),
@@ -175,6 +179,14 @@ final class ReportFixtures {
     /** The same grid barred as the pulse implies, which the veto admits. */
     static Score evenGrid() {
         return gridded(0, 4, 8, 12);
+    }
+
+    /**
+     * Harmony over a grid that marks no bar at all, which leaves the chart no
+     * phase to hang on and nothing to refuse.
+     */
+    static Score noDownbeats() {
+        return gridded();
     }
 
     private static Score gridded(int... downbeats) {

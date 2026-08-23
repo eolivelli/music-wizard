@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
@@ -748,6 +749,43 @@ class BeatTrackingTest {
     @Nested
     @DisplayName("tempo estimation")
     class Tempo {
+
+        @Test
+        @DisplayName("the rivals the sweep weighed are recorded, the range's ends included")
+        void theSweepRecordsWhatItWeighed() {
+            // A click track at the fastest rate the sweep considers, where the
+            // prior takes the half. The sweep stops at that rate, so a peak
+            // rising into it has no right-hand neighbour -- and a candidate
+            // list that dropped it for that would hide the double of the rate
+            // the prior chose, which is the rival a reader most often
+            // disagrees with. The slowest rate is at the other end of the same
+            // sweep and is admitted on the same terms.
+            OnsetEnvelope envelope =
+                    envelopeOf(SignalFactory.clickTrack(240, 20, RATE));
+
+            TempoEstimator.Estimate estimate = TempoEstimator.estimate(envelope);
+
+            assertThat(estimate.candidates())
+                    .filteredOn(TempoEstimator.Candidate::chosen)
+                    .singleElement()
+                    .extracting(TempoEstimator.Candidate::beatsPerMinute)
+                    .isEqualTo(estimate.beatsPerMinute());
+            assertThat(estimate.candidates())
+                    .extracting(TempoEstimator.Candidate::beatsPerMinute)
+                    .contains(240.0);
+            assertThat(estimate.candidates())
+                    .isSortedAccordingTo(
+                            Comparator.comparingDouble(TempoEstimator.Candidate::score)
+                                    .reversed())
+                    .allSatisfy(candidate -> assertThat(candidate.score()).isPositive());
+        }
+
+        @Test
+        @DisplayName("a reading with nothing to choose between records no rivals")
+        void silenceRecordsNoCandidates() {
+            assertThat(TempoEstimator.estimate(envelopeOf(SignalFactory.silence(5, RATE)))
+                    .candidates()).isEmpty();
+        }
 
         @ParameterizedTest(name = "a {0} BPM click track lands on the right period family")
         @ValueSource(doubles = {90, 100, 120, 140, 160})

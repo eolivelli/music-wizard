@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -118,6 +119,40 @@ class AnalysisReportTest {
 
         assertThat(page).contains("This workspace does not hold what the tracker weighed");
         assertThat(page).doesNotContain("What the tracker chose between");
+    }
+
+    @Test
+    @DisplayName("a register reading that is not a number is not printed as one")
+    void degenerateRegisterReadingsAreWorded() {
+        // Both are ordinary readings rather than corrupt ones: the contrast is
+        // unbounded wherever the register is silent between the beats, which
+        // is what a clean synthetic sample looks like, and every figure is
+        // absent together where no window held enough beats to measure.
+        String silentBetween = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(new BeatTrace.Octave(
+                        false, Double.POSITIVE_INFINITY, 0.0, 1.0, 2, 0, false)));
+        String nothingToRead = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(new BeatTrace.Octave(
+                        false, Double.NaN, Double.NaN, Double.NaN, 0, 0, false)));
+
+        assertThat(silentBetween).doesNotContain("Infinity", "NaN")
+                .contains("the register is silent between the beats");
+        assertThat(nothingToRead).doesNotContain("Infinity", "NaN")
+                .contains("no window of it held enough tracked beats to measure")
+                .doesNotContain("Marked-beat contrast");
+    }
+
+    @Test
+    @DisplayName("a grid that marks no bar is not said to have agreed on a phase")
+    void anAxisWithNoDownbeatNamesWhatItWasHungOn() {
+        // BarLines anchors on the first chord here and never asks for a phase,
+        // so naming #233's mechanism would describe a decision that was not
+        // made -- and would contradict the downbeat count printed beside it.
+        String page = AnalysisReport.toHtml(ReportFixtures.noDownbeats(), RECORDING);
+
+        assertThat(page).contains("The grid marks no downbeat, so there is no bar phase",
+                "<dt>Downbeats the grid marks</dt><dd>0</dd>");
+        assertThat(page).doesNotContain("agreed on no offset", "(#233)");
     }
 
     @Test

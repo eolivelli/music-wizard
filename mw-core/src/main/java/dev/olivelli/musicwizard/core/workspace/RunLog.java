@@ -95,8 +95,7 @@ public final class RunLog {
 
         /**
          * The structured evidence behind the line, for the one reader that
-         * draws it — see {@link RunTraces}. A null is dropped, so a stage that
-         * traces only on some paths need not branch.
+         * draws it — see {@link RunTraces}.
          */
         public Stage trace(Object evidence) {
             this.trace = evidence;

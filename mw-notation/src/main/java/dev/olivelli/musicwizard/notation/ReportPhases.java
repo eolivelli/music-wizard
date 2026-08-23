@@ -161,7 +161,7 @@ final class ReportPhases {
 
     private void beatsAndTempo() {
         boolean tracked = score.beatGrid().isPresent();
-        open("beats", "Beat tracking, tempo and the bar axis",
+        open(BeatTrace.STAGE, "Beat tracking, tempo and the bar axis",
                 tracked ? Status.RECORDED : Status.ABSENT,
                 "Onsets are detected, a pulse is tracked through them, and the phase of"
                         + " the bar is chosen from where the harmony changes. The tempo map"
@@ -242,6 +242,13 @@ final class ReportPhases {
         if (octave == null) {
             table.add(fact("Bass register", "not read, so the octave is where the envelope"
                     + " and the tempo prior put it"));
+        } else if (octave.windowsRead() == 0) {
+            // Every figure below is absent together in this one case, and a
+            // page that printed them would be printing the absence as a
+            // measurement.
+            table.add(fact("Bass register", "read, and no window of it held enough tracked"
+                    + " beats to measure, so the octave is where the envelope and the"
+                    + " tempo prior put it"));
         } else {
             table.add(fact("Bass register", octave.halved()
                     ? "states only every second beat of that pulse, so it was halved to "
@@ -250,7 +257,10 @@ final class ReportPhases {
             table.add(fact("Windows the register was read over",
                     octave.windowsRead() + ", of which " + octave.windowsRefused()
                             + " marked too few beats to read"));
-            table.add(fact("Marked-beat contrast", HtmlWriter.number(octave.contrast(), 2)));
+            table.add(fact("Marked-beat contrast", Double.isFinite(octave.contrast())
+                    ? HtmlWriter.number(octave.contrast(), 2)
+                    : "unbounded — the register is silent between the beats, which is"
+                            + " as strongly as a grid can be stated"));
             table.add(fact("Evenness of the two half-beats",
                     HtmlWriter.number(octave.parity(), 2)));
             table.add(fact("Share of the louder half the register marks",
@@ -276,21 +286,23 @@ final class ReportPhases {
         }
         ChartLayout.Axis reading = axis.get();
         out.element("h4", "How the chart hangs its bar lines").line("");
-        if (reading.followsDownbeats()) {
-            note("Every bar the grid marks is a plausible bar, so the tracked downbeats are"
-                    + " the bar lines and the chart is not uniform in seconds (#187). What"
-                    + " the bar lines are wrong by is what the grid is wrong by, and"
-                    + " nothing else.");
-        } else {
-            note("The grid's downbeats are not the bar lines: " + reading.refusedBecause()
-                    + ". The chart is one bar length throughout, hung on "
-                    + (reading.phaseAgreed()
-                            ? "the offset within the bar that leaves the smallest total"
-                                    + " distance to every downbeat"
-                            : "the first downbeat, the downbeats having agreed on no offset"
-                                    + " within a counted beat")
-                    + " (#233).");
-        }
+        note(switch (reading.hungOn()) {
+            case DOWNBEATS -> "Every bar the grid marks is a plausible bar, so the tracked"
+                    + " downbeats are the bar lines and the chart is not uniform in seconds"
+                    + " (#187). What the bar lines are wrong by is what the grid is wrong"
+                    + " by, and nothing else.";
+            case AGREED_OFFSET -> "The grid's downbeats are not the bar lines: "
+                    + reading.refusedBecause() + ". The chart is one bar length throughout,"
+                    + " hung on the offset within the bar that leaves the smallest total"
+                    + " distance to every downbeat (#233).";
+            case FIRST_DOWNBEAT -> "The grid's downbeats are not the bar lines: "
+                    + reading.refusedBecause() + ". The chart is one bar length throughout,"
+                    + " hung on the first downbeat, the downbeats having agreed on no offset"
+                    + " within a counted beat (#233).";
+            case FIRST_CHORD -> "The grid marks no downbeat, so there is no bar phase to"
+                    + " hang on at all. The chart is one bar length throughout, opening"
+                    + " where the harmony starts.";
+        });
         facts(fact("Downbeats the grid marks", String.valueOf(reading.downbeats())));
     }
 
@@ -765,9 +777,8 @@ final class ReportPhases {
      * One lane per analysis window, with a tick at every rate its sweep
      * weighed.
      *
-     * <p>Each lane is scaled to its own strongest candidate, because a score is
-     * a share of that window's own energy and two windows' scores are two
-     * different fractions.
+     * <p>Each lane is scaled to its own strongest candidate: a score is
+     * comparable within a window and not between windows.
      */
     private void candidateLanes(BeatTrace trace) {
         List<BeatTrace.Candidate> every = trace.everyCandidate();
