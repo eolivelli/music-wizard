@@ -276,7 +276,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="gap"><span class="gap-label">Not recorded</span>This workspace's record of its run does not say whether a separator ran, or which provider it was (#674).</p>
 </article>
-<article class="phase absent" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">nothing in the score</span></h3>
 <p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and frame-level chroma for the harmonic rhythm</dd>
@@ -305,7 +305,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
 </article>
-<article class="phase absent" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">nothing in the score</span></h3>
 <p class="what">On a recording, a decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat; the two vocabularies are not the same one, since a quality the decoder may choose competes across roots. A score read from a MIDI file has its chords named from the notes the file declares instead.</p>
 <dl class="io">
 <dt>In</dt><dd>beat-synchronous chroma, its residual and the tracked beats on a recording; the declared notes on a MIDI file</dd>
@@ -314,7 +314,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="note">This score holds no chord progression.</p>
 </article>
-<article class="phase absent" id="phase-key"><h3><span class="phase-number">6</span>Key<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-key"><h3><span class="phase-number">6</span>Key<span class="status">nothing in the score</span></h3>
 <p class="what">On a recording the key is read from the estimated chords rather than from chroma, and it is two decisions of very different reliability: which key signature the piece is written in, and which of a relative pair is home. The second is the one that fails. A score read from a MIDI file takes the key its own meta event declares, and is certain of it because the file said so.</p>
 <dl class="io">
 <dt>In</dt><dd>the chord spans on a recording; a declared key signature on a MIDI file</dd>
@@ -323,7 +323,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="note">This score carries no key. On a recording that is what happens when no chord sounds; a MIDI file that declares no key signature leaves none either, however much of it sounds.</p>
 </article>
-<article class="phase absent" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">nothing in the score</span></h3>
 <p class="what">A monophonic pitch tracker follows the loudest periodic line in whatever signal it is handed, and the result is segmented into notes. On a full mix that line is usually not the singer, which is why the stage is off unless it is asked for.</p>
 <dl class="io">
 <dt>In</dt><dd>the vocal stem where a separator could be had, and the mix otherwise</dd>
@@ -332,7 +332,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="note">This score holds no melody part; see --melody on analyze.</p>
 </article>
-<article class="phase absent" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">nothing in the score</span></h3>
 <p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>
 <dl class="io">
 <dt>In</dt><dd>a vocal stem, and either supplied words or transcribed ones</dd>
@@ -357,7 +357,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="note">No subdivision was chosen for any bar, which is the ordinary case for a score with no notes in it: chords are put on the beat axis without needing one.</p>
 </article>
-<article class="phase absent" id="phase-reduction"><h3><span class="phase-number">10</span>Reduction to the playable part<span class="status">did not run</span></h3>
+<article class="phase absent" id="phase-reduction"><h3><span class="phase-number">10</span>Reduction to the playable part<span class="status">nothing in the score</span></h3>
 <p class="what">The estimate is reduced to one note per sung syllable, so a player reads a line rather than every pitch the tracker returned. It is an arrangement of MW's own estimate rather than a reading of the recording, which is why it is written only when it is asked for.</p>
 <dl class="io">
 <dt>In</dt><dd>the melody notes, the syllables, the chords and the tempo map</dd>

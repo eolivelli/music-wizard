@@ -64,7 +64,7 @@ final class ReportPhases {
         /** The workspace does not say whether it ran, or what it decided. */
         static final Status UNTRACED = new Status("untraced", "no trace kept");
         /** Its output would be in the score, and is not. */
-        static final Status ABSENT = new Status("absent", "did not run");
+        static final Status ABSENT = new Status("absent", "nothing in the score");
 
         /** What the run itself said, for a stage the score cannot speak for. */
         static Status of(RunManifest.StageRun entry) {
@@ -114,17 +114,24 @@ final class ReportPhases {
     // ---------------------------------------------------------------- phases
 
     private void decode() {
-        open("decode", "Decode", Status.UNTRACED,
+        // Two stages under one phase, and never both: reading a MIDI file is
+        // what happens instead of decoding, so either answers the phase.
+        Optional<RunManifest.StageRun> read =
+                recorded("decode").or(() -> recorded("read-midi"));
+        open("decode", "Decode", read.map(Status::of).orElse(Status.UNTRACED),
                 "A recording is read to mono samples at the analysis rate, and everything"
                         + " after this point works from those samples. A score read from a"
                         + " MIDI file is read symbolically instead and decodes nothing.");
         inOut("the source file in the workspace",
                 "nothing — a decode has no choices to make",
                 "one signal, and how long the recording is");
+        whatRan("read-midi");
         facts(fact("Length", ReportTimeline.clock(score.durationSeconds())
                 + "  (" + HtmlWriter.number(score.durationSeconds(), 2) + "s)"));
-        gapUnlessRecorded("This workspace's record of its run does not say which of the two"
-                + " happened, nor what the file was, nor what it was read as (#674).");
+        if (read.isEmpty()) {
+            gap("This workspace's record of its run does not say which of the two happened,"
+                    + " nor what the file was, nor what it was read as (#674).");
+        }
         close();
     }
 
@@ -316,7 +323,8 @@ final class ReportPhases {
                 "where one note ends and the next begins",
                 "a note track, in seconds");
         if (!any) {
-            note("This score holds no melody part; see --melody on analyze.");
+            note("This score holds no melody part"
+                    + (recorded().isPresent() ? "." : "; see --melody on analyze."));
             close();
             return;
         }
@@ -460,9 +468,9 @@ final class ReportPhases {
      *
      * <p>The two answer different questions and can disagree without either
      * being wrong — a run served a cached score ran no stage, and the score
-     * still holds every stage's output — so the badge takes the one that
-     * cannot be contradicted by what the phase goes on to draw, and
-     * {@link #whatRan} states the run's separately. The phase's own name is
+     * still holds every stage's output — so the badge is worded about what
+     * the phase goes on to draw, and {@link #whatRan} states what the run did
+     * separately and in its own words. The phase's own name is
      * the stage's name in the manifest, which is what lets a stage that starts
      * recording light up its phase without this class being taught about it.
      */
@@ -483,7 +491,12 @@ final class ReportPhases {
 
     /** What the run recorded about the phase being written, if anything. */
     private Optional<RunManifest.StageRun> recorded() {
-        return manifest == null ? Optional.empty() : manifest.stage(phase);
+        return recorded(phase);
+    }
+
+    /** The same for a stage of another name. */
+    private Optional<RunManifest.StageRun> recorded(String stage) {
+        return manifest == null ? Optional.empty() : manifest.stage(stage);
     }
 
     private void close() {
@@ -510,8 +523,7 @@ final class ReportPhases {
 
     /** The same for a stage whose record belongs under a phase of another name. */
     private void whatRan(String stage) {
-        (manifest == null ? Optional.<RunManifest.StageRun>empty()
-                : manifest.stage(stage)).ifPresent(entry -> {
+        recorded(stage).ifPresent(entry -> {
             out.open("p", "class", "ran");
             out.element("span", "Last run", "class", "ran-label");
             out.text(stage.replace('-', ' ') + ": " + ReportRun.label(entry.outcome())

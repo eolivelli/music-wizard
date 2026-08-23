@@ -115,23 +115,44 @@ class AnalysisReportTest {
     }
 
     @Test
-    @DisplayName("a stage the run did not reach is stated, and not as a missing record")
-    void aStageTheRunNeverReachedIsWordedAsThat() {
-        // A MIDI workspace decodes nothing, so its record names no decode. The
-        // page has to say the question is unanswered without claiming the
-        // workspace records nothing, which is no longer true of it.
+    @DisplayName("reading a MIDI file symbolically is what the decode phase says happened")
+    void theSymbolicPathAnswersTheDecodePhase() {
+        // A MIDI workspace decodes nothing and its record names no decode, so
+        // the page must not say the record is silent about which of the two
+        // happened. The record says exactly which.
         RunManifest readSymbolically = new RunManifest(
                 RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
                 "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
-                List.of(new RunManifest.StageRun(
-                        "read-midi", RunManifest.Outcome.COMPUTED, null, Map.of())));
+                List.of(new RunManifest.StageRun("read-midi",
+                        RunManifest.Outcome.COMPUTED, null, Map.of("tracks", "4"))));
 
         String page = AnalysisReport.toHtml(
                 ReportFixtures.chordsOnly(), RECORDING, readSymbolically);
 
-        assertThat(page).contains("does not say which of the two happened");
+        assertThat(statusOf(page, "decode")).isEqualTo("ran");
+        assertThat(page).contains("Last run</span>read midi: ran");
+        assertThat(page).doesNotContain("does not say which of the two happened");
         assertThat(page).doesNotContain("recorded nothing about its own run");
-        assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
+    }
+
+    @Test
+    @DisplayName("a stage that ran and found nothing is not badged as one that did not run")
+    void aStageThatRanAndFoundNothingIsNotCalledSkipped() {
+        // The badge is the score's statement and the line under it is the
+        // run's, so the two must be worded on their own axes: a tracker that
+        // ran and found no pulse leaves a score with no grid, and neither
+        // sentence may deny the other.
+        RunManifest foundNothing = new RunManifest(
+                RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
+                "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
+                List.of(new RunManifest.StageRun("beats", RunManifest.Outcome.COMPUTED,
+                        "no pulse was found", Map.of())));
+
+        String page = AnalysisReport.toHtml(ReportFixtures.bare(), RECORDING, foundNothing);
+
+        assertThat(statusOf(page, "beats")).isEqualTo("nothing in the score");
+        assertThat(page).contains("Last run</span>beats: ran — no pulse was found");
+        assertThat(page).doesNotContain("<span class=\"status\">did not run</span>");
     }
 
     @Test
